@@ -9,6 +9,7 @@ Before modifying code, read:
 
 1. `docs/LANGUAGE_SPEC.md`
 2. `docs/C3_STYLE.md` (mandatory for C3 changes)
+3. `c3_cheatsheet.md` (quick reference for C3 language syntax and features)
 
 `docs/C3_STYLE.md` is the authoritative C3 coding standard for this repo.
 It is derived from official C3 language documentation (starting from
@@ -57,17 +58,17 @@ When implementing or reviewing features, preserve these constraints:
 ## Surface Naming and Alias Policy
 
 Treat pre-alpha language surface cleanup as a design-sharpening phase, not a
-compatibility-preservation phase.
+preservation phase.
 
 - Default to one canonical language-facing name per concept.
-- Do not keep compatibility aliases "temporarily" unless the owner explicitly
+- Do not keep non-canonical aliases "temporarily" unless the owner explicitly
   asks for a migration window.
 - Do not add shorthand spellings unless the owner explicitly approves them.
 - Prefer descriptive non-abbreviated names for canonical language-facing
   constructors, types, and operations.
 - Do not import borrowed vocabulary from other languages just because it is
   familiar; first justify the capability gap in Omni terms.
-- When touching an area with legacy aliases, prefer removing non-canonical
+- When touching an area with non-canonical aliases, prefer removing non-canonical
   spellings rather than documenting both.
 
 Current explicit exceptions approved by the owner:

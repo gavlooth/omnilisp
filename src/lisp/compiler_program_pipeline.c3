@@ -48,7 +48,7 @@ fn void Compiler.emit_compiled_main_body(Compiler* self, List{Expr*}* exprs, usz
     self.emit_lambda_definitions();
     self.emit("fn int main() {\n");
     self.indent++;
-    self.emit_line("aot::aot_init();");
+    self.emit_line("if (!aot::aot_init()) return 1;");
     self.emit_newline();
 
     if (self.defined_globals.len() > 0) {

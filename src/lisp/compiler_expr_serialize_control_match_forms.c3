@@ -11,8 +11,12 @@ fn void Compiler.serialize_handle_to_buf(Compiler* self, Expr* expr, List{char}*
     self.serialize_expr_to_buf(expr.handle.body, buf);
     for (usz i = 0; i < expr.handle.clause_count; i++) {
         self.buf_append(buf, " (");
-        char[] etag = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
-        self.buf_append(buf, etag);
+        if (expr.handle.clauses[i].has_effect_tag_expr) {
+            self.serialize_expr_to_buf(expr.handle.clauses[i].effect_tag_expr, buf);
+        } else {
+            char[] etag = self.interp.symbols.get_name(expr.handle.clauses[i].effect_tag);
+            self.buf_append(buf, etag);
+        }
         buf.push(' ');
         char[] ea = self.interp.symbols.get_name(expr.handle.clauses[i].arg_name);
         self.buf_append(buf, ea);

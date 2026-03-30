@@ -161,7 +161,7 @@ fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* v = make_array(interp, count);
     cur = args[0];
     for (usz i = 0; i < count; i++) {
-        v.array_val.items[i] = cur.cons_val.car;
+        v.array_val.items[i] = boundary_promote_to_root(cur.cons_val.car, interp);
         cur = cur.cons_val.cdr;
     }
     v.array_val.length = count;

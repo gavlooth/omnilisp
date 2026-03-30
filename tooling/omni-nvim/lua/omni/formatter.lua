@@ -6,10 +6,17 @@ local function module_root()
   return vim.fs.dirname(vim.fs.dirname(omni_lua_dir))
 end
 
-local function repo_root(config)
-  local treesitter = config and config.treesitter
-  if treesitter and type(treesitter.repo_root) == "string" and treesitter.repo_root ~= "" then
-    return treesitter.repo_root
+local function directory_exists(path)
+  return type(path) == "string" and path ~= "" and vim.fn.isdirectory(path) == 1
+end
+
+local function formatter_cwd(config)
+  local formatter = config and config.formatter
+  if formatter and directory_exists(formatter.cwd) then
+    return formatter.cwd
+  end
+  if directory_exists(config and config.repo_root) then
+    return config.repo_root
   end
 
   local plugin_root = module_root()
@@ -32,7 +39,7 @@ function M.conform_formatter(config)
     command = executable,
     args = command,
     stdin = false,
-    cwd = repo_root(config),
+    cwd = formatter_cwd(config),
   }
 end
 

@@ -24,6 +24,31 @@ fn bool deduce_scan_range_oom_probe_enabled() @inline {
     return test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null;
 }
 
+fn Relation* deduce_test_prepare_relation_handle(
+    Interp* interp,
+    char[] source,
+    char[] fail_msg,
+    int* fail
+) {
+    EvalResult rel_run = run(source, interp);
+    if (rel_run.error.has_error ||
+        rel_run.value == null ||
+        rel_run.value.tag != FFI_HANDLE ||
+        rel_run.value.ffi_val == null ||
+        rel_run.value.ffi_val.lib_handle == null) {
+        io::printn((ZString)fail_msg);
+        (*fail)++;
+        return null;
+    }
+    return (Relation*)rel_run.value.ffi_val.lib_handle;
+}
+
+fn bool deduce_test_result_is_oom_code(Value* value) {
+    return value != null &&
+        value.tag == STRING &&
+        deduce_name_equals(value.str_chars[:value.str_len], "deduce/query-out-of-memory");
+}
+
 fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_int_at_least(
         interp,
@@ -85,13 +110,98 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
             deduce_relation_row_dict_capacity(rel)
         );
         if (dict == null || dict.tag == ERROR) {
-            io::printn("[PASS] deduce 'scan-range row-dict oom probe");
+            emit_pass_literal("[PASS] deduce 'scan-range row-dict oom probe");
             (*pass)++;
             return;
         }
         io::printn("[FAIL] deduce 'scan-range row-dict oom probe (expected OOM guard)");
         (*fail)++;
         return;
+    }
+
+    if (deduce_test_prepare_relation_handle(
+        interp,
+        "(block "
+        "  (define scan-oom-db (deduce 'open 'memory)) "
+        "  (define [relation scan-oom-db] scan_oom_person (name) (age) (email)) "
+        "  scan_oom_person "
+        ")",
+        "[FAIL] deduce 'scan column-key-value oom propagation (failed to prepare relation)",
+        fail
+    ) == null) return;
+
+    bool saved_force_column_key_values_oom = g_deduce_force_column_key_values_oom;
+    g_deduce_force_column_key_values_oom = true;
+    EvalResult scan_oom = run(
+        "(handle (deduce 'scan scan_oom_person) (raise payload (symbol->string (ref payload 'code))))",
+        interp
+    );
+    g_deduce_force_column_key_values_oom = saved_force_column_key_values_oom;
+    if (!scan_oom.error.has_error && deduce_test_result_is_oom_code(scan_oom.value)) {
+        emit_pass_literal("[PASS] deduce 'scan propagates column-key-value oom");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce 'scan propagates column-key-value oom");
+        (*fail)++;
+    }
+
+    Relation* range_oom_rel = deduce_test_prepare_relation_handle(
+        interp,
+        "(block "
+        "  (define scan-range-oom-db (deduce 'open 'memory)) "
+        "  (define [relation scan-range-oom-db] scan_range_oom_person (name) (age) (email)) "
+        "  (deduce 'fact! scan_range_oom_person \"Bob\" 30 \"b@x\") "
+        "  scan_range_oom_person "
+        ")",
+        "[FAIL] deduce 'scan-range row-dict oom propagation (failed to prepare relation)",
+        fail
+    );
+    if (range_oom_rel == null) return;
+
+    bool saved_force_row_dict_oom = g_deduce_force_row_dict_oom;
+    g_deduce_force_row_dict_oom = true;
+    EvalResult range_oom = run(
+        "(handle (deduce 'scan-range scan_range_oom_person '(\"Bob\" 30 \"b@x\") '(\"Bob\" 30 \"b@x\")) "
+        "  (raise payload (symbol->string (ref payload 'code))))",
+        interp
+    );
+    g_deduce_force_row_dict_oom = saved_force_row_dict_oom;
+    if (!range_oom.error.has_error && deduce_test_result_is_oom_code(range_oom.value)) {
+        emit_pass_literal("[PASS] deduce 'scan-range propagates row-dict oom");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce 'scan-range propagates row-dict oom");
+        (*fail)++;
+    }
+
+    MdbTxn* txn = null;
+    int txn_rc = mdb_txn_begin(range_oom_rel.db.env, null, 0, &txn);
+    if (txn_rc != MDB_SUCCESS || txn == null) {
+        io::printn("[FAIL] deduce scan-range in-txn row-dict oom propagation (failed to open txn)");
+        (*fail)++;
+        return;
+    }
+    defer if (txn != null) mdb_txn_abort(txn);
+    saved_force_row_dict_oom = g_deduce_force_row_dict_oom;
+    g_deduce_force_row_dict_oom = true;
+    Value* range_in_txn_oom = relation_scan_range_in_txn(
+        range_oom_rel,
+        interp,
+        txn,
+        null,
+        0,
+        false,
+        {},
+        {},
+        false
+    );
+    g_deduce_force_row_dict_oom = saved_force_row_dict_oom;
+    if (range_in_txn_oom != null && range_in_txn_oom.tag == ERROR) {
+        emit_pass_literal("[PASS] deduce scan-range in-txn propagates row-dict oom");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce scan-range in-txn propagates row-dict oom");
+        (*fail)++;
     }
 
     setup(interp,

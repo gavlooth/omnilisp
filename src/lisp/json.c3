@@ -34,7 +34,7 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
         YyjsonVal* elem = omni_yyjson_arr_get_first(val);
         for (usz i = 0; i < count; i++) {
             Value* v = json_val_to_omni(elem, interp);
-            arr.array_val.items[i] = v;
+            arr.array_val.items[i] = boundary_promote_to_root(v, interp);
             arr.array_val.length++;
             elem = omni_yyjson_next(elem);
         }

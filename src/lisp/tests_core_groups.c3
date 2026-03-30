@@ -25,7 +25,9 @@ fn void run_basic_intro_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "cdr (cons 1 2) => 2", "(cdr (cons 1 2))", 2, pass, fail);
 
     // Print (interp only, side effect)
-    { io::print("[PASS] Print: "); run("(println (quote hello))", interp); (*pass)++; }
+    test_truthy_interp(interp, "println side effect capture",
+        "(= (symbol->string (handle (block (println (quote hello)) nil) (io/println x x))) \"hello\")",
+        pass, fail);
 
     // Source location tracking
     {
@@ -100,8 +102,8 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     // Nested path
     setup(interp, "(define testperson2 {'name \"Bob\" 'address {'city \"NYC\" 'zip 10001}})");
     test_str(interp, "testperson2.address.city => string", "testperson2.address.city", pass, fail);
-    setup(interp, "(define legacy-person (cons (cons 'name \"Alice\") nil))");
-    test_error_contains(interp, "alist-style path rejected", "legacy-person.name",
+    setup(interp, "(define old-person (cons (cons 'name \"Alice\") nil))");
+    test_error_contains(interp, "alist-style path rejected", "old-person.name",
         "cannot access '.name' on List value", pass, fail);
 
     // Recursive let
@@ -153,7 +155,7 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Basic Tests ---");
+    emit_test_section_banner("Basic Tests");
 
     run_basic_intro_tests(interp, pass, fail);
     run_basic_index_and_match_tests(interp, pass, fail);
@@ -163,7 +165,7 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_memory_stress_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Memory Stress Tests ---");
+    emit_test_section_banner("Memory Stress Tests");
 
     // Deep recursion
     setup(interp, "(define sum-to (lambda (n) (if (= n 0) 0 (+ n (sum-to (- n 1))))))");
@@ -290,13 +292,13 @@ fn void run_arithmetic_comparison_ops_tests(Interp* interp, int* pass, int* fail
 }
 
 fn void run_arithmetic_comparison_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Arithmetic & Comparison Tests ---");
+    emit_test_section_banner("Arithmetic & Comparison Tests");
     run_arithmetic_basic_ops_tests(interp, pass, fail);
     run_arithmetic_comparison_ops_tests(interp, pass, fail);
 }
 
 fn void run_string_type_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- String & Type Predicate Tests ---");
+    emit_test_section_banner("String & Type Predicate Tests");
 
     // String length
     test_eq(interp, "string-length hello => 5", "(string-length \"hello\")", 5, pass, fail);
@@ -438,7 +440,7 @@ fn void run_list_closure_scope_hof_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_list_closure_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- List & Closure Tests ---");
+    emit_test_section_banner("List & Closure Tests");
     run_list_closure_cons_quote_tests(interp, pass, fail);
     run_list_closure_factory_compose_tests(interp, pass, fail);
     run_list_closure_scope_hof_tests(interp, pass, fail);

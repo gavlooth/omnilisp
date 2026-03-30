@@ -177,7 +177,7 @@ fn bool deduce_rule_aggregate_head_matches_signature(
     return true;
 }
 
-fn Value* deduce_rule_validate_aggregate_head_compatibility(
+fn Value* deduce_rule_validate_aggregate_head_migration(
     DeduceDb* db,
     DeduceRuleIr* rule,
     Interp* interp
@@ -272,4 +272,3 @@ fn Value* deduce_rule_validate_constrained_head_relation(
     if (db == null || rule == null || interp == null) return null;
     return null;
 }
-

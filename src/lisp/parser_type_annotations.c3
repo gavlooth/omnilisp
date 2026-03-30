@@ -79,8 +79,8 @@ fn void Parser.parse_dict_type_annotation(Parser* self, TypeAnnotation* ann) {
 /**
  * Parse a ^Type annotation on a parameter.
  * Three forms:
- *   ^Int         — simple type (single token ^Int)
- *   ^(List Int)  — compound type (^ then parens)
+ *   ^Integer         — simple type (single token ^Integer)
+ *   ^(List Integer)  — compound type (^ then parens)
  *   ^{'T Number} — metadata dictionary (^ then braces)
  */
 fn TypeAnnotation Parser.parse_type_annotation(Parser* self) {

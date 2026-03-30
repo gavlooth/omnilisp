@@ -14,32 +14,44 @@ fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* in
     return raise_error(interp, msg);
 }
 
-fn void bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
-    if (interp == null) return;
-    if (interp.global_env == null) return;
-    if (interp.global_env.lookup(sym) != null) return;
+fn MethodTable* alloc_empty_method_table_bootstrap(SymbolId sym, Value* fallback) {
+    MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+    if (mt == null) return null;
+    MethodEntry* entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
+    if (entries == null) {
+        mem::free(mt);
+        return null;
+    }
+    mt.name = sym;
+    mt.entries = entries;
+    mt.entry_count = 0;
+    mt.capacity = METHOD_INITIAL_CAPACITY;
+    mt.fallback = fallback;
+    return mt;
+}
+
+fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
+    if (interp == null) return false;
+    if (interp.global_env == null) return false;
+    if (interp.global_env.lookup(sym) != null) return true;
 
     char[] name = interp.symbols.get_name(sym);
     Value* prim = make_primitive(interp, name, &prim_meta_type_symbol_not_callable, -1);
-
-    MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
-    mt.name = sym;
-    mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
-    mt.entry_count = 0;
-    mt.capacity = METHOD_INITIAL_CAPACITY;
-    mt.fallback = prim;
+    if (prim == null) return false;
+    MethodTable* mt = alloc_empty_method_table_bootstrap(sym, prim);
+    if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
-    env_define_with_barrier(interp.global_env, sym, mt_val, interp);
+    return env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp);
 }
 
 /**
  * Register built-in types in the type registry.
  * Called once during init, after symbol interning.
  */
-fn void register_builtin_types(Interp* interp) {
+fn bool register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
     SymbolId[16] builtin_names = {
         interp.sym_Integer, interp.sym_Double, interp.sym_String,
@@ -95,56 +107,8 @@ fn void register_builtin_types(Interp* interp) {
     interp.tid_Nil = interp.types.lookup(interp.sym_Nil, &interp.symbols);
     interp.tid_Void = interp.types.lookup(interp.sym_Void, &interp.symbols);
     interp.tid_Closure = interp.types.lookup(interp.sym_Closure, &interp.symbols);
-    TypeInfo int_alias;
-    int_alias.name = interp.sym_Int;
-    int_alias.kind = TK_ALIAS;
-    int_alias.parent = INVALID_TYPE_ID;
-    int_alias.fields = null;
-    int_alias.field_count = 0;
-    int_alias.type_params = null;
-    int_alias.type_param_count = 0;
-    int_alias.constraints = null;
-    int_alias.constraint_count = 0;
-    int_alias.variants = null;
-    int_alias.variant_count = 0;
-    int_alias.alias_target = interp.tid_Integer;
-    interp.types.register_type(int_alias, &interp.symbols);
-
-    TypeInfo bool_alias;
-    bool_alias.name = interp.sym_Bool;
-    bool_alias.kind = TK_ALIAS;
-    bool_alias.parent = INVALID_TYPE_ID;
-    bool_alias.fields = null;
-    bool_alias.field_count = 0;
-    bool_alias.type_params = null;
-    bool_alias.type_param_count = 0;
-    bool_alias.constraints = null;
-    bool_alias.constraint_count = 0;
-    bool_alias.variants = null;
-    bool_alias.variant_count = 0;
-    bool_alias.alias_target = interp.tid_Boolean;
-    interp.types.register_type(bool_alias, &interp.symbols);
-
-    TypeInfo dict_alias;
-    dict_alias.name = interp.sym_Dict;
-    dict_alias.kind = TK_ALIAS;
-    dict_alias.parent = INVALID_TYPE_ID;
-    dict_alias.fields = null;
-    dict_alias.field_count = 0;
-    dict_alias.type_params = null;
-    dict_alias.type_param_count = 0;
-    dict_alias.constraints = null;
-    dict_alias.constraint_count = 0;
-    dict_alias.variants = null;
-    dict_alias.variant_count = 0;
-    dict_alias.alias_target = interp.types.lookup(interp.sym_Dictionary, &interp.symbols);
-    interp.types.register_type(dict_alias, &interp.symbols);
-
-    interp.tid_Int = interp.types.lookup(interp.sym_Int, &interp.symbols);
-    interp.tid_Bool = interp.types.lookup(interp.sym_Bool, &interp.symbols);
     interp.tid_Array = interp.types.lookup(interp.sym_Array, &interp.symbols);
     interp.tid_Dictionary = interp.types.lookup(interp.sym_Dictionary, &interp.symbols);
-    interp.tid_Dict = interp.types.lookup(interp.sym_Dict, &interp.symbols);
     interp.tid_Set = interp.types.lookup(interp.sym_Set, &interp.symbols);
     interp.tid_Any = interp.types.lookup(interp.sym_Any, &interp.symbols);
     interp.tid_Number = interp.types.lookup(interp.sym_Number, &interp.symbols);
@@ -168,9 +132,10 @@ fn void register_builtin_types(Interp* interp) {
 
     // Meta/abstract symbols are non-callable, but exposed as first-class
     // descriptor values for canonical printing/introspection surfaces.
-    bind_non_callable_type_symbol(interp, interp.sym_Any);
-    bind_non_callable_type_symbol(interp, interp.sym_Number);
-    bind_non_callable_type_symbol(interp, interp.sym_Collection);
+    if (!bind_non_callable_type_symbol(interp, interp.sym_Any)) return false;
+    if (!bind_non_callable_type_symbol(interp, interp.sym_Number)) return false;
+    if (!bind_non_callable_type_symbol(interp, interp.sym_Collection)) return false;
+    return true;
 }
 
 /**

@@ -107,7 +107,7 @@ The plan is directionally strong but over-claims in a few places for the current
 1. **`copy_to_parent` cannot be fully removed yet**  
    It is currently used as a boundary-promotion primitive for more than return values (global define/set promotion, coroutine yield crossings, REPL scope boundaries, persistent mutable boxes).
 
-2. **`scope_adopt` cannot be immediately deprecated**  
+2. **`scope_adopt` cannot be immediately removed**  
    Today it is still a key O(1) mechanism for selective return/lifetime transfer and TCO-related scope flow. Removing it prematurely risks both performance regressions and correctness regressions.
 
 3. **Tail-position alone is insufficient for safe destination allocation**  

@@ -10,9 +10,11 @@ fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
         getenv("OMNI_TEST_QUIET") != null ||
         (stack_summary_enabled() && getenv("OMNI_TEST_VERBOSE") == null);
 
-    io::printfn("\n========================================");
-    io::printfn("STACK ENGINE TESTS");
-    io::printfn("========================================\n");
+    if (!stack_quiet_enabled()) {
+        io::printfn("\n========================================");
+        io::printfn("STACK ENGINE TESTS");
+        io::printfn("========================================\n");
+    }
 
     int pass = 0;
     int fail = 0;
@@ -49,7 +51,9 @@ fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
     else { io::printfn("  FAIL: FPU state preserved across switch"); fail++; }
 
     if (stack_runtime_asan_enabled()) {
-        io::printfn("  SKIP: stack overflow recovery (ASAN runtime)");
+        if (!stack_quiet_enabled()) {
+            io::printfn("  SKIP: stack overflow recovery (ASAN runtime)");
+        }
     } else if (test_stack_overflow_recovery()) { stack_print_pass("stack overflow recovery"); pass++; }
     else { io::printfn("  FAIL: stack overflow recovery"); fail++; }
 
@@ -89,10 +93,14 @@ fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
     if (test_stack_pool_shutdown_defer_cross_ctx_order()) { stack_print_pass("pool shutdown defer cross-context order"); pass++; }
     else { io::printfn("  FAIL: pool shutdown defer cross-context order"); fail++; }
 
-    io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
+    if (!stack_quiet_enabled()) {
+        io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
+    }
     emit_stack_defer_summary();
     emit_stack_summary(pass, fail);
-    io::printfn("========================================\n");
+    if (!stack_quiet_enabled()) {
+        io::printfn("========================================\n");
+    }
 
     if (out_pass != null) *out_pass = pass;
     if (out_fail != null) *out_fail = fail;

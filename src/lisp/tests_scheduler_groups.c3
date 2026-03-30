@@ -193,38 +193,43 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
         usz foreign_id = usz.max;
         if (cross_owner_ok) {
             foreign.init();
-            register_primitives(foreign);
-            register_stdlib(foreign);
-            EvalResult spawned = run("(spawn (lambda () 33))", foreign);
-            cross_owner_ok = !spawned.error.has_error &&
-                             spawned.value != null &&
-                             spawned.value.tag == INT &&
-                             spawned.value.int_val >= 0;
-            if (cross_owner_ok) foreign_id = (usz)spawned.value.int_val;
+            cross_owner_ok = bootstrap_runtime_interp(foreign);
+            if (cross_owner_ok) {
+                EvalResult spawned = run("(spawn (lambda () 33))", foreign);
+                cross_owner_ok = !spawned.error.has_error &&
+                                 spawned.value != null &&
+                                 spawned.value.tag == INT &&
+                                 spawned.value.int_val >= 0;
+                if (cross_owner_ok) foreign_id = (usz)spawned.value.int_val;
+            }
         }
 
         if (cross_owner_ok) {
             char[96] buf;
-            char[] src = io::bprintf(&buf, "(await %d)", (long)foreign_id)!!;
-            EvalResult local_wait = run(src, interp);
-            cross_owner_ok = (local_wait.error.has_error &&
-                              scheduler_test_str_contains(
-                                  local_wait.error.message[:256],
-                                  "fiber belongs to a different interpreter"
-                              )) ||
-                             (local_wait.value != null &&
-                              local_wait.value.tag == ERROR &&
-                              scheduler_test_str_contains(
-                                  local_wait.value.str_chars[:local_wait.value.str_len],
-                                  "fiber belongs to a different interpreter"
-                              ));
+            if (try char[] src = io::bprintf(&buf, "(await %d)", (long)foreign_id)) {
+                EvalResult local_wait = run(src, interp);
+                cross_owner_ok = (local_wait.error.has_error &&
+                                  scheduler_test_str_contains(
+                                      local_wait.error.message[:256],
+                                      "fiber belongs to a different interpreter"
+                                  )) ||
+                                 (local_wait.value != null &&
+                                  local_wait.value.tag == ERROR &&
+                                  scheduler_test_str_contains(
+                                      local_wait.value.str_chars[:local_wait.value.str_len],
+                                      "fiber belongs to a different interpreter"
+                                  ));
+            } else {
+                cross_owner_ok = false;
+            }
         }
 
         if (foreign != null) {
             if (foreign_id != usz.max) {
                 char[96] cleanup_buf;
-                char[] cleanup_src = io::bprintf(&cleanup_buf, "(await %d)", (long)foreign_id)!!;
-                (void)run(cleanup_src, foreign);
+                if (try char[] cleanup_src = io::bprintf(&cleanup_buf, "(await %d)", (long)foreign_id)) {
+                    (void)run(cleanup_src, foreign);
+                }
             }
             foreign.destroy();
             mem::free(foreign);
@@ -343,7 +348,7 @@ fn void run_scheduler_run_loop_failure_tests(Interp* interp, int* pass, int* fai
     );
 }
 fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Scheduler Tests ---");
+    emit_test_section_banner("Scheduler Tests");
     run_scheduler_spawn_and_await_tests(interp, pass, fail);
     run_scheduler_wakeup_tests(interp, pass, fail);
     run_scheduler_offload_thread_tests(interp, pass, fail);

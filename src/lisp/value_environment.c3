@@ -20,6 +20,10 @@ const usz ENV_HASH_THRESHOLD = 16;
 // Sentinel for empty hash table slots
 const SymbolId ENV_HASH_EMPTY = 0xFFFFFFFF;
 
+bool g_env_force_bindings_alloc_oom = false;
+bool g_env_force_hash_alloc_oom = false;
+bool g_env_force_barrier_promote_failure = false;
+
 /**
  * Binding — Single name-value binding.
  */
@@ -135,13 +139,22 @@ fn Env* make_env(Interp* interp, Env* parent) {
  * Build or rebuild the hash table for an Env frame.
  * Hash capacity is next power of 2 >= 2 * binding_count.
  */
-fn void Env.build_hash_table(Env* self) {
+fn bool Env.build_hash_table(Env* self) {
     // Determine capacity (next power of 2 >= 2 * count)
     usz cap = 32;
     while (cap < self.binding_count * 2) cap *= 2;
 
-    EnvHashEntry* new_hash_table = (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
-    if (new_hash_table == null) return;
+    EnvHashEntry* new_hash_table = g_env_force_hash_alloc_oom
+        ? null
+        : (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
+    if (new_hash_table == null) {
+        if (self.hash_table != null) {
+            mem::free(self.hash_table);
+            self.hash_table = null;
+            self.hash_capacity = 0;
+        }
+        return false;
+    }
 
     // Initialize the replacement before swapping it in.
     for (usz i = 0; i < cap; i++) {
@@ -165,6 +178,7 @@ fn void Env.build_hash_table(Env* self) {
     }
     self.hash_capacity = cap;
     self.hash_table = new_hash_table;
+    return true;
 }
 
 /**
@@ -196,28 +210,30 @@ fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
     self.hash_table[slot].index = index;
 }
 
-fn void Env.define(Env* self, SymbolId name, Value* value) {
+fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     // Fast path: use hash table if available
     if (self.hash_table != null) {
         usz idx = self.hash_lookup(name);
         if (idx != ~(usz)0) {
             self.bindings[idx].value = value;
-            return;
+            return true;
         }
     } else {
         // Linear scan for small frames
         for (usz i = 0; i < self.binding_count; i++) {
             if (self.bindings[i].name == name) {
                 self.bindings[i].value = value;
-                return;
+                return true;
             }
         }
     }
     // Grow if needed
     if (self.binding_count >= self.capacity) {
         usz new_cap = self.capacity * 2;
-        Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
-        if (new_bindings == null) return;
+        Binding* new_bindings = g_env_force_bindings_alloc_oom
+            ? null
+            : (Binding*)mem::malloc(Binding.sizeof * new_cap);
+        if (new_bindings == null) return false;
         for (usz i = 0; i < self.binding_count; i++) {
             new_bindings[i] = self.bindings[i];
         }
@@ -235,15 +251,16 @@ fn void Env.define(Env* self, SymbolId name, Value* value) {
 
     // Build hash table if we crossed the threshold
     if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
-        self.build_hash_table();
+        (void)self.build_hash_table();
     } else if (self.hash_table != null) {
         // Check load factor: rebuild if > 70%
         if (self.binding_count * 10 > self.hash_capacity * 7) {
-            self.build_hash_table();
+            (void)self.build_hash_table();
         } else {
             self.hash_insert(name, new_idx);
         }
     }
+    return true;
 }
 
 // Barrier-aware env write helper for dual-lane rollout.
@@ -283,36 +300,93 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
     return copy_to_parent_by_route(value, interp, route);
 }
 
-fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
-    if (env == null) return;
+fn bool env_barrier_promote_failed(Value* original, Value* stored) @inline {
+    if (stored == null) return true;
+    return original != null && original.tag != ERROR && stored.tag == ERROR;
+}
+
+fn Value* env_promote_for_target_result(Env* env, SymbolId _name, Value* value, Interp* interp, char[] failure_msg) {
+    (void)_name;
+    if (g_env_force_barrier_promote_failure) {
+        return raise_error(interp, failure_msg);
+    }
+
     Value* stored = promote_for_env_target(env, value, interp);
-    env.define(name, stored);
+    if (env_barrier_promote_failed(value, stored)) {
+        return stored != null ? stored : raise_error(interp, failure_msg);
+    }
+    return stored;
+}
+
+fn Value* env_define_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp) {
+    if (env == null) return raise_error(interp, "out of memory while defining binding");
+    Value* stored = env_promote_for_target_result(env, name, value, interp, "out of memory while defining binding");
+    if (stored != null && stored.tag == ERROR && value != stored) {
+        return stored;
+    }
+    if (!env.define(name, stored)) {
+        return raise_error(interp, "out of memory while defining binding");
+    }
+    return null;
+}
+
+fn bool env_define_with_barrier_checked(Env* env, SymbolId name, Value* value, Interp* interp) @nodiscard {
+    return env_define_with_barrier_result(env, name, value, interp) == null;
+}
+
+fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
+    assert(
+        env_define_with_barrier_checked(env, name, value, interp),
+        "env_define_with_barrier: binding define failed"
+    );
 }
 
 // Barrier-aware env set helper for dual-lane rollout.
 // Walks parent chain and applies TEMP->ESCAPE promotion at the actual write site.
-fn void? env_set_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
+fn Value* env_set_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp, bool* found_out) {
+    if (found_out != null) *found_out = false;
     Env* cur = env;
     while (cur != null) {
         if (cur.hash_table != null) {
             usz idx = cur.hash_lookup(name);
             if (idx != ~(usz)0) {
-                Value* stored = promote_for_env_target(cur, value, interp);
+                if (found_out != null) *found_out = true;
+                Value* stored = env_promote_for_target_result(cur, name, value, interp, "out of memory while mutating binding");
+                if (stored != null && stored.tag == ERROR && value != stored) {
+                    return stored;
+                }
                 cur.bindings[idx].value = stored;
-                return;
+                return null;
             }
         } else {
             for (usz i = 0; i < cur.binding_count; i++) {
                 if (cur.bindings[i].name == name) {
-                    Value* stored = promote_for_env_target(cur, value, interp);
+                    if (found_out != null) *found_out = true;
+                    Value* stored = env_promote_for_target_result(cur, name, value, interp, "out of memory while mutating binding");
+                    if (stored != null && stored.tag == ERROR && value != stored) {
+                        return stored;
+                    }
                     cur.bindings[i].value = stored;
-                    return;
+                    return null;
                 }
             }
         }
         cur = cur.parent;
     }
-    return UNBOUND_VARIABLE~;
+    return null;
+}
+
+fn bool env_set_with_barrier_checked(Env* env, SymbolId name, Value* value, Interp* interp, bool* found_out = null) @nodiscard {
+    return env_set_with_barrier_result(env, name, value, interp, found_out) == null;
+}
+
+fn void? env_set_with_barrier(Env* env, SymbolId name, Value* value, Interp* interp) {
+    bool found = false;
+    if (!env_set_with_barrier_checked(env, name, value, interp, &found)) {
+        return BINDING_WRITE_FAILED~;
+    }
+    if (!found) return UNBOUND_VARIABLE~;
+    return;
 }
 
 fn Value* Env.lookup(Env* self, SymbolId name) {
@@ -358,7 +432,7 @@ fn void? Env.set(Env* self, SymbolId name, Value* value) {
 
 fn Env* Env.extend(Env* self, Interp* interp, SymbolId name, Value* value) {
     Env* new_env = make_env(interp, self);
-    new_env.define(name, value);
+    if (!new_env.define(name, value)) return null;
     return new_env;
 }
 

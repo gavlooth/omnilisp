@@ -28,12 +28,13 @@ OUTPUT_BIN="${OMNI_FAST_DEV_OUTPUT:-$DEFAULT_OUTPUT_BIN}"
 BUILD_DIR="${OMNI_FAST_DEV_BUILD_DIR:-$DEFAULT_BUILD_DIR}"
 FAST_PROJECT_DIR="${OMNI_FAST_DEV_PROJECT_DIR:-$DEFAULT_PROJECT_DIR}"
 CHELPER_ARCHIVE="$ROOT_DIR/build/libomni_chelpers.a"
+FTXUI_ARCHIVE="$ROOT_DIR/build/libomni_ftxui.a"
 SOURCE_MANIFEST="$FAST_PROJECT_DIR/sources_manifest.txt"
 GENERATOR_SCRIPT="$ROOT_DIR/tools/fast-dev/generate_fast_dev_project.py"
 
 mkdir -p "$BUILD_DIR" "$OUTPUT_DIR" "$(dirname "$OUTPUT_BIN")" "$FAST_PROJECT_DIR"
 
-if [[ ! -f "$CHELPER_ARCHIVE" ]] || find "$ROOT_DIR/csrc" "$ROOT_DIR/third_party/tomlc17" -type f -newer "$CHELPER_ARCHIVE" | grep -q .; then
+if [[ ! -f "$CHELPER_ARCHIVE" || ! -f "$FTXUI_ARCHIVE" ]] || find "$ROOT_DIR/csrc" "$ROOT_DIR/third_party/tomlc17" "$ROOT_DIR/third_party/ftxui" "$ROOT_DIR/scripts/build_omni_chelpers.sh" -type f -newer "$CHELPER_ARCHIVE" | grep -q . || find "$ROOT_DIR/csrc" "$ROOT_DIR/third_party/ftxui" "$ROOT_DIR/scripts/build_omni_chelpers.sh" -type f -newer "$FTXUI_ARCHIVE" | grep -q .; then
   "$ROOT_DIR/scripts/build_omni_chelpers.sh" >/dev/null
 fi
 
@@ -62,6 +63,7 @@ if python3 "$ROOT_DIR/tools/fast-dev/generate_fast_dev_project.py" \
   "$OUTPUT_BIN" \
   "$PROJECT_JSON" \
   "$CHELPER_ARCHIVE" \
+  "$FTXUI_ARCHIVE" \
   "$SOURCE_MANIFEST" \
   "$0" \
   "$GENERATOR_SCRIPT"

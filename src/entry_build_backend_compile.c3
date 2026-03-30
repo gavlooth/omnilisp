@@ -188,7 +188,7 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
 
     String[] command_line = command.to_tarray();
     if (command_line.len == 0) {
-        io::eprintfn("Error: failed to compose AOT backend command");
+        io::eprintfn("Error: failed to compose AOT backend command for temp source '%s' and output '%s'", (ZString)temp_c3_path, (ZString)output_binary);
         return 2;
     }
 

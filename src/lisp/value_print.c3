@@ -23,9 +23,9 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
     // User-defined type constructors share prim_type_constructor.
     if (prim.func == &prim_type_constructor) return (ZString)name;
 
-    if (zstr_eq(name, "Int")) return (ZString)"Integer";
-    if (zstr_eq(name, "Bool")) return (ZString)"Boolean";
-    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Integer")) return (ZString)"Integer";
+    if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
+    if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "Double") ||
@@ -50,9 +50,9 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
 fn ZString symbol_type_descriptor_name(char* name) {
     if (name == null) return null;
 
-    if (zstr_eq(name, "Int")) return (ZString)"Integer";
-    if (zstr_eq(name, "Bool")) return (ZString)"Boolean";
-    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Integer")) return (ZString)"Integer";
+    if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
+    if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "Double") ||
@@ -239,7 +239,7 @@ fn void print_value(Value* v, SymbolTable* syms) {
         case CONS:
             print_cons_value(v, syms);
         case VOID:
-            io::print("(Void)");
+            io::print("#<void>");
         case CLOSURE:
             print_closure_value(v, syms);
         case CONTINUATION:

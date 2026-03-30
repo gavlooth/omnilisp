@@ -481,6 +481,7 @@ fn Value* prim_deduce_scan(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (parse_err != null) return parse_err;
+    bool selector_goal_directed_executed = false;
     Value* exec_err = deduce_execute_goal_directed_relation_selector(
         rel.db,
         rel.name,
@@ -491,6 +492,7 @@ fn Value* prim_deduce_scan(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (exec_err != null) return exec_err;
+    if (selector_rule_index >= 0) selector_goal_directed_executed = true;
     if (selector_rule_index < 0) {
         exec_err = deduce_prepare_plain_relation_read(
             rel_val,
@@ -521,7 +523,7 @@ fn Value* prim_deduce_scan(Value*[] args, Env* env, Interp* interp) {
         interp,
         &subject_keys
     );
-    if (selector_rule_index >= 0) {
+    if (selector_rule_index >= 0 && !selector_goal_directed_executed) {
         deduce_db_note_goal_directed_read(
             rel.db,
             rel.name,
@@ -685,6 +687,7 @@ fn Value* prim_deduce_scan_range(Value*[] args, Env* env, Interp* interp) {
         }
     }
 
+    bool selector_goal_directed_executed = false;
     Value* exec_err = deduce_execute_goal_directed_relation_selector(
         rel.db,
         rel.name,
@@ -695,6 +698,7 @@ fn Value* prim_deduce_scan_range(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (exec_err != null) return exec_err;
+    if (selector_rule_index >= 0) selector_goal_directed_executed = true;
     if (selector_rule_index < 0) {
         exec_err = deduce_prepare_plain_relation_read(
             rel_val,
@@ -731,7 +735,7 @@ fn Value* prim_deduce_scan_range(Value*[] args, Env* env, Interp* interp) {
         true,
         &subject_keys
     );
-    if (selector_rule_index >= 0) {
+    if (selector_rule_index >= 0 && !selector_goal_directed_executed) {
         deduce_db_note_goal_directed_read(
             rel.db,
             rel.name,

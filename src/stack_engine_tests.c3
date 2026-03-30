@@ -31,6 +31,10 @@ fn void test_defer_on_clone(void* ptr) {
     arg.clone_hits++;
 }
 
+fn bool test_stack_pool_recycle_enabled() @inline {
+    return stack_pool_cache_limit() > 0;
+}
+
 // --- Tests ---
 
 fn bool test_stack_region() {
@@ -53,37 +57,44 @@ fn bool test_stack_region() {
 fn bool test_pool_lifecycle() {
     StackPool pool;
     stack_pool_init(&pool);
+    bool recycle_enabled = test_stack_pool_recycle_enabled();
 
     StackCtx* c1 = stack_ctx_create(&pool);
     if (c1 == null) return false;
     uint id1 = c1.id;
 
     stack_ctx_destroy(c1, &pool);
-    if (pool.pool_size != 1) return false;
+    if (pool.pool_size != (recycle_enabled ? 1 : 0)) return false;
 
     StackCtx* c2 = stack_ctx_create(&pool);
     if (c2 == null) return false;
     if (pool.pool_size != 0) return false;
 
-    bool same_ptr = (c2 == c1);
+    bool reuse_ok = !recycle_enabled || (c2 == c1);
     bool new_id = (c2.id != id1);
 
     stack_ctx_destroy(c2, &pool);
     stack_pool_shutdown(&pool);
-    return same_ptr && new_id;
+    return reuse_ok && new_id;
 }
 
 fn bool test_pool_double_destroy_idempotent() {
     StackPool pool;
     stack_pool_init(&pool);
+    bool recycle_enabled = test_stack_pool_recycle_enabled();
 
     StackCtx* c = stack_ctx_create(&pool);
     if (c == null) return false;
 
     stack_ctx_destroy(c, &pool);
-    if (pool.pool_size != 1) {
+    if (pool.pool_size != (recycle_enabled ? 1 : 0)) {
         stack_pool_shutdown(&pool);
         return false;
+    }
+
+    if (!recycle_enabled) {
+        stack_pool_shutdown(&pool);
+        return true;
     }
 
     // Repeat destroy should be a no-op for already pooled contexts.

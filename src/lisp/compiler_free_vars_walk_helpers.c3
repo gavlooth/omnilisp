@@ -31,6 +31,9 @@ fn void Compiler.find_free_vars_unary_form(Compiler* self, Expr* expr, List{Symb
         case E_RESET:
             self.find_free_vars(expr.reset.body, bound_vars, free_vars, enclosing_scope);
         case E_PERFORM:
+            if (expr.perform.has_tag_expr) {
+                self.find_free_vars(expr.perform.tag_expr, bound_vars, free_vars, enclosing_scope);
+            }
             self.find_free_vars(expr.perform.arg, bound_vars, free_vars, enclosing_scope);
         case E_UNQUOTE:
             self.find_free_vars(expr.unquote.body, bound_vars, free_vars, enclosing_scope);

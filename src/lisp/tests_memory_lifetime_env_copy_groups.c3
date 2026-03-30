@@ -19,8 +19,12 @@ fn void run_memory_lifetime_env_copy_memo_tests(Interp* interp, int* pass, int* 
         Value* shared = make_cons(interp, make_int(interp, 123), make_nil(interp));
         for (usz i = 0; i < 24; i++) {
             char[64] nbuf;
-            char[] name = io::bprintf(&nbuf, "__copy_env_shared_%d", (long)i)!!;
-            env_define_with_barrier(src_env, interp.symbols.intern(name), shared, interp);
+            if (try char[] name = io::bprintf(&nbuf, "__copy_env_shared_%d", (long)i)) {
+                env_define_with_barrier(src_env, interp.symbols.intern(name), shared, interp);
+            } else {
+                src_env = null;
+                break;
+            }
         }
 
         usz base_site = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE);

@@ -159,10 +159,10 @@
 ;; GET /prices/:symbol — return a single cached quote by symbol
 ;; Parse `/prices/:symbol` using split-based routing to keep this path JIT-friendly.
 (define (route/price-symbol path)
-  (let (m (re-match "^/prices/([^/]+)$" path))
-    (match m
-      (nil nil)
-      (hit (ref hit 1)))))
+  (match (string-split path "/")
+    (["" "prices" sym]
+      (if (> (string-length sym) 0) sym nil))
+    (_ nil)))
 
 (define (route/price-by-symbol sym)
   (match (cache/quote-for sym)

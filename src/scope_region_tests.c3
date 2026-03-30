@@ -3,7 +3,9 @@ module main;
 import std::io;
 
 fn void run_scope_region_tests(int* out_pass, int* out_fail) {
-    io::print("  Scope region tests... ");
+    if (!scope_test_quiet_requested()) {
+        io::print("  Scope region tests... ");
+    }
     ScopeRegionTestCounts counts = run_scope_region_core_tests();
     usz passed = counts.passed;
     usz failed = counts.failed;
@@ -61,7 +63,9 @@ fn void run_scope_region_tests(int* out_pass, int* out_fail) {
         }
     }
 
-    io::printfn("%d passed, %d failed", (int)passed, (int)failed);
+    if (!scope_test_quiet_requested()) {
+        io::printfn("%d passed, %d failed", (int)passed, (int)failed);
+    }
     if (scope_c_getenv("OMNI_TEST_SUMMARY") != null) {
         io::printfn("OMNI_TEST_SUMMARY suite=scope_region pass=%d fail=%d", (int)passed, (int)failed);
         io::printfn(

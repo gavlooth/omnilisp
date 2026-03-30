@@ -15,30 +15,32 @@ struct FastPathReg {
     char[] raw_prim_name;
 }
 
-fn void register_prim_table(Interp* interp, PrimReg[] table) {
+fn bool register_prim_table(Interp* interp, PrimReg[] table) {
     foreach (&r : table) {
-        register_prim(interp, r.name, r.func, r.arity);
+        if (!register_prim(interp, r.name, r.func, r.arity)) return false;
     }
+    return true;
 }
 
-fn void register_dispatched_prim_table(Interp* interp, PrimReg[] table) {
+fn bool register_dispatched_prim_table(Interp* interp, PrimReg[] table) {
     foreach (&r : table) {
-        register_dispatched_prim(interp, r.name, r.func, r.arity);
+        if (!register_dispatched_prim(interp, r.name, r.func, r.arity)) return false;
     }
+    return true;
 }
 
-fn void register_language_constants(Interp* interp) {
+fn bool register_language_constants(Interp* interp) {
     Value* true_val = make_symbol(interp, interp.sym_true);
     Value* false_val = make_nil(interp);  // false is nil
     Value* nil_val = make_nil(interp);
-    env_define_with_barrier(interp.global_env, interp.sym_true, true_val, interp);
-    env_define_with_barrier(interp.global_env, interp.sym_false, false_val, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, interp.sym_true, true_val, interp)) return false;
+    if (!env_define_with_barrier_checked(interp.global_env, interp.sym_false, false_val, interp)) return false;
     SymbolId sym_nil = interp.symbols.intern("nil");
-    env_define_with_barrier(interp.global_env, sym_nil, nil_val, interp);
+    return env_define_with_barrier_checked(interp.global_env, sym_nil, nil_val, interp);
 }
 
-fn void register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 45;
+fn bool register_dispatched_primitives(Interp* interp) {
+    const DISPATCHED_PRIM_COUNT = 43;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -67,29 +69,31 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
         // Callable type symbols / constructors
-        { "Integer", &prim_ctor_int, 1 }, { "Int", &prim_ctor_int, 1 },
+        { "Integer", &prim_ctor_int, 1 },
         { "Double", &prim_ctor_double, 1 },
         { "String", &prim_ctor_string, 1 }, { "Symbol", &prim_ctor_symbol, 1 },
-        { "Boolean", &prim_ctor_bool, 1 }, { "Bool", &prim_ctor_bool, 1 },
+        { "Boolean", &prim_ctor_bool, 1 },
         { "Nil", &prim_ctor_nil, 1 }, { "Void", &prim_ctor_void, -1 },
         { "Closure", &prim_ctor_closure, 1 }, { "Iterator", &prim_ctor_iterator, 1 },
     };
     $assert(dispatched_prims.len == DISPATCHED_PRIM_COUNT);
-    register_dispatched_prim_table(interp, dispatched_prims[0:dispatched_prims.len]);
+    return register_dispatched_prim_table(interp, dispatched_prims[0:dispatched_prims.len]);
 }
 
-fn void register_regular_primitives_core(Interp* interp) {
+fn bool register_regular_primitives_core(Interp* interp) {
     PrimReg[] core_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
         { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 },
         { "List", &prim_list, -1 }, // Canonical constructor/conversion surface.
-        { "list", &prim_list, -1 }, // Public Lisp-style helper + compatibility alias.
+        { "list", &prim_list, -1 }, // Public Lisp-style helper.
         // Boolean
         { "not", &prim_not, 1 },
         // I/O (raw primitives for effect fast path)
         { "__raw-print", &prim_print, 1 }, { "__raw-println", &prim_println, 1 },
         { "__raw-newline", &prim_newline, 0 }, { "__raw-display", &prim_display, 1 },
+        { "__raw-read-line", &prim_read_line, 0 },
+        { "__ui-ftxui-run", &prim_ui_ftxui_run, 1 },
         // String primitives
         { "string-join", &prim_string_join, 2 },
         { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
@@ -121,10 +125,6 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "fs-write", &prim_fs_write, 2 }, { "fs-close", &prim_fs_close, 1 },
         { "fs-stat", &prim_fs_stat, 1 }, { "fs-readdir", &prim_fs_readdir, 1 },
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
-        { "filesystem-open", &prim_fs_open, -1 }, { "filesystem-read", &prim_fs_read, 2 },
-        { "filesystem-write", &prim_fs_write, 2 }, { "filesystem-close", &prim_fs_close, 1 },
-        { "filesystem-stat", &prim_fs_stat, 1 }, { "filesystem-read-directory", &prim_fs_readdir, 1 },
-        { "filesystem-rename", &prim_fs_rename, 2 }, { "filesystem-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
         { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
@@ -133,7 +133,6 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "gensym", &prim_gensym, 0 },
         // Dictionary
         { "Dictionary", &prim_dict, -1 }, // Canonical constructor.
-        { "Dict", &prim_dict, -1 },       // Canonical shorthand alias (kept public).
         // Math library
         { "sin", &prim_sin, 1 }, { "cos", &prim_cos, 1 }, { "tan", &prim_tan, 1 },
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
@@ -150,10 +149,10 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "string-repeat", &prim_string_repeat, 2 }, { "procedure?", &prim_is_procedure, 1 },
         { "format", &prim_format, -1 }, { "cl-format", &prim_cl_format, -1 },
     };
-    register_prim_table(interp, core_prims[0:core_prims.len]);
+    return register_prim_table(interp, core_prims[0:core_prims.len]);
 }
 
-fn void register_regular_primitives_collections(Interp* interp) {
+fn bool register_regular_primitives_collections(Interp* interp) {
     PrimReg[] collection_prims = {
         // Introspection & metaprogramming
         { "macroexpand", &prim_macroexpand, 1 }, { "eval", &prim_eval, 1 },
@@ -221,10 +220,10 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "csv-parse", &prim_csv_parse, -1 },
         { "csv-emit", &prim_csv_emit, -1 },
     };
-    register_prim_table(interp, collection_prims[0:collection_prims.len]);
+    return register_prim_table(interp, collection_prims[0:collection_prims.len]);
 }
 
-fn void register_regular_primitives_io_and_deduce(Interp* interp) {
+fn bool register_regular_primitives_io_and_deduce(Interp* interp) {
     PrimReg[] io_deduce_prims = {
         // Networking / async I/O (raw primitives for effect fast path)
         { "__raw-tcp-connect", &prim_tcp_connect, 2 },
@@ -311,22 +310,23 @@ fn void register_regular_primitives_io_and_deduce(Interp* interp) {
         { "atomic-read", &prim_atomic_read, 1 },
         { "atomic-cas!", &prim_atomic_cas, 3 },
     };
-    register_prim_table(interp, io_deduce_prims[0:io_deduce_prims.len]);
+    return register_prim_table(interp, io_deduce_prims[0:io_deduce_prims.len]);
 }
 
-fn void register_regular_primitives(Interp* interp) {
-    register_regular_primitives_core(interp);
-    register_regular_primitives_collections(interp);
-    register_regular_primitives_io_and_deduce(interp);
+fn bool register_regular_primitives(Interp* interp) {
+    if (!register_regular_primitives_core(interp)) return false;
+    if (!register_regular_primitives_collections(interp)) return false;
+    return register_regular_primitives_io_and_deduce(interp);
 }
 
 fn void register_effect_fast_paths(Interp* interp) {
-    const FAST_PATH_COUNT = 55;
+    const FAST_PATH_COUNT = 56;
     FastPathReg[FAST_PATH_COUNT] fast_paths = {
         { "io/print",      "__raw-print" },
         { "io/println",     "__raw-println" },
         { "io/display",     "__raw-display" },
         { "io/newline",     "__raw-newline" },
+        { "io/read-line",   "__raw-read-line" },
         { "io/read-file",   "__raw-read-file" },
         { "io/write-file",  "__raw-write-file" },
         { "io/file-exists?","__raw-file-exists?" },
@@ -391,14 +391,14 @@ fn void register_effect_fast_paths(Interp* interp) {
  * Register all primitive functions in the interpreter.
  * Uses data-driven tables to separate declaration from registration logic.
  */
-fn void register_primitives(Interp* interp) {
-    register_language_constants(interp);
-    register_dispatched_primitives(interp);
-    register_regular_primitives(interp);
-    register_builtin_types(interp);
-
-    pika::register_pika_primitives(interp);
+fn bool register_primitives(Interp* interp) {
+    if (!register_language_constants(interp)) return false;
+    if (!register_dispatched_primitives(interp)) return false;
+    if (!register_regular_primitives(interp)) return false;
+    if (!register_builtin_types(interp)) return false;
+    if (!pika::register_pika_primitives(interp)) return false;
     register_effect_fast_paths(interp);
+    return true;
 }
 
 fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {
@@ -410,27 +410,25 @@ fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_n
     }
 }
 
-fn void register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
+fn bool register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     SymbolId sym = interp.symbols.intern(name);
     Value* prim = make_primitive(interp, name, func, arity);
-    env_define_with_barrier(interp.global_env, sym, prim, interp);
+    if (prim == null) return false;
+    return env_define_with_barrier_checked(interp.global_env, sym, prim, interp);
 }
 
-fn void register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
+fn bool register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     SymbolId sym = interp.symbols.intern(name);
     Value* prim = make_primitive(interp, name, func, arity);
+    if (prim == null) return false;
 
     // Create method table with no typed entries, primitive as fallback
-    MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
-    mt.name = sym;
-    mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
-    mt.entry_count = 0;
-    mt.capacity = METHOD_INITIAL_CAPACITY;
-    mt.fallback = prim;
+    MethodTable* mt = alloc_empty_method_table_bootstrap(sym, prim);
+    if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
 
-    env_define_with_barrier(interp.global_env, sym, mt_val, interp);
+    return env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp);
 }

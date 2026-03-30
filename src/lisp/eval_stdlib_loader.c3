@@ -51,3 +51,10 @@ fn void register_stdlib(Interp* interp) {
         }
     }
 }
+
+fn bool bootstrap_runtime_interp(Interp* interp) {
+    if (interp == null) return false;
+    if (!register_primitives(interp)) return false;
+    register_stdlib(interp);
+    return true;
+}

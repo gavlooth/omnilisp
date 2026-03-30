@@ -6,7 +6,7 @@ import main;
 
 fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, int* fail) {
     // Dicts
-    setup(interp, "(define hm1 (Dict 1 10 2 20 3 30))");
+    setup(interp, "(define hm1 (Dictionary 1 10 2 20 3 30))");
     test_eq(interp, "ref dict", "(ref hm1 2)", 20, pass, fail);
     test_nil(interp, "ref dict missing", "(ref hm1 99)", pass, fail);
     test_tag_interp(interp, "set! dict returns void", "(set! hm1 2 200)", VOID, pass, fail);
@@ -16,11 +16,11 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_truthy(interp, "has? dict yes", "(has? hm1 1)", pass, fail);
     test_nil(interp, "has? dict no", "(has? hm1 99)", pass, fail);
     test_eq(interp, "length dict", "(length hm1)", 3, pass, fail);
-    setup(interp, "(define hm2 (Dict 1 10 2 20 3 30))");
+    setup(interp, "(define hm2 (Dictionary 1 10 2 20 3 30))");
     test_tag_interp(interp, "remove! returns void", "(remove! hm2 2)", VOID, pass, fail);
     test_nil(interp, "remove! dict", "(has? hm2 2)", pass, fail);
     test_eq(interp, "remove! count", "(length hm2)", 2, pass, fail);
-    setup(interp, "(define hm3 (Dict 1 10 2 20))");
+    setup(interp, "(define hm3 (Dictionary 1 10 2 20))");
     test_eq(interp, "keys len", "(length (keys hm3))", 2, pass, fail);
     test_eq(interp, "values len", "(length (values hm3))", 2, pass, fail);
     test_truthy(interp, "keys canonical order symbol",
@@ -31,20 +31,20 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
         "(let (d (Dictionary 'c 3 'a 1 'b 2)) (block (remove! d 'b) (set! d 'b 20) (= (keys d) '(a b c))))", pass, fail);
     test_truthy(interp, "values canonical after remove+insert",
         "(let (d (Dictionary 'c 3 'a 1 'b 2)) (block (remove! d 'b) (set! d 'b 20) (= (values d) '(1 20 3))))", pass, fail);
-    setup(interp, "(define hm4 (Dict \"name\" \"Alice\" \"age\" 30))");
+    setup(interp, "(define hm4 (Dictionary \"name\" \"Alice\" \"age\" 30))");
     test_str(interp, "dict string key", "(ref hm4 \"name\")", pass, fail);
-    setup(interp, "(define hm5 (Dict))");
+    setup(interp, "(define hm5 (Dictionary))");
     test_eq(interp, "dict empty count", "(length hm5)", 0, pass, fail);
-    test_truthy(interp, "dict? Dict", "(dict? (Dict 1 2))", pass, fail);
+    test_truthy(interp, "dict? Dictionary", "(dict? (Dictionary 1 2))", pass, fail);
     test_eq(interp, "Dictionary canonical constructor", "(ref (Dictionary 1 10 2 20) 1)", 10, pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
-    setup(interp, "(define hm-big (Dict))");
+    setup(interp, "(define hm-big (Dictionary))");
     setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (set! hm-big i (* i i)) (loop (+ i 1)))))");
     test_eq(interp, "dict auto-grow count", "(length hm-big)", 50, pass, fail);
     test_eq(interp, "dict auto-grow ref 7", "(ref hm-big 7)", 49, pass, fail);
 
     // === LITERAL SYNTAX TESTS ===
-    // Dict literal {}
+    // Dictionary literal {}
     test_eq(interp, "{} empty", "(length {})", 0, pass, fail);
     test_eq(interp, "{} literal", "(ref {'a 1 'b 2} 'a)", 1, pass, fail);
     test_truthy(interp, "{} string keys", "(has? {\"name\" \"Alice\"} \"name\")", pass, fail);
@@ -137,6 +137,15 @@ fn void run_advanced_module_qualified_cached_tests(Interp* interp, int* pass, in
     test_eq(interp, "module qualified dbl", "(math-utils.dbl 5)", 10, pass, fail);
     test_eq(interp, "module qualified triple", "(math-utils.triple 4)", 12, pass, fail);
     test_error(interp, "module unexported hidden", "(math-utils.internal 5)", pass, fail);
+
+    // Module-owned effects should resolve like any other qualified member.
+    setup(interp, "(module effect-mod (export open) (define [effect] (open (^Any payload))))");
+    setup(interp, "(import effect-mod)");
+    test_truthy(interp, "module effect member value", "(= effect-mod.open 'open)", pass, fail);
+    test_eq_interp(interp, "module qualified effect signal",
+        "(handle (signal effect-mod.open 42) (effect-mod.open x x))",
+        42, pass, fail);
+
     // Unqualified access should fail without selective import
     test_error(interp, "module unqualified fails", "(triple 4)", pass, fail);
     // Re-import (cached)
@@ -244,8 +253,8 @@ fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, in
         pass, fail);
 
     test_error_contains(interp,
-        "parser export-from legacy :all rejected",
-        "(module bad-exp-legacy (export) (export-from inner-mod :all))",
+        "parser export-from old :all rejected",
+        "(module bad-exp-old (export) (export-from inner-mod :all))",
         "expected 'all or (names...) after export-from module",
         pass, fail);
 
@@ -270,13 +279,13 @@ fn void run_advanced_parser_export_from_edge_tests(Interp* interp, int* pass, in
 
 fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp,
-        "parser import legacy :all rejected",
+        "parser import old :all rejected",
         "(import bad-mod :all)",
         "expected 'all or (specifiers...) after import module",
         pass, fail);
 
     test_error_contains(interp,
-        "parser import legacy :as rejected",
+        "parser import old :as rejected",
         "(import bad-mod (x :as y))",
         "expected 'as in import specifier",
         pass, fail);
@@ -320,8 +329,10 @@ fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fa
         long_path[long_path_len] = 0;
 
         char[512] expr_buf;
-        char[] expr_src = io::bprintf(&expr_buf, "(import \"%s\")", (ZString)&long_path)!!;
-        Expr* ast = parse_for_jit(expr_src, interp);
+        Expr* ast = null;
+        if (try char[] expr_src = io::bprintf(&expr_buf, "(import \"%s\")", (ZString)&long_path)) {
+            ast = parse_for_jit(expr_src, interp);
+        }
 
         bool ok = ast != null &&
                   ast.tag == E_IMPORT &&

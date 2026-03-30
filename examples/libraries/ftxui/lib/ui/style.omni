@@ -1,0 +1,34 @@
+;; ui/style.omni — internal style helpers for the public `ui` facade
+
+(import ui.nodes)
+
+(module ui.style
+  (export border
+          frame
+          flex
+          width
+          height
+          style))
+
+(import ui.nodes (node))
+
+(define (border body)
+  (node 'border {} (list body)))
+
+(define (frame body)
+  (node 'frame {} (list body)))
+
+(define (flex body)
+  (node 'flex {} (list body)))
+
+(define (width value body)
+  (node 'width {'value value} (list body)))
+
+(define (height value body)
+  (node 'height {'value value} (list body)))
+
+(define style {'border border
+               'frame frame
+               'flex flex
+               'width width
+               'height height})

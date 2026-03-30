@@ -40,6 +40,9 @@ fn void Compiler.find_free_vars_resolve(Compiler* self, Expr* expr, List{SymbolI
 fn void Compiler.find_free_vars_handle(Compiler* self, Expr* expr, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
     self.find_free_vars(expr.handle.body, bound_vars, free_vars, enclosing_scope);
     for (usz i = 0; i < expr.handle.clause_count; i++) {
+        if (expr.handle.clauses[i].has_effect_tag_expr) {
+            self.find_free_vars(expr.handle.clauses[i].effect_tag_expr, bound_vars, free_vars, enclosing_scope);
+        }
         // k_name and arg_name are bound in handler body
         List{SymbolId} handle_bound;
         foreach (b : *bound_vars) {

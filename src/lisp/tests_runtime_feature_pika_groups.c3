@@ -5,7 +5,7 @@ import std::io;
 import pika;
 
 fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Pika Regex/Grammar Tests ---");
+    emit_test_section_banner("Pika Regex/Grammar Tests");
 
     // Regex: re-match
     test_str_val(interp, "re-match literal",
@@ -224,7 +224,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "pika/grammar scan rejects invalid class",
         "(pika/grammar 'g-scan-bad '(rule start (scan \"[]\")))",
         "invalid scan pattern", pass, fail);
-    test_tag(interp, "pika/parse scan clauses beyond legacy cap",
+    test_tag(interp, "pika/parse scan clauses beyond cap",
         "(block "
         "  (pika/grammar 'g-scan-many "
         "    '(rule start (seq r1 r2 r3 r4 r5 r6 r7 r8 r9)) "

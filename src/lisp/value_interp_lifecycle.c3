@@ -188,6 +188,14 @@ fn void Interp.destroy(Interp* self) {
         mem::free(self.source_dirs);
         self.source_dirs = null;
     }
+    if (self.console_capture_buf != null) {
+        mem::free(self.console_capture_buf);
+        self.console_capture_buf = null;
+        self.console_capture_len = 0;
+        self.console_capture_cap = 0;
+        self.console_capture_active = false;
+    }
+    self.input_state = null;
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
     main::stack_pool_shutdown(&self.stack_ctx_pool);

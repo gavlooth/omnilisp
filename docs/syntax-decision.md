@@ -16,12 +16,12 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 (define (udp-open host port) ...)
 ```
 
-- `fn` is deprecated and removed; canonical errors instruct migration to `lambda`.
+- `fn` is removed; canonical errors point to `lambda`.
 
 ### 2. Sequencing
 
 - Canonical sequencing form is `block`.
-- `begin` remains parser-reserved only for compatibility checks and is not a first-class public sequencing form.
+- `begin` remains parser-reserved only for migration checks and is not a first-class public sequencing form.
 - `do` is not part of the canonical surface.
 
 ### 3. Local Binding
@@ -47,9 +47,21 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 
 - Canonical handler form is `handle`, with explicit clause shape `(tag arg body)`.
 - Multi-shot handler continuations are explicit with `with-continuation`.
-- Implicit continuation capture in handler clauses is removed; legacy nested clause forms such as `((tag k arg) body)` must hard-fail.
+- Implicit continuation capture in handler clauses is removed; nested clause forms such as `((tag k arg) body)` must hard-fail.
 - `with-handlers` helper indirection in stdlib was removed in favor of explicit composition utilities.
 - Public examples and docs should use canonical `handle` semantics and `resolve`/`perform` primitives as the control surface.
+
+### 4.1 Module-Qualified Effect Names
+
+- When an effect belongs to a real public module, use dot-qualified module
+  access consistently for the effect symbol as well.
+- Example future UI surface:
+  - `ui.text`, `ui.window` for constructors/helpers
+  - `ui.open`, `ui.render`, `ui.close` for effect tags exported by the `ui`
+    module
+- Established slash-form families like `io/print` remain canonical existing
+  surface, but they do not define the naming rule for new real module-owned
+  APIs.
 
 ### 5. Transaction Commands (`deduce`)
 
@@ -110,7 +122,7 @@ Contributor rules for new code:
 - Prefer functions unless syntax control is required.
 - Prefer explicit word-based macro notation over punctuation-heavy sugar.
 
-Migration compatibility choice:
+Migration migration choice:
 
 - Legacy multi-clause macro parse path is removed.
 - Legacy clause-style forms fail fast with deterministic migration diagnostics

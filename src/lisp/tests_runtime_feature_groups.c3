@@ -4,39 +4,39 @@ module lisp;
 import std::io;
 
 fn void run_diagnostic_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Diagnostic Tests ---");
+    emit_test_section_banner("Diagnostic Tests");
 
     // --- Dispatch diagnostics ---
 
     // Type mismatch - shows arg types
     test_error_contains(interp, "dispatch: type mismatch shows types",
-        "(block (define (typed-fn (^Int x)) x) (typed-fn \"hello\"))",
+        "(block (define (typed-fn (^Integer x)) x) (typed-fn \"hello\"))",
         "String", pass, fail);
 
     // Shows method name
     test_error_contains(interp, "dispatch: shows method name",
-        "(block (define (typed-fn2 (^Int x)) x) (typed-fn2 \"hello\"))",
+        "(block (define (typed-fn2 (^Integer x)) x) (typed-fn2 \"hello\"))",
         "typed-fn2", pass, fail);
 
     // Arity mismatch
     test_error_contains(interp, "dispatch: arity mismatch",
-        "(block (define [type] DPt (^Int x) (^Int y)) (define (dadd (^DPt a) (^DPt b)) 1) (dadd (DPt 1 2)))",
+        "(block (define [type] DPt (^Integer x) (^Integer y)) (define (dadd (^DPt a) (^DPt b)) 1) (dadd (DPt 1 2)))",
         "no matching method", pass, fail);
 
     // --- Match exhaustiveness ---
 
     // Union match missing variant
     test_error_contains(interp, "match: missing union variant",
-        "(block (define [union] DiagResult DiagOk (DiagErr Int)) (match (DiagErr 42) ((DiagOk) 1)))",
+        "(block (define [union] DiagResult DiagOk (DiagErr Integer)) (match (DiagErr 42) ((DiagOk) 1)))",
         "missing variants", pass, fail);
     test_eq(interp, "match: wildcard intentionally handles non-exhaustive union match",
-        "(block (define [union] DiagResultW DiagOkW (DiagErrW Int)) (match (DiagErrW 42) ((DiagOkW) 1) (_ 2)))",
+        "(block (define [union] DiagResultW DiagOkW (DiagErrW Integer)) (match (DiagErrW 42) ((DiagOkW) 1) (_ 2)))",
         2, pass, fail);
 
     // Non-union match shows type
     test_error_contains(interp, "match: non-union shows type",
         "(match 42 (\"hello\" 1))",
-        "Int", pass, fail);
+        "Integer", pass, fail);
 
     // --- Strict handlers ---
 
@@ -69,7 +69,7 @@ fn void run_diagnostic_tests_isolated(int* pass, int* fail) {
 
 
 fn void run_atomic_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Atomic Tests ---");
+    emit_test_section_banner("Atomic Tests");
     run_atomic_core_tests(interp, pass, fail);
     run_atomic_lifetime_tests(interp, pass, fail);
 }
@@ -161,4 +161,3 @@ fn void run_atomic_lifetime_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 }
-

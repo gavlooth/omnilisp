@@ -116,10 +116,28 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
     for (usz i = 0; i < expr.match.clause_count; i++) {
         MatchClause* clause = &expr.match.clauses[i];
         MatchResult match_r = match_pattern(clause.pattern, scrutinee, interp);
+        if (match_r.has_error()) {
+            Value* err = match_r.error;
+            match_r.cleanup();
+            return err;
+        }
         if (match_r.matched) {
             Env* clause_env = make_env(interp, env);
+            if (clause_env == null) {
+                match_r.cleanup();
+                return raise_error(interp, "out of memory while binding match clause");
+            }
             for (usz j = 0; j < match_r.binding_count; j++) {
-                env_define_with_barrier(clause_env, match_r.bindings[j].name, match_r.bindings[j].value, interp);
+                Value* bind_err = env_define_with_barrier_result(
+                    clause_env,
+                    match_r.bindings[j].name,
+                    match_r.bindings[j].value,
+                    interp
+                );
+                if (bind_err != null) {
+                    match_r.cleanup();
+                    return raise_error(interp, "out of memory while binding match clause");
+                }
             }
             match_r.cleanup();
             return jit_eval(clause.result, clause_env, interp);

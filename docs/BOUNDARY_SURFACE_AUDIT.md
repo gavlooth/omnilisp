@@ -5,7 +5,7 @@ Policy file: `scripts/boundary_facade_policy.txt`
 
 ## Summary
 
-- total direct legacy callsites scanned: 33
+- total direct boundary callsites scanned: 33
 - allowed by policy: 19
 - ignored by policy globs: 14
 - violations: 0

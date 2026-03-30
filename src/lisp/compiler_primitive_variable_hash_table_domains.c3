@@ -77,12 +77,10 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
 
     // Callable type symbols / coercion constructors
     prim_hash_insert(st.intern("Integer"), "aot::lookup_prim(\"Integer\")");
-    prim_hash_insert(st.intern("Int"), "aot::lookup_prim(\"Int\")");
     prim_hash_insert(st.intern("Double"), "aot::lookup_prim(\"Double\")");
     prim_hash_insert(st.intern("String"), "aot::lookup_prim(\"String\")");
     prim_hash_insert(st.intern("Symbol"), "aot::lookup_prim(\"Symbol\")");
     prim_hash_insert(st.intern("Boolean"), "aot::lookup_prim(\"Boolean\")");
-    prim_hash_insert(st.intern("Bool"), "aot::lookup_prim(\"Bool\")");
     prim_hash_insert(st.intern("Nil"), "aot::lookup_prim(\"Nil\")");
     prim_hash_insert(st.intern("Void"), "aot::lookup_prim(\"Void\")");
     prim_hash_insert(st.intern("Closure"), "aot::lookup_prim(\"Closure\")");
@@ -91,6 +89,7 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
 
 fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     // File I/O
+    prim_hash_insert(st.intern("read-line"), "aot::lookup_prim(\"read-line\")");
     prim_hash_insert(st.intern("read-file"), "aot::lookup_prim(\"read-file\")");
     prim_hash_insert(st.intern("write-file"), "aot::lookup_prim(\"write-file\")");
     prim_hash_insert(st.intern("file-exists?"), "aot::lookup_prim(\"file-exists?\")");
@@ -103,14 +102,6 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     prim_hash_insert(st.intern("fs-readdir"), "aot::lookup_prim(\"fs-readdir\")");
     prim_hash_insert(st.intern("fs-rename"), "aot::lookup_prim(\"fs-rename\")");
     prim_hash_insert(st.intern("fs-unlink"), "aot::lookup_prim(\"fs-unlink\")");
-    prim_hash_insert(st.intern("filesystem-open"), "aot::lookup_prim(\"filesystem-open\")");
-    prim_hash_insert(st.intern("filesystem-read"), "aot::lookup_prim(\"filesystem-read\")");
-    prim_hash_insert(st.intern("filesystem-write"), "aot::lookup_prim(\"filesystem-write\")");
-    prim_hash_insert(st.intern("filesystem-close"), "aot::lookup_prim(\"filesystem-close\")");
-    prim_hash_insert(st.intern("filesystem-stat"), "aot::lookup_prim(\"filesystem-stat\")");
-    prim_hash_insert(st.intern("filesystem-read-directory"), "aot::lookup_prim(\"filesystem-read-directory\")");
-    prim_hash_insert(st.intern("filesystem-rename"), "aot::lookup_prim(\"filesystem-rename\")");
-    prim_hash_insert(st.intern("filesystem-unlink"), "aot::lookup_prim(\"filesystem-unlink\")");
 
     // Misc
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");

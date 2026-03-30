@@ -5,7 +5,7 @@ import std::io;
 import main;
 
 fn void run_async_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Async I/O Tests ---");
+    emit_test_section_banner("Async I/O Tests");
     run_async_tests_io_tls(interp, pass, fail);
 
     // listener lifecycle

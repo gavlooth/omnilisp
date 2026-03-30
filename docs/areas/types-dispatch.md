@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)  
-As of: 2026-03-19
+As of: 2026-03-27
 
 ## Canonical Sources
 
@@ -23,7 +23,7 @@ As of: 2026-03-19
 - Explainability tooling is implemented with canonical selector syntax and deterministic structured output (`explain 'dispatch`, `explain 'effect`).
 - Backend parity audit (`L4.1`, 2026-03-09) is complete and documented below.
 - Backend parity implementation bridge (`L4.2`, 2026-03-09) is landed:
-  - compiler now lowers type-definition forms and typed lambda `define` forms through direct structured AOT helpers instead of delegated `aot::eval_serialized_expr(...)`,
+  - compiler now lowers type-definition forms and typed lambda `define` forms through direct structured AOT helpers,
   - compiled `explain 'dispatch` and canonical `explain 'effect` signal/resolve forms also lower through direct AOT helpers instead of delegated eval,
   - generated call sites continue to route through `aot::invoke/apply_multi` into `jit_apply*`, preserving method-table dispatch semantics.
 - Backend parity E2E coverage slice (`L4.3`, 2026-03-09) is landed:
@@ -66,7 +66,7 @@ As of: 2026-03-19
 - bounded `scripts/run_e2e.sh` is fully green again with no remaining tracked
   diff rows (`ALL 404 e2e compiler tests passed!`).
 - Baseline governance update (2026-03-19):
-  - `scripts/run_e2e.sh` now treats an exact match against `scripts/baselines/e2e_expected_diff.txt` as a tracked legacy baseline rather than an undifferentiated failure.
+  - `scripts/run_e2e.sh` now treats an exact match against `scripts/baselines/e2e_expected_diff.txt` as a tracked baseline rather than an undifferentiated failure.
   - row ownership/review policy now lives in `scripts/baselines/e2e_expected_diff.tsv`.
 - Bounded e2e refresh update (2026-03-19):
   - `scripts/run_validation_container.sh` now auto-mounts the common host
@@ -79,7 +79,7 @@ As of: 2026-03-19
     ambiguity payloads, and top-level replay / command-predicate locals).
 - Final baseline cleanup update (2026-03-19):
   - `src/lisp/tests_e2e_generation_cases_core.c3` now removes the final tracked
-    legacy match/guard parity rows and legacy effect/handle parity rows that
+    match/guard parity rows and effect/handle parity rows that
     were still outside current AOT support.
   - `src/lisp/tests_e2e_generation_cases_extended.c3` now removes the final
     tracked guard-trace and nested-handle parity rows.

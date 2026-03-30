@@ -4,6 +4,7 @@ import main;
 
 fn Value* Interp.alloc_value(Interp* self) @inline {
     Value* v = (Value*)self.current_scope.alloc(Value.sizeof);
+    assert(v != null, "alloc_value: scope allocation failed");
     v.tag = NIL;  // Safe default
     v.scope_gen = self.current_scope.generation;  // Stamp for O(1) scope checks
     // Dtor registration moved to heap-backed constructors (make_string, make_closure, etc.)
@@ -15,6 +16,7 @@ fn Value* Interp.alloc_value(Interp* self) @inline {
 // Not wired into constructors yet; used by dual-lane rollout phases.
 fn Value* Interp.alloc_value_escape(Interp* self) @inline {
     Value* v = (Value*)self.current_scope.alloc_escape(Value.sizeof);
+    assert(v != null, "alloc_value_escape: scope allocation failed");
     v.tag = NIL;  // Safe default
     v.scope_gen = self.current_scope.escape_generation;
     return v;
@@ -25,6 +27,7 @@ fn Value* Interp.alloc_value_escape(Interp* self) @inline {
 // The perf win is from removing dtors in alloc_value() (child scopes, per-call teardown).
 fn Value* Interp.alloc_value_root(Interp* self) @inline {
     Value* v = (Value*)self.root_scope.alloc(Value.sizeof);
+    assert(v != null, "alloc_value_root: scope allocation failed");
     v.tag = NIL;
     v.scope_gen = self.root_scope.generation;  // Stamp for O(1) scope checks
     main::scope_register_dtor(self.root_scope, (void*)v, &scope_dtor_value);
@@ -33,6 +36,7 @@ fn Value* Interp.alloc_value_root(Interp* self) @inline {
 
 fn Env* Interp.alloc_env(Interp* self) @inline {
     Env* e = (Env*)self.current_scope.alloc(Env.sizeof);
+    assert(e != null, "alloc_env: scope allocation failed");
     e.bindings = null;
     e.binding_count = 0;
     e.capacity = 0;
@@ -46,6 +50,7 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
 
 fn Env* Interp.alloc_env_escape(Interp* self) @inline {
     Env* e = (Env*)self.current_scope.alloc_escape(Env.sizeof);
+    assert(e != null, "alloc_env_escape: scope allocation failed");
     e.bindings = null;
     e.binding_count = 0;
     e.capacity = 0;

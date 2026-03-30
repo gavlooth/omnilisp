@@ -11,7 +11,17 @@ struct SymbolDescribeInfo {
 fn char* find_describe_symbol_arg(int argc, char** argv, int describe_idx) {
     for (int i = describe_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_double_dash(argv[i])) return null;
         return argv[i];
+    }
+    return null;
+}
+
+fn char* find_describe_option_like_arg(int argc, char** argv, int describe_idx) {
+    for (int i = describe_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_double_dash(argv[i])) return argv[i];
+        return null;
     }
     return null;
 }
@@ -61,11 +71,27 @@ fn int run_describe_mode(int argc, char** argv, int describe_idx) {
     bool json = find_flag_index(argc, argv, "--json") >= 0;
     char* symbol_arg = find_describe_symbol_arg(argc, argv, describe_idx);
     if (symbol_arg == null) {
+        char* unexpected = find_describe_option_like_arg(argc, argv, describe_idx);
+        if (unexpected != null) {
+            if (json) {
+                print_describe_unexpected_arg_json(unexpected);
+                return 1;
+            }
+            return print_unexpected_mode_arg("--describe", unexpected);
+        }
         if (json) {
             print_describe_usage_json();
             return 1;
         }
         return print_describe_usage();
+    }
+    char* extra = find_extra_mode_arg(argc, argv, describe_idx, 1, true);
+    if (extra != null) {
+        if (json) {
+            print_describe_unexpected_arg_json(extra);
+            return 1;
+        }
+        return print_unexpected_mode_arg("--describe", extra);
     }
 
     SymbolDescribeInfo info = describe_lookup_symbol(symbol_arg);
@@ -76,4 +102,3 @@ fn int run_describe_mode(int argc, char** argv, int describe_idx) {
     }
     return info.found ? 0 : 1;
 }
-

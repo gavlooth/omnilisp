@@ -6,21 +6,31 @@ import lisp;
 extern fn int c_chdir(char* path) @extern("chdir");
 
 /**
- * AOT build: compile Lisp source to standalone binary.
- * Usage: ./main --build input.lisp -o output_binary
+ * AOT build: compile Omni source to a standalone binary.
+ * Usage: omni --build <file> [-o output]
  */
 fn int run_build(int argc, char** argv, int build_idx) {
     char* input_file = build_idx + 1 < argc ? argv[build_idx + 1] : null;
     bool output_missing = false;
     char* output_binary = find_build_output_arg(argc, argv, build_idx, &output_missing);
-    if (input_file == null) {
-        io::printn("Usage: ./main --build input.lisp [-o output]");
+    if (input_file == null || cli_arg_starts_with_dash(input_file)) {
+        if (input_file != null) {
+            io::printfn("Error: missing input file before option %s", (ZString)input_file);
+        }
+        io::printn("Usage: omni --build <file> [-o output]");
         return 1;
     }
     if (output_missing) {
         io::printn("Error: missing output path after -o");
-        io::printn("Usage: ./main --build input.lisp [-o output]");
+        io::printn("Usage: omni --build <file> [-o output]");
         return 1;
+    }
+    char* extra = find_extra_mode_arg(
+        argc, argv, build_idx, 1,
+        false, false, false,
+        true, true, true);
+    if (extra != null) {
+        return print_unexpected_mode_arg("--build", extra);
     }
 
     char[1024] cwd_buf;
@@ -53,6 +63,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
     usz repo_root_len = 0;
     if (!resolve_build_repo_root(argv[0], repo_root_buf[..], &repo_root_len)) {
         io::printn("Error: failed to resolve repo root for --build");
+        io::printn("Hint: run --build from a full Omni checkout, or set OMNI_REPO_ROOT to that checkout, or use the example repo's local ./omni wrapper.");
         return 1;
     }
     if (repo_root_len == 0 || c_chdir(&repo_root_buf[0]) != 0) {
@@ -82,10 +93,12 @@ fn int run_build(int argc, char** argv, int build_idx) {
     thread_registry_init();
     defer thread_registry_shutdown();
 
-    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    defer mem::free(interp);
-    interp.init();
-    defer interp.destroy();
+    lisp::Interp* interp = create_plain_interp();
+    if (interp == null) {
+        io::printn("Error: failed to allocate compiler interpreter");
+        return 1;
+    }
+    defer destroy_plain_interp(interp);
 
     char[] c3_code = lisp::compile_to_c3_ext(source, interp, print_last, print_all);
     if (c3_code.len == 0) return 1;
@@ -100,7 +113,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
     io::printfn("Building %s...", (ZString)output_binary);
     int exit_code = run_aot_backend_compile(&temp_c3_path[0], output_binary);
     if (exit_code != 0) {
-        io::printn("Error: c3c compilation failed");
+        io::printfn("Error: c3c compilation failed while compiling '%s' to '%s'", (ZString)&temp_c3_path[0], (ZString)output_binary);
         return 1;
     }
 

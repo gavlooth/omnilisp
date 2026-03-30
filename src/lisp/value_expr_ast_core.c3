@@ -117,6 +117,8 @@ struct ExprShift {
 
 struct ExprPerform {
     SymbolId tag;
+    Expr*    tag_expr;
+    bool     has_tag_expr;
     Expr*    arg;
 }
 
@@ -125,9 +127,11 @@ struct ExprResolve {
 }
 
 struct EffectClause {
-    SymbolId effect_tag;    // Effect name
-    SymbolId k_name;        // Continuation param
-    SymbolId arg_name;      // Argument param
+    SymbolId effect_tag;        // Effect name when parsed as bare symbol
+    Expr*    effect_tag_expr;   // Resolved expression for qualified module tags
+    bool     has_effect_tag_expr;
+    SymbolId k_name;            // Continuation param
+    SymbolId arg_name;          // Argument param
     Expr*    handler_body;
 }
 

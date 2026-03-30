@@ -28,6 +28,7 @@ fn bool compiler_serializes_to_roundtrip(Interp* interp, char[] source, char[] e
 
     Compiler compiler;
     compiler.init(interp);
+    defer compiler.free();
 
     List{char} buf;
     defer buf.free();
@@ -168,12 +169,49 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
         bool ok = !str_contains(code, "unsupported");
         compiler_test_finish_bool(ok, "Compiler: range", "[FAIL] Compiler: range", pass, fail);
     }
+    {
+        char[] code = compile_to_c3(
+            "(module ui (export open) (define [effect] (open (^Any payload)))) "
+            "(import ui) "
+            "(signal ui.open 1)",
+            interp
+        );
+        bool ok = str_contains(code, "aot::compiled_signal(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: module-qualified signal lowers directly",
+            "[FAIL] Compiler: module-qualified signal lowers directly",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3(
+            "(module ui (export open) (define [effect] (open (^Any payload)))) "
+            "(import ui) "
+            "(handle (signal ui.open 1) (ui.open x (resolve x)))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::compiled_signal(")
+            && str_contains(code, "aot::compiled_handle(")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: module-qualified handle lowers directly",
+            "[FAIL] Compiler: module-qualified handle lowers directly",
+            pass,
+            fail
+        );
+    }
 }
 
 fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass, usz* fail) {
     // Type forms should lower to direct AOT helpers and still sync generated globals.
     {
-        char[] code = compile_to_c3("(define [type] Box (^Int value)) (define b (Box 1))", interp);
+        char[] code = compile_to_c3("(define [type] Box (^Integer value)) (define b (Box 1))", interp);
         bool ok = str_contains(code, "aot::define_type(")
             && str_contains(code, "Box = aot::lookup_var(\"Box\")")
             && !str_contains(code, "aot::eval_serialized_expr")
@@ -184,7 +222,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
 
     // Union forms must lower directly and sync generated variant constructors into AOT globals.
     {
-        char[] code = compile_to_c3("(define [union] Maybe None (Some Int)) (Some 1)", interp);
+        char[] code = compile_to_c3("(define [union] Maybe None (Some Integer)) (Some 1)", interp);
         bool ok = str_contains(code, "aot::define_union(")
             && str_contains(code, "None = aot::lookup_var(\"None\")")
             && str_contains(code, "Some = aot::lookup_var(\"Some\")")
@@ -226,7 +264,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
 
     // Typed define should install dispatch entries directly through the typed-method helper.
     {
-        char[] code = compile_to_c3("(define (describe (^Int x)) \"int\")", interp);
+        char[] code = compile_to_c3("(define (describe (^Integer x)) \"int\")", interp);
         bool ok = str_contains(code, "aot::define_typed_method(")
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -237,7 +275,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Typed define should compile captures normally rather than injecting globals into eval.
     {
         char[] code = compile_to_c3(
-            "(define y 10) (define (describe (^Int x)) (+ x y))",
+            "(define y 10) (define (describe (^Integer x)) (+ x y))",
             interp
         );
         bool ok = str_contains(code, "aot::define_typed_method(")
@@ -250,7 +288,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Repeated typed define names should not emit duplicate global declarations.
     {
         char[] code = compile_to_c3(
-            "(define (describe (^Int x)) \"int\") (define (describe (^String x)) \"str\")",
+            "(define (describe (^Integer x)) \"int\") (define (describe (^String x)) \"str\")",
             interp
         );
         bool dup = str_contains(code, "lisp::Value* describe;\nlisp::Value* describe;");
@@ -262,7 +300,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Repeated typed methods should all stay on direct helper lowering (no eval fallback path).
     {
         char[] code = compile_to_c3(
-            "(define (route (^Int x)) (+ x 1)) "
+            "(define (route (^Integer x)) (+ x 1)) "
             "(define (route (^String x)) x) "
             "(define (route (^Double x)) (+ x 1.0))",
             interp
@@ -279,7 +317,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     {
         char[] code = compile_to_c3(
             "(define delta 7) "
-            "(define (mix (^Int x)) (+ x delta)) "
+            "(define (mix (^Integer x)) (+ x delta)) "
             "(define (mix (^String x)) x) "
             "(define (mix x) x)",
             interp
@@ -360,8 +398,8 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
     // Compiler output should not emit serialized-eval bridge calls in normal lowering paths.
     {
         char[] code = compile_to_c3(
-            "(define [type] Box (^Int value)) "
-            "(define (render (^Int x)) (+ x 1)) "
+            "(define [type] Box (^Integer value)) "
+            "(define (render (^Integer x)) (+ x 1)) "
             "(define (render x) x) "
             "(ref (ref (explain 'dispatch (render 1)) 'decision) 'reason)",
             interp
@@ -443,6 +481,51 @@ fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass,
         );
         if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves clause parens"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves clause parens"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match (cons 1 2) ((a . b) a) (_ 0))",
+            "(match (cons 1 2) ((a . b) a) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves cons patterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves cons patterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match (Dictionary 'name 7) ({name} name) (_ 0))",
+            "(match (Dictionary 'name 7) ({name} name) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves dict patterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves dict patterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match (Some 1) ((Some x) x) (None 0))",
+            "(match (Some 1) ((Some x) x) (None 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves constructor patterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves constructor patterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(signal ui.open 1)",
+            "(perform ui.open 1)"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: serializer preserves module-qualified signal tag paths"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: serializer preserves module-qualified signal tag paths"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(handle (signal ui.open 1) (ui.open x (resolve x)))",
+            "(handle (perform ui.open 1) (ui.open x (resolve x)))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: serializer preserves module-qualified handle tag paths"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: serializer preserves module-qualified handle tag paths"); }
     }
 }
 

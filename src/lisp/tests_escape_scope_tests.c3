@@ -90,7 +90,7 @@ fn void run_escape_scope_env_lane_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_escape_scope_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Escape-Scope Optimization Tests ---");
+    emit_test_section_banner("Escape-Scope Optimization Tests");
     run_escape_scope_core_tests(interp, pass, fail);
     run_escape_scope_iterator_coroutine_tests(interp, pass, fail);
     run_escape_scope_env_lane_tests(interp, pass, fail);

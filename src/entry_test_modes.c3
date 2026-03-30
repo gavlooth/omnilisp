@@ -1,6 +1,8 @@
 module main;
 
 import std::io;
+import libc;
+import lisp;
 
 fn bool test_suite_is_all(char* suite_name) @inline {
     return suite_name == null || str_eq(suite_name, "all");
@@ -17,6 +19,14 @@ fn bool test_suite_is_valid(char* suite_name) @inline {
         test_suite_matches(suite_name, "lisp");
 }
 
+fn char* find_test_suite_arg(int argc, char** argv, int test_idx) {
+    for (int i = test_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--json")) continue;
+        return argv[i];
+    }
+    return null;
+}
+
 fn char[] test_suite_display_name(char* suite_name) {
     return suite_name == null ? "all" : suite_name[:cstr_len(suite_name)];
 }
@@ -25,6 +35,17 @@ fn void print_test_suite_invalid_json(char* suite_name) {
     io::print("{\"ok\":false,\"code\":\"cli/invalid-test-suite\",\"severity\":\"error\",\"message\":\"Unknown test suite\",\"suite\":");
     print_json_escaped_string(test_suite_display_name(suite_name));
     io::print(",\"expected\":[\"all\",\"stack\",\"scope\",\"lisp\"]}\n");
+}
+
+fn void print_test_suite_unexpected_arg_json(char* arg) {
+    io::print("{\"ok\":false,\"code\":\"cli/usage\",\"severity\":\"error\",\"message\":");
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "unexpected argument after --test-suite: %s", (ZString)arg)) {
+        print_json_escaped_string(msg);
+    } else {
+        print_json_escaped_string("unexpected argument after --test-suite");
+    }
+    io::print("}\n");
 }
 
 fn void print_test_suite_json_entry(char[] suite_name, int pass, int fail, int code) {
@@ -48,7 +69,9 @@ fn int run_test_mode_for_suite(char* suite_name) {
         return 2;
     }
 
-    io::printfn("Runtime memory architecture initialized");
+    if (!lisp::test_quiet_requested()) {
+        io::printfn("Runtime memory architecture initialized");
+    }
 
     // Run stack engine tests (mmap stacks, context switch, coroutine lifecycle).
     // The stack engine test runner handles ASAN-specific overflow-test skipping.
@@ -73,6 +96,10 @@ fn int run_test_mode_for_suite_json(char* suite_name, char* self_exe) {
         print_test_suite_invalid_json(suite_name);
         return 2;
     }
+
+    char* summary_env = c_getenv("OMNI_TEST_SUMMARY");
+    if (summary_env != null) (void)libc::unsetenv("OMNI_TEST_SUMMARY");
+    (void)libc::setenv("OMNI_TEST_QUIET", "1", 1);
 
     bool include_affinity = test_suite_is_all(suite_name) &&
         c_getenv("OMNI_STACK_AFFINITY_HARNESS") != null;
@@ -171,18 +198,24 @@ fn int run_test_mode_with_self_for_suite(char* self_exe, char* suite_name, bool 
 
     if (c_getenv("OMNI_STACK_AFFINITY_HARNESS") == null) return 0;
 
-    io::printn("");
-    io::printn("=== Stack Affinity Harness ===");
+    if (!lisp::test_quiet_requested()) {
+        io::printn("");
+        io::printn("=== Stack Affinity Harness ===");
+    }
     bool ok = run_stack_affinity_harness(self_exe);
     if (ok) {
-        io::printn("PASS: stack affinity misuse probe failed fast as expected");
+        if (!lisp::test_quiet_requested()) {
+            io::printn("PASS: stack affinity misuse probe failed fast as expected");
+        }
         if (c_getenv("OMNI_TEST_SUMMARY") != null) {
             io::printfn("OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=1 fail=0");
         }
         return 0;
     }
 
-    io::printn("FAIL: stack affinity misuse probe did not show expected fail-fast signal");
+    if (!lisp::test_quiet_requested()) {
+        io::printn("FAIL: stack affinity misuse probe did not show expected fail-fast signal");
+    }
     if (c_getenv("OMNI_TEST_SUMMARY") != null) {
         io::printfn("OMNI_TEST_SUMMARY suite=stack_affinity_harness pass=0 fail=1");
     }

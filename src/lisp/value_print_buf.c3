@@ -190,7 +190,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         case CONS:
             print_cons_value_buf(v, syms, pb);
         case VOID:
-            pb.append_str("(Void)");
+            pb.append_str("#<void>");
         case CLOSURE:
             print_closure_value_buf(v, syms, pb);
         case CONTINUATION:

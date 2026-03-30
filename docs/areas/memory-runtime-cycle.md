@@ -112,7 +112,7 @@ sequenceDiagram
     else result already outside releasing scope
         Boundary->>Scope: scope_release(child_scope)
         Boundary-->>Caller: reuse result as-is
-    else explicit legacy boundary traversal (pending deletion)
+    else explicit boundary traversal (pending deletion)
         Boundary->>Promote: boundary_copy_from_releasing_scope(result)
         Boundary->>Scope: scope_release(child_scope)
         Boundary-->>Caller: copied result

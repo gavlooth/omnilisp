@@ -8,6 +8,30 @@ diff_range="${OMNI_EFFECTS_POLICY_RANGE:-${OMNI_BOUNDARY_POLICY_RANGE:-}}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
+search_regex_quiet() {
+  local pattern="$1"
+  local file="$2"
+  if has_rg; then
+    rg -n "$pattern" "$file" >/dev/null
+    return $?
+  fi
+  grep -n -E -- "$pattern" "$file" >/dev/null
+}
+
+search_regex_print() {
+  local pattern="$1"
+  local file="$2"
+  if has_rg; then
+    rg -n "$pattern" "$file"
+    return $?
+  fi
+  grep -n -E -- "$pattern" "$file"
+}
+
 emit_diff_for_path() {
   local path="$1"
 
@@ -47,7 +71,11 @@ resolve_primitive_source() {
   local fn_name="$1"
   local marker="fn Value* ${fn_name}("
 
-  rg -l -F "$marker" src/lisp/*.c3 2>/dev/null | head -n 1 || true
+  if has_rg; then
+    rg -l -F "$marker" src/lisp/*.c3 2>/dev/null | head -n 1 || true
+    return 0
+  fi
+  grep -l -F -- "$marker" src/lisp/*.c3 2>/dev/null | head -n 1 || true
 }
 
 extract_function_body() {
@@ -123,14 +151,14 @@ check_new_public_primitives_forbidden_failure_patterns() {
       continue
     fi
 
-    if rg -n '\braise_error\(' "$body_file" >/dev/null; then
+    if search_regex_quiet 'raise_error\(' "$body_file"; then
       echo "FAIL: effects-contract policy forbids raise_error(...) in newly-added public primitive ${prim_name} (${source_file})"
-      rg -n '\braise_error\(' "$body_file" | sed 's/^/    /'
+      search_regex_print 'raise_error\(' "$body_file" | sed 's/^/    /'
       violations=1
     fi
-    if rg -n '\bmake_error\(' "$body_file" >/dev/null; then
+    if search_regex_quiet 'make_error\(' "$body_file"; then
       echo "FAIL: effects-contract policy forbids make_error(...) in newly-added public primitive ${prim_name} (${source_file})"
-      rg -n '\bmake_error\(' "$body_file" | sed 's/^/    /'
+      search_regex_print 'make_error\(' "$body_file" | sed 's/^/    /'
       violations=1
     fi
   done < "$new_public_prims"
@@ -148,7 +176,7 @@ check_stdlib_direct_raise_additions() {
   local direct_raise_hits="$tmp_dir/direct_raise_hits.txt"
 
   extract_added_lines "stdlib/stdlib.lisp" > "$added_stdlib"
-  rg -n '\(signal[[:space:]]+raise[[:space:]]' "$added_stdlib" > "$direct_raise_hits" || true
+  search_regex_print '\(signal[[:space:]]+raise[[:space:]]' "$added_stdlib" > "$direct_raise_hits" || true
 
   if [[ -s "$direct_raise_hits" ]]; then
     echo "FAIL: effects-contract policy forbids adding direct (signal raise ...) in stdlib wrappers."
@@ -179,14 +207,14 @@ check_migrated_surfaces_no_legacy_failure_constructors() {
       continue
     fi
 
-    if rg -n '\braise_error\(' "$file" >/dev/null; then
+    if search_regex_quiet 'raise_error\(' "$file"; then
       echo "FAIL: effects-contract policy forbids raise_error(...) in migrated surface $file"
-      rg -n '\braise_error\(' "$file" | sed 's/^/    /'
+      search_regex_print 'raise_error\(' "$file" | sed 's/^/    /'
       violations=1
     fi
-    if rg -n '\bmake_error\(' "$file" >/dev/null; then
+    if search_regex_quiet 'make_error\(' "$file"; then
       echo "FAIL: effects-contract policy forbids make_error(...) in migrated surface $file"
-      rg -n '\bmake_error\(' "$file" | sed 's/^/    /'
+      search_regex_print 'make_error\(' "$file" | sed 's/^/    /'
       violations=1
     fi
   done

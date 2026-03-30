@@ -1,5 +1,32 @@
 module lisp;
 
+fn bool Parser.parse_effect_tag_ref(
+    Parser* self,
+    SymbolId* out_tag,
+    Expr** out_tag_expr,
+    bool* out_has_tag_expr
+) {
+    if (self.lexer.current.type == T_SYMBOL) {
+        *out_tag = self.get_current_symbol();
+        *out_tag_expr = null;
+        *out_has_tag_expr = false;
+        self.lexer.advance();
+        return true;
+    }
+
+    if (self.lexer.current.type == T_PATH) {
+        Expr* tag_expr = self.parse_path_expr();
+        if (tag_expr == null || self.has_error) return false;
+        *out_tag = (SymbolId)0;
+        *out_tag_expr = tag_expr;
+        *out_has_tag_expr = true;
+        return true;
+    }
+
+    self.set_error("expected effect tag");
+    return false;
+}
+
 fn Expr* Parser.parse_reset(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'checkpoint' location
@@ -38,9 +65,10 @@ fn Expr* Parser.parse_perform(Parser* self) {
     Expr* e = self.alloc_expr_here();  // Capture 'perform' location
     self.lexer.advance();  // consume 'perform'
 
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected effect tag"); return null; }
-    SymbolId etag = self.get_current_symbol();
-    self.lexer.advance();
+    SymbolId etag = (SymbolId)0;
+    Expr* tag_expr = null;
+    bool has_tag_expr = false;
+    if (!self.parse_effect_tag_ref(&etag, &tag_expr, &has_tag_expr)) return null;
 
     Expr* arg = self.parse_expr();
 
@@ -48,6 +76,8 @@ fn Expr* Parser.parse_perform(Parser* self) {
 
     e.tag = E_PERFORM;
     e.perform.tag = etag;
+    e.perform.tag_expr = tag_expr;
+    e.perform.has_tag_expr = has_tag_expr;
     e.perform.arg = arg;
     return e;
 }

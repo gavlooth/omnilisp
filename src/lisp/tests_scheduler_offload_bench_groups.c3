@@ -19,7 +19,7 @@ fn void run_scheduler_offload_hot_path_benchmarks(Interp* interp) {
     if (!scheduler_offload_bench_enabled()) return;
     if (interp == null) return;
 
-    io::printn("\n--- Scheduler/Offload Hot-Path Benchmarks ---");
+    emit_test_section_banner("Scheduler/Offload Hot-Path Benchmarks");
 
     scheduler_offload_queued_work_free_hits = 0;
     scheduler_offload_queued_work_alloc_fallbacks = 0;

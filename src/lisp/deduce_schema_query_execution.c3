@@ -82,7 +82,12 @@ fn Value* deduce_query_execute_goal_directed_selector_ephemeral(
         );
         return null;
     }
-    if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
+    if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
+            rel.db,
+            &scc_plan,
+            selected_component_id,
+            &projected_head_demand
+        ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
             rel.db,
             &scc_plan,
             selected_component_id,
@@ -90,12 +95,7 @@ fn Value* deduce_query_execute_goal_directed_selector_ephemeral(
         )) {
         return null;
     }
-    if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
-            rel.db,
-            &scc_plan,
-            selected_component_id,
-            &projected_head_demand
-        ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
+    if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
             rel.db,
             &scc_plan,
             selected_component_id,
@@ -301,7 +301,12 @@ fn Value* deduce_query_execute_goal_directed_plain_ephemeral(
     if (!has_projected_head_demand) {
         return null;
     }
-    if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
+    if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
+            rel.db,
+            &scc_plan,
+            selected_component_id,
+            &projected_head_demand
+        ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
             rel.db,
             &scc_plan,
             selected_component_id,
@@ -309,12 +314,7 @@ fn Value* deduce_query_execute_goal_directed_plain_ephemeral(
         )) {
         return null;
     }
-    if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
-            rel.db,
-            &scc_plan,
-            selected_component_id,
-            &projected_head_demand
-        ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
+    if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
             rel.db,
             &scc_plan,
             selected_component_id,
@@ -483,7 +483,12 @@ fn Value* deduce_query_execute_goal_directed_selector_ephemeral_disjunction(
             );
             return null;
         }
-        if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
+        if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
+                rel.db,
+                &scc_plan,
+                selected_component_id,
+                &projected_head_demand
+            ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
                 rel.db,
                 &scc_plan,
                 selected_component_id,
@@ -491,12 +496,7 @@ fn Value* deduce_query_execute_goal_directed_selector_ephemeral_disjunction(
             )) {
             return null;
         }
-        if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
-                rel.db,
-                &scc_plan,
-                selected_component_id,
-                &projected_head_demand
-            ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
+        if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
                 rel.db,
                 &scc_plan,
                 selected_component_id,
@@ -671,7 +671,12 @@ fn Value* deduce_query_execute_goal_directed_plain_ephemeral_disjunction(
         );
         if (project_err != null) return project_err;
         if (!has_projected_head_demand) return null;
-        if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
+        if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
+                rel.db,
+                &scc_plan,
+                selected_component_id,
+                &projected_head_demand
+            ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
                 rel.db,
                 &scc_plan,
                 selected_component_id,
@@ -679,12 +684,7 @@ fn Value* deduce_query_execute_goal_directed_plain_ephemeral_disjunction(
             )) {
             return null;
         }
-        if (deduce_query_recursive_component_requires_projected_head_demand_relaxation(
-                rel.db,
-                &scc_plan,
-                selected_component_id,
-                &projected_head_demand
-            ) && !deduce_query_relax_projected_head_demand_to_recursive_preserved_position(
+        if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
                 rel.db,
                 &scc_plan,
                 selected_component_id,
@@ -839,9 +839,8 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     if (parse_err != null) return parse_err;
     Value* exec_err = null;
 
-    if (!deduce_relation_ensure_column_key_values(rel, interp, null)) {
-        return make_nil(interp);
-    }
+    Value* key_values_err = deduce_relation_ensure_column_key_values(rel, interp, null);
+    if (key_values_err != null) return key_values_err;
 
     DeduceRuleHeadDemand head_demand = {};
     bool[] term_bound = {};
@@ -928,6 +927,7 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
         }
     }
 
+    bool selector_goal_directed_executed = false;
     if (selector_rule_index >= 0) {
         exec_err = deduce_execute_goal_directed_relation_selector(
             rel.db,
@@ -939,6 +939,7 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
             interp
         );
         if (exec_err != null) return exec_err;
+        selector_goal_directed_executed = true;
         bool handled = false;
         exec_err = deduce_relation_maybe_refresh_on_read(
             rel_val,
@@ -983,7 +984,7 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
             filtered_rev = make_cons(interp, row, filtered_rev);
         }
     }
-    if (selector_rule_index >= 0) {
+    if (selector_rule_index >= 0 && !selector_goal_directed_executed) {
         deduce_db_note_goal_directed_read(
             rel.db,
             rel.name,
@@ -998,4 +999,3 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     );
     return deduce_reverse_list(filtered_rev, interp);
 }
-

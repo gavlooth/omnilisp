@@ -91,7 +91,7 @@ nil               ;; nil value
 |-------|-------------|
 | `_` | Wildcard in patterns, placeholder in calls |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Legacy compatibility token used for postfix index parsing (`expr.[key]`); leading-dot accessor syntax is separate |
+| `.[` | Parser token used for postfix index parsing (`expr.[key]`); leading-dot accessor syntax is separate |
 | `.` | Field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Arrays, patterns, bracket attributes |
@@ -104,16 +104,16 @@ nil               ;; nil value
 ### Running Programs
 
 ```bash
-./build/main script.omni          # run a script
-./build/main --repl               # interactive REPL
-./build/main                      # run tests (no args)
+omni script.omni                  # run a script
+omni --repl                       # start the REPL (explicit)
+omni                              # start the REPL (default)
 ```
 
 ### Compilation
 
 ```bash
-./build/main --compile input.lisp output.c3   # Lisp -> C3 source
-./build/main --build input.lisp -o output     # Lisp -> standalone binary
+omni --compile input.omni output.c3   # Omni -> C3 source
+omni --build input.omni -o output     # Omni -> standalone binary
 ```
 
 AOT binaries link only libc/libm/libdl — no GNU Lightning, no REPL library.
@@ -121,8 +121,8 @@ AOT binaries link only libc/libm/libdl — no GNU Lightning, no REPL library.
 ### Project Management
 
 ```bash
-./build/main --init myproject     # scaffold project directory
-./build/main --bind myproject/    # generate FFI bindings from omni.toml
+omni --init myproject         # scaffold project directory
+omni --bind myproject/        # generate FFI bindings from omni.toml
 ```
 
 `--init` creates:
@@ -156,7 +156,7 @@ functions = ["sin", "cos", "sqrt"]
 ### `--bind` Workflow
 
 1. Edit `omni.toml` to declare FFI dependencies
-2. Run `./build/main --bind myproject/`
+2. Run `omni --bind myproject/`
 3. Generated modules appear in `lib/ffi/`
 4. Import with `(import "lib/ffi/math.omni")`
 
@@ -165,6 +165,6 @@ Requires libclang (only for `--bind`, not for running programs).
 ### Other Flags
 
 ```bash
-./build/main --version            # print version
-./build/main --help               # print usage
+omni --version                # print version
+omni --help                   # print help
 ```

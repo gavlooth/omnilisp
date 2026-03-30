@@ -134,14 +134,14 @@ fn void run_limit_busting_scope_per_call_tests(Interp* interp, int* pass, int* f
 }
 
 fn void run_limit_busting_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Limit-Busting Tests ---");
+    emit_test_section_banner("Limit-Busting Tests");
     run_limit_busting_generated_form_tests(interp, pass, fail);
     run_limit_busting_string_tests(interp, pass, fail);
     run_limit_busting_scope_per_call_tests(interp, pass, fail);
 }
 
 fn void run_tco_recycling_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- TCO Scope Recycling Tests ---");
+    emit_test_section_banner("TCO Scope Recycling Tests");
 
     // 1. Named-let loop — basic regression, result correct after scope recycling
     test_eq(interp, "tco-recycle: named-let sum",
@@ -187,4 +187,12 @@ fn void run_tco_recycling_tests(Interp* interp, int* pass, int* fail) {
     // 10. Named-let with effects — handle/signal interacts with TCO
     test_eq(interp, "tco-recycle: effects in loop",
         "(handle (let loop (n 5 acc 0) (if (= n 0) acc (loop (- n 1) (+ acc 1)))) (raise msg 999))", 5, pass, fail);
+
+    // 11. ESCAPE-lane list accumulators must not rewalk the full tail on each cons.
+    long range_target = main::stack_runtime_asan_enabled() ? 2000 : 4000;
+    char[] range_expr = main::stack_runtime_asan_enabled()
+        ? "(length (range 2000))"
+        : "(length (range 4000))";
+    test_eq(interp, "tco-recycle: range headroom",
+        range_expr, range_target, pass, fail);
 }

@@ -8,6 +8,7 @@
 (define [effect] (io/println (^Any x)))
 (define [effect] (io/display (^Any x)))
 (define [effect] (io/newline (^Any x)))
+(define [effect] (io/read-line (^Any x)))
 (define [effect] (io/read-file (^String path)))
 (define [effect] (io/write-file (^Any x)))
 (define [effect] (io/file-exists? (^String path)))
@@ -227,7 +228,7 @@
           (raise msg
                  (handler (canonicalize-error-payload
                             msg
-                            'runtime/legacy-raise-payload
+                            'runtime/string-raise-payload
                             'runtime
                             "raise: non-canonical payload")))))
 
@@ -317,12 +318,13 @@
 (define println (lambda (x) (signal io/println x)))
 (define display (lambda (x) (signal io/display x)))
 (define newline (lambda () (signal io/newline nil)))
+(define read-line (lambda () (signal io/read-line nil)))
 (define read-file (lambda (path) (signal io/read-file path)))
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
 ;; Canonical descriptive filesystem names remain exported (`filesystem-*`).
-;; `fs-*` spellings are retained for compatibility.
+;; `fs-*` spellings are retained.
 (define fs-open (lambda (path flags .. rest) (signal io/fs-open (cons path (cons flags rest)))))
 (define fs-read (lambda (handle n) (signal io/fs-read (cons handle n))))
 (define fs-write (lambda (handle data) (signal io/fs-write (cons handle data))))
@@ -387,7 +389,7 @@
 (define (tls-close handle) (signal io/tls-close handle))
 
 ;; Canonical descriptive protocol aliases; short protocol spellings remain
-;; compatibility shorthands.
+;;
 (define transmission-control-connect tcp-connect)
 (define transmission-control-listen tcp-listen)
 (define transmission-control-accept tcp-accept)

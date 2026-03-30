@@ -16,7 +16,14 @@ fn bool deduce_bench_seed_relation(
     Value*[1] open_args;
     open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
     Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
+    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) {
+        io::printfn(
+            "[deduce-debug] recursive-negated seed failed: db open (tag=%d msg=%s)",
+            db != null ? (int)db.tag : -1,
+            (ZString)(db != null && db.tag == ERROR ? db.str_chars[:db.str_len] : "<none>")
+        );
+        return false;
+    }
 
     SymbolId rel_name = interp.symbols.intern("bench_person");
     SymbolId id_sym = interp.symbols.intern("id");
@@ -126,7 +133,14 @@ fn bool deduce_query_bench_seed_stats_maintenance_db(
     Value*[1] open_args;
     open_args[0] = make_symbol(interp, interp.symbols.intern("memory"));
     Value* db = prim_deduce_open(open_args[..], null, interp);
-    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) return false;
+    if (db == null || db.tag != FFI_HANDLE || db.ffi_val == null) {
+        io::printfn(
+            "[deduce-debug] recursive-mixed-negated seed failed: db open (tag=%d msg=%s)",
+            db != null ? (int)db.tag : -1,
+            (ZString)(db != null && db.tag == ERROR ? db.str_chars[:db.str_len] : "<none>")
+        );
+        return false;
+    }
 
     SymbolId edge_sym = interp.symbols.intern("bench_stats_edge");
     SymbolId rebuild_sym = interp.symbols.intern("bench_stats_rebuild");
@@ -823,7 +837,12 @@ fn bool deduce_query_bench_seed_aggregate_db(
     for (usz i = 0; i < DEDUCE_BENCH_CORPUS_ROWS; i++) {
         long bucket = (long)(i % GROUP_COUNT);
         char[24] dept_buf;
-        char[] dept_name = io::bprintf(&dept_buf, "dept-%d", (int)bucket)!!;
+        char[] dept_name;
+        if (try char[] rendered = io::bprintf(&dept_buf, "dept-%d", (int)bucket)) {
+            dept_name = rendered;
+        } else {
+            return false;
+        }
         Value*[3] fact_args;
         fact_args[0] = src_rel;
         fact_args[1] = make_string(interp, dept_name);
@@ -1157,10 +1176,22 @@ fn bool deduce_query_bench_seed_recursive_aggregate_negated_db(
     Value* unit_rel = setup_deduce_relation_for_db(interp, db, unit_sym, col_node, col_weight);
     Value* banned_rel = deduce_query_bench_setup_unary_relation(interp, db, banned_sym, col_node);
     Value* out_rel = setup_deduce_relation_for_db(interp, db, total_sym, col_node, col_total);
-    if (edge_rel == null || edge_rel.tag != FFI_HANDLE || edge_rel.ffi_val == null) return false;
-    if (unit_rel == null || unit_rel.tag != FFI_HANDLE || unit_rel.ffi_val == null) return false;
-    if (banned_rel == null || banned_rel.tag != FFI_HANDLE || banned_rel.ffi_val == null) return false;
-    if (out_rel == null || out_rel.tag != FFI_HANDLE || out_rel.ffi_val == null) return false;
+    if (edge_rel == null || edge_rel.tag != FFI_HANDLE || edge_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-negated seed failed: edge relation setup");
+        return false;
+    }
+    if (unit_rel == null || unit_rel.tag != FFI_HANDLE || unit_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-negated seed failed: unit relation setup");
+        return false;
+    }
+    if (banned_rel == null || banned_rel.tag != FFI_HANDLE || banned_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-negated seed failed: banned relation setup");
+        return false;
+    }
+    if (out_rel == null || out_rel.tag != FFI_HANDLE || out_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-negated seed failed: total relation setup");
+        return false;
+    }
 
     SymbolId var_x = interp.symbols.intern("?x");
     SymbolId var_y = interp.symbols.intern("?y");
@@ -1201,7 +1232,14 @@ fn bool deduce_query_bench_seed_recursive_aggregate_negated_db(
     base_rule_args[2] = base_body;
     base_rule_args[3] = base_not_banned;
     Value* base_rule_ok = prim_deduce_rule(base_rule_args[..], null, interp);
-    if (base_rule_ok == null || base_rule_ok.tag == ERROR) return false;
+    if (base_rule_ok == null || base_rule_ok.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-negated seed failed: base rule install (tag=%d msg=%s)",
+            base_rule_ok != null ? (int)base_rule_ok.tag : -1,
+            (ZString)(base_rule_ok != null && base_rule_ok.tag == ERROR ? base_rule_ok.str_chars[:base_rule_ok.str_len] : "<none>")
+        );
+        return false;
+    }
 
     Value* rec_head =
         make_cons(interp,
@@ -1244,7 +1282,14 @@ fn bool deduce_query_bench_seed_recursive_aggregate_negated_db(
     rec_rule_args[3] = rec_total_body;
     rec_rule_args[4] = rec_not_banned;
     Value* rec_rule_ok = prim_deduce_rule(rec_rule_args[..], null, interp);
-    if (rec_rule_ok == null || rec_rule_ok.tag == ERROR) return false;
+    if (rec_rule_ok == null || rec_rule_ok.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-negated seed failed: recursive rule install (tag=%d msg=%s)",
+            rec_rule_ok != null ? (int)rec_rule_ok.tag : -1,
+            (ZString)(rec_rule_ok != null && rec_rule_ok.tag == ERROR ? rec_rule_ok.str_chars[:rec_rule_ok.str_len] : "<none>")
+        );
+        return false;
+    }
 
     for (usz i = 0; i < node_count; i++) {
         Value*[3] unit_args;
@@ -1252,14 +1297,30 @@ fn bool deduce_query_bench_seed_recursive_aggregate_negated_db(
         unit_args[1] = make_int(interp, (long)i);
         unit_args[2] = make_int(interp, 1);
         Value* inserted = prim_assert_fact(unit_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
+        if (inserted == null || inserted.tag == ERROR) {
+            io::printfn(
+                "[deduce-debug] recursive-negated seed failed: unit fact insert row=%d (tag=%d msg=%s)",
+                (int)i,
+                inserted != null ? (int)inserted.tag : -1,
+                (ZString)(inserted != null && inserted.tag == ERROR ? inserted.str_chars[:inserted.str_len] : "<none>")
+            );
+            return false;
+        }
         if (i + 1 < node_count) {
             Value*[3] edge_args;
             edge_args[0] = edge_rel;
             edge_args[1] = make_int(interp, (long)i);
             edge_args[2] = make_int(interp, (long)(i + 1));
             Value* edge_inserted = prim_assert_fact(edge_args[..], null, interp);
-            if (edge_inserted == null || edge_inserted.tag == ERROR) return false;
+            if (edge_inserted == null || edge_inserted.tag == ERROR) {
+                io::printfn(
+                    "[deduce-debug] recursive-negated seed failed: edge fact insert row=%d (tag=%d msg=%s)",
+                    (int)i,
+                    edge_inserted != null ? (int)edge_inserted.tag : -1,
+                    (ZString)(edge_inserted != null && edge_inserted.tag == ERROR ? edge_inserted.str_chars[:edge_inserted.str_len] : "<none>")
+                );
+                return false;
+            }
         }
     }
 
@@ -1267,7 +1328,14 @@ fn bool deduce_query_bench_seed_recursive_aggregate_negated_db(
     banned_args[0] = banned_rel;
     banned_args[1] = make_int(interp, (long)(node_count - 1));
     Value* banned_inserted = prim_assert_fact(banned_args[..], null, interp);
-    if (banned_inserted == null || banned_inserted.tag == ERROR) return false;
+    if (banned_inserted == null || banned_inserted.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-negated seed failed: banned fact insert (tag=%d msg=%s)",
+            banned_inserted != null ? (int)banned_inserted.tag : -1,
+            (ZString)(banned_inserted != null && banned_inserted.tag == ERROR ? banned_inserted.str_chars[:banned_inserted.str_len] : "<none>")
+        );
+        return false;
+    }
 
     *db_out = db;
     *out_rel_out = out_rel;
@@ -1313,11 +1381,26 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
     Value* blocked_rel = deduce_query_bench_setup_unary_relation(interp, db, blocked_sym, col_node);
     Value* score_rel = setup_deduce_relation_for_db(interp, db, score_sym, col_node, col_total);
     Value* chosen_rel = setup_deduce_relation_for_db(interp, db, chosen_sym, col_node, col_total);
-    if (edge_rel == null || edge_rel.tag != FFI_HANDLE || edge_rel.ffi_val == null) return false;
-    if (unit_rel == null || unit_rel.tag != FFI_HANDLE || unit_rel.ffi_val == null) return false;
-    if (blocked_rel == null || blocked_rel.tag != FFI_HANDLE || blocked_rel.ffi_val == null) return false;
-    if (score_rel == null || score_rel.tag != FFI_HANDLE || score_rel.ffi_val == null) return false;
-    if (chosen_rel == null || chosen_rel.tag != FFI_HANDLE || chosen_rel.ffi_val == null) return false;
+    if (edge_rel == null || edge_rel.tag != FFI_HANDLE || edge_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-mixed-negated seed failed: edge relation setup");
+        return false;
+    }
+    if (unit_rel == null || unit_rel.tag != FFI_HANDLE || unit_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-mixed-negated seed failed: unit relation setup");
+        return false;
+    }
+    if (blocked_rel == null || blocked_rel.tag != FFI_HANDLE || blocked_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-mixed-negated seed failed: blocked relation setup");
+        return false;
+    }
+    if (score_rel == null || score_rel.tag != FFI_HANDLE || score_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-mixed-negated seed failed: score relation setup");
+        return false;
+    }
+    if (chosen_rel == null || chosen_rel.tag != FFI_HANDLE || chosen_rel.ffi_val == null) {
+        io::printn("[deduce-debug] recursive-mixed-negated seed failed: chosen relation setup");
+        return false;
+    }
 
     SymbolId var_x = interp.symbols.intern("?x");
     SymbolId var_y = interp.symbols.intern("?y");
@@ -1352,7 +1435,14 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
     chosen_rule_args[2] = chosen_body;
     chosen_rule_args[3] = chosen_not_blocked;
     Value* chosen_rule_ok = prim_deduce_rule(chosen_rule_args[..], null, interp);
-    if (chosen_rule_ok == null || chosen_rule_ok.tag == ERROR) return false;
+    if (chosen_rule_ok == null || chosen_rule_ok.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-mixed-negated seed failed: chosen rule install (tag=%d msg=%s)",
+            chosen_rule_ok != null ? (int)chosen_rule_ok.tag : -1,
+            (ZString)(chosen_rule_ok != null && chosen_rule_ok.tag == ERROR ? chosen_rule_ok.str_chars[:chosen_rule_ok.str_len] : "<none>")
+        );
+        return false;
+    }
 
     Value* base_head =
         make_cons(interp,
@@ -1377,7 +1467,14 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
     base_rule_args[1] = base_head;
     base_rule_args[2] = base_body;
     Value* base_rule_ok = prim_deduce_rule(base_rule_args[..], null, interp);
-    if (base_rule_ok == null || base_rule_ok.tag == ERROR) return false;
+    if (base_rule_ok == null || base_rule_ok.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-mixed-negated seed failed: base rule install (tag=%d msg=%s)",
+            base_rule_ok != null ? (int)base_rule_ok.tag : -1,
+            (ZString)(base_rule_ok != null && base_rule_ok.tag == ERROR ? base_rule_ok.str_chars[:base_rule_ok.str_len] : "<none>")
+        );
+        return false;
+    }
 
     Value* rec_head =
         make_cons(interp,
@@ -1409,7 +1506,14 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
     rec_rule_args[2] = rec_edge_body;
     rec_rule_args[3] = rec_chosen_body;
     Value* rec_rule_ok = prim_deduce_rule(rec_rule_args[..], null, interp);
-    if (rec_rule_ok == null || rec_rule_ok.tag == ERROR) return false;
+    if (rec_rule_ok == null || rec_rule_ok.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-mixed-negated seed failed: recursive rule install (tag=%d msg=%s)",
+            rec_rule_ok != null ? (int)rec_rule_ok.tag : -1,
+            (ZString)(rec_rule_ok != null && rec_rule_ok.tag == ERROR ? rec_rule_ok.str_chars[:rec_rule_ok.str_len] : "<none>")
+        );
+        return false;
+    }
 
     for (usz i = 0; i < node_count; i++) {
         Value*[3] unit_args;
@@ -1417,14 +1521,30 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
         unit_args[1] = make_int(interp, (long)i);
         unit_args[2] = make_int(interp, 1);
         Value* inserted = prim_assert_fact(unit_args[..], null, interp);
-        if (inserted == null || inserted.tag == ERROR) return false;
+        if (inserted == null || inserted.tag == ERROR) {
+            io::printfn(
+                "[deduce-debug] recursive-mixed-negated seed failed: unit fact insert row=%d (tag=%d msg=%s)",
+                (int)i,
+                inserted != null ? (int)inserted.tag : -1,
+                (ZString)(inserted != null && inserted.tag == ERROR ? inserted.str_chars[:inserted.str_len] : "<none>")
+            );
+            return false;
+        }
         if (i + 1 < node_count) {
             Value*[3] edge_args;
             edge_args[0] = edge_rel;
             edge_args[1] = make_int(interp, (long)i);
             edge_args[2] = make_int(interp, (long)(i + 1));
             Value* edge_inserted = prim_assert_fact(edge_args[..], null, interp);
-            if (edge_inserted == null || edge_inserted.tag == ERROR) return false;
+            if (edge_inserted == null || edge_inserted.tag == ERROR) {
+                io::printfn(
+                    "[deduce-debug] recursive-mixed-negated seed failed: edge fact insert row=%d (tag=%d msg=%s)",
+                    (int)i,
+                    edge_inserted != null ? (int)edge_inserted.tag : -1,
+                    (ZString)(edge_inserted != null && edge_inserted.tag == ERROR ? edge_inserted.str_chars[:edge_inserted.str_len] : "<none>")
+                );
+                return false;
+            }
         }
     }
 
@@ -1432,7 +1552,14 @@ fn bool deduce_query_bench_seed_recursive_mixed_aggregate_negated_db_named(
     blocked_args[0] = blocked_rel;
     blocked_args[1] = make_int(interp, (long)(node_count - 1));
     Value* blocked_inserted = prim_assert_fact(blocked_args[..], null, interp);
-    if (blocked_inserted == null || blocked_inserted.tag == ERROR) return false;
+    if (blocked_inserted == null || blocked_inserted.tag == ERROR) {
+        io::printfn(
+            "[deduce-debug] recursive-mixed-negated seed failed: blocked fact insert (tag=%d msg=%s)",
+            blocked_inserted != null ? (int)blocked_inserted.tag : -1,
+            (ZString)(blocked_inserted != null && blocked_inserted.tag == ERROR ? blocked_inserted.str_chars[:blocked_inserted.str_len] : "<none>")
+        );
+        return false;
+    }
 
     *db_out = db;
     *score_rel_out = score_rel;

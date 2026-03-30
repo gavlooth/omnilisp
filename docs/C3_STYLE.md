@@ -238,7 +238,7 @@ These rules are mandatory for `boundary_*` runtime work and related eval/JIT pat
 
 ## 15. Migration Guidance (Underused Features)
 
-When touching legacy code, incrementally modernize:
+When touching older code, incrementally modernize:
 
 1. Convert null-return fallible helpers to optionals.
 2. Replace manual cleanup ladders with `defer`.

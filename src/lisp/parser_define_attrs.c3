@@ -22,7 +22,7 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     defer clauses.free();
 
     if (self.lexer.current.type != T_LPAREN) {
-        self.set_error("macro definition requires (syntax-match ...); legacy clause syntax was removed");
+        self.set_error("macro definition requires (syntax-match ...); clause syntax was removed");
         return null;
     }
 
@@ -30,7 +30,7 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     if (self.lexer.current.type != T_SYMBOL ||
         (uint)self.get_current_symbol() != (uint)self.interp.symbols.intern("syntax-match")) {
         self.set_error(
-            "legacy macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))"
+            "macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))"
         );
         return null;
     }

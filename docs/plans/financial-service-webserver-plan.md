@@ -14,12 +14,12 @@ future feature work and regressions.
 
 ## Scope
 
-- Keep `examples/deduce_crud_server.omni` as legacy compatibility coverage only.
+- Keep `examples/deduce_crud_server.omni` as regression coverage only.
 - New feature demonstrations should prefer finwatch modules and flows.
 - When possible, add/adjust regression tests to mirror finwatch behavior.
 - Finwatch should remain idiom-first: prefer native Omni constructs (`match`,
   `|>`, `handle/raise`, typed/union dispatch, schema validation, effectful I/O)
-  over imperative compatibility-style patterns.
+  over imperative patterns.
 
 ## Next Steps
 

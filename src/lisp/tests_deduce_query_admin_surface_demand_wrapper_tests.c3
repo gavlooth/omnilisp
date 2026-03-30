@@ -183,7 +183,9 @@ fn void run_deduce_admin_surface_demand_wrapper_tests(Interp* interp, int* pass,
             "  (define reach-stats (deduce/stats gd-reach-qdpr)) "
             "  (define analyze-after (deduce/analyze db-admin-goal-directed-query-demand-projected)) "
             "  (and "
-            "    (null? selected) "
+            "    (= (length selected) 1) "
+            "    (= (ref (car selected) 'src) 1) "
+            "    (= (ref (car selected) 'dst) 3) "
             "    (= (ref reach-stats 'dirty-self) true) "
             "    (= (ref reach-stats 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
             "    (= (ref reach-stats 'last-goal-directed-read-surface) 'query) "
@@ -192,10 +194,9 @@ fn void run_deduce_admin_surface_demand_wrapper_tests(Interp* interp, int* pass,
             "    (= (length (ref reach-stats 'last-goal-directed-read-requested-bound-positions)) 2) "
             "    (= (car (ref reach-stats 'last-goal-directed-read-requested-bound-positions)) 0) "
             "    (= (car (cdr (ref reach-stats 'last-goal-directed-read-requested-bound-positions))) 1) "
-            "    (= (ref reach-stats 'last-goal-directed-read-applied-bound-count) 2) "
-            "    (= (length (ref reach-stats 'last-goal-directed-read-applied-bound-positions)) 2) "
-            "    (= (car (ref reach-stats 'last-goal-directed-read-applied-bound-positions)) 0) "
-            "    (= (car (cdr (ref reach-stats 'last-goal-directed-read-applied-bound-positions))) 1) "
+            "    (= (ref reach-stats 'last-goal-directed-read-applied-bound-count) 1) "
+            "    (= (length (ref reach-stats 'last-goal-directed-read-applied-bound-positions)) 1) "
+            "    (= (car (ref reach-stats 'last-goal-directed-read-applied-bound-positions)) 1) "
             "    (= (ref analyze-after 'last-goal-directed-read-execution-path) 'ephemeral-head-demand-query) "
             "    (= (ref analyze-after 'last-goal-directed-read-surface) 'query) "
             "    (= (ref analyze-after 'last-goal-directed-read-relation) 'gd-reach-qdpr) "
@@ -204,10 +205,9 @@ fn void run_deduce_admin_surface_demand_wrapper_tests(Interp* interp, int* pass,
             "    (= (length (ref analyze-after 'last-goal-directed-read-requested-bound-positions)) 2) "
             "    (= (car (ref analyze-after 'last-goal-directed-read-requested-bound-positions)) 0) "
             "    (= (car (cdr (ref analyze-after 'last-goal-directed-read-requested-bound-positions))) 1) "
-            "    (= (ref analyze-after 'last-goal-directed-read-applied-bound-count) 2) "
-            "    (= (length (ref analyze-after 'last-goal-directed-read-applied-bound-positions)) 2) "
-            "    (= (car (ref analyze-after 'last-goal-directed-read-applied-bound-positions)) 0) "
-            "    (= (car (cdr (ref analyze-after 'last-goal-directed-read-applied-bound-positions))) 1)))",
+            "    (= (ref analyze-after 'last-goal-directed-read-applied-bound-count) 1) "
+            "    (= (length (ref analyze-after 'last-goal-directed-read-applied-bound-positions)) 1) "
+            "    (= (car (ref analyze-after 'last-goal-directed-read-applied-bound-positions)) 1)))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {

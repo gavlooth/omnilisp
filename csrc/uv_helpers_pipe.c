@@ -1,7 +1,10 @@
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <uv.h>
 
 static void omni_uv_close_free_handle_cb(uv_handle_t* handle) {
@@ -301,5 +304,38 @@ int omni_uv_pipe_listen_fd(char* path, int backlog, int* out_fd) {
     omni_uv_close_pipe_and_drain(&loop, &server);
     (void)uv_loop_close(&loop);
     *out_fd = dup_fd;
+    return 0;
+}
+
+int omni_unix_socket_listen_fd(char* path, int backlog, int* out_fd) {
+    if (out_fd != NULL) *out_fd = -1;
+    if (path == NULL || out_fd == NULL) return UV_EINVAL;
+    if (backlog < 1) backlog = 1;
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+
+    size_t path_len = strlen(path);
+    if (path_len == 0 || path_len >= sizeof(addr.sun_path)) return UV_EINVAL;
+    memcpy(addr.sun_path, path, path_len + 1);
+    socklen_t addr_len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + path_len + 1);
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return UV_EIO;
+
+    unlink(path);
+
+    if (bind(fd, (const struct sockaddr*)&addr, addr_len) < 0) {
+        close(fd);
+        return UV_EIO;
+    }
+    if (listen(fd, backlog) < 0) {
+        close(fd);
+        unlink(path);
+        return UV_EIO;
+    }
+
+    *out_fd = fd;
     return 0;
 }

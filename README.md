@@ -123,8 +123,7 @@ Canonical type names in docs/runtime are descriptive:
 `Set`, `Iterator`, `Coroutine`, `TimePoint`, `Boolean`, `Nil`, `Void`.
 
 Canonical naming is preferred in all surface docs and examples.
-`Dict` remains the only compatibility shorthand for `Dictionary` where needed;
-other legacy shorthand names are intentionally avoided.
+`Dict` remains the only shorthand for `Dictionary` where needed.
 
 ## Build and Run
 
@@ -132,7 +131,8 @@ other legacy shorthand names are intentionally avoided.
 # full integration build
 c3c build
 
-# run main binary
+# run the repo-local main binary directly
+# installed/user-facing CLI examples elsewhere in the docs use `omni`
 LD_LIBRARY_PATH=/usr/local/lib ./build/main
 ```
 
@@ -194,6 +194,8 @@ it does not contend with the main `build/obj` tree.
 `main-dev` currently supports the default iteration loop:
 - `--eval`
 - `--repl`
+- `--repl --project [dir]`
+- `--repl --load <file>`
 - `--check`
 - script execution (`./build/dev-fast/main-dev file.omni`)
 
@@ -202,7 +204,7 @@ registered and evaluate as unbound names.
 
 Use the full [main](/home/heefoo/Documents/code/Omni/build/main) binary for
 `--test-suite`, `--gen-e2e`, `--stack-affinity-probe`, `--language-ref`,
-`--manual`, `--init`, `--bind`, `--build`, and `--compile`.
+`--lang-ref`, `--manual`, `--init`, `--bind`, `--build`, and `--compile`.
 
 `main-dev` also strips the `pika` module from the fast-build path. Core
 evaluation, REPL, script execution, and non-regex schema flows still work, but

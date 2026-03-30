@@ -517,15 +517,6 @@ fn Value* deduce_match_execute_goal_directed_selector_ephemeral(
         interp,
         &subject_keys
     );
-    if (selector_rule_index >= 0) {
-        deduce_db_note_goal_directed_read(
-            rel.db,
-            rel.name,
-            interp.symbols.intern("no-op"),
-            interp.symbols.intern("match"),
-            selector_rule_index
-        );
-    }
     deduce_relation_schema_note_goal_directed_read_subject_keys(
         deduce_relation_lookup_schema(rel),
         &subject_keys

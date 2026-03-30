@@ -89,7 +89,7 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
 
     Value* arr = make_array(interp, count);
     for (usz i = 0; i < count; i++) {
-        arr.array_val.items[i] = items[i];
+        arr.array_val.items[i] = boundary_promote_to_root(items[i], interp);
     }
     arr.array_val.length = count;
     return arr;

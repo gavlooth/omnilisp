@@ -1,0 +1,71 @@
+;; ui_nodes.omni — internal node/data helpers for the public `ui` facade
+
+(module ui-nodes
+  (export node
+          kind
+          props
+          children
+          nodes
+          text
+          paragraph
+          button
+          input
+          checkbox
+          menu
+          hbox
+          vbox
+          window
+          graph))
+
+;; A UI node is ordinary Omni data. Backend interpreters own lowering.
+(define (node kind props children)
+  {'kind kind 'props props 'children children})
+
+(define (kind n) (ref n 'kind))
+(define (props n) (ref n 'props))
+(define (children n) (ref n 'children))
+
+(define (text s)
+  (node 'text {'text s} nil))
+
+(define (paragraph s)
+  (node 'paragraph {'text s} nil))
+
+(define (button label message)
+  (node 'button {'label label 'message message} nil))
+
+(define (input key placeholder)
+  (node 'input {'key key 'placeholder placeholder} nil))
+
+(define (checkbox label key checked)
+  (node 'checkbox {'label label 'key key 'checked checked} nil))
+
+(define (menu items selected-key)
+  (node 'menu {'items items 'selected-key selected-key} nil))
+
+(define (hbox items)
+  (node 'hbox {} items))
+
+(define (vbox items)
+  (node 'vbox {} items))
+
+(define (window title body)
+  (node 'window {'title title} (list body)))
+
+(define (graph series)
+  (node 'graph {'series series} nil))
+
+(define nodes {'node node
+               'kind kind
+               'props props
+               'children children
+               'text text
+               'paragraph paragraph
+               'button button
+               'input input
+               'checkbox checkbox
+               'menu menu
+               'hbox hbox
+               'vbox vbox
+               'window window
+               'graph graph})

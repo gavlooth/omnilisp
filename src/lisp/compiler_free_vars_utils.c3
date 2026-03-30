@@ -17,6 +17,11 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
             self.collect_pattern_bindings(pat.car_pat, bindings);
             self.collect_pattern_bindings(pat.cdr_pat, bindings);
 
+        case PAT_CONSTRUCTOR:
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                self.collect_pattern_bindings(pat.ctor_sub_patterns[i], bindings);
+            }
+
         case PAT_SEQ:
             for (usz i = 0; i < pat.elem_count; i++) {
                 self.collect_pattern_bindings(pat.elements[i], bindings);
@@ -34,6 +39,11 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
                 self.collect_pattern_bindings(pat.guard_sub, bindings);
             }
 
+        case PAT_DICT:
+            for (usz i = 0; i < pat.dict_key_count; i++) {
+                bindings.push(pat.dict_keys[i]);
+            }
+
         default:
             return;
     }
@@ -49,6 +59,7 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
         "cons", "car", "cdr", "null?", "pair?",
         "List", "list", "length", "not",
         "print", "println", "newline", "display",
+        "__ui-ftxui-run",
         "string-append", "string-join", "substring",
         "string-split", "string-length", "string->list",
         "list->string", "string-upcase", "string-downcase", "string-casefold", "string-titlecase",
@@ -57,20 +68,19 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
         "closure?", "continuation?", "double?", "list?",
         "boolean?", "bool?", "number?",
         "string->number", "number->string",
-        "Integer", "Int", "Double", "String", "Symbol", "Pointer", "Ptr", "Boolean", "Bool", "Nil", "Void", "Closure", "Iterator",
+        "Integer", "Double", "String", "Symbol", "Pointer", "Boolean", "Nil", "Void", "Closure", "Iterator",
         "gensym", "load", "apply", "equal?",
         "Array",
-        "Dictionary",
-        "Dict", "dict?",
+        "Dictionary", "dict?",
         "Set", "set-add", "set-remove", "set-contains?", "set-size", "set->list",
         "ref", "set!", "push!", "keys", "values", "has?", "remove!",
         "iterator?", "__make-iterator", "next",
         "Coroutine", "resume", "yield", "coroutine?",
         "json-get",
         "TimePoint", "time-point?",
-        "read-file", "write-file", "file-exists?", "read-lines",
-        "filesystem-open", "filesystem-read", "filesystem-write", "filesystem-close",
-        "filesystem-stat", "filesystem-read-directory", "filesystem-rename", "filesystem-unlink",
+        "read-line", "read-file", "write-file", "file-exists?", "read-lines",
+        "fs-open", "fs-read", "fs-write", "fs-close",
+        "fs-stat", "fs-readdir", "fs-rename", "fs-unlink",
         "type-of",
         "abs", "min", "max", "floor", "ceiling", "round",
         "truncate", "sqrt", "even?", "odd?", "zero?",

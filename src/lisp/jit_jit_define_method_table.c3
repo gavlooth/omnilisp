@@ -17,6 +17,7 @@ fn bool jit_val_literals_equal(ValueLiteralKey* a, ValueLiteralKey* b) @inline {
 
 fn Value* jit_make_method_table_value(Interp* interp, MethodTable* mt) {
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
+    if (mt_val == null) return null;
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
     return mt_val;
@@ -113,7 +114,10 @@ fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* s
     MethodTable* mt = jit_new_method_table_with_sig(name, sig, stored_val, fallback);
     if (mt == null) return raise_error(interp, "jit: failed to allocate method table");
     Value* mt_val = jit_make_method_table_value(interp, mt);
-    env_define_with_barrier(interp.global_env, name, mt_val, interp);
+    if (mt_val == null) return raise_error(interp, "jit: failed to allocate method table value");
+    if (env_define_with_barrier_result(interp.global_env, name, mt_val, interp) != null) {
+        return raise_error(interp, "jit: failed to publish method table");
+    }
     return mt_val;
 }
 
@@ -150,6 +154,8 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
     }
 
     // Normal (untyped) define
-    env_define_with_barrier(interp.global_env, name, stored_val, interp);
+    if (env_define_with_barrier_result(interp.global_env, name, stored_val, interp) != null) {
+        return raise_error(interp, "jit: failed to define binding");
+    }
     return stored_val;
 }

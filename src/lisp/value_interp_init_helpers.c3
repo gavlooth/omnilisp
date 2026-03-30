@@ -40,22 +40,18 @@ fn void interp_init_type_symbols(Interp* self) {
     self.sym_ffi = self.symbols.intern("ffi");
     self.sym_lib = self.symbols.intern("lib");
     self.sym_Pointer = self.symbols.intern("Pointer");
-    self.sym_Ptr = self.symbols.intern("Ptr");
     self.sym_Void = self.symbols.intern("Void");
 
     self.sym_Integer = self.symbols.intern("Integer");
-    self.sym_Int = self.symbols.intern("Int");
     self.sym_Double = self.symbols.intern("Double");
     self.sym_String = self.symbols.intern("String");
     self.sym_Symbol = self.symbols.intern("Symbol");
     self.sym_List = self.symbols.intern("List");
     self.sym_Boolean = self.symbols.intern("Boolean");
-    self.sym_Bool = self.symbols.intern("Bool");
     self.sym_Nil = self.symbols.intern("Nil");
     self.sym_Closure = self.symbols.intern("Closure");
     self.sym_Array = self.symbols.intern("Array");
     self.sym_Dictionary = self.symbols.intern("Dictionary");
-    self.sym_Dict = self.symbols.intern("Dict");
     self.sym_Set = self.symbols.intern("Set");
     self.sym_Any = self.symbols.intern("Any");
     self.sym_Value = self.symbols.intern("Value");
@@ -94,6 +90,13 @@ fn void interp_init_module_state(Interp* self) {
 
 fn void interp_init_runtime_flags(Interp* self) {
     self.flags.jit_enabled = false;
+    self.flags.console_to_stderr = false;
+    self.console_capture_active = false;
+    self.console_capture_buf = null;
+    self.console_capture_len = 0;
+    self.console_capture_cap = 0;
+    self.input_state = null;
+    self.interrupt_flag = null;
     self.jit_env = null;
     self.jit_tco_expr = null;
     self.jit_tco_env = null;

@@ -4,6 +4,24 @@ module lisp;
 import std::io;
 import main;
 
+alias AdvancedMacroHygieneGroupFn = fn void(Interp* interp, int* pass, int* fail);
+
+fn void run_advanced_macro_hygiene_group(
+    char[] name,
+    AdvancedMacroHygieneGroupFn group_fn,
+    Interp* interp,
+    int* pass,
+    int* fail
+) {
+    if (!advanced_group_filter_matches_exact(name) &&
+        !advanced_group_filter_matches_exact("advanced-macro-hygiene")) {
+        return;
+    }
+    emit_advanced_group_trace("begin", name);
+    group_fn(interp, pass, fail);
+    emit_advanced_group_trace("end", name);
+}
+
 fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "stdlib when macro true branch", "(let (x 0) (block (when true (set! x 10)) x))", 10, pass, fail);
     test_eq(interp, "stdlib when macro false branch keeps state", "(let (x 3) (block (when false (set! x 10)) x))", 3, pass, fail);
@@ -32,10 +50,17 @@ fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass
     test_eq(interp, "number->string round-trip 0", "(string->number (number->string 0))", 0, pass, fail);
     test_eq(interp, "number->string round-trip -99", "(string->number (number->string -99))", -99, pass, fail);
 
-    // Stack overflow / non-tail recursion headroom
-    test_eq(interp, "non-tail recursion exceeds former 1024 eval cap",
-        "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1200))",
-        1200, pass, fail);
+    // Stack overflow / non-tail recursion headroom. Under ASAN the host-thread
+    // interpreter stack burns much more space per recursive frame, so keep a
+    // lower but still substantial probe there instead of routing this check
+    // through checkpoint semantics.
+    long deep_recursion_target = main::stack_runtime_asan_enabled() ? 896 : 1200;
+    char[] deep_recursion_expr = main::stack_runtime_asan_enabled()
+        ? "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 896))"
+        : "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1200))";
+    test_eq(interp, "non-tail recursion headroom",
+        deep_recursion_expr,
+        deep_recursion_target, pass, fail);
     if (!main::stack_runtime_asan_enabled() && test_c_getenv("OMNI_LISP_STACK_OVERFLOW_PROBE") != null) {
         test_error(interp, "stack overflow caught", "(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))", pass, fail);
     } else {
@@ -268,15 +293,15 @@ fn void run_advanced_macro_hygiene_single_surface_tests(Interp* interp, int* pas
         15, pass, fail);
 
     test_error_contains(interp,
-        "legacy macro single-clause syntax is rejected",
-        "(define [macro] legacy-one ([x] x))",
-        "legacy macro clause syntax was removed",
+        "macro single-clause syntax is rejected",
+        "(define [macro] sample-one ([x] x))",
+        "macro clause syntax was removed",
         pass, fail);
 
     test_error_contains(interp,
-        "legacy macro multi-clause syntax is rejected",
-        "(define [macro] legacy-two ([x] x) ([x y] y))",
-        "legacy macro clause syntax was removed",
+        "macro multi-clause syntax is rejected",
+        "(define [macro] sample-two ([x] x) ([x y] y))",
+        "macro clause syntax was removed",
         pass, fail);
 
     test_error_contains(interp,
@@ -357,12 +382,20 @@ fn void run_advanced_macro_hygiene_single_surface_tests(Interp* interp, int* pas
 }
 
 fn void run_advanced_macro_hygiene_tests(Interp* interp, int* pass, int* fail) {
-    run_advanced_stdlib_macro_migration_regression_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_string_number_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_quasi_pattern_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_gensym_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_capture_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_template_datum_collection_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_malformed_let_tests(interp, pass, fail);
-    run_advanced_macro_hygiene_single_surface_tests(interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-stdlib-migration",
+        &run_advanced_stdlib_macro_migration_regression_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-string-number",
+        &run_advanced_macro_hygiene_string_number_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-quasi-pattern",
+        &run_advanced_macro_hygiene_quasi_pattern_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-gensym",
+        &run_advanced_macro_hygiene_gensym_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-capture",
+        &run_advanced_macro_hygiene_capture_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-template-datum-collection",
+        &run_advanced_macro_hygiene_template_datum_collection_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-malformed-let",
+        &run_advanced_macro_hygiene_malformed_let_tests, interp, pass, fail);
+    run_advanced_macro_hygiene_group("advanced-macro-hygiene-single-surface",
+        &run_advanced_macro_hygiene_single_surface_tests, interp, pass, fail);
 }

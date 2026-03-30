@@ -8,7 +8,7 @@ import main;
 // =============================================================================
 
 fn void run_closure_lifecycle_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Closure Lifecycle Tests (Phase 4b) ---");
+    emit_test_section_banner("Closure Lifecycle Tests (Phase 4b)");
 
     // 1. Temporary closure freed — anonymous lambda passed to HOF
     test_eq(interp, "closure-lc: temp lambda in map",
@@ -58,4 +58,3 @@ fn void run_closure_lifecycle_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "closure-lc: coroutine with closure thunk",
         "(let (f (Coroutine (lambda () (yield 1) (yield 2) 3))) (+ (resume f) (+ (resume f) (resume f))))", 6, pass, fail);
 }
-

@@ -2,7 +2,11 @@ module lisp;
 
 import main;
 
-fn usz Compiler.compile_handle_effect_tag(Compiler* self, SymbolId effect_tag) {
+fn usz Compiler.compile_handle_effect_tag(Compiler* self, SymbolId effect_tag, Expr* effect_tag_expr, bool has_effect_tag_expr) {
+    if (has_effect_tag_expr) {
+        return self.compile_to_temp(effect_tag_expr);
+    }
+
     usz tag_r = self.next_result();
     self.emit_temp_decl(tag_r);
     self.emit(" = aot::make_symbol(\"");

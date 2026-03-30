@@ -20,6 +20,7 @@ fn void print_script_eval_error(lisp::EvalResult r) {
 }
 
 fn void print_script_result_if_non_nil(lisp::EvalResult r, lisp::Interp* interp) {
+    if (lisp::test_quiet_requested()) return;
     if (r.value != null && !lisp::is_nil(r.value)) {
         lisp::print_value(r.value, &interp.symbols);
         io::printn("");

@@ -396,8 +396,8 @@ fn void run_deduce_admin_surface_fallback_tests(Interp* interp, int* pass, int* 
             "    (= (ref reach-stats 'dirty-self) nil) "
             "    (= (ref reach-stats 'last-goal-directed-read-execution-path) 'selected-component-closure) "
             "    (= (ref reach-stats 'last-goal-directed-read-fallback-reason) 'dirty-closure) "
-            "    (= (ref reach-stats 'last-goal-directed-read-requested-bound-count) nil) "
-            "    (= (ref reach-stats 'last-goal-directed-read-applied-bound-count) nil) "
+            "    (= (ref reach-stats 'last-goal-directed-read-requested-bound-count) 0) "
+            "    (= (ref reach-stats 'last-goal-directed-read-applied-bound-count) 0) "
             "    (= (ref reach-stats 'last-goal-directed-read-mutation-epoch) (ref reach-stats 'mutation-epoch)) "
             "    (= (ref other-stats 'dirty-self) true) "
             "    (= other-after 1)))",
@@ -1057,4 +1057,3 @@ fn void run_deduce_admin_surface_fallback_tests(Interp* interp, int* pass, int* 
         }
     }
 }
-

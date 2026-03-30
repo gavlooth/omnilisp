@@ -66,9 +66,9 @@ deterministic `io/*-fiber-required` errors.
 ## 22. Networking
 
 Naming policy for public wrappers:
-- Preferred descriptive spellings in new docs/examples: `filesystem-*`,
-  `transmission-control-*`, `user-datagram-*`, `domain-name-resolve`,
-  `transport-layer-security-*`.
+- Preferred descriptive spellings in new docs/examples: `fs-*`,
+  `tcp-*`, `udp-*`, `dns-resolve`,
+  `tls-*`.
 - Compatibility shorthands remain accepted and stable: `fs-*`, `tcp-*`,
   `udp-*`, `dns-resolve`, `tls-*`.
 
@@ -110,10 +110,9 @@ Calling them outside a fiber raises deterministic `io/tcp-*-fiber-required`
 errors.
 
 Descriptive aliases are available for readability-oriented codebases:
-`transmission-control-connect`, `transmission-control-listen`,
-`transmission-control-accept`, `transmission-control-read`,
-`transmission-control-write`, and `transmission-control-close`.
-The existing `tcp-*` forms remain compatibility shorthands.
+`tcp-connect`, `tcp-listen`,
+`tcp-accept`, `tcp-read`,
+`tcp-write`, and `tcp-close`.
 
 ### API Layering Contract (Anti-Drift)
 
@@ -148,9 +147,8 @@ or introduce parallel runtime plumbing.
 context.
 
 Descriptive aliases are also available:
-`user-datagram-socket`, `user-datagram-bind`, `user-datagram-send`,
-`user-datagram-receive`, and `user-datagram-close`.
-The existing `udp-*` forms remain compatibility shorthands.
+`udp-socket`, `udp-bind`, `udp-send`,
+`udp-receive`, and `udp-close`.
 
 ### Unix Domain Sockets
 
@@ -166,7 +164,7 @@ The existing `udp-*` forms remain compatibility shorthands.
     (tcp-close client)
     (tcp-close server)
     (tcp-close listener)
-    (filesystem-unlink path)
+    (fs-unlink path)
     msg)))
 
 (await pf)
@@ -181,18 +179,18 @@ for effect execution.
 
 ```lisp
 (define proc (process-spawn "/bin/sh" ["-c" "printf omni"] nil))
-(define out (filesystem-read (ref proc 'stdout) 32))
+(define out (fs-read (ref proc 'stdout) 32))
 (define status (await (spawn (lambda () (process-wait (ref proc 'handle))))))
 
-(filesystem-close (ref proc 'stdin))
-(filesystem-close (ref proc 'stdout))
-(filesystem-close (ref proc 'stderr))
+(fs-close (ref proc 'stdin))
+(fs-close (ref proc 'stdout))
+(fs-close (ref proc 'stderr))
 ```
 
 `process-spawn` returns a dict with:
 - `'handle` (process handle for `process-wait`/`process-kill`)
 - `'pid` (child pid)
-- `'stdin`/`'stdout`/`'stderr` (`fs-handle` values compatible with `filesystem-read`/`filesystem-write`/`filesystem-close`)
+- `'stdin`/`'stdout`/`'stderr` (`fs-handle` values compatible with `fs-read`/`fs-write`/`fs-close`)
 - `env` may be `nil` (inherit parent environment) or a list/array of
   `KEY=VALUE` strings/symbols for explicit environment override.
 - `process-wait` is fiber-only and raises `io/process-wait-fiber-required`
@@ -220,8 +218,7 @@ signal number argument when delivery is observed by the runtime event loop.
 (dns-resolve "example.com")   ;; => IP address string
 ```
 
-Preferred descriptive alias: `domain-name-resolve`.
-`dns-resolve` remains a compatibility shorthand.
+Preferred descriptive alias: `dns-resolve`.
 
 ### TLS
 
@@ -256,10 +253,9 @@ When `true`, Omni caches a BearSSL client session per hostname in-process and
 tries session resumption on future `tls-connect` calls for that host.
 
 Descriptive aliases are available:
-`transport-layer-security-connect`, `transport-layer-security-server-wrap`,
-`transport-layer-security-read`, `transport-layer-security-write`, and
-`transport-layer-security-close`.
-The existing `tls-*` forms remain compatibility shorthands.
+`tls-connect`, `tls-server-wrap`,
+`tls-read`, `tls-write`, and
+`tls-close`.
 
 Server-side wrap (RSA key + PEM cert chain):
 

@@ -100,6 +100,94 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
+    // 44b. Callable match guards use their scanned lambda, not a prelude fallback slot.
+    {
+        char[] code = compile_to_c3("(match 1 ((? (lambda (v) v)) 7) (_ 0))", interp);
+        bool ok = compiler_match_guard_uses_scanned_lambda(code)
+            && compiler_code_contains_all(code, {"match_guard_eval"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: callable match guard uses scanned lambda",
+            "[FAIL] Compiler: callable match guard uses scanned lambda",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44c. Guard lambdas capture clause-local pattern bindings during scan/codegen.
+    {
+        char[] code = compile_to_c3("(match 5 ((? (lambda (v) (> x 3)) x) x) (_ 0))", interp);
+        bool ok = compiler_code_contains_all(code, {"captured_x", "captured_x = x;", "match_guard_eval"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: callable match guard captures clause-local bindings",
+            "[FAIL] Compiler: callable match guard captures clause-local bindings",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44d. Cons patterns lower to explicit cons/car/cdr checks instead of matching unconditionally.
+    {
+        char[] code = compile_to_c3("(match (cons 1 2) ((a . b) a) (_ 0))", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::is_cons(", "aot::car(", "aot::cdr("})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: cons pattern lowers directly",
+            "[FAIL] Compiler: cons pattern lowers directly",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44e. Sequence patterns lower through recursive seq helpers, not shallow list-only checks.
+    {
+        char[] code = compile_to_c3("(match (Array 1 2) ([1 x] x) (_ 0))", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::seq_length(", "aot::seq_nth(", "aot::values_equal("})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: sequence pattern lowers recursively with array parity",
+            "[FAIL] Compiler: sequence pattern lowers recursively with array parity",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44f. Dict patterns lower through explicit dict helpers and symbol-key binding.
+    {
+        char[] code = compile_to_c3("(match (Dictionary 'name 7) ({name} name) (_ 0))", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::is_dict(", "aot::dict_get_symbol("})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: dict pattern lowers directly",
+            "[FAIL] Compiler: dict pattern lowers directly",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44g. Constructor/nullary-constructor patterns lower through typed instance helpers.
+    {
+        char[] code = compile_to_c3(
+            "(define [union] Maybe None (Some Integer)) (match (Some 1) ((Some x) x) (None 0))",
+            interp
+        );
+        bool ok = compiler_code_contains_all(code, {"aot::match_constructor(", "aot::instance_field(", "aot::match_var_pattern("})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: constructor patterns lower directly",
+            "[FAIL] Compiler: constructor patterns lower directly",
+            &pass,
+            &fail
+        );
+    }
+
     // =========================================================================
     // Phase 2: TCO via trampoline
     // =========================================================================
@@ -302,7 +390,7 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
 
     // 58. ref compiles
     {
-        char[] code = compile_to_c3("(ref (dict) 'a)", interp);
+        char[] code = compile_to_c3("(ref (Dictionary) 'a)", interp);
         bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ref\")"})
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: ref", "[FAIL] Compiler: ref", pass, fail);
@@ -315,12 +403,12 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: List", "[FAIL] Compiler: List", pass, fail);
     }
-    // 58ab. Dict constructor compiles
+    // 58ab. Dictionary constructor compiles
     {
-        char[] code = compile_to_c3("(Dict 'a 1 'b 2)", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"Dict\")"})
+        char[] code = compile_to_c3("(Dictionary 'a 1 'b 2)", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::dict_from_args("})
             && compiler_code_contains_none(code, {"unsupported"});
-        compiler_test_finish_bool(ok, "Compiler: Dict", "[FAIL] Compiler: Dict", pass, fail);
+        compiler_test_finish_bool(ok, "Compiler: Dictionary", "[FAIL] Compiler: Dictionary", pass, fail);
     }
     // 58bb. TimePoint constructor compiles
     {

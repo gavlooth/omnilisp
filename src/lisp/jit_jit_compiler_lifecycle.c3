@@ -241,7 +241,7 @@ fn bool jit_compiled_fn_is_live_for_interp(JitCompiledFn compiled, Interp* inter
     return runtime_backend_compiled_expr_is_live_for_interp(runtime_backend_wrap_compiled_expr(compiled), interp);
 }
 
-// Legacy pointer-only liveness check retained for compatibility paths.
+// Legacy pointer-only liveness check retained for migration paths.
 fn bool jit_compiled_code_is_live_for_interp(void* code_ptr, Interp* interp) {
     jit_require_owner_thread("jit_compiled_code_is_live_for_interp");
     ulong interp_serial = 0;

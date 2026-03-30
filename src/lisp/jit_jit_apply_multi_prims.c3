@@ -88,9 +88,11 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
     for (usz i = 0; i < pc; i++) {
         if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
         new_env = jit_env_extend(interp, new_env, func.closure_val.params[i], curr.cons_val.car);
+        if (new_env == null) return raise_error(interp, "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, curr);
+    if (new_env == null) return raise_error(interp, "out of memory while binding argument");
     Value* result = jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_MULTI_TRACE variadic-exit body_tag=%d", (int)func.closure_val.body.tag);
@@ -134,10 +136,12 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
     Env* call_env = make_env(interp, func.closure_val.env);
+    if (call_env == null) return raise_error(interp, "out of memory while binding argument");
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
         if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
-        env_define_with_barrier(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
+        Value* bind_err = env_define_with_barrier_result(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
+        if (bind_err != null) return raise_error(interp, "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);

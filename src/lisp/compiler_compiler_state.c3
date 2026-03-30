@@ -76,6 +76,7 @@ const usz LAMBDA_CAPTURE_INITIAL = 16;
 
 struct LambdaDef {
     usz         id;              // Lambda ID
+    Expr*       expr;            // Original lambda expression node
     SymbolId    param;           // Parameter name (for single-param lambdas)
     Expr*       body;            // Body expression
     SymbolId*   captures;        // Captured variables (heap-allocated)
@@ -89,4 +90,3 @@ struct LambdaDef {
     usz         param_count;     // Number of fixed params (for variadic)
     usz         param_capacity;
 }
-

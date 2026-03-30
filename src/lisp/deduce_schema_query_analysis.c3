@@ -48,7 +48,7 @@ fn bool deduce_query_expr_try_extract_literal_value(
             if (parent_env == null) return false;
             Env* scoped_env = make_env(interp, parent_env);
             if (scoped_env == null) return false;
-            scoped_env.define(expr.let_expr.name, init_value);
+            if (!scoped_env.define(expr.let_expr.name, init_value)) return false;
 
             return deduce_query_expr_try_extract_literal_value(
                 expr.let_expr.body,
@@ -396,7 +396,7 @@ fn bool deduce_query_expr_try_extract_literal_value(
                             if (parent_env == null) return false;
                             Env* call_env = make_env(interp, parent_env);
                             if (call_env == null) return false;
-                            call_env.define(closure.params[0], call_arg);
+                            if (!call_env.define(closure.params[0], call_arg)) return false;
 
                             if (deduce_query_expr_try_extract_literal_value(
                                 closure.body,
@@ -504,7 +504,7 @@ fn bool deduce_query_expr_try_extract_row_column_ref(
             if (parent_env == null) return false;
             Env* scoped_env = make_env(interp, parent_env);
             if (scoped_env == null) return false;
-            scoped_env.define(expr.let_expr.name, init_value);
+            if (!scoped_env.define(expr.let_expr.name, init_value)) return false;
 
             return deduce_query_expr_try_extract_row_column_ref(
                 expr.let_expr.body,
@@ -649,6 +649,7 @@ fn bool deduce_query_expr_try_unwrap_preserved_row_call_chain(
             closure.body == null) break;
 
         usz row_arg_index = usz.max;
+        usz row_containing_arg_index = usz.max;
         Env* parent_env = closure.env != null ? closure.env : interp.global_env;
         if (parent_env == null) return false;
         Env* call_env = make_env(interp, parent_env);
@@ -664,7 +665,11 @@ fn bool deduce_query_expr_try_unwrap_preserved_row_call_chain(
                 continue;
             }
 
-            if (deduce_query_expr_contains_row_param(arg_expr, current_row_param)) return false;
+            if (deduce_query_expr_contains_row_param(arg_expr, current_row_param)) {
+                if (row_containing_arg_index != usz.max) return false;
+                row_containing_arg_index = i;
+                continue;
+            }
 
             Value* literal_value = null;
             if (!deduce_query_expr_try_extract_literal_value(
@@ -675,7 +680,41 @@ fn bool deduce_query_expr_try_unwrap_preserved_row_call_chain(
                     &literal_value
                 )) return false;
             if (literal_value == null) return false;
-            call_env.define(closure.params[i], literal_value);
+            if (!call_env.define(closure.params[i], literal_value)) return false;
+        }
+
+        if (row_arg_index == usz.max &&
+            row_containing_arg_index != usz.max &&
+            closure.body != null &&
+            closure.body.tag == E_VAR &&
+            closure.params != null &&
+            closure.body.var_expr.name == closure.params[row_containing_arg_index]) {
+            current_expr = current_expr.call.args[row_containing_arg_index];
+            current_env = call_env;
+            unwrapped_any = true;
+            continue;
+        }
+
+        if (closure.body != null &&
+            closure.body.tag == E_VAR &&
+            closure.params != null) {
+            usz preserved_arg_index = usz.max;
+            for (usz i = 0; i < current_expr.call.arg_count; i++) {
+                Expr* arg_expr = current_expr.call.args[i];
+                if (arg_expr == null || !deduce_query_expr_contains_row_param(arg_expr, current_row_param)) continue;
+                if (preserved_arg_index != usz.max) {
+                    preserved_arg_index = usz.max;
+                    break;
+                }
+                preserved_arg_index = i;
+            }
+            if (preserved_arg_index != usz.max &&
+                closure.body.var_expr.name == closure.params[preserved_arg_index]) {
+                current_expr = current_expr.call.args[preserved_arg_index];
+                current_env = call_env;
+                unwrapped_any = true;
+                continue;
+            }
         }
 
         if (row_arg_index == usz.max) break;

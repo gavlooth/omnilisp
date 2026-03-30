@@ -138,7 +138,9 @@ fn Value* deduce_query_collect_disjunctive_head_demands_from_expr(
             if (scoped_env == null) {
                 return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
             }
-            scoped_env.define(expr.let_expr.name, init_value);
+            if (!scoped_env.define(expr.let_expr.name, init_value)) {
+                return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+            }
 
             return deduce_query_collect_disjunctive_head_demands_from_expr(
                 rel,
@@ -422,6 +424,15 @@ fn bool deduce_query_recursive_component_requires_projected_head_demand_relaxati
     if (!plan.component_recursive[component_id]) return false;
     if (deduce_query_head_demand_bound_position_count(projected_head_demand) <= 1) return false;
 
+    if (deduce_component_head_rule_has_multiple_recursive_body_atoms(
+            db,
+            plan,
+            component_id,
+            projected_head_demand.predicate
+        )) {
+        return false;
+    }
+
     bool can_use_for_query = deduce_component_can_use_relation_head_demand_for_query(
         db,
         plan,
@@ -455,7 +466,7 @@ fn bool deduce_query_recursive_component_requires_projected_head_demand_fallback
         component_id,
         projected_head_demand
     );
-    if (!can_use_for_query) return false;
+    if (!can_use_for_query) return true;
 
     if (deduce_component_can_use_relation_head_demand_at_same_indices(
             db,
@@ -497,6 +508,15 @@ fn bool deduce_query_relax_projected_head_demand_to_recursive_preserved_position
     DeduceRuleHeadDemand* projected_head_demand
 ) {
     if (projected_head_demand == null || projected_head_demand.term_bound == null || projected_head_demand.term_count == 0) {
+        return false;
+    }
+
+    if (deduce_component_head_rule_has_multiple_recursive_body_atoms(
+            db,
+            plan,
+            component_id,
+            projected_head_demand.predicate
+        )) {
         return false;
     }
 

@@ -197,7 +197,9 @@ fn Env* boundary_env_extend_in_scope_impl(
     // Preserve the caller's source-scope context for the write barrier so
     // cross-scope env extension copies child-scope values into the target env
     // instead of storing transient wrappers by raw pointer.
-    env_define_with_barrier(extended, name, value, interp);
+    if (!env_define_with_barrier_checked(extended, name, value, interp)) {
+        return null;
+    }
     return extended;
 }
 

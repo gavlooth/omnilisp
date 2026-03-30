@@ -9,7 +9,9 @@
 ;;   map            — transform response dicts to typed structs
 
 (module feed
-  (export feed/fetch-fx feed/fetch-crypto feed/fetch-news))
+  (export feed/fetch-fx
+          feed/fetch-crypto
+          feed/fetch-news))
 
 (import "models.omni" 'all)
 (import "http.omni"   'all)
@@ -21,7 +23,7 @@
 (define (feed/safe fetch-fn)
   (try fetch-fn (lambda (msg) (Err msg))))
 
-;; Ensure a JSON number is a Double (json-parse returns Int for whole numbers).
+;; Ensure a JSON number is a Double (json-parse returns Integer for whole numbers).
 (define (feed/->double x)
   (* 1.0 x))
 

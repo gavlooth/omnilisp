@@ -102,6 +102,7 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
         if (pc == 0) {
             Value* rest_list = make_cons(interp, arg, make_nil(interp));
             new_env = jit_env_extend(interp, new_env, closure.rest_param, rest_list);
+            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
             if (zeroarg_closure_trace_enabled()) {
                 io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
@@ -113,7 +114,9 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
             Value* type_err = check_lambda_call_boundary(closure, typed_args[:1], 1, interp);
             if (type_err != null) return type_err;
             new_env = jit_env_extend(interp, new_env, closure.params[0], arg);
+            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             new_env = jit_env_extend(interp, new_env, closure.rest_param, make_nil(interp));
+            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
             if (zeroarg_closure_trace_enabled()) {
                 io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
@@ -132,6 +135,7 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
     if (type_err != null) return type_err;
     assert(closure.env != null, "jit_apply_value_closure: env is null");
     Env* new_env = jit_env_extend(interp, closure.env, closure.param, arg);
+    if (new_env == null) return raise_error(interp, "out of memory while binding argument");
     Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_CLOSURE_TRACE exit param_count=%d body_tag=%d", (int)closure.param_count, (int)closure.body.tag);
@@ -263,13 +267,16 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
                 new_env = func.closure_val.env;
                 Value* rest_list = make_cons(interp, arg, make_nil(interp));
                 new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, rest_list);
+                if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             } else if (pc == 1) {
                 Value*[1] typed_args = { arg };
                 Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
                 if (type_err != null) return type_err;
                 new_env = func.closure_val.env;
                 new_env = jit_env_extend(interp, new_env, func.closure_val.params[0], arg);
+                if (new_env == null) return raise_error(interp, "out of memory while binding argument");
                 new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, make_nil(interp));
+                if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             } else {
                 return raise_error(interp, "too few arguments for variadic lambda");
             }
@@ -283,6 +290,7 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
             Value* type_err = check_lambda_call_boundary(func.closure_val, typed_args[:1], 1, interp);
             if (type_err != null) return type_err;
             new_env = jit_env_extend(interp, func.closure_val.env, func.closure_val.param, arg);
+            if (new_env == null) return raise_error(interp, "out of memory while binding argument");
         }
         interp.jit_tco_expr = func.closure_val.body;
         interp.jit_tco_env = new_env;

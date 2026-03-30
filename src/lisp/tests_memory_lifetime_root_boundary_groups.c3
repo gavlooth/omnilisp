@@ -158,7 +158,7 @@ fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp
             (*fail)++;
             return;
         }
-        src_sig.param_types[0] = interp.tid_Int;
+        src_sig.param_types[0] = interp.tid_Integer;
         src_sig.val_literals[0].tag = NIL;
         src_sig.val_literals[0].int_value = 0;
         src_sig.val_literals[0].sym_value = 0;
@@ -188,7 +188,7 @@ fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp
                       promoted.method_table_val.entry_count == 1 &&
                       promoted.method_table_val.entries != null &&
                       promoted.method_table_val.entries[0].sig.param_count == 1 &&
-                      promoted.method_table_val.entries[0].sig.param_types[0] == interp.tid_Int &&
+                  promoted.method_table_val.entries[0].sig.param_types[0] == interp.tid_Integer &&
                       promoted.method_table_val.entries[0].implementation != null &&
                       promoted.method_table_val.entries[0].implementation.tag == INT &&
                       promoted.method_table_val.entries[0].implementation.int_val == 42 &&

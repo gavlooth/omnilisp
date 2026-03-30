@@ -37,6 +37,9 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
         "    ((? (block (push! trace 'g2) true) [_]) 99) "
         "    (_ 0)))",
         1, pass, fail);
+    test_error_contains(interp, "match guard runtime error propagates",
+        "(match 5 ((? no_such_guard) 1) (_ 0))",
+        "unbound variable", pass, fail);
     test_eq(interp, "match string hello", "(match \"hello\" (\"hello\" 1) (\"world\" 2) (x 0))", 1, pass, fail);
     test_eq(interp, "match string world", "(match \"world\" (\"hello\" 1) (\"world\" 2) (x 0))", 2, pass, fail);
     test_eq(interp, "match string default", "(match \"other\" (\"hello\" 1) (\"world\" 2) (x 0))", 0, pass, fail);
@@ -137,7 +140,7 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
     test_str_val(interp, "try catch user raise",
         "(try (lambda (xx) (signal raise \"custom error\")) (lambda (payload) (ref payload 'message)))",
         "custom error", pass, fail);
-    test_str_val(interp, "try catches legacy string raise",
+    test_str_val(interp, "try catches string raise",
         "(try (lambda (xx) (signal raise \"custom error\")) (lambda (payload) (ref payload 'message)))",
         "custom error", pass, fail);
     test_truthy(interp, "try canonical payload shape",

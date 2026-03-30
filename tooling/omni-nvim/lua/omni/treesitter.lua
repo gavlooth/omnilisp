@@ -126,7 +126,14 @@ function M.register(config)
   end
   M.ensure_queries(config)
 
-  local configs = parsers.get_parser_configs()
+  local configs = parsers
+  if type(parsers.get_parser_configs) == "function" then
+    configs = parsers.get_parser_configs()
+  end
+  if type(configs) ~= "table" then
+    return false
+  end
+
   configs.omni = {
     install_info = {
       url = repo,

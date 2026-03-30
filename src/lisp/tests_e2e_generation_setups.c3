@@ -40,7 +40,7 @@ const char[][] E2E_SETUPS = {
     `(define [abstract] Entity)`,
     `(define [struct] (User Entity) (^String name))`,
     `(define [struct] (Admin User) (^String role))`,
-    `(define [union] MaybeNum None (Some Int))`,
+    `(define [union] MaybeNum None (Some Integer))`,
     `(define [alias] UserAlias User)`,
     `(define (who (^User u)) "user")`,
     `(define (who (^Admin a)) "admin")`,

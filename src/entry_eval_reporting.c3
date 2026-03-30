@@ -21,6 +21,21 @@ fn void print_eval_usage_json() {
     io::print("}\n");
 }
 
+fn void print_eval_unexpected_arg_json(char* arg) {
+    io::print("{\"ok\":false,\"code\":");
+    print_json_escaped_string("cli/usage");
+    io::print(",\"severity\":");
+    print_json_escaped_string("error");
+    io::print(",\"message\":");
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "unexpected argument after --eval: %s", (ZString)arg)) {
+        print_json_escaped_string(msg);
+    } else {
+        print_json_escaped_string("unexpected argument after --eval");
+    }
+    io::print("}\n");
+}
+
 fn char[] eval_error_message(lisp::EvalResult result) {
     usz len = 0;
     while (len < 256 && result.error.message[len] != 0) len++;

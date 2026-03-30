@@ -63,7 +63,16 @@ fn bool Compiler.serialize_expr_specialized_core(Compiler* self, Expr* expr, Lis
             self.serialize_symbol_and_arg_form("(capture ", expr.shift.k_name, expr.shift.body, buf);
             return true;
         case E_PERFORM:
-            self.serialize_symbol_and_arg_form("(perform ", expr.perform.tag, expr.perform.arg, buf);
+            self.buf_append(buf, "(perform ");
+            if (expr.perform.has_tag_expr) {
+                self.serialize_expr_to_buf(expr.perform.tag_expr, buf);
+            } else {
+                char[] sym_name = self.interp.symbols.get_name(expr.perform.tag);
+                self.buf_append(buf, sym_name);
+            }
+            buf.push(' ');
+            self.serialize_expr_to_buf(expr.perform.arg, buf);
+            buf.push(')');
             return true;
         case E_RESOLVE:
             self.serialize_unary_expr_form("(resolve ", expr.resolve.value, buf);

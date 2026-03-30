@@ -309,9 +309,9 @@ Replace the thin `Continuation` struct in value.c3 (line 251-253) with:
 
 ```c3
 struct Continuation {
-    void* data;           // Legacy: opaque pointer to CapturedCont (replay path)
+    void* data;           // Historical: opaque pointer to CapturedCont (replay path)
     main::Fiber* fiber;   // New: fiber backing this continuation (null if replay)
-    bool is_fiber_based;  // true = use fiber, false = use legacy replay
+    bool is_fiber_based;  // true = use fiber, false = use replay path
 }
 ```
 
@@ -1098,7 +1098,7 @@ The `tests/test_with_fibers.lisp` uses `with-fibers`, `spawn`, `join`, and `chan
 ### PHASE 4: Cleanup and Remove Replay Mechanism — COMPLETE
 
 **Goal**: Remove the replay code path, simplify the Interp struct, delete unused scaffolding.
-**Status**: Complete. All legacy replay code removed. 878 unified + 77 compiler tests pass, 0 failures.
+**Status**: Complete. All replay-path code removed. 878 unified + 77 compiler tests pass, 0 failures.
 
 #### 3.4.1 Remove from `Interp` struct (value.c3)
 
@@ -1126,7 +1126,7 @@ Remove from `InterpFlags`:
 
 #### 3.4.3 Simplify `CapturedCont`
 
-Either delete entirely (if all continuations are fiber-based) or reduce to a minimal struct for backward compatibility.
+Either delete entirely (if all continuations are fiber-based) or reduce to a minimal struct if still required.
 
 #### 3.4.4 Delete or gut unused files
 

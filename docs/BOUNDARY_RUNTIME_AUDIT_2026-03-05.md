@@ -53,6 +53,6 @@ The track is considered closed when all are true:
 2. Boundary surface audit reports zero violations.
 3. Normal + ASAN + ASAN+fiber-temp full suites stay green.
 4. Repeated ASAN+fiber-temp soak runs are green (no leak regressions).
-5. No new direct legacy boundary callsites appear outside policy-allowed modules.
+5. No new direct boundary callsites appear outside policy-allowed modules.
 
 Result (2026-03-05): all closure criteria are satisfied.

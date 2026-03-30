@@ -4,7 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/c3c_limits.sh
 
-: "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" == "1" ]]; then
+  : "${OMNI_HARD_MEM_CAP_METHOD:=none}"
+else
+  : "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+fi
 : "${OMNI_DEDUCE_PERF_BUILD:=1}"
 : "${OMNI_DEDUCE_PERF_LOG:=build/deduce_perf_envelope.log}"
 : "${OMNI_DEDUCE_PERF_QUIET:=1}"

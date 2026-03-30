@@ -24,6 +24,9 @@ fn void Compiler.free(Compiler* self) {
     self.output.free();
     self.current_captures.free();
     self.defined_globals.free();
+    foreach (&def : self.lambda_defs) {
+        self.free_lambda_def(def);
+    }
     self.lambda_defs.free();
     self.mutable_captures.free();
     self.declared_vars.free();
@@ -59,4 +62,3 @@ fn void Compiler.mark_declared(Compiler* self, SymbolId sym) {
         self.declared_vars.push(sym);
     }
 }
-

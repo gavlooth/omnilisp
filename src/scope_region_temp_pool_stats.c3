@@ -43,6 +43,11 @@ const usz FIBER_TEMP_CTX_POOL_MAX = 64;
 const usz FIBER_TEMP_ELIGIBLE_MAX_ALLOC = 4096;
 FiberTempPoolStats g_fiber_temp_pool_stats;
 
+fn bool scope_test_quiet_requested() @inline {
+    return scope_c_getenv("OMNI_TEST_QUIET") != null ||
+        (scope_c_getenv("OMNI_TEST_SUMMARY") != null && scope_c_getenv("OMNI_TEST_VERBOSE") == null);
+}
+
 fn bool scope_fiber_temp_flag_enabled() @inline {
     return scope_c_getenv("OMNI_FIBER_TEMP") != null;
 }
@@ -85,6 +90,7 @@ fn usz scope_dtor_count(ScopeDtor* dtor) @inline {
 }
 
 fn void scope_print_memory_stats() {
+    if (scope_test_quiet_requested()) return;
     io::printn("=== Scope Transfer Stats ===");
     io::printfn("scope_splice_escapes calls: %d", (long)g_scope_transfer_stats.splice_calls);
     io::printfn("scope_splice escape bytes moved: %d", (long)g_scope_transfer_stats.splice_escape_chunk_bytes);

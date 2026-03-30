@@ -89,6 +89,13 @@ fn void scope_dtor_closure(void* ptr) {
     }
 }
 
+fn bool closure_env_scope_is_root_owned(Value* v, Interp* interp) @inline {
+    if (v == null || interp == null || v.tag != CLOSURE || v.closure_val == null) return false;
+    if (v.closure_val.env_scope == null || interp.root_scope == null) return false;
+    if (v.closure_val.env_scope != interp.root_scope || v.closure_val.env == null) return false;
+    return boundary_ptr_in_scope((void*)v.closure_val.env, interp.root_scope);
+}
+
 fn void scope_dtor_env(void* ptr) {
     Env* env = (Env*)ptr;
     if (!env.is_inline && env.bindings != null) {
@@ -182,8 +189,16 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
          (interp.escape_env_mode && cdr.tag == NIL))) {
         Value* v = interp.alloc_value_escape();
         v.tag = CONS;
-        v.cons_val.car = boundary_promote_to_escape(car, interp);
-        v.cons_val.cdr = boundary_promote_to_escape(cdr, interp);
+        // Reusing an existing current-scope ESCAPE tail is safe and avoids
+        // rewalking the full accumulator spine on every cons in TCO loops.
+        v.cons_val.car =
+            car != null && car.scope_gen == interp.current_scope.escape_generation
+            ? car
+            : boundary_promote_to_escape(car, interp);
+        v.cons_val.cdr =
+            cdr != null && cdr.scope_gen == interp.current_scope.escape_generation
+            ? cdr
+            : boundary_promote_to_escape(cdr, interp);
         return v;
     }
 

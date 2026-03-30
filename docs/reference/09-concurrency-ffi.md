@@ -47,7 +47,7 @@ Target split:
 ```lisp
 (define a (spawn (lambda () (+ 1 2))))
 (define b (spawn (lambda () (* 3 4))))
-(run-fibers)          ;; => (Void)
+(run-fibers)          ;; => #<void>
 (list (await a) (await b))
 ;; => (3 12)
 ```
@@ -83,8 +83,8 @@ Concurrency crossings are intentionally narrow:
 - completion returns should pass through scheduler boundary helpers before becoming
   local `Value*` again.
 
-`SharedBlob` is a legacy byte transport object retained only for migration
-history. Production concurrency boundaries use `SharedHandle(kind=BLOB)` for
+`SharedBlob` is a historical byte transport object from earlier notes.
+Production concurrency boundaries use `SharedHandle(kind=BLOB)` for
 byte-sharing payload transport.
 
 `offload` and the current `task-spawn` surface are CPU-bound/public pooled
@@ -146,13 +146,12 @@ All concurrency primitives go through effects and can be intercepted.
 | `^Double` | `double`, `float` | double |
 | `^String` | `char*` | pointer |
 | `^Pointer` | `void*` | pointer |
-| `^Ptr` | `void*` | pointer (compatibility shorthand) |
 | `^Boolean` | `int` (0/1) | sint64 |
 | `^Void` | `void` | maps the C return to the runtime `Void` singleton value |
 | (none) | `void` return | use `^Void` when binding a function that returns C `void` |
 
-Use `^Pointer` in new bindings; `^Ptr` is retained for compatibility.
-`^Int` and `^Bool` are not accepted shorthand aliases in new surface text; use
+Use `^Pointer` in new bindings.
+`^Integer` and `^Boolean` are not accepted shorthand aliases in new surface text; use
 canonical integer/boolean annotations (`^Integer`, `^Boolean`) instead.
 
 ### Features
@@ -200,7 +199,7 @@ Data-driven validation where schemas are plain Omni data.
 | `(= v)` | Exact value | `'(= 42)` |
 | `(> n)` / `(< n)` | Comparison | `'(> 0)` |
 | `(re pat)` | Regex match | `'(re "[a-z]+")` |
-| `(map ...)` | Dict schema | `'(map (name string))` |
+| `(map ...)` | Dictionary schema | `'(map (name string))` |
 | `(vector-of s)` | Array schema | `'(vector-of int)` |
 | `(tuple s1 s2)` | Fixed array | `'(tuple string int)` |
 | `(enum v1 v2)` | One of values | `'(enum "a" "b")` |

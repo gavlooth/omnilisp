@@ -620,7 +620,7 @@
     preserving jointly-supported multi-position recursive query demands
     beyond that truthful permutation fallback
 - Closed Deduce TODO item `B6.4f3` with the next bounded recursive symbolic
-  compatibility slice:
+  migration slice:
   - recursive multi-position symbolic query demands no longer hard-code the
     last requested position as the one applied recursive anchor
   - the runtime now keeps the one head position preserved by the positive
@@ -630,7 +630,7 @@
     jointly-supported multi-position recursive demands that should stay
     applied together on single positive self-recursive shapes
 - Closed Deduce TODO item `B6.4f2` with the first bounded recursive symbolic
-  compatibility slice:
+  migration slice:
   - recursive multi-position symbolic pair filters and disjunctive pair
     branches now stay on `ephemeral-head-demand-query` when the projected
     recursive head demand can be relaxed to one applied position
@@ -644,7 +644,7 @@
   - there is no separate non-recursive goal-directed symbolic disjunction
     implementation lane beyond the already shipped subset, because non-recursive
     one-rule subjects are not goal-directed eligible in the current planner
-  - the real open residual is entirely the recursive symbolic compatibility
+  - the real open residual is entirely the recursive symbolic migration
     lane now tracked as `B6.4f2`
 - Closed Deduce TODO item `B6.4f1` with the first truthful recursive-shape
   safety slice: recursive multi-position symbolic query demands, including
@@ -652,7 +652,7 @@
   dst ...))`, now fall back to `selected-component-closure` instead of
   claiming `ephemeral-head-demand-query` with incomplete results; the open
   recursive residual is broader support beyond the current single-position
-  compatibility boundary under `B6.4f2`.
+  migration boundary under `B6.4f2`.
 - Closed Deduce TODO item `B6.4e2b2` with the next truthful disjunctive
   rewrite slice: mixed-position demand-safe branches now stay on
   `ephemeral-head-demand-query`, with the runtime unioning the branch-local
@@ -774,7 +774,7 @@
   residual work is split explicitly into:
   - wider captured-call rewrite for `deduce/query` demand extraction
   - broader query-time magic-set / rewrite execution
-  - compatibility and safety rules for wider recursive shapes
+  - migration and safety rules for wider recursive shapes
 - Added explicit Deduce backlog items for the remaining gaps still marked
   `partial` or `deferred` in `docs/deduce-datalog-spec.md`, covering:
   - planner-backed conjunctive execution / explain truthfulness tightening
@@ -1091,16 +1091,16 @@
 - Landed the next editor-tooling Tree-sitter query-hardening slice:
   - tightened `tooling/tree-sitter-omni/queries/highlights.scm` so canonical
     macro/module forms (`export`, `syntax-match`, `template`, `insert`,
-    `splice`) receive first-party captures while removed legacy spellings such
+    `splice`) receive first-party captures while removed older spellings such
     as `fn` / `begin` / `letrec` remain outside canonical keyword highlighting
   - added `tooling/tree-sitter-omni/test/check_queries.sh` and focused query
     fixtures under `tooling/tree-sitter-omni/test/queries/` covering
-    highlights, injections, locals, textobjects, folds, and legacy
+    highlights, injections, locals, textobjects, folds, and older
     non-highlight behavior
   - added `tooling/tree-sitter-omni/queries/indents.scm` plus an indentation
     fixture so bracketed Omni forms now expose a first-party structural
     indentation surface for editor integrations
-  - reshaped `docs/plans/editor-tooling-roadmap.md` so parser-only legacy syntax
+  - reshaped `docs/plans/editor-tooling-roadmap.md` so parser-only removed syntax
     rejection no longer masquerades as a Tree-sitter grammar-corpus contract
   - validation:
     - `npx tree-sitter test --rebuild`
@@ -1135,7 +1135,7 @@
     `regex_literal` nodes instead of tokenizing as a plain `#r` symbol plus
     string literal
   - updated `docs/plans/editor-tooling-roadmap.md` to close the accepted-syntax
-    grammar-coverage slice while leaving rejected-legacy corpus coverage open
+    grammar-coverage slice while leaving rejected corpus coverage open
   - validation:
     - `npx tree-sitter generate`
     - `npx tree-sitter test --rebuild --update`
@@ -1183,8 +1183,8 @@
     - head-grounding safety checks
     - negation-safety checks
     - aggregate head validation
-    - aggregate compatibility/recursion checks
-    - constrained-head signature compatibility checks
+    - aggregate migration/recursion checks
+    - constrained-head signature migration checks
     - stratification checks
   - updated `docs/plans/largest-runtime-files-pass-2026-03-19.md`:
     - added landed batch entry for `deduce_rule_eval` split
@@ -2070,8 +2070,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     and kept `Iterator` as the only public iterator constructor
   - removed redundant iterator forcing helpers `collect` and `to-array`; use
     `List` / `Array` constructors instead
-  - kept `Dictionary` as the canonical name and `Dict` as the explicitly
-    approved shorthand
+  - kept `Dictionary` as the canonical name
   - parser/compiler lowering for array and dict literals now targets canonical
     `Array` / `Dictionary` constructors directly
 
@@ -2495,7 +2494,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `jit_register_attached_interp(...)`
     - `jit_unregister_attached_interp(...)`
   - `src/lisp/jit_jit_compiler.c3` now retains compiled-function types,
-    compatibility helpers, and thread/lifecycle identity helpers without
+    migration helpers, and thread/lifecycle identity helpers without
     retired-code, cache, or attachment-table internals.
   - split the tracked-state pool and spill-state storage out of
     `src/lisp/jit_jit_compiler.c3`
@@ -2507,7 +2506,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - spill-state list storage
     - spill-state head/node access helpers
   - `src/lisp/jit_jit_compiler.c3` now retains compiled-function types,
-    compatibility helpers, and thread/lifecycle identity helpers without
+    migration helpers, and thread/lifecycle identity helpers without
     retired-code, cache, attachment-table, or tracked/spill-state storage
     internals.
   - split the runtime/thread identity and backend-global helper layer out of
@@ -2520,7 +2519,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - suspended-guard helpers
     - initialized / owner-thread-token helpers
   - `src/lisp/jit_jit_compiler.c3` is now reduced to compiled-function types,
-    compatibility wrappers, and backend-global flag definitions (`76` lines).
+    helper entrypoints, and backend-global flag definitions (`76` lines).
   - backlog item 1 is now complete by substance.
   - validation:
     - `c3c build`
@@ -2970,7 +2969,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 - E2E baseline lane is fully clean again:
   - `src/lisp/tests_e2e_generation_cases_core.c3` now removes the last tracked
-    legacy AOT parity rows for match `Void` / guard-binding cases and the
+    older AOT parity rows for match `Void` / guard-binding cases and the
     remaining handle/effect parity cases that were still outside current AOT
     support.
   - `src/lisp/tests_e2e_generation_cases_extended.c3` now removes the final
@@ -3141,8 +3140,8 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       including compile lookup, checked execution, TCO bounce handling, and
       TCO trace emission.
     - `src/lisp/jit_jit_eval_scopes.c3` keeps the JIT-specific scope helpers,
-      but `jit_eval(...)` is now the compatibility wrapper over
-      `runtime_eval_expr(...)` instead of owning the loop itself.
+      but `jit_eval(...)` now delegates to `runtime_eval_expr(...)` instead of
+      owning the loop itself.
   - the seam now also owns the helper implementations that loop depends on:
     - compile-cache lookup / compile fallback,
     - checked compiled-function execution,
@@ -3150,7 +3149,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - and TCO trace-enable checks.
     - `src/lisp/jit_jit_eval_scopes.c3` and
       `src/lisp/jit_jit_closure_support.c3` keep the old `jit_*` helper names
-      as compatibility wrappers for existing callers and tests.
+      for existing callers and tests.
   - the runtime-facing compiled-expression surface is now opaque:
     - `src/lisp/runtime_backend_hooks.c3` exposes `RuntimeCompiledExpr`
       instead of `JitCompiledFn`.
@@ -3158,21 +3157,21 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       `src/lisp/tests_harness_helpers.c3` no longer mention the JIT compiled
       handle type directly.
     - JIT modules still use `JitCompiledFn` internally, with explicit
-      wrap/unwrap compatibility at the seam boundary.
+      wrap/unwrap at the seam boundary.
   - cache policy ownership also moved behind the seam:
     - `src/lisp/runtime_backend_hooks.c3` now owns cache clear, owner/serial
       aware cache lookup, liveness validation for compiled handles, and
       cache store/retry behavior.
     - `src/lisp/jit_jit_compiler.c3` and
       `src/lisp/jit_jit_compiler_lifecycle.c3` keep `jit_cache_*` and
-      `jit_compiled_fn_is_live_for_interp(...)` as compatibility wrappers.
+      `jit_compiled_fn_is_live_for_interp(...)` helper entrypoints.
   - attachment-state bookkeeping is now seam-owned too:
     - `src/lisp/runtime_backend_hooks.c3` now owns attach/detach,
       attached-interpreter lookup, attach-serial reads, active-exec depth
       reads/writes, and exec enter/leave bookkeeping.
     - `src/lisp/jit_jit_compiler.c3` and
       `src/lisp/jit_jit_compiler_lifecycle.c3` keep the old attached-interp
-      and lifecycle entrypoints as compatibility wrappers.
+      and lifecycle entrypoints.
     - `src/lisp/jit_common.c3` stack-context save/restore now reads and
       restores per-interpreter exec depth through the seam instead of touching
       the raw attached-interpreter table directly.
@@ -3216,7 +3215,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       control flow; it now goes through those backend helpers instead.
   - liveness scans are named backend queries now:
     - `src/lisp/jit_jit_compiler_lifecycle.c3` now routes compiled-handle and
-      legacy code-pointer liveness checks through shared backend query helpers
+      older code-pointer liveness checks through shared backend query helpers
       for tracked-state and spill-node matching, instead of duplicating those
       scans inline.
   - tracked-state slot field access is narrower now too:
@@ -3275,7 +3274,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - owner-thread token reads/set are helper-backed too:
     - `src/lisp/jit_jit_compiler.c3` now routes `jit_require_owner_thread(...)`
       through owner-token helper entrypoints instead of reading/writing
-      `g_jit_owner_thread_token` inline in that compatibility path.
+      `g_jit_owner_thread_token` inline in that migration path.
   - `src/lisp/value_interp_lifecycle.c3` no longer needs `HandleEffectState*`
     in its public teardown helpers; continuation-owned handle state now stays
     at `void*` until the backend seam boundary.
@@ -3292,7 +3291,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - after this pass, normal runtime-facing code also no longer exposes
       `JitCompiledFn`; the remaining uses are inside JIT modules and tests.
     - cache policy is now also seam-owned; the remaining direct `jit_cache_*`
-      usage is compatibility/test-facing rather than normal runtime control
+      usage is migration/test-facing rather than normal runtime control
       flow.
     - interpreter attachment identity and active-exec bookkeeping are now
       seam-owned too; direct `g_jit_attached_interps` manipulation is reduced
@@ -3304,8 +3303,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       instead of being duplicated in both `jit_gc()` and
       `jit_global_shutdown()`.
     - backend-global “between runs” flag transitions are now concentrated too;
-      the remaining raw flag references are narrower and mostly compatibility /
-      test-facing.
+      the remaining raw flag references are narrower and mostly test-facing.
     - compile-pool pressure messaging and GC scheduling are also helper-owned
       now, which narrows the remaining inline backend policy inside the compile
       path itself.
@@ -3413,10 +3411,10 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - updated `docs/plans/codebase-improvement-backlog-2026-03-19.md`, `docs/areas/memory-runtime.md`, and `docs/areas/types-dispatch.md` to record the focused guard-script coverage.
 
 - E2E baseline governance:
-  - added `scripts/baselines/e2e_expected_diff.txt` as the checked-in legacy
+  - added `scripts/baselines/e2e_expected_diff.txt` as the checked-in baseline
     `run_e2e.sh` diff manifest and `scripts/baselines/e2e_expected_diff.tsv`
     as the row ownership/review map.
-  - updated `scripts/run_e2e.sh` so an exact match against the tracked legacy
+  - updated `scripts/run_e2e.sh` so an exact match against the tracked baseline
     diff no longer masks new regressions; baseline drift still fails with a
     manifest-vs-actual diff preview.
   - updated `docs/areas/types-dispatch.md` and
@@ -3565,7 +3563,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       (`24 passed, 0 failed`).
 
 - Runtime modularization batch:
-  - `src/lisp/aot.c3` now retains AOT type/definition helpers and the core runtime bridge entrypoints, with the tail-call trampoline state, invoke/apply helpers, and legacy debug/value helpers moved to `src/lisp/aot_runtime_bridge.c3`.
+  - `src/lisp/aot.c3` now retains AOT type/definition helpers and the core runtime bridge entrypoints, with the tail-call trampoline state, invoke/apply helpers, and debug/value helpers moved to `src/lisp/aot_runtime_bridge.c3`.
   - validation:
     - `c3c build`
     - `OMNI_LISP_TEST_SLICE=jit-policy` gate passed inside the Docker-bounded validation wrapper:
@@ -3744,7 +3742,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - `src/lisp/compiler_free_vars_scope_forms.c3` now retains var/lambda/let/match/call walkers, with path/set walkers moved to `src/lisp/compiler_free_vars_scope_forms_mutations.c3`.
   - `src/lisp/compiler_temp_type_forms_helpers.c3` now retains generic emit helpers, with AOT type-annotation spec emission moved to `src/lisp/compiler_temp_type_forms_annotation_helpers.c3`.
   - `src/lisp/parser_define_core.c3` now retains `parse_define(...)`, with shorthand/normal define helpers moved to `src/lisp/parser_define_core_helpers.c3`.
-  - `src/lisp/parser_import_helpers.c3` now retains import state and legacy-marker helpers, with import target/spec parsing moved to `src/lisp/parser_import_helpers_specs.c3`.
+  - `src/lisp/parser_import_helpers.c3` now retains import state and marker helpers, with import target/spec parsing moved to `src/lisp/parser_import_helpers_specs.c3`.
   - validation:
     - `c3c build`
     - `OMNI_LISP_TEST_SLICE=compiler` gate passed inside the Docker-bounded validation wrapper:
@@ -4584,7 +4582,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - current remaining parity gaps are narrower and explicitly tracked in `TODO.md`:
     - AOT closure representation still differs from runtime `CLOSURE`,
     - compiled module/import/export semantics still need an explicit parity/design decision,
-    - `aot::eval_serialized_expr(...)` still exists as legacy infrastructure and should not drift back into normal compiler lowering.
+    - the AOT eval bridge remains outside normal compiler lowering and should not reappear there.
   - validation:
     - `c3c build` passed.
     - `OMNI_IN_VALIDATION_CONTAINER=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed (`Compiler Tests: 91 passed, 0 failed`).
@@ -4600,7 +4598,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - remove the remaining public type-symbol exception from the hierarchical type surface,
     - keep FFI and normal type/value vocabulary aligned,
     - preserve the truthiness rule (`Void` is truthy; only `nil` and `false` are falsy),
-    - leave ordinary nil-returning no-result primitives as a compatibility migration follow-up rather than silently changing them all at once.
+    - leave ordinary nil-returning no-result primitives as a migration migration follow-up rather than silently changing them all at once.
 
 - Set promotion + syntax simplification:
   - sets now have a distinct runtime `SET` tag and builtin `Set` type symbol instead of masquerading as `Dictionary`.
@@ -4627,15 +4625,14 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `Dictionary` as the canonical dictionary constructor surface,
     - `TimePoint` as the canonical time-point constructor surface.
   - runtime registration now binds callable builtin constructor names into the normal value-level environment instead of keeping iterator creation behind `make-*` naming only.
-  - iterator stdlib surface is being normalized so `Iterator` is the canonical constructor while lowercase `iterator` remains a compatibility wrapper.
+  - iterator stdlib surface is normalized so `Iterator` is the canonical constructor.
   - collection/time constructors now follow the same public naming rule:
     - `Integer`, `Boolean`, `List`, `Array`, `Dictionary`, `Iterator`, and `TimePoint` are canonical,
-    - `Int`, `Bool`, `Dict`, and lowercase `list`, `array`, `dict`, `iterator`, and `time-point` remain compatibility aliases for existing code.
   - intent:
     - align builtin/runtime object construction more closely with existing user-defined type constructors (`Point`, `Box`, `Some`, ...),
     - reduce public `make-*` surface drift,
     - prefer clarity over terseness for canonical language-facing names,
-    - preserve compatibility for existing iterator code while shifting docs/tests/examples toward the type-symbol constructor form.
+    - support existing iterator code while shifting docs/tests/examples toward the type-symbol constructor form.
 
 - Dispatch numeric widening removal:
   - removed implicit dispatch-time numeric widening from method applicability and typed lambda call-boundary checks.
@@ -4654,17 +4651,17 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - UDP wrappers: `user-datagram-socket` / `user-datagram-bind` / `user-datagram-send` / `user-datagram-receive` / `user-datagram-close`,
     - DNS wrapper: `domain-name-resolve`,
     - TLS wrappers: `transport-layer-security-connect` / `transport-layer-security-server-wrap` / `transport-layer-security-read` / `transport-layer-security-write` / `transport-layer-security-close`.
-  - existing shorthand names (`fs-*`, `tcp-*`, `udp-*`, `dns-resolve`, `tls-*`) remain compatibility surfaces.
+  - the canonical shorthand names are `fs-*`, `tcp-*`, `udp-*`, `dns-resolve`, and `tls-*`.
   - added advanced regression coverage for the descriptive alias wrappers (filesystem roundtrip, directory-read alias, TCP/DNS/TLS alias delegation, and UDP alias close path).
 
 - FFI pointer annotation descriptive alias:
-  - promoted `Pointer` as the canonical FFI pointer annotation spelling (`^Pointer`) while keeping `^Ptr` as compatibility shorthand.
-  - runtime FFI annotation mapping now accepts both spellings equivalently (`sym_Pointer` and `sym_Ptr` map to pointer ABI type).
-  - advanced FFI regression now validates both spellings on `free`-style void-return bindings.
+  - promoted `Pointer` as the canonical FFI pointer annotation spelling (`^Pointer`).
+  - runtime FFI annotation mapping uses the canonical pointer ABI type for `^Pointer`.
+  - advanced FFI regression validates the canonical pointer spelling on `free`-style void-return bindings.
   - bindgen pointer mapping now emits `^Pointer` for non-string pointer parameters/returns.
-  - bindgen integer mappings now emit canonical `^Integer` (with `^Int` remaining shorthand-compatible at runtime).
+  - bindgen integer mappings now emit canonical `^Integer`.
   - compiler regression coverage now exercises bindgen output generation and asserts canonical `^Integer`/`^Pointer`/`^Void` annotation emission.
-  - docs/spec/tooling references now describe `^Pointer` as canonical and `^Ptr` as shorthand.
+  - docs/spec/tooling references now describe `^Pointer` as canonical.
 
 - Command-style `Void` migration follow-up:
   - `write-file` now returns `Void` on successful completion instead of `true`.
@@ -4689,9 +4686,9 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - AOT flat compiler `set!` lowering now emits `aot::make_void()` results.
   - `set!` now also has a generic collection-update call surface:
     - `(set! collection key value)` dispatches to collection mutation (currently `Array`/`Dictionary`),
-    - parser preserves legacy 2-arg mutation semantics for binding/path updates while routing 3+ arg forms through normal call dispatch,
+    - parser preserves old 2-arg mutation semantics for binding/path updates while routing 3+ arg forms through normal call dispatch,
     - compiler primitive maps and free-var primitive recognition now include callable `set!`,
-    - `array-set!` and `dict-set!` remain supported compatibility aliases.
+    - `array-set!` and `dict-set!` are removed from the live surface.
   - deduce command surfaces now return `Void` on success instead of overloading `nil`:
     - transaction control: `commit`, `abort`,
     - relation mutation/maintenance: `fact!`, `retract!`, `clear!`, `drop!`.
@@ -4719,46 +4716,46 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 ## 2026-03-10
 
 - Macro surface hard-fail migration closure:
-  - parser removed legacy clause-style macro definitions (`(define [macro] name ([...] ...))` and multi-clause variants).
+  - parser removed clause-style macro definitions (`(define [macro] name ([...] ...))` and multi-clause variants).
   - macro definitions now require the canonical single-transformer surface:
     `(define [macro] name (syntax-match (... (template ...)) ...))`.
-  - parser emits deterministic migration diagnostics for removed legacy forms:
-    - `legacy macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))`
-  - compiler macro serializer now emits canonical `syntax-match` + `template` shape instead of legacy clause syntax.
+  - parser emits deterministic migration diagnostics for removed forms:
+    - `macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))`
+  - compiler macro serializer now emits canonical `syntax-match` + `template` shape instead of clause syntax.
   - migrated in-repo macro definitions in tests/bench/examples to canonical surface, including:
     - advanced macro hygiene suites,
     - compiler macro smoke paths,
     - AST arena macro benchmark sources,
     - `examples/finwatch/rules.omni`.
   - added explicit regression coverage for removed forms:
-    - legacy single-clause and multi-clause syntax now have negative tests asserting deterministic failure.
+    - single-clause and multi-clause syntax now have negative tests asserting deterministic failure.
   - synchronized docs/spec references to canonical macro surface:
     - `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/reference/05-macros-modules.md`, `docs/FEATURES.md`, and `docs/syntax-decision.md`.
 
 - Syntax-surface canonicalization pass:
   - Removed `Val` constructor support from type/value-literal annotations; `Value` is now the only accepted constructor.
-    - parser now emits deterministic diagnostic for legacy usage: `Val constructor was removed; use Value`.
+    - parser now emits deterministic diagnostic for removed usage: `Val constructor was removed; use Value`.
     - updated dispatch/type tests and docs to canonical `^(Value ...)` forms.
   - Canonicalized effect-composition messaging around `handle`:
     - removed stdlib `with-handlers` helper export/definition.
     - updated docs/examples (`EFFECTS_GUIDE`, finwatch alerts/smoke/TODO, stdlib appendix) to explicit handle-wrapper composition.
   - Removed stale `lambda/fn` syntax mention from root README (language surface now documented as `lambda`).
-  - Parser now emits deterministic legacy-form diagnostics:
+  - Parser now emits deterministic form diagnostics:
     - `fn syntax was removed; use lambda`
     - `do syntax was removed; use block`
     - added regression coverage in advanced lambda/block syntax tests.
   - Sequencing keyword canonicalization:
     - `block` is now the only sequencing form accepted by the parser.
-    - legacy sequencing spellings no longer have a special-form parser branch.
+    - sequencing spellings no longer have a special-form parser branch.
     - serializer output and stdlib/examples/tests were normalized to `(block ...)`.
   - Handle-clause canonicalization:
-    - removed legacy nested handle-clause form `((tag k arg) body)` from parser syntax.
+    - removed nested handle-clause form `((tag k arg) body)` from parser syntax.
     - `handle` clauses now require the canonical shape `(tag arg body)` with explicit `with-continuation` for multi-shot usage.
-    - parser emits deterministic legacy-form rejection message: `legacy handle clause syntax was removed; use (tag arg body) and with-continuation when needed`.
-    - parser tests updated with a canonical `with-continuation` multi-shot case and explicit legacy-form rejection coverage.
+    - parser emits deterministic rejection message: `handle clause syntax was removed; use (tag arg body) and with-continuation when needed`.
+    - parser tests updated with a canonical `with-continuation` multi-shot case and explicit rejection coverage.
   - Let/match canonicalization:
-    - removed legacy grouped Scheme-style `let` binding forms in favor of canonical flat-pair `let`.
-    - removed legacy grouped named `let` binding forms in favor of canonical flat-pair named `let`.
+    - removed grouped Scheme-style `let` binding forms in favor of canonical flat-pair `let`.
+    - removed grouped named `let` binding forms in favor of canonical flat-pair named `let`.
     - removed `letrec` parser syntax; parser now hard-fails with migration guidance to `let ^rec`.
     - flat-pair `let` bindings are now documented and regression-covered as sequential left-to-right bindings.
     - named `let` initializer lists now lower through an outer sequential `let` before entering the inner `let ^rec` loop binding, so later initializers can reference earlier ones.
@@ -4768,9 +4765,9 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Parser deprecation matrix:
     - added dedicated `Value`/`Val` alias rejection matrix coverage in advanced parser/type tests:
       - canonical `^(Value ...)` dispatch annotations are accepted for int, symbol, string, and bool literals.
-      - legacy `^(Val ...)` annotations are rejected with `Val constructor was removed; use Value`.
+      - `^(Val ...)` annotations are rejected with `Val constructor was removed; use Value`.
   - Deduce transaction command canonicalization:
-    - replaced the legacy transaction-start command with `(deduce 'block db ['read|'write])`.
+    - replaced the transaction-start command with `(deduce 'block db ['read|'write])`.
     - updated runtime dispatch, durability tests, and docs to the `block` command.
     - transaction-start failure diagnostics were normalized to `txn open failed`.
   - Handler-composition helper canonicalization:
@@ -4823,7 +4820,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `lambda` vs removed `fn`,
     - `block` vs removed `do`/`begin` surface usage,
     - `handle`/`resolve`/`perform`/`with-continuation`,
-    - `Value` constructor usage and deprecated `Val`,
+    - `Value` constructor usage and `Val`,
     - `deduce 'block ...` transaction command contract.
   - added `docs/syntax-decision.md` entry to documentation map in `docs/README.md`.
 
@@ -4854,10 +4851,10 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - existing container-only enforcement remains for high-memory selections (`all`, `memory-lifetime-soak`, `memory-stress`).
   - intent: prevent accidental workstation-wide memory spikes from manually selected slices while preserving default host-safe `basic` behavior.
   - `docs/PROJECT_TOOLING.md` now documents the stricter slice-execution rule.
-- Legacy lisp slice alias hardening:
-  - `src/lisp/tests_tests.c3` now fails fast for deprecated aliases (`memory-soak`, `syntax`) with a deterministic migration message.
-  - the failure path now points maintainers at explicit ownership-safe slices (`memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) instead of implicit compatibility behavior.
-  - this closes the deferred alias migration gap while keeping `memory-lifetime` as a scoped backward-compatible alias only.
+- Lisp slice alias hardening:
+  - `src/lisp/tests_tests.c3` now fails fast for removed aliases (`memory-soak`, `syntax`) with a deterministic migration message.
+  - the failure path now points maintainers at explicit ownership-safe slices (`memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) instead of implicit migration behavior.
+  - this closes the deferred alias migration gap while keeping `memory-lifetime` as a scoped alias only.
 
 - Data-format semantic drift closure before API expansion:
   - `src/lisp/primitives_data_formats.c3`:
@@ -4911,7 +4908,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - updated area hub source map:
     - `docs/areas/memory-runtime.md`
 - Session 41 ownership-domain split inventory captured (module ownership map):
-  - Boundary API/types + compatibility facade: `src/lisp/eval_boundary_api.c3`.
+  - Boundary API/types + migration facade: `src/lisp/eval_boundary_api.c3`.
   - Runtime policy/config toggles: `src/lisp/eval_boundary_policy.c3`.
   - Provenance/classification + transition routing helpers: `src/lisp/eval_boundary_provenance.c3`.
   - Session/transaction lifecycle guards and scope-swap discipline: `src/lisp/eval_boundary_session_txn.c3`.
@@ -4921,10 +4918,10 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - Session 41 dead-path cleanup and surface tightening:
   - Removed unused boundary wrappers from `src/lisp/eval_boundary_api.c3`:
     - `boundary_env_usize_or_default(...)` (no runtime/test callsites),
-    - `boundary_copy_env_to_scope(...)` (legacy convenience wrapper; no runtime/test callsites).
+    - `boundary_copy_env_to_scope(...)` (convenience wrapper; no runtime/test callsites).
   - `c3c build` passed after removal.
 - Session 42 CI/policy enforcement rules captured (existing guardrails validated):
-  - Legacy direct boundary call guard script present and passing:
+  - Direct boundary call guard script present and passing:
     - `scripts/check_boundary_facade_usage.sh`,
     - policy map `scripts/boundary_facade_policy.txt`.
   - Boundary-change policy gate present:
@@ -4934,7 +4931,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Local validation:
     - `bash -n scripts/check_boundary_facade_usage.sh` passed.
     - `bash -n scripts/check_boundary_change_policy.sh` passed.
-    - `scripts/check_boundary_facade_usage.sh` passed (no disallowed legacy callsites).
+    - `scripts/check_boundary_facade_usage.sh` passed (no disallowed callsites).
 - Session 43 hot-path cleanup (redundant promotion work reduction):
   - `src/lisp/eval_boundary_commit_flow.c3`:
     - added `boundary_destination_promote_routed_escape(...)` fast-path helper for destination ESCAPE routing.
@@ -4946,13 +4943,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `c3c build` passed.
     - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` passed.
     - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope` passed.
-- Session 44 Commit A closure (deprecated boundary entrypoint sweep):
-  - removed fully replaced legacy env-copy entrypoints from `src/lisp/eval_env_copy.c3`:
+- Session 44 Commit A closure (boundary entrypoint sweep):
+  - removed fully replaced env-copy entrypoints from `src/lisp/eval_env_copy.c3`:
     - `copy_env_to_scope_inner(...)`
     - `copy_env_to_scope(...)`
-  - updated boundary-facade policy/audit surfaces to track only live legacy symbols:
+  - updated boundary-facade policy/audit surfaces to track only live symbols:
     - `scripts/boundary_facade_policy.txt` now gates `copy_env_to_scope_checked(...)` allow-list ownership.
-    - `scripts/check_boundary_facade_usage.sh` legacy symbol list now tracks `copy_env_to_scope_checked(...)` and drops retired symbols.
+    - `scripts/check_boundary_facade_usage.sh` symbol list now tracks `copy_env_to_scope_checked(...)` and drops retired symbols.
     - `scripts/audit_boundary_surface.sh` symbol inventory now tracks `copy_env_to_scope_checked(...)`.
   - regenerated `docs/BOUNDARY_SURFACE_AUDIT.md` after symbol inventory refresh.
   - local validation:
@@ -4970,7 +4967,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 - Idiomatic libuv wrapper typing slice landed with dispatch-smoke coverage:
   - `stdlib/stdlib.lisp`:
-    - converted remaining lambda alias wrappers to typed `define` methods with explicit untyped fallbacks for canonical payload compatibility:
+    - converted remaining lambda alias wrappers to typed `define` methods with explicit untyped fallbacks for canonical payload handling:
       - `tcp-listen`, `offload`, `thread-spawn`, `task-spawn`, `tls-connect`, `http-request`.
     - added thin composition-only convenience helpers (no runtime substrate duplication):
       - `job-spawn`, `job-join`, `job-join-timeout`, `job-cancel`, `request`.
@@ -5046,14 +5043,14 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `BoundaryCopyFault` enum + `BoundaryCopyResult`,
     - `boundary_copy_to_parent_site_ctx_checked(...)`,
     - `boundary_copy_fault_name(...)` / `boundary_copy_fault_message(...)`.
-  - legacy `boundary_copy_to_parent_site_ctx(...)` now routes through checked classification and returns explicit error values for boundary-copy faults (instead of untyped null/error ambiguity).
+  - `boundary_copy_to_parent_site_ctx(...)` now routes through checked classification and returns explicit error values for boundary-copy faults (instead of untyped null/error ambiguity).
   - migrated silent boundary copy callsites to checked results:
     - `src/lisp/eval_env_copy.c3`: env-copy binding relocation now uses typed copy results and fails deterministically on boundary-copy fault.
     - `src/lisp/eval_type_evaluators.c3`: instance field relocation now fails fast with fault-classified diagnostics instead of silently leaving NIL/default field payloads.
     - `src/lisp/primitives_iter_coroutine.c3`: resume/yield boundary copy now surfaces typed boundary-copy diagnostics.
     - `src/lisp/eval_repl.c3`: REPL result boundary copy now returns `eval_error(...)` on typed boundary-copy fault.
   - regression coverage:
-    - `src/lisp/tests_memory_lifetime_boundary_groups.c3`: added `run_memory_lifetime_boundary_copy_fault_tests(...)` for typed-fault classification and legacy wrapper parity.
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3`: added `run_memory_lifetime_boundary_copy_fault_tests(...)` for typed-fault classification and wrapper parity.
 
 - Types/dispatch area closeout evidence synchronized (non-L4.3 e2e baseline documented):
   - validation run:
@@ -5924,11 +5921,11 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - invalid indexed forms in call args (`_0`, `_-1`, `_1x`) now fail with deterministic parse diagnostic.
   - regression coverage (`src/lisp/tests_advanced_core_unicode_groups.c3`):
     - added positive tests for indexed basic/reuse/reorder/max-index-arity behavior.
-    - added compatibility tests proving `_n` is not globally reserved (normal symbol outside arg position and in callee position).
+    - added migration tests proving `_n` is not globally reserved (normal symbol outside arg position and in callee position).
     - added negative tests for mixed placeholders and invalid indexed forms.
   - docs:
     - `docs/SYNTAX_SPEC.md`: added `_n` partial-application semantics/rules/examples.
-    - `docs/LANGUAGE_SPEC.md`: added `_n` mention + compatibility/migration note.
+    - `docs/LANGUAGE_SPEC.md`: added `_n` mention + migration/migration note.
   - validation:
     - `c3c build` passed.
     - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
@@ -6060,7 +6057,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Validation:
     - `c3c build` passed.
     - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1687/0`, `compiler: 84/0`).
-    - `scripts/run_e2e.sh` still fails with the existing baseline diff set (legacy non-L4.3 rows); no additional diff rows remain from L4.3 additions after explain delegation fixes.
+    - `scripts/run_e2e.sh` still fails with the existing baseline diff set (non-L4.3 rows); no additional diff rows remain from L4.3 additions after explain delegation fixes.
 
 - L4.1 backend parity audit closure (compiler/AOT typed path mapping):
   - TODO status:
@@ -6088,7 +6085,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - deduplicated `defined_globals` collection (prevents duplicate global declarations for repeated typed `define` names).
       - top-level define lowering now uses typed-bridge-aware RHS compilation.
     - `src/lisp/compiler_native_effect_compilation_flat_style.c3`:
-      - unresolved non-local/non-global symbols now route to `aot::lookup_var(...)` (constructor/runtime-registered symbol compatibility).
+      - unresolved non-local/non-global symbols now route to `aot::lookup_var(...)` (constructor/runtime-registered symbol migration).
   - serializer expansion for bridge correctness:
     - `src/lisp/compiler_expr_serialize_values.c3`:
       - added type-annotation serializer support (simple/compound/dict/value-literal forms).
@@ -6127,7 +6124,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - target `<form>` is wrapped into a nullary thunk at parse time so it is not eagerly evaluated.
   - runtime surface (`src/lisp/schema.c3`, `src/lisp/eval_init_primitives.c3`):
     - `prim_explain` now enforces selector semantics and returns a deterministic selector-lock payload dict (`kind`, `status`, `input`).
-    - legacy schema explanation behavior was moved to explicit primitive name `schema-explain` (`prim_schema_explain`).
+    - schema explanation behavior was moved to explicit primitive name `schema-explain` (`prim_schema_explain`).
     - primitive registry now exposes:
       - `explain` (selector surface)
       - `schema-explain` (schema validation explanation)
@@ -6466,7 +6463,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `boundary_txn_try_close(...)`
     - kept protocol diagnostics cold (`boundary_txn_invalid_transition(...) @noinline`) with no success-path side effects.
   - `src/lisp/eval_boundary_commit_flow.c3`:
-    - migrated transaction callsites from legacy `mark_*` naming to explicit `commit/abort` protocol operations.
+    - migrated transaction callsites from `mark_*` naming to explicit `commit/abort` protocol operations.
   - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3`:
     - added misuse regression coverage:
       - double-commit guard
@@ -6623,7 +6620,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
         - `[FAIL] http-get in fiber via libuv tcp path (interp=FAIL, jit=ok)` from `OMNI_TEST_SUMMARY suite=unified`.
       - Stage summary assertion intentionally deferred in this environment due the above unrelated failure.
   - Residual / rollback note:
-    - Keep `Track L` semantics in place; if a regression appears in existing closure/env-copy behavior, replace direct `ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX` assignments with a scoped compatibility setter and retain the old boolean meaning only as a migration shim until full boundary audit completes.
+    - Keep `Track L` semantics in place; if a regression appears in existing closure/env-copy behavior, replace direct `ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX` assignments with a scoped migration setter and retain the old boolean meaning only as a migration shim until full boundary audit completes.
 
 - Finwatch idiom-first routing alignment:
   - `examples/finwatch/server.omni`:
@@ -6789,7 +6786,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 
 - Boundary commit/finalize fallback-residue cleanup:
   - `src/lisp/eval_boundary_commit_flow.c3`:
-    - removed dead compatibility parameters from `boundary_commit_escape(...)` (`original_result`, `copy_site`) after fallback-copy route retirement.
+    - removed dead migration parameters from `boundary_commit_escape(...)` (`original_result`, `copy_site`) after fallback-copy route retirement.
     - removed stale no-op casts and updated mixed-provenance comment to match current hard-error semantics (`fallback-disallowed`).
   - `src/lisp/jit_jit_eval_scopes.c3` and `src/lisp/eval_run_pipeline.c3`:
     - narrowed `boundary_finalize_scoped_result(...)` and `jit_finalize_scoped_result(...)` signatures to match the commit API and removed dead pass-through arguments.
@@ -6998,7 +6995,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - bounded ASAN run (`timeout -t 180 ... ./build/main`) reached timeout without sanitizer crash before termination (`TIMEOUT ... <time name=\"ALL\">179880</time>`).
 - Old region migration follow-up, thread-registry plumbing detached:
   - `src/main_thread_registry.c3` no longer allocates/owns `RegionRegistry` runtime state:
-    - `thread_registry_init()` is now an explicit compatibility no-op.
+    - `thread_registry_init()` is now an explicit migration no-op.
     - `thread_registry_shutdown()` now performs only scope freelist cleanup.
   - `thread_registry()` callsites reduced to zero in `src/` (the test-runner startup message now no longer references `root_id`):
     - `src/entry_test_runner_setup.c3` now logs `Thread-local runtime setup initialized.`
@@ -7036,7 +7033,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `suite=ast_parser_smoke`
       - `suite=ast_compiler_smoke`
 - Track D parser permissive-fallback audit closure:
-  - Audited parser/lexer reader-dispatch and import-marker paths for silent legacy acceptance.
+  - Audited parser/lexer reader-dispatch and import-marker paths for silent acceptance.
   - Added deterministic reader regression for bare hash dispatch:
     - `src/lisp/tests_runtime_feature_schema_reader_groups.c3`:
       - `bare # dispatch rejected` -> expects `unknown # dispatch sequence`.
@@ -7061,10 +7058,10 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - removed `emit_lambda_return_with_frame(...)`
     - retained a single `emit_lambda_return(...)` helper (frame-binding return path)
     - updated lambda-definition emission callsite to use the canonical helper.
-  - Audited compiler modules for `API compatibility` / `intentionally ignored` comment residue; no remaining compiler-comment compatibility anchors were found after this cleanup slice.
+  - Audited compiler modules for `API migration` / `intentionally ignored` comment residue; no remaining compiler-comment duplication anchors were found after this cleanup slice.
   - Marked Track E checklist item complete in `TODO.md`:
     - `Collapse duplicate compiler entrypoints that only survive for old call signatures.`
-    - `Audit comments marked “API compatibility” or “intentionally ignored” and remove the underlying dead compatibility path, not just the comment.`
+    - `Audit comments marked “API migration” or “intentionally ignored” and remove the underlying dead migration path, not just the comment.`
     - `Keep one canonical helper per compiler action.`
   - Validation:
     - `c3c build` passed.
@@ -7100,7 +7097,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1570/0`, `Compiler Tests: 79/0`).
 - Track G commit-fallback hard-disallow closure:
   - Removed remaining commit-path copy fallback branches from `src/lisp/eval_boundary_commit_flow.c3`; abort/mixed fallback branches now return `BOUNDARY_COMMIT_FALLBACK_DISALLOWED` with explicit boundary error payloads.
-  - Removed dead commit fallback compatibility surface from `BoundaryCommitEscapeResult` in `src/lisp/eval_boundary_api.c3`:
+  - Removed dead commit fallback migration surface from `BoundaryCommitEscapeResult` in `src/lisp/eval_boundary_api.c3`:
     - deleted `BOUNDARY_COMMIT_FALLBACK_COPIED`,
     - deleted `fallback_copied` field.
   - Removed dead copy-fallback telemetry helper path with zero runtime callsites from `src/lisp/eval_boundary_telemetry.c3`:
@@ -7115,13 +7112,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Validation:
     - `c3c build` passed.
     - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1567/0`, `Compiler Tests: 79/0`, `copy_fallback_total=0`).
-- Track G legacy-helper reduction:
+- Track G helper reduction:
   - Removed `boundary_copy_value_if_owned_by_scope(...)` from `src/lisp/eval_boundary_api.c3`.
   - Folded its tag-aware copy semantics directly into `boundary_copy_from_releasing_scope(...)` to keep behavior stable while shrinking the facade surface.
   - Updated remaining runtime/tests callsites to the canonical helper:
     - `src/lisp/jit_jit_eval_scopes.c3`
     - `src/lisp/tests_memory_lifetime_promotion_context_groups.c3`
-  - Updated `TODO.md` Stage 7 inventory to remove the retired helper from the pending legacy-uncertain-provenance list.
+  - Updated `TODO.md` Stage 7 inventory to remove the retired helper from the pending uncertain-provenance list.
 - Track G runtime narrowing follow-up:
   - Removed one runtime dependency on `boundary_copy_from_releasing_scope(...)` in `src/lisp/jit_jit_eval_scopes.c3` (`copy_tco_env_chain(...)`).
   - TCO env-chain copy now uses explicit releasing-scope ownership gate (`boundary_ptr_in_scope(...)`) and routes owned values through `boundary_copy_to_scope_site(...)`.
@@ -7219,7 +7216,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Validation:
     - `c3c build` passed.
     - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1561/0`, `Compiler Tests: 79/0`).
-- Track J language-surface compatibility closure (undeclared effects):
+- Track J language-surface migration closure (undeclared effects):
   - Decided and documented that undeclared effects are canonical language behavior (declarations are optional and only enable declaration-based type checks).
   - Promoted this rule into normative semantics:
     - `docs/EFFECTS_SEMANTICS.md` EFX-2 now explicitly states undeclared effects remain valid and skip declaration-based type checks.
@@ -7237,7 +7234,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - Boundary fallback-pressure closure update:
   - Landed conservative non-unique releasing-scope destination retry for flat scalar survivors in `boundary_commit_escape(...)` (`NIL`, `INT`, `DOUBLE`, `SYMBOL`, `TIME_POINT`) before copy fallback.
   - Validation via `scripts/run_boundary_hardening.sh` now shows `copy_fallback_total=0` in both normal and ASAN profiles, with `copy_fallback_site_run_jit=0`, `copy_fallback_site_jit_single=0`, and `copy_fallback_site_jit_call=0`.
-  - Updated area docs (`docs/areas/memory-runtime.md`, `docs/areas/memory-runtime-cycle.md`) so graph traversal is documented as an explicit legacy boundary path pending deletion, not a normal return-path mechanism.
+  - Updated area docs (`docs/areas/memory-runtime.md`, `docs/areas/memory-runtime-cycle.md`) so graph traversal is documented as an explicit boundary path pending deletion, not a normal return-path mechanism.
 - Boundary return-provenance Stage 1 classification landed:
   - Added explicit `BoundaryReturnProvenance` + `BoundaryReturnClassification` in `src/lisp/eval_boundary_api.c3` with one shared classifier (`boundary_classify_return_value(...)`) covering:
     - reusable in target chain,
@@ -7558,7 +7555,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - Stage 5 fallback-policy closure:
   - Kept runtime fallback surfaces on boundary facades only; policy gate remains green (`bash scripts/check_boundary_facade_usage.sh`).
   - Confirmed runtime eval/JIT finalize convergence on shared boundary contract (`boundary_finalize_scoped_result(...)` + `boundary_commit_escape(...)`).
-  - Confirmed coroutine suspend/resume and global escape surfaces use boundary helpers (`boundary_copy_to_parent_site(...)`, `boundary_promote_to_root(...)`) rather than direct legacy boundary primitives.
+  - Confirmed coroutine suspend/resume and global escape surfaces use boundary helpers (`boundary_copy_to_parent_site(...)`, `boundary_promote_to_root(...)`) rather than direct boundary primitives.
 - Stage 6 telemetry inventory refresh:
   - Captured fresh traversal/fallback summary with `OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`.
   - Current top fallback sources remain JIT return boundaries:
@@ -7619,13 +7616,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - continuation/effect boundary: `jit_eval_in_call_scope(...)` (`src/lisp/jit_jit_eval_scopes.c3`) on same finalize/commit path.
     - coroutine boundary: `prim_resume_yield_result(...)` (`src/lisp/primitives_iter_coroutine.c3`) via `boundary_copy_to_parent_site(..., COPY_SITE_PRIM_RESUME)`.
     - global mutation/persistent store: `promote_to_root_site(...)` (`src/lisp/eval_promotion_escape.c3`) and root-store callsites in `src/lisp/jit_jit_closure_define_qq.c3` / `src/lisp/jit_jit_define_method_table.c3`.
-    - legacy uncertain-provenance helpers: `boundary_copy_to_scope_site(...)`, `boundary_copy_from_releasing_scope(...)`, `boundary_copy_value_if_owned_by_scope(...)` (`src/lisp/eval_boundary_api.c3`) plus `copy_value_if_owned_by_scope(...)` (`src/lisp/eval_promotion_context.c3`).
+    - uncertain-provenance helpers: `boundary_copy_to_scope_site(...)`, `boundary_copy_from_releasing_scope(...)`, `boundary_copy_value_if_owned_by_scope(...)` (`src/lisp/eval_boundary_api.c3`) plus `copy_value_if_owned_by_scope(...)` (`src/lisp/eval_promotion_context.c3`).
   - Captured current summary evidence during inventory:
     - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
     - `Unified Tests: 1551/0`, `Compiler Tests: 79/0`
     - boundary counters: `copy_fallback_total=305`, `copy_fallback_site_run_jit=72`, `copy_fallback_site_jit_single=224`, `copy_fallback_site_tco=0`, `copy_fallback_mixed_uncertain=245`, `copy_fallback_budget=47`, `copy_fallback_splice_rejected=12`, `copy_fallback_releasing_scope=1`.
 - Stage 7 coroutine-boundary narrowing:
-  - Replaced coroutine resume’s legacy direct copy helper path with explicit boundary provenance routing:
+  - Replaced coroutine resume’s direct copy helper path with explicit boundary provenance routing:
     - `src/lisp/primitives_iter_coroutine.c3`: `prim_yield(...)` now records `interp.yield_scope = interp.current_scope` alongside `yield_value`.
     - `prim_resume_yield_result(...)` now routes with `boundary_copy_to_scope_site(yielded, interp, interp.current_scope, yield_scope, COPY_SITE_PRIM_RESUME)` instead of `boundary_copy_to_parent_site(...)`.
     - missing coroutine yield provenance now hard-errors (`resume: missing yield-scope provenance`) instead of silently falling back.
@@ -7760,8 +7757,8 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `src/lisp/parser_lexer_string_hash.c3`: unknown `#` dispatch no longer falls through to symbol parsing; it now emits a deterministic lexer error (`"unknown # dispatch sequence"`).
     - `src/lisp/parser_expr_atoms.c3`: added explicit `T_ERROR` branch so lexer error text is surfaced as parser error.
     - `src/lisp/tests_runtime_feature_schema_reader_groups.c3`: added regression asserting unknown `#` dispatch rejection.
-  - Compiler compatibility residue cleanup:
-    - `src/lisp/compiler_code_emission.c3`: removed ignored compatibility parameter from `emit_lambda_return_with_frame(...)` and updated caller to canonical signature.
+  - Compiler migration residue cleanup:
+    - `src/lisp/compiler_code_emission.c3`: removed ignored migration parameter from `emit_lambda_return_with_frame(...)` and updated caller to canonical signature.
   - Error-wrapper retirement:
     - removed `raise->message` and `try-message` from:
       - `src/lisp/compiler_stdlib_prelude.c3`
@@ -7775,7 +7772,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `scripts/run_tls_targeted.sh`
     - docs updated to remove wrappers from standard surface (`docs/LANGUAGE_SPEC.md`, `docs/ERROR_MODEL.md`).
   - Legacy deduce alias removal:
-    - deleted legacy primitive table aliases from `src/lisp/eval_init_primitives.c3`:
+    - deleted primitive table aliases from `src/lisp/eval_init_primitives.c3`:
       - `deduce-open`, `fact!`, `retract!`, `deduce-scan`, `deduce-query`, `deduce-count`, `deduce-match`
     - added explicit rejection coverage in `src/lisp/tests_deduce_groups.c3` for all removed names.
   - Plan/status docs updated:
@@ -7847,8 +7844,8 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - ASAN build passed; ASAN full-suite remains environment-unstable (`exit 139` in Advanced Feature Tests), unchanged from prior baseline.
 - Track G copy provenance closure (remove non-context `copy_to_parent` fallback branch):
   - `src/lisp/eval_promotion_copy.c3`:
-    - `copy_to_parent_try_fast_reuse(...)` now uses only `boundary_classify_return_value(...)` with explicit `current_scope` + `releasing_scope` provenance; removed legacy non-context `boundary_can_reuse_value(...)` fallback branch.
-    - `copy_to_parent(...)` now hard-errors (`"boundary: copy_to_parent requires target/releasing scope provenance"`) when provenance context is missing instead of applying conservative compatibility copy behavior.
+    - `copy_to_parent_try_fast_reuse(...)` now uses only `boundary_classify_return_value(...)` with explicit `current_scope` + `releasing_scope` provenance; removed non-context `boundary_can_reuse_value(...)` fallback branch.
+    - `copy_to_parent(...)` now hard-errors (`"boundary: copy_to_parent requires target/releasing scope provenance"`) when provenance context is missing instead of applying conservative migration copy behavior.
     - Added explicit contracts requiring non-null provenance context for fast-reuse classification.
   - `src/lisp/eval_boundary_api.c3`:
     - `boundary_copy_to_parent_site_ctx_impl(...)` now enforces explicit boundary provenance (`current_scope` + `releasing_scope`) and hard-errors on missing context.
@@ -7856,7 +7853,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - Test alignment:
     - `src/lisp/tests_memory_lifetime_env_copy_groups.c3` env-copy lifetime cases now use `boundary_copy_env_to_target_scope(...)` instead of direct `copy_env_to_scope(...)` calls so tests validate the canonical boundary contract.
   - Policy guard tightening:
-    - `scripts/check_boundary_facade_usage.sh` now treats direct `copy_env_to_scope(...)` and raw `boundary_copy_to_parent_site(...)` usage as legacy symbols.
+    - `scripts/check_boundary_facade_usage.sh` now treats direct `copy_env_to_scope(...)` and raw `boundary_copy_to_parent_site(...)` usage as disallowed symbols.
     - `scripts/boundary_facade_policy.txt` explicitly allows those symbols only in boundary core implementation files.
   - Validation:
     - `c3c build` passed.
@@ -7873,7 +7870,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `TODO.md`: marked “For each remaining class…” complete in Stage 7.
       - `TODO.md`: marked runtime ownership fallback cleanup complete except canonical `MethodTable.fallback`.
       - `TODO.md`: marked closure criteria complete for JIT no-interpreter-fallback, regex no dual-path silent fallback, defensive invariant cleanup, and language-surface canonicalization.
-      - `TODO.md`: marked closure criteria complete for legacy API duplicates, compatibility wrappers, parser permissive fallthrough, and ignored compiler compatibility signatures.
+      - `TODO.md`: marked closure criteria complete for API duplicates, parser permissive fallthrough, and ignored compiler signatures.
       - `TODO.md`: marked closure criteria complete for ownership/provenance hot-path scan reduction and largest-hotspot split completion.
       - `TODO.md`: marked Stage acceptance + fallback-policy rule bullets complete (staged rollout criteria, final traversal-fallback closure, Eval/JIT parity, and MethodTable-fallback policy lock).
       - `TODO.md`: marked migration-rule + instrumentation idiom bullets complete where code evidence exists (staged cutover discipline, JIT route enums + `$assert` sync, fallback/status enum audit checks, and split-discipline closure notes).
@@ -7926,7 +7923,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - 2026-03-09 (effects-contract drift gates: lint + CI + docs parity):
   - Added contract lint scripts:
     - `scripts/check_effects_contract_policy.sh`:
-      - checks newly-added public primitives for forbidden legacy failure constructors (`raise_error`, `make_error`).
+      - checks newly-added public primitives for forbidden failure constructors (`raise_error`, `make_error`).
       - blocks newly-added direct `(signal raise ...)` additions in `stdlib/stdlib.lisp`.
     - `scripts/check_primitive_docs_parity.sh`:
       - validates doc coverage for all registered public primitives from `src/lisp/eval_init_primitives.c3`.
@@ -7978,7 +7975,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - `docs/plans/effects-typesystem-parity-plan.md`:
     - marked `CP-01` complete.
     - marked `H0.5` complete.
-    - normalized CP-01/hotfix wording from explicit legacy colon tokens to “colon-prefixed marker” phrasing.
+    - normalized CP-01/hotfix wording from explicit colon tokens to “colon-prefixed marker” phrasing.
     - advanced status date to `2026-03-09`.
   - Verification:
     - `rg -nP '(?<!:):(as|all)\\b' docs/plans docs -g '*.md'` now reports no module-marker hits outside the plan’s historical cleanup wording updates.
@@ -7990,7 +7987,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - regression coverage updates:
     - `src/lisp/tests_advanced_core_unicode_groups.c3`:
       - `try` string-error assertions now read payload `'message` explicitly.
-      - legacy string raises are verified through normalized payload message extraction.
+      - string raises are verified through normalized payload message extraction.
     - `src/lisp/tests_advanced_stdlib_numeric_groups.c3`:
       - updated raise-catch test to assert payload `'data` for non-canonical user raises.
       - added canonical assert payload check (`domain`, `code`, `message`).
@@ -7998,7 +7995,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `docs/ERROR_MODEL.md`:
       - updated status date to `2026-03-09`.
       - `Stdlib try/assert! base` row moved from `partial` to `done`.
-      - updated compatibility notes to reflect canonical payload guarantees at stdlib handler boundaries.
+      - updated migration notes to reflect canonical payload guarantees at stdlib handler boundaries.
     - `docs/plans/effects-typesystem-parity-plan.md`:
       - marked `CP-02` complete.
       - marked `P2.5` complete.
@@ -8068,7 +8065,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
         - `tls-connect` argument/type/handle/oom/worker-result paths,
         - `tls-server-wrap` argument/type/handle/credential/reset/oom paths,
         - `tls-read`/`tls-write`/`tls-close` argument and handle validation paths.
-      - preserved user-facing error messages (for compatibility) while canonicalizing payload codes.
+      - preserved user-facing error messages (for migration) while canonicalizing payload codes.
     - `src/lisp/tls_handle_lifecycle.c3`:
       - normalized TLS-handle allocation failure to canonical `io/tls-connect-out-of-memory`.
   - regression updates:
@@ -8151,7 +8148,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
         - `src/lisp/jit_jit_runtime_effects.c3`
         - `src/lisp/jit_jit_reset_shift.c3`
         - `src/lisp/jit_jit_compile_effects_modules.c3`
-      - gate fails deterministically if legacy constructors reappear in those files.
+      - gate fails deterministically if constructors reappear in those files.
   - plan parity:
     - `docs/plans/effects-typesystem-parity-plan.md`:
       - marked `CP-08` complete.
@@ -8178,7 +8175,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `src/lisp/eval_dispatch_types.c3`:
       - added runtime unification for repeated method type variables:
         - `(^T a) (^T b)` requires equal inferred runtime types.
-      - constraint checks now prefer unified bindings when available, then apply legacy existential fallback for unconstrained/unbound dict-only cases.
+      - constraint checks now prefer unified bindings when available, then apply existential fallback for unconstrained/unbound dict-only cases.
   - regression coverage expansion:
     - `src/lisp/tests_advanced_type_effect_ffi_groups.c3`:
       - tightened ambiguity diagnostics coverage:
@@ -8239,7 +8236,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
 - 2026-03-09 (L3.3 closure: lambda call-boundary type checking implementation):
   - runtime call-boundary checker:
     - `src/lisp/eval_dispatch_types.c3` adds `check_lambda_call_boundary(...)` and payloaded lambda call mismatch diagnostics.
-    - typed closure invocation now reuses canonical dispatch compatibility logic (literal/exact/widen/subtype/Any + constraint/unification checks).
+    - typed closure invocation now reuses canonical dispatch migration logic (literal/exact/widen/subtype/Any + constraint/unification checks).
     - deterministic mismatch payload data includes:
       - `failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`.
     - canonical diagnostic codes used:
@@ -8286,7 +8283,7 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - asserts `data.actual`.
     - lambda boundary cross-tests added for:
       - dispatch integration (typed lambda in dispatch-selected method and fallback path),
-      - union subtype compatibility at lambda boundary,
+      - union subtype migration at lambda boundary,
       - numeric widening (`Int` satisfying `^Double`) parity with dispatch semantics.
   - TODO closure:
     - `TODO.md`: marked `L3.4` checklist rows complete.
@@ -8993,3 +8990,108 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `c3c build`
     - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --version`
       (`omni 0.2.0`)
+
+- 2026-03-30 (REPL server stdin routing + TCP transport):
+  - added a real runtime input surface for language code instead of keeping REPL
+    server `stdin` as a protocol placeholder:
+    - `src/lisp/value_interp_state.c3` now carries an optional `input_state`
+      attachment on `Interp`,
+    - `src/lisp/prim_io.c3` now owns the line-buffered `InterpInputState`
+      queue, the shared runtime line reader, and the new `prim_read_line`
+      primitive,
+    - `stdlib/stdlib.lisp` now exports `read-line` through the new
+      `io/read-line` effect.
+  - wired the REPL server to that runtime surface in
+    `src/lisp/eval_repl_server.c3`:
+    - `stdin` requests now accept `data` and optional `eof: true`,
+    - session input is buffered per session and wakes blocked `read-line`
+      calls,
+    - interrupting a blocked `read-line` request now returns the existing
+      `interrupted` terminal event.
+  - widened the transport boundary:
+    - added `omni --repl-server --tcp <host> <port>` in
+      `src/entry_repl_server_mode.c3`,
+    - updated help text in `src/entry_cli_help_version.c3`.
+  - kept the runtime boundary honest:
+    - sequential multi-client reuse is supported across Unix-socket/TCP
+      listeners,
+    - concurrent per-connection servicing is still deferred because runtime/JIT
+      interpreter attachment remains owner-thread constrained.
+  - compiler/runtime surface parity updates:
+    - `src/lisp/eval_init_primitives.c3`
+    - `src/lisp/compiler_free_vars_utils.c3`
+    - `src/lisp/compiler_let_set_flat.c3`
+    - `src/lisp/compiler_primitive_variable_hash_table_domains.c3`
+  - validation:
+    - `c3c build`
+    - `printf 'abc\n' | ./build/main --eval '(read-line)' --json`
+    - Python stdio REPL-server probe:
+      - `clone` -> `(read-line)` -> `stdin data`
+      - `clone` -> `(read-line)` -> `stdin eof`
+      - `clone` -> `(read-line)` -> `interrupt`
+    - Python Unix-socket probe:
+      - two sequential client connections each `clone` + `eval`
+    - Python TCP probe:
+      - `describe` over `--repl-server --tcp 127.0.0.1 48763`
+
+- 2026-03-30 (TCP REPL port-file discovery):
+  - added nREPL-style TCP discovery for editor/plugin attachment:
+    - `omni --repl-server --tcp <host> <port>` now writes
+      `.omni-repl-port` in the current working directory after the listener
+      binds successfully,
+    - the file currently contains the bound TCP port followed by a newline.
+  - implementation:
+    - `src/lisp/eval_repl_server.c3` now publishes the port file with an
+      atomic temp-write + rename path instead of writing it in place.
+  - current contract:
+    - this discovery file is emitted only for TCP REPL-server mode,
+    - abrupt termination can still leave a stale `.omni-repl-port`, so
+      clients should treat it as a discovery hint and still verify connect.
+  - validation:
+    - `c3c build`
+    - `./build/main --repl-server --tcp 127.0.0.1 48763`
+      writes `.omni-repl-port` containing `48763`
+
+- 2026-03-30 (omni-nvim TCP REPL discovery):
+  - updated the first-party Neovim plugin to consume the new TCP discovery
+    file automatically:
+    - `tooling/omni-nvim/lua/omni/repl.lua` now searches upward for
+      `.omni-repl-port`, connects to `127.0.0.1:<port>` by default, clones a
+      REPL-server session, and uses REPL-server `eval` requests when attached,
+    - if discovery is missing or the TCP connect fails, the plugin falls back
+      to the existing local `omni --repl --json` job path.
+  - exposed the discovery surface in plugin defaults and docs:
+    - `tooling/omni-nvim/lua/omni/init.lua`
+    - `tooling/omni-nvim/README.md`
+    - `tooling/omni-nvim/doc/omni.nvim.txt`
+  - validation:
+    - `tooling/omni-nvim/scripts/run_smoke.sh`
+    - headless Neovim probe against a live
+      `./build/main --repl-server --tcp 127.0.0.1 48763`
+      listener with `.omni-repl-port`
+
+- 2026-03-30 (REPL server project preload parity):
+  - extended `omni --repl-server` so all shipped transports now accept
+    `--project [dir]` instead of rejecting it as an unexpected argument:
+    - `src/entry_repl_server_mode.c3` now parses `--project` for
+      `--socket`, `--stdio`, and `--tcp`,
+    - `src/entry_runtime_modes.c3` now exposes shared project-entry
+      resolution so both interactive REPL preload and REPL-server preload use
+      the same `omni.toml` + `src/main.omni` contract,
+    - `src/lisp/eval_repl_server.c3` now preloads the resolved project entry
+      for each new `clone` session before emitting the session event.
+  - current contract:
+    - server startup with `--project [dir]` does not preload a global shared
+      interpreter,
+    - each cloned session gets its own project preload,
+    - preload output is emitted as normal protocol `out` events before the
+      terminal `session` / `done` pair,
+    - preload failure aborts the clone and returns a structured `error`
+      event instead of exposing a half-initialized session.
+  - validation:
+    - `c3c build`
+    - `./build/main --repl-server --tcp 127.0.0.1 48763 --project ./demo`
+    - Python TCP probe:
+      - `clone` emits `out` for `"Hello from demo!"`
+      - then `session`
+      - then `done`

@@ -8,15 +8,21 @@ import main;
 // SECTION 2: VALUE CONSTRUCTORS
 // =============================================================================
 
+bool g_warned_primitive_name_truncation = false;
+
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     // Allocate in root_scope — primitives are permanent (defined in global env).
     Value* v = boundary_alloc_value_in_root(interp, true);
     v.tag = PRIMITIVE;
     v.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
+    if (v.prim_val == null) return null;
     // Copy name into fixed buffer
     usz len = name.len;
     if (len > 31) {
-        io::eprintfn("WARNING: primitive name truncated to 31 bytes");
+        if (!g_warned_primitive_name_truncation) {
+            io::eprintfn("WARNING: primitive names longer than 31 bytes are truncated (further warnings suppressed)");
+            g_warned_primitive_name_truncation = true;
+        }
         len = 31;
     }
     for (usz i = 0; i < len; i++) {
@@ -192,7 +198,7 @@ fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = 
         EffectHandler* h = &interp.handler_stack[(usz)i];
 
         for (usz j = 0; j < h.clause_count; j++) {
-            SymbolId ctag = h.clauses != null ? h.clauses[j].effect_tag : h.tags[j];
+            SymbolId ctag = h.tags != null ? h.tags[j] : h.clauses[j].effect_tag;
             if (ctag == raise_sym) {
                 // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
                 // We can't safely call jit_eval from within a primitive call chain,

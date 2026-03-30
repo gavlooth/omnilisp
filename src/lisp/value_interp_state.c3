@@ -1,6 +1,8 @@
 module lisp;
 
 import std::collections::list;
+import std::thread;
+import std::atomic::types;
 import main;
 
 // =============================================================================
@@ -14,9 +16,21 @@ import main;
  * InterpFlags — Packed boolean state flags for the interpreter.
  */
 bitstruct InterpFlags : ushort {
-    bool jit_enabled      : 0;  // true after init, enables JIT-first execution
-    bool jit_tco_bounce   : 1;  // True = return sentinel, jit_eval loop continues
-    bool raise_pending    : 2;  // raise_error found handler, pending dispatch
+    bool jit_enabled           : 0;  // true after init, enables JIT-first execution
+    bool jit_tco_bounce        : 1;  // True = return sentinel, jit_eval loop continues
+    bool raise_pending         : 2;  // raise_error found handler, pending dispatch
+    bool console_to_stderr     : 3;  // reserve stdout for structured transports
+}
+
+struct InterpInputState {
+    thread::Mutex mu;
+    thread::ConditionVariable cv;
+    bool mu_ready;
+    bool cv_ready;
+    char* buf;
+    usz len;
+    usz cap;
+    bool closed;
 }
 
 /**
@@ -32,6 +46,17 @@ struct Interp {
     // Scope-region allocation (Values, Envs, closures)
     main::ScopeRegion* root_scope;       // Permanent scope for defines (lives forever)
     main::ScopeRegion* current_scope;    // Current scope (changes at let/lambda/loop)
+
+    // Structured REPL server output capture buffer. When active, console
+    // primitives append here instead of writing raw process stdio.
+    bool console_capture_active;
+    char* console_capture_buf;
+    usz console_capture_len;
+    usz console_capture_cap;
+    // Optional structured input source used by the REPL server stdin routing.
+    // When null, input primitives read directly from process stdin.
+    InterpInputState* input_state;
+    types::Atomic{int}* interrupt_flag;
 
     // Pre-interned common symbols
     SymbolId sym_lambda;
@@ -73,23 +98,19 @@ struct Interp {
     SymbolId sym_ffi;       // "ffi" for [ffi ...] annotation
     SymbolId sym_lib;       // "lib" for [ffi lib]
     SymbolId sym_Pointer;   // "Pointer" canonical FFI pointer annotation type
-    SymbolId sym_Ptr;       // "Ptr" compatibility alias for ^Pointer
     SymbolId sym_Void;      // "Void" for ^Void type and runtime Void value/type
 
     // Built-in type name symbols
     SymbolId sym_Integer;
-    SymbolId sym_Int;
     SymbolId sym_Double;
     SymbolId sym_String;
     SymbolId sym_Symbol;
     SymbolId sym_List;
     SymbolId sym_Boolean;
-    SymbolId sym_Bool;
     SymbolId sym_Nil;
     SymbolId sym_Closure;
     SymbolId sym_Array;
     SymbolId sym_Dictionary;
-    SymbolId sym_Dict;
     SymbolId sym_Set;
     SymbolId sym_Any;
     SymbolId sym_Value;
@@ -119,19 +140,16 @@ struct Interp {
 
     // Cached TypeIds for built-in types (avoid repeated hash lookups)
     TypeId tid_Integer;
-    TypeId tid_Int;
     TypeId tid_Double;
     TypeId tid_String;
     TypeId tid_Symbol;
     TypeId tid_List;
     TypeId tid_Boolean;
-    TypeId tid_Bool;
     TypeId tid_Nil;
     TypeId tid_Void;
     TypeId tid_Closure;
     TypeId tid_Array;
     TypeId tid_Dictionary;
-    TypeId tid_Dict;
     TypeId tid_Set;
     TypeId tid_Any;
     TypeId tid_Number;

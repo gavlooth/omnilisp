@@ -8,9 +8,14 @@ fn int print_help() {
     io::printn("Usage: omni [options] [script.omni]");
     io::printn("");
     io::printn("Running:");
-    io::printn("  omni                              Start the REPL");
-    io::printn("  omni <script.omni>                Run a script file");
+    io::printn("  omni                              Start the REPL (default)");
+    io::printn("  omni <script.omni>                Run a script");
     io::printn("  omni --repl                       Start the REPL (explicit)");
+    io::printn("  omni --repl-server --socket <path> [--project [dir]]  Start Unix-socket REPL server");
+    io::printn("  omni --repl-server --tcp <host> <port> [--project [dir]]  Start TCP REPL server and write .omni-repl-port");
+    io::printn("  omni --repl-server --stdio [--project [dir]]  Start stdio REPL server");
+    io::printn("  omni --repl --project [dir]       Start the REPL with project src/main.omni preloaded");
+    io::printn("  omni --repl --load <file>         Start the REPL with one file preloaded");
     io::printn("  omni --repl --json                Start structured JSON REPL transport");
     io::printn("  omni --eval '<expr>' [--json]     Evaluate one Omni expression");
     io::printn("  omni --describe <symbol> [--json] Describe a core symbol/help entry");
@@ -27,7 +32,7 @@ fn int print_help() {
     io::printn("  omni --bind [project-dir]         Generate FFI bindings from omni.toml");
     io::printn("");
     io::printn("Other:");
-    io::printn("  omni --language-ref, --manual    Print built-in full language reference");
+    io::printn("  omni --language-ref, --lang-ref, --manual  Print built-in full language reference");
     io::printn("  omni --gen-e2e                    Generate end-to-end compiler tests");
     io::printn("  omni --stack-affinity-probe       Deliberately trigger stack ownership fail-fast probe");
     io::printn("  omni --version, -v                Print version");
@@ -43,4 +48,16 @@ fn int print_help() {
 fn int print_version() {
     io::printn("omni 0.2.0");
     return 0;
+}
+
+fn int print_unknown_option(char* option) {
+    io::printfn("Error: unknown option %s", (ZString)option);
+    io::printn("Run 'omni --help' for usage.");
+    return 1;
+}
+
+fn int print_unexpected_mode_arg(char* mode, char* arg) {
+    io::printfn("Error: unexpected argument after %s: %s", (ZString)mode, (ZString)arg);
+    io::printn("Run 'omni --help' for usage.");
+    return 1;
 }

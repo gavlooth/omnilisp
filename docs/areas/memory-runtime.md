@@ -41,7 +41,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - Session 44 docs closure artifact is published:
   - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md` defines boundary invariants contract and residual risk list.
 - Memory/ownership test policy is split into explicit lanes:
-  - `memory-lifetime` remains a compatibility alias for `memory-lifetime-smoke`.
+  - `memory-lifetime` maps to `memory-lifetime-smoke`.
   - `memory-lifetime-smoke` owns boundary/scoping/coroutine ownership correctness and is the minimum container lane for boundary/lifetime changes.
   - `memory-lifetime-policy` owns boundary-policy parser/config contracts; it is not a generic syntax/compiler lane.
   - `memory-lifetime-bench` owns boundary allocation/perf coverage when the touched change is boundary/lifetime allocation-sensitive.

@@ -12,13 +12,23 @@ import main;
 
 tlocal lisp::Interp* g_aot_interp = null;
 
-fn void aot_init() {
+fn bool aot_init() {
     main::thread_registry_init();
     g_aot_interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
+    if (g_aot_interp == null) {
+        main::thread_registry_shutdown();
+        return false;
+    }
     g_aot_interp.init();
-    lisp::register_primitives(g_aot_interp);
-    lisp::register_stdlib(g_aot_interp);
+    if (!lisp::bootstrap_runtime_interp(g_aot_interp)) {
+        g_aot_interp.destroy();
+        mem::free(g_aot_interp);
+        g_aot_interp = null;
+        main::thread_registry_shutdown();
+        return false;
+    }
     g_aot_interp.flags.jit_enabled = true;
+    return true;
 }
 
 fn void aot_shutdown() {

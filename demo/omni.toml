@@ -1,0 +1,17 @@
+[project]
+name = "demo"
+version = "0.2.0"
+
+[build]
+output-dir = "build"
+safety = "safe"        # "safe", "fast", or "none"
+opt = "O0"             # "O0", "O1", "O2", "O3", "Os", "Oz"
+debug-info = "full"    # "full", "line-tables", "none"
+# sanitize = "none"    # "none", "address", "memory", "thread"
+# single-module = false
+
+# FFI dependencies — uncomment and edit:
+# [dependencies.ffi.math]
+# library = "m"
+# headers = ["/usr/include/math.h"]
+# functions = ["sin", "cos", "sqrt"]

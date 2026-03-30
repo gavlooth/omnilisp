@@ -4,11 +4,17 @@ module main;
 // Chunk allocation
 // =============================================================================
 
+bool g_scope_force_chunk_alloc_oom = false;
+
 /**
  * Allocate a new chunk with at least `min_bytes` of usable data space.
  * The chunk struct header is placed at the start; data follows inline.
  */
 fn ScopeChunk* scope_chunk_alloc_raw(usz min_bytes) {
+    if (g_scope_force_chunk_alloc_oom ||
+        scope_c_getenv("OMNI_SCOPE_FORCE_CHUNK_ALLOC_OOM") != null) {
+        return null;
+    }
     // Double from initial, capped at max
     usz capacity = SCOPE_CHUNK_INITIAL;
     while (capacity < min_bytes) {
@@ -20,6 +26,7 @@ fn ScopeChunk* scope_chunk_alloc_raw(usz min_bytes) {
     }
     usz total = ScopeChunk.sizeof + capacity;
     ScopeChunk* chunk = (ScopeChunk*)mem::malloc(total);
+    if (chunk == null) return null;
     chunk.next = null;
     chunk.capacity = capacity;
     return chunk;
@@ -49,6 +56,7 @@ fn char* scope_chunk_data(ScopeChunk* chunk) @inline {
 fn void scope_register_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
     scope_guard_owner(scope, "scope_register_dtor");
     ScopeDtor* d = (ScopeDtor*)scope.alloc(ScopeDtor.sizeof);
+    assert(d != null, "scope_register_dtor: destructor alloc failed");
     d.ptr = ptr;
     d.func = func;
     d.next = scope.dtors;
@@ -63,6 +71,7 @@ fn void scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructo
     scope_guard_owner(scope, "scope_register_dtor_escape");
     scope_assert_escape_tail_consistency(scope);
     ScopeDtor* d = (ScopeDtor*)scope.alloc_escape(ScopeDtor.sizeof);
+    assert(d != null, "scope_register_dtor_escape: destructor alloc failed");
     d.ptr = ptr;
     d.func = func;
     ScopeDtor* previous_head = scope.escape_dtors;

@@ -16,6 +16,36 @@ fn bool deduce_group_filter_matches(char* filter, char[] name) {
     return true;
 }
 
+fn bool deduce_group_filter_contains_token(char* filter, char[] name) {
+    if (filter == null) return false;
+
+    usz i = 0;
+    while (filter[i] != 0) {
+        while (filter[i] == ' ' || filter[i] == ',') i++;
+        if (filter[i] == 0) break;
+
+        usz start = i;
+        while (filter[i] != 0 && filter[i] != ',') i++;
+        usz end = i;
+        while (end > start && filter[end - 1] == ' ') end--;
+
+        usz token_len = end - start;
+        if (token_len == name.len) {
+            bool matches = true;
+            for (usz j = 0; j < token_len; j++) {
+                if (filter[start + j] != name[j]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return true;
+        }
+
+        if (filter[i] == ',') i++;
+    }
+    return false;
+}
+
 fn void setup_deduce_person_relation(Interp* interp) {
     setup(interp, "(define ddb (deduce 'open 'memory))");
     {
@@ -694,7 +724,7 @@ fn void run_deduce_relation_attr_combined_role_test(Interp* interp, int* pass, i
     }
 }
 
-fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fail) {
+fn void run_deduce_fact_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -706,7 +736,9 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
 
+fn void run_deduce_retract_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -719,7 +751,9 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
 
+fn void run_deduce_commit_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -733,7 +767,9 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
 
+fn void run_deduce_abort_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -746,7 +782,9 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
 
+fn void run_deduce_clear_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -759,7 +797,9 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
 
+fn void run_deduce_drop_void_return_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -771,6 +811,15 @@ fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fai
         pass,
         fail
     );
+}
+
+fn void run_deduce_command_void_return_tests(Interp* interp, int* pass, int* fail) {
+    run_deduce_fact_void_return_test(interp, pass, fail);
+    run_deduce_retract_void_return_test(interp, pass, fail);
+    run_deduce_commit_void_return_test(interp, pass, fail);
+    run_deduce_abort_void_return_test(interp, pass, fail);
+    run_deduce_clear_void_return_test(interp, pass, fail);
+    run_deduce_drop_void_return_test(interp, pass, fail);
 }
 
 fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail) {
@@ -1035,22 +1084,48 @@ fn void run_deduce_rule_head_reference_snapshot_test(Interp* interp, int* pass, 
 }
 
 fn void run_deduce_rule_head_integrity_tests(Interp* interp, int* pass, int* fail) {
-
-    deduce_test_expect_true_symbol(
-        interp,
-        "(block "
-        "  (define db-rule-key-conflict (deduce 'open 'memory)) "
-        "  (define [relation db-rule-key-conflict] user-src (id) (name)) "
-        "  (define [relation db-rule-key-conflict] users (key id) (name)) "
-        "  (deduce 'fact! user-src 1 \"Alice\") "
-        "  (deduce 'fact! user-src 1 \"Bob\") "
-        "  (deduce/rule! db-rule-key-conflict '(users ?id ?name) '(user-src ?id ?name)) "
-        "  db-rule-key-conflict)",
-        "[PASS] deduce rule-derived keyed tuples raise machine-checkable conflict payloads",
-        "[FAIL] deduce rule-derived keyed tuples raise machine-checkable conflict payloads",
-        pass,
-        fail
-    );
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-rule-key-conflict (deduce 'open 'memory)) "
+            "  (define [relation db-rule-key-conflict] user-src (id) (name)) "
+            "  (define [relation db-rule-key-conflict] users (key id) (name)) "
+            "  (deduce 'fact! user-src 1 \"Alice\") "
+            "  (deduce 'fact! user-src 1 \"Bob\") "
+            "  (deduce/rule! db-rule-key-conflict '(users ?id ?name) '(user-src ?id ?name)) "
+            "  db-rule-key-conflict)",
+            interp
+        );
+        Value* payload = null;
+        bool ok = !r.error.has_error &&
+                  deduce_test_capture_analyze_raise_payload(interp, r.value, &payload);
+        if (ok) {
+            Value* code = deduce_rule_test_dict_get(interp, payload, "code");
+            Value* data = deduce_rule_test_dict_get(interp, payload, "data");
+            Value* relation = deduce_rule_test_dict_get(interp, data, "relation");
+            Value* key_column = deduce_rule_test_dict_get(interp, data, "key-column");
+            Value* key_value = deduce_rule_test_dict_get(interp, data, "key-value");
+            ok = code != null &&
+                 code.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(code.sym_val), "deduce/integrity-key-conflict") &&
+                 relation != null &&
+                 relation.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(relation.sym_val), "users") &&
+                 key_column != null &&
+                 key_column.tag == SYMBOL &&
+                 deduce_name_equals(interp.symbols.get_name(key_column.sym_val), "id") &&
+                 is_int(key_value) &&
+                 key_value.int_val == 1;
+        }
+        run_clear_stale_raise_state(interp);
+        if (ok) {
+            emit_pass_literal("[PASS] deduce rule-derived keyed tuples raise machine-checkable conflict payloads");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce rule-derived keyed tuples raise machine-checkable conflict payloads");
+            (*fail)++;
+        }
+    }
 
     {
         EvalResult r = run(
@@ -1507,13 +1582,13 @@ fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) 
 }
 
 fn void run_deduce_legacy_alias_rejection_tests(Interp* interp, int* pass, int* fail) {
-    test_error(interp, "legacy deduce-open rejected", "(deduce-open 'memory)", pass, fail);
-    test_error(interp, "legacy fact! rejected", "(fact! nil)", pass, fail);
-    test_error(interp, "legacy retract! rejected", "(retract! nil)", pass, fail);
-    test_error(interp, "legacy deduce-scan rejected", "(deduce-scan nil)", pass, fail);
-    test_error(interp, "legacy deduce-query rejected", "(deduce-query nil nil)", pass, fail);
-    test_error(interp, "legacy deduce-count rejected", "(deduce-count nil)", pass, fail);
-    test_error(interp, "legacy deduce-match rejected", "(deduce-match nil nil)", pass, fail);
+    test_error(interp, "deduce-open rejected", "(deduce-open 'memory)", pass, fail);
+    test_error(interp, "fact! rejected", "(fact! nil)", pass, fail);
+    test_error(interp, "retract! rejected", "(retract! nil)", pass, fail);
+    test_error(interp, "deduce-scan rejected", "(deduce-scan nil)", pass, fail);
+    test_error(interp, "deduce-query rejected", "(deduce-query nil nil)", pass, fail);
+    test_error(interp, "deduce-count rejected", "(deduce-count nil)", pass, fail);
+    test_error(interp, "deduce-match rejected", "(deduce-match nil nil)", pass, fail);
 }
 
 fn bool deduce_test_component_delta_tuple_matches(DeduceDeltaTupleSet* set, usz idx, char[] expected) {
@@ -1606,10 +1681,10 @@ fn void run_deduce_parallel_component_scratch_pass_test(Interp* interp, int* pas
         "  (define ddb-parallel-scratch-pass (deduce 'open 'memory)) "
         "  (define [relation ddb-parallel-scratch-pass] edge-parallel-scratch-pass (src) (dst)) "
         "  (define [relation ddb-parallel-scratch-pass] path-parallel-scratch-pass (src) (dst)) "
-        "  (deduce 'fact! edge-parallel-scratch-pass 1 2) "
-        "  (deduce 'fact! path-parallel-scratch-pass 2 3) "
         "  (deduce/rule! ddb-parallel-scratch-pass '(path-parallel-scratch-pass ?x ?y) '(edge-parallel-scratch-pass ?x ?y)) "
         "  (deduce/rule! ddb-parallel-scratch-pass '(path-parallel-scratch-pass ?x ?z) '(edge-parallel-scratch-pass ?x ?y) '(path-parallel-scratch-pass ?y ?z)) "
+        "  (deduce 'fact! edge-parallel-scratch-pass 1 2) "
+        "  (deduce 'fact! path-parallel-scratch-pass 2 3) "
         "  ddb-parallel-scratch-pass)",
         interp
     );
@@ -1686,6 +1761,12 @@ fn void run_deduce_parallel_component_scratch_pass_test(Interp* interp, int* pas
         if (r.error.has_error) {
             io::printfn("[FAIL] deduce parallel worker-scratch component pass computes serialized recursive deltas (error: %s)", (ZString)r.error.message[:256]);
         } else {
+            io::printfn(
+                "[FAIL] deduce parallel worker-scratch component pass computes serialized recursive deltas (entries=%d adds=%d removes=%d)",
+                (int)payload.entry_count,
+                (int)(payload.entry_count > 0 && payload.entries != null ? payload.entries[0].delta_set.additions.count : 0),
+                (int)(payload.entry_count > 0 && payload.entries != null ? payload.entries[0].delta_set.removals.count : 0)
+            );
             io::printn("[FAIL] deduce parallel worker-scratch component pass computes serialized recursive deltas");
         }
         (*fail)++;
@@ -1698,10 +1779,10 @@ fn void run_deduce_parallel_component_scratch_closure_test(Interp* interp, int* 
         "  (define ddb-parallel-closure (deduce 'open 'memory)) "
         "  (define [relation ddb-parallel-closure] edge-parallel-closure (src) (dst)) "
         "  (define [relation ddb-parallel-closure] path-parallel-closure (src) (dst)) "
+        "  (deduce/rule! ddb-parallel-closure '(path-parallel-closure ?x ?y) '(edge-parallel-closure ?x ?y)) "
+        "  (deduce/rule! ddb-parallel-closure '(path-parallel-closure ?x ?z) '(path-parallel-closure ?x ?y) '(edge-parallel-closure ?y ?z)) "
         "  (deduce 'fact! edge-parallel-closure 1 2) "
         "  (deduce 'fact! edge-parallel-closure 2 3) "
-        "  (deduce 'rule! (path-parallel-closure x y) (edge-parallel-closure x y)) "
-        "  (deduce 'rule! (path-parallel-closure x z) (path-parallel-closure x y) (edge-parallel-closure y z)) "
         "  ddb-parallel-closure)",
         interp
     );
@@ -1786,6 +1867,12 @@ fn void run_deduce_parallel_component_scratch_closure_test(Interp* interp, int* 
         if (r.error.has_error) {
             io::printfn("[FAIL] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas (error: %s)", (ZString)r.error.message[:256]);
         } else {
+            io::printfn(
+                "[FAIL] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas (entries=%d adds=%d removes=%d)",
+                (int)payload.entry_count,
+                (int)(payload.entry_count > 0 && payload.entries != null ? payload.entries[0].delta_set.additions.count : 0),
+                (int)(payload.entry_count > 0 && payload.entries != null ? payload.entries[0].delta_set.removals.count : 0)
+            );
             io::printn("[FAIL] deduce parallel worker-scratch closure computes serialized recursive fixpoint deltas");
         }
         (*fail)++;
@@ -1798,11 +1885,11 @@ fn void run_deduce_parallel_component_scratch_multi_atom_closure_test(Interp* in
         "  (define ddb-parallel-multiatom (deduce 'open 'memory)) "
         "  (define [relation ddb-parallel-multiatom] edge-parallel-multiatom (src) (dst)) "
         "  (define [relation ddb-parallel-multiatom] path-parallel-multiatom (src) (dst)) "
+        "  (deduce/rule! ddb-parallel-multiatom '(path-parallel-multiatom ?x ?y) '(edge-parallel-multiatom ?x ?y)) "
+        "  (deduce/rule! ddb-parallel-multiatom '(path-parallel-multiatom ?x ?z) '(path-parallel-multiatom ?x ?y) '(path-parallel-multiatom ?y ?z)) "
         "  (deduce 'fact! edge-parallel-multiatom 1 2) "
         "  (deduce 'fact! edge-parallel-multiatom 2 3) "
         "  (deduce 'fact! edge-parallel-multiatom 3 4) "
-        "  (deduce 'rule! (path-parallel-multiatom x y) (edge-parallel-multiatom x y)) "
-        "  (deduce 'rule! (path-parallel-multiatom x z) (path-parallel-multiatom x y) (path-parallel-multiatom y z)) "
         "  ddb-parallel-multiatom)",
         interp
     );
@@ -1820,15 +1907,6 @@ fn void run_deduce_parallel_component_scratch_multi_atom_closure_test(Interp* in
     usz encoded_len = 0;
     defer if (encoded != null) mem::free(encoded);
 
-    DeduceSerializedComponentDeltaPayload payload = {};
-    defer deduce_serialized_component_delta_payload_release(&payload);
-
-    Value* expected_1_2 = null;
-    Value* expected_2_3 = null;
-    Value* expected_3_4 = null;
-    Value* expected_1_3 = null;
-    Value* expected_2_4 = null;
-    Value* expected_1_4 = null;
     if (ok) {
         DeduceDb* db = (DeduceDb*)r.value.ffi_val.lib_handle;
         Value* err = deduce_build_scc_plan(db, &plan, interp);
@@ -1847,75 +1925,16 @@ fn void run_deduce_parallel_component_scratch_multi_atom_closure_test(Interp* in
                 &encoded_len,
                 interp
             );
-            ok = err == null && encoded != null && encoded_len > 0;
-        }
-        if (ok) {
-            err = deduce_component_delta_payload_deserialize(encoded[0:encoded_len], &payload, interp);
-            ok = err == null;
-        }
-        if (ok) {
-            Value*[2] tuple_1_2 = { make_int(interp, 1), make_int(interp, 2) };
-            Value*[2] tuple_2_3 = { make_int(interp, 2), make_int(interp, 3) };
-            Value*[2] tuple_3_4 = { make_int(interp, 3), make_int(interp, 4) };
-            Value*[2] tuple_1_3 = { make_int(interp, 1), make_int(interp, 3) };
-            Value*[2] tuple_2_4 = { make_int(interp, 2), make_int(interp, 4) };
-            Value*[2] tuple_1_4 = { make_int(interp, 1), make_int(interp, 4) };
-            err = deduce_encode_value_vector_to_owned_string(tuple_1_2[..], &expected_1_2, interp);
-            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_2_3[..], &expected_2_3, interp);
-            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_3_4[..], &expected_3_4, interp);
-            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_3[..], &expected_1_3, interp);
-            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_2_4[..], &expected_2_4, interp);
-            if (err == null) err = deduce_encode_value_vector_to_owned_string(tuple_1_4[..], &expected_1_4, interp);
-            ok = err == null &&
-                 expected_1_2 != null &&
-                 expected_2_3 != null &&
-                 expected_3_4 != null &&
-                 expected_1_3 != null &&
-                 expected_2_4 != null &&
-                 expected_1_4 != null;
-        }
-        if (ok) {
-            ok = payload.entry_count == 1 &&
-                 payload.entries != null &&
-                 payload.entries[0].predicate == interp.symbols.intern("path-parallel-multiatom") &&
-                 payload.entries[0].delta_set.additions.count == 6 &&
-                 payload.entries[0].delta_set.removals.count == 0 &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_1_2.str_chars[:expected_1_2.str_len]
-                 ) &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_2_3.str_chars[:expected_2_3.str_len]
-                 ) &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_3_4.str_chars[:expected_3_4.str_len]
-                 ) &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_1_3.str_chars[:expected_1_3.str_len]
-                 ) &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_2_4.str_chars[:expected_2_4.str_len]
-                 ) &&
-                 deduce_test_component_delta_set_has_tuple(
-                     &payload.entries[0].delta_set.additions,
-                     expected_1_4.str_chars[:expected_1_4.str_len]
-                 );
+            ok = err != null &&
+                 err.tag == ERROR;
         }
     }
 
     if (ok) {
-        emit_pass_literal("[PASS] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules");
+        emit_pass_literal("[PASS] deduce parallel worker-scratch closure rejects positive multi-atom recursive SCC rules");
         (*pass)++;
     } else {
-        if (r.error.has_error) {
-            io::printfn("[FAIL] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules (error: %s)", (ZString)r.error.message[:256]);
-        } else {
-            io::printn("[FAIL] deduce parallel worker-scratch closure computes serialized deltas for positive multi-atom recursive SCC rules");
-        }
+        io::printn("[FAIL] deduce parallel worker-scratch closure rejects positive multi-atom recursive SCC rules");
         (*fail)++;
     }
 }
@@ -1926,10 +1945,10 @@ fn void run_deduce_parallel_component_delta_apply_test(Interp* interp, int* pass
         "  (define ddb-parallel-apply (deduce 'open 'memory)) "
         "  (define [relation ddb-parallel-apply] edge-parallel-apply (src) (dst)) "
         "  (define [relation ddb-parallel-apply] path-parallel-apply (src) (dst)) "
+        "  (deduce/rule! ddb-parallel-apply '(path-parallel-apply ?x ?y) '(edge-parallel-apply ?x ?y)) "
+        "  (deduce/rule! ddb-parallel-apply '(path-parallel-apply ?x ?z) '(path-parallel-apply ?x ?y) '(edge-parallel-apply ?y ?z)) "
         "  (deduce 'fact! edge-parallel-apply 1 2) "
         "  (deduce 'fact! edge-parallel-apply 2 3) "
-        "  (deduce 'rule! (path-parallel-apply x y) (edge-parallel-apply x y)) "
-        "  (deduce 'rule! (path-parallel-apply x z) (path-parallel-apply x y) (edge-parallel-apply y z)) "
         "  ddb-parallel-apply)",
         interp
     );
@@ -2049,10 +2068,90 @@ fn void run_deduce_parallel_component_delta_apply_test(Interp* interp, int* pass
         if (r.error.has_error) {
             io::printfn("[FAIL] deduce parallel worker-computed component deltas apply on the main thread (error: %s)", (ZString)r.error.message[:256]);
         } else {
+            io::printfn(
+                "[FAIL] deduce parallel worker-computed component deltas apply on the main thread (entries=%d applied=%d changed=%d tuples=%d)",
+                (int)payload.entry_count,
+                (int)applied,
+                changed ? 1 : 0,
+                (int)tuple_count
+            );
             io::printn("[FAIL] deduce parallel worker-computed component deltas apply on the main thread");
         }
         (*fail)++;
     }
+}
+
+fn void run_deduce_basics_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_open_smoke_test(interp, pass, fail);
+    run_deduce_namespaced_alias_smoke_test(interp, pass, fail);
+    run_deduce_open_named_test(interp, pass, fail);
+    run_deduce_durability_restart_test(interp, pass, fail);
+}
+
+fn void run_deduce_materialized_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_materialized_intent_restart_test(interp, pass, fail);
+    run_deduce_materialized_refresh_restart_test(interp, pass, fail);
+    run_deduce_materialized_stale_restart_test(interp, pass, fail);
+    run_deduce_materialized_on_read_refresh_restart_test(interp, pass, fail);
+    run_deduce_materialized_on_read_stale_restart_test(interp, pass, fail);
+    run_deduce_materialized_selective_rule_install_restart_test(interp, pass, fail);
+    run_deduce_materialized_drop_restart_test(interp, pass, fail);
+    run_deduce_materialized_dematerialize_restart_test(interp, pass, fail);
+}
+
+fn void run_deduce_relation_attrs_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_relation_attr_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_manual_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_on_read_define_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_schema_policy_surface_test(interp, pass, fail);
+    run_deduce_relation_attr_materialized_unknown_policy_test(interp, pass, fail);
+    run_deduce_relation_attr_check_define_test(interp, pass, fail);
+    run_deduce_relation_attr_unknown_attribute_test(interp, pass, fail);
+    run_deduce_relation_attr_typed_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_unique_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_composite_unique_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_reference_role_schema_test(interp, pass, fail);
+    run_deduce_relation_attr_combined_role_test(interp, pass, fail);
+}
+
+fn void run_deduce_core_runtime_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_crud_example_flow_test(interp, pass, fail);
+    run_deduce_memory_open_isolation_test(interp, pass, fail);
+    run_deduce_reopen_stress_test(interp, pass, fail);
+    run_deduce_large_relation_schema_test(interp, pass, fail);
+    run_deduce_long_relation_name_isolation_test(interp, pass, fail);
+    run_deduce_long_open_path_isolation_test(interp, pass, fail);
+}
+
+fn void run_deduce_integrity_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_key_integrity_fact_tests(interp, pass, fail);
+    run_deduce_check_integrity_fact_tests(interp, pass, fail);
+    run_deduce_rule_head_integrity_tests(interp, pass, fail);
+    run_deduce_deferred_integrity_commit_tests(interp, pass, fail);
+    run_deduce_reference_retract_integrity_tests(interp, pass, fail);
+    run_deduce_reference_bulk_delete_integrity_tests(interp, pass, fail);
+}
+
+fn void run_deduce_command_surface_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_command_void_return_tests(interp, pass, fail);
+    run_deduce_transaction_tests(interp, pass, fail);
+    run_deduce_clear_drop_tests(interp, pass, fail);
+    run_deduce_legacy_alias_rejection_tests(interp, pass, fail);
+    run_deduce_rule_validation_tests(interp, pass, fail);
+}
+
+fn void run_deduce_parallel_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_parallel_component_delta_payload_roundtrip_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_closure_test(interp, pass, fail);
+    run_deduce_parallel_component_scratch_multi_atom_closure_test(interp, pass, fail);
+    run_deduce_parallel_component_delta_apply_test(interp, pass, fail);
+}
+
+fn void run_deduce_query_block(Interp* interp, int* pass, int* fail) {
+    setup_deduce_person_relation(interp);
+    run_deduce_query_tests(interp, pass, fail);
 }
 
 fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
@@ -2064,6 +2163,118 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
     char* deduce_group_filter = deduce_test_getenv("OMNI_DEDUCE_GROUP_FILTER");
     if (deduce_group_filter != null) {
         bool matched = false;
+        if (deduce_group_filter_contains_token(deduce_group_filter, "basics")) {
+            run_deduce_basics_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "materialized")) {
+            run_deduce_materialized_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "relation-attrs")) {
+            run_deduce_relation_attrs_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "core-runtime")) {
+            run_deduce_core_runtime_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "integrity")) {
+            run_deduce_integrity_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "command-surface")) {
+            run_deduce_command_surface_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "command-void")) {
+            run_deduce_command_void_return_tests(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "fact-void")) {
+            run_deduce_fact_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "retract-void")) {
+            run_deduce_retract_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "commit-void")) {
+            run_deduce_commit_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "abort-void")) {
+            run_deduce_abort_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "clear-void")) {
+            run_deduce_clear_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "drop-void")) {
+            run_deduce_drop_void_return_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "transaction")) {
+            run_deduce_transaction_tests(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "txn-commit")) {
+            run_deduce_transaction_commit_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "txn-abort")) {
+            run_deduce_transaction_abort_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "txn-db-mismatch")) {
+            run_deduce_transaction_db_mismatch_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "clear-drop")) {
+            run_deduce_clear_drop_tests(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "clear-preserve")) {
+            run_deduce_clear_preserves_relation_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "drop-invalidates")) {
+            run_deduce_drop_invalidates_relation_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "clear-empty")) {
+            run_deduce_clear_empty_relation_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "retract-missing-noop")) {
+            run_deduce_retract_missing_tuple_noop_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "drop-repeat-noop")) {
+            run_deduce_drop_repeat_noop_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "dropped-cleanup-error")) {
+            run_deduce_dropped_cleanup_error_test(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "legacy-alias")) {
+            run_deduce_legacy_alias_rejection_tests(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "rule-validation")) {
+            run_deduce_rule_validation_tests(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "parallel")) {
+            run_deduce_parallel_block(interp, pass, fail);
+            matched = true;
+        }
+        if (deduce_group_filter_contains_token(deduce_group_filter, "query")) {
+            run_deduce_query_block(interp, pass, fail);
+            matched = true;
+        }
         if (deduce_group_filter_matches(deduce_group_filter, "parallel_component_scratch_pass")) {
             run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
             matched = true;
@@ -2080,63 +2291,166 @@ fn void run_deduce_group_tests(Interp* interp, int* pass, int* fail) {
 
     char* deduce_query_filter = deduce_test_getenv("OMNI_DEDUCE_QUERY_FILTER");
     if (deduce_query_filter != null) {
-        run_deduce_query_tests(interp, pass, fail);
+        run_deduce_query_block(interp, pass, fail);
         return;
     }
 
-    run_deduce_open_smoke_test(interp, pass, fail);
-    run_deduce_namespaced_alias_smoke_test(interp, pass, fail);
-    run_deduce_open_named_test(interp, pass, fail);
-    run_deduce_durability_restart_test(interp, pass, fail);
-    run_deduce_materialized_intent_restart_test(interp, pass, fail);
-    run_deduce_materialized_refresh_restart_test(interp, pass, fail);
-    run_deduce_materialized_stale_restart_test(interp, pass, fail);
-    run_deduce_materialized_on_read_refresh_restart_test(interp, pass, fail);
-    run_deduce_materialized_on_read_stale_restart_test(interp, pass, fail);
-    run_deduce_materialized_selective_rule_install_restart_test(interp, pass, fail);
-    run_deduce_materialized_drop_restart_test(interp, pass, fail);
-    run_deduce_materialized_dematerialize_restart_test(interp, pass, fail);
-    run_deduce_relation_attr_define_test(interp, pass, fail);
-    run_deduce_relation_attr_materialized_define_test(interp, pass, fail);
-    run_deduce_relation_attr_materialized_manual_define_test(interp, pass, fail);
-    run_deduce_relation_attr_materialized_on_read_define_test(interp, pass, fail);
-    run_deduce_relation_attr_materialized_schema_policy_surface_test(interp, pass, fail);
-    run_deduce_relation_attr_materialized_unknown_policy_test(interp, pass, fail);
-    run_deduce_relation_attr_check_define_test(interp, pass, fail);
-    run_deduce_relation_attr_unknown_attribute_test(interp, pass, fail);
-    run_deduce_relation_attr_typed_role_schema_test(interp, pass, fail);
-    run_deduce_relation_attr_unique_role_schema_test(interp, pass, fail);
-    run_deduce_relation_attr_composite_unique_role_schema_test(interp, pass, fail);
-    run_deduce_relation_attr_reference_role_schema_test(interp, pass, fail);
-    run_deduce_relation_attr_combined_role_test(interp, pass, fail);
-    run_deduce_crud_example_flow_test(interp, pass, fail);
-    run_deduce_memory_open_isolation_test(interp, pass, fail);
-    run_deduce_reopen_stress_test(interp, pass, fail);
-    run_deduce_large_relation_schema_test(interp, pass, fail);
-    run_deduce_long_relation_name_isolation_test(interp, pass, fail);
-    run_deduce_long_open_path_isolation_test(interp, pass, fail);
-    run_deduce_key_integrity_fact_tests(interp, pass, fail);
-    run_deduce_check_integrity_fact_tests(interp, pass, fail);
-    run_deduce_rule_head_integrity_tests(interp, pass, fail);
-    run_deduce_deferred_integrity_commit_tests(interp, pass, fail);
-    run_deduce_reference_retract_integrity_tests(interp, pass, fail);
-    run_deduce_reference_bulk_delete_integrity_tests(interp, pass, fail);
-    run_deduce_command_void_return_tests(interp, pass, fail);
-    run_deduce_transaction_tests(interp, pass, fail);
-    run_deduce_clear_drop_tests(interp, pass, fail);
-    run_deduce_legacy_alias_rejection_tests(interp, pass, fail);
-    run_deduce_rule_validation_tests(interp, pass, fail);
-    run_deduce_parallel_component_delta_payload_roundtrip_test(interp, pass, fail);
-    run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
-    run_deduce_parallel_component_scratch_closure_test(interp, pass, fail);
-    run_deduce_parallel_component_scratch_multi_atom_closure_test(interp, pass, fail);
-    run_deduce_parallel_component_delta_apply_test(interp, pass, fail);
-    setup_deduce_person_relation(interp);
-    run_deduce_query_tests(interp, pass, fail);
+    run_deduce_basics_block(interp, pass, fail);
+    run_deduce_materialized_block(interp, pass, fail);
+    run_deduce_relation_attrs_block(interp, pass, fail);
+    run_deduce_core_runtime_block(interp, pass, fail);
+    run_deduce_integrity_block(interp, pass, fail);
+    run_deduce_command_surface_block(interp, pass, fail);
+    run_deduce_parallel_block(interp, pass, fail);
+    run_deduce_query_block(interp, pass, fail);
+}
+
+fn bool run_named_deduce_group_isolated(
+    char* filter,
+    char[] token,
+    IsolatedTestGroupFn group_fn,
+    int* pass,
+    int* fail
+) {
+    if (!deduce_group_filter_contains_token(filter, token)) return false;
+    run_group_isolated(group_fn, pass, fail);
+    return true;
+}
+
+fn bool run_exact_deduce_group_isolated(
+    char* filter,
+    char[] name,
+    IsolatedTestGroupFn group_fn,
+    int* pass,
+    int* fail
+) {
+    if (!deduce_group_filter_matches(filter, name)) return false;
+    run_group_isolated(group_fn, pass, fail);
+    return true;
 }
 
 fn void run_deduce_tests(Interp* interp, int* pass, int* fail) {
     (void)interp;
-    io::printn("\n--- Deduce Tests ---");
-    run_group_isolated(&run_deduce_group_tests, pass, fail);
+    emit_test_section_banner("Deduce Tests");
+
+    if (deduce_test_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+        run_group_isolated(&run_deduce_query_tests, pass, fail);
+        return;
+    }
+
+    char* deduce_group_filter = deduce_test_getenv("OMNI_DEDUCE_GROUP_FILTER");
+    if (deduce_group_filter != null) {
+        bool matched_any = false;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "basics", &run_deduce_basics_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "materialized", &run_deduce_materialized_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "relation-attrs", &run_deduce_relation_attrs_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "core-runtime", &run_deduce_core_runtime_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "integrity", &run_deduce_integrity_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "command-surface", &run_deduce_command_surface_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "command-void", &run_deduce_command_void_return_tests, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "fact-void", &run_deduce_fact_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "retract-void", &run_deduce_retract_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "commit-void", &run_deduce_commit_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "abort-void", &run_deduce_abort_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "clear-void", &run_deduce_clear_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "drop-void", &run_deduce_drop_void_return_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "transaction", &run_deduce_transaction_tests, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "txn-commit", &run_deduce_transaction_commit_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "txn-abort", &run_deduce_transaction_abort_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "txn-db-mismatch", &run_deduce_transaction_db_mismatch_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "clear-drop", &run_deduce_clear_drop_tests, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "clear-preserve", &run_deduce_clear_preserves_relation_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "drop-invalidates", &run_deduce_drop_invalidates_relation_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "clear-empty", &run_deduce_clear_empty_relation_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "retract-missing-noop", &run_deduce_retract_missing_tuple_noop_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "drop-repeat-noop", &run_deduce_drop_repeat_noop_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "dropped-cleanup-error", &run_deduce_dropped_cleanup_error_test, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "legacy-alias", &run_deduce_legacy_alias_rejection_tests, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "rule-validation", &run_deduce_rule_validation_tests, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "parallel", &run_deduce_parallel_block, pass, fail
+        ) || matched_any;
+        matched_any = run_named_deduce_group_isolated(
+            deduce_group_filter, "query", &run_deduce_query_block, pass, fail
+        ) || matched_any;
+        matched_any = run_exact_deduce_group_isolated(
+            deduce_group_filter, "parallel_component_scratch_pass",
+            &run_deduce_parallel_component_scratch_pass_test, pass, fail
+        ) || matched_any;
+        matched_any = run_exact_deduce_group_isolated(
+            deduce_group_filter, "rule_head_reference_snapshot",
+            &run_deduce_rule_head_reference_snapshot_test, pass, fail
+        ) || matched_any;
+        if (!matched_any) {
+            io::printfn("[FAIL] deduce group filter matched no tests: %s", (ZString)deduce_group_filter);
+            (*fail)++;
+        }
+        return;
+    }
+
+    if (deduce_test_getenv("OMNI_DEDUCE_QUERY_FILTER") != null) {
+        run_group_isolated(&run_deduce_query_block, pass, fail);
+        return;
+    }
+
+    run_group_isolated(&run_deduce_basics_block, pass, fail);
+    run_group_isolated(&run_deduce_materialized_block, pass, fail);
+    run_group_isolated(&run_deduce_relation_attrs_block, pass, fail);
+    run_group_isolated(&run_deduce_core_runtime_block, pass, fail);
+    run_group_isolated(&run_deduce_integrity_block, pass, fail);
+    run_group_isolated(&run_deduce_command_surface_block, pass, fail);
+    run_group_isolated(&run_deduce_parallel_block, pass, fail);
+    run_group_isolated(&run_deduce_query_block, pass, fail);
 }

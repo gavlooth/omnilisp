@@ -181,6 +181,13 @@ fn EvalResult expand_pattern_macro(MacroDef* mdef, Expr* call_expr, Interp* inte
         if (pattern_err.len > 0) return eval_error(pattern_err);
 
         MatchResult match_result = match_pattern(mdef.clauses[i].pattern, args_list, interp);
+        if (match_result.has_error()) {
+            char[] msg = match_result.error != null && match_result.error.tag == ERROR
+                ? match_result.error.str_chars[:match_result.error.str_len]
+                : "pattern match failed";
+            match_result.cleanup();
+            return eval_error(msg);
+        }
         if (match_result.matched) {
             GensymTable gensyms;
             gensym_table_init(&gensyms);

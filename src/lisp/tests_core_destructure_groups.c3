@@ -23,15 +23,15 @@ fn void run_basic_let_destructure_array_tests(Interp* interp, int* pass, int* fa
 }
 
 fn void run_basic_let_destructure_dict_tests(Interp* interp, int* pass, int* fail) {
-    // Dict: basic
+    // Dictionary: basic
     test_str(interp, "let {name} dict", "(let ({name} {'name \"Alice\" 'age 30}) name)", pass, fail);
     test_eq(interp, "let {age} dict", "(let ({age} {'name \"Alice\" 'age 30}) age)", 30, pass, fail);
     test_eq(interp, "let {x y} dict", "(let ({x y} {'x 10 'y 20}) (+ x y))", 30, pass, fail);
 
-    // Dict: missing key -> nil
+    // Dictionary: missing key -> nil
     test_eq(interp, "let {z} missing → nil", "(let ({z} {'x 10}) (if z 99 0))", 0, pass, fail);
 
-    // Dict: 3+ keys
+    // Dictionary: 3+ keys
     test_eq(interp, "let {a b c} dict", "(let ({a b c} {'a 1 'b 2 'c 3}) (+ a (+ b c)))", 6, pass, fail);
 }
 
@@ -71,7 +71,7 @@ fn void run_basic_let_destructure_shadow_scope_tests(Interp* interp, int* pass, 
     // Array destr from function result
     test_eq(interp, "let [a b] from call", "(let ([a b] (list 10 20)) (+ a b))", 30, pass, fail);
 
-    // Dict destr with symbol-as-function
+    // Dictionary destr with symbol-as-function
     test_eq(interp, "let {d} sym-as-fn", "(let ({name} {'name \"Alice\"}) (string-length name))", 5, pass, fail);
 }
 
@@ -118,7 +118,7 @@ fn void run_basic_function_param_destructure_define_tests(Interp* interp, int* p
     setup(interp, "(define (d-ht [h .. t]) h)");
     test_eq(interp, "define [h .. t] param", "(d-ht '(10 20 30))", 10, pass, fail);
 
-    // Dict + positional
+    // Dictionary + positional
     setup(interp, "(define (d-dp {a} b) (+ a b))");
     test_eq(interp, "define {dict} + positional", "(d-dp {'a 5} 10)", 15, pass, fail);
 
@@ -138,7 +138,7 @@ fn void run_basic_function_param_destructure_define_tests(Interp* interp, int* p
     setup(interp, "(define (d-dd {x} {y}) (+ x y))");
     test_eq(interp, "define {d1} {d2}", "(d-dd {'x 3} {'y 7})", 10, pass, fail);
 
-    // Dict + array
+    // Dictionary + array
     setup(interp, "(define (d-da {x} [a b]) (+ x (+ a b)))");
     test_eq(interp, "define {dict} [arr]", "(d-da {'x 10} [1 2])", 13, pass, fail);
 
@@ -146,7 +146,7 @@ fn void run_basic_function_param_destructure_define_tests(Interp* interp, int* p
     setup(interp, "(define (d-ad [a b] {x}) (+ a (+ b x)))");
     test_eq(interp, "define [arr] {dict}", "(d-ad [1 2] {'x 10})", 13, pass, fail);
 
-    // Dict + array + positional
+    // Dictionary + array + positional
     setup(interp, "(define (d-dap {x} [a b] c) (+ x (+ a (+ b c))))");
     test_eq(interp, "define {d} [a] pos", "(d-dap {'x 1} [2 3] 4)", 10, pass, fail);
 
@@ -154,7 +154,7 @@ fn void run_basic_function_param_destructure_define_tests(Interp* interp, int* p
     setup(interp, "(define (d-pda z {x} [a b]) (+ z (+ x (+ a b))))");
     test_eq(interp, "define pos {d} [a]", "(d-pda 1 {'x 2} [3 4])", 10, pass, fail);
 
-    // Dict + positional + variadic
+    // Dictionary + positional + variadic
     setup(interp, "(define (d-dpv {x} y .. rest) (+ x y))");
     test_eq(interp, "define {d} pos .. rest", "(d-dpv {'x 5} 10 20 30)", 15, pass, fail);
 
@@ -181,7 +181,7 @@ fn void run_basic_function_param_destructure_lambda_typed_tests(Interp* interp, 
     test_eq(interp, "lambda [a] {d}", "((lambda ([a b] {x}) (+ a (+ b x))) [1 2] {'x 10})", 13, pass, fail);
 
     // Typed param + dict
-    setup(interp, "(define (d-typed (^Int n) {x}) (+ n x))");
+    setup(interp, "(define (d-typed (^Integer n) {x}) (+ n x))");
     test_eq(interp, "define typed + {dict}", "(d-typed 5 {'x 10})", 15, pass, fail);
 }
 
@@ -195,7 +195,7 @@ fn void run_basic_function_param_destructure_shadow_missing_tests(Interp* interp
     setup(interp, "(define (d-sha2 [c z] [c z]) (+ c z))");
     test_eq(interp, "shadow [c z] [c z] inner wins", "(d-sha2 [100 200] [1 2])", 3, pass, fail);
 
-    // Dict key missing -> nil
+    // Dictionary key missing -> nil
     test_eq(interp, "dict missing key → nil", "((lambda ({x y}) (if y 99 0)) {'x 10})", 0, pass, fail);
 }
 

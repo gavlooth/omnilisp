@@ -20,6 +20,20 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         passed++; // didn't crash
     }
 
+    // Test 1b: chunk allocation OOM on scope_create returns null cleanly
+    {
+        g_scope_force_chunk_alloc_oom = true;
+        ScopeRegion* s = scope_create(null);
+        g_scope_force_chunk_alloc_oom = false;
+        if (s == null) {
+            passed++;
+        } else {
+            io::printn("FAIL: scope_create chunk alloc oom");
+            failed++;
+            scope_release(s);
+        }
+    }
+
     // Test 2: Bump allocation
     {
         ScopeRegion* s = scope_create(null);
@@ -39,6 +53,32 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         scope_release(s);
     }
 
+    // Test 2a: TEMP slow-path chunk allocation OOM returns null without corrupting scope
+    {
+        ScopeRegion* s = scope_create(null);
+        void* first = s.alloc(16);
+        g_scope_force_chunk_alloc_oom = true;
+        void* slow_fail = s.alloc(SCOPE_CHUNK_INITIAL + 8);
+        g_scope_force_chunk_alloc_oom = false;
+        void* retry = s.alloc(SCOPE_CHUNK_INITIAL + 8);
+
+        usz chunk_count = 0;
+        ScopeChunk* c = s.chunks;
+        while (c != null) { chunk_count++; c = c.next; }
+
+        bool ok = first != null &&
+                  slow_fail == null &&
+                  retry != null &&
+                  chunk_count >= 2;
+        if (ok) {
+            passed++;
+        } else {
+            io::printn("FAIL: temp slow-path chunk alloc oom");
+            failed++;
+        }
+        scope_release(s);
+    }
+
     // Test 2b: Escape-lane allocation + generation separation
     {
         ScopeRegion* s = scope_create(null);
@@ -52,6 +92,31 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         }
         if (s.escape_generation != s.generation) { passed++; } else { io::printn("FAIL: escape_generation separation"); failed++; }
         if (s.escape_chunks != null) { passed++; } else { io::printn("FAIL: escape chunks missing"); failed++; }
+        scope_release(s);
+    }
+
+    // Test 2d: ESCAPE slow-path chunk allocation OOM returns null without corrupting scope
+    {
+        ScopeRegion* s = scope_create(null);
+        g_scope_force_chunk_alloc_oom = true;
+        void* slow_fail = s.alloc_escape(SCOPE_CHUNK_INITIAL + 8);
+        g_scope_force_chunk_alloc_oom = false;
+        void* retry = s.alloc_escape(SCOPE_CHUNK_INITIAL + 8);
+
+        usz chunk_count = 0;
+        ScopeChunk* c = s.escape_chunks;
+        while (c != null) { chunk_count++; c = c.next; }
+
+        bool ok = slow_fail == null &&
+                  retry != null &&
+                  chunk_count == 1 &&
+                  s.escape_chunks_tail == s.escape_chunks;
+        if (ok) {
+            passed++;
+        } else {
+            io::printn("FAIL: escape slow-path chunk alloc oom");
+            failed++;
+        }
         scope_release(s);
     }
 

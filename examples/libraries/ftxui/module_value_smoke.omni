@@ -1,0 +1,20 @@
+;; module_value_smoke.omni — verifies real module import + dot access
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_value_smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(define sample (ui.nodes.text "hello"))
+(define decorated (ui.style.border sample))
+(define effect-tree
+  (ui.effects.open_tree {'backend 'ftxui}
+    (ui.effects.render_tree {'node sample})
+    (ui.effects.close_tree {'code 'ok})))
+
+(and (= (ui.nodes.kind sample) 'text)
+     (= (ref (ui.nodes.props sample) 'text) "hello")
+     (= (ui.nodes.children sample) nil)
+     (= (ui.nodes.kind (ref (ui.nodes.children decorated) 0)) 'text)
+     (= (ui.effects.effect_tag effect-tree) 'open)
+     (= (ui.effects.effect_tag (ref (ui.effects.effect_children effect-tree) 0)) 'render)
+     (= (ui.effects.effect_tag (ref (ui.effects.effect_children effect-tree) 1)) 'close))

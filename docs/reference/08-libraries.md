@@ -293,12 +293,15 @@ That section is the source of truth for:
 (deduce/dematerialize! ancestor)
 
 (deduce/schema ancestor)
+(deduce/indexes ancestor)
 (deduce/stats ancestor)
 ```
 
 Current shipped contract:
 
 - only derived relations can be materialized
+- `deduce/materialize!` is the explicit relation-level command for enabling a
+  derived relation's materialized state immediately
 - manual materialization can be declared directly with
   `[relation db materialized] rel ...`
 - the same current manual policy can also be declared explicitly with
@@ -321,8 +324,8 @@ Current shipped contract:
   not refreshable until the relation actually has derived rule heads
 - refresh is explicit and accepts either a Deduce DB handle or a materialized
   relation handle
-- dematerialize is explicit and clears materialized intent without dropping the
-  relation or its rules
+- `deduce/dematerialize!` is the explicit relation-level teardown command that
+  clears materialized intent without dropping the relation or its rules
 - rule-install invalidation is selective: only already-ready materialized
   views become stale, while declared-but-unready materialized views keep
   their existing `never-refreshed` lifecycle
@@ -338,6 +341,8 @@ Current shipped contract:
 - in the current shipped slice:
   - `deduce/schema` is the schema-oriented surface that includes
     `materialized-refresh-policy`
+  - `deduce/indexes` is the relation-local index-inspection surface for key
+    columns, uniqueness, and supporting index descriptors
   - `deduce/stats` is the relation-local maintenance surface for dirty
     frontier, integrity history, materialized lifecycle state, parallel SCC
     batch topology, and last goal-directed read metadata
@@ -639,7 +644,7 @@ Current goal-directed query-time slice:
   - the currently shipped union contract now accepts same-position and
     mixed-position branches together, as long as each branch individually
     fits that demand-safe subset
-  - the only remaining broader symbolic residual is recursive compatibility
+  - the only remaining broader symbolic residual is recursive migration
     work; there is no separate non-recursive goal-directed symbolic disjunction
     lane beyond the already shipped subset
 - the same disjunctive union path also now accepts same-position branches
@@ -652,7 +657,7 @@ Current goal-directed query-time slice:
   the runtime unions the branch-local requested/applied positions and then
   reapplies the original full disjunctive filter over the combined rows
 - recursive multi-position symbolic demands now have a first bounded
-  recursive compatibility slice:
+  recursive migration slice:
   - a single filter or disjunctive branch shaped like `(and (= src ...) (=
     dst ...))` may stay on `ephemeral-head-demand-query` when the runtime
     relaxes the projected recursive demand to one applied position and then

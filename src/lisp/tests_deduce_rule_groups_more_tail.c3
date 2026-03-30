@@ -76,9 +76,19 @@ fn bool deduce_rule_test_capture_recursive_limit_code(
 
     for (usz i = 0; i + 1 < fact_count; i++) {
         char[32] src_buf = {};
-        char[] src = io::bprintf(&src_buf, "%d", (int)i)!!;
         char[32] dst_buf = {};
-        char[] dst = io::bprintf(&dst_buf, "%d", (int)(i + 1))!!;
+        char[] src;
+        char[] dst;
+        if (try char[] rendered_src = io::bprintf(&src_buf, "%d", (int)i)) {
+            src = rendered_src;
+        } else {
+            return false;
+        }
+        if (try char[] rendered_dst = io::bprintf(&dst_buf, "%d", (int)(i + 1))) {
+            dst = rendered_dst;
+        } else {
+            return false;
+        }
         Value*[3] fact_args = {
             parent_rel,
             make_string(interp, src),
@@ -208,15 +218,29 @@ fn void run_deduce_rule_validation_tests_more_tail(Interp* interp, int* pass, in
         uint pid = (uint)deduce_test_getpid();
         usz seq = g_deduce_test_long_path_seq++;
         char[256] db_path_buf;
-        char[] db_path = io::bprintf(
+        char[] db_path;
+        if (try char[] rendered_path = io::bprintf(
             &db_path_buf,
             "/tmp/omni-deduce-index-open-%d-%d",
             (int)pid,
             (int)seq
-        )!!;
+        )) {
+            db_path = rendered_path;
+        } else {
+            io::printn("[FAIL] deduce relation schema indexes (file-backed path)");
+            (*fail)++;
+            return;
+        }
 
         char[320] cleanup_cmd_buf;
-        char[] cleanup_cmd = io::bprintf(&cleanup_cmd_buf, "rm -rf %s", (ZString)db_path)!!;
+        char[] cleanup_cmd;
+        if (try char[] rendered_cleanup = io::bprintf(&cleanup_cmd_buf, "rm -rf %s", (ZString)db_path)) {
+            cleanup_cmd = rendered_cleanup;
+        } else {
+            io::printn("[FAIL] deduce relation schema indexes (file-backed cleanup path)");
+            (*fail)++;
+            return;
+        }
         cleanup_cmd_buf[cleanup_cmd.len] = 0;
         deduce_test_system(&cleanup_cmd_buf[0]);
         defer deduce_test_system(&cleanup_cmd_buf[0]);

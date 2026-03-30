@@ -4,4 +4,4 @@ end
 
 vim.g.loaded_omni_nvim = 1
 
-require("omni").setup()
+require("omni").bootstrap()

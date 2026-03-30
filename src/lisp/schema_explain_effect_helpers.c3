@@ -8,11 +8,11 @@ fn SymbolId explain_effect_miss_reason_symbol(Interp* interp, bool dispatchable,
 }
 
 fn SymbolId explain_effect_clause_tag(EffectHandler* handler, usz clause_index) {
-    if (handler.clauses != null) {
-        return handler.clauses[clause_index].effect_tag;
-    }
     if (handler.tags != null) {
         return handler.tags[clause_index];
+    }
+    if (handler.clauses != null) {
+        return handler.clauses[clause_index].effect_tag;
     }
     return 0;
 }
@@ -108,6 +108,7 @@ fn bool explain_expr_contains_resolve(Expr* expr) {
         case E_DEFINE:
             return explain_expr_contains_resolve(expr.define.value);
         case E_PERFORM:
+            if (expr.perform.has_tag_expr && explain_expr_contains_resolve(expr.perform.tag_expr)) return true;
             return explain_expr_contains_resolve(expr.perform.arg);
         case E_HANDLE:
             // Handle clause executes in its own runtime loop.

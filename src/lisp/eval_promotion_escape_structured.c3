@@ -134,6 +134,8 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         }
         result.closure_val.env = copied.env;
         result.closure_val.env_scope = env_scope;
+    } else if (closure_env_scope_is_root_owned(result, interp)) {
+        result.closure_val.env_scope = null;
     } else if (result.closure_val.env_scope != null) {
         main::scope_retain(result.closure_val.env_scope);
     }

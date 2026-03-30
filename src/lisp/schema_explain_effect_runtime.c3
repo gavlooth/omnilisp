@@ -164,7 +164,18 @@ fn Value* explain_effect_result_from_signal_value(
 fn Value* explain_effect_result_from_signal(Interp* interp, Expr* target, Env* target_env, Value* out, Value* decision, Value* trace) {
     Value* arg_value = runtime_eval_expr(target.perform.arg, target_env, interp);
     if (arg_value != null && arg_value.tag == ERROR) return arg_value;
-    return explain_effect_result_from_signal_value(interp, target.perform.tag, arg_value, out, decision, trace);
+    SymbolId effect_tag = (SymbolId)0;
+    Value* tag_err = resolve_effect_tag_symbol(
+        target.perform.tag,
+        target.perform.tag_expr,
+        target.perform.has_tag_expr,
+        target_env,
+        interp,
+        &effect_tag,
+        "signal"
+    );
+    if (tag_err != null) return tag_err;
+    return explain_effect_result_from_signal_value(interp, effect_tag, arg_value, out, decision, trace);
 }
 
 fn Value* explain_effect_result_from_resolve_value(

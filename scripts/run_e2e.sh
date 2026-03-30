@@ -7,7 +7,11 @@ source scripts/c3c_limits.sh
 e2e_expected_diff_manifest="scripts/baselines/e2e_expected_diff.txt"
 e2e_expected_diff_metadata="scripts/baselines/e2e_expected_diff.tsv"
 
-: "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" == "1" ]]; then
+  : "${OMNI_HARD_MEM_CAP_METHOD:=none}"
+else
+  : "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+fi
 : "${OMNI_HARD_MEM_CAP_PERCENT:=30}"
 
 if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" && "${OMNI_HARD_MEM_CAP_METHOD}" != "docker" ]]; then

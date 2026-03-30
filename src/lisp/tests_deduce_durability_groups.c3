@@ -5,8 +5,9 @@ import std::io;
 
 fn bool deduce_test_write_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[2048] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (let (db (deduce 'open \"%s\") "
@@ -14,22 +15,33 @@ fn bool deduce_test_write_restart_script(char[] script_path, char[] db_path, boo
             "    (deduce 'fact! rel \"Alice\" 30) "
             "    (if (= (deduce 'count rel) 1) true (deduce 'count 42))))",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (let (db (deduce 'open \"%s\") "
             "        rel (deduce 'open-named db 'person \"person_v1\" 'name 'age)) "
             "    (if (= (deduce 'count rel) 1) true (deduce 'count 42))))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -40,8 +52,13 @@ fn bool deduce_test_write_materialized_restart_script(char[] script_path, char[]
             "  (deduce/materialize! ancestor) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -84,14 +101,20 @@ fn bool deduce_test_write_materialized_restart_script(char[] script_path, char[]
             "    (= (ref db-refresh 'refreshed-materialized-relations) nil) "
             "    (= (ref db-refresh 'remaining-stale-materialized-relations) nil)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_refresh_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -103,8 +126,13 @@ fn bool deduce_test_write_materialized_refresh_restart_script(char[] script_path
             "  (deduce/refresh! ancestor) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -126,14 +154,20 @@ fn bool deduce_test_write_materialized_refresh_restart_script(char[] script_path
             "    (= (ref analyze 'ready-materialized-view-count) 1) "
             "    (= (ref analyze 'unready-materialized-view-count) 0)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_stale_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -146,8 +180,13 @@ fn bool deduce_test_write_materialized_stale_restart_script(char[] script_path, 
             "  (deduce 'fact! edge 2 3) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -172,14 +211,20 @@ fn bool deduce_test_write_materialized_stale_restart_script(char[] script_path, 
             "    (= (ref analyze 'unready-materialized-view-count) 0) "
             "    (= (ref analyze 'stale-materialized-view-count) 1)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_on_read_refresh_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -189,8 +234,13 @@ fn bool deduce_test_write_materialized_on_read_refresh_restart_script(char[] scr
             "  (deduce/rule! db '(ancestor ?x ?y) '(edge ?x ?y)) "
             "  (= (deduce 'count ancestor) 1))",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -210,14 +260,20 @@ fn bool deduce_test_write_materialized_on_read_refresh_restart_script(char[] scr
             "    (= (ref analyze 'ready-materialized-view-count) 1) "
             "    (= (ref analyze 'unready-materialized-view-count) 0)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_on_read_stale_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -229,8 +285,13 @@ fn bool deduce_test_write_materialized_on_read_stale_restart_script(char[] scrip
             "  (deduce 'fact! edge 2 3) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -257,14 +318,20 @@ fn bool deduce_test_write_materialized_on_read_stale_restart_script(char[] scrip
             "    (= (ref analyze 'unready-materialized-view-count) 0) "
             "    (= (ref analyze 'stale-materialized-view-count) 0)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_drop_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -272,8 +339,13 @@ fn bool deduce_test_write_materialized_drop_restart_script(char[] script_path, c
             "  (deduce 'drop! doomed) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -287,14 +359,20 @@ fn bool deduce_test_write_materialized_drop_restart_script(char[] script_path, c
             "    (= (ref analyze 'ready-materialized-view-count) 0) "
             "    (= (ref analyze 'unready-materialized-view-count) 0)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_write_materialized_dematerialize_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -307,8 +385,13 @@ fn bool deduce_test_write_materialized_dematerialize_restart_script(char[] scrip
             "  (deduce/dematerialize! ancestor) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -329,18 +412,28 @@ fn bool deduce_test_write_materialized_dematerialize_restart_script(char[] scrip
             "    (= (dict? payload) true) "
             "    (= (ref payload 'code) 'deduce/refresh-relation-not-materialized)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
 fn bool deduce_test_run_main_script(char[] script_path) {
     char[1024] cmd_buf;
-    char[] cmd = io::bprintf(
+    char[] cmd;
+    if (try char[] rendered = io::bprintf(
         &cmd_buf,
         "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 "
         "LD_LIBRARY_PATH=/usr/local/lib ./build/main %s",
         (ZString)script_path
-    )!!;
+    )) {
+        cmd = rendered;
+    } else {
+        return false;
+    }
     cmd_buf[cmd.len] = 0;
     return deduce_test_system(&cmd_buf[0]) == 0;
 }
@@ -352,30 +445,51 @@ fn void run_deduce_durability_restart_test(Interp* interp, int* pass, int* fail)
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-restart-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce durability across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-restart-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce durability across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-restart-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce durability across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -408,30 +522,51 @@ fn void run_deduce_materialized_intent_restart_test(Interp* interp, int* pass, i
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-restart-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized intent across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized intent across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized intent across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -464,30 +599,51 @@ fn void run_deduce_materialized_refresh_restart_test(Interp* interp, int* pass, 
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-refresh-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized refresh metadata across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-refresh-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized refresh metadata across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-refresh-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized refresh metadata across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -520,30 +676,51 @@ fn void run_deduce_materialized_stale_restart_test(Interp* interp, int* pass, in
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-stale-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized stale metadata across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-stale-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized stale metadata across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-stale-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized stale metadata across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -576,30 +753,51 @@ fn void run_deduce_materialized_on_read_refresh_restart_test(Interp* interp, int
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-on-read-refresh-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized refresh stays readable across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-on-read-refresh-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized refresh stays readable across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-on-read-refresh-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized refresh stays readable across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -632,30 +830,51 @@ fn void run_deduce_materialized_on_read_stale_restart_test(Interp* interp, int* 
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-on-read-stale-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized stale reads fail truthfully across restart (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-on-read-stale-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized stale reads fail truthfully across restart (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-on-read-stale-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce on-read materialized stale reads fail truthfully across restart (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -688,30 +907,51 @@ fn void run_deduce_materialized_drop_restart_test(Interp* interp, int* pass, int
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-drop-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized drop clears persisted intent (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-drop-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized drop clears persisted intent (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-drop-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce materialized drop clears persisted intent (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -744,30 +984,51 @@ fn void run_deduce_materialized_dematerialize_restart_test(Interp* interp, int* 
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-dematerialize-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce dematerialize clears persisted materialized intent (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-dematerialize-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce dematerialize clears persisted materialized intent (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-dematerialize-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce dematerialize clears persisted materialized intent (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -800,30 +1061,51 @@ fn void run_deduce_materialized_selective_rule_install_restart_test(Interp* inte
     usz seq = g_deduce_test_long_path_seq++;
 
     char[512] db_path_buf;
-    char[] db_path = io::bprintf(
+    char[] db_path;
+    if (try char[] rendered = io::bprintf(
         &db_path_buf,
         "/tmp/omni-deduce-materialized-selective-rule-install-%d-%d",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        db_path = rendered;
+    } else {
+        io::printn("[FAIL] deduce selective rule-install invalidates only ready materialized views (db path)");
+        (*fail)++;
+        return;
+    }
 
     char[512] writer_script_buf;
-    char[] writer_script = io::bprintf(
+    char[] writer_script;
+    if (try char[] rendered = io::bprintf(
         &writer_script_buf,
         "/tmp/omni-deduce-materialized-selective-rule-install-write-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        writer_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce selective rule-install invalidates only ready materialized views (writer path)");
+        (*fail)++;
+        return;
+    }
     writer_script_buf[writer_script.len] = 0;
     defer deduce_test_unlink(&writer_script_buf[0]);
 
     char[512] reader_script_buf;
-    char[] reader_script = io::bprintf(
+    char[] reader_script;
+    if (try char[] rendered = io::bprintf(
         &reader_script_buf,
         "/tmp/omni-deduce-materialized-selective-rule-install-read-%d-%d.omni",
         (int)pid,
         (int)seq
-    )!!;
+    )) {
+        reader_script = rendered;
+    } else {
+        io::printn("[FAIL] deduce selective rule-install invalidates only ready materialized views (reader path)");
+        (*fail)++;
+        return;
+    }
     reader_script_buf[reader_script.len] = 0;
     defer deduce_test_unlink(&reader_script_buf[0]);
 
@@ -849,7 +1131,7 @@ fn void run_deduce_materialized_selective_rule_install_restart_test(Interp* inte
     }
 }
 
-fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
+fn void run_deduce_transaction_commit_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -871,7 +1153,9 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
 
+fn void run_deduce_transaction_abort_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -891,7 +1175,9 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
 
+fn void run_deduce_transaction_db_mismatch_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -912,10 +1198,17 @@ fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn void run_deduce_transaction_tests(Interp* interp, int* pass, int* fail) {
+    run_deduce_transaction_commit_test(interp, pass, fail);
+    run_deduce_transaction_abort_test(interp, pass, fail);
+    run_deduce_transaction_db_mismatch_test(interp, pass, fail);
+}
+
 fn bool deduce_test_write_materialized_selective_rule_install_restart_script(char[] script_path, char[] db_path, bool writer_phase) {
     char[4096] script_buf;
-    char[] script = writer_phase
-        ? io::bprintf(
+    char[] script;
+    if (writer_phase) {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -929,8 +1222,13 @@ fn bool deduce_test_write_materialized_selective_rule_install_restart_script(cha
             "  (deduce/rule! db '(ancestor ?x ?z) '(edge ?x ?y) '(ancestor ?y ?z)) "
             "  true)",
             (ZString)db_path
-        )!!
-        : io::bprintf(
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(
             &script_buf,
             "(block "
             "  (define db (deduce 'open \"%s\")) "
@@ -952,11 +1250,16 @@ fn bool deduce_test_write_materialized_selective_rule_install_restart_script(cha
             "    (= (ref analyze 'unready-materialized-view-count) 1) "
             "    (= (ref analyze 'stale-materialized-view-count) 2)))",
             (ZString)db_path
-        )!!;
+        )) {
+            script = rendered;
+        } else {
+            return false;
+        }
+    }
     return write_text_file(script_path, script);
 }
 
-fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
+fn void run_deduce_clear_preserves_relation_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -979,7 +1282,9 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
 
+fn void run_deduce_drop_invalidates_relation_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -998,7 +1303,9 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
 
+fn void run_deduce_clear_empty_relation_test(Interp* interp, int* pass, int* fail) {
     {
         EvalResult r = run(
             "(block "
@@ -1022,7 +1329,9 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
             (*fail)++;
         }
     }
+}
 
+fn void run_deduce_retract_missing_tuple_noop_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -1034,7 +1343,9 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
         pass,
         fail
     );
+}
 
+fn void run_deduce_drop_repeat_noop_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_void(
         interp,
         "(block "
@@ -1047,7 +1358,9 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
         pass,
         fail
     );
+}
 
+fn void run_deduce_dropped_cleanup_error_test(Interp* interp, int* pass, int* fail) {
     deduce_test_expect_true_symbol(
         interp,
         "(block "
@@ -1066,6 +1379,15 @@ fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
         pass,
         fail
     );
+}
+
+fn void run_deduce_clear_drop_tests(Interp* interp, int* pass, int* fail) {
+    run_deduce_clear_preserves_relation_test(interp, pass, fail);
+    run_deduce_drop_invalidates_relation_test(interp, pass, fail);
+    run_deduce_clear_empty_relation_test(interp, pass, fail);
+    run_deduce_retract_missing_tuple_noop_test(interp, pass, fail);
+    run_deduce_drop_repeat_noop_test(interp, pass, fail);
+    run_deduce_dropped_cleanup_error_test(interp, pass, fail);
 
     test_error_contains(
         interp,

@@ -54,6 +54,23 @@ fn void Compiler.serialize_pattern_to_buf(Compiler* self, Pattern* pat, List{cha
             self.serialize_pattern_to_buf(pat.cdr_pat, buf);
             buf.push(')');
 
+        case PAT_CONSTRUCTOR:
+            buf.push('(');
+            self.buf_append(buf, self.interp.symbols.get_name(pat.constructor_name));
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                buf.push(' ');
+                self.serialize_pattern_to_buf(pat.ctor_sub_patterns[i], buf);
+            }
+            buf.push(')');
+
+        case PAT_DICT:
+            buf.push('{');
+            for (usz i = 0; i < pat.dict_key_count; i++) {
+                if (i > 0) buf.push(' ');
+                self.buf_append(buf, self.interp.symbols.get_name(pat.dict_keys[i]));
+            }
+            buf.push('}');
+
         default:
             buf.push('_');
     }

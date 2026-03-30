@@ -27,10 +27,12 @@ Use this file to reduce context switching and avoid reading obsolete plans.
 - Active implementation plans: `docs/plans/README.md`
 - Area status hub: `docs/areas/README.md`
 - Effects and handlers: `docs/EFFECTS_GUIDE.md`, `docs/EFFECTS_SEMANTICS.md`
+- UI surface reference: `docs/UI_REFERENCE.md`
 - Error payload policy: `docs/ERROR_MODEL.md`
 - Type/dispatch syntax details: `docs/type-system-syntax.md`
 - User-facing reference: `docs/OMNI_REFERENCE.md`
 - Tooling and CLI: `docs/PROJECT_TOOLING.md`
+- REPL server protocol + phase-1 status: `docs/plans/repl-server-protocol-2026-03-30.md`
 - Editor integrations: `tooling/README.md`
 - Syntax naming rationale: `docs/syntax-decision.md`
 - Canonical feature example: `examples/finwatch/main.omni` (financial-service webserver)

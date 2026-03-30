@@ -217,7 +217,7 @@ fn bool ctor_match_type_form(
 /**
  * (^ type-form value) -> value
  * Explicit constructor annotation checker for forms like:
- *   (^(Box Int) (Box 42))
+ *   (^(Box Integer) (Box 42))
  */
 fn Value* prim_ctor_type_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) {

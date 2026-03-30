@@ -11,11 +11,12 @@ fn EvalResult value_to_eval_result(Value* v) @inline {
     return eval_ok(v);
 }
 
-fn Value* dispatch_pending_raise(Expr* expr, Env* env, Interp* interp) {
+fn Value* dispatch_pending_raise(Expr* expr, EffectHandler* h, Env* env, Interp* interp) {
     if (!interp.flags.raise_pending) return null;
     SymbolId raise_sym = interp.sym_raise;
     for (usz ci = 0; ci < expr.handle.clause_count; ci++) {
-        if ((uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym) {
+        if ((h.tags != null && (uint)h.tags[ci] == (uint)raise_sym) ||
+            (h.tags == null && (uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym)) {
             EffectClause* clause = &expr.handle.clauses[ci];
             interp.flags.raise_pending = false;
             Value* msg_val = interp.raise_payload;
@@ -27,7 +28,21 @@ fn Value* dispatch_pending_raise(Expr* expr, Env* env, Interp* interp) {
             interp.raise_msg[0] = 0;
             Value* k_val = make_nil(interp);
             Env* clause_env = jit_env_extend(interp, env, clause.k_name, k_val);
+            if (clause_env == null) {
+                return runtime_effect_raise(
+                    interp,
+                    "runtime/raise-handler-bind-failed",
+                    "raise handler failed to bind clause environment"
+                );
+            }
             clause_env = jit_env_extend(interp, clause_env, clause.arg_name, msg_val);
+            if (clause_env == null) {
+                return runtime_effect_raise(
+                    interp,
+                    "runtime/raise-handler-bind-failed",
+                    "raise handler failed to bind clause environment"
+                );
+            }
             Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
             if (handler_v == null) {
                 return runtime_effect_raise(interp, "runtime/raise-handler-returned-nil", "raise handler returned nil");
@@ -67,20 +82,35 @@ fn void jit_handle_init_handler(EffectHandler* h, Expr* expr, Env* env, HandleEf
     h.effect_state = state;
 }
 
-fn bool jit_handle_copy_clauses(EffectHandler* h, Expr* expr) {
+fn Value* jit_handle_copy_clauses(EffectHandler* h, Expr* expr, Env* env, Interp* interp) {
     h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * expr.handle.clause_count);
     h.clauses = (EffectClause*)mem::malloc(EffectClause.sizeof * expr.handle.clause_count);
     h.closures = null;
     if (h.tags == null || h.clauses == null) {
         if (h.tags != null) mem::free(h.tags);
         if (h.clauses != null) mem::free(h.clauses);
-        return false;
+        return make_error(interp, "handle: failed to allocate clauses");
     }
     for (usz i = 0; i < expr.handle.clause_count; i++) {
-        h.tags[i] = expr.handle.clauses[i].effect_tag;
         h.clauses[i] = expr.handle.clauses[i];
+        Value* tag_err = resolve_effect_tag_symbol(
+            expr.handle.clauses[i].effect_tag,
+            expr.handle.clauses[i].effect_tag_expr,
+            expr.handle.clauses[i].has_effect_tag_expr,
+            env,
+            interp,
+            &h.tags[i],
+            "handle"
+        );
+        if (tag_err != null) {
+            mem::free(h.tags);
+            mem::free(h.clauses);
+            h.tags = null;
+            h.clauses = null;
+            return tag_err;
+        }
     }
-    return true;
+    return null;
 }
 
 fn bool jit_handle_body_needs_fiber_yield() @inline {
@@ -153,8 +183,8 @@ fn bool jit_handle_dispatch_signals(
     return false;
 }
 
-fn EvalResult jit_handle_finish_no_signal(Expr* expr, Env* env, Interp* interp, main::StackCtx* ctx) {
-    Value* raise_v = dispatch_pending_raise(expr, env, interp);
+fn EvalResult jit_handle_finish_no_signal(Expr* expr, EffectHandler* h, Env* env, Interp* interp, main::StackCtx* ctx) {
+    Value* raise_v = dispatch_pending_raise(expr, h, env, interp);
     if (raise_v != null) return value_to_eval_result(raise_v);
     return value_to_eval_result((Value*)ctx.result);
 }
@@ -187,9 +217,8 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     EffectHandler* h = &interp.handler_stack[my_idx];
     jit_handle_init_handler(h, expr, env, state);
 
-    if (!jit_handle_copy_clauses(h, expr)) {
-        return eval_error("handle: failed to allocate clauses");
-    }
+    Value* clause_err = jit_handle_copy_clauses(h, expr, env, interp);
+    if (clause_err != null) return value_to_eval_result(clause_err);
     SymbolId* owned_tags = h.tags;
     EffectClause* owned_clauses = h.clauses;
     defer mem::free(owned_tags);
@@ -210,7 +239,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
     if (jit_handle_dispatch_signals(state, expr, env, interp, ctx, &dispatch_result)) {
         return dispatch_result;
     }
-    return jit_handle_finish_no_signal(expr, env, interp, ctx);
+    return jit_handle_finish_no_signal(expr, h, env, interp, ctx);
 }
 
 // =============================================================================

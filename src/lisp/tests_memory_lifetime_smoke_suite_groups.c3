@@ -3,7 +3,7 @@ module lisp;
 import std::io;
 
 fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Memory Lifetime Smoke Tests ---");
+    emit_test_section_banner("Memory Lifetime Smoke Tests");
 
     if (!run_memory_lifetime_result_and_coroutine_tests(interp, pass, fail)) return;
     run_memory_lifetime_finalize_parity_tests(interp, pass, fail);

@@ -15,8 +15,10 @@ fn bool advanced_test_append(char* buf, usz cap, usz* len, char[] piece) {
 
 fn bool advanced_test_append_int(char* buf, usz cap, usz* len, usz value) {
     char[32] num_buf;
-    char[] num_text = io::bprintf(&num_buf, "%d", (int)value)!!;
-    return advanced_test_append(buf, cap, len, num_text);
+    if (try char[] num_text = io::bprintf(&num_buf, "%d", (int)value)) {
+        return advanced_test_append(buf, cap, len, num_text);
+    }
+    return false;
 }
 
 fn usz advanced_test_cstr_len(char* buf) {
@@ -29,7 +31,7 @@ fn bool advanced_build_wide_type_define(char* buf, usz cap, usz field_count) {
     usz len = 0;
     if (!advanced_test_append(buf, cap, &len, "(define [type] WideRecord")) return false;
     for (usz i = 0; i < field_count; i++) {
-        if (!advanced_test_append(buf, cap, &len, " (^Int f")) return false;
+        if (!advanced_test_append(buf, cap, &len, " (^Integer f")) return false;
         if (!advanced_test_append_int(buf, cap, &len, i)) return false;
         if (!advanced_test_append(buf, cap, &len, ")")) return false;
     }
@@ -59,7 +61,7 @@ fn bool advanced_build_wide_union_define(char* buf, usz cap, usz variant_count) 
     }
     if (!advanced_test_append(buf, cap, &len, " (V")) return false;
     if (!advanced_test_append_int(buf, cap, &len, variant_count - 1)) return false;
-    if (!advanced_test_append(buf, cap, &len, " Int))")) return false;
+    if (!advanced_test_append(buf, cap, &len, " Integer))")) return false;
     return true;
 }
 
@@ -264,7 +266,7 @@ fn bool advanced_build_match_last_list_expr(char* buf, usz cap, usz item_count) 
 
 
 fn void run_advanced_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Advanced Feature Tests ---");
+    emit_test_section_banner("Advanced Feature Tests");
     run_advanced_core_semantics_tests(interp, pass, fail);
     run_advanced_unicode_iterator_tests(interp, pass, fail);
     run_advanced_logic_tco_tests(interp, pass, fail);

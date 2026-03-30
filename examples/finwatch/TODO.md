@@ -65,7 +65,7 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `[union]` + `match`               — FetchResult sum type (models.omni)
 - [x] typed dispatch                     — to-json per type (models.omni)
 - [x] `[abstract]`                       — abstract Event base type (types.omni)
-- [x] `[alias]`                          — Timestamp=Int, Price=Double (types.omni)
+- [x] `[alias]`                          — Timestamp=Integer, Price=Double (types.omni)
 - [x] `type-of`                          — runtime type tag inspection (types.omni)
 - [x] `is?`                              — type hierarchy checks (types.omni)
 - [x] `instance?`                        — struct vs primitive check (types.omni)

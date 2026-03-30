@@ -95,7 +95,7 @@ fn bool eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, 
 }
 
 fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, Interp* interp) {
-    // Dict annotation like ^{'T Number} — extract constraints.
+    // Dictionary annotation like ^{'T Number} — extract constraints.
     out_field.field_type = INVALID_TYPE_ID;
     out_field.annotation_sym = 0;
     for (usz m = 0; m < field.type_ann.meta_count; m++) {
@@ -165,10 +165,15 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     // Create constructor primitive in root_scope (lives permanently in global env)
     char[] name_str = interp.symbols.get_name(dt.name);
     Value* constructor = make_primitive(interp, name_str, &prim_type_constructor, (int)dt.field_count);
+    if (constructor == null) {
+        return eval_error("out of memory while registering type");
+    }
     constructor.prim_val.tag = (int)type_id;
 
     // Define constructor in global env
-    env_define_with_barrier(interp.global_env, dt.name, constructor, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
+        return eval_error("out of memory while registering type");
+    }
 
     // Also make type info available as a value
     Value* type_val = interp.alloc_value();

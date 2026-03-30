@@ -14,6 +14,17 @@ fn void print_check_usage_json() {
     io::print("}\n");
 }
 
+fn void print_check_unexpected_arg_json(char* arg) {
+    io::print("{\"ok\":false,\"code\":\"cli/usage\",\"severity\":\"error\",\"message\":");
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "unexpected argument after --check: %s", (ZString)arg)) {
+        print_json_escaped_string(msg);
+    } else {
+        print_json_escaped_string("unexpected argument after --check");
+    }
+    io::print("}\n");
+}
+
 fn int print_check_usage() {
     io::printn("Usage: omni --check [--json] <file>");
     return 1;

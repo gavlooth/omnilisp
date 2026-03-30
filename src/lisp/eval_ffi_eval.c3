@@ -40,7 +40,14 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 
     // Create FFI handle value and bind in global env
     Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_chars[:path_val.str_len]);
-    env_define_with_barrier(interp.global_env, fl.name, ffi_handle, interp);
+    if (ffi_handle == null) {
+        dlclose(handle);
+        return raise_error(interp, "ffi lib: out of memory");
+    }
+    if (!env_define_with_barrier_checked(interp.global_env, fl.name, ffi_handle, interp)) {
+        dlclose(handle);
+        return raise_error(interp, "ffi lib: out of memory");
+    }
     return ffi_handle;
 }
 
@@ -270,9 +277,20 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         interp.symbols.get_name(ff.fn_name),
         &prim_ffi_bound_call,
         (int)ff.param_count);
+    if (prim == null) {
+        if (bound.param_types != null) mem::free(bound.param_types);
+        mem::free(bound.c_name);
+        mem::free(bound);
+        return raise_error(interp, "ffi λ: out of memory for bound function primitive");
+    }
     prim.prim_val.user_data = (void*)bound;
 
     // Bind in global env
-    env_define_with_barrier(interp.global_env, ff.fn_name, prim, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, ff.fn_name, prim, interp)) {
+        if (bound.param_types != null) mem::free(bound.param_types);
+        mem::free(bound.c_name);
+        mem::free(bound);
+        return raise_error(interp, "ffi λ: out of memory while registering bound function");
+    }
     return prim;
 }

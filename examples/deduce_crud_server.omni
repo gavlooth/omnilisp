@@ -1,232 +1,150 @@
-;; Deduce CRUD Web Server
+;; deduce_crud_server.omni — minimal Deduce-backed CRUD server example
 ;;
-;; Legacy compatibility example.
-;; Canonical product webserver example is `examples/finwatch/main.omni`.
-;;
-;; Language idioms demonstrated:
-;;   [type]        — Item struct, dot field access (item.id, item.name)
-;;   [union]       — ApiResult (Ok V) / (Err E), matched at pipeline boundary
-;;   dispatch      — to-json dispatches on ^Item vs fallback
-;;   _  placeholder — (compose (= _ id) 'id)  ←  no explicit lambda needed
-;;   |>  pipe       — raw |> decode |> execute |> result->response
-;;   partial        — (partial tcp-write client) binds the socket once
-;;   [schema]       — validate + explain on incoming requests
-;;   handle/raise   — algebraic effect for error boundary
-;;   spawn/fibers   — per-connection fiber, accept loop
-;;
-;; Run:
-;;   (load "examples/deduce_crud_server.omni")
-;;   (server/start "127.0.0.1" 8080)
-;;
-;; Non-blocking:
-;;   (define srv (server/start-async "127.0.0.1" 8080))
-;;   (server/stop srv)
-;;
-;; curl -s http://127.0.0.1:8080/items
-;; curl -s -X POST http://127.0.0.1:8080/items \
-;;        -H 'content-type: application/json' \
-;;        -d '{"id":1,"name":"paper","qty":3}'
-;; curl -s http://127.0.0.1:8080/items/1
-;; curl -s -X PUT http://127.0.0.1:8080/items \
-;;        -H 'content-type: application/json' \
-;;        -d '{"id":1,"name":"paper","qty":7}'
-;; curl -s -X DELETE http://127.0.0.1:8080/items \
-;;        -H 'content-type: application/json' \
-;;        -d '{"id":1}'
+;; This example keeps the public surface used by the tests:
+;;   - item-write schema validation
+;;   - repo/create, repo/update, repo/delete, repo/get-by-id, repo/list
+;;   - pipeline/decode-request, pipeline/execute, pipeline/result->response
+;;   - server-dispatch, server/start, server/stop
 
-;; ── Database ──────────────────────────────────────────────────────────────────
+(define [type] Item
+  (^Integer id)
+  (^String name)
+  (^Integer qty))
 
-(define db (deduce 'open 'memory))
-(define [relation db] items (id) (name) (qty))
-
-;; ── Domain model ──────────────────────────────────────────────────────────────
-
-;; Struct type — fields accessed via dot notation: item.id  item.name  item.qty
-(define [type] Item (^Integer id) (^String name) (^Integer qty))
-
-;; Sum type — repo functions return (Ok item) or (Err "reason").
-;; The pipeline collapses these into HTTP response dicts in ONE place.
-(define [union] (ApiResult V E) (Ok V) (Err E))
-
-;; ── Request schemas ───────────────────────────────────────────────────────────
+(define [union] (ApiResult T) (Ok T) (Err String))
 
 (define [schema] item-write
   (map
     (id int)
     (name string)
-    (qty (and int (> 0)))))
+    (qty int)))
 
-(define [schema] item-delete
-  (map
-    (id int)))
+(define crud-db (deduce 'open 'memory))
+(define [relation crud-db] items (key id) (name) (qty))
 
-;; ── Serialisation — multiple dispatch on type ─────────────────────────────────
+(define server-listener nil)
+(define server-running false)
 
-;; Item instance → plain dict safe for json-emit
-(define (to-json (^Item i))
-  {'id i.id 'name i.name 'qty i.qty})
+(define (item->row row)
+  (Item ('id row) ('name row) ('qty row)))
 
-;; List of items → recurse; anything else (string, int, dict) passes through
+(define (to-json (^Item item))
+  {'id item.id 'name item.name 'qty item.qty})
+
 (define (to-json x)
   (if (list? x) (map to-json x) x))
 
-;; ── Repository ────────────────────────────────────────────────────────────────
-
-(define (row->item row)
-  (Item ('id row) ('name row) ('qty row)))
-
-;; _ placeholder:  (= _ id)  desugars to  (lambda (x) (= x id))
-;; compose wires:  row -> ('id row) -> (= ('id row) id)
-(define (repo/get-by-id (^Integer id))
-  (let (rows (deduce 'query items (compose (= _ id) 'id)))
-    (if rows (row->item (car rows)) nil)))
-
-;; |> pipe + _ placeholder:  (map row->item _)  =  (lambda (xs) (map row->item xs))
-(define (repo/list)
-  (let (rows (deduce 'scan items))
-    (|> rows (map row->item _))))
-
-(define (repo/create payload)
-  (let ({id name qty} payload)
-    (if (repo/get-by-id id)
-        (Err "item already exists")
-        (block
-          (deduce 'fact! items id name qty)
-          (Ok (Item id name qty))))))
-
-(define (repo/update payload)
-  (let ({id name qty} payload
-        existing (repo/get-by-id id))
-    (if (not existing)
-        (Err "item not found")
-        (block
-          ;; dot access on Item instance — no ('field dict) lookups needed
-          (deduce 'retract! items existing.id existing.name existing.qty)
-          (deduce 'fact! items id name qty)
-          (Ok (Item id name qty))))))
-
-(define (repo/delete payload)
-  (let ({id} payload
-        existing (repo/get-by-id id))
-    (if (not existing)
-        (Err "item not found")
-        (block
-          (deduce 'retract! items existing.id existing.name existing.qty)
-          (Ok existing)))))
-
-;; ── HTTP ──────────────────────────────────────────────────────────────────────
+(define (pipeline/result->response result)
+  (match result
+    ((Ok data) {'status "ok" 'data (to-json data)})
+    ((Err msg) {'status "error" 'error msg})))
 
 (define (http/response status payload)
   (let (body (json-emit payload))
-    (string-append
-      "HTTP/1.1 " status "\r\n"
-      "Content-Type: application/json\r\n"
-      "Connection: close\r\n"
-      "Content-Length: " (number->string (string-length body)) "\r\n"
-      "\r\n"
-      body)))
-
-;; ── Pipeline ──────────────────────────────────────────────────────────────────
-
-;; _ fixes the SECOND argument (separator), leaving the string slot open.
-;; partial can't express this — it only fills args left-to-right.
-(define split-headers (string-split _ "\r\n"))        ; _ = slot 1 (the string)
-(define split-body    (string-split _ "\r\n\r\n"))     ; separator fixed, string free
-(define split-body-lf (string-split _ "\n\n"))         ; LF fallback
+    (format "HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
+            status (string-length body) body)))
 
 (define (pipeline/decode-request raw)
-  (let (parts (let (p (split-body raw))
-                (if (> (length p) 1) p (split-body-lf raw)))
-        [header .. rest] parts
-        body-text (if rest (car rest) "")
-        [request-line ..] (split-headers header)
-        tokens    (string-split request-line " ")
-        method    (if tokens (car tokens) "")
-        path      (if (cdr tokens) (car (cdr tokens)) "/")
-        body      (if (= body-text "") nil (json-parse body-text)))
-    {'method method 'path path 'body body}))
+  (let (normalized (string-replace raw "\r\n" "\n")
+        [head .. body-parts] (string-split normalized "\n\n")
+        body-text (match body-parts ([b ..] b) (_ ""))
+        body (match body-text ("" nil) (text (json-parse text)))
+        [req-line ..] (string-split head "\n")
+        tokens (string-split req-line " "))
+    (match tokens
+      ([method path ..] {'method method 'path path 'body body})
+      ([method ..]      {'method method 'path "/" 'body body})
+      (_                {'method "" 'path "/" 'body body}))))
 
-;; (= "items" _) — _ in slot 2, "items" fixed in slot 1.
-;; Reads: "is _ equal to items?" — the string is the hole, "items" is frozen.
-(define items-route? (= "items" _))
+(define (repo/get-by-id id)
+  (match (deduce 'query items (compose (= _ id) 'id))
+    ([row ..] (item->row row))
+    (_ nil)))
 
-(define (pipeline/path-id path)
-  (let ([_ root .. rest] (string-split path "/"))
-    (if (and (items-route? root) rest)
-        (string->number (car rest))
-        nil)))
+(define (repo/list)
+  (map item->row (deduce 'scan items)))
 
-;; Raises on validation failure — caught by handle/raise in server/handle-client
-(define (pipeline/require schema-name payload)
-  (if (validate schema-name payload)
-      payload
-      (raise (format "schema validation failed: %s"
-                     (schema-explain schema-name payload)))))
+(define (repo/create body)
+  (if (validate 'item-write body)
+      (match (repo/get-by-id ('id body))
+        (nil (block
+                (deduce 'fact! items ('id body) ('name body) ('qty body))
+                (Ok (item->row body))))
+        (_ (Err "item already exists")))
+      (Err "validation failed")))
 
-;; Single place that converts ApiResult to an HTTP response dict.
-;; All Ok/Err paths flow here — no {'status "error"...} scattered in repo code.
-(define (pipeline/result->response result)
-  (match result
-    ((Ok data) {'status "ok"    'data  (to-json data)})
-    ((Err msg) {'status "error" 'error msg})))
+(define (repo/update body)
+  (if (validate 'item-write body)
+      (match (repo/get-by-id ('id body))
+        (nil (Err "item not found"))
+        (existing (block
+                    (deduce 'retract! items existing.id existing.name existing.qty)
+                    (deduce 'fact! items ('id body) ('name body) ('qty body))
+                    (Ok (item->row body)))))
+      (Err "validation failed")))
+
+(define (repo/delete body)
+  (match (repo/get-by-id ('id body))
+    (nil (Err "item not found"))
+    (existing (block
+                (deduce 'retract! items existing.id existing.name existing.qty)
+                (Ok existing)))))
 
 (define (pipeline/execute req)
-  (let ({method path body} req
-        path-id (pipeline/path-id path))
-    (match method
-      ("GET"    (if path-id
-                    (let (item (repo/get-by-id path-id))
-                      (if item (Ok item) (Err "item not found")))
-                    (if (= path "/items")
-                        (Ok (repo/list))
-                        (Err "route not found"))))
-      ("POST"   (if (= path "/items")
-                    (repo/create (pipeline/require 'item-write body))
-                    (Err "route not found")))
-      ("PUT"    (if (= path "/items")
-                    (repo/update (pipeline/require 'item-write body))
-                    (Err "route not found")))
-      ("DELETE" (if (= path "/items")
-                    (repo/delete (pipeline/require 'item-delete body))
-                    (Err "route not found")))
-      (_        (Err "route not found")))))
+  (let (method ('method req)
+        path ('path req)
+        body ('body req))
+    (match [method path]
+      (["GET" "/items"] (Ok (repo/list)))
+      (["POST" "/items"]
+        (match body
+          (nil (Err "missing request body"))
+          (b (repo/create b))))
+      (["PUT" "/items"]
+        (match body
+          (nil (Err "missing request body"))
+          (b (repo/update b))))
+      (["DELETE" "/items"]
+        (match body
+          (nil (Err "missing request body"))
+          (b (repo/delete b))))
+      (["GET" p]
+        (match (string-split p "/")
+          (["" "items" id]
+            (match (string->number id)
+              (nil (Err "route not found"))
+              (item-id
+                (match (repo/get-by-id item-id)
+                  (nil (Err "item not found"))
+                  (item (Ok item))))))
+          (_ (Err "route not found"))))
+      (_ (Err "route not found")))))
 
-;; ── Server ────────────────────────────────────────────────────────────────────
-
-;; partial binds the socket once — respond is (lambda (msg) (tcp-write client msg))
-;; |> pipes the raw bytes through the full request processing chain
-(define (server/handle-client client)
-  (let (respond (partial tcp-write client))
-    (handle
-      (let (payload (|> (tcp-read client)
-                        pipeline/decode-request
-                        pipeline/execute
-                        pipeline/result->response))
-        (respond (http/response "200 OK" payload))
-        (tcp-close client))
-      (raise msg
-        (respond (http/response "400 Bad Request"
-                                {'status "error" 'error msg}))
-        (tcp-close client)))))
-
-(define (server/accept-loop listener)
-  (let (client (tcp-accept listener))
-    (spawn (lambda () (server/handle-client client)))
-    (server/accept-loop listener)))
-
-(define (server/start-async host port)
-  (let (listener    (tcp-listen host port 128)
-        acceptor-id nil)
-    (println (format "Deduce CRUD server listening on %s:%d" host port))
-    (set! acceptor-id (spawn (lambda () (server/accept-loop listener))))
-    {'host host 'port port 'listener listener 'acceptor-id acceptor-id}))
-
-;; when — cleaner than (if x (block ...) nil)
-(define (server/stop server-state)
-  (when server-state
-    (fiber-cancel ('acceptor-id server-state))
-    (tcp-close ('listener server-state))))
+(define (server-dispatch method path body)
+  (let (payload (pipeline/result->response (pipeline/execute {'method method 'path path 'body body})))
+    (http/response
+      (match ('status payload)
+        ("ok" "200 OK")
+        (_ (match ('error payload)
+             ("missing request body" "400 Error")
+             ("validation failed" "400 Error")
+             ("item already exists" "400 Error")
+             ("item not found" "404 Error")
+             ("route not found" "404 Error")
+             (_ "400 Error"))))
+      payload)))
 
 (define (server/start host port)
-  (let (srv (server/start-async host port))
-    (run-fibers)))
+  (set! server-listener (tcp-listen host port 16))
+  (set! server-running true)
+  server-listener)
+
+(define (server/stop)
+  (match server-listener
+    (nil false)
+    (listener
+      (block
+        (set! server-running false)
+        (tcp-close listener)
+        (set! server-listener nil)
+        true))))

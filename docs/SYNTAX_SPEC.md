@@ -17,7 +17,7 @@
 | T_RBRACKET | `]` | Right bracket for array literals, patterns, attributes |
 | T_LBRACE | `{` | Left brace for dict literals, metadata dictionaries |
 | T_RBRACE | `}` | Right brace for dict literals, metadata dictionaries |
-| T_DOT_BRACKET | `.[` | Legacy compatibility token used while parsing postfix index syntax `expr.[key]`. Leading-dot accessors are a separate `.` + expression surface. |
+| T_DOT_BRACKET | `.[` | Parser token used while parsing postfix index syntax `expr.[key]`. Leading-dot accessors are a separate `.` + expression surface. |
 | T_QUOTE | `'` | Quote shorthand |
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
@@ -96,7 +96,7 @@
 ;; Typed parameters (for dispatch)
 (lambda ((^Integer x) (^String y)) body)
 
-;; Dict destructuring parameter
+;; Dictionary destructuring parameter
 (lambda ({name age}) (println name age))
 ;; caller passes a dict: (f {'name "Alice" 'age 30})
 
@@ -126,7 +126,7 @@ Three branches required (no two-branch form).
 (let ([head .. tail] '(1 2 3)) head)
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))
 
-;; Dict destructuring
+;; Dictionary destructuring
 (let ({name age} {'name "Alice" 'age 30}) name)
 (let ({x y} {'x 10 'y 20}) (+ x y))
 
@@ -151,7 +151,7 @@ Three branches required (no two-branch form).
 (define (f x y) body)
 ;; desugars to: (define f (lambda (x y) body))
 
-;; Dict destructuring parameter
+;; Dictionary destructuring parameter
 (define (connect {host port}) (tcp-connect host port))
 ;; called as: (connect {'host "localhost" 'port 8080})
 
@@ -166,7 +166,7 @@ Three branches required (no two-branch form).
     (pattern1 (template ...))
     (pattern2 (template ...))
     ...))
-;; legacy clause-style macro forms are removed and parse as hard errors
+;; clause-style macro forms are removed and parse as hard errors
 (define [type] Name (^Type field1) (^Type field2))
 (define [struct] Name (^Type field1) (^Type field2))  ;; alias of [type]
 (define [type] (Child Parent) (^Type field))
@@ -278,7 +278,7 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 [1 2 3]                ;; => mutable array with elements 1, 2, 3
 []                     ;; => empty array
 
-;; Dict literal — equivalent to (Dictionary ...)
+;; Dictionary literal — equivalent to (Dictionary ...)
 {'a 1 'b 2}            ;; => mutable dict with keys a, b
 {}                     ;; => empty dict
 

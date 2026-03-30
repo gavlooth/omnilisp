@@ -4,6 +4,14 @@ module lisp;
 import std::io;
 import main;
 
+fn bool lifetime_stack_ctx_recycles() @inline {
+    return main::stack_pool_cache_limit() > 0;
+}
+
+fn bool lifetime_stack_ctx_release_ok(usz before, usz after) @inline {
+    return lifetime_stack_ctx_recycles() ? after == before + 1 : after == before;
+}
+
 fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: run() must return a value that lives in caller scope.
     // For closure results, this catches stale child-scope pointers.
@@ -22,16 +30,28 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         }
     }
 
-    // Invariant: completed user coroutines should return their StackCtx to the pool.
-    // This uses a fresh interpreter so pool accounting is deterministic.
+    // Invariant: completed user coroutines release their StackCtx back to the
+    // runtime ownership path. Normal builds recycle into the pool; ASAN builds
+    // free directly to avoid stale fake-stack reuse.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: completed coroutine releases StackCtx after completion (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
         tmp.init();
-        register_primitives(tmp);
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: completed coroutine releases StackCtx after completion (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
 
         EvalResult r_thunk = run("(lambda () 42)", tmp);
         if (r_thunk.error.has_error || r_thunk.value == null) {
-            io::printn("[FAIL] lifetime: completed coroutine returns StackCtx to pool (failed to build thunk)");
+            io::printn("[FAIL] lifetime: completed coroutine releases StackCtx after completion (failed to build thunk)");
             (*fail)++;
             tmp.destroy();
             mem::free(tmp);
@@ -54,13 +74,13 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
                   r != null &&
                   r.tag == INT &&
                   r.int_val == 42 &&
-                  after == before + 1;
+                  lifetime_stack_ctx_release_ok(before, after);
 
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: completed coroutine returns StackCtx to pool");
+            emit_pass_literal("[PASS] lifetime: completed coroutine releases StackCtx after completion");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] lifetime: completed coroutine returns StackCtx to pool (before=%d after=%d, coro_tag=%d, result_tag=%d)",
+            io::printfn("[FAIL] lifetime: completed coroutine releases StackCtx after completion (before=%d after=%d, coro_tag=%d, result_tag=%d)",
                 (int)before, (int)after,
                 c != null ? (int)c.tag : -1,
                 r != null ? (int)r.tag : -1);
@@ -74,8 +94,19 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
     // Invariant: boundary copy to parent transfers coroutine-wrapper ownership.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
         tmp.init();
-        register_primitives(tmp);
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
 
         EvalResult r_thunk = run("(lambda () 42)", tmp);
         if (r_thunk.error.has_error || r_thunk.value == null) {
@@ -139,7 +170,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
                   resume_result.int_val == 42 &&
                   promoted != null &&
                   promoted.coroutine_val == null &&
-                  after == before + 1;
+                  lifetime_stack_ctx_release_ok(before, after);
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: promote_to_root transfers coroutine wrapper ownership");
@@ -156,8 +187,19 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
     // Invariant: promote_to_escape transfers coroutine-wrapper ownership into ESCAPE lane.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_escape (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
         tmp.init();
-        register_primitives(tmp);
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_escape (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
 
         EvalResult r_thunk = run("(lambda () 7)", tmp);
         if (r_thunk.error.has_error || r_thunk.value == null) {
@@ -209,7 +251,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         main::scope_release(child);
         usz after = tmp.stack_ctx_pool.pool_size;
 
-        bool ok = transfer_ok && after == before + 1;
+        bool ok = transfer_ok && lifetime_stack_ctx_release_ok(before, after);
         if (ok) {
             emit_pass_literal("[PASS] lifetime: promote_to_escape transfers coroutine wrapper ownership");
             (*pass)++;
@@ -225,8 +267,19 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
     // Invariant: handler clauses that ignore k must not retain suspended handle contexts.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: handler clause teardown releases suspended context (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
         tmp.init();
-        register_primitives(tmp);
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: handler clause teardown releases suspended context (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
 
         usz before = tmp.stack_ctx_pool.pool_size;
         EvalResult r = run("(handle (signal ask 1) (ask k x 99))", tmp);
@@ -236,7 +289,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
                   r.value != null &&
                   r.value.tag == INT &&
                   r.value.int_val == 99 &&
-                  after == before + 1;
+                  lifetime_stack_ctx_release_ok(before, after);
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: handle ignore-k does not retain suspended context");
@@ -378,6 +431,238 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
             (*pass)++;
         } else {
             io::printn("[FAIL] lifetime: env_set_with_barrier promotes temp value");
+            (*fail)++;
+        }
+    }
+
+    // Invariant: checked env-set surfaces barrier write failure and preserves
+    // the previously installed binding value.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* s = main::scope_create(saved);
+        interp.current_scope = s;
+
+        Env* e = make_env(interp, null);
+        bool setup_ok = e != null;
+        if (setup_ok) {
+            e.scope_gen = s.escape_generation; // Simulate ESCAPE-lane env frame
+        }
+        SymbolId sid = interp.symbols.intern("__barrier_set_checked");
+        if (setup_ok) {
+            env_define_with_barrier(e, sid, make_int(interp, 7), interp);
+        }
+
+        bool found = false;
+        g_env_force_barrier_promote_failure = true;
+        bool set_ok = setup_ok &&
+                      env_set_with_barrier_checked(e, sid, make_int(interp, 99), interp, &found);
+        g_env_force_barrier_promote_failure = false;
+
+        Value* got = e != null ? e.lookup(sid) : null;
+        bool ok = setup_ok &&
+                  !set_ok &&
+                  found &&
+                  got != null &&
+                  got.tag == INT &&
+                  got.int_val == 7;
+
+        interp.current_scope = saved;
+        main::scope_release(s);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: checked env set surfaces barrier failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: checked env set surfaces barrier failure (setup_ok=%s set_ok=%s found=%s got_tag=%d got_int=%d)",
+                setup_ok ? "yes" : "no",
+                set_ok ? "yes" : "no",
+                found ? "yes" : "no",
+                got != null ? (int)got.tag : -1,
+                got != null && got.tag == INT ? (int)got.int_val : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    // Invariant: checked env define surfaces binding-array growth failure and
+    // leaves existing bindings intact.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* s = main::scope_create(saved);
+        interp.current_scope = s;
+
+        Env* e = make_env(interp, null);
+        bool setup_ok = e != null;
+        SymbolId missing_sid = 0;
+        for (usz i = 0; i < 4 && setup_ok; i++) {
+            char[48] name_buf;
+            if (try char[] name = io::bprintf(&name_buf, "__barrier_growth_seed_%d", (int)i)) {
+                SymbolId sid = interp.symbols.intern(name);
+                setup_ok = env_define_with_barrier_checked(e, sid, make_int(interp, (long)(i + 1)), interp);
+            } else {
+                setup_ok = false;
+            }
+        }
+
+        char[48] missing_buf;
+        if (try char[] missing_name = io::bprintf(&missing_buf, "__barrier_growth_missing_%d", 4)) {
+            missing_sid = interp.symbols.intern(missing_name);
+        } else {
+            setup_ok = false;
+        }
+
+        g_env_force_bindings_alloc_oom = true;
+        bool define_ok = setup_ok &&
+                         env_define_with_barrier_checked(e, missing_sid, make_int(interp, 99), interp);
+        g_env_force_bindings_alloc_oom = false;
+
+        bool existing_ok = setup_ok;
+        for (usz i = 0; i < 4 && existing_ok; i++) {
+            char[48] name_buf;
+            if (try char[] name = io::bprintf(&name_buf, "__barrier_growth_seed_%d", (int)i)) {
+                SymbolId sid = interp.symbols.intern(name);
+                Value* got = e.lookup(sid);
+                existing_ok = got != null &&
+                              got.tag == INT &&
+                              got.int_val == (long)(i + 1);
+            } else {
+                existing_ok = false;
+            }
+        }
+        Value* missing = e.lookup(missing_sid);
+        usz binding_count = e != null ? e.binding_count : 0;
+        usz capacity = e != null ? e.capacity : 0;
+
+        bool ok = setup_ok &&
+                  !define_ok &&
+                  binding_count == 4 &&
+                  capacity == 4 &&
+                  missing == null &&
+                  existing_ok;
+
+        interp.current_scope = saved;
+        main::scope_release(s);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: checked env define surfaces growth failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: checked env define surfaces growth failure (setup_ok=%s define_ok=%s binding_count=%d capacity=%d existing_ok=%s missing=%s)",
+                setup_ok ? "yes" : "no",
+                define_ok ? "yes" : "no",
+                (int)binding_count,
+                (int)capacity,
+                existing_ok ? "yes" : "no",
+                missing == null ? "null" : "present"
+            );
+            (*fail)++;
+        }
+    }
+
+    // Invariant: hash rebuild OOM preserves binding visibility by degrading back
+    // to linear-scan lookup instead of hiding the just-inserted binding.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* s = main::scope_create(saved);
+        interp.current_scope = s;
+
+        Env* e = make_env(interp, null);
+        bool setup_ok = e != null;
+        for (usz i = 0; i < ENV_HASH_THRESHOLD && setup_ok; i++) {
+            char[48] name_buf;
+            if (try char[] name = io::bprintf(&name_buf, "__hash_rebuild_seed_%d", (int)i)) {
+                SymbolId sid = interp.symbols.intern(name);
+                setup_ok = env_define_with_barrier_checked(e, sid, make_int(interp, (long)(100 + i)), interp);
+            } else {
+                setup_ok = false;
+            }
+        }
+
+        char[48] trigger_buf;
+        SymbolId trigger_sid = 0;
+        if (try char[] trigger_name = io::bprintf(&trigger_buf, "__hash_rebuild_trigger_%d", (int)ENV_HASH_THRESHOLD)) {
+            trigger_sid = interp.symbols.intern(trigger_name);
+        } else {
+            setup_ok = false;
+        }
+
+        g_env_force_hash_alloc_oom = true;
+        bool define_ok = setup_ok &&
+                         env_define_with_barrier_checked(e, trigger_sid, make_int(interp, 777), interp);
+        g_env_force_hash_alloc_oom = false;
+
+        Value* trigger_value = e.lookup(trigger_sid);
+        usz binding_count = e != null ? e.binding_count : 0;
+        bool has_hash_table = e != null && e.hash_table != null;
+        bool ok = setup_ok &&
+                  define_ok &&
+                  binding_count == ENV_HASH_THRESHOLD + 1 &&
+                  !has_hash_table &&
+                  e.hash_capacity == 0 &&
+                  trigger_value != null &&
+                  trigger_value.tag == INT &&
+                  trigger_value.int_val == 777;
+
+        interp.current_scope = saved;
+        main::scope_release(s);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env hash rebuild oom preserves binding visibility");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env hash rebuild oom preserves binding visibility (setup_ok=%s define_ok=%s binding_count=%d hash_table=%s trigger_tag=%d trigger_int=%d)",
+                setup_ok ? "yes" : "no",
+                define_ok ? "yes" : "no",
+                (int)binding_count,
+                has_hash_table ? "present" : "null",
+                trigger_value != null ? (int)trigger_value.tag : -1,
+                (trigger_value != null && trigger_value.tag == INT) ? (int)trigger_value.int_val : -1
+            );
+            (*fail)++;
+        }
+    }
+
+    // Invariant: runtime bootstrap stops before stdlib loading when primitive
+    // registration hits a recoverable binding-growth failure.
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        bool setup_ok = tmp != null;
+        if (setup_ok) {
+            tmp.init();
+        }
+
+        g_env_force_bindings_alloc_oom = true;
+        bool boot_ok = setup_ok && bootstrap_runtime_interp(tmp);
+        g_env_force_bindings_alloc_oom = false;
+
+        SymbolId plus_sid = setup_ok ? tmp.symbols.intern("+") : 0;
+        SymbolId map_sid = setup_ok ? tmp.symbols.intern("map") : 0;
+        Value* plus_v = setup_ok ? tmp.global_env.lookup(plus_sid) : null;
+        Value* map_v = setup_ok ? tmp.global_env.lookup(map_sid) : null;
+        bool ok = setup_ok &&
+                  !boot_ok &&
+                  plus_v != null &&
+                  map_v == null;
+
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: bootstrap runtime stops before stdlib on registration failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: bootstrap runtime stops before stdlib on registration failure (setup_ok=%s boot_ok=%s plus=%s map=%s)",
+                setup_ok ? "yes" : "no",
+                boot_ok ? "yes" : "no",
+                plus_v != null ? "present" : "null",
+                map_v != null ? "present" : "null"
+            );
             (*fail)++;
         }
     }

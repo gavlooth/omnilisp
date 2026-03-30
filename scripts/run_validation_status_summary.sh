@@ -92,6 +92,20 @@ run_case \
   "e2e baseline manifest/owner policy" \
   scripts/check_e2e_baseline_policy.sh
 
+run_case \
+  "ftxui_smoke" \
+  "ui" \
+  "smoke" \
+  "FTXUI example smoke gate" \
+  scripts/run_ftxui_smoke.sh
+
+run_case \
+  "bounded_container_build" \
+  "integration" \
+  "build" \
+  "bounded validation container build for runtime slices" \
+  scripts/run_validation_container.sh c3c build
+
 run_bounded_slice "jit_policy" "memory-runtime" "jit-policy"
 run_bounded_slice "scheduler" "scheduler" "scheduler"
 run_bounded_slice "deduce" "deduce" "deduce"

@@ -18,10 +18,27 @@ fn bool Parser.parse_as_pattern_marker(Parser* self) {
     return true;
 }
 
+fn bool Parser.current_is_dot_symbol(Parser* self) @inline {
+    return self.lexer.current.type == T_SYMBOL
+        && self.lexer.current.text_len == 1
+        && self.lexer.current.text[0] == '.';
+}
+
 fn Pattern* Parser.parse_paren_pattern(Parser* self) {
     self.lexer.advance();  // consume '('
     Pattern* first = self.parse_pattern();
     if (self.has_error) return null;
+
+    if (self.current_is_dot_symbol()) {
+        self.lexer.advance();  // consume '.'
+        Pattern* p = self.interp.alloc_pattern();
+        p.tag = PAT_CONS;
+        p.car_pat = first;
+        p.cdr_pat = self.parse_pattern();
+        if (self.has_error) return null;
+        self.expect(T_RPAREN, ")");
+        return p;
+    }
 
     if (self.lexer.current.type == T_QUOTE) {
         Pattern* p = self.interp.alloc_pattern();

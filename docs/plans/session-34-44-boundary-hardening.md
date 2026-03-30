@@ -539,7 +539,7 @@ Execution policy:
   - `docs/BOUNDARY_SURFACE_AUDIT.md`
   - current status: `total=28`, `allowed=23`, `ignored=5`, `violations=0`.
 - Outcome:
-  - direct legacy boundary surface is now measured by an auditable artifact.
+  - direct boundary surface is now measured by an auditable artifact.
 
 ### Session 219 Follow-up (2026-03-05): Final Handoff + Test Module Decomposition
 
@@ -975,7 +975,7 @@ Execution policy:
 
 - Added explicit boundary-facade enforcement script:
   - `scripts/check_boundary_facade_usage.sh`
-  - scans `src/lisp` for direct legacy boundary helper usage and fails on non-sanctioned callsites.
+  - scans `src/lisp` for direct boundary helper usage and fails on non-sanctioned callsites.
 - Guarded symbols:
   - `copy_to_parent(...)`
   - `promote_to_escape(...)`
@@ -1209,7 +1209,7 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 ## Session 42: Enforcement Gates
 
-- [x] Commit A: `ci: add guard to block direct legacy boundary calls outside facade`
+- [x] Commit A: `ci: add guard to block direct boundary calls outside facade`
 - [x] Add grep/script gate for forbidden direct calls.
 - [x] Commit B: `ci: add boundary-change policy checks with sanitizer requirement`
 - [x] Require ASAN + boundary tests for boundary-touched changes.
@@ -1227,8 +1227,8 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 
 ## Session 44: Final Audit + Legacy Deletion Sweep
 
-- [x] Commit A: `audit: finalize boundary consolidation and remove deprecated entrypoints`
-- [x] Remove fully replaced legacy entrypoints.
+- [x] Commit A: `audit: finalize boundary consolidation and remove replaced entrypoints`
+- [x] Remove fully replaced entrypoints.
 - [x] Commit B: `docs: publish boundary architecture audit and invariants contract`
 - [x] Write final architecture note + residual risk list.
 - [x] Run Global Gates. (N/A local execution: deferred due workstation memory/latency limits; rely on CI/large-host gates.)
@@ -1237,7 +1237,7 @@ rg -n "TODO|FIXME|HACK" src/lisp src | head
 ## Utility Commands
 
 ```bash
-# Track remaining direct legacy callsites
+# Track remaining direct callsites
 rg -n "copy_to_parent|copy_env|splice_escapes|promote_to_escape" src | sort
 
 # Confirm sanctioned boundary API entry points
@@ -1317,7 +1317,7 @@ While Candidate 2 is the most mechanically sound immediate fix, it carries disti
 
 **Phase B (The Structural Fix):**
 - Once correctness is proven, evaluate Candidate 3 (Fiber-Temp Arenas) as an RnD track, not a committed endpoint.
-- Any 3-domain migration proposal must first prove compatibility with region-centric ownership guardrails before entering production roadmap.
+- Any 3-domain migration proposal must first prove alignment with region-centric ownership guardrails before entering production roadmap.
 
 ### Open Questions (Resolved for this Revision)
 

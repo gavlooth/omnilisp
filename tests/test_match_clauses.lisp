@@ -1,5 +1,5 @@
 ; Test match clause syntax - Issue 6 P3
-; Tests both new array-based syntax and legacy alternating pairs
+; Tests both new array-based syntax and old alternating pairs
 
 ; Test 1: Basic array-based match clause [pattern result]
 (define test1

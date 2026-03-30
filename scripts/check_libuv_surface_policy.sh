@@ -17,6 +17,20 @@ done
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
+search_fixed_quiet() {
+  local needle="$1"
+  shift
+  if has_rg; then
+    rg -q -F "$needle" "$@"
+    return $?
+  fi
+  grep -F -q -- "$needle" "$@"
+}
+
 emit_diff_for_path() {
   local path="$1"
 
@@ -91,23 +105,23 @@ while IFS= read -r wrapper; do
   [[ -z "$wrapper" ]] && continue
   raw_name="__raw-${wrapper}"
 
-  if ! rg -q -F "{ \"${raw_name}\"," "$prims_file"; then
+  if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file"; then
     echo "FAIL: libuv surface policy missing raw primitive registration for io/${wrapper} (${raw_name})."
     violations=1
   fi
 
-  if ! rg -q -F "(define [effect] (io/${wrapper}" "$stdlib_file"; then
+  if ! search_fixed_quiet "(define [effect] (io/${wrapper}" "$stdlib_file"; then
     echo "FAIL: libuv surface policy missing stdlib io effect declaration for wrapper '${wrapper}'."
     violations=1
   fi
 
-  if ! rg -q -F "(define (${wrapper}" "$stdlib_file"; then
+  if ! search_fixed_quiet "(define (${wrapper}" "$stdlib_file"; then
     echo "FAIL: libuv surface policy requires function-style wrapper define for '${wrapper}'."
     echo "      expected: (define (${wrapper} ...)"
     violations=1
   fi
 
-  if rg -q -F "(define ${wrapper} (lambda" "$added_stdlib_lines"; then
+  if search_fixed_quiet "(define ${wrapper} (lambda" "$added_stdlib_lines"; then
     echo "FAIL: libuv surface policy forbids introducing new io wrapper '${wrapper}' as lambda alias."
     echo "      use function-style define (typed/dispatched surface) instead."
     violations=1

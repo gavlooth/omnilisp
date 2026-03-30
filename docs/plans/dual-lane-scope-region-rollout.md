@@ -70,7 +70,7 @@ Files:
 Tasks:
 1. Introduce `promote_to_escape(Value*, Interp*)` using existing copy semantics but targeting current scope ESCAPE lane.
 2. Keep cycle-safe/iterative behavior for list spines (no recursion regressions).
-3. Keep fallback compatibility with `copy_to_parent` where dynamic boundaries require cross-scope promotion.
+3. Keep fallback support for `copy_to_parent` where dynamic boundaries require cross-scope promotion.
 
 Exit criteria:
 - Deterministic behavior parity on existing tests.
@@ -135,7 +135,7 @@ Files:
 
 Tasks:
 1. Remove/retire `escape_scope` plumbing once lane architecture fully replaces it.
-2. Remove `scope_adopt` from normal runtime paths; keep temporary compatibility wrapper only if needed.
+2. Remove `scope_adopt` from normal runtime paths once the lane architecture fully replaces it.
 3. Reduce defensive fallbacks only after metric proof.
 
 Exit criteria:

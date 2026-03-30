@@ -204,20 +204,33 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
     main::ScopeRegion* cs = interp.current_scope;
     if (cs != interp.tco_recycle_scope || cs.refcount != 1) return null;
 
-    bool chain_touches_releasing_scope =
-        env_chain_has_frame_in_scope(*env_io, cs, interp.global_env);
-    bool bindings_touch_releasing_scope =
-        env_chain_has_binding_in_scope(*env_io, cs, interp.global_env);
+    bool chain_touches_temp_scope =
+        env_chain_has_frame_in_temp_scope(*env_io, cs, interp.global_env);
+    bool bindings_touch_temp_scope =
+        env_chain_has_binding_in_temp_scope(*env_io, cs, interp.global_env);
     bool has_root_persistent_box =
         env_chain_contains_root_persistent_box(*env_io, interp.global_env);
-    bool has_graph_binding_values =
-        env_chain_has_graph_binding_values(*env_io, interp.global_env);
-    bool allow_fast_reset = !has_root_persistent_box && !has_graph_binding_values;
+    bool has_graph_binding_values_in_temp_scope =
+        env_chain_has_graph_binding_values_in_temp_scope(*env_io, cs, interp.global_env);
+    bool allow_fast_reset =
+        !has_root_persistent_box &&
+        !has_graph_binding_values_in_temp_scope;
 
     if (allow_fast_reset &&
-        !chain_touches_releasing_scope &&
-        !bindings_touch_releasing_scope) {
+        !chain_touches_temp_scope &&
+        !bindings_touch_temp_scope) {
         main::scope_reset_temp_lane(cs);
+        interp.current_scope = cs;
+        interp.tco_recycle_scope = cs;
+        boundary_assert_interp_scope_chain(interp);
+        return null;
+    }
+
+    // TEMP-lane graph accumulators are expensive to deep-copy on every bounce.
+    // Escape-lane graphs are already safe across temp resets and should fall
+    // through to the fast-reset path above instead of pinning the whole scope.
+    if (has_graph_binding_values_in_temp_scope &&
+        (chain_touches_temp_scope || bindings_touch_temp_scope)) {
         interp.current_scope = cs;
         interp.tco_recycle_scope = cs;
         boundary_assert_interp_scope_chain(interp);
@@ -274,6 +287,12 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
     Env* saved_env = interp.jit_env;
 
     for (;;) {
+        if (interp_interrupt_requested(interp)) {
+            interp_interrupt_clear(interp);
+            interp.jit_env = saved_env;
+            return interp_interrupt_error(interp);
+        }
+
         if (expr == null) {
             interp.jit_env = saved_env;
             return make_nil(interp);
@@ -282,7 +301,7 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
         RuntimeCompiledExpr compiled = runtime_lookup_or_compile_expr(expr, interp);
         if (runtime_compiled_expr_is_null(compiled)) {
             interp.jit_env = saved_env;
-            return raise_error(interp, "JIT compilation failed");
+            return raise_error(interp, "jit: failed to compile expression for runtime evaluation");
         }
 
         interp.jit_env = env;

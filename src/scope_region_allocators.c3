@@ -30,6 +30,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
     ScopeChunk* chunk = use_fiber_temp
         ? scope_chunk_alloc_temp(new_cap)
         : scope_chunk_alloc_raw(new_cap);
+    if (chunk == null) return null;
     chunk.next = self.chunks;
     self.chunks = chunk;
 
@@ -56,6 +57,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
     if (new_cap < aligned_size) new_cap = aligned_size;
 
     ScopeChunk* chunk = scope_chunk_alloc_raw(new_cap);
+    if (chunk == null) return null;
     ScopeChunk* previous_head = self.escape_chunks;
     chunk.next = previous_head;
     self.escape_chunks = chunk;

@@ -291,7 +291,9 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         char[] source = content;
 
         if (!push_source_dir(path, interp)) {
-            return raise_error(interp, "load: failed to allocate source directory context");
+            char[512] ebuf;
+            char[] msg = io::bprintf(&ebuf, "load: failed to allocate source directory context for '%s'", (ZString)path.ptr)!!;
+            return raise_error(interp, msg);
         }
 
         EvalResult r = run_program(source, interp);

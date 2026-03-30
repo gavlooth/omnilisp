@@ -9,14 +9,21 @@
 ignore_glob src/lisp/tests_*.c3
 
 allow copy_to_parent src/lisp/eval_promotion_copy.c3
+allow copy_to_parent src/lisp/eval_promotion_copy_route_helpers.c3
+allow copy_to_parent src/lisp/eval_promotion_copy_wrapper_helpers.c3
 
 allow promote_to_escape src/lisp/eval_promotion_escape.c3
 allow promote_to_escape src/lisp/eval_boundary_api.c3
+allow promote_to_escape src/lisp/eval_promotion_escape_leaf.c3
+allow promote_to_escape src/lisp/eval_promotion_escape_structured.c3
 
 allow promote_to_root src/lisp/eval_promotion_escape.c3
 allow promote_to_root src/lisp/eval_boundary_api.c3
+allow promote_to_root src/lisp/eval_promotion_root_store.c3
 
 allow copy_env_to_scope_checked src/lisp/eval_env_copy.c3
 allow copy_env_to_scope_checked src/lisp/eval_boundary_api.c3
+allow copy_env_to_scope_checked src/lisp/eval_env_copy_helpers.c3
 
 allow scope_splice_escapes src/lisp/eval_boundary_provenance.c3
+allow scope_splice_escapes src/lisp/eval_boundary_commit_escape_builders.c3

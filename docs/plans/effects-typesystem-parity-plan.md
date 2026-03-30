@@ -25,10 +25,10 @@ Canonical tracking rule:
 
 ## Canonical Partial Backlog (Single Source Of Truth)
 
-- [x] `CP-01` Sweep remaining historical docs/plans for legacy module markers (colon-prefixed alias/export markers), keeping only quoted markers (`'as`, `'all`).
+- [x] `CP-01` Sweep remaining historical docs/plans for module markers (colon-prefixed alias/export markers), keeping only quoted markers (`'as`, `'all`).
   - Covers: `H0.5`
 - [x] `CP-02` Finish stdlib error-surface normalization for `try`/`assert!` payload consistency.
-  - Covers: `P2.5` (compatibility/user-visible migration closure), `docs/ERROR_MODEL.md` row `Stdlib try/assert! base`
+  - Covers: `P2.5` (migration/user-visible transition closure), `docs/ERROR_MODEL.md` row `Stdlib try/assert! base`
 - [x] `CP-03` Finalize regex malformed-pattern signaling and complete no-match-vs-error contract.
   - Covers: `N2.6`, `docs/ERROR_MODEL.md` row `Regex match/search primitives`
 - [x] `CP-04` Normalize canonical error payload shape for file-I/O effect wrappers.
@@ -124,7 +124,7 @@ Canonical tracking rule:
 - [x] P2.2 Create migration matrix in `docs/ERROR_MODEL.md`.
 - [x] P2.3 Mark APIs that intentionally remain `nil`-returning (absence only).
 - [x] P2.4 Mark APIs that must migrate to `signal raise`.
-- [x] P2.5 Add compatibility wrappers where migration is user-visible. (`CP-02`)
+- [x] P2.5 Add explicit migration support where the API transition is user-visible. (`CP-02`)
 - [x] P2.6 Add canonical error payload constructors/helpers in runtime.
 - [x] P2.7 Normalize error domains/codes for: I/O, parser, regex, scheduler, deduce.
 - [x] P2.8 Update docs/examples to contract.

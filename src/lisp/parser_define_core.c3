@@ -17,7 +17,7 @@ fn Expr* Parser.parse_define(Parser* self) {
     }
 
     // Shorthand define: (define (name params...) body) => (define name (lambda (params...) body))
-    // Also supports typed params: (define (name (^Int x) (^String y)) body)
+    // Also supports typed params: (define (name (^Integer x) (^String y)) body)
     if (self.lexer.current.type == T_LPAREN) {
         self.lexer.advance();  // consume '('
         return self.parse_shorthand_define(e);

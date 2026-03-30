@@ -30,13 +30,16 @@ fn usz Compiler.compile_shift_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_perform_flat(Compiler* self, Expr* expr) {
     // Compile the argument
     usz arg_r = self.compile_to_temp(expr.perform.arg);
-    // Create tag symbol
-    usz tag_r = self.next_result();
-    self.emit_temp_decl(tag_r);
-    self.emit(" = aot::make_symbol(\"");
-    char[] tag_name = self.interp.symbols.get_name(expr.perform.tag);
-    self.emit_escaped(tag_name);
-    self.emit("\");\n");
+    usz tag_r = expr.perform.has_tag_expr
+        ? self.compile_to_temp(expr.perform.tag_expr)
+        : self.next_result();
+    if (!expr.perform.has_tag_expr) {
+        self.emit_temp_decl(tag_r);
+        self.emit(" = aot::make_symbol(\"");
+        char[] tag_name = self.interp.symbols.get_name(expr.perform.tag);
+        self.emit_escaped(tag_name);
+        self.emit("\");\n");
+    }
 
     usz id = self.next_result();
     self.emit_temp_decl(id);
@@ -55,7 +58,11 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     usz[8] handler_rs;
     usz[8] tag_rs;
     for (usz i = 0; i < clause_count && i < 8; i++) {
-        tag_rs[i] = self.compile_handle_effect_tag(expr.handle.clauses[i].effect_tag);
+        tag_rs[i] = self.compile_handle_effect_tag(
+            expr.handle.clauses[i].effect_tag,
+            expr.handle.clauses[i].effect_tag_expr,
+            expr.handle.clauses[i].has_effect_tag_expr
+        );
         // Handler closure (synthetic lambda from prescan)
         handler_rs[i] = self.compile_to_temp(expr.handle.clauses[i].handler_body);
     }

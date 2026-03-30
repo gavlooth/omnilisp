@@ -10,7 +10,17 @@ const char[] CHECK_COMPILE_UNSUPPORTED_MARKER = "unsupported expr type";
 fn char* find_check_input_file(int argc, char** argv, int check_idx) {
     for (int i = check_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_dash(argv[i])) return null;
         return argv[i];
+    }
+    return null;
+}
+
+fn char* find_check_option_like_arg(int argc, char** argv, int check_idx) {
+    for (int i = check_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_dash(argv[i])) return argv[i];
+        return null;
     }
     return null;
 }
@@ -78,11 +88,27 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
     bool json = find_flag_index(argc, argv, "--json") >= 0;
     char* input_file = find_check_input_file(argc, argv, check_idx);
     if (input_file == null) {
+        char* unexpected = find_check_option_like_arg(argc, argv, check_idx);
+        if (unexpected != null) {
+            if (json) {
+                print_check_unexpected_arg_json(unexpected);
+                return 1;
+            }
+            return print_unexpected_mode_arg("--check", unexpected);
+        }
         if (json) {
             print_check_usage_json();
             return 1;
         }
         return print_check_usage();
+    }
+    char* extra = find_extra_mode_arg(argc, argv, check_idx, 1, true);
+    if (extra != null) {
+        if (json) {
+            print_check_unexpected_arg_json(extra);
+            return 1;
+        }
+        return print_unexpected_mode_arg("--check", extra);
     }
 
     char[] input_path = input_file[:cstr_len(input_file)];
@@ -90,12 +116,17 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
     char[] resolved_path = check_resolve_path(input_file, abs_buf[..]);
 
     if (try source = io::file::load_temp((String)input_path)) {
-        thread_registry_init();
-
-        lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-        interp.init();
-        lisp::register_primitives(interp);
-        lisp::register_stdlib(interp);
+        lisp::Interp* interp = create_runtime_interp();
+        if (interp == null) {
+            lisp::EvalResult result = lisp::eval_error("failed to create runtime interpreter for --check");
+            if (json) {
+                print_check_result_json(resolved_path, result, "runtime/bootstrap-failed");
+            } else {
+                print_check_result_text(resolved_path, result);
+            }
+            return 1;
+        }
+        defer destroy_runtime_interp(interp);
 
         lisp::EvalResult result = check_parse_source(source, interp);
         char[] diag_code = JSON_PARSE_ERROR_CODE;
@@ -104,10 +135,6 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
             result = check_compile_source(source, interp);
             diag_code = JSON_COMPILE_ERROR_CODE;
         }
-
-        interp.destroy();
-        mem::free(interp);
-        thread_registry_shutdown();
 
         if (json) {
             print_check_result_json(resolved_path, result, diag_code);

@@ -13,11 +13,16 @@ source scripts/c3c_limits.sh
 : "${OMNI_GLOBAL_GATES_LISP_SLICES:=basic memory-lifetime-smoke memory-lifetime-policy allocator-validation list-closure arithmetic-comparison string-type diagnostics jit-policy advanced escape-scope limit-busting tco-recycling closure-lifecycle pika unicode compression data-format json async reader-dispatch schema deduce scheduler http atomic compiler}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK:=0}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH:=0}"
+: "${OMNI_GLOBAL_GATES_INCLUDE_FTXUI_SMOKE:=1}"
 : "${OMNI_GLOBAL_GATES_TEST_QUIET:=1}"
 : "${OMNI_GLOBAL_GATES_TEST_SUMMARY:=1}"
 : "${OMNI_GLOBAL_GATES_SKIP_TLS_INTEGRATION:=1}"
 : "${OMNI_GLOBAL_GATES_ASAN_OPTIONS:=detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256:malloc_context_size=5}"
-: "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" == "1" ]]; then
+  : "${OMNI_HARD_MEM_CAP_METHOD:=none}"
+else
+  : "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+fi
 : "${OMNI_HARD_MEM_CAP_PERCENT:=30}"
 
 if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" && "$OMNI_HARD_MEM_CAP_METHOD" != "docker" ]]; then
@@ -167,6 +172,12 @@ omni_c3 build
 echo ""
 echo "=== Stage 2: normal tests ==="
 run_tests "normal"
+
+if [[ "$OMNI_GLOBAL_GATES_INCLUDE_FTXUI_SMOKE" == "1" ]]; then
+  echo ""
+  echo "=== Stage 2b: FTXUI smoke ==="
+  scripts/run_ftxui_smoke.sh
+fi
 
 echo ""
 echo "=== Stage 3: ASAN build ==="

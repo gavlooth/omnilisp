@@ -9,26 +9,52 @@ const usz EVAL_RENDER_MAX_CAP = 16 * 1024 * 1024;
 fn char* find_eval_source_arg(int argc, char** argv, int eval_idx) {
     for (int i = eval_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_double_dash(argv[i])) return null;
         return argv[i];
     }
     return null;
 }
 
+fn char* find_eval_option_like_arg(int argc, char** argv, int eval_idx) {
+    for (int i = eval_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--json")) continue;
+        if (cli_arg_starts_with_double_dash(argv[i])) return argv[i];
+        return null;
+    }
+    return null;
+}
+
+fn lisp::Interp* create_plain_interp() {
+    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
+    if (interp == null) return null;
+    interp.init();
+    return interp;
+}
+
+fn void destroy_plain_interp(lisp::Interp* interp) {
+    if (interp == null) return;
+    interp.destroy();
+    mem::free(interp);
+}
+
 fn lisp::Interp* create_runtime_interp() {
     thread_registry_init();
-    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    interp.init();
-    lisp::register_primitives(interp);
-    lisp::register_stdlib(interp);
+    lisp::Interp* interp = create_plain_interp();
+    if (interp == null) {
+        thread_registry_shutdown();
+        return null;
+    }
+    if (!lisp::bootstrap_runtime_interp(interp)) {
+        destroy_plain_interp(interp);
+        thread_registry_shutdown();
+        return null;
+    }
     interp.flags.jit_enabled = true;
     return interp;
 }
 
 fn void destroy_runtime_interp(lisp::Interp* interp) {
-    if (interp != null) {
-        interp.destroy();
-        mem::free(interp);
-    }
+    destroy_plain_interp(interp);
     thread_registry_shutdown();
 }
 
@@ -71,17 +97,44 @@ fn int run_eval_mode(int argc, char** argv, int eval_idx) {
     bool json = find_flag_index(argc, argv, "--json") >= 0;
     char* source_arg = find_eval_source_arg(argc, argv, eval_idx);
     if (source_arg == null) {
+        char* unexpected = find_eval_option_like_arg(argc, argv, eval_idx);
+        if (unexpected != null) {
+            if (json) {
+                print_eval_unexpected_arg_json(unexpected);
+                return 1;
+            }
+            return print_unexpected_mode_arg("--eval", unexpected);
+        }
         if (json) {
             print_eval_usage_json();
             return 1;
         }
         return print_eval_usage();
     }
-
-    lisp::Interp* interp = create_runtime_interp();
-    defer destroy_runtime_interp(interp);
+    char* extra = find_extra_mode_arg(argc, argv, eval_idx, 1, true);
+    if (extra != null) {
+        if (json) {
+            print_eval_unexpected_arg_json(extra);
+            return 1;
+        }
+        return print_unexpected_mode_arg("--eval", extra);
+    }
 
     char[] source = source_arg[:cstr_len(source_arg)];
+    lisp::Interp* interp = create_runtime_interp();
+    if (interp == null) {
+        lisp::EvalResult result = lisp::eval_error("failed to create runtime interpreter for --eval");
+        if (json) {
+            print_eval_result_json(source, result, null);
+        } else {
+            print_eval_result_text(result, null);
+        }
+        return 1;
+    }
+    defer destroy_runtime_interp(interp);
+
+    if (json) interp.flags.console_to_stderr = true;
+
     lisp::EvalResult result = lisp::run(source, interp);
 
     if (json) {

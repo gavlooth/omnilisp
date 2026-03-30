@@ -6,9 +6,15 @@ local formatter = require("omni.formatter")
 local M = {}
 
 local defaults = {
+  repo_root = nil,
   cmd = { "omni", "--repl", "--json" },
   repl = {
     mode = "json",
+    discovery = {
+      enabled = true,
+      host = "127.0.0.1",
+      port_file = ".omni-repl-port",
+    },
   },
   eval = {
     mode = "json",
@@ -35,6 +41,9 @@ local defaults = {
     name = "Omni REPL",
     split = "botright 12split",
     auto_scroll = true,
+    pretty_values = true,
+    pretty_width = 72,
+    pretty_indent = 2,
   },
   auto_start = true,
   lsp = {
@@ -42,7 +51,8 @@ local defaults = {
     enable = true,
     cmd = nil,
     server_path = nil,
-    root_markers = { "project.json", ".git" },
+    repo_root = nil,
+    root_markers = { "omni.toml", "project.json", ".git" },
     highlights = {
       auto_refresh = false,
       refresh_events = { "CursorHold", "CursorHoldI" },
@@ -109,6 +119,7 @@ local defaults = {
   formatter = {
     name = "omni_fmt",
     cmd = { "omni", "--fmt", "--write", "$FILENAME" },
+    cwd = nil,
   },
   treesitter = {
     register = true,
@@ -155,6 +166,7 @@ local defaults = {
 }
 
 local config = vim.deepcopy(defaults)
+local bootstrap_done = false
 local commands_created = false
 local operatorfunc_installed = false
 local codelens_augroup = nil
@@ -612,7 +624,7 @@ local function ensure_pull_diagnostics_cache_autocmds(bufnr)
         return
       end
       lsp.reset_document_diagnostics(vim.uri_from_bufnr(args.buf))
-      lsp.reset_workspace_diagnostics()
+      lsp.reset_workspace_diagnostics(args.buf, client_id)
     end,
     desc = "Omni pull diagnostics cache reset on detach",
   })
@@ -892,6 +904,18 @@ local function create_commands()
   end, {})
 end
 
+local function bootstrap()
+  if bootstrap_done then
+    return
+  end
+  bootstrap_done = true
+  install_operatorfunc()
+  create_commands()
+  repl.set_notifier(notify)
+  lsp.set_notifier(notify)
+  lsp.register_commands()
+end
+
 local function set_buffer_maps(bufnr)
   if not config.mappings then
     return
@@ -1026,11 +1050,7 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
-  install_operatorfunc()
-  create_commands()
-  repl.set_notifier(notify)
-  lsp.set_notifier(notify)
-  lsp.register_commands()
+  bootstrap()
   treesitter.ensure_queries(config)
   if config.treesitter and config.treesitter.register ~= false then
     treesitter.register(config)
@@ -1045,10 +1065,7 @@ function M.setup(opts)
 end
 
 function M.apply_buffer()
-  create_commands()
-  repl.set_notifier(notify)
-  lsp.set_notifier(notify)
-  lsp.register_commands()
+  bootstrap()
   treesitter.ensure_queries(config)
   local bufnr = vim.api.nvim_get_current_buf()
   set_buffer_maps(bufnr)
@@ -1058,6 +1075,13 @@ function M.apply_buffer()
   ensure_workspace_pull_diagnostics_autocmds(bufnr)
   ensure_all_pull_diagnostics_autocmds(bufnr)
   ensure_pull_diagnostics_cache_autocmds(bufnr)
+  if config.auto_start then
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        repl.start(config, { focus = false })
+      end
+    end)
+  end
 end
 
 function M.config()
@@ -1074,6 +1098,11 @@ end
 
 function M.conform_setup_spec()
   return formatter.conform_setup_spec(config)
+end
+
+function M.bootstrap()
+  bootstrap()
+  return config
 end
 
 return M

@@ -18,7 +18,7 @@ struct MetaEntry {
 
 /**
  * TypeAnnotation — Parsed ^Type annotation on a parameter.
- * Three forms: ^Int (simple), ^(List Int) (compound), ^{'T Number} (dict)
+ * Three forms: ^Integer (simple), ^(List Integer) (compound), ^{'T Number} (dict)
  */
 struct ValueLiteralKey {
     ValueTag tag;         // INT/SYMBOL/STRING
@@ -28,9 +28,9 @@ struct ValueLiteralKey {
 
 struct TypeAnnotation {
     bool has_annotation;
-    bool is_compound;          // ^(List Int) form
+    bool is_compound;          // ^(List Integer) form
     bool is_dict;              // ^{...} form
-    SymbolId base_type;        // Int, List, Lambda, Value, etc.
+    SymbolId base_type;        // Integer, List, Lambda, Value, etc.
     SymbolId* params;          // compound type params (heap-allocated)
     usz param_count;
     MetaEntry* meta;           // dict entries (heap-allocated)

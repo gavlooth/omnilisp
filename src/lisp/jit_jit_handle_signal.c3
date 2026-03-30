@@ -21,7 +21,18 @@ fn Value* jit_signal_impl(Expr* expr, Env* env, Interp* interp) {
         return arg_v;
     }
 
-    SymbolId tag = expr.perform.tag;
+    SymbolId tag = (SymbolId)0;
+    Value* tag_err = resolve_effect_tag_symbol(
+        expr.perform.tag,
+        expr.perform.tag_expr,
+        expr.perform.has_tag_expr,
+        env,
+        interp,
+        &tag,
+        "signal"
+    );
+    if (tag_err != null) return tag_err;
+
     Value* type_err = jit_signal_type_check(tag, arg_v, interp);
     if (type_err != null) return type_err;
 
@@ -96,9 +107,30 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
 
     // Bind k and arg in clause environment
     Env* clause_env = jit_env_extend(interp, env, clause.k_name, k_val);
+    if (clause_env == null) {
+        return runtime_effect_raise(
+            interp,
+            "runtime/handle-clause-bind-failed",
+            "handle: out of memory while binding clause"
+        );
+    }
     clause_env = jit_env_extend(interp, clause_env, clause.arg_name, hstate.signal_arg);
+    if (clause_env == null) {
+        return runtime_effect_raise(
+            interp,
+            "runtime/handle-clause-bind-failed",
+            "handle: out of memory while binding clause"
+        );
+    }
     // Also bind __k for resolve
     clause_env = jit_env_extend(interp, clause_env, interp.sym__k, k_val);
+    if (clause_env == null) {
+        return runtime_effect_raise(
+            interp,
+            "runtime/handle-clause-bind-failed",
+            "handle: out of memory while binding clause"
+        );
+    }
 
     // Evaluate handler clause
     Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);

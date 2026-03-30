@@ -12,7 +12,7 @@ fn void Parser.init_export_from_expr(Parser* self, Expr* e) {
 }
 
 fn bool Parser.parse_export_from_source_module(Parser* self, Expr* e) {
-    if (self.lexer.current.type != T_SYMBOL) {
+    if (self.lexer.current.type != T_SYMBOL && self.lexer.current.type != T_PATH) {
         self.set_error("expected module name after export-from");
         return false;
     }

@@ -8,9 +8,10 @@ stdlib_file="stdlib/stdlib.lisp"
 docs_a="docs/reference/11-appendix-primitives.md"
 docs_b="docs/reference/12-appendix-stdlib.md"
 docs_c="docs/LANGUAGE_SPEC.md"
+docs_d="docs/reference/08-libraries.md"
 diff_range="${OMNI_EFFECTS_POLICY_RANGE:-${OMNI_BOUNDARY_POLICY_RANGE:-}}"
 
-for required in "$prims_file" "$stdlib_file" "$docs_a" "$docs_b" "$docs_c"; do
+for required in "$prims_file" "$stdlib_file" "$docs_a" "$docs_b" "$docs_c" "$docs_d"; do
   if [[ ! -f "$required" ]]; then
     echo "FAIL: primitive docs parity missing required file: $required"
     exit 1
@@ -19,6 +20,20 @@ done
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
+
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
+search_fixed_quiet() {
+  local needle="$1"
+  shift
+  if has_rg; then
+    rg -q -F "$needle" "$@"
+    return $?
+  fi
+  grep -F -q -- "$needle" "$@"
+}
 
 registered_public="$tmp_dir/registered_public_prims.txt"
 docs_blob="$tmp_dir/docs_blob.txt"
@@ -62,7 +77,7 @@ extract_added_lines() {
 assert_docs_reference() {
   local literal="$1"
   shift
-  if rg -q -F "\`${literal}\`" "$@"; then
+  if search_fixed_quiet "\`${literal}\`" "$@"; then
     return 0
   fi
   return 1
@@ -72,12 +87,12 @@ sed -n 's/.*{ "\([^"]\+\)", *&\(prim_[A-Za-z0-9_]\+\),.*/\1/p' "$prims_file" \
   | awk '$0 !~ /^__/' \
   | sort -u > "$registered_public"
 
-cat "$docs_a" "$docs_b" "$docs_c" > "$docs_blob"
+cat "$docs_a" "$docs_b" "$docs_c" "$docs_d" > "$docs_blob"
 
 > "$missing"
 while IFS= read -r prim; do
   [[ -z "$prim" ]] && continue
-  if ! rg -q -F "\`${prim}\`" "$docs_blob"; then
+  if ! search_fixed_quiet "\`${prim}\`" "$docs_blob"; then
     printf "%s\n" "$prim" >> "$missing"
   fi
 done < "$registered_public"
@@ -126,17 +141,17 @@ if [[ "$raw_added_count" != "0" || "$wrapper_added_count" != "0" ]]; then
     [[ -z "$wrapper" ]] && continue
     raw_name="__raw-${wrapper}"
 
-    if ! rg -q -F "{ \"${raw_name}\"," "$prims_file"; then
+    if ! search_fixed_quiet "{ \"${raw_name}\"," "$prims_file"; then
       echo "FAIL: docs parity missing raw primitive registration for io/${wrapper} (${raw_name})."
       raw_violations=1
     fi
 
-    if ! rg -q -F "(define [effect] (io/${wrapper}" "$stdlib_file"; then
+    if ! search_fixed_quiet "(define [effect] (io/${wrapper}" "$stdlib_file"; then
       echo "FAIL: docs parity missing io effect declaration for wrapper '${wrapper}'."
       raw_violations=1
     fi
 
-    if ! rg -q -F "(define (${wrapper}" "$stdlib_file"; then
+    if ! search_fixed_quiet "(define (${wrapper}" "$stdlib_file"; then
       echo "FAIL: docs parity missing function-style wrapper define for '${wrapper}'."
       raw_violations=1
     fi

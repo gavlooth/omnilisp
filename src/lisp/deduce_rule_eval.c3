@@ -15,7 +15,7 @@ fn Value* deduce_rule_validate_install_candidate(DeduceDb* db, DeduceRuleIr* rul
     err = deduce_rule_validate_aggregate_projections(rule, interp);
     if (err != null) return err;
 
-    err = deduce_rule_validate_aggregate_head_compatibility(db, rule, interp);
+    err = deduce_rule_validate_aggregate_head_migration(db, rule, interp);
     if (err != null) return err;
 
     err = deduce_rule_validate_aggregate_recursion(db, rule, interp);

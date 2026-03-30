@@ -5,7 +5,7 @@ Owner intent:
 - Expose that substrate through Omni-native language features first:
   - typed/dispatched `define` forms,
   - `[effect]` boundaries,
-  - thin wrappers (not large compatibility shims).
+  - thin wrappers (not large wrapper layers).
 - Avoid adding ad-hoc "another Lisp" API style when existing Omni features can express the same surface.
 
 Execution path (single sequence):

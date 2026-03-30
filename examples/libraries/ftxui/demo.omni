@@ -1,0 +1,19 @@
+;; demo.omni — first real FTXUI-backed ui.run demo
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/demo.omni
+;; Quit: press `q` or `Esc`
+
+(import "ui.omni")
+(import ui)
+
+(ui.run
+  (ui.window
+    "FTXUI Demo"
+    (ui.vbox
+      (list
+        (ui.text "Press q or Esc to quit")
+        (ui.paragraph "This is the first real ui.run path lowering Omni ui nodes into the vendored FTXUI shim.")
+        (ui.graph (list 0 3 1 5 2 8 3 13 5 21 8 34 13))
+        (ui.input 'name "Name")
+        (ui.checkbox "Enable feature" 'enabled true)
+        (ui.menu (list "alpha" "beta" "gamma") "beta")
+        (ui.button "Confirm" 'confirm)))))

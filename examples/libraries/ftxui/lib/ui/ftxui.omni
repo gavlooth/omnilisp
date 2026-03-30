@@ -1,0 +1,10 @@
+;; ui/ftxui.omni — concrete FTXUI backend bridge for the public `ui` facade
+
+(module ui.ftxui
+  (export run
+          ftxui))
+
+(define (run view)
+  (__ui-ftxui-run view))
+
+(define ftxui {'run run})

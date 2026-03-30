@@ -33,7 +33,7 @@ v1 required:
 2. Planner-backed conjunctive query execution with explicit explain output.
 3. Recursive evaluation using semi-naive fixpoint with deterministic
    convergence behavior.
-4. Stable compatibility behavior for existing `deduce/query` and
+4. Stable migration behavior for existing `deduce/query` and
    `deduce/match` surfaces.
 
 v1.5 deferred:
@@ -80,7 +80,7 @@ v1.5 aggregate syntax target (deferred implementation, locked surface):
 Acceptance test mapping:
 
 - v1 acceptance must include validation, planner behavior assertions, recursive
-  parity, and compatibility semantics checks.
+  parity, and parity semantics checks.
 - v1.5 acceptance must include incremental update benchmarks and correctness
   parity against full recompute.
 
@@ -104,11 +104,10 @@ Bootstrap runtime note (current implementation slice):
 - this keeps predicate arity/stratification validation database-scoped while
   the broader program surface is being built.
 
-Compatibility policy:
+Naming policy:
 
-- legacy/non-canonical spellings may remain temporarily, but canonical names
-  above are the forward language-facing contract.
-- new feature docs and benchmarks must use canonical names.
+- Canonical names above define the language-facing contract.
+- New feature docs and benchmarks must use canonical names.
 
 ## 1.3 Current Implementation Matrix
 
@@ -179,7 +178,7 @@ Validation requirements:
 ## 4. Query Semantics
 
 Canonical query form remains command-dispatched (`deduce/query`, `deduce/match`)
-for compatibility, but logical semantics are:
+for the migration path, but logical semantics are:
 
 - evaluate against current program state,
 - produce bindings satisfying all body atoms,
@@ -404,7 +403,7 @@ Current implementation status note:
     `incremental-dependency-edges`,
     `incremental-dirty-predicate-count`,
     `incremental-invalidation-mode`),
-  - compatibility note: `mode` remains `naive-bottom-up`; engine identity is
+  - migration note: `mode` remains `naive-bottom-up`; engine identity is
     carried by `execution-engine` (`semi-naive-scc`).
   - execution now isolates recursive SCCs: non-recursive strata run once in
     dependency order, recursive strata run semi-naive delta fixpoint loops
@@ -1032,7 +1031,7 @@ Query-demand widening note:
   - the currently shipped union contract now accepts same-position and
     mixed-position branches together, as long as each branch individually
     reduces to the already shipped demand-safe subset
-  - the only remaining broader symbolic residual is recursive compatibility
+  - the only remaining broader symbolic residual is recursive migration
     work; there is no separate non-recursive goal-directed symbolic disjunction
     lane beyond the already shipped subset
 - on top of that, the same disjunctive union path now also accepts
@@ -1048,7 +1047,7 @@ Query-demand widening note:
   and still reapplies the original full disjunctive filter over the union
   result
 - recursive multi-position symbolic demands now ship a first bounded
-  compatibility slice on recursive subjects too:
+  migration slice on recursive subjects too:
   - a single filter or disjunctive branch shaped like `(and (= src ...) (=
     dst ...))` may stay on `ephemeral-head-demand-query` when the projected
     recursive demand is relaxed to one applied position and the original full

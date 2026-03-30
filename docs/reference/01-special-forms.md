@@ -59,7 +59,7 @@ Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
 (let ([head .. tail] '(1 2 3)) head)       ;; => 1
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))     ;; => 3
 
-;; Dict destructuring
+;; Dictionary destructuring
 (let ({name age} {'name "Alice" 'age 30}) name) ;; => "Alice"
 
 ;; Mixed
@@ -249,7 +249,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 (let ([a b] [1 2]) (+ a b))    ;; => 3
 ```
 
-### Dict Destructuring
+### Dictionary Destructuring
 
 ```lisp
 ;; In let — keys become local bindings

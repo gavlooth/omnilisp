@@ -220,7 +220,7 @@ fn Value* dispatch_ambiguous_error(
 fn Value* format_dispatch_error(MethodTable* mt, Value*[] args, Interp* interp) {
     char[] name = interp.symbols.get_name(mt.name);
 
-    // Build "Int, String" arg type list
+    // Build "Integer, String" arg type list
     DString ds;
     ds.init(mem);
     defer ds.free();

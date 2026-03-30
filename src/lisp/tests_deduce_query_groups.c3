@@ -56,11 +56,42 @@ fn bool deduce_query_filter_matches(char* filter, char[] name) {
     return true;
 }
 
+fn bool deduce_query_filter_contains_token(char* filter, char[] name) {
+    if (filter == null) return false;
+
+    usz i = 0;
+    while (filter[i] != 0) {
+        while (filter[i] == ' ' || filter[i] == ',') i++;
+        if (filter[i] == 0) break;
+
+        usz start = i;
+        while (filter[i] != 0 && filter[i] != ',') i++;
+        usz end = i;
+        while (end > start && filter[end - 1] == ' ') end--;
+
+        usz token_len = end - start;
+        if (token_len == name.len) {
+            bool matches = true;
+            for (usz j = 0; j < token_len; j++) {
+                if (filter[start + j] != name[j]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return true;
+        }
+
+        if (filter[i] == ',') i++;
+    }
+    return false;
+}
+
 bool deduce_query_filter_why_result_ran = false;
 
 fn bool deduce_query_filter_try_run_targeted_why_result(Interp* interp, int* pass, int* fail) {
     char* query_filter = test_c_getenv("OMNI_DEDUCE_QUERY_FILTER");
-    if (!deduce_query_filter_matches(query_filter, "why-result-bounded")) return false;
+    bool run_bounded = deduce_query_filter_matches(query_filter, "why-result-bounded");
+    if (!run_bounded) return false;
     if (!deduce_query_filter_why_result_ran) {
         deduce_query_filter_why_result_ran = true;
         run_deduce_query_why_result_bounded_context_test(interp, pass, fail);
@@ -325,14 +356,24 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
 
         for (usz i = 0; i < COL_COUNT; i++) {
             char[16] col_buf;
-            char[] col_name = io::bprintf(&col_buf, "c%d", (int)i)!!;
-            col_syms[i] = interp.symbols.intern(col_name);
-            define_args[i + 2] = make_symbol(interp, col_syms[i]);
+            if (try char[] col_name = io::bprintf(&col_buf, "c%d", (int)i)) {
+                col_syms[i] = interp.symbols.intern(col_name);
+                define_args[i + 2] = make_symbol(interp, col_syms[i]);
+            } else {
+                io::printn("[FAIL] deduce 'match preserves >32 bindings (col format)");
+                (*fail)++;
+                return;
+            }
 
             char[16] var_buf;
-            char[] var_name = io::bprintf(&var_buf, "?v%d", (int)i)!!;
-            var_syms[i] = interp.symbols.intern(var_name);
-            key_syms[i] = interp.symbols.intern(var_name[1..]);
+            if (try char[] var_name = io::bprintf(&var_buf, "?v%d", (int)i)) {
+                var_syms[i] = interp.symbols.intern(var_name);
+                key_syms[i] = interp.symbols.intern(var_name[1..]);
+            } else {
+                io::printn("[FAIL] deduce 'match preserves >32 bindings (var format)");
+                (*fail)++;
+                return;
+            }
 
             fact_args[i + 1] = make_int(interp, (long)i);
         }
@@ -423,6 +464,48 @@ fn void run_deduce_query_tests(Interp* interp, int* pass, int* fail) {
     }
 
     if (deduce_query_filter_try_run_targeted_why_result(interp, pass, fail)) return;
+
+    char* query_filter = test_c_getenv("OMNI_DEDUCE_QUERY_FILTER");
+    bool matched_group_filter = false;
+    if (deduce_query_filter_contains_token(query_filter, "scan")) {
+        run_deduce_scan_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "scan-range")) {
+        run_deduce_scan_range_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "query-filter")) {
+        run_deduce_query_filter_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "match")) {
+        run_deduce_match_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "empty-relation-stats")) {
+        run_deduce_empty_relation_stats_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "admin-surface")) {
+        run_deduce_admin_surface_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "admin-surface-demand")) {
+        run_deduce_admin_surface_demand_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "aggregate-rules")) {
+        run_deduce_aggregate_rule_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (deduce_query_filter_contains_token(query_filter, "recursive-aggregate-rules")) {
+        run_deduce_recursive_aggregate_rule_tests(interp, pass, fail);
+        matched_group_filter = true;
+    }
+    if (matched_group_filter) {
+        return;
+    }
 
     run_deduce_scan_tests(interp, pass, fail);
     run_deduce_scan_range_tests(interp, pass, fail);

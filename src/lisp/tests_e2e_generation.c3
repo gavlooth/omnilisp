@@ -12,30 +12,41 @@ struct E2ETestCase {
     char[] expr;
 }
 
-fn void append_line_to_buf(char* buf, usz* pos, usz cap, char[] text) {
-    for (usz i = 0; i < text.len && (*pos) < cap - 2; i++) {
+fn bool e2e_generation_quiet_requested() @inline {
+    return test_quiet_requested();
+}
+
+fn bool e2e_generation_fail(char[] msg) {
+    io::printn((ZString)msg);
+    return false;
+}
+
+fn bool append_line_to_buf(char* buf, usz* pos, usz cap, char[] text) {
+    if (*pos + text.len + 1 >= cap) return false;
+    for (usz i = 0; i < text.len; i++) {
         buf[(*pos)++] = text[i];
     }
-    if ((*pos) < cap - 1) buf[(*pos)++] = '\n';
+    buf[(*pos)++] = '\n';
+    return true;
 }
 
 fn void generate_e2e_run_setups(Interp* e2e_interp) {
     for (usz i = 0; i < E2E_SETUPS.len; i++) {
         EvalResult r = run(E2E_SETUPS[i], e2e_interp);
-        if (r.error.has_error) {
+        if (r.error.has_error && !e2e_generation_quiet_requested()) {
             io::printfn("WARNING: Setup %d failed, skipping", (int)i);
         }
     }
 }
 
-fn void generate_e2e_build_source_prefix(char* source_buf, usz* source_pos, usz buf_size) {
+fn bool generate_e2e_build_source_prefix(char* source_buf, usz* source_pos, usz buf_size) {
     for (usz i = 0; i < E2E_SETUPS.len; i++) {
-        append_line_to_buf(source_buf, source_pos, buf_size, E2E_SETUPS[i]);
+        if (!append_line_to_buf(source_buf, source_pos, buf_size, E2E_SETUPS[i])) return false;
     }
-    append_line_to_buf(source_buf, source_pos, buf_size, "(define __e2e_start__ true)");
+    return append_line_to_buf(source_buf, source_pos, buf_size, "(define __e2e_start__ true)");
 }
 
-fn void generate_e2e_collect_case_set(
+fn bool generate_e2e_collect_case_set(
     Interp* e2e_interp,
     E2ETestCase[] test_cases,
     char* expected_buf,
@@ -49,20 +60,33 @@ fn void generate_e2e_collect_case_set(
     for (usz i = 0; i < test_cases.len; i++) {
         EvalResult r = run(test_cases[i].expr, e2e_interp);
         if (r.error.has_error) {
-            io::printfn("  SKIP (interp error): %s", (ZString)test_cases[i].name);
+            if (!e2e_generation_quiet_requested()) {
+                io::printfn("  SKIP (interp error): %s", (ZString)test_cases[i].name);
+            }
             (*skip_count)++;
             continue;
         }
 
         char[1024] val_buf;
         usz val_len = print_value_to_buf(r.value, &e2e_interp.symbols, &val_buf, val_buf.len);
-        append_line_to_buf(expected_buf, expected_pos, buf_size, val_buf[:val_len]);
-        append_line_to_buf(source_buf, source_pos, buf_size, test_cases[i].expr);
+        if (val_len + 1 >= val_buf.len) {
+            io::printfn("ERROR: E2E rendered value too large for '%s'", (ZString)test_cases[i].name);
+            return false;
+        }
+        if (!append_line_to_buf(expected_buf, expected_pos, buf_size, val_buf[:val_len])) {
+            io::printfn("ERROR: E2E expected buffer exhausted at '%s'", (ZString)test_cases[i].name);
+            return false;
+        }
+        if (!append_line_to_buf(source_buf, source_pos, buf_size, test_cases[i].expr)) {
+            io::printfn("ERROR: E2E source buffer exhausted at '%s'", (ZString)test_cases[i].name);
+            return false;
+        }
         (*test_count)++;
     }
+    return true;
 }
 
-fn void generate_e2e_collect_cases(
+fn bool generate_e2e_collect_cases(
     Interp* e2e_interp,
     char* expected_buf,
     usz* expected_pos,
@@ -72,7 +96,7 @@ fn void generate_e2e_collect_cases(
     int* test_count,
     int* skip_count
 ) {
-    generate_e2e_collect_case_set(
+    if (!generate_e2e_collect_case_set(
         e2e_interp,
         E2E_TESTS_CORE,
         expected_buf,
@@ -81,9 +105,9 @@ fn void generate_e2e_collect_cases(
         source_pos,
         buf_size,
         test_count,
-        skip_count);
+        skip_count)) return false;
 
-    generate_e2e_collect_case_set(
+    return generate_e2e_collect_case_set(
         e2e_interp,
         E2E_TESTS_EXTENDED,
         expected_buf,
@@ -97,30 +121,41 @@ fn void generate_e2e_collect_cases(
 
 fn bool write_text_file(char[] path, char[] text) {
     if (try file = io::file::open((String)path, "w")) {
-        defer (void)file.close();
-        file.write(text)!!;
-        return true;
+        char[] remaining = text;
+        bool write_ok = true;
+        while (write_ok && remaining.len > 0) {
+            usz? written_opt = file.write(remaining);
+            if (catch err = written_opt) {
+                write_ok = false;
+                break;
+            }
+            if (written_opt == 0) {
+                write_ok = false;
+                break;
+            }
+            remaining = remaining[written_opt..];
+        }
+        if (catch err = file.close()) write_ok = false;
+        return write_ok;
     }
     return false;
 }
 
-fn void generate_e2e_tests(Interp* _interp) {
-    (void)_interp;
-    io::printn("=== Generating E2E Compiler Tests ===");
-
-    Interp* e2e_interp = (Interp*)mem::malloc(Interp.sizeof);
-    defer {
-        e2e_interp.destroy();
-        mem::free(e2e_interp);
+fn bool generate_e2e_tests(Interp* e2e_interp) {
+    if (!e2e_generation_quiet_requested()) {
+        io::printn("=== Generating E2E Compiler Tests ===");
     }
-    e2e_interp.init();
-    register_primitives(e2e_interp);
-    register_stdlib(e2e_interp);
+    if (e2e_interp == null) return e2e_generation_fail("ERROR: runtime bootstrap failed");
     generate_e2e_run_setups(e2e_interp);
 
     usz buf_size = 131072;
     char* expected_buf = (char*)mem::malloc(buf_size);
     char* source_buf = (char*)mem::malloc(buf_size);
+    if (expected_buf == null || source_buf == null) {
+        if (expected_buf != null) mem::free(expected_buf);
+        if (source_buf != null) mem::free(source_buf);
+        return e2e_generation_fail("ERROR: Cannot allocate E2E buffers");
+    }
     defer {
         mem::free(expected_buf);
         mem::free(source_buf);
@@ -130,32 +165,40 @@ fn void generate_e2e_tests(Interp* _interp) {
     usz source_pos = 0;
     int test_count = 0;
     int skip_count = 0;
-    generate_e2e_build_source_prefix(source_buf, &source_pos, buf_size);
-    generate_e2e_collect_cases(
+    if (!generate_e2e_build_source_prefix(source_buf, &source_pos, buf_size)) {
+        return e2e_generation_fail("ERROR: E2E source buffer exhausted while emitting setup prefix");
+    }
+    if (!generate_e2e_collect_cases(
         e2e_interp,
         expected_buf, &expected_pos,
         source_buf, &source_pos,
         buf_size,
-        &test_count, &skip_count);
+        &test_count, &skip_count)) {
+        return false;
+    }
 
-    io::printfn("  Compiling %d test expressions...", test_count);
+    if (!e2e_generation_quiet_requested()) {
+        io::printfn("  Compiling %d test expressions...", test_count);
+    }
     char[] c3_code = compile_to_c3_ext(source_buf[:source_pos], e2e_interp, false, true);
     if (c3_code.len == 0) {
-        io::printn("ERROR: Compilation produced empty output");
-        return;
+        return e2e_generation_fail("ERROR: Compilation produced empty output");
     }
 
     if (!write_text_file("build/e2e_test.c3", c3_code)) {
-        io::printn("ERROR: Cannot write build/e2e_test.c3");
-        return;
+        return e2e_generation_fail("ERROR: Cannot write build/e2e_test.c3");
     }
-    io::printfn("  Wrote build/e2e_test.c3 (%d bytes)", (int)c3_code.len);
+    if (!e2e_generation_quiet_requested()) {
+        io::printfn("  Wrote build/e2e_test.c3 (%d bytes)", (int)c3_code.len);
+    }
 
     char[] expected_out = expected_buf[:expected_pos];
     if (!write_text_file("build/e2e_expected.txt", expected_out)) {
-        io::printn("ERROR: Cannot write build/e2e_expected.txt");
-        return;
+        return e2e_generation_fail("ERROR: Cannot write build/e2e_expected.txt");
     }
-    io::printfn("  Wrote build/e2e_expected.txt (%d lines)", test_count);
-    io::printfn("=== Generated %d e2e tests (%d skipped) ===", test_count, skip_count);
+    if (!e2e_generation_quiet_requested()) {
+        io::printfn("  Wrote build/e2e_expected.txt (%d lines)", test_count);
+        io::printfn("=== Generated %d e2e tests (%d skipped) ===", test_count, skip_count);
+    }
+    return true;
 }

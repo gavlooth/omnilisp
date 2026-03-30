@@ -43,8 +43,8 @@ Today Omni already has the core pieces of a workable concurrency story:
 - `StackCtx` / fibers are thread-affine and scheduler-owned.
 - libuv callbacks and fiber scheduling run on the scheduler thread.
 - worker threads are used only for offload jobs and thread-task completions.
-- `SharedBlob` is a legacy transport object and the replacement target for byte-sharing migration.
-- `SharedBlob` is the legacy transport object that must disappear from the production
+- `SharedBlob` is a previous transport object and the replacement target for byte-sharing migration.
+- `SharedBlob` is the transport object that must disappear from the production
   worker/scheduler boundary once parity for
   `SharedHandle(kind=BLOB)` is reached.
 
@@ -182,7 +182,7 @@ Use this matrix as the default classification for runtime objects.
 | `Pending*` scheduler slots | local only | scheduler bookkeeping |
 | `OffloadWork` | sendable | copied/scalar payload form |
 | `OffloadCompletion` | sendable return payload | one-shot handoff back to scheduler |
-| `SharedBlob` | legacy transport target | removed from production worker/scheduler boundaries |
+| `SharedBlob` | removed transport target | removed from production worker/scheduler boundaries |
 | `SharedHandle(kind=BLOB)` | active shared-handle target | handle-backed shared bytes replacing direct `SharedBlob` usage |
 | future channels / mailboxes / promises | shared-handle candidate | persistent shared identity |
 | future shared services / registries | shared-handle candidate | repeated cross-boundary access |
@@ -220,7 +220,7 @@ documentation.
 - Document that worker-thread crossings must use `Sendable` or `SharedHandle`
   only.
 - Update concurrency docs to say fibers and libuv remain scheduler-thread-owned.
-- Record `SharedBlob` as a legacy transport object to be replaced by
+- Record `SharedBlob` as a transport object to be replaced by
   `SharedHandle(kind=BLOB)`, not as the long-term model.
 
 ### Candidate Files
@@ -283,7 +283,7 @@ This phase replaces direct blob transport with `SharedHandle(kind=BLOB)`.
   are published/consumed as shared handles with `SharedBlob` removed from the
   boundary interfaces.
 - Keep local `Value` materialization on the scheduler thread.
-- If a short compatibility shim is needed, confine it to the bridge layer only.
+- If a short shim is needed, confine it to the bridge layer only.
 - Delete direct `SharedBlob` use from production worker/scheduler interfaces.
 - Enforce no new production boundary callsites that pass or retain `SharedBlob*`
   directly.

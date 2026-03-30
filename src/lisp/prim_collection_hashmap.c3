@@ -27,7 +27,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
         return make_int(interp, (long)args[0].array_val.length);
     }
 
-    // Dict / Set count
+    // Dictionary / Set count
     if (is_hashmap_backed(args[0])) {
         return make_int(interp, (long)args[0].hashmap_val.count);
     }
@@ -107,6 +107,42 @@ fn uint hash_value(Value* key) {
             return murmur_finalizer(h);
         }
         default: return 0;
+    }
+}
+
+fn bool hashmap_key_equals(Value* left, Value* right) {
+    if (left == right) return true;
+    if (left == null || right == null) return false;
+    if (left.tag != right.tag) return false;
+
+    switch (left.tag) {
+        case NIL:
+        case VOID:
+            return true;
+        case INT:
+            return left.int_val == right.int_val;
+        case DOUBLE:
+            return left.double_val == right.double_val;
+        case STRING:
+            if (left.str_len != right.str_len) return false;
+            for (usz i = 0; i < left.str_len; i++) {
+                if (left.str_chars[i] != right.str_chars[i]) return false;
+            }
+            return true;
+        case SYMBOL:
+            return left.sym_val == right.sym_val;
+        case TIME_POINT:
+            return left.time_point_val.year == right.time_point_val.year &&
+                   left.time_point_val.month == right.time_point_val.month &&
+                   left.time_point_val.day == right.time_point_val.day &&
+                   left.time_point_val.hour == right.time_point_val.hour &&
+                   left.time_point_val.minute == right.time_point_val.minute &&
+                   left.time_point_val.second == right.time_point_val.second &&
+                   left.time_point_val.microsecond == right.time_point_val.microsecond &&
+                   left.time_point_val.tz_offset == right.time_point_val.tz_offset &&
+                   left.time_point_val.kind == right.time_point_val.kind;
+        default:
+            return values_equal(left, right);
     }
 }
 
@@ -279,9 +315,35 @@ fn Value* hashmap_get(HashMap* map, Value* key) {
         uint idx = (h + i) & map.mask;
         HashEntry* entry = &map.entries[idx];
         if (entry.key == null) return null;  // empty slot
-        if (values_equal(entry.key, key)) return entry.value;
+        if (hashmap_key_equals(entry.key, key)) return entry.value;
     }
     return null;
+}
+
+fn void hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* interp) {
+    if (map.count * 10 >= map.capacity * 7) {
+        hashmap_grow(map, interp);
+    }
+
+    Value* key_value = make_symbol(interp, key);
+    key_value = boundary_promote_to_root(key_value, interp);
+    value = boundary_promote_to_root(value, interp);
+
+    uint h = murmur_finalizer((uint)key) & map.mask;
+    for (uint i = 0; i < map.capacity; i++) {
+        uint idx = (h + i) & map.mask;
+        HashEntry* entry = &map.entries[idx];
+        if (entry.key == null) {
+            entry.key = key_value;
+            entry.value = value;
+            map.count++;
+            return;
+        }
+        if (entry.key.tag == SYMBOL && entry.key.sym_val == key) {
+            entry.value = value;
+            return;
+        }
+    }
 }
 
 fn void hashmap_grow(HashMap* map, Interp* interp) {
@@ -341,7 +403,7 @@ fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
             map.count++;
             return;
         }
-        if (values_equal(entry.key, key)) {
+        if (hashmap_key_equals(entry.key, key)) {
             entry.value = value;
             return;
         }
@@ -354,7 +416,7 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
         uint idx = (h + i) & map.mask;
         HashEntry* entry = &map.entries[idx];
         if (entry.key == null) return false;
-        if (values_equal(entry.key, key)) {
+        if (hashmap_key_equals(entry.key, key)) {
             // Backward shift delete
             uint j = idx;
             for (;;) {
@@ -390,7 +452,7 @@ fn Value* make_hashmap(Interp* interp, uint capacity) {
     return v;
 }
 
-// Dict primitives
+// Dictionary primitives
 fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     if (args.len % 2 != 0) {
         return dict_ctor_type_raise(interp, "type/arity", "Dictionary: expected even number of key/value arguments");

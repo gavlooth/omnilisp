@@ -17,6 +17,7 @@ fn bool bind_init_clang_or_report(lisp::LibclangHandle* clang) {
 
 fn lisp::ParsedFunc* alloc_bind_func_buffer(usz max_funcs) {
     lisp::ParsedFunc* funcs = (lisp::ParsedFunc*)mem::malloc(lisp::ParsedFunc.sizeof * max_funcs);
+    if (funcs == null) return null;
     for (usz i = 0; i < max_funcs; i++) {
         funcs[i].params = null;
         funcs[i].param_count = 0;

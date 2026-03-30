@@ -109,7 +109,9 @@ fn bool copy_parent_clone_closure_payload(
         return true;
     }
 
-    if (result.closure_val.env_scope != null) {
+    if (closure_env_scope_is_root_owned(result, interp)) {
+        result.closure_val.env_scope = null;
+    } else if (result.closure_val.env_scope != null) {
         main::scope_retain(result.closure_val.env_scope);
     }
     return true;

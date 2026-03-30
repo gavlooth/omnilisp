@@ -36,6 +36,18 @@ fn void Compiler.collect_top_level_defines(Compiler* self, List{Expr*}* exprs) {
             for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
                 self.collect_expr_generated_globals(expr.module_expr.body[mi]);
             }
+        } else if (expr.tag == E_IMPORT) {
+            if (!expr.import_expr.has_path) {
+                self.add_global_if_missing(expr.import_expr.name);
+            }
+            for (usz ii = 0; ii < expr.import_expr.import_count; ii++) {
+                SymbolId imp_name = expr.import_expr.imports[ii];
+                SymbolId alias_name = expr.import_expr.aliases[ii];
+                self.add_global_if_missing(imp_name);
+                if ((uint)alias_name != 0) {
+                    self.add_global_if_missing(alias_name);
+                }
+            }
         } else {
             self.collect_expr_generated_globals(expr);
         }

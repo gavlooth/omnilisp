@@ -4,7 +4,7 @@ module lisp;
 import std::io;
 
 fn void run_http_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- HTTP Tests ---");
+    emit_test_section_banner("HTTP Tests");
 
     // http-get is defined (bound in env)
     test_tag(interp, "http-get is bound",

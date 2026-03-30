@@ -30,6 +30,56 @@ fn bool cstr_contains(char[] haystack, char[] needle) {
     return false;
 }
 
+fn bool cli_arg_starts_with_double_dash(char* arg) @inline {
+    return arg != null && arg[0] == '-' && arg[1] == '-';
+}
+
+fn bool cli_arg_starts_with_dash(char* arg) @inline {
+    return arg != null && arg[0] == '-';
+}
+
+fn char* find_unexpected_mode_arg(int argc, char** argv, int mode_idx, bool allow_json = false) {
+    for (int i = mode_idx + 1; i < argc; i++) {
+        if (allow_json && str_eq(argv[i], "--json")) continue;
+        return argv[i];
+    }
+    return null;
+}
+
+fn char* find_extra_mode_arg(
+    int argc,
+    char** argv,
+    int mode_idx,
+    int allowed_positionals = 0,
+    bool allow_json = false,
+    bool allow_write = false,
+    bool allow_check = false,
+    bool allow_output_flag = false,
+    bool allow_print_last = false,
+    bool allow_print_all = false
+) {
+    int positionals = 0;
+    for (int i = mode_idx + 1; i < argc; i++) {
+        char* arg = argv[i];
+        if (allow_json && str_eq(arg, "--json")) continue;
+        if (allow_write && str_eq(arg, "--write")) continue;
+        if (allow_check && str_eq(arg, "--check")) continue;
+        if (allow_print_last && str_eq(arg, "--print-last")) continue;
+        if (allow_print_all && str_eq(arg, "--print-all")) continue;
+        if (allow_output_flag && str_eq(arg, "-o")) {
+            if (i + 1 >= argc) return null;
+            i++;
+            continue;
+        }
+        if (positionals < allowed_positionals) {
+            positionals++;
+            continue;
+        }
+        return arg;
+    }
+    return null;
+}
+
 fn int find_flag_index(int argc, char** argv, char[] f1, char[] f2 = "", char[] f3 = "") {
     for (int i = 1; i < argc; i++) {
         if (str_eq(argv[i], f1)) return i;

@@ -433,7 +433,32 @@ fn void run_deduce_recursive_aggregate_rule_tests(Interp* interp, int* pass, int
             emit_pass_literal("[PASS] deduce analyze keeps naive pure negated recursive aggregates off mixed-route diagnostics");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce analyze keeps naive pure negated recursive aggregates off mixed-route diagnostics");
+            char[] engine_name = "<null>";
+            char[] requested_name = "<null>";
+            char[] fallback_name = "<null>";
+            char[] routed_name = "<null>";
+            if (neg_analyzed != null && neg_analyzed.tag == HASHMAP && neg_analyzed.hashmap_val != null) {
+                Value* engine = deduce_query_test_dict_get(interp, neg_analyzed, "execution-engine");
+                Value* requested = deduce_query_test_dict_get(interp, neg_analyzed, "requested-execution-engine");
+                Value* fallback = deduce_query_test_dict_get(interp, neg_analyzed, "recursive-aggregate-naive-fallback");
+                Value* routed = deduce_query_test_dict_get(
+                    interp,
+                    neg_analyzed,
+                    "naive-recursive-aggregate-mixed-routed-to-seminaive"
+                );
+                engine_name = engine != null && engine.tag == SYMBOL ? interp.symbols.get_name(engine.sym_val) : "<non-symbol>";
+                requested_name = requested != null && requested.tag == SYMBOL ? interp.symbols.get_name(requested.sym_val) : "<non-symbol>";
+                fallback_name = fallback != null && fallback.tag == SYMBOL ? interp.symbols.get_name(fallback.sym_val) : (fallback != null && fallback.tag == NIL ? "nil" : "<non-symbol>");
+                routed_name = routed != null && routed.tag == SYMBOL ? interp.symbols.get_name(routed.sym_val) : (routed != null && routed.tag == NIL ? "nil" : "<non-symbol>");
+            }
+            io::printfn(
+                "[FAIL] deduce analyze keeps naive pure negated recursive aggregates off mixed-route diagnostics (engine=%s requested=%s fallback=%s routed=%s expected_rows=%d)",
+                (ZString)engine_name,
+                (ZString)requested_name,
+                (ZString)fallback_name,
+                (ZString)routed_name,
+                (int)neg_expected_rows
+            );
             (*fail)++;
         }
     }
@@ -496,9 +521,34 @@ fn void run_deduce_recursive_aggregate_rule_tests(Interp* interp, int* pass, int
             emit_pass_literal("[PASS] deduce analyze routes naive mixed negated recursive aggregate SCCs to semi-naive-scc");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce analyze routes naive mixed negated recursive aggregate SCCs to semi-naive-scc");
+            char[] engine_name = "<null>";
+            char[] requested_name = "<null>";
+            char[] fallback_name = "<null>";
+            char[] routed_name = "<null>";
+            if (mixed_neg_analyzed != null && mixed_neg_analyzed.tag == HASHMAP && mixed_neg_analyzed.hashmap_val != null) {
+                Value* engine = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "execution-engine");
+                Value* requested = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "requested-execution-engine");
+                Value* fallback = deduce_query_test_dict_get(interp, mixed_neg_analyzed, "recursive-aggregate-naive-fallback");
+                Value* routed = deduce_query_test_dict_get(
+                    interp,
+                    mixed_neg_analyzed,
+                    "naive-recursive-aggregate-mixed-routed-to-seminaive"
+                );
+                engine_name = engine != null && engine.tag == SYMBOL ? interp.symbols.get_name(engine.sym_val) : "<non-symbol>";
+                requested_name = requested != null && requested.tag == SYMBOL ? interp.symbols.get_name(requested.sym_val) : "<non-symbol>";
+                fallback_name = fallback != null && fallback.tag == SYMBOL ? interp.symbols.get_name(fallback.sym_val) : (fallback != null && fallback.tag == NIL ? "nil" : "<non-symbol>");
+                routed_name = routed != null && routed.tag == SYMBOL ? interp.symbols.get_name(routed.sym_val) : (routed != null && routed.tag == NIL ? "nil" : "<non-symbol>");
+            }
+            io::printfn(
+                "[FAIL] deduce analyze routes naive mixed negated recursive aggregate SCCs to semi-naive-scc (engine=%s requested=%s fallback=%s routed=%s score_rows=%d chosen_rows=%d)",
+                (ZString)engine_name,
+                (ZString)requested_name,
+                (ZString)fallback_name,
+                (ZString)routed_name,
+                (int)expected_score_rows,
+                (int)expected_chosen_rows
+            );
             (*fail)++;
         }
     }
 }
-

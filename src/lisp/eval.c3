@@ -91,6 +91,7 @@ fn void copy_to_parent_note_cons_spine(Value* v) @inline {
 }
 
 fn void print_memory_promotion_stats() {
+    if (test_quiet_requested()) return;
     io::printn("=== copy_to_parent Stats ===");
     io::printfn("copy_to_parent calls: %d", (long)g_copy_to_parent_stats.total_calls);
     io::printfn("copy_to_parent fast reuse hits: %d", (long)g_copy_to_parent_stats.fast_reuse_hits);

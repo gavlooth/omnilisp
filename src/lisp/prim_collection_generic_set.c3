@@ -19,7 +19,7 @@ fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
         return coll.array_val.items[(usz)idx];
     }
 
-    // Dict: (ref dict key)
+    // Dictionary: (ref dict key)
     if (coll.tag == HASHMAP) {
         Value* result = hashmap_get(coll.hashmap_val, args[1]);
         if (result == null) return make_nil(interp);

@@ -21,6 +21,21 @@ fn void print_describe_usage_json() {
     io::print("}\n");
 }
 
+fn void print_describe_unexpected_arg_json(char* arg) {
+    io::print("{\"ok\":false,\"code\":");
+    print_json_escaped_string(JSON_DESCRIBE_USAGE_CODE);
+    io::print(",\"severity\":");
+    print_json_escaped_string(JSON_DESCRIBE_ERROR_SEVERITY);
+    io::print(",\"message\":");
+    char[256] msg_buf;
+    if (try msg = io::bprintf(&msg_buf, "unexpected argument after --describe: %s", (ZString)arg)) {
+        print_json_escaped_string(msg);
+    } else {
+        print_json_escaped_string("unexpected argument after --describe");
+    }
+    io::print("}\n");
+}
+
 fn void print_describe_result_text(char[] symbol, SymbolDescribeInfo info) {
     if (!info.found) {
         io::printfn("Unknown symbol: %s", (ZString)symbol);
@@ -53,4 +68,3 @@ fn void print_describe_result_json(char[] symbol, SymbolDescribeInfo info) {
     print_json_escaped_string(info.documentation);
     io::print(",\"error\":null}\n");
 }
-

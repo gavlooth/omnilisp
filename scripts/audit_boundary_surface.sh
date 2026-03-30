@@ -81,7 +81,7 @@ Policy file: \`${policy_file}\`
 
 ## Summary
 
-- total direct legacy callsites scanned: ${total}
+- total direct boundary callsites scanned: ${total}
 - allowed by policy: ${allowed}
 - ignored by policy globs: ${ignored}
 - violations: ${violations}

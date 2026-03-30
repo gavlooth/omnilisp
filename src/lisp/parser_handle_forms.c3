@@ -17,13 +17,18 @@ fn bool Parser.consume_handle_strict_annotation(Parser* self) {
 }
 
 fn bool Parser.parse_handle_clause(Parser* self, EffectClause* clause) {
-    if (self.lexer.current.type != T_SYMBOL) {
-        self.set_error("legacy handle clause syntax was removed; use (tag arg body) and with-continuation when needed");
+    clause.effect_tag = (SymbolId)0;
+    clause.effect_tag_expr = null;
+    clause.has_effect_tag_expr = false;
+
+    if (self.lexer.current.type != T_SYMBOL && self.lexer.current.type != T_PATH) {
+        self.set_error("handle clause syntax was removed; use (tag arg body) and with-continuation when needed");
         return false;
     }
 
-    clause.effect_tag = self.get_current_symbol();
-    self.lexer.advance();
+    if (!self.parse_effect_tag_ref(&clause.effect_tag, &clause.effect_tag_expr, &clause.has_effect_tag_expr)) {
+        return false;
+    }
 
     if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected arg name"); return false; }
     clause.arg_name = self.get_current_symbol();

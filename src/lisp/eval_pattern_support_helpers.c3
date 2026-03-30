@@ -10,6 +10,7 @@ const usz GENSYM_INITIAL_CAPACITY = 16;
 
 struct MatchResult {
     bool matched;
+    Value* error;
     Binding* bindings;
     usz binding_count;
     usz capacity;
@@ -59,18 +60,32 @@ fn bool gensym_table_ensure_capacity(GensymTable* self, usz needed) {
 }
 
 fn MatchResult match_fail() @inline {
-    return { .matched = false, .bindings = null, .binding_count = 0, .capacity = 0 };
+    return { .matched = false, .error = null, .bindings = null, .binding_count = 0, .capacity = 0 };
 }
 
 fn MatchResult match_ok() @inline {
-    Binding* b = (Binding*)mem::malloc(Binding.sizeof * MATCH_INITIAL_CAPACITY);
-    return { .matched = true, .bindings = b, .binding_count = 0, .capacity = MATCH_INITIAL_CAPACITY };
+    return { .matched = true, .error = null, .bindings = null, .binding_count = 0, .capacity = 0 };
 }
 
-fn void MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) {
+fn MatchResult match_error(Value* error) @inline {
+    return { .matched = false, .error = error, .bindings = null, .binding_count = 0, .capacity = 0 };
+}
+
+fn bool MatchResult.has_error(MatchResult* self) @inline {
+    return self != null && self.error != null && self.error.tag == ERROR;
+}
+
+fn MatchResult match_take_error(MatchResult* self) @inline {
+    Value* err = self != null ? self.error : null;
+    if (self != null) self.cleanup();
+    return match_error(err);
+}
+
+fn bool MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) {
     if (self.binding_count >= self.capacity) {
         usz new_cap = self.capacity < MATCH_INITIAL_CAPACITY ? MATCH_INITIAL_CAPACITY : self.capacity * 2;
         Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
+        if (new_bindings == null) return false;
         for (usz i = 0; i < self.binding_count; i++) {
             new_bindings[i] = self.bindings[i];
         }
@@ -81,12 +96,16 @@ fn void MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) 
     self.bindings[self.binding_count].name = name;
     self.bindings[self.binding_count].value = value;
     self.binding_count++;
+    return true;
 }
 
-fn void MatchResult.merge(MatchResult* self, MatchResult* other) {
+fn bool MatchResult.merge(MatchResult* self, MatchResult* other) {
     for (usz i = 0; i < other.binding_count; i++) {
-        self.add_binding(other.bindings[i].name, other.bindings[i].value);
+        if (!self.add_binding(other.bindings[i].name, other.bindings[i].value)) {
+            return false;
+        }
     }
+    return true;
 }
 
 fn void MatchResult.cleanup(MatchResult* self) {

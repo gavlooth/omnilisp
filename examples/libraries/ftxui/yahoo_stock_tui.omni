@@ -1,0 +1,103 @@
+;; yahoo_stock_tui.omni — terminal Yahoo Finance stock chart demo
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/yahoo_stock_tui.omni
+;; Quit: press q or Esc
+
+(import "ui.omni")
+(import ui)
+
+(define [union] (FetchResult V E) (Ok V) (Err E))
+
+(define (stock/env-or-default name default)
+  (let (value (getenv name))
+    (if (nil? value) default value)))
+
+(define stock-symbol (stock/env-or-default "OMNI_STOCK_SYMBOL" "AAPL"))
+(define stock-range "1mo")
+(define stock-interval "1d")
+(define stock-fallback-series [264.72 263.75 262.52 261.60 262.14 263.95 265.44 266.80 268.10 267.34])
+(define (stock/http-get-json url)
+  (await
+    (spawn
+        (lambda ()
+        (let (proc (process-spawn "curl"
+                                  ["-sL" "--compressed" "-A" "Mozilla/5.0" url]
+                                  nil))
+          (defer (block
+            (fs-close (ref proc 'stdin))
+            (fs-close (ref proc 'stdout))
+            (fs-close (ref proc 'stderr))))
+          (let (body (fs-read (ref proc 'stdout) 32768)
+                status (await (spawn (lambda () (process-wait (ref proc 'handle))))))
+            (if (= (ref status 'exit-code) 0)
+                (Ok (json-parse body))
+                (Err (format "curl exit %d" (ref status 'exit-code))))))))))
+
+(define (stock/yahoo->series data)
+  (match (json-get data "/chart/result/0/indicators/quote/0/close")
+    (nil (Err "missing close series"))
+    (closes
+      (let (filtered (filter number? closes))
+        (match filtered
+          ([first ..] (Ok (stock/normalize-series filtered)))
+          (_ (Err "empty close series")))))))
+
+(define (stock/normalize-series series)
+  (map (lambda (x) (exact->inexact x)) (filter number? series)))
+
+(define (stock/load-series symbol range interval)
+  (let (path (format "/v8/finance/chart/%s?range=%s&interval=%s&includePrePost=false"
+                     symbol range interval))
+    (match (stock/http-get-json (format "https://query1.finance.yahoo.com%s" path))
+      ((Ok data)
+        (match (stock/yahoo->series data)
+          ((Ok series) series)
+          ((Err _) (stock/normalize-series stock-fallback-series))))
+      ((Err msg1)
+        (match (stock/http-get-json (format "https://query2.finance.yahoo.com%s" path))
+          ((Ok data)
+            (match (stock/yahoo->series data)
+              ((Ok series) series)
+              ((Err _) (stock/normalize-series stock-fallback-series))))
+          ((Err msg2)
+            (stock/normalize-series stock-fallback-series)))))))
+
+(define (stock/first series)
+  (match series
+    ([first ..] first)
+    (_ 0.0)))
+
+(define (stock/last series)
+  (match (reverse series)
+    ([last ..] last)
+    (_ 0.0)))
+
+(define (stock/change series)
+  (- (stock/last series) (stock/first series)))
+
+(define (stock/change-pct series)
+  (let (first (stock/first series)
+        delta (stock/change series))
+    (if (= first 0.0)
+        0.0
+        (* (/ delta first) 100.0))))
+
+(define (stock/summary symbol series)
+  (format "%s  last %.2f  change %.2f  (%.2f%%)"
+          symbol
+          (stock/last series)
+          (stock/change series)
+          (stock/change-pct series)))
+
+(define (stock/title symbol range interval series)
+  (format "%s %s/%s" symbol range interval))
+
+(define (stock/view symbol range interval series)
+  (ui.window
+    (stock/title symbol range interval series)
+    (ui.graph series)))
+
+(define stock-live-series
+  (stock/load-series stock-symbol stock-range stock-interval))
+
+(ui.run
+  (stock/view stock-symbol stock-range stock-interval stock-live-series))

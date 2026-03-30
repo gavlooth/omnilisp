@@ -61,7 +61,7 @@ fn Value* prim_is_instance(Value*[] args, Env* env, Interp* interp) {
 
 /**
  * (type-args v) -> list of inferred type argument symbols, or nil if not parametric.
- * Example: (type-args (Box 42)) => '(Int)
+ * Example: (type-args (Box 42)) => '(Integer)
  */
 fn Value* prim_type_args(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "type-args: expected 1 argument");

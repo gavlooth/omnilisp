@@ -45,7 +45,7 @@ fn bool csv_field_push(CsvFieldBuf* fb, char ch) {
     return true;
 }
 
-fn bool csv_array_push(Value* arr_v, Value* val) {
+fn bool csv_array_push(Value* arr_v, Value* val, Interp* interp) {
     if (arr_v == null || arr_v.tag != ARRAY || arr_v.array_val == null) return false;
     Array* arr = arr_v.array_val;
     if (arr.length >= arr.capacity) {
@@ -55,13 +55,15 @@ fn bool csv_array_push(Value* arr_v, Value* val) {
         arr.items = next_items;
         arr.capacity = new_cap;
     }
-    arr.items[arr.length++] = val;
+    Value* promoted = boundary_promote_to_root(val, interp);
+    if (promoted == null) return false;
+    arr.items[arr.length++] = promoted;
     return true;
 }
 
 fn Value* csv_row_push_field(Value* row, CsvFieldBuf* field, Interp* interp) {
     Value* cell = make_string(interp, field.data[:field.len]);
-    if (!csv_array_push(row, cell)) {
+    if (!csv_array_push(row, cell, interp)) {
         return raise_error(interp, "csv-parse: out of memory");
     }
     csv_field_clear(field);
@@ -69,7 +71,7 @@ fn Value* csv_row_push_field(Value* row, CsvFieldBuf* field, Interp* interp) {
 }
 
 fn Value* csv_rows_push_row(Value* rows, Value* row, Interp* interp) {
-    if (!csv_array_push(rows, row)) {
+    if (!csv_array_push(rows, row, interp)) {
         return raise_error(interp, "csv-parse: out of memory");
     }
     return null;

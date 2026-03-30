@@ -39,9 +39,40 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
     return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", umsg, data);
 }
 
+fn Value* runtime_effect_invalid_tag(Value* tag_value, Interp* interp, char[] context) {
+    char[256] ebuf;
+    char[] type_name = interp.symbols.get_name(value_type_name(tag_value, interp));
+    char[] msg = io::bprintf(&ebuf, "%s: effect tag must resolve to symbol, got %s",
+        (ZString)context, (ZString)type_name)!!;
+    return runtime_effect_raise(interp, "runtime/effect-invalid-tag", msg);
+}
+
+fn Value* eval_effect_tag_value(SymbolId tag, Expr* tag_expr, bool has_tag_expr, Env* env, Interp* interp) {
+    if (!has_tag_expr) return make_symbol(interp, tag);
+    return jit_eval(tag_expr, env, interp);
+}
+
+fn Value* resolve_effect_tag_symbol(
+    SymbolId tag,
+    Expr* tag_expr,
+    bool has_tag_expr,
+    Env* env,
+    Interp* interp,
+    SymbolId* out_tag,
+    char[] context
+) {
+    Value* tag_value = eval_effect_tag_value(tag, tag_expr, has_tag_expr, env, interp);
+    if (tag_value != null && tag_value.tag == ERROR) return tag_value;
+    if (tag_value == null || tag_value.tag != SYMBOL) {
+        return runtime_effect_invalid_tag(tag_value, interp, context);
+    }
+    *out_tag = tag_value.sym_val;
+    return null;
+}
+
 fn bool effect_handler_has_tag(EffectHandler* h, SymbolId tag) {
     for (usz j = 0; j < h.clause_count; j++) {
-        SymbolId ctag = h.clauses != null ? h.clauses[j].effect_tag : h.tags[j];
+        SymbolId ctag = h.tags != null ? h.tags[j] : h.clauses[j].effect_tag;
         if (ctag == tag) return true;
     }
     return false;

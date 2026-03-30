@@ -1,0 +1,12 @@
+;; module_effect_smoke.omni — isolates module-owned effect tag syntax
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_effect_smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(handle
+  (block
+    (signal ui.open 42)
+    false)
+  (ui.open x
+    (= x 42)))

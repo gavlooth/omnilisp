@@ -103,23 +103,23 @@ Force an iterator with constructors: `(List it)` or `(Array it)`.
 
 These redefine I/O to go through effects (fast path when no handler):
 
-`print`, `println`, `display`, `newline`, `read-file`, `write-file`,
-`file-exists?`, `read-lines`, `filesystem-open`, `filesystem-read`,
-`filesystem-write`, `filesystem-close`, `filesystem-stat`,
-`filesystem-read-directory`, `filesystem-rename`, `filesystem-unlink`,
-`transmission-control-connect`, `transmission-control-listen`,
-`transmission-control-accept`, `transmission-control-read`,
-`transmission-control-write`, `transmission-control-close`,
-`user-datagram-socket`, `user-datagram-bind`, `user-datagram-send`,
-`user-datagram-receive`, `user-datagram-close`,
+`print`, `println`, `display`, `newline`, `read-line`, `read-file`, `write-file`,
+`file-exists?`, `read-lines`, `fs-open`, `fs-read`,
+`fs-write`, `fs-close`, `fs-stat`,
+`fs-readdir`, `fs-rename`, `fs-unlink`,
+`tcp-connect`, `tcp-listen`,
+`tcp-accept`, `tcp-read`,
+`tcp-write`, `tcp-close`,
+`udp-socket`, `udp-bind`, `udp-send`,
+`udp-receive`, `udp-close`,
 `pipe-connect`, `pipe-listen`, `process-spawn`, `process-wait`,
-`process-kill`, `signal-handle`, `signal-unhandle`, `domain-name-resolve`, `async-sleep`,
+`process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`,
 `offload`, `task-spawn`, `task-join`, `task-join-timeout`, `task-cancel`,
 `task-spawn-batch`, `thread-spawn`, `thread-spawn-batch`, `thread-join`,
 `thread-join-timeout`, `thread-cancel`,
-`transport-layer-security-connect`, `transport-layer-security-server-wrap`,
-`transport-layer-security-read`, `transport-layer-security-write`,
-`transport-layer-security-close`,
+`tls-connect`, `tls-server-wrap`,
+`tls-read`, `tls-write`,
+`tls-close`,
 `http-get`, `http-request`
 
 Compatibility shorthands are also exported:

@@ -11,7 +11,7 @@ Completed this session:
 - `1)` Design freeze sign-off: **pass** (proposal/guardrail docs aligned and frozen for execution).
 - `2)` Ownership/guardrail checkpoint: **conditional pass**.
   - Region-centric ownership and no per-type RC drift remain enforced.
-  - Open exception to resolve in next session (`4`): `src/stack_engine.c3` still has legacy direct scope touchpoints (`stack_ctx_pin_scope`, `stack_ctx_unpin_scope`, `pinned_scope` field).
+  - Open exception to resolve in next session (`4`): `src/stack_engine.c3` still has direct scope touchpoints (`stack_ctx_pin_scope`, `stack_ctx_unpin_scope`, `pinned_scope` field).
 - `3)` Defer hot-path perf sign-off: **pass** with runtime counters and zero heap-overflow allocations in current suite run.
   - `STACK_DEFER_METRICS push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
 - `4)` Deferred by request to next session.
@@ -25,7 +25,7 @@ Validation evidence:
 ## Item 4 Follow-up (2026-03-05)
 
 Completed in subsequent session:
-- Removed legacy stack-layer direct scope touchpoints from `src/stack_engine.c3`:
+- Removed stack-layer direct scope touchpoints from `src/stack_engine.c3`:
   - `pinned_scope` field removed
   - `stack_ctx_pin_scope(...)` removed
   - `stack_ctx_unpin_scope(...)` removed

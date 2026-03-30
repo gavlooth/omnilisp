@@ -26,6 +26,14 @@ fn void* stack_current_thread_token() @inline {
     return (void*)&g_stack_thread_marker;
 }
 
+fn usz stack_pool_cache_limit() @inline {
+    // Under ASAN prefer direct free over stack-context reuse. Suspended
+    // continuation/handle paths can otherwise recycle sanitizer fake-stack
+    // metadata across destroy/create boundaries and obscure the first bad
+    // runtime state transition with reuse-only crashes.
+    return stack_runtime_asan_enabled() ? 0 : STACK_POOL_MAX;
+}
+
 fn void stack_thread_violation(char[] op) @inline {
     io::eprintfn("stack-engine thread-affinity violation in %s", op);
     unreachable("stack-engine used from non-owner thread");
@@ -51,7 +59,7 @@ fn void stack_pool_init(StackPool* pool) {
     pool.all_list = null;
     pool.pool_size = 0;
     pool.all_count = 0;
-    pool.max_pool = STACK_POOL_MAX;
+    pool.max_pool = stack_pool_cache_limit();
     pool.next_id = 1;
     pool.stack_size = stack_runtime_asan_enabled() ? ASAN_STACK_SIZE : DEFAULT_STACK_SIZE;
     pool.shutting_down = false;

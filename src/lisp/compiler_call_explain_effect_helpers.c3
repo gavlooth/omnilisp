@@ -8,7 +8,7 @@ import main;
 // SECTION 8a: STATEMENT-LEVEL COMPILATION (call/app explain effect helpers)
 // =============================================================================
 fn usz Compiler.compile_explain_effect_signal_flat(Compiler* self, Expr* target) {
-    if (target != null && target.tag == E_PERFORM) {
+    if (target != null && target.tag == E_PERFORM && !target.perform.has_tag_expr) {
         usz arg_r = self.compile_to_temp(target.perform.arg);
         usz id = self.next_result();
         self.emit_temp_decl(id);

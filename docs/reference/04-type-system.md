@@ -84,9 +84,8 @@ None              ;; nullary variant
 
 User-defined types and selected builtin/runtime types therefore share the same
 “type symbol in type position, constructor/coercion in value position” surface.
-Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`, and
-`Dictionary` are the primary spellings, while `Dict` remains the only
-accepted compatibility shorthand alias.
+Canonical names favor descriptiveness over terseness: `Integer`, `Boolean`,
+and `Dictionary` are the primary spellings.
 
 Alias policy is input-tolerant but output-canonical:
 - aliases are accepted at constructor/type-annotation input sites,
@@ -110,7 +109,8 @@ still error).
 
 There is no builtin `Empty` type today. Use `Nil` for the language-level empty
 value. `Void` is a real builtin singleton type/value, constructed with
-`(Void)`, and FFI `^Void` maps to that same runtime value.
+`(Void)`, printed as `#<void>`, and FFI `^Void` maps to that same runtime
+value.
 
 Current stable rule: value-level `false` collapses to `nil`. If you need the
 symbol name itself as data, use quoted `'false`.
@@ -165,7 +165,7 @@ type-descriptor print shape is `#<type Name>` (not `#<Name>`); for example
 structurally as `{'a 1}` or `(Set 1 2 3)`. Non-constructor primitives keep
 primitive rendering (`#<primitive +>`).
 Constructor aliases normalize to canonical introspection identities (for
-example `(type-of (Integer 3.9)) => Integer`, `(format "%s" Dict) => #<type Dictionary>`).
+example `(type-of (Integer 3.9)) => Integer`, `(format "%s" Dictionary) => #<type Dictionary>`).
 
 ---
 

@@ -1,0 +1,69 @@
+;; ui/effects.omni — internal effect declarations for the public `ui` facade
+
+(module ui.effects
+  (export effect_node
+          effect_tag
+          effect_attrs
+          effect_children
+          effects
+          open_tree
+          render_tree
+          read_event_tree
+          invalidate_tree
+          close_tree
+          post_event_tree
+          open
+          render
+          read_event
+          invalidate
+          close
+          post_event))
+
+(define (effect_node tag attrs children)
+  {'tag tag 'attrs attrs 'children children})
+
+(define (effect_tag node) (ref node 'tag))
+(define (effect_attrs node) (ref node 'attrs))
+(define (effect_children node) (ref node 'children))
+
+(define (open_tree spec .. children)
+  (effect_node 'open spec children))
+
+(define (render_tree view .. children)
+  (effect_node 'render view children))
+
+(define (read_event_tree request .. children)
+  (effect_node 'read_event request children))
+
+(define (invalidate_tree request .. children)
+  (effect_node 'invalidate request children))
+
+(define (close_tree request .. children)
+  (effect_node 'close request children))
+
+(define (post_event_tree event .. children)
+  (effect_node 'post_event event children))
+
+(define [effect] (open (^Any spec)))
+(define [effect] (render (^Any view)))
+(define [effect] (read_event (^Any request)))
+(define [effect] (invalidate (^Any request)))
+(define [effect] (close (^Any request)))
+(define [effect] (post_event (^Any event)))
+
+(define effects {'effect_node effect_node
+                 'effect_tag effect_tag
+                 'effect_attrs effect_attrs
+                 'effect_children effect_children
+                 'open_tree open_tree
+                 'render_tree render_tree
+                 'read_event_tree read_event_tree
+                 'invalidate_tree invalidate_tree
+                 'close_tree close_tree
+                 'post_event_tree post_event_tree
+                 'open open
+                 'render render
+                 'read_event read_event
+                 'invalidate invalidate
+                 'close close
+                 'post_event post_event})

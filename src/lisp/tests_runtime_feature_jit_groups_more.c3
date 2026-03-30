@@ -5,6 +5,65 @@ import std::io;
 import std::core::mem;
 import main;
 
+fn bool jit_policy_str_contains(char[] haystack, char[] needle) {
+    if (needle.len == 0) return true;
+    if (needle.len > haystack.len) return false;
+    for (usz i = 0; i <= haystack.len - needle.len; i++) {
+        bool match = true;
+        for (usz j = 0; j < needle.len; j++) {
+            if (haystack[i + j] != needle[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
+alias JitPolicyTestFn = fn void(Interp* interp, int* pass, int* fail);
+
+fn bool jit_policy_filter_name_exact(char* filter, char[] name) {
+    usz len = 0;
+    while (filter[len] != 0) len++;
+    if (len != name.len) return false;
+    for (usz i = 0; i < len; i++) {
+        if (filter[i] != name[i]) return false;
+    }
+    return true;
+}
+
+fn bool jit_policy_filter_matches(char[] name) {
+    char* filter = test_c_getenv("OMNI_JIT_POLICY_FILTER");
+    if (filter == null) return true;
+    usz start = 0;
+    while (true) {
+        usz end = start;
+        while (filter[end] != 0 && filter[end] != ',') end++;
+        usz len = end - start;
+        if (len == name.len) {
+            bool same = true;
+            for (usz i = 0; i < len; i++) {
+                if (filter[start + i] != name[i]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return true;
+        }
+        if (filter[end] == 0) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+fn void run_jit_policy_case(char[] name, JitPolicyTestFn test_fn, Interp* interp, int* pass, int* fail) {
+    if (!jit_policy_filter_matches(name)) {
+        return;
+    }
+    test_fn(interp, pass, fail);
+}
+
 fn void run_jit_policy_tco_stale_generation_moved_binding_copy_test(Interp* interp, int* pass, int* fail) {
     // Invariant: JIT TCO env-copy treats bindings as copy-required whenever
     // wrapper/payload physically resides in releasing scope, even with stale
@@ -326,14 +385,17 @@ fn void run_jit_policy_closure_persistent_env_copy_scope_contract_test(Interp* i
         closure.tag == CLOSURE &&
         closure.closure_val != null &&
         closure.closure_val.env_scope == null;
+    int root_rc_before = interp.root_scope != null ? (int)interp.root_scope.refcount : -1;
 
     BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
     interp.current_scope = source;
     bool copied_ok = setup_ok &&
         jit_copy_closure_env_if_needed(interp, closure, persistent_box, true, &copy_fault);
+    int root_rc_after_copy = interp.root_scope != null ? (int)interp.root_scope.refcount : -1;
     bool env_ok = copied_ok &&
         closure.closure_val.env == persistent_box &&
-        closure.closure_val.env_scope == interp.root_scope;
+        closure.closure_val.env_scope == null &&
+        root_rc_before == root_rc_after_copy;
 
     main::scope_release(source);
     bool post_release_ok = env_ok &&
@@ -350,11 +412,13 @@ fn void run_jit_policy_closure_persistent_env_copy_scope_contract_test(Interp* i
         (*pass)++;
     } else {
         io::printfn(
-            "[FAIL] jit policy: closure env-copy root box does not keep foreign env_scope (setup_ok=%s copied_ok=%s env_ok=%s post_release_ok=%s fault=%s)",
+            "[FAIL] jit policy: closure env-copy root box does not keep foreign env_scope (setup_ok=%s copied_ok=%s env_ok=%s post_release_ok=%s root_rc_before=%d root_rc_after_copy=%d fault=%s)",
             setup_ok ? "yes" : "no",
             copied_ok ? "yes" : "no",
             env_ok ? "yes" : "no",
             post_release_ok ? "yes" : "no",
+            root_rc_before,
+            root_rc_after_copy,
             (ZString)boundary_env_copy_fault_name(copy_fault)
         );
         (*fail)++;
@@ -593,14 +657,19 @@ fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pa
     }
 
     tmp.init();
-    register_primitives(tmp);
-    register_stdlib(tmp);
+    if (!bootstrap_runtime_interp(tmp)) {
+        io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly (bootstrap)");
+        (*fail)++;
+        tmp.destroy();
+        mem::free(tmp);
+        return;
+    }
 
     EvalResult r = run(
         "(block "
-        "  (define (dispatch-teardown (^Int x)) x) "
+        "  (define (dispatch-teardown (^Integer x)) x) "
         "  (define (dispatch-teardown x) x) "
-        "  (define (dispatch-teardown (^Int x)) (+ x 1)) "
+        "  (define (dispatch-teardown (^Integer x)) (+ x 1)) "
         "  (dispatch-teardown 1))",
         tmp
     );
@@ -622,8 +691,92 @@ fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pa
     }
 }
 
+fn void run_jit_policy_match_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: match binding growth failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source = "(match '(1 2 3 4 5) ([a b c d e] (+ a e)) (_ 0))";
+    g_env_force_bindings_alloc_oom = true;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_env_force_bindings_alloc_oom = false;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while binding match clause");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: match binding growth failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: match binding growth failure returns error");
+        print_jit_failure_debug(interp, "jit match binding growth failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_multi_arg_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: multi-arg binding growth failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source = "((lambda (a b c d e) (+ a e)) 1 2 3 4 5)";
+    g_env_force_bindings_alloc_oom = true;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_env_force_bindings_alloc_oom = false;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while binding argument");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: multi-arg binding growth failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: multi-arg binding growth failure returns error");
+        print_jit_failure_debug(interp, "jit multi-arg binding growth failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_match_guard_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: match guard binding growth failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source = "(match [1 2 3 4 5] ((? true [a b c d e]) (+ a e)) (_ 0))";
+    g_env_force_bindings_alloc_oom = true;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_env_force_bindings_alloc_oom = false;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while defining binding");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: match guard binding growth failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: match guard binding growth failure returns error");
+        print_jit_failure_debug(interp, "jit match guard binding growth failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- JIT Policy Tests ---");
+    emit_test_section_banner("JIT Policy Tests");
 
     bool saved_jit_enabled = interp.flags.jit_enabled;
     bool run_stdlib_teardown_redefinition_only =
@@ -635,36 +788,42 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         return;
     }
 
-    bool parsed = run_jit_policy_warm_cache_tests(interp, pass, fail);
+    bool parsed = true;
+    if (jit_policy_filter_matches("warm-cache")) {
+        parsed = run_jit_policy_warm_cache_tests(interp, pass, fail);
+    }
     if (parsed) {
-        run_jit_policy_cache_overwrite_count_test(interp, pass, fail);
-        run_jit_policy_cache_probe_saturation_recovery_test(interp, pass, fail);
-        run_jit_policy_retired_code_tombstone_table_test(interp, pass, fail);
-        run_jit_policy_gc_safe_point_test(interp, pass, fail);
-        run_jit_policy_stale_compiled_fn_guard_test(interp, pass, fail);
-        run_jit_policy_foreign_compiled_fn_owner_test(interp, pass, fail);
-        run_jit_policy_boundary_reset_test(interp, pass, fail);
-        run_jit_policy_stale_raise_scrub_test(interp, pass, fail);
-        run_jit_policy_variadic_no_fallback_test(interp, pass, fail);
-        run_jit_policy_multi_interp_lifetime_test(interp, pass, fail);
-        run_jit_policy_continuation_teardown_test(interp, pass, fail);
-        run_jit_policy_shared_handle_state_teardown_test(interp, pass, fail);
-        run_jit_policy_cross_interp_continuation_guard_test(interp, pass, fail);
-        run_jit_policy_escaped_handle_continuation_guard_test(interp, pass, fail);
-        run_jit_policy_side_effect_escaped_handle_continuation_guard_test(interp, pass, fail);
-        run_jit_policy_multishot_capture_scope_guard_clone_test(interp, pass, fail);
-        run_jit_policy_shadowed_primitive_call_test(interp, pass, fail);
-        run_jit_policy_capture_boundary_reset_test(interp, pass, fail);
-        run_jit_policy_tco_stale_generation_moved_binding_copy_test(interp, pass, fail);
-        run_jit_policy_tco_persistent_parent_root_rewrite_test(interp, pass, fail);
-        run_jit_policy_tco_persistent_parent_stale_generation_rewrite_test(interp, pass, fail);
-        run_jit_policy_root_box_extend_copies_cross_scope_closure_value_test(interp, pass, fail);
-        run_jit_policy_closure_persistent_env_copy_scope_contract_test(interp, pass, fail);
-        run_jit_policy_cross_scope_alias_policy_test(interp, pass, fail);
-        run_jit_policy_iterator_array_thunk_boundary_test(interp, pass, fail);
-        run_jit_policy_tco_cons_iterator_edge_copy_test(interp, pass, fail);
-        run_jit_policy_closure_method_iterator_boundary_test(interp, pass, fail);
-        run_jit_policy_stdlib_teardown_redefinition_test(interp, pass, fail);
+        run_jit_policy_case("cache-overwrite-count", &run_jit_policy_cache_overwrite_count_test, interp, pass, fail);
+        run_jit_policy_case("cache-probe-saturation-recovery", &run_jit_policy_cache_probe_saturation_recovery_test, interp, pass, fail);
+        run_jit_policy_case("retired-code-tombstone-table", &run_jit_policy_retired_code_tombstone_table_test, interp, pass, fail);
+        run_jit_policy_case("gc-safe-point", &run_jit_policy_gc_safe_point_test, interp, pass, fail);
+        run_jit_policy_case("stale-compiled-fn-guard", &run_jit_policy_stale_compiled_fn_guard_test, interp, pass, fail);
+        run_jit_policy_case("foreign-compiled-fn-owner", &run_jit_policy_foreign_compiled_fn_owner_test, interp, pass, fail);
+        run_jit_policy_case("boundary-reset", &run_jit_policy_boundary_reset_test, interp, pass, fail);
+        run_jit_policy_case("stale-raise-scrub", &run_jit_policy_stale_raise_scrub_test, interp, pass, fail);
+        run_jit_policy_case("variadic-no-fallback", &run_jit_policy_variadic_no_fallback_test, interp, pass, fail);
+        run_jit_policy_case("match-binding-growth-failure", &run_jit_policy_match_binding_growth_failure_test, interp, pass, fail);
+        run_jit_policy_case("multi-arg-binding-growth-failure", &run_jit_policy_multi_arg_binding_growth_failure_test, interp, pass, fail);
+        run_jit_policy_case("match-guard-binding-growth-failure", &run_jit_policy_match_guard_binding_growth_failure_test, interp, pass, fail);
+        run_jit_policy_case("multi-interp-lifetime", &run_jit_policy_multi_interp_lifetime_test, interp, pass, fail);
+        run_jit_policy_case("continuation-teardown", &run_jit_policy_continuation_teardown_test, interp, pass, fail);
+        run_jit_policy_case("shared-handle-state-teardown", &run_jit_policy_shared_handle_state_teardown_test, interp, pass, fail);
+        run_jit_policy_case("cross-interp-continuation-guard", &run_jit_policy_cross_interp_continuation_guard_test, interp, pass, fail);
+        run_jit_policy_case("escaped-handle-continuation-guard", &run_jit_policy_escaped_handle_continuation_guard_test, interp, pass, fail);
+        run_jit_policy_case("side-effect-escaped-handle-continuation-guard", &run_jit_policy_side_effect_escaped_handle_continuation_guard_test, interp, pass, fail);
+        run_jit_policy_case("multishot-capture-scope-guard-clone", &run_jit_policy_multishot_capture_scope_guard_clone_test, interp, pass, fail);
+        run_jit_policy_case("shadowed-primitive-call", &run_jit_policy_shadowed_primitive_call_test, interp, pass, fail);
+        run_jit_policy_case("capture-boundary-reset", &run_jit_policy_capture_boundary_reset_test, interp, pass, fail);
+        run_jit_policy_case("tco-stale-generation-moved-binding-copy", &run_jit_policy_tco_stale_generation_moved_binding_copy_test, interp, pass, fail);
+        run_jit_policy_case("tco-persistent-parent-root-rewrite", &run_jit_policy_tco_persistent_parent_root_rewrite_test, interp, pass, fail);
+        run_jit_policy_case("tco-persistent-parent-stale-generation-rewrite", &run_jit_policy_tco_persistent_parent_stale_generation_rewrite_test, interp, pass, fail);
+        run_jit_policy_case("root-box-extend-copies-cross-scope-closure-value", &run_jit_policy_root_box_extend_copies_cross_scope_closure_value_test, interp, pass, fail);
+        run_jit_policy_case("closure-persistent-env-copy-scope-contract", &run_jit_policy_closure_persistent_env_copy_scope_contract_test, interp, pass, fail);
+        run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
+        run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
+        run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
+        run_jit_policy_case("closure-method-iterator-boundary", &run_jit_policy_closure_method_iterator_boundary_test, interp, pass, fail);
+        run_jit_policy_case("stdlib-teardown-redefinition", &run_jit_policy_stdlib_teardown_redefinition_test, interp, pass, fail);
     }
 
     interp.flags.jit_enabled = saved_jit_enabled;

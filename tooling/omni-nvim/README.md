@@ -1,17 +1,20 @@
 # omni-nvim
 
 `omni-nvim` is a minimal Neovim plugin for working against the Omni REPL.
-It is intentionally small: start a live structured `omni --repl --json`
-session, send code from the current buffer, and keep the transcript in a
-scratch window.
+It is intentionally small: prefer a discovered project-local TCP REPL server
+when `.omni-repl-port` is present, otherwise start a live structured
+`omni --repl --json` session, send code from the current buffer, and keep the
+transcript in a scratch window.
 
 This is a first-party scaffold for a more Conjure-like workflow, not a full
 Conjure replacement yet.
 
 ## Features
 
-- Starts an Omni REPL in a Neovim job using the structured `--repl --json`
-  transport by default.
+- Attaches to a discovered TCP REPL server when `.omni-repl-port` is present in
+  the project tree.
+- Falls back to a local Neovim job using the structured `--repl --json`
+  transport when no TCP discovery file is available.
 - Sends the current form, root form, visual selection, current line, or whole buffer.
 - Sends the enclosing declaration, call, or block using Omni Tree-sitter captures when available.
 - Selects the enclosing form, root form, declaration, call, or block directly in the buffer.
@@ -56,6 +59,10 @@ Conjure replacement yet.
   `omni --fmt` CLI.
 - Streams the transcript into a scratch buffer.
 - Detects `.omni` files and applies buffer-local mappings.
+- Auto-starts the REPL on first Omni buffer open by default; set
+  `auto_start = false` for a manual `:OmniReplStart` workflow.
+- Pretty-prints nested Omni values in the transcript by default, with
+  configurable width and indent settings.
 
 ## Requirements
 
@@ -70,17 +77,35 @@ omni --version
 
 ## Installation
 
+`plugin/omni.lua` now performs bootstrap only: it registers the Omni command
+surface and filetype wiring with default settings, but it does not run the full
+`setup()` side effects on startup. Call `require("omni").setup(...)` from your
+plugin manager config to opt into custom REPL/eval settings, Tree-sitter
+registration, and optional LSP auto-setup.
+
 Example with `lazy.nvim`:
 
 ```lua
 {
   dir = "/home/heefoo/Documents/code/Omni/tooling/omni-nvim",
+  init = function()
+    vim.filetype.add({
+      extension = {
+        omni = "omni",
+      },
+    })
+  end,
   ft = { "omni" },
   config = function()
     require("omni").setup({
       cmd = { "omni", "--repl", "--json" },
       repl = {
         mode = "json",
+        discovery = {
+          enabled = true,
+          host = "127.0.0.1",
+          port_file = ".omni-repl-port",
+        },
       },
       eval = {
         cmd = { "omni", "--eval", "--json" },
@@ -90,8 +115,28 @@ Example with `lazy.nvim`:
 }
 ```
 
+If your plugin manager already exposes the plugin's `ftdetect/` files before the
+lazy-load point, you can omit the `init` block. Keep it when `.omni`
+filetype detection is otherwise missing.
+
+REPL discovery note:
+
+- When `repl.discovery.enabled = true` (the default), omni.nvim looks for
+  `.omni-repl-port` from the current Omni buffer upward through the project
+  root markers (`omni.toml`, `project.json`, `.git`).
+- If the file is present and contains a valid port, omni.nvim connects to
+  `repl.discovery.host:port` using the newer REPL-server protocol.
+- If discovery is missing or the TCP attach fails, omni.nvim falls back to the
+  configured local `cmd`.
+
+Tree-sitter note:
+
+- `require("omni").setup()` registers the Omni parser config and query files.
+- You still need to install the parser once with `:TSInstall omni` before
+  Tree-sitter highlighting becomes available.
+
 If you also use `nvim-treesitter`, `omni-nvim` will register the Omni parser
-config automatically when `require("omni").setup()` runs. Then install the
+config when `require("omni").setup()` runs. Then install the
 parser with:
 
 ```vim
@@ -195,18 +240,23 @@ require("omni").setup({
 By default this uses:
 
 - `python3 /.../tooling/omni-lsp/omni_lsp.py`
-- root markers: `project.json`, `.git`
+- root markers: `omni.toml`, `project.json`, `.git`
 
 Override the LSP command or server path with:
 
 ```lua
 require("omni").setup({
+  repo_root = "/path/to/Omni",
   lsp = {
     cmd = { "python3", "/custom/path/omni_lsp.py" },
-    root_markers = { "project.json", ".git" },
+    repo_root = "/path/to/Omni",
+    root_markers = { "omni.toml", "project.json", ".git" },
   },
 })
 ```
+
+`treesitter.repo_root` is only for the Tree-sitter grammar checkout. It no
+longer controls LSP server discovery or formatter working directory.
 
 To wire the shipped `omni --fmt` CLI into `conform.nvim`:
 
@@ -242,7 +292,24 @@ require("conform").setup(vim.tbl_deep_extend("force", spec, {
 
 By default the helper targets `omni --fmt --write $FILENAME` with `stdin = false`.
 That matches the current formatter CLI contract and Conform's temp-file path
-for non-stdin formatters.
+for non-stdin formatters. Override the formatter working directory with:
+
+```lua
+require("omni").setup({
+  formatter = {
+    cwd = "/path/to/project",
+  },
+})
+```
+
+## Smoke Test
+
+Run the bundled headless smoke test to validate startup bootstrap, command
+registration, and `.omni` filetype activation:
+
+```bash
+tooling/omni-nvim/scripts/run_smoke.sh
+```
 
 ## Commands
 
@@ -477,6 +544,18 @@ require("omni").setup({
         error = "DiagnosticError",
       },
     },
+  },
+})
+```
+
+Tune transcript pretty-printing for Omni values with:
+
+```lua
+require("omni").setup({
+  output = {
+    pretty_values = true,
+    pretty_width = 72,
+    pretty_indent = 2,
   },
 })
 ```

@@ -67,7 +67,7 @@ fn bool run_execute_expr(Expr* expr, Interp* interp, Value** result_value, EvalR
     if (run_jit_enabled(interp)) {
         RuntimeCompiledExpr f = runtime_compile_expr(expr, interp);
         if (runtime_compiled_expr_is_null(f)) {
-            *result_error = eval_error_expr("JIT compilation failed", expr);
+            *result_error = eval_error_expr("jit: failed to compile expression during program run", expr);
             return false;
         }
         *result_value = runtime_exec_compiled_expr(f, interp);
@@ -139,7 +139,7 @@ fn EvalResult run_program(char[] source, Interp* interp) {
                 if (result.error.has_error) break;
                 continue;
             }
-            result = eval_error_expr("JIT compilation failed", expr);
+            result = eval_error_expr("jit: failed to compile expression during program run", expr);
             break;
         }
         Value* interpreted = runtime_eval_expr(expr, interp.global_env, interp);

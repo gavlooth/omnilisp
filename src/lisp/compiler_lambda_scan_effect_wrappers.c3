@@ -5,12 +5,12 @@ import std::collections::list;
 fn Expr* Compiler.make_synthetic_lambda(Compiler* self, Expr* source_expr, SymbolId param, Expr* body) {
     Expr* wrapper = self.interp.alloc_expr();
     wrapper.tag = E_LAMBDA;
-    wrapper.lambda = (ExprLambda*)mem::malloc(ExprLambda.sizeof);
+    wrapper.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
     wrapper.loc_line = source_expr.loc_line;
     wrapper.loc_column = source_expr.loc_column;
     wrapper.lambda.param = param;
     wrapper.lambda.param_count = 1;
-    wrapper.lambda.params = (SymbolId*)mem::malloc(SymbolId.sizeof);
+    wrapper.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof);
     wrapper.lambda.params[0] = param;
     wrapper.lambda.param_annotations = null;
     wrapper.lambda.has_rest = false;
@@ -81,6 +81,9 @@ fn bool Compiler.scan_lambdas_handle(Compiler* self, Expr* expr, List{SymbolId}*
     SymbolId sym_car = self.interp.symbols.intern("car");
     SymbolId sym_cdr = self.interp.symbols.intern("cdr");
     for (usz i = 0; i < expr.handle.clause_count; i++) {
+        if (expr.handle.clauses[i].has_effect_tag_expr) {
+            h_found |= self.scan_lambdas_with_scope(expr.handle.clauses[i].effect_tag_expr, enclosing_bound);
+        }
         Expr* orig_handler = expr.handle.clauses[i].handler_body;
         SymbolId k_name = expr.handle.clauses[i].k_name;
         SymbolId arg_name = expr.handle.clauses[i].arg_name;

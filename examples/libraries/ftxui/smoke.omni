@@ -1,0 +1,103 @@
+;; smoke.omni — high-level ui.* builders and module-owned effect names
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(define sample-view
+  (ui.window
+    "Counter"
+    (ui.vbox
+      (list
+        (ui.text "count: 0")
+        (ui.button "increment" 'increment)
+        (ui.graph [0 1 1 2 3 5 8])))))
+
+(define sample-effect-tree
+  (ui.open_tree {'backend 'ftxui 'title "Counter"}
+    (ui.render_tree {'node sample-view})
+    (ui.close_tree {'code 'ok})))
+
+(define sample-layout
+  (ui.hbox
+    (list
+      (ui.spacer)
+      (ui.vbox
+        (list
+          (ui.text "layout")
+          (ui.stack
+            (list
+              (ui.text "one")
+              (ui.text "two")))))
+      (ui.spacer))))
+
+(define sample-style
+  (ui.border
+    (ui.width
+      40
+      (ui.frame
+        (ui.flex
+          (ui.text "styled"))))))
+
+(define (capture-ui-events thunk)
+  (let (events nil)
+    (handle
+      (block
+        (thunk nil)
+        (reverse events))
+      (ui.open spec
+        (set! events (cons {'tag 'open 'arg spec} events))
+        (resolve nil))
+      (ui.render view
+        (set! events (cons {'tag 'render 'arg view} events))
+        (resolve nil))
+      (ui.invalidate request
+        (set! events (cons {'tag 'invalidate 'arg request} events))
+        (resolve nil))
+      (ui.close request
+        (set! events (cons {'tag 'close 'arg request} events))
+        (resolve nil))
+      (ui.post_event event
+        (set! events (cons {'tag 'post_event 'arg event} events))
+        (resolve nil)))))
+
+(define captured
+  (capture-ui-events
+    (lambda (ignored)
+      (block
+        ignored
+        (signal ui.open {'backend 'ftxui 'title "Counter"})
+        (signal ui.render sample-view)
+        (signal ui.invalidate {'reason 'initial-render})
+        (signal ui.close {'code 'ok})))))
+
+(define dispatched
+  (capture-ui-events
+    (lambda (ignored)
+      (block
+        ignored
+        (ui.dispatch sample-effect-tree)))))
+
+(and (= (ui.kind sample-view) 'window)
+     (= (ref (ui.props sample-view) 'title) "Counter")
+     (= (length (ui.children sample-view)) 1)
+     (= (ui.effect_tag sample-effect-tree) 'open)
+     (= (ref (ui.effect_attrs sample-effect-tree) 'title) "Counter")
+     (= (length (ui.effect_children sample-effect-tree)) 2)
+     (= (ui.effect_tag (ref (ui.effect_children sample-effect-tree) 0)) 'render)
+     (= (ui.effect_tag (ref (ui.effect_children sample-effect-tree) 1)) 'close)
+     (= (ui.kind sample-layout) 'hbox)
+     (= (length (ui.children sample-layout)) 3)
+     (= (ui.kind (ref (ui.children sample-layout) 1)) 'vbox)
+     (= (ui.kind (ref (ui.children (ref (ui.children sample-layout) 1)) 1)) 'stack)
+     (= (ui.kind sample-style) 'border)
+     (= (ui.kind (ref (ui.children sample-style) 0)) 'width)
+     (= (ref (ui.props (ref (ui.children sample-style) 0)) 'value) 40)
+     (= (ui.kind (ref (ui.children (ref (ui.children sample-style) 0)) 0)) 'frame)
+     (= (ref (ref captured 0) 'tag) 'open)
+     (= (ref (ref captured 1) 'tag) 'render)
+     (= (ref (ref captured 2) 'tag) 'invalidate)
+     (= (ref (ref captured 3) 'tag) 'close)
+     (= (ref (ref dispatched 0) 'tag) 'open)
+     (= (ref (ref dispatched 1) 'tag) 'render)
+     (= (ref (ref dispatched 2) 'tag) 'close))

@@ -26,9 +26,12 @@ local function module_root()
   return plugin_root
 end
 
-local function repo_root(config)
-  if config.treesitter and directory_exists(config.treesitter.repo_root) then
-    return config.treesitter.repo_root
+local function configured_repo_root(config)
+  if config.lsp and directory_exists(config.lsp.repo_root) then
+    return config.lsp.repo_root
+  end
+  if directory_exists(config.repo_root) then
+    return config.repo_root
   end
 
   local plugin_root = module_root()
@@ -44,7 +47,7 @@ local function server_path(config)
     return config.lsp.server_path
   end
 
-  local repo = repo_root(config)
+  local repo = configured_repo_root(config)
   if not repo then
     return nil
   end
@@ -60,7 +63,7 @@ local function root_markers(config)
   if config.lsp and type(config.lsp.root_markers) == "table" and not vim.tbl_isempty(config.lsp.root_markers) then
     return config.lsp.root_markers
   end
-  return { "project.json", ".git" }
+  return { "omni.toml", "project.json", ".git" }
 end
 
 local function server_cmd(config)
@@ -89,11 +92,22 @@ function M.spec(config)
 end
 
 local function setup_builtin(config, spec)
-  if not (vim.lsp and type(vim.lsp.config) == "function" and type(vim.lsp.enable) == "function") then
+  if not (vim.lsp and type(vim.lsp.enable) == "function") then
     return false
   end
 
-  vim.lsp.config("omni_lsp", spec)
+  local configured = false
+  if vim.lsp.config ~= nil then
+    configured = pcall(vim.lsp.config, "omni_lsp", spec)
+  end
+  if not configured and type(vim.lsp.config) == "table" then
+    vim.lsp.config.omni_lsp = spec
+    configured = true
+  end
+  if not configured then
+    return false
+  end
+
   if not (config.lsp and config.lsp.enable == false) then
     vim.lsp.enable("omni_lsp")
   end
@@ -176,6 +190,23 @@ local function request_sync(bufnr, method, params, timeout_ms)
     return nil
   end
   return vim.lsp.buf_request_sync(bufnr, method, params, timeout_ms or 1000)
+end
+
+local function workspace_cache_key(bufnr, client_id)
+  if client_id ~= nil then
+    return tostring(client_id)
+  end
+  if vim.lsp and type(vim.lsp.get_clients) == "function" then
+    local ok, clients = pcall(vim.lsp.get_clients, { bufnr = bufnr })
+    if ok then
+      for _, client in ipairs(clients or {}) do
+        if client.name == "omni_lsp" and client.id ~= nil then
+          return tostring(client.id)
+        end
+      end
+    end
+  end
+  return "__default__"
 end
 
 local function location_to_qf_item(location, fallback_name)
@@ -413,8 +444,10 @@ end
 
 local function fetch_workspace_diagnostics_items()
   local bufnr = current_bufnr()
+  local workspace_key = workspace_cache_key(bufnr)
+  local workspace_cache = state.pull_diagnostics.workspace[workspace_key] or {}
   local previous = {}
-  for uri, entry in pairs(state.pull_diagnostics.workspace) do
+  for uri, entry in pairs(workspace_cache) do
     if type(entry) == "table" and type(entry.result_id) == "string" and entry.result_id ~= "" then
       table.insert(previous, { uri = uri, value = entry.result_id })
     end
@@ -429,7 +462,7 @@ local function fetch_workspace_diagnostics_items()
     return nil
   end
 
-  local current = vim.deepcopy(state.pull_diagnostics.workspace)
+  local current = vim.deepcopy(workspace_cache)
   local ordered_items = {}
   for _, response in pairs(responses) do
     local result = response.result or {}
@@ -452,7 +485,7 @@ local function fetch_workspace_diagnostics_items()
       ::continue::
     end
   end
-  state.pull_diagnostics.workspace = current
+  state.pull_diagnostics.workspace[workspace_key] = current
 
   local items = {}
   local uris = vim.tbl_keys(ordered_items)
@@ -477,8 +510,8 @@ function M.workspace_diagnostics(opts)
   return true
 end
 
-function M.reset_workspace_diagnostics()
-  state.pull_diagnostics.workspace = {}
+function M.reset_workspace_diagnostics(bufnr, client_id)
+  state.pull_diagnostics.workspace[workspace_cache_key(bufnr or current_bufnr(), client_id)] = nil
   return true
 end
 

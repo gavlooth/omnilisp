@@ -280,7 +280,7 @@ fn bool build_default_module_rel_path(SymbolId name, Interp* interp, char* rel_b
     rel_buf[3] = '/';
     usz rp = 4;
     for (usz i = 0; i < sym_name.len; i++) {
-        rel_buf[rp] = sym_name[i];
+        rel_buf[rp] = sym_name[i] == '.' ? '/' : sym_name[i];
         rp++;
     }
     rel_buf[rp] = '.';
@@ -341,12 +341,17 @@ fn bool module_exports_symbol(Module* mod, SymbolId name) {
 
 fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* interp) {
     Value* mod_val = make_module(interp, mod);
-    env_define_with_barrier(env, expr.import_expr.name, mod_val, interp);
+    if (env_define_with_barrier_result(env, expr.import_expr.name, mod_val, interp) != null) {
+        return eval_error("import: out of memory while binding module");
+    }
 
     if (expr.import_expr.import_all) {
         for (usz i = 0; i < mod.export_count; i++) {
             Value* val = mod.env.lookup(mod.exports[i]);
-            if (val != null) env_define_with_barrier(env, mod.exports[i], val, interp);
+            if (val != null &&
+                env_define_with_barrier_result(env, mod.exports[i], val, interp) != null) {
+                return eval_error("import: out of memory while binding symbol");
+            }
         }
         return eval_ok(make_void(interp));
     }
@@ -362,7 +367,9 @@ fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* int
             return eval_error("symbol not found in module");
         }
         SymbolId bind_name = (uint)alias_name != 0 ? alias_name : imp_name;
-        env_define_with_barrier(env, bind_name, val, interp);
+        if (env_define_with_barrier_result(env, bind_name, val, interp) != null) {
+            return eval_error("import: out of memory while binding symbol");
+        }
     }
     return eval_ok(make_void(interp));
 }

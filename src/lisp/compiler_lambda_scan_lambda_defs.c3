@@ -41,6 +41,7 @@ fn void Compiler.collect_lambda_nested_bound(Compiler* self, ExprLambda* lambda,
 
 fn void Compiler.init_lambda_def_from_expr(Compiler* self, LambdaDef* def, Expr* expr) {
     def.id = self.lambda_counter++;
+    def.expr = expr;
     def.param = expr.lambda.param;
     def.body = expr.lambda.body;
     def.capture_count = 0;
@@ -54,6 +55,22 @@ fn void Compiler.init_lambda_def_from_expr(Compiler* self, LambdaDef* def, Expr*
     for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
         def.params[pi] = expr.lambda.params[pi];
     }
+}
+
+fn void Compiler.free_lambda_def(Compiler* self, LambdaDef* def) {
+    if (def.captures != null) {
+        mem::free(def.captures);
+        def.captures = null;
+    }
+    def.capture_count = 0;
+    def.capture_capacity = 0;
+
+    if (def.params != null) {
+        mem::free(def.params);
+        def.params = null;
+    }
+    def.param_count = 0;
+    def.param_capacity = 0;
 }
 
 fn void Compiler.lambda_def_push_capture(Compiler* self, LambdaDef* def, SymbolId capture) {

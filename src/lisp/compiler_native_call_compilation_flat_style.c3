@@ -11,12 +11,14 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
     LambdaDef* found_def = null;
 
     foreach (&def : self.lambda_defs) {
-        if (def.body == expr.lambda.body && (uint)def.param == (uint)expr.lambda.param) {
+        if (def.expr == expr) {
             lambda_id = def.id;
             found_def = def;
             break;
         }
     }
+
+    assert(found_def != null, "compile_lambda_flat: missing lambda definition");
 
     if (found_def != null && found_def.capture_count > 0) {
         // Closure with captures - allocate on heap

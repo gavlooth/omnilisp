@@ -11,6 +11,11 @@ fn bool test_summary_enabled() @inline {
     return test_c_getenv("OMNI_TEST_SUMMARY") != null;
 }
 
+fn bool test_quiet_requested() @inline {
+    return test_c_getenv("OMNI_TEST_QUIET") != null ||
+        (test_summary_enabled() && test_c_getenv("OMNI_TEST_VERBOSE") == null);
+}
+
 fn bool test_quiet_enabled() @inline {
     return g_test_quiet_output;
 }
@@ -98,7 +103,7 @@ fn bool lisp_slice_deprecated_alias(char* active_slice) @inline {
 fn void reject_deprecated_slice_aliases(char* active_slice) {
     if (!lisp_slice_deprecated_alias(active_slice)) return;
 
-    io::printfn("Deprecated OMNI_LISP_TEST_SLICE='%s' is no longer supported.", (ZString)active_slice);
+    io::printfn("Unsupported OMNI_LISP_TEST_SLICE='%s' is no longer supported.", (ZString)active_slice);
     io::printn("Use explicit ownership slices instead:");
     io::printn("- memory-lifetime-smoke          (boundary/scoping correctness)");
     io::printn("- memory-lifetime-policy          (boundary-policy parser contracts)");
@@ -107,7 +112,7 @@ fn void reject_deprecated_slice_aliases(char* active_slice) {
     io::printn("- allocator-bench                (AST throughput/benchmark)");
     io::printn("- memory-lifetime-soak            (heavy saturation/stress)");
     io::printn("- memory-stress                   (global stress)");
-    unreachable("deprecated OMNI_LISP_TEST_SLICE selected");
+    unreachable("unsupported OMNI_LISP_TEST_SLICE selected");
 }
 
 fn char* resolved_lisp_slice() {
@@ -118,7 +123,9 @@ fn char* resolved_lisp_slice() {
         return (char*)"all";
     }
 
-    io::printfn("OMNI_TEST_SUMMARY slice default: OMNI_LISP_TEST_SLICE not set; using 'basic'. Set OMNI_ALLOW_ALL_LISP_SLICE=1 for full-suite run.");
+    if (test_summary_enabled()) {
+        io::printfn("OMNI_TEST_SUMMARY slice default: OMNI_LISP_TEST_SLICE not set; using 'basic'. Set OMNI_ALLOW_ALL_LISP_SLICE=1 for full-suite run.");
+    }
     return (char*)"basic";
 }
 

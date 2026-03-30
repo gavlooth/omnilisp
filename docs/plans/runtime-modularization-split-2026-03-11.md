@@ -452,7 +452,7 @@ Applied in largest-first order:
 60. `aot.c3` (top-down continuation split)
 - retained AOT type/definition helpers and core runtime bridge entrypoints in:
   - `src/lisp/aot.c3`
-- extracted the tail-call trampoline state, invoke/apply helpers, and legacy debug/value helpers into:
+- extracted the tail-call trampoline state, invoke/apply helpers, and older debug/value helpers into:
   - `src/lisp/aot_runtime_bridge.c3`
 - post-step-60 line counts:
   - `src/lisp/aot.c3`: `467` lines

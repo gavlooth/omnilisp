@@ -210,15 +210,22 @@ fn EvalResult eval_defunion_bind_variant(UnionVariant* variant, TypeId var_id, I
                 (ZString)interp.symbols.get_name(variant.name))!!;
             return eval_error(msg);
         }
-        env_define_with_barrier(interp.global_env, variant.name, inst, interp);
+        if (!env_define_with_barrier_checked(interp.global_env, variant.name, inst, interp)) {
+            return eval_error("out of memory while registering union variant");
+        }
         return eval_ok(make_nil(interp));
     }
 
     // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
     char[] vname = interp.symbols.get_name(variant.name);
     Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
+    if (ctor == null) {
+        return eval_error("out of memory while registering union variant");
+    }
     ctor.prim_val.tag = (int)var_id;
-    env_define_with_barrier(interp.global_env, variant.name, ctor, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, variant.name, ctor, interp)) {
+        return eval_error("out of memory while registering union variant");
+    }
     return eval_ok(make_nil(interp));
 }
 
@@ -318,6 +325,15 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        return eval_error("out of memory while registering effect type");
+    }
+
+    // Bind the declared effect name in the current environment so real module
+    // members like ui.open resolve to the canonical symbol tag value.
+    if (!env_define_with_barrier_checked(env, de.name, make_symbol(interp, de.name), interp)) {
+        return eval_error("out of memory while registering effect type");
+    }
 
     return eval_ok(make_nil(interp));
 }

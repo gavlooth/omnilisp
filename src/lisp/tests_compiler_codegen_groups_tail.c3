@@ -141,6 +141,7 @@ fn void run_compiler_group_iterative_stdlib_tests(Interp* interp, usz* pass_out,
     }
 
     run_compiler_group_bindgen_canonical_type_tests(interp, &pass, &fail);
+    run_compiler_group_bindgen_overflow_guard_tests(interp, &pass, &fail);
 
     *pass_out += pass;
     *fail_out += fail;
@@ -153,11 +154,73 @@ fn void run_compiler_group_mutable_integration_iterative_tests(Interp* interp, u
 
 fn bool compiler_write_text_file(char[] path, char[] text) {
     if (try file = io::file::open((String)path, "w")) {
-        defer (void)file.close();
-        file.write(text)!!;
-        return true;
+        char[] remaining = text;
+        bool write_ok = true;
+        while (write_ok && remaining.len > 0) {
+            usz? written_opt = file.write(remaining);
+            if (catch err = written_opt) {
+                write_ok = false;
+                break;
+            }
+            if (written_opt == 0) {
+                write_ok = false;
+                break;
+            }
+            remaining = remaining[written_opt..];
+        }
+        if (catch err = file.close()) write_ok = false;
+        return write_ok;
     }
     return false;
+}
+
+fn void compiler_fill_bindgen_name(char[128]* name_buf, usz idx) {
+    char[] prefix = "overflow_bindgen_function_name_";
+    usz pos = 0;
+    for (usz i = 0; i < prefix.len && pos < name_buf.len - 1; i++) {
+        (*name_buf)[pos++] = prefix[i];
+    }
+
+    usz digit_count = 0;
+    usz value = idx;
+    if (value == 0) {
+        digit_count = 1;
+    } else {
+        usz tmp = value;
+        while (tmp > 0) {
+            digit_count++;
+            tmp /= 10;
+        }
+    }
+
+    for (usz pad = pos + digit_count; pad < name_buf.len - 1; pad++) {
+        (*name_buf)[pos++] = 'x';
+    }
+
+    if (digit_count == 1 && value == 0) {
+        (*name_buf)[pos++] = '0';
+    } else {
+        char[32] digits;
+        usz dpos = 0;
+        while (value > 0 && dpos < digits.len) {
+            digits[dpos++] = (char)('0' + (value % 10));
+            value /= 10;
+        }
+        while (dpos > 0 && pos < name_buf.len - 1) {
+            (*name_buf)[pos++] = digits[--dpos];
+        }
+    }
+
+    (*name_buf)[pos] = 0;
+}
+
+fn void compiler_fill_bindgen_return_type(char[16]* type_buf) {
+    char[] text = "Integer";
+    usz pos = 0;
+    for (; pos < text.len && pos < type_buf.len - 1; pos++) {
+        (*type_buf)[pos] = text[pos];
+    }
+    (*type_buf)[pos] = 0;
 }
 
 fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pass_out, usz* fail_out) {
@@ -179,18 +242,36 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
     char[512] output_path_buf;
     int pid = compiler_test_getpid();
     usz seq = g_compiler_bindgen_temp_seq++;
-    char[] header_path = io::bprintf(
+    char[] header_path;
+    if (try rendered = io::bprintf(
         &header_path_buf,
         "/tmp/omni_bindgen_canonical_types-%d-%d.h",
         pid,
         (int)seq
-    )!!;
-    char[] output_path = io::bprintf(
+    )) {
+        header_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types compose header path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    char[] output_path;
+    if (try rendered = io::bprintf(
         &output_path_buf,
         "/tmp/omni_bindgen_canonical_types-%d-%d.omni",
         pid,
         (int)seq
-    )!!;
+    )) {
+        output_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types compose output path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
     char[] header_source =
         "int omni_bindgen_int(int x);\n"
         "void omni_bindgen_void_ptr(void* p);\n"
@@ -265,6 +346,71 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         fail++;
         io::printn("[FAIL] Compiler: bindgen canonical types load generated module");
     }
+
+    *pass_out += pass;
+    *fail_out += fail;
+}
+
+fn void run_compiler_group_bindgen_overflow_guard_tests(Interp* _interp, usz* pass_out, usz* fail_out) {
+    (void)_interp;
+    usz pass = 0;
+    usz fail = 0;
+
+    const usz OVERFLOW_FUNCS = 256;
+    ParsedFunc* funcs = (ParsedFunc*)mem::malloc(ParsedFunc.sizeof * OVERFLOW_FUNCS);
+    if (funcs == null) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen overflow guard alloc funcs");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer mem::free(funcs);
+
+    for (usz i = 0; i < OVERFLOW_FUNCS; i++) {
+        funcs[i] = {};
+        funcs[i].params = null;
+        funcs[i].param_count = 0;
+        funcs[i].param_capacity = 0;
+        funcs[i].is_variadic = false;
+        compiler_fill_bindgen_name(&funcs[i].name, i);
+        compiler_fill_bindgen_return_type(&funcs[i].return_omni_type);
+    }
+
+    char[512] output_path_buf;
+    int pid = compiler_test_getpid();
+    usz seq = g_compiler_bindgen_temp_seq++;
+    char[] output_path;
+    if (try rendered = io::bprintf(
+        &output_path_buf,
+        "/tmp/omni_bindgen_overflow_guard-%d-%d.omni",
+        pid,
+        (int)seq
+    )) {
+        output_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen overflow guard compose output path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer (void)io::file::delete((String)output_path);
+
+    bool generated_ok = generate_ffi_module("bindgen-overflow", "bindgen", funcs, OVERFLOW_FUNCS, output_path);
+    bool wrote_file = false;
+    if (try file = io::file::open((String)output_path, "r")) {
+        wrote_file = true;
+        (void)file.close();
+    }
+
+    compiler_test_finish_bool(
+        !generated_ok && !wrote_file,
+        "Compiler: bindgen overflow guard rejects truncated module emission",
+        "[FAIL] Compiler: bindgen overflow guard rejects truncated module emission",
+        &pass,
+        &fail
+    );
 
     *pass_out += pass;
     *fail_out += fail;

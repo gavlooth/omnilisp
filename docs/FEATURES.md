@@ -19,7 +19,7 @@
 - Use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial` for partial application
 - Variadic lambdas: `(lambda (x .. rest) body)`, rest collects extra args as list
 - Zero-arg lambdas: `(lambda () body)` uses sentinel param, `has_param=false`
-- Dict destructuring params: `{name age}` extracts `'name` and `'age` keys from a dict arg
+- Dictionary destructuring params: `{name age}` extracts `'name` and `'age` keys from a dict arg
 - Creates closure capturing lexical environment
 
 ### 1.2 `define` — Global Definition
@@ -33,7 +33,7 @@
 - Binds name in global environment
 - Value is evaluated before binding
 - Shorthand form `(define (f x ...) body)` desugars to `(define f (lambda (x ...) body))`
-- Dict destructuring params: `(define (f {x y} z) body)` — desugars to let-destruct in body
+- Dictionary destructuring params: `(define (f {x y} z) body)` — desugars to let-destruct in body
 - `(define [...] ...)` with brackets is reserved for attributes (`[type]`, `[ffi lib]`, etc.)
 
 ### 1.3 `let` — Local Binding
@@ -48,7 +48,7 @@
 - Flat-pair syntax: `(let (x v) body)`, `(let (x 1 y 2) body)`
 - Multi-binding let desugars to nested single-binding lets in the parser
 - Array destructuring: `[x y]`, `[head .. tail]`, `[a b ..]` — works on both lists and arrays
-- Dict destructuring: `{name age}` — extracts `'name` and `'age` keys, binds to local vars
+- Dictionary destructuring: `{name age}` — extracts `'name` and `'age` keys, binds to local vars
 - Non-recursive by default
 - Example: `(let (x 10) (+ x 1))` => 11
 
@@ -206,7 +206,7 @@
 (Array 1 2 3)           ; canonical constructor
 (Array '(1 2 3))        ; list → array conversion
 
-; Dict literal
+; Dictionary literal
 {'a 1 'b 2}             ; literal form
 (Dictionary 'a 1 'b 2)  ; canonical constructor
 
@@ -230,7 +230,7 @@
 ```
 - Arrays are mutable dynamic arrays (contiguous memory)
 - Dicts are mutable hash maps with open-addressing and linear probing
-- Dict keys can be integers, strings, or symbols
+- Dictionary keys can be integers, strings, or symbols
 - `ref` returns nil for missing keys
 
 ### 1.18 `module` / `import` — Module System
@@ -478,7 +478,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 ```
 
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
-- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean` → sint64
+- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
 - `Nil` is the language-level empty/false value type; `Void` is a real builtin singleton value/type and FFI `^Void` returns map to it
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
@@ -659,7 +659,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 
 ### 11b. AOT Compilation
 
-- `./build/main --build input.lisp -o output` — compiles Lisp to C3 to standalone binary
+- `omni --build input.omni -o output` — compiles Omni to C3 and then to a standalone binary
 - Generates 5 files: main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
 - AOT binaries link only libc/libm/libdl (no GNU Lightning, no readline)
 - All 8 expression types (checkpoint/capture/handle/signal/quasiquote/defmacro/module/import) compile natively
@@ -672,7 +672,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 ### 12.1 `--init` — Scaffold a New Project
 
 ```bash
-./build/main --init myproject
+omni --init myproject
 ```
 
 Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, and `build/` (containing the generated `project.json` for C3).
@@ -680,7 +680,7 @@ Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `incl
 ### 12.2 `--bind` — Auto-Generate FFI Bindings
 
 ```bash
-./build/main --bind myproject/
+omni --bind myproject/
 ```
 
 Reads `omni.toml`, parses C headers using libclang, and generates typed Omni FFI modules in `lib/ffi/`.
@@ -709,7 +709,7 @@ functions = ["sin", "cos", "sqrt"]    # optional filter
 )
 ```
 
-**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand).
+**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred).
 
 **Requires:** libclang (optional runtime dependency, only loaded when `--bind` runs).
 

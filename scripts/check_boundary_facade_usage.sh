@@ -10,6 +10,10 @@ search_glob="${OMNI_BOUNDARY_FACADE_SEARCH_GLOB:-*.c3}"
 declare -a policy_ignore_globs=()
 declare -A policy_allow=()
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
 load_policy() {
   if [[ ! -f "$policy_file" ]]; then
     echo "FAIL: boundary facade policy file missing: $policy_file"
@@ -70,7 +74,9 @@ check_symbol_usage() {
   local symbol="$1"
   local -n violations_ref="$2"
   local pattern
+  local grep_pattern
   pattern="\\b${symbol}\\("
+  grep_pattern="(^|[^[:alnum:]_])${symbol}\\("
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     local file="${line%%:*}"
@@ -81,7 +87,13 @@ check_symbol_usage() {
       continue
     fi
     violations_ref+=("$line")
-  done < <(rg -n --no-heading -g "$search_glob" "$pattern" "$search_root" || true)
+  done < <(
+    if has_rg; then
+      rg -n --no-heading -g "$search_glob" "$pattern" "$search_root" || true
+    else
+      grep -R -n -E --include="$search_glob" "$grep_pattern" "$search_root" || true
+    fi
+  )
 }
 
 main() {
@@ -111,14 +123,14 @@ main() {
   fi
 
   if ((${#violations_sorted[@]} == 0)); then
-    echo "OK: boundary facade guard found no disallowed legacy boundary callsites."
+    echo "OK: boundary facade guard found no disallowed boundary callsites."
     echo "Policy file: $policy_file"
     echo "Search root: $search_root"
     echo "Search glob: $search_glob"
     return 0
   fi
 
-  echo "FAIL: disallowed direct legacy boundary callsites detected."
+  echo "FAIL: disallowed direct boundary callsites detected."
   echo "Use boundary_* facade entry points instead."
   echo "Policy file: $policy_file"
   echo "Search root: $search_root"

@@ -120,7 +120,7 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
             Value* arr = make_array(interp, count);
             for (usz i = 0; i < count; i++) {
                 Value* v = toml_datum_to_omni(omni_toml_datum_array_elem(datum, (int)i), interp);
-                arr.array_val.items[i] = v;
+                arr.array_val.items[i] = boundary_promote_to_root(v, interp);
                 arr.array_val.length++;
             }
             return arr;

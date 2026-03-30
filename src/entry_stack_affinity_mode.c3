@@ -1,6 +1,7 @@
 module main;
 
 import std::io;
+import lisp;
 
 extern fn void* c_popen(char* command, char* mode) @extern("popen");
 extern fn int c_pclose(void* stream) @extern("pclose");
@@ -66,7 +67,14 @@ fn bool run_stack_affinity_harness(char* self_exe) {
     return nonzero && saw_marker;
 }
 
-fn int run_stack_affinity_probe_mode() {
-    io::printn("Running stack affinity violation probe...");
+fn int run_stack_affinity_probe_mode(int argc, char** argv, int probe_idx) {
+    char* unexpected = find_unexpected_mode_arg(argc, argv, probe_idx);
+    if (unexpected != null) {
+        return print_unexpected_mode_arg("--stack-affinity-probe", unexpected);
+    }
+
+    if (!lisp::test_quiet_requested()) {
+        io::printn("Running stack affinity violation probe...");
+    }
     return run_stack_engine_affinity_violation_probe();
 }

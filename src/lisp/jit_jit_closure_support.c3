@@ -155,15 +155,11 @@ fn bool jit_copy_closure_env_if_needed(
         closure.closure_val.env_scope = env_scope;
     } else {
         // Env-copy may legally return an existing root-owned chain by identity.
-        // In that case the ownership envelope is root_scope, not the throwaway
-        // detached env_scope we allocated for the attempted copy.
+        // That path does not need a detached ownership envelope: the root already
+        // owns the reused chain, and retaining root_scope here creates a teardown
+        // cycle for root-owned closures.
         main::scope_release(env_scope);
-        if (interp.root_scope != null && boundary_ptr_in_scope((void*)copied_env, interp.root_scope)) {
-            main::scope_retain(interp.root_scope);
-            closure.closure_val.env_scope = interp.root_scope;
-        } else {
-            closure.closure_val.env_scope = null;
-        }
+        closure.closure_val.env_scope = null;
     }
     jit_trace_delay_force_promise_closure(interp, closure, env, copied_env, closure.closure_val.env_scope, need_env_copy);
     return true;

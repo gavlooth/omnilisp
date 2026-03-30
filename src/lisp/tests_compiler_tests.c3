@@ -47,24 +47,37 @@ fn usz compiler_str_count(char[] haystack, char[] needle) {
 }
 
 fn void compiler_print_pass(char[] msg) {
-    bool quiet = compiler_c_getenv("OMNI_TEST_QUIET") != null ||
-                 (compiler_c_getenv("OMNI_TEST_SUMMARY") != null &&
-                  compiler_c_getenv("OMNI_TEST_VERBOSE") == null);
-    if (quiet) return;
+    if (test_quiet_requested()) return;
     io::printfn("[PASS] %s", (ZString)msg);
 }
 
-fn bool run_compiler_tests(Interp* _unused_interp) {
-    io::printn("\n=== Compiler Tests ===");
+fn bool run_compiler_tests(Interp* _unused_interp, int* out_pass = null, int* out_fail = null) {
+    if (!test_quiet_requested()) {
+        io::printn("\n=== Compiler Tests ===");
+    }
     usz pass = 0;
     usz fail = 0;
 
     // Use a fresh interp for compiler tests since each compile_to_c3 call
     // parses the entire stdlib prelude, consuming many expr pool entries.
     Interp* interp = (Interp*)mem::malloc(Interp.sizeof);
+    if (interp == null) {
+        io::printn("[FAIL] Compiler bootstrap allocation");
+        emit_test_summary("compiler", 0, 1);
+        if (out_pass != null) *out_pass = 0;
+        if (out_fail != null) *out_fail = 1;
+        return false;
+    }
     interp.init();
-    register_primitives(interp);
-    register_stdlib(interp);  // Needed for map, filter, etc.
+    if (!bootstrap_runtime_interp(interp)) {  // Needed for map, filter, etc.
+        interp.destroy();
+        mem::free(interp);
+        io::printn("[FAIL] Compiler bootstrap runtime surface");
+        emit_test_summary("compiler", 0, 1);
+        if (out_pass != null) *out_pass = 0;
+        if (out_fail != null) *out_fail = 1;
+        return false;
+    }
 
     run_compiler_group_syntax_basics(interp, &pass, &fail);
     run_compiler_group_stdlib_existing(interp, &pass, &fail);
@@ -77,8 +90,12 @@ fn bool run_compiler_tests(Interp* _unused_interp) {
 
     interp.destroy();
     mem::free(interp);
-    io::printfn("\n=== Compiler Tests: %d passed, %d failed ===", pass, fail);
+    if (!test_quiet_requested()) {
+        io::printfn("\n=== Compiler Tests: %d passed, %d failed ===", pass, fail);
+    }
     emit_test_summary("compiler", (int)pass, (int)fail);
+    if (out_pass != null) *out_pass = (int)pass;
+    if (out_fail != null) *out_fail = (int)fail;
     return fail == 0;
 }
 

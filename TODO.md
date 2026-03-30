@@ -16,6 +16,28 @@ Current actionable count: 0
 
 - [x] `src/lisp/scheduler_offload_worker.c3` / `src/lisp/tests_scheduler_boundary_worker.c3`: add a targeted regression for `QueuedOffloadWork` recycle/reuse correctness so recycled nodes are reset and free-list accounting stays bounded across a reuse cycle
 
+## UI Library Queue
+
+Library-only queue. This section is about the high-level `ui` facade and its
+submodules, not raw FTXUI parity work and not unrelated language/runtime work.
+
+100% coverage target:
+
+- complete the public `ui` facade surface called out in
+  `docs/plans/ui-library-facade-plan-2026-03-27.md`,
+- keep backend ABI completion in
+  `docs/plans/ftxui-c-abi-shim.md`,
+- do not leave partially supported facade features implicit.
+
+- [x] Surface split: move the current single-file scaffold into a real facade + helper-module layout (`ui` facade plus internal node/effect helper modules) while preserving the canonical public `ui.*` surface
+- [x] Facade module ownership: enable direct dotted library submodule imports so the helper-module split can become true `ui.nodes` / `ui.effects` / `ui.layout` / `ui.style` / `ui.runtime` / `ui.ftxui` ownership instead of file-backed flat internal helpers
+- [x] Layout surface: add `ui.layout` and move layout-only helpers there (`hbox`, `vbox`, plus first-class `stack` / `spacer` if adopted), with `ui` re-exporting the canonical names
+- [x] Style surface: add the first high-level `ui.style` layer with backend-agnostic `border`, `frame`, `flex`, `width`, and `height` helpers so graph/window demos can be shaped from the public library
+- [x] Effect grammar: define `ui.effects` as tree-shaped declarative effect nodes with symbol tags, attribute maps, and child effect nodes, using ordinary Omni constructors first and treating macros as optional sugar over the same tree data
+- [x] Runtime dispatcher: make the first real effect-dispatch path (`ui.runtime`) practical on top of the live FTXUI backend so normalized effect trees are interpreted through Omni's existing signal machinery rather than called imperatively
+- [x] Backend extraction: move the current FTXUI lowering path behind a dedicated `ui.ftxui` backend module so `ui.run` delegates through the backend instead of owning concrete backend logic directly
+- [x] Library validation: add focused examples and regressions for the library surface itself under `examples/libraries/ftxui/`, covering facade imports, style/layout helpers, and effect-driven usage
+
 ## Repo Audit Follow-up Plan
 
 - Harness-only teardown regression lane
@@ -137,7 +159,7 @@ Current actionable count: 0
 - [x] Prioritize split candidates by size and hot-path relevance (`schema.c3`, `eval_dispatch_types.c3`, `scheduler_offload_worker.c3`).
 - [x] Investigate/fix bounded `OMNI_LISP_TEST_SLICE=deduce` crash/hang on the worker-scratch recursive-delta lane (current traced run stalls before worker-scratch markers), then re-check `deduce parallel worker-scratch component pass computes serialized recursive deltas`.
 - [x] Run targeted validation for the `deduce_why_result` split after the deduce worker-scratch crash/blocker is resolved.
-- [x] Rename legacy names so they are visible and intentional (`memory-soak`/`syntax` aliases if still used).
+- [x] Rename old names so they are visible and intentional (`memory-soak`/`syntax` aliases if still used).
 - [x] Investigate/fix the remaining unfiltered `OMNI_LISP_TEST_SLICE=deduce` crash/hang starting at `deduce rule-derived reference heads validate against final recursive component snapshot`, then isolate it with a narrow validation slice.
 - [x] Document the minimum required container path for boundary/lifetime changes versus allocator-benchmark work.
 - [x] Stop implying that memory ownership tests are required for syntax/compiler-only changes in contributor docs.
@@ -145,5 +167,48 @@ Current actionable count: 0
 - [x] Add a short contributor rule: test lanes must follow ownership, not convenience bundling.
 ## Leak cleanup follow-up plan
 
-- [ ] Confirm the harness-only teardown regression lane in `src/lisp/tests_tests.c3` stays green under `OMNI_LISP_TEARDOWN_REGRESSION`.
-- [ ] Confirm or fix the method-table overwrite seam in `src/lisp/jit_jit_define_method_table.c3` (`jit_eval_define_typed_callable`, `jit_eval_define`) with a focused regression for redefine/replacement semantics.
+- [x] Confirm the harness-only teardown regression lane in `src/lisp/tests_tests.c3` stays green under `OMNI_LISP_TEARDOWN_REGRESSION`.
+- [x] Confirm or fix the method-table overwrite seam in `src/lisp/jit_jit_define_method_table.c3` (`jit_eval_define_typed_callable`, `jit_eval_define`) with a focused regression for redefine/replacement semantics.
+
+## 2026-03-28 Runtime Audit Follow-up
+
+- Scope chunk allocator OOM hardening
+  - [x] `src/scope_region_chunk_helpers.c3` / `src/scope_region_allocators.c3` / `src/scope_region_lifecycle.c3`: make scope chunk allocation null-safe and propagate failure instead of dereferencing a null `ScopeChunk*` during scope creation and TEMP/ESCAPE slow-path growth
+  - [x] `src/scope_region_*` tests: extend the new fault-injection seam beyond `scope_create` so slow-path TEMP/ESCAPE chunk-growth failure is covered without relying on fatal assertions
+
+- Deduce scan-path error propagation
+  - [x] `src/lisp/deduce_relation_scan_helpers_more.c3`: propagate `ERROR` returns from `deduce_relation_materialize_row_dict(...)` instead of consing them into scan results as ordinary rows
+  - [x] `src/lisp/deduce_relation_scan_helpers_more.c3` / `src/lisp/deduce_schema_query_execution.c3`: replace the current `nil` fallback on `deduce_relation_ensure_column_key_values(...)` failure with canonical `deduce/query-out-of-memory` failure semantics
+  - [x] `src/lisp/tests_deduce_*`: add targeted regressions for scan-range / scan-all / in-txn setup and row-materialization OOM propagation
+
+- Env write failure visibility
+  - [x] `src/lisp/value_environment.c3`: make `Env.define(...)` surface binding-growth failure, preserve correctness when hash-table rebuild allocation fails, and make barrier writes fail fast instead of silently dropping bindings
+  - [x] `src/lisp/deduce_schema_query_*` / `src/lisp/eval_type_*` / `src/lisp/eval_ffi_eval.c3`: thread the new direct env-define failure handling through current query-analysis and user-facing type/FFI registration paths
+  - [x] `src/lisp/value_environment.c3` / `src/lisp/jit_jit_dispatch_helpers.c3`: propagate a recoverable barrier-write contract for `env_set_with_barrier(...)` helpers and JIT match-clause binding sites, returning explicit runtime errors instead of silently storing internal failure values or relying on centralized fail-fast
+  - [x] `src/lisp/tests_memory_lifetime_*` / `src/lisp/tests_runtime_feature_jit_*`: add focused regressions for forced env growth/barrier failure on direct env growth and hash rebuild fallback paths so the shipped `Env.define(...)` contract is covered independently of the still-open match/bootstrap contract decision
+
+- Boot-time method-table allocation guards
+  - [x] `src/lisp/eval_init_primitives.c3` / `src/lisp/eval_dispatch_types.c3`: guard `MethodTable` and method-entry allocation before dereference during primitive/type registration
+  - [x] `src/lisp/value_interp_*` / `src/lisp/eval_init_primitives.c3` / `src/lisp/eval_dispatch_types.c3`: propagate bootstrap registration failure so interpreter, entry-mode, test-harness, and AOT init paths stop before stdlib/user execution can continue with partially installed dispatch/type surfaces
+
+## 2026-03-28 Pattern Guard Hard-Error Channel
+
+- [x] `src/lisp/eval_pattern_support_helpers.c3` / `src/lisp/eval_pattern_matching.c3`: add a real hard-error path for `MatchResult` so guard-scope allocation/binding and guard predicate runtime failures surface as runtime errors instead of collapsing into plain "no match" semantics or assert-style fail-fast behavior
+
+## 2026-03-28 Deduce Destructive/Admin Mutation Contamination Lane
+
+- [x] `src/lisp/tests_deduce_groups.c3` / bounded `OMNI_LISP_TEST_SLICE=deduce`: close the apparent mutation/admin contamination lane by isolating selected Deduce blocks and fine-grained filter lanes in fresh interpreters; the previously red bounded prefix `basics,materialized,relation-attrs,core-runtime,integrity,command-void,query` now passes at `284 passed, 0 failed`, and the clean full bounded `deduce` slice is green at `375 passed, 0 failed`
+
+## 2026-03-28 Audit Recheck Follow-up
+
+- `--gen-e2e` truthful corpus generation
+  - [x] `src/lisp/tests_e2e_generation.c3`: replace the current fixed-buffer append path with a contract that surfaces overflow/truncation explicitly for generated source, expected output, and per-case rendered values so `--gen-e2e` cannot exit green after emitting incomplete corpora
+
+- `--gen-e2e` interpreter ownership cleanup
+  - [x] `src/entry_runtime_modes.c3` / `src/lisp/tests_e2e_generation.c3`: remove the current double-bootstrap path so `run_gen_e2e_mode()` and `generate_e2e_tests(...)` share one explicit interpreter ownership contract instead of allocating and bootstrapping a second runtime internally
+
+- `--init` fresh-target contract
+  - [x] `src/entry_project_init_files.c3` / `src/entry_project_init_bind.c3`: make `--init` fail truthfully on preexisting project roots or non-directory collisions instead of treating blanket `EEXIST` as success and then overwriting scaffold files into an existing tree
+
+- Deduce durability quiet subprocess leakage
+  - [x] `src/lisp/tests_deduce_durability_groups.c3` / `src/entry_script_mode.c3`: stop restart-script success values from leaking raw `true` lines into bounded quiet Deduce runs, either by driving a quiet script-mode path or by making the durability scripts end with `nil`/`void` while preserving their assertions

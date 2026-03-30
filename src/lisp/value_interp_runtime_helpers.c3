@@ -44,6 +44,10 @@ fn Value* interp_apply_stack_overflow_error(Interp* interp) {
 }
 
 fn Value* interp_apply_frame_enter(Interp* interp) @inline {
+    if (interp_interrupt_requested(interp)) {
+        interp_interrupt_clear(interp);
+        return interp_interrupt_error(interp);
+    }
     interp.eval_depth++;
     if (!main::stack_has_apply_headroom(main::STACK_APPLY_MIN_HEADROOM)) {
         if (boundary_c_getenv("OMNI_TRACE_APPLY_HEADROOM") != null) {

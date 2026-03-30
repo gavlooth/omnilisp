@@ -12,7 +12,7 @@ if [[ -z "${OMNI_VALIDATION_EXTRA_ARGS:-}" && -e /usr/lib/libreplxx.so.0 ]]; the
 fi
 
 echo "==> Building Omni"
-c3c build
+scripts/run_validation_container.sh c3c build
 
 echo "==> Running scheduler state guards in the bounded validation container"
 scripts/run_validation_container.sh \

@@ -131,7 +131,7 @@ Validates dicts, arrays, and values against structural schemas.
 | `(= v)` | Exact value | `'(= 42)` |
 | `(> n)` `(< n)` | Comparison | `'(> 0)` |
 | `(re pat)` | Regex match (Pika) | `'(re "[a-z]+")` |
-| `(map ...)` | Dict with keys | `'(map (name string))` |
+| `(map ...)` | Dictionary with keys | `'(map (name string))` |
 | `(vector-of s)` | Array of schema | `'(vector-of int)` |
 | `(tuple s1 s2)` | Fixed-size array | `'(tuple string int)` |
 | `(enum v1 v2)` | One of values | `'(enum "a" "b" "c")` |
@@ -432,7 +432,7 @@ avoiding redundant re-derivation.
 | Unification engine | ~150 | `?var` pattern matching with logic variables |
 | Semi-naive evaluator | ~200 | Bottom-up fixpoint with stratified negation |
 | Query compiler | ~150 | `query` special form → evaluation plan |
-| Dict result builder | ~50 | Query results as dicts (strip `?` from var names) |
+| Dictionary result builder | ~50 | Query results as dicts (strip `?` from var names) |
 | Aggregation engine | ~100 | `count`, `sum`, `avg`, `min`, `max` + group-by |
 | Temporal (history/`:at`/`:time`) | ~80 | Version tracking with timestamps, temporal query clauses |
 | Parser (`[relation]`, `[rule]`, `query`, `?var`) | ~120 | Bracket attrs + relation attribute clauses + `?` reader char |

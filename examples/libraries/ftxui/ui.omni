@@ -1,0 +1,120 @@
+;; ui.omni — high-level UI surface scaffold for the FTXUI backend lane
+;;
+;; This is intentionally backend-agnostic at the language surface:
+;; - constructors produce plain Omni data
+;; - runtime operations are modelled as effects
+;; - a future FTXUI interpreter will lower this data to the C ABI shim
+
+(import "ui_nodes.omni")
+(import "ui_effects.omni")
+(import "ui_layout.omni")
+(import "ui_style.omni")
+(import "ui_runtime.omni")
+(import "ui_ftxui.omni")
+
+(import ui-nodes)
+(import ui-effects)
+(import ui-layout)
+(import ui-style)
+(import ui-runtime)
+(import ui-ftxui)
+
+(module ui
+  (export node
+          kind
+          props
+          children
+          nodes
+          text
+          paragraph
+          button
+          input
+          checkbox
+          menu
+          hbox
+          vbox
+          stack
+          spacer
+          window
+          graph
+          effects
+          border
+          frame
+          flex
+          width
+          height
+          layout
+          style
+          ftxui
+          effect_node
+          effect_tag
+          effect_attrs
+          effect_children
+          open_tree
+          render_tree
+          read_event_tree
+          invalidate_tree
+          close_tree
+          post_event_tree
+          dispatch
+          run
+          open
+          render
+          read_event
+          invalidate
+          close
+          post_event))
+
+(import ui-nodes (node
+                  kind
+                  props
+                  children
+                  nodes
+                  text
+                  paragraph
+                  button
+                  input
+                  checkbox
+                  menu
+                  hbox
+                  vbox
+                  window
+                  graph))
+
+(import ui-layout (hbox
+                   vbox
+                   stack
+                   spacer
+                   layout))
+
+(import ui-style (border
+                  frame
+                  flex
+                  width
+                  height
+                  style))
+
+(import ui-effects (open
+                    effect_node
+                    effect_tag
+                    effect_attrs
+                    effect_children
+                    effects
+                    open_tree
+                    render_tree
+                    read_event_tree
+                    invalidate_tree
+                    close_tree
+                    post_event_tree
+                    render
+                    read_event
+                    invalidate
+                    close
+                    post_event))
+
+(import ui-runtime (dispatch
+                    dispatch_one
+                    dispatch_children))
+
+(import ui-ftxui (run
+                  ftxui))

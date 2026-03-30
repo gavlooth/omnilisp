@@ -62,7 +62,7 @@ Evidence:
   - `STACK_DEFER_METRICS push=8 undefer=1 destroy_cb=9 clone_cb=1 update_arg=2 cloned_entries=2 peak_depth=3 heap_alloc=0`
 
 Item `4` follow-up status:
-- Completed: legacy stack-layer scope coupling removed (`stack_ctx_pin_scope`, `stack_ctx_unpin_scope`, `pinned_scope`).
+- Completed: stack-layer scope coupling removed (`stack_ctx_pin_scope`, `stack_ctx_unpin_scope`, `pinned_scope`).
 - Suspend-lifetime scope retention is now owned by runtime boundary code through generic defer-backed guards.
 
 Phase 1 scaffold status:

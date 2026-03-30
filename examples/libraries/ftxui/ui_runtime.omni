@@ -1,0 +1,201 @@
+;; ui_runtime.omni — runtime dispatcher for the public `ui` facade
+
+(import "ui_effects.omni")
+(import "ui_nodes.omni")
+(import "ui_layout.omni")
+(import "ui_style.omni")
+
+(module ui-runtime
+  (export dispatch
+          dispatch_one
+          dispatch_children
+          runtime
+          evaluate_tree
+          ui_evaluate))
+
+(import ui-effects (effect_children
+                    effect_tag
+                    effect_attrs
+                    effect_node
+                    open
+                    render
+                    read_event
+                    invalidate
+                    close
+                    post_event))
+
+(import ui-nodes (text
+                  paragraph
+                  button
+                  input
+                  checkbox
+                  menu
+                  hbox
+                  vbox
+                  window
+                  graph))
+
+(import ui-layout (stack
+                   spacer))
+
+(import ui-style (border
+                  frame
+                  flex
+                  width
+                  height))
+
+(define (dispatch_one node)
+  (let (tag (effect_tag node)
+        attrs (effect_attrs node))
+    (if (= tag 'open)
+        (signal open attrs)
+        (if (= tag 'render)
+            (signal render attrs)
+            (if (= tag 'read_event)
+                (signal read_event attrs)
+                (if (= tag 'invalidate)
+                    (signal invalidate attrs)
+                    (if (= tag 'close)
+                        (signal close attrs)
+                        (if (= tag 'post_event)
+                            (signal post_event attrs)
+                            (assert! false (cons 'unknown-ui-effect-tag tag))))))))))
+
+(define (dispatch_children children)
+  (if (null? children)
+      nil
+      (block
+        (dispatch_one (car children))
+        (dispatch_children (cdr children)))))
+
+(define (dispatch tree)
+  (block
+    (dispatch_one tree)
+    (dispatch_children (effect_children tree))))
+
+(define (ui-static-collection-form? form)
+  (if (array? form)
+      true
+      (if (list? form)
+          (if (null? form)
+              false
+              (let (tag (car form))
+                (if (symbol? tag)
+                    (if (= tag 'list)
+                        true
+                        (= tag 'List))
+                    false)))
+          false)))
+
+(define (ui-evaluate-children forms)
+  (if (null? forms)
+      nil
+      (if (= (length forms) 1)
+          (let (single (car forms))
+            (if (ui-static-collection-form? single)
+                (ui-evaluate single)
+                (cons (ui-evaluate single) nil)))
+          (cons (ui-evaluate (car forms))
+                (ui-evaluate-children (cdr forms))))))
+
+(define (ui-evaluate-collection forms)
+  (if (null? forms)
+      nil
+      (cons (ui-evaluate (car forms))
+            (ui-evaluate-collection (cdr forms)))))
+
+(define (ui-evaluate-form form)
+  (let (tag (car form)
+        args (cdr form))
+    (if (not (symbol? tag))
+        (ui-evaluate-collection form)
+        (if (= tag 'list)
+            (ui-evaluate-collection args)
+            (if (= tag 'List)
+                (ui-evaluate-collection args)
+                (if (= tag 'text)
+                    (text (ui-evaluate (car args)))
+                    (if (= tag 'paragraph)
+                        (paragraph (ui-evaluate (car args)))
+                        (if (= tag 'button)
+                            (button (ui-evaluate (car args))
+                                    (ui-evaluate (car (cdr args))))
+                            (if (= tag 'input)
+                                (input (ui-evaluate (car args))
+                                       (ui-evaluate (car (cdr args))))
+                                (if (= tag 'checkbox)
+                                    (checkbox (ui-evaluate (car args))
+                                              (ui-evaluate (car (cdr args)))
+                                              (ui-evaluate (car (cdr (cdr args)))))
+                                    (if (= tag 'menu)
+                                        (menu (ui-evaluate (car args))
+                                              (ui-evaluate (car (cdr args))))
+                                        (if (= tag 'graph)
+                                            (graph (ui-evaluate (car args)))
+                                            (if (= tag 'hbox)
+                                                (hbox (ui-evaluate-children args))
+                                                (if (= tag 'vbox)
+                                                    (vbox (ui-evaluate-children args))
+                                                    (if (= tag 'stack)
+                                                        (stack (ui-evaluate-children args))
+                                                        (if (= tag 'spacer)
+                                                            (spacer)
+                                                            (if (= tag 'window)
+                                                                (window (ui-evaluate (car args))
+                                                                        (ui-evaluate (car (cdr args))))
+                                                                (if (= tag 'border)
+                                                                    (border (ui-evaluate (car args)))
+                                                                    (if (= tag 'frame)
+                                                                        (frame (ui-evaluate (car args)))
+                                                                        (if (= tag 'flex)
+                                                                            (flex (ui-evaluate (car args)))
+                                                                            (if (= tag 'width)
+                                                                                (width (ui-evaluate (car args))
+                                                                                       (ui-evaluate (car (cdr args))))
+                                                                                (if (= tag 'height)
+                                                                                    (height (ui-evaluate (car args))
+                                                                                            (ui-evaluate (car (cdr args))))
+                                                                                    (if (= tag 'open)
+                                                                                        (effect_node 'open
+                                                                                                     (ui-evaluate (car args))
+                                                                                                     (ui-evaluate-children (cdr args)))
+                                                                                        (if (= tag 'render)
+                                                                                            (effect_node 'render
+                                                                                                         (ui-evaluate (car args))
+                                                                                                         (ui-evaluate-children (cdr args)))
+                                                                                            (if (= tag 'read_event)
+                                                                                                (effect_node 'read_event
+                                                                                                             (ui-evaluate (car args))
+                                                                                                             (ui-evaluate-children (cdr args)))
+                                                                                                (if (= tag 'invalidate)
+                                                                                                    (effect_node 'invalidate
+                                                                                                                 (ui-evaluate (car args))
+                                                                                                                 (ui-evaluate-children (cdr args)))
+                                                                                                    (if (= tag 'close)
+                                                                                                        (effect_node 'close
+                                                                                                                     (ui-evaluate (car args))
+                                                                                                                     (ui-evaluate-children (cdr args)))
+                                                                                                        (if (= tag 'post_event)
+                                                                                                            (effect_node 'post_event
+                                                                                                                         (ui-evaluate (car args))
+                                                                                                                         (ui-evaluate-children (cdr args)))
+                                                                                                            (assert! false (cons 'unknown-ui-static-tag tag))))))))))))))))))))))))))))
+
+(define (ui-evaluate form)
+  (if (array? form)
+      (ui-evaluate-collection (List form))
+      (if (list? form)
+          (ui-evaluate-form form)
+          form)))
+
+(define (evaluate_tree form)
+  (ui-evaluate form))
+
+(define (ui_evaluate form)
+  (ui-evaluate form))
+
+(define runtime {'dispatch dispatch
+                 'dispatch_one dispatch_one
+                 'dispatch_children dispatch_children
+                 'evaluate_tree evaluate_tree
+                 'ui_evaluate ui_evaluate})

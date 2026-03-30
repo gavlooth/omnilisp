@@ -4,7 +4,7 @@ module lisp;
 import std::io;
 
 fn void run_json_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- JSON Tests ---");
+    emit_test_section_banner("JSON Tests");
 
     // Parse strict-by-default
     test_error(interp, "json-parse rejects comments by default",
@@ -98,7 +98,7 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Data Format Tests ---");
+    emit_test_section_banner("Data Format Tests");
 
     // TOML
     test_tag(interp, "toml-parse object is dict",
@@ -109,8 +109,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(ref (ref (toml-parse \"[owner]\\nname = \\\"Alice\\\"\\n\\nage = 42\\n\") \"owner\") \"name\")", "Alice", pass, fail);
     test_eq(interp, "toml-parse numeric field",
         "(ref (toml-parse \"age = 42\\n\") \"age\")", 42, pass, fail);
-    test_truthy(interp, "toml-parse boolean false stays false",
-        "(= (ref (toml-parse \"enabled = false\\n\") \"enabled\") false)",
+    test_truthy(interp, "toml-parse boolean false preserves quoted false symbol",
+        "(= (ref (toml-parse \"enabled = false\\n\") \"enabled\") 'false)",
         pass, fail);
     test_tag(interp, "toml-parse date",
         "(ref (toml-parse \"d = 1979-05-27\\n\") \"d\")", TIME_POINT, pass, fail);
@@ -209,8 +209,12 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
     // Thin dispatched format helpers (`parse` / `emit`)
     test_eq_interp(interp, "parse helper json route",
         "(ref (parse 'json \"{\\\"a\\\":1}\") \"a\")", 1, pass, fail);
+    test_truthy_interp(interp, "parse helper json array route",
+        "(= (ref (parse 'json \"[\\\"x\\\"]\") 0) \"x\")", pass, fail);
     test_truthy_interp(interp, "parse helper toml route",
         "(= (ref (parse 'toml \"title = \\\"Toml\\\"\\n\") \"title\") \"Toml\")", pass, fail);
+    test_truthy_interp(interp, "parse helper toml array route",
+        "(= (ref (ref (parse 'toml \"items = [\\\"x\\\"]\\n\") \"items\") 0) \"x\")", pass, fail);
     test_truthy_interp(interp, "parse helper csv route",
         "(= (ref (ref (parse 'csv \"a,b\\r\\n1,2\") 1) 1) \"2\")", pass, fail);
     test_truthy_interp(interp, "emit helper json route",
@@ -236,7 +240,7 @@ fn void run_data_format_tests_isolated(int* pass, int* fail) {
 }
 
 fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Compression Tests ---");
+    emit_test_section_banner("Compression Tests");
 
     // gzip round-trip
     test_str_val(interp, "gzip/gunzip round-trip",
@@ -302,7 +306,7 @@ fn void run_compression_tests_isolated(int* pass, int* fail) {
 }
 
 fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Unicode Tests ---");
+    emit_test_section_banner("Unicode Tests");
 
     // Upcase: ASCII
     test_str_val(interp, "string-upcase ASCII",

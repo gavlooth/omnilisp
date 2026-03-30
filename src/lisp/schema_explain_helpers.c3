@@ -16,11 +16,11 @@ fn Value* explain_bool_value(Interp* interp, bool value) @inline {
 }
 
 fn void explain_dict_set(Value* dict, Interp* interp, char[] key, Value* value) @inline {
-    hashmap_set(dict.hashmap_val, make_symbol(interp, interp.symbols.intern(key)), value, interp);
+    hashmap_set_symbol(dict.hashmap_val, interp.symbols.intern(key), value, interp);
 }
 
 fn void explain_dict_set_symbol(Value* dict, Interp* interp, char[] key, SymbolId value) @inline {
-    hashmap_set(dict.hashmap_val, make_symbol(interp, interp.symbols.intern(key)), make_symbol(interp, value), interp);
+    hashmap_set_symbol(dict.hashmap_val, interp.symbols.intern(key), make_symbol(interp, value), interp);
 }
 
 fn Value* explain_reverse_list(Value* list, Interp* interp) {

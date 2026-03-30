@@ -26,19 +26,19 @@ language features:
 c3c build
 
 # Run a script
-LD_LIBRARY_PATH=/usr/local/lib ./build/main script.omni
+omni script.omni
 
-# Interactive REPL
-LD_LIBRARY_PATH=/usr/local/lib ./build/main --repl
+# Start the REPL (explicit)
+omni --repl
 
-# Run tests (no args)
-LD_LIBRARY_PATH=/usr/local/lib ./build/main
+# Start the REPL (default)
+omni
 ```
 
 ### REPL
 
 ```
-Lisp REPL (type 'quit' or 'exit' to leave)
+Omni Lisp REPL (type 'quit' or 'exit' to leave)
 ---
 > (+ 1 2)
 3

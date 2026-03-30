@@ -23,7 +23,11 @@ effects_contract_lint_script="${script_dir}/run_effects_contract_lint.sh"
 : "${OMNI_BOUNDARY_ALERT_THRESHOLDS:=1}"
 : "${OMNI_BOUNDARY_DECISION_BASELINE:=scripts/boundary_decision_baseline.env}"
 : "${OMNI_BOUNDARY_EFFECTS_LINT_JSON:=build/effects_contract_lint_summary.json}"
-: "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" == "1" ]]; then
+  : "${OMNI_HARD_MEM_CAP_METHOD:=none}"
+else
+  : "${OMNI_HARD_MEM_CAP_METHOD:=docker}"
+fi
 : "${OMNI_HARD_MEM_CAP_PERCENT:=30}"
 
 if [[ "${OMNI_IN_VALIDATION_CONTAINER:-0}" != "1" && "${OMNI_HARD_MEM_CAP_METHOD}" != "docker" ]]; then
@@ -63,6 +67,17 @@ run_stage_with_log() {
   shift
   omni_run_with_hard_cap "$@" > "$log_file" 2>&1
   cat "$log_file"
+}
+
+append_stage_with_log() {
+  local log_file="$1"
+  shift
+  local start_line=1
+  if [[ -f "$log_file" ]]; then
+    start_line=$(($(wc -l < "$log_file") + 1))
+  fi
+  omni_run_with_hard_cap "$@" >> "$log_file" 2>&1
+  sed -n "${start_line},\$p" "$log_file"
 }
 
 assert_suite_fail_zero() {
@@ -207,7 +222,10 @@ omni_c3 build -D OMNI_BOUNDARY_INSTR_COUNTERS
 
 echo ""
 echo "=== Boundary Hardening: Stage 2 (normal run) ==="
-run_stage_with_log "$normal_log" env "${base_env[@]}" ./build/main
+run_stage_with_log "$normal_log" env "${base_env[@]}" ./build/main --test-suite all
+echo ""
+echo "=== Boundary Hardening: Stage 2b (normal compiler slice) ==="
+append_stage_with_log "$normal_log" env "${base_env[@]}" OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp
 
 echo ""
 echo "=== Boundary Hardening: Stage 3 (ASAN build) ==="
@@ -221,7 +239,16 @@ run_stage_with_log \
   env \
     "${base_env[@]}" \
     "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
-    ./build/main
+    ./build/main --test-suite all
+echo ""
+echo "=== Boundary Hardening: Stage 4b (ASAN compiler slice) ==="
+append_stage_with_log \
+  "$asan_log" \
+  env \
+    "${base_env[@]}" \
+    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1" \
+    OMNI_LISP_TEST_SLICE=compiler \
+    ./build/main --test-suite lisp
 
 if [[ "$OMNI_BOUNDARY_ASSERT_SUMMARY" == "1" ]]; then
   echo ""

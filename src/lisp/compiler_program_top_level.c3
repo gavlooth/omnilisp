@@ -35,6 +35,35 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
             }
         }
 
+        if ((*exprs)[i].tag == E_IMPORT) {
+            ExprImport imp = (*exprs)[i].import_expr;
+            if (imp.has_path) {
+                self.emit_indent();
+                self.emit("aot::import_module(\"");
+                self.emit_escaped(self.interp.symbols.get_name(imp.name));
+                self.emit("\", ");
+                self.emit("\"");
+                self.emit_escaped(imp.path[:imp.path_len]);
+                self.emit("\", true, false);\n");
+            } else {
+                self.emit_indent();
+                self.emit_symbol_name(imp.name);
+                self.emit(" = aot::import_module(\"");
+                self.emit_escaped(self.interp.symbols.get_name(imp.name));
+                self.emit("\", \"\", false, false);\n");
+            }
+
+            for (usz ii = 0; ii < imp.import_count; ii++) {
+                SymbolId bind_name = (uint)imp.aliases[ii] != 0 ? imp.aliases[ii] : imp.imports[ii];
+                self.emit_indent();
+                self.emit_symbol_name(bind_name);
+                self.emit(" = aot::lookup_var(\"");
+                self.emit_escaped(self.interp.symbols.get_name(imp.imports[ii]));
+                self.emit("\");\n");
+            }
+            continue;
+        }
+
         bool should_print = (self.print_all && print_all_active)
             || (self.print_last && (isz)i == last_non_define);
 

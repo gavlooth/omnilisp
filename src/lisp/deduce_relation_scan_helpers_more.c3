@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+bool g_deduce_force_row_dict_oom = false;
+bool g_deduce_force_column_key_values_oom = false;
+
 fn uint deduce_relation_row_dict_capacity(Relation* rel) {
     uint dict_capacity = 8;
     if (rel == null) return dict_capacity;
@@ -17,7 +20,7 @@ fn Value* deduce_relation_materialize_row_dict(
     uint dict_capacity
 ) {
     Value* dict = make_hashmap(interp, dict_capacity);
-    if (test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+    if (g_deduce_force_row_dict_oom || test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
     }
     if (dict == null || dict.hashmap_val == null) {
@@ -40,14 +43,19 @@ fn Value* deduce_reverse_list(Value* list, Interp* interp) {
     return reversed;
 }
 
-fn bool deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp, usz* created_out) {
+fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp, usz* created_out) {
     if (created_out != null) *created_out = 0;
-    if (rel == null) return false;
-    if (rel.col_count == 0) return true;
-    if (rel.column_key_values != null) return true;
+    if (rel == null) return deduce_raise(interp, "deduce/query-invalid-state", "deduce-query: relation state is unavailable");
+    if (rel.col_count == 0) return null;
+    if (rel.column_key_values != null) return null;
 
     Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
-    if (key_values == null) return false;
+    if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
+        key_values = null;
+    }
+    if (key_values == null) {
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+    }
 
     for (usz i = 0; i < rel.col_count; i++) {
         Value* key = boundary_alloc_value_in_root(interp);
@@ -58,7 +66,7 @@ fn bool deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp, 
 
     rel.column_key_values = key_values;
     if (created_out != null) *created_out = rel.col_count;
-    return true;
+    return null;
 }
 
 fn int deduce_compare_value(Value* left, Value* right) {
@@ -179,9 +187,8 @@ fn Value* relation_scan_range(
     bool bench_enabled = deduce_scan_range_bench_stats.enabled;
     if (bench_enabled) deduce_scan_range_bench_stats.calls++;
     usz created_key_values = 0;
-    if (!deduce_relation_ensure_column_key_values(rel, interp, &created_key_values)) {
-        return make_nil(interp);
-    }
+    Value* key_values_err = deduce_relation_ensure_column_key_values(rel, interp, &created_key_values);
+    if (key_values_err != null) return key_values_err;
     if (bench_enabled) deduce_scan_range_bench_stats.key_symbols_allocated += created_key_values;
 
     DeduceTupleIterator it = {};
@@ -207,7 +214,7 @@ fn Value* relation_scan_range(
         if (bench_enabled) materialize_start_ms = scheduler_monotonic_ms();
 
         Value* dict = deduce_relation_materialize_row_dict(rel, it.vals, interp, dict_capacity);
-        if (dict == null) {
+        if (dict == null || dict.tag == ERROR) {
             return dict;
         }
         if (bench_enabled) {
@@ -248,15 +255,14 @@ fn Value* relation_scan_range_in_txn(
     bool bench_enabled = deduce_scan_range_bench_stats.enabled;
     if (bench_enabled) deduce_scan_range_bench_stats.calls++;
     usz created_key_values = 0;
-    if (!deduce_relation_ensure_column_key_values(rel, interp, &created_key_values)) {
-        return make_nil(interp);
-    }
+    Value* key_values_err = deduce_relation_ensure_column_key_values(rel, interp, &created_key_values);
+    if (key_values_err != null) return key_values_err;
     if (bench_enabled) deduce_scan_range_bench_stats.key_symbols_allocated += created_key_values;
 
     Value*[] vals = {};
     if (rel.col_count > 0) {
         vals = mem::new_array(Value*, rel.col_count);
-        if (vals.ptr == null) return make_nil(interp);
+        if (vals.ptr == null) return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
     defer if (vals.ptr != null) mem::free(vals.ptr);
     uint dict_capacity = deduce_relation_row_dict_capacity(rel);
@@ -308,7 +314,7 @@ fn Value* relation_scan_range_in_txn(
             if (bench_enabled) materialize_start_ms = scheduler_monotonic_ms();
 
             Value* dict = deduce_relation_materialize_row_dict(rel, vals, interp, dict_capacity);
-            if (dict == null) {
+            if (dict == null || dict.tag == ERROR) {
                 return dict;
             }
             if (bench_enabled) {
@@ -345,9 +351,8 @@ fn Value* relation_scan_all(
     bool bench_enabled = deduce_scan_range_bench_stats.enabled;
     if (bench_enabled) deduce_scan_range_bench_stats.calls++;
     usz created_key_values = 0;
-    if (!deduce_relation_ensure_column_key_values(rel, interp, &created_key_values)) {
-        return make_nil(interp);
-    }
+    Value* key_values_err = deduce_relation_ensure_column_key_values(rel, interp, &created_key_values);
+    if (key_values_err != null) return key_values_err;
     if (bench_enabled) deduce_scan_range_bench_stats.key_symbols_allocated += created_key_values;
 
     DeduceTupleIterator it = {};
@@ -363,7 +368,7 @@ fn Value* relation_scan_all(
         if (bench_enabled) materialize_start_ms = scheduler_monotonic_ms();
 
         Value* dict = deduce_relation_materialize_row_dict(rel, it.vals, interp, dict_capacity);
-        if (dict == null) {
+        if (dict == null || dict.tag == ERROR) {
             return dict;
         }
         if (bench_enabled) {

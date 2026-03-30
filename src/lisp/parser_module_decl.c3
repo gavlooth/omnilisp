@@ -70,7 +70,7 @@ fn Expr* Parser.parse_module(Parser* self) {
     self.lexer.advance();  // consume 'module'
 
     // Parse module name
-    if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected module name after module"); return null; }
+    if (self.lexer.current.type != T_SYMBOL && self.lexer.current.type != T_PATH) { self.set_error("expected module name after module"); return null; }
     SymbolId name = self.get_current_symbol();
     self.lexer.advance();
 

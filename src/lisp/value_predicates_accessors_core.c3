@@ -84,12 +84,11 @@ fn bool is_ffi_handle(Value* v) @inline {
 
 // Convert a ^Type annotation base_type symbol to FfiTypeTag
 fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
-    if (base_type == interp.sym_Integer || base_type == interp.sym_Int) return FFI_TYPE_INT;
+    if (base_type == interp.sym_Integer) return FFI_TYPE_INT;
     if (base_type == interp.sym_Double) return FFI_TYPE_DOUBLE;
     if (base_type == interp.sym_String) return FFI_TYPE_PTR;
     if (base_type == interp.sym_Pointer) return FFI_TYPE_PTR;
-    if (base_type == interp.sym_Ptr) return FFI_TYPE_PTR;
-    if (base_type == interp.sym_Boolean || base_type == interp.sym_Bool) return FFI_TYPE_BOOL;
+    if (base_type == interp.sym_Boolean) return FFI_TYPE_BOOL;
     if (base_type == interp.sym_Void) return FFI_TYPE_VOID;
     // Unknown type — default to pointer (handles opaque types)
     return FFI_TYPE_PTR;

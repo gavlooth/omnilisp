@@ -26,7 +26,7 @@ Behavior:
     - `deduce_recursive_closure`
     - `deduce_skewed_cardinality`
 
-Container compatibility mounts:
+Container mounts:
 - script auto-exports `OMNI_VALIDATION_EXTRA_ARGS` mounts for required
   host-provided headers/libs when launching validation container:
   - `/usr/include/yyjson.h`

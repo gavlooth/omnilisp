@@ -1,7 +1,7 @@
 module lisp;
 
 fn bool Parser.parse_import_target(Parser* self, Expr* e) {
-    if (self.lexer.current.type == T_SYMBOL) {
+    if (self.lexer.current.type == T_SYMBOL || self.lexer.current.type == T_PATH) {
         e.import_expr.name = self.get_current_symbol();
         self.lexer.advance();
         return true;

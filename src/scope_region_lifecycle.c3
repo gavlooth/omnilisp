@@ -3,8 +3,7 @@ module main;
 <*
  * Create a new ScopeRegion, optionally as a child of `parent`.
  * If parent is non-null, it is retained (RC incremented).
- * Returns a scope with refcount=1 (the caller owns it).
- @ensure return != null
+ * Returns a scope with refcount=1 (the caller owns it), or null on OOM.
 *>
 fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
     ScopeRegion* scope = null;
@@ -32,6 +31,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
 
     if (scope == null) {
         scope = (ScopeRegion*)mem::malloc(ScopeRegion.sizeof);
+        if (scope == null) return null;
         scope.chunks = null;
         scope.escape_chunks = null;
         scope.escape_chunks_tail = null;
@@ -51,6 +51,10 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
         chunk = fiber_temp_eligible
             ? scope_chunk_alloc_temp(SCOPE_CHUNK_INITIAL)
             : scope_chunk_alloc_raw(SCOPE_CHUNK_INITIAL);
+        if (chunk == null) {
+            mem::free(scope);
+            return null;
+        }
         chunk.next = null;
         scope.chunks = chunk;
     }

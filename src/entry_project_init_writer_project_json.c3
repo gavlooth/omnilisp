@@ -2,25 +2,34 @@ module main;
 
 import std::io;
 
-fn void write_init_project_json(char* name, usz name_len) {
+fn bool write_init_project_json(char* name, usz name_len) {
     char[512] path_buf;
-    usz plen = build_project_path(path_buf[..], name, name_len, "build/project.json");
-    if (try file = io::file::open((String)path_buf[:plen], "w")) {
-        defer (void)file.close();
-        file.write("// Generated from omni.toml — do not edit\n")!!;
-        file.write("{\n")!!;
-        file.write("    \"langrev\": \"1\",\n")!!;
-        file.write("    \"version\": \"0.2.0\",\n")!!;
-        file.write("    \"sources\": [\"../src\"],\n")!!;
-        file.write("    \"output\": \".\",\n")!!;
-        file.write("    \"safe\": true,\n")!!;
-        file.write("    \"opt\": \"O0\",\n")!!;
-        file.write("    \"debug-info\": \"full\",\n")!!;
-        file.write("    \"targets\": {\n")!!;
-        file.write("        \"main\": {\n")!!;
-        file.write("            \"type\": \"executable\"\n")!!;
-        file.write("        }\n")!!;
-        file.write("    }\n")!!;
-        file.write("}\n")!!;
+    usz plen = 0;
+    if (!build_project_path(path_buf[..], &plen, name, name_len, "build/project.json")) {
+        io::printn("Error: project path too long for build/project.json");
+        return false;
     }
+
+    char[] text =
+        "// Generated from omni.toml — do not edit\n"
+        "{\n"
+        "    \"langrev\": \"1\",\n"
+        "    \"version\": \"0.2.0\",\n"
+        "    \"sources\": [\"../src\"],\n"
+        "    \"output\": \".\",\n"
+        "    \"safe\": true,\n"
+        "    \"opt\": \"O0\",\n"
+        "    \"debug-info\": \"full\",\n"
+        "    \"targets\": {\n"
+        "        \"main\": {\n"
+        "            \"type\": \"executable\"\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+
+    if (!write_project_text_file(path_buf[:plen], text)) {
+        io::printfn("Error: cannot write %s", (ZString)&path_buf[0]);
+        return false;
+    }
+    return true;
 }

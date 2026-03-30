@@ -25,7 +25,7 @@ fn void Compiler.emit_make_closure_call(Compiler* self, usz lambda_id) {
 
 fn LambdaDef* Compiler.find_lambda_def_by_expr(Compiler* self, Expr* expr, usz* lambda_id) {
     foreach (&def : self.lambda_defs) {
-        if (def.body == expr.lambda.body && (uint)def.param == (uint)expr.lambda.param) {
+        if (def.expr == expr) {
             *lambda_id = def.id;
             return def;
         }
@@ -68,6 +68,7 @@ fn void Compiler.emit_closure_expr(Compiler* self, usz lambda_id, bool with_capt
 fn void Compiler.emit_lambda_return_common(Compiler* self, Expr* expr, bool bind_result) {
     usz lambda_id = 0;
     LambdaDef* found_def = self.find_lambda_def_by_expr(expr, &lambda_id);
+    assert(found_def != null, "emit_lambda_return_common: missing lambda definition");
     bool has_captures = found_def != null && found_def.capture_count > 0;
     if (has_captures) {
         self.emit_closure_capture_data(found_def, lambda_id);

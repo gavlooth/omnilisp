@@ -11,7 +11,7 @@ enum TokenType : char {
     T_RPAREN,
     T_LBRACKET,     // [ for array literals
     T_RBRACKET,     // ] for array literals
-    T_DOT_BRACKET,  // legacy .[ compatibility token for parser-time index parsing
+    T_DOT_BRACKET,  // .[ token for parser-time index parsing
     T_DOTDOT,       // .. for rest patterns in destructuring
     T_QUOTE,
     T_INT,

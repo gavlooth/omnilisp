@@ -81,6 +81,13 @@ Neovim plugin wiring:
 ```lua
 {
   dir = "/home/heefoo/Documents/code/Omni/tooling/omni-nvim",
+  init = function()
+    vim.filetype.add({
+      extension = {
+        omni = "omni",
+      },
+    })
+  end,
   ft = { "omni" },
   config = function()
     require("omni").setup({
@@ -92,6 +99,10 @@ Neovim plugin wiring:
   end,
 }
 ```
+
+If your plugin manager already exposes the plugin's `ftdetect/` files before
+the lazy-load point, you can omit the `init` block. Keep it when `.omni`
+filetype detection is otherwise missing.
 
 Related package docs:
 - `tooling/tree-sitter-omni/README.md`
@@ -107,7 +118,7 @@ Current policy is intentionally phased:
 - phase 1: indentation-first tooling (`omni-lsp` document/range/on-type
   indentation behavior),
 - phase 2: canonical full formatter behind a dedicated CLI entrypoint
-  (`omni --fmt` or equivalent) once rule coverage and compatibility are stable.
+  (`omni --fmt` or equivalent) once rule coverage and migration are stable.
 
 Canonical formatting rules to preserve across editor tooling:
 
@@ -166,10 +177,51 @@ Keep validation scope aligned with the change family:
   allocator correctness and throughput work.
 - Syntax/compiler-only changes should stay on their own non-memory lane and do
   not implicitly require memory-ownership coverage.
+- FTXUI surface changes should run `scripts/run_ftxui_smoke.sh` after rebuild
+  and before broader gates so the example subtree stays exercised.
 
 ---
 
 ## CLI Commands
+
+### `--repl --project` — Start a Project-Aware REPL
+
+```bash
+omni --repl --project
+omni --repl --project myproject
+```
+
+Starts the normal REPL after preloading the project's `src/main.omni`.
+
+Current behavior:
+
+- with no directory argument, `--project` uses the current working directory as
+  the project root,
+- with a directory argument, it uses that directory as the project root,
+- it requires `<project>/omni.toml`,
+- it loads and evaluates `<project>/src/main.omni` before entering the REPL,
+- relative imports inside that entry file resolve from `src/`, matching normal
+  script/load behavior,
+- `--json` is intentionally not supported with REPL preload, because loading
+  the project can emit ordinary program stdout before the JSON transport begins.
+
+### `--repl --load` — Start a File-Preloaded REPL
+
+```bash
+omni --repl --load demo.omni
+omni --repl --load /path/to/file.omni
+```
+
+Starts the normal REPL after loading one Omni file.
+
+Current behavior:
+
+- accepts one Omni source file path,
+- evaluates that file before the REPL loop starts,
+- resolves relative imports from the loaded file's directory,
+- works for standalone example trees that are not full Omni projects,
+- is also intentionally incompatible with `--json` for the same stdout/protocol
+  reason as `--project`.
 
 ### `--check` — Parse/Check Source Without Executing It
 
@@ -243,6 +295,8 @@ Current behavior:
 - evaluates exactly one CLI-supplied expression string,
 - returns rendered value output in text mode,
 - returns structured success/error payloads in `--json` mode,
+- reserves stdout for the JSON payload in `--json` mode; user-facing
+  `(print ...)`/`(display ...)` output is emitted on stderr instead,
 - returns non-zero on evaluation failure.
 
 ### `--describe` — Symbol Help Surface
@@ -292,19 +346,21 @@ Current behavior:
 - returns non-zero on suite failures, same as text mode
 - invalid suite selection still returns exit code `2`
 
-### `--repl --json` — Structured Session Transport
+### `--repl --json` — Structured JSON REPL Transport
 
 ```bash
 printf '%s\n' '{"id":"1","input":"(+ 1 2)","mode":"expr"}' | omni --repl --json
 ```
 
-Runs a persistent newline-delimited JSON request/response loop for tools.
+Runs a persistent newline-delimited JSON REPL transport for tools.
 
 Current behavior:
 
 - accepts one JSON request per input line,
 - supports `mode: "expr"` and `mode: "program"`,
 - returns one JSON response per request line,
+- reserves stdout for protocol JSON only; user-facing `(print ...)`/`(display ...)`
+  output is emitted on stderr instead,
 - exits cleanly on stdin EOF.
 
 Current first-party usage:
@@ -314,6 +370,129 @@ Current first-party usage:
   one-shot calls,
 - whole-buffer sends and REPL fallback calls now go through the structured
   session instead of scraping text REPL output.
+
+Future direction:
+
+- for a real network-capable tool protocol, see
+  `docs/plans/repl-server-protocol-2026-03-30.md`; phase 1 of that direction
+  now exists as `--repl-server --socket <path>`,
+  `--repl-server --stdio`, and `--repl-server --tcp <host> <port>`.
+  The main remaining work is richer transport/runtime concurrency.
+
+### `--repl-server --socket` — Unix-Socket REPL Server
+
+```bash
+omni --repl-server --socket /tmp/omni.sock
+omni --repl-server --socket /tmp/omni.sock --project
+omni --repl-server --socket /tmp/omni.sock --project myproject
+```
+
+Runs a local REPL server over a Unix domain socket using newline-delimited JSON.
+
+Current phase-1 behavior:
+
+- binds a filesystem Unix socket at the requested path,
+- accepts one JSON request per line and returns one or more JSON events,
+- supports explicit per-connection sessions via `clone` and `close`,
+- accepts `--project [dir]`; when present, each new `clone` session resolves
+  the project root the same way as `omni --repl --project` and preloads
+  `src/main.omni` before the session is announced,
+- supports the current ops:
+  - `describe`,
+  - `clone`,
+  - `close`,
+  - `complete`,
+  - `eval`,
+  - `interrupt`,
+  - `stdin`,
+  - `load-file`,
+- supports `mode: "expr"` and `mode: "program"` on `eval`,
+- captures user-facing `(print ...)` / `(display ...)` output as protocol `out`
+  events instead of writing raw stdout/stderr on the socket stream,
+- routes `stdin` request data into the session input queue used by
+  `(read-line)`, with optional `eof: true` to close that routed input,
+- ends each successful request with `done`,
+- returns structured `error` events for invalid requests, unknown sessions, and
+  evaluation failures,
+- removes the socket path on process exit.
+
+Current limitations:
+
+- one runtime worker services one stream at a time, so non-`interrupt`
+  requests receive `protocol/server-busy` while another request is in flight,
+- one server process still services one client connection at a time,
+- socket listeners support sequential client reuse, but concurrent
+  cross-connection servicing is still deferred because interpreter attachment
+  remains owner-thread constrained,
+- first-party Neovim integration still uses `--repl --json`; the socket server
+  is available now for new tool integrations.
+
+### `--repl-server --stdio` — Stdio REPL Server
+
+```bash
+printf '%s\n' '{"id":"1","op":"describe"}' | omni --repl-server --stdio
+printf '%s\n' '{"id":"1","op":"clone"}' | omni --repl-server --stdio --project ./demo
+```
+
+Runs the same JSON-line REPL server protocol directly on stdin/stdout.
+
+Current behavior:
+
+- uses the same request/event protocol as `--repl-server --socket`,
+- accepts `--project [dir]` with the same per-clone preload behavior as the
+  socket and TCP transports,
+- supports the same current ops:
+  - `describe`,
+  - `clone`,
+  - `close`,
+  - `complete`,
+  - `eval`,
+  - `interrupt`,
+  - `stdin`,
+  - `load-file`,
+- advertises `stdio` in the `describe` transport list,
+- is useful for tool adapters that want multi-event responses without managing
+  a socket path,
+- returns `interrupted` for cancelled in-flight `eval` / `load-file` requests,
+- routes `stdin` request data into `(read-line)` for the targeted in-flight
+  request, and accepts `eof: true` to close routed input,
+- returns `protocol/server-busy` for non-`interrupt` requests submitted while a
+  prior request is still running,
+- still differs from the older `--repl --json` transport:
+  - `--repl-server --stdio` is session/ops/event based,
+  - `--repl --json` is the older request/result stdio REPL transport.
+
+### `--repl-server --tcp` — TCP REPL Server
+
+```bash
+omni --repl-server --tcp 127.0.0.1 5555
+omni --repl-server --tcp 127.0.0.1 5555 --project
+omni --repl-server --tcp 127.0.0.1 5555 --project myproject
+```
+
+Runs the same JSON-line REPL server protocol over a TCP listener.
+
+Current behavior:
+
+- uses the same request/event protocol as the Unix-socket server,
+- advertises `tcp` in the `describe` transport list,
+- supports the same current ops, including routed `stdin`,
+- accepts `--project [dir]`; each new `clone` session preloads the resolved
+  project `src/main.omni` before emitting its `session` event,
+- writes `.omni-repl-port` in the current working directory after the TCP
+  listener binds successfully; the file currently contains the bound port
+  followed by a newline,
+- is intended for explicit local/remote attach experiments where a filesystem
+  socket path is awkward.
+
+Current limitations:
+
+- no authentication or TLS layer is built into this mode,
+- one connected client is serviced at a time,
+- abrupt termination can leave a stale `.omni-repl-port`, so clients should
+  treat it as a discovery hint and still verify connect,
+- richer concurrent multi-client handling is still deferred because interpreter
+  attachment remains owner-thread constrained.
 
 ---
 
@@ -339,7 +518,7 @@ selection from normal suite failure.
   - `--json` returns the same exit status semantics plus the JSON envelope:
     - top-level `code` inside `totals`
 - `--build`, `--bind`, `--compile`, `--init`, `--repl`, `--gen-e2e`,
-  `--language-ref`, `--version`, and `--help`
+  `--language-ref`, `--lang-ref`, `--manual`, `--version`, and `--help`
   - `0` on success
   - `1` on failure or missing required inputs
 
@@ -351,7 +530,7 @@ omni --language-ref
 
 Alias flags: `--lang-ref`, `--manual`.
 
-Prints the embedded full language reference directly from the executable
+Prints the built-in full language reference directly from the executable
 without requiring external docs on disk.
 
 ### `--init` — Scaffold a New Project
@@ -428,10 +607,12 @@ This path:
 - excludes embedded test sources and test-only entry wiring,
 - keeps `--eval`, `--repl`, `--check`, and script-mode workflows.
 
-Use the full project build when you need the full binary:
+Use the full project build when you need the repo-local full binary:
 
 ```bash
 c3c build
+# run the locally built artifact directly
+# installed/user-facing CLI examples elsewhere in the docs use `omni`
 LD_LIBRARY_PATH=/usr/local/lib ./build/main
 ```
 
@@ -447,6 +628,7 @@ Use the full binary for:
 - `--gen-e2e`
 - `--stack-affinity-probe`
 - `--language-ref`
+- `--lang-ref`
 - `--manual`
 - `--init`
 - `--bind`
@@ -503,7 +685,7 @@ scripts/run_boundary_hardening.sh
 
 Runs a full hardening matrix:
 
-- boundary-facade guard (`scripts/check_boundary_facade_usage.sh`) to block direct legacy boundary calls outside sanctioned files,
+- boundary-facade guard (`scripts/check_boundary_facade_usage.sh`) to block direct boundary calls outside sanctioned files,
 - normal build + test run,
 - ASAN build + test run,
 - `OMNI_FIBER_TEMP=1` enabled,
@@ -718,7 +900,7 @@ It expects a self-hosted Linux runner with `c3c` and runtime dependencies preins
 These are enforced by `scripts/run_effects_contract_lint.sh` in local and CI
 flows:
 
-1. New public primitives must not introduce legacy failure style (`raise_error`
+1. New public primitives must not introduce old failure style (`raise_error`
    / `make_error`); they must use canonical payload-aware raise helpers.
 2. New stdlib wrapper code must not add direct `(signal raise ...)` usage.
 3. Public primitive registration must stay doc-complete (reference/spec must
@@ -884,7 +1066,7 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 | `enum` types | `'int` | `^Integer` | Enums are integers |
 | `float`, `double` | `'double` | `^Double` | All floating-point types |
 | `char *`, `const char *` | `'string` | `^String` | Detected by type spelling |
-| `void *`, other pointers | `'ptr` | `^Pointer` | Opaque handle as pointer-sized value (`^Ptr` shorthand supported) |
+| `void *`, other pointers | `'ptr` | `^Pointer` | Opaque handle as pointer-sized value (`^Pointer` shorthand supported) |
 | `void` (return only) | `'void` | `^Void` | Returns the runtime `Void` singleton value |
 
 ### Limitations
@@ -958,7 +1140,7 @@ EOF
 
 # 5. Run it
 cd calculator
-LD_LIBRARY_PATH=/usr/local/lib ../build/main src/main.omni
+omni src/main.omni
 ```
 
 ---

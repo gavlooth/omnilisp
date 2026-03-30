@@ -1,0 +1,29 @@
+;; ui_layout.omni — internal layout helpers for the public `ui` facade
+
+(import "ui_nodes.omni")
+
+(module ui-layout
+  (export hbox
+          vbox
+          stack
+          spacer
+          layout))
+
+(import ui-nodes (node))
+
+(define (hbox items)
+  (node 'hbox {} items))
+
+(define (vbox items)
+  (node 'vbox {} items))
+
+(define (stack items)
+  (node 'stack {} items))
+
+(define (spacer)
+  (node 'spacer {} nil))
+
+(define layout {'hbox hbox
+                'vbox vbox
+                'stack stack
+                'spacer spacer})

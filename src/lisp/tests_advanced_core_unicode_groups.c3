@@ -29,7 +29,7 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
 fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "Integer ctor from double", "(Integer 3.9)", 3, pass, fail);
     test_eq(interp, "Integer ctor from string", "(Integer \"42\")", 42, pass, fail);
-    test_eq(interp, "Int shorthand ctor from double", "(Int 3.9)", 3, pass, fail);
+    test_eq(interp, "Integer shorthand ctor from double", "(Integer 3.9)", 3, pass, fail);
     test_double(interp, "Double ctor from int", "(Double 3)", 3.0, pass, fail);
     test_double(interp, "Double ctor from string", "(Double \"3.5\")", 3.5, pass, fail);
     test_str_val(interp, "String ctor from int", "(String 3)", "3", pass, fail);
@@ -40,15 +40,16 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_nil(interp, "Boolean ctor from nil", "(Boolean nil)", pass, fail);
     test_nil(interp, "Boolean ctor from false", "(Boolean false)", pass, fail);
     test_nil(interp, "Boolean ctor from quoted false symbol", "(Boolean 'false)", pass, fail);
-    test_truthy(interp, "Bool shorthand ctor from truthy int", "(Bool 0)", pass, fail);
+    test_truthy(interp, "Boolean shorthand ctor from truthy int", "(Boolean 0)", pass, fail);
     test_truthy(interp, "Boolean ctor type", "(= (type-of (Boolean 0)) 'Boolean)", pass, fail);
     test_truthy(interp, "false collapses to nil", "(= false nil)", pass, fail);
     test_truthy(interp, "type-of false is Nil", "(= (type-of false) 'Nil)", pass, fail);
     test_nil(interp, "Nil ctor from nil", "(Nil nil)", pass, fail);
     test_nil(interp, "Nil ctor from false", "(Nil false)", pass, fail);
-    test_truthy(interp, "Void ctor type", "(= (type-of (Void)) 'Void)", pass, fail);
-    test_truthy(interp, "Void ctor equality", "(= (Void) (Void))", pass, fail);
-    test_truthy(interp, "Void ctor truthy", "(if (Void) true nil)", pass, fail);
+    test_truthy(interp, "Void singleton type", "(= (type-of (Void)) 'Void)", pass, fail);
+    test_truthy(interp, "Void singleton equality", "(= (Void) (Void))", pass, fail);
+    test_truthy(interp, "Void singleton truthy", "(if (Void) true nil)", pass, fail);
+    test_str_val(interp, "Void print surface", "(format \"%s\" (Void))", "#<void>", pass, fail);
     test_truthy(interp, "Closure ctor identity", "(closure? (Closure (lambda (x) x)))", pass, fail);
     test_truthy(interp, "List ctor type", "(= (type-of (List 1 2 3)) 'List)", pass, fail);
     test_eq(interp, "List ctor from array len", "(length (List [1 2 3]))", 3, pass, fail);
@@ -57,7 +58,7 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_eq(interp, "Array ctor from list ref", "(ref (Array '(7 8 9)) 1)", 8, pass, fail);
     test_eq(interp, "Array ctor from iterator ref", "(ref (Array (Iterator [7 8 9])) 1)", 8, pass, fail);
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
-    test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
+    test_eq(interp, "Dictionary shorthand ctor", "(ref (Dictionary 'a 1 'b 2) 'b)", 2, pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
     test_eq(interp, "Set ctor dedup", "(set-size (Set 1 2 2 3))", 3, pass, fail);
     test_truthy(interp, "Iterator ctor from list type", "(= (type-of (Iterator '(1 2 3))) 'Iterator)", pass, fail);
@@ -93,8 +94,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
-        "Dict shorthand odd-arity payload code",
-        "(handle (Dict 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "Dictionary shorthand odd-arity payload code",
+        "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
         "Nil ctor invalid payload code",
@@ -435,9 +436,9 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
             3, pass, fail);
         test_error_contains(
             interp,
-            "legacy nested handle clause rejected",
+        "nested handle clause rejected",
             "(handle (+ 1 (signal dup 0)) ((dup k x) (+ (k 10) (k 20))))",
-            "legacy handle clause syntax was removed",
+        "handle clause syntax was removed",
             pass,
             fail);
         test_eq(

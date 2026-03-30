@@ -17,13 +17,13 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy(interp, "type-of true", "(= (type-of true) 'Boolean)", pass, fail);
 
     // is? primitive
-    test_truthy(interp, "is? int", "(is? 42 'Int)", pass, fail);
+    test_truthy(interp, "is? int", "(is? 42 'Integer)", pass, fail);
     test_truthy(interp, "is? string", "(is? \"hello\" 'String)", pass, fail);
     test_nil(interp, "is? mismatch", "(is? 42 'String)", pass, fail);
     test_truthy(interp, "is? Any", "(is? 42 'Any)", pass, fail);
 
     // define [type] — simple struct (interp-only: JIT doesn't know user types yet)
-    setup(interp, "(define [type] Point (^Int x) (^Int y))");
+    setup(interp, "(define [type] Point (^Integer x) (^Integer y))");
     test_truthy_interp(interp, "type constructor", "(instance? (Point 3 4))", pass, fail);
     test_truthy_interp(interp, "type-of instance", "(= (type-of (Point 3 4)) 'Point)", pass, fail);
     test_eq_interp(interp, "type field access x", "(let (p (Point 3 4)) p.x)", 3, pass, fail);
@@ -31,7 +31,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy_interp(interp, "is? instance type", "(is? (Point 3 4) 'Point)", pass, fail);
 
     // define [struct] — alias for [type]
-    setup(interp, "(define [struct] Vec2 (^Int x) (^Int y))");
+    setup(interp, "(define [struct] Vec2 (^Integer x) (^Integer y))");
     test_truthy_interp(interp, "struct alias constructor", "(instance? (Vec2 9 8))", pass, fail);
     test_eq_interp(interp, "struct alias field access", "(let (v (Vec2 9 8)) v.x)", 9, pass, fail);
 
@@ -40,7 +40,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     test_truthy(interp, "abstract type defined", "(= 'Shape 'Shape)", pass, fail);
 
     // define [type] with parent
-    setup(interp, "(define [type] (Circle Shape) (^Int radius))");
+    setup(interp, "(define [type] (Circle Shape) (^Integer radius))");
     test_truthy_interp(interp, "subtype constructor", "(instance? (Circle 5))", pass, fail);
     test_truthy_interp(interp, "is? subtype", "(is? (Circle 5) 'Circle)", pass, fail);
     test_truthy_interp(interp, "is? parent type", "(is? (Circle 5) 'Shape)", pass, fail);
@@ -89,7 +89,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
     }
 
     // define [alias]
-    setup(interp, "(define [alias] Num Int)");
+    setup(interp, "(define [alias] Num Integer)");
     test_truthy(interp, "alias defined", "(= 'Num 'Num)", pass, fail);
 
     // instance? primitive
@@ -147,9 +147,9 @@ fn void run_advanced_type_parametric_type_args_tests(Interp* interp, int* pass, 
 }
 
 fn void run_advanced_type_parametric_ctor_annotation_tests(Interp* interp, int* pass, int* fail) {
-    test_truthy_interp(interp, "ctor annotation Box Int", "(instance? (^(Box Int) (Box 42)))", pass, fail);
-    test_truthy_interp(interp, "ctor annotation Pair Int/String",
-        "(instance? (^(Pair Int String) (Pair 1 \"two\")))", pass, fail);
+    test_truthy_interp(interp, "ctor annotation Box Integer", "(instance? (^(Box Integer) (Box 42)))", pass, fail);
+    test_truthy_interp(interp, "ctor annotation Pair Integer/String",
+        "(instance? (^(Pair Integer String) (Pair 1 \"two\")))", pass, fail);
 
     test_str_val(interp, "ctor annotation mismatch payload code",
         "(try (lambda (x) (^(Box String) (Box 42))) "
@@ -157,29 +157,29 @@ fn void run_advanced_type_parametric_ctor_annotation_tests(Interp* interp, int* 
         "type/ctor-type-arg-mismatch", pass, fail);
 
     test_str_val(interp, "ctor annotation arity payload code",
-        "(try (lambda (x) (^(Pair Int) (Pair 1 \"two\"))) "
+        "(try (lambda (x) (^(Pair Integer) (Pair 1 \"two\"))) "
         "     (lambda (payload) (symbol->string (ref payload 'code))))",
         "type/ctor-arity-mismatch", pass, fail);
 
     test_eq_interp(interp, "ctor annotation mismatch arg-index",
-        "(try (lambda (x) (^(Pair Int String) (Pair 1 2))) "
+        "(try (lambda (x) (^(Pair Integer String) (Pair 1 2))) "
         "     (lambda (payload) (ref (ref payload 'data) 'arg-index)))",
         1, pass, fail);
 
     test_eq_interp(interp, "ctor annotation mismatch arg-path head",
-        "(try (lambda (x) (^(Pair Int String) (Pair 1 2))) "
+        "(try (lambda (x) (^(Pair Integer String) (Pair 1 2))) "
         "     (lambda (payload) (car (ref (ref payload 'data) 'arg-path))))",
         1, pass, fail);
     test_truthy_interp(interp, "ctor annotation mismatch payload ctor field",
-        "(try (lambda (x) (^(Pair Int String) (Pair 1 2))) "
+        "(try (lambda (x) (^(Pair Integer String) (Pair 1 2))) "
         "     (lambda (payload) (= (ref (ref payload 'data) 'ctor) 'Pair)))",
         pass, fail);
     test_eq_interp(interp, "ctor annotation mismatch payload expected-args len",
-        "(try (lambda (x) (^(Pair Int String) (Pair 1 2))) "
+        "(try (lambda (x) (^(Pair Integer String) (Pair 1 2))) "
         "     (lambda (payload) (length (ref (ref payload 'data) 'expected-args))))",
         2, pass, fail);
     test_eq_interp(interp, "ctor annotation mismatch payload actual-args len",
-        "(try (lambda (x) (^(Pair Int String) (Pair 1 2))) "
+        "(try (lambda (x) (^(Pair Integer String) (Pair 1 2))) "
         "     (lambda (payload) (length (ref (ref payload 'data) 'actual-args))))",
         2, pass, fail);
 
@@ -189,7 +189,7 @@ fn void run_advanced_type_parametric_ctor_annotation_tests(Interp* interp, int* 
     setup(interp, "(define [type] (Inner T) (^T value))");
     setup(interp, "(define [type] (Outer T) (^T item))");
     test_truthy_interp(interp, "ctor annotation nested user type",
-        "(instance? (^(Outer (Inner Int)) (Outer (Inner 7))))", pass, fail);
+        "(instance? (^(Outer (Inner Integer)) (Outer (Inner 7))))", pass, fail);
     test_eq_interp(interp, "ctor annotation nested mismatch arg-path depth",
         "(try (lambda (x) (^(Outer (Inner String)) (Outer (Inner 7)))) "
         "     (lambda (payload) (length (ref (ref payload 'data) 'arg-path))))",
@@ -198,66 +198,66 @@ fn void run_advanced_type_parametric_ctor_annotation_tests(Interp* interp, int* 
 
 fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, int* fail) {
     test_eq_interp(interp, "typed lambda call boundary positive",
-        "((lambda ((^Int x)) (+ x 1)) 41)", 42, pass, fail);
+        "((lambda ((^Integer x)) (+ x 1)) 41)", 42, pass, fail);
 
     test_str_val(interp, "typed lambda call boundary mismatch payload code",
-        "(try (lambda (x) ((lambda ((^Int n)) n) \"nope\")) "
+        "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
         "     (lambda (payload) (symbol->string (ref payload 'code))))",
         "type/arg-mismatch", pass, fail);
 
     test_eq_interp(interp, "typed lambda call boundary mismatch param-index",
-        "(try (lambda (x) ((lambda ((^Int n)) n) \"nope\")) "
+        "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
         "     (lambda (payload) (ref (ref payload 'data) 'param-index)))",
         0, pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch failure kind",
-        "(try (lambda (x) ((lambda ((^Int n)) n) \"nope\")) "
+        "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
         "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'failure))))",
         "type", pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch expected type",
-        "(try (lambda (x) ((lambda ((^Int n)) n) \"nope\")) "
+        "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
         "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'expected))))",
-        "Int", pass, fail);
+        "Integer", pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch actual type",
-        "(try (lambda (x) ((lambda ((^Int n)) n) \"nope\")) "
+        "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
         "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'actual))))",
         "String", pass, fail);
 
     test_eq_interp(interp, "typed variadic lambda fixed-prefix mismatch param-index",
-        "(try (lambda (x) ((lambda ((^Int a) .. rest) a) \"bad\" 2)) "
+        "(try (lambda (x) ((lambda ((^Integer a) .. rest) a) \"bad\" 2)) "
         "     (lambda (payload) (ref (ref payload 'data) 'param-index)))",
         0, pass, fail);
 
     test_str_val(interp, "Lambda annotation gates closure-valued args",
-        "(try (lambda (x) ((lambda ((^(Lambda Int Int) f)) 1) 42)) "
+        "(try (lambda (x) ((lambda ((^(Lambda Integer Integer) f)) 1) 42)) "
         "     (lambda (payload) (symbol->string (ref payload 'code))))",
         "type/arg-mismatch", pass, fail);
 
     test_eq_interp(interp, "Lambda annotation accepts closure args",
-        "((lambda ((^(Lambda Int Int) f)) (f 41)) "
-        " (lambda ((^Int x)) (+ x 1)))",
+        "((lambda ((^(Lambda Integer Integer) f)) (f 41)) "
+        " (lambda ((^Integer x)) (+ x 1)))",
         42, pass, fail);
 
-    // Return-type compatibility is currently a deliberate non-goal for lambda annotations.
+    // Return-type migration is currently a deliberate non-goal for lambda annotations.
     test_truthy_interp(interp, "Lambda annotation return type currently unchecked",
-        "(= ((lambda ((^(Lambda Int Int) f)) (f 1)) "
-        "    (lambda ((^Int x)) \"ok\")) "
+        "(= ((lambda ((^(Lambda Integer Integer) f)) (f 1)) "
+        "    (lambda ((^Integer x)) \"ok\")) "
         "   \"ok\")",
         pass, fail);
 
     // Cross-test: typed lambda boundaries follow exact-or-subtype semantics (no implicit widening).
-    test_error(interp, "typed lambda numeric no implicit Int->Double widening",
+    test_error(interp, "typed lambda numeric no implicit Integer->Double widening",
         "((lambda ((^Double x)) x) 7)", pass, fail);
     test_truthy_interp(interp, "typed lambda numeric explicit constructor conversion",
         "(= ((lambda ((^Double x)) x) (Double 7)) 7.0)", pass, fail);
 
     // Cross-test: typed lambda boundary checks compose with dispatch-selected methods.
-    setup(interp, "(define (l3-dispatch-lam (^Int x)) ((lambda ((^Int y)) (+ y 5)) x))");
+    setup(interp, "(define (l3-dispatch-lam (^Integer x)) ((lambda ((^Integer y)) (+ y 5)) x))");
     setup(interp, "(define (l3-dispatch-lam x) (- 0 1))");
-    test_eq_interp(interp, "typed lambda inside dispatch-selected Int method", "(l3-dispatch-lam 2)", 7, pass, fail);
+    test_eq_interp(interp, "typed lambda inside dispatch-selected Integer method", "(l3-dispatch-lam 2)", 7, pass, fail);
     test_eq_interp(interp, "typed lambda dispatch fallback unaffected", "(l3-dispatch-lam \"no\")", -1, pass, fail);
 
     // Cross-test: union subtyping applies at lambda call boundary.
-    setup(interp, "(define [union] L3Opt L3None (L3Some Int))");
+    setup(interp, "(define [union] L3Opt L3None (L3Some Integer))");
     test_eq_interp(interp, "typed lambda union accepts variant subtype",
         "((lambda ((^L3Opt v)) 1) (L3Some 9))", 1, pass, fail);
     test_str_val(interp, "typed lambda union mismatch payload code",
@@ -281,13 +281,13 @@ fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* 
 
     test_error_contains(interp,
         "parser deftype compound missing name",
-        "(define [type] () (^Int x))",
+        "(define [type] () (^Integer x))",
         "expected type name",
         pass, fail);
 
     test_error_contains(interp,
         "parser deftype missing field name",
-        "(define [type] Broken (^Int))",
+        "(define [type] Broken (^Integer))",
         "expected field name",
         pass, fail);
 
@@ -311,7 +311,7 @@ fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* 
 
     test_error_contains(interp,
         "parser deftype compound missing close",
-        "(define [type] (Box T (^Int x))",
+        "(define [type] (Box T (^Integer x))",
         ")",
         pass, fail);
 
@@ -329,7 +329,7 @@ fn void run_advanced_parser_type_def_edge_tests(Interp* interp, int* pass, int* 
 
     test_error_contains(interp,
         "parser deftype compound non-symbol type param",
-        "(define [type] (Box T 123) (^Int x))",
+        "(define [type] (Box T 123) (^Integer x))",
         ")",
         pass, fail);
 

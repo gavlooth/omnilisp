@@ -54,10 +54,61 @@ fn bool Compiler.scan_lambdas_if_expr(Compiler* self, Expr* expr, List{SymbolId}
     return self.scan_lambdas_with_scope(expr.if_expr.else_branch, enclosing_bound) || test_found || then_found;
 }
 
+fn bool Compiler.scan_lambdas_pattern(Compiler* self, Pattern* pat, List{SymbolId}* enclosing_bound) {
+    if (pat == null) return false;
+
+    switch (pat.tag) {
+        case PAT_CONS:
+            return self.scan_lambdas_pattern(pat.car_pat, enclosing_bound)
+                || self.scan_lambdas_pattern(pat.cdr_pat, enclosing_bound);
+
+        case PAT_CONSTRUCTOR:
+            bool ctor_found = false;
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                ctor_found |= self.scan_lambdas_pattern(pat.ctor_sub_patterns[i], enclosing_bound);
+            }
+            return ctor_found;
+
+        case PAT_SEQ:
+            bool seq_found = false;
+            for (usz i = 0; i < pat.elem_count; i++) {
+                seq_found |= self.scan_lambdas_pattern(pat.elements[i], enclosing_bound);
+            }
+            return seq_found;
+
+        case PAT_AS:
+            return self.scan_lambdas_pattern(pat.as_sub, enclosing_bound);
+
+        case PAT_GUARD:
+            bool sub_found = self.scan_lambdas_pattern(pat.guard_sub, enclosing_bound);
+            List{SymbolId} guard_scope;
+            foreach (b : *enclosing_bound) {
+                guard_scope.push(b);
+            }
+            if (pat.guard_sub != null) {
+                self.collect_pattern_bindings(pat.guard_sub, &guard_scope);
+            }
+            bool pred_found = self.scan_lambdas_with_scope(pat.guard_pred, &guard_scope);
+            guard_scope.free();
+            return sub_found || pred_found;
+
+        default:
+            return false;
+    }
+}
+
 fn bool Compiler.scan_lambdas_match_expr(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
     bool found = self.scan_lambdas_with_scope(expr.match.scrutinee, enclosing_bound);
     for (usz i = 0; i < expr.match.clause_count; i++) {
-        found |= self.scan_lambdas_with_scope(expr.match.clauses[i].result, enclosing_bound);
+        found |= self.scan_lambdas_pattern(expr.match.clauses[i].pattern, enclosing_bound);
+
+        List{SymbolId} clause_scope;
+        foreach (b : *enclosing_bound) {
+            clause_scope.push(b);
+        }
+        self.collect_pattern_bindings(expr.match.clauses[i].pattern, &clause_scope);
+        found |= self.scan_lambdas_with_scope(expr.match.clauses[i].result, &clause_scope);
+        clause_scope.free();
     }
     return found;
 }
@@ -96,7 +147,12 @@ fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{Symbol
         case E_PATH: return false;
         case E_RESET: return self.scan_lambdas_reset(expr, enclosing_bound);
         case E_SHIFT: return self.scan_lambdas_shift(expr, enclosing_bound);
-        case E_PERFORM: return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
+        case E_PERFORM:
+            if (expr.perform.has_tag_expr &&
+                self.scan_lambdas_with_scope(expr.perform.tag_expr, enclosing_bound)) {
+                return true;
+            }
+            return self.scan_lambdas_with_scope(expr.perform.arg, enclosing_bound);
         case E_RESOLVE: return self.scan_lambdas_with_scope(expr.resolve.value, enclosing_bound);
         case E_HANDLE: return self.scan_lambdas_handle(expr, enclosing_bound);
         case E_BLOCK: return self.scan_lambdas_block_expr(expr, enclosing_bound);

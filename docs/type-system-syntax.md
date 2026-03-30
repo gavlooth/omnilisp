@@ -10,7 +10,7 @@ Most features below are implemented (see Implementation Status at the end).
 3. **Minimal new tokens** - no special syntax like `{T}` for generics
 4. **Lisp-like** - parentheses for application, including type application
 5. **Flat metadata** - bounds inline in metadata dict, explicit grouping only when ambiguous
-6. **Clarity over terseness** - canonical language-facing names prefer descriptive forms; shorthands remain compatibility aliases unless explicitly removed
+6. **Clarity over terseness** - canonical language-facing names prefer descriptive forms
 
 ---
 
@@ -82,8 +82,8 @@ Current rule:
   behavior through the same symbol,
 - descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`),
 - shorthand names only exist when explicitly approved; the current builtin
-  exception is `Dict` alongside canonical `Dictionary`,
-- no lowercase compatibility wrappers are part of the canonical constructor
+  exception is `Dictionary` alongside canonical `Dictionary`,
+- no lowercase wrappers are part of the canonical constructor
   surface.
 
 Current exception note:
@@ -91,15 +91,16 @@ Current exception note:
 - Omni does not currently define a builtin `Empty` or bottom type.
 - `Nil` is the language-level empty/false value type.
 - `Void` is now a real builtin singleton type/value; `(Void)` constructs the
-  runtime no-result value, and FFI `^Void` returns map to that same value.
-- Existing side-effecting helpers may still return `nil` for compatibility;
-  migrating ordinary no-result surfaces to `Void` is a separate language
-  follow-up, not an implicit compatibility break.
+  runtime no-result value, printed as `#<void>`, and FFI `^Void` returns map
+  to that same value.
+- Existing side-effecting helpers may still return `nil` on the migration
+  path; migrating ordinary no-result surfaces to `Void` is a separate
+  language follow-up, not an implicit migration break.
 
 ### 1.2.2 Lambda Call-Boundary Checking (Design + Current Runtime Contract)
 
-Status: implemented (`L3.3`) for argument compatibility. Return-type
-compatibility is an explicit non-goal in current syntax/runtime.
+Status: implemented (`L3.3`) for argument checking. Return-type migration is
+an explicit non-goal in current syntax/runtime.
 
 Supported annotation shapes in callable parameter positions:
 
@@ -118,10 +119,10 @@ Call-boundary argument checking rules:
 
 1. For typed closures, fixed parameters are validated before body evaluation
    (including variadic closures: fixed-prefix args are checked).
-2. Match relation reuses dispatch compatibility:
+2. Match relation reuses dispatch checking:
    - literal exact match,
    - exact nominal match,
-   - subtype compatibility,
+   - subtype checking,
    - `Any` fallback.
 3. Repeated type variables unify by runtime inferred type.
 4. Metadata constraints are enforced against unified bindings.
@@ -140,9 +141,9 @@ Deterministic diagnostics:
 Explicit non-goals (current release):
 
 - Lambda return-type annotations on closure definitions are not yet part of the
-  surface syntax; return compatibility is therefore not runtime-enforced.
+  surface syntax; return migration is therefore not runtime-enforced.
 - `^(Lambda A1 ... An R)` does not yet enforce full higher-order
-  argument/return compatibility of the passed closure signature.
+  argument/return migration of the passed closure signature.
 - No higher-rank/higher-kinded lambda typing or type inference beyond existing
   dispatch-style type-variable unification.
 
@@ -215,7 +216,7 @@ For an annotation `^(Ctor A1 A2 ... An)` applied to runtime value `v`:
 
 1. `v` must be an instance value with a registered constructor/type id.
 2. The instance constructor must be `Ctor` (or a constructor whose nominal
-   type parent chain includes `Ctor` when parent compatibility is explicitly
+   type parent chain includes `Ctor` when parent matching is explicitly
    enabled for that check site).
 3. Runtime inferred type-arg vector for `v` must exist (current source:
    `type-args` inference path).

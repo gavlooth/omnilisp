@@ -20,7 +20,7 @@ fn void emit_lisp_slice_memory_flag(char* active_slice) {
             "OMNI_TEST_SUMMARY suite=lisp_slice slice=all high_memory=%d",
             high_mem ? 1 : 0
         );
-        if (high_mem) {
+        if (high_mem && !test_quiet_requested()) {
             io::printn("[WARN] lisp slice 'all' includes high-memory groups: memory-lifetime-soak, memory-lifetime-bench, allocator-bench, memory-stress");
         }
         return;
@@ -31,7 +31,7 @@ fn void emit_lisp_slice_memory_flag(char* active_slice) {
         (ZString)active_slice,
         high_mem ? 1 : 0
     );
-    if (high_mem) {
+    if (high_mem && !test_quiet_requested()) {
         io::printfn("[WARN] high-memory lisp slice selected: %s", (ZString)active_slice);
     }
 }
@@ -178,16 +178,18 @@ fn void emit_pass_literal(char[] msg) @inline {
     io::printn(msg);
 }
 
+fn void emit_test_section_banner(char[] name) @inline {
+    if (test_quiet_enabled()) return;
+    io::printfn("\n--- %s ---", (ZString)name);
+}
+
 alias IsolatedTestGroupFn = fn void(Interp* interp, int* pass, int* fail);
 
 fn bool advanced_group_trace_enabled() @inline {
     return test_c_getenv("OMNI_ADVANCED_GROUP_TRACE") != null;
 }
 
-fn bool advanced_group_filter_matches(char[] name) {
-    char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
-    if (filter == null) return true;
-
+fn bool advanced_group_filter_name_exact(char* filter, char[] name) {
     usz len = 0;
     while (filter[len] != 0) len++;
     if (len != name.len) return false;
@@ -195,6 +197,29 @@ fn bool advanced_group_filter_matches(char[] name) {
         if (filter[i] != name[i]) return false;
     }
     return true;
+}
+
+fn bool advanced_group_filter_is_descendant_of(char* filter, char[] name) {
+    usz filter_len = 0;
+    while (filter[filter_len] != 0) filter_len++;
+    if (filter_len <= name.len) return false;
+    for (usz i = 0; i < name.len; i++) {
+        if (filter[i] != name[i]) return false;
+    }
+    return filter[name.len] == '-';
+}
+
+fn bool advanced_group_filter_matches_exact(char[] name) {
+    char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
+    if (filter == null) return true;
+    return advanced_group_filter_name_exact(filter, name);
+}
+
+fn bool advanced_group_filter_matches_or_descends(char[] name) {
+    char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
+    if (filter == null) return true;
+    return advanced_group_filter_name_exact(filter, name) ||
+        advanced_group_filter_is_descendant_of(filter, name);
 }
 
 fn void emit_advanced_group_trace(char[] phase, char[] name) {
@@ -219,9 +244,19 @@ fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
     run_test_global_boundary_reset();
 
     Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+    if (tmp == null) {
+        io::printn("[FAIL] test group bootstrap allocation");
+        (*fail)++;
+        return;
+    }
     tmp.init();
-    register_primitives(tmp);
-    register_stdlib(tmp);
+    if (!bootstrap_runtime_interp(tmp)) {
+        io::printn("[FAIL] test group bootstrap runtime surface");
+        (*fail)++;
+        tmp.destroy();
+        mem::free(tmp);
+        return;
+    }
     group_fn(tmp, pass, fail);
     tmp.destroy();
     mem::free(tmp);
@@ -230,7 +265,7 @@ fn void run_group_isolated(IsolatedTestGroupFn group_fn, int* pass, int* fail) {
 }
 
 fn bool run_named_group_isolated(char[] name, IsolatedTestGroupFn group_fn, int* pass, int* fail) {
-    if (!advanced_group_filter_matches(name)) return false;
+    if (!advanced_group_filter_matches_or_descends(name)) return false;
     emit_advanced_group_trace("begin", name);
     run_group_isolated(group_fn, pass, fail);
     emit_advanced_group_trace("end", name);
@@ -305,25 +340,36 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     enforce_container_only_high_memory(active_slice);
     assert(lisp_slice_known(active_slice), "unknown OMNI_LISP_TEST_SLICE");
 
-    g_test_quiet_output =
-        test_c_getenv("OMNI_TEST_QUIET") != null ||
-        (test_summary_enabled() && test_c_getenv("OMNI_TEST_VERBOSE") == null);
+    g_test_quiet_output = test_quiet_requested();
 
     if (test_summary_enabled()) {
         emit_lisp_slice_memory_flag(active_slice);
     }
 
-    if (jit_checks_enabled()) {
-        io::printn("=== Unified Tests (Interpreter + JIT) ===");
-    } else {
-        io::printn("=== Unified Tests (Interpreter; JIT checks disabled) ===");
+    if (!test_quiet_enabled()) {
+        if (jit_checks_enabled()) {
+            io::printn("=== Unified Tests (Interpreter + JIT) ===");
+        } else {
+            io::printn("=== Unified Tests (Interpreter; JIT checks disabled) ===");
+        }
     }
 
     Interp* interp = (Interp*)mem::malloc(Interp.sizeof);
+    if (interp == null) {
+        io::printn("[FAIL] unified test bootstrap allocation");
+        if (out_pass != null) *out_pass = 0;
+        if (out_fail != null) *out_fail = 1;
+        return false;
+    }
     interp.init();
-    register_primitives(interp);
-
-    register_stdlib(interp);
+    if (!bootstrap_runtime_interp(interp)) {
+        io::printn("[FAIL] unified test bootstrap runtime surface");
+        interp.destroy();
+        mem::free(interp);
+        if (out_pass != null) *out_pass = 0;
+        if (out_fail != null) *out_fail = 1;
+        return false;
+    }
 
     int pass = 0;
     int fail = 0;
@@ -384,7 +430,7 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
         run_schema || run_deduce || run_scheduler || run_http || run_atomic;
 
     if (run_teardown_regression) {
-        io::printn("[PASS] teardown regression loads stdlib and reaches deterministic interpreter teardown");
+        emit_pass_literal("[PASS] teardown regression loads stdlib and reaches deterministic interpreter teardown");
         pass++;
     } else {
         if (run_basic) run_group_isolated(&run_basic_tests, &pass, &fail);
@@ -430,7 +476,9 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     }
 
     if (run_any_unified) {
-        io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
+        if (!test_quiet_enabled()) {
+            io::printfn("\n=== Unified Tests: %d passed, %d failed ===", pass, fail);
+        }
         emit_test_summary("unified", pass, fail);
         emit_boundary_decision_summary();
         emit_boundary_traversal_summary();
@@ -440,7 +488,13 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
 
     if (run_compiler) {
         run_test_group_boundary_reset(interp);
-        if (!run_compiler_tests(interp)) ok = false;
+        int compiler_pass = 0;
+        int compiler_fail = 0;
+        if (!run_compiler_tests(interp, &compiler_pass, &compiler_fail)) ok = false;
+        if (!run_any_unified) {
+            pass = compiler_pass;
+            fail = compiler_fail;
+        }
     }
 
     // Final JIT teardown keeps ASAN leak checks deterministic.

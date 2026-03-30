@@ -15,6 +15,11 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
     if (init_val != null && init_val.tag == ERROR) return init_val;
 
     MatchResult mr = match_pattern(expr.let_expr.pattern, init_val, interp);
+    if (mr.has_error()) {
+        Value* err = mr.error;
+        mr.cleanup();
+        return err;
+    }
     if (!mr.matched) {
         mr.cleanup();
         return raise_error(interp, "let destructuring: pattern did not match value");
@@ -23,7 +28,11 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
     Env* dest_env = env;
     for (usz i = 0; i < mr.binding_count; i++) {
         dest_env = make_env(interp, dest_env);
-        env_define_with_barrier(dest_env, mr.bindings[i].name, mr.bindings[i].value, interp);
+        if (dest_env == null ||
+            env_define_with_barrier_result(dest_env, mr.bindings[i].name, mr.bindings[i].value, interp) != null) {
+            mr.cleanup();
+            return raise_error(interp, "let destructuring: out of memory while binding pattern");
+        }
     }
     mr.cleanup();
 
@@ -96,6 +105,7 @@ fn bool jit_letrec_body_has_shift(Value* actual_value, Expr* init_expr) {
 fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     Value* placeholder = make_nil(interp);
     Env* rec_env = jit_env_extend(interp, env, expr.let_expr.name, placeholder);
+    if (rec_env == null) return raise_error(interp, "let: out of memory while binding recursive name");
     Value* actual_value = jit_eval(expr.let_expr.init, rec_env, interp);
     if (actual_value != null && actual_value.tag == ERROR) return actual_value;
 
@@ -111,9 +121,14 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 // Command semantics: returns Void on successful mutation.
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     // Barrier helper resolves target frame and promotes/copies at the actual write site.
-    if (catch err = env_set_with_barrier(env, name, value, interp)) {
+    bool found = false;
+    Value* write_err = env_set_with_barrier_result(env, name, value, interp, &found);
+    if (write_err != null) return write_err;
+    if (!found) {
         if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
-        if (catch err2 = env_set_with_barrier(interp.global_env, name, value, interp)) {
+        write_err = env_set_with_barrier_result(interp.global_env, name, value, interp, &found);
+        if (write_err != null) return write_err;
+        if (!found) {
             return raise_error(interp, "set!: unbound variable");
         }
     }

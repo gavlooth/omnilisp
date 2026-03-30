@@ -4,7 +4,7 @@ module lisp;
 import std::io;
 
 fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Schema/Contract Tests ---");
+    emit_test_section_banner("Schema/Contract Tests");
 
     // Define a schema
     setup(interp, "(define [schema] age-schema (and int (> 0)))");
@@ -41,7 +41,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
     test_tag(interp, "validate (maybe int) on int",
         "(validate '(maybe int) 42)", SYMBOL, pass, fail);
 
-    // legacy schema-explain surface
+    // schema-explain surface
     test_tag(interp, "schema-explain valid returns nil",
         "(schema-explain 'int 42)", NIL, pass, fail);
 
@@ -82,7 +82,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
         "(= (handle (signal explain-resolve nil) (explain-resolve x (ref (ref (explain 'effect (resolve x)) 'decision) 'reason))) 'resolve-effect-continuation)", pass, fail);
     test_truthy(interp, "explain effect decision stable shape",
         "(let (d (ref (explain 'effect (resolve 42)) 'decision)) (and (has? d 'reason) (and (has? d 'outcome) (and (has? d 'handler-index) (and (has? d 'search-order) (and (has? d 'clause-index) (and (has? d 'match-tag) (and (has? d 'strict-handler-index) (and (has? d 'fast-path-index) (and (has? d 'fast-path-primitive) (and (has? d 'arg-name) (and (has? d 'continuation-name) (has? d 'debug_message)))))))))))))", pass, fail);
-    setup(interp, "(define (explain-score (^Int x) (^Int y)) (+ x y))");
+    setup(interp, "(define (explain-score (^Integer x) (^Integer y)) (+ x y))");
     setup(interp, "(define (explain-score (^Double x) (^Double y)) (+ x y))");
     test_truthy(interp, "explain dispatch status method-match",
         "(= (ref (ref (explain 'dispatch (explain-score 1 2)) 'decision) 'reason) 'method-match)", pass, fail);
@@ -96,13 +96,13 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
         "(let (d (ref (explain 'dispatch (explain-score 1 2)) 'decision)) (and (has? d 'reason) (and (has? d 'winner-index) (and (has? d 'best-score) (and (has? d 'tie-count) (and (has? d 'fallback-source) (and (has? d 'outcome) (has? d 'debug_message))))))))", pass, fail);
     test_eq(interp, "explain keeps target form unevaluated",
         "(let (x 0) (block (explain 'dispatch (set! x 1)) x))", 0, pass, fail);
-    setup(interp, "(define (explain-amb (^Int x) y) 'a)");
-    setup(interp, "(define (explain-amb x (^Int y)) 'b)");
+    setup(interp, "(define (explain-amb (^Integer x) y) 'a)");
+    setup(interp, "(define (explain-amb x (^Integer y)) 'b)");
     test_truthy(interp, "explain dispatch ambiguity status",
         "(= (ref (explain 'dispatch (explain-amb 1 1)) 'status) 'ambiguous)", pass, fail);
     test_truthy(interp, "explain dispatch ambiguity reason",
         "(= (ref (ref (explain 'dispatch (explain-amb 1 1)) 'decision) 'reason) 'ambiguous-equal-specificity)", pass, fail);
-    setup(interp, "(define (explain-src (^Int x)) x)");
+    setup(interp, "(define (explain-src (^Integer x)) x)");
     test_gt(interp, "explain dispatch source line captured",
         "(ref (ref (ref (ref (explain 'dispatch (explain-src 1)) 'candidates) 0) 'source) 'line)", 0, pass, fail);
     test_error_contains(interp, "explain unknown selector rejected",
@@ -116,7 +116,7 @@ fn void run_schema_tests_isolated(int* pass, int* fail) {
 }
 
 fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
-    io::printn("\n--- Reader Dispatch Tests ---");
+    emit_test_section_banner("Reader Dispatch Tests");
 
     // Regex literal #r""
     test_str(interp, "regex literal #r",

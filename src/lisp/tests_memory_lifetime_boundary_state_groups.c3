@@ -84,7 +84,7 @@ fn void run_memory_lifetime_boundary_copy_fault_tests(Interp* interp, int* pass,
             COPY_SITE_GENERIC,
             null
         );
-        Value* legacy = boundary_copy_to_parent_site_ctx(
+        Value* fault_result = boundary_copy_to_parent_site_ctx(
             src,
             interp,
             COPY_SITE_GENERIC,
@@ -96,10 +96,10 @@ fn void run_memory_lifetime_boundary_copy_fault_tests(Interp* interp, int* pass,
         bool ok = !boundary_copy_result_ok(checked) &&
                   checked.value == null &&
                   checked.fault_code == BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE &&
-                  legacy != null &&
-                  legacy.tag == ERROR &&
+                  fault_result != null &&
+                  fault_result.tag == ERROR &&
                   str_starts_with(
-                      legacy.str_chars[:legacy.str_len],
+                      fault_result.str_chars[:fault_result.str_len],
                       "boundary: copy_to_parent_site_ctx requires target/releasing scope provenance"
                   );
 
@@ -108,10 +108,10 @@ fn void run_memory_lifetime_boundary_copy_fault_tests(Interp* interp, int* pass,
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: boundary copy fault classification (ok_checked=%s checked_fault=%s legacy_tag=%d)",
+                "[FAIL] lifetime: boundary copy fault classification (ok_checked=%s checked_fault=%s result_tag=%d)",
                 (!boundary_copy_result_ok(checked) && checked.fault_code == BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE) ? "yes" : "no",
                 (ZString)boundary_copy_fault_name(checked.fault_code),
-                legacy != null ? (int)legacy.tag : -1
+                fault_result != null ? (int)fault_result.tag : -1
             );
             (*fail)++;
         }

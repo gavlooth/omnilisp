@@ -3,12 +3,16 @@ module main;
 import std::io;
 
 fn int print_compile_usage() {
-    io::printn("Usage: ./main --compile input.lisp output.c3");
+    io::printn("Usage: omni --compile <file> <out.c3>");
     return 1;
 }
 
 fn void print_compile_start(char* input_file, char* output_file) {
     io::printfn("Compiling %s to %s...", (ZString)input_file, (ZString)output_file);
+}
+
+fn void print_compile_alloc_error() {
+    io::printn("Error: failed to allocate compiler interpreter");
 }
 
 fn void print_compile_success(char* output_file) {

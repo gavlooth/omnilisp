@@ -55,7 +55,14 @@ fn char* find_build_output_arg(int argc, char** argv, int build_idx, bool* missi
     if (missing_value != null) *missing_value = false;
     for (int i = build_idx + 2; i < argc; i++) {
         if (str_eq(argv[i], "-o")) {
-            if (i + 1 < argc) return argv[i + 1];
+            if (i + 1 < argc) {
+                char* output_arg = argv[i + 1];
+                if (cli_arg_starts_with_dash(output_arg)) {
+                    if (missing_value != null) *missing_value = true;
+                    return null;
+                }
+                return output_arg;
+            }
             if (missing_value != null) *missing_value = true;
             return null;
         }
@@ -121,6 +128,19 @@ fn bool path_move_to_parent(char[] repo_root_buf, usz* len_io) {
 }
 
 fn bool resolve_build_repo_root(char* argv0, char[] repo_root_buf, usz* repo_root_len_out) {
+    char* env_root = c_getenv("OMNI_REPO_ROOT");
+    if (env_root != null && env_root[0] != 0) {
+        usz env_len = cstr_len(env_root);
+        if (env_len > 0 && env_len < repo_root_buf.len) {
+            for (usz i = 0; i < env_len; i++) repo_root_buf[i] = env_root[i];
+            repo_root_buf[env_len] = 0;
+            if (repo_root_has_markers(repo_root_buf[..env_len])) {
+                if (repo_root_len_out != null) *repo_root_len_out = env_len;
+                return true;
+            }
+        }
+    }
+
     usz n = 0;
     isz link_len = c_readlink("/proc/self/exe", &repo_root_buf[0], repo_root_buf.len - 1);
     if (link_len > 0 && (usz)link_len < repo_root_buf.len) {
@@ -204,8 +224,25 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
         usz path_len = 0;
         if (!make_aot_temp_path(temp_path_buf, &path_len)) break;
         if (try file = io::file::open((String)temp_path_buf[:path_len], "wx")) {
-            defer (void)file.close();
-            file.write(c3_code)!!;
+            char[] remaining = c3_code;
+            bool write_ok = true;
+            while (write_ok && remaining.len > 0) {
+                usz? written_opt = file.write(remaining);
+                if (catch err = written_opt) {
+                    write_ok = false;
+                    break;
+                }
+                if (written_opt == 0) {
+                    write_ok = false;
+                    break;
+                }
+                remaining = remaining[written_opt..];
+            }
+            if (catch err = file.close()) write_ok = false;
+            if (!write_ok) {
+                io::printn("Error: cannot write AOT temp file in build/");
+                return false;
+            }
             *path_len_out = path_len;
             return true;
         }

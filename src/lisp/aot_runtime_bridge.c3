@@ -224,16 +224,20 @@ fn lisp::Value* aot_variadic_apply(lisp::Value*[] args, lisp::Env* env, lisp::In
 
 fn lisp::Value* make_closure(void* data, AotClosureFn invoke) {
     AotClosureData* cd = (AotClosureData*)mem::malloc(AotClosureData.sizeof);
+    assert(cd != null, "aot make_closure: closure data alloc failed");
     cd.data = data; cd.invoke = invoke; cd.invoke_var = null; cd.is_variadic = false;
     lisp::Value* v = lisp::make_primitive(g_aot_interp, "aot-closure", &aot_closure_apply, 1);
+    assert(v != null, "aot make_closure: primitive alloc failed");
     v.prim_val.user_data = (void*)cd;
     return v;
 }
 
 fn lisp::Value* make_variadic_closure(void* data, AotVariadicFn invoke) {
     AotClosureData* cd = (AotClosureData*)mem::malloc(AotClosureData.sizeof);
+    assert(cd != null, "aot make_variadic_closure: closure data alloc failed");
     cd.data = data; cd.invoke = null; cd.invoke_var = invoke; cd.is_variadic = true;
     lisp::Value* v = lisp::make_primitive(g_aot_interp, "aot-closure-var", &aot_variadic_apply, -1);
+    assert(v != null, "aot make_variadic_closure: primitive alloc failed");
     v.prim_val.user_data = (void*)cd;
     return v;
 }
@@ -245,8 +249,102 @@ fn bool is_truthy(lisp::Value* v) @inline {
     return true;
 }
 
+fn bool is_error(lisp::Value* v) @inline {
+    return v != null && v.tag == lisp::ValueTag.ERROR;
+}
+
+fn bool guard_pred_accepts_scrutinee(lisp::Value* pred) @inline {
+    if (pred == null) return false;
+    switch (pred.tag) {
+        case lisp::ValueTag.CLOSURE:
+        case lisp::ValueTag.PRIMITIVE:
+        case lisp::ValueTag.PARTIAL_PRIM:
+        case lisp::ValueTag.CONTINUATION:
+        case lisp::ValueTag.METHOD_TABLE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn lisp::Value* match_guard_eval(lisp::Value* pred, lisp::Value* val) {
+    if (pred == null || is_error(pred)) return pred;
+    if (!guard_pred_accepts_scrutinee(pred)) return pred;
+    lisp::Value* result = invoke(pred, val);
+    if (result == null) return lisp::make_nil(g_aot_interp);
+    return result;
+}
+
 fn bool values_equal(lisp::Value* a, lisp::Value* b) {
     return lisp::values_equal(a, b);
+}
+
+fn bool is_cons(lisp::Value* v) @inline {
+    return v != null && v.tag == lisp::ValueTag.CONS;
+}
+
+fn bool is_dict(lisp::Value* v) @inline {
+    return v != null && v.tag == lisp::ValueTag.HASHMAP && v.hashmap_val != null;
+}
+
+fn bool match_var_pattern(lisp::Value* v, char[] name) {
+    lisp::SymbolId sid = g_aot_interp.symbols.intern(name);
+    lisp::TypeId tid = g_aot_interp.types.lookup(sid, &g_aot_interp.symbols);
+    if (tid == lisp::INVALID_TYPE_ID) return true;
+
+    lisp::TypeInfo* ti = g_aot_interp.types.get(tid);
+    if (ti == null || (ti.kind != TK_CONCRETE && ti.kind != TK_UNION) || ti.field_count != 0) {
+        return true;
+    }
+    return v != null && v.tag == lisp::ValueTag.INSTANCE && v.instance_val != null && v.instance_val.type_id == tid;
+}
+
+fn bool match_constructor(lisp::Value* v, char[] ctor_name, long field_count) {
+    if (field_count < 0) return false;
+    if (v == null || v.tag != lisp::ValueTag.INSTANCE || v.instance_val == null) return false;
+
+    lisp::SymbolId sid = g_aot_interp.symbols.intern(ctor_name);
+    lisp::TypeId tid = g_aot_interp.types.lookup(sid, &g_aot_interp.symbols);
+    if (tid == lisp::INVALID_TYPE_ID || v.instance_val.type_id != tid) return false;
+    return v.instance_val.field_count == (usz)field_count;
+}
+
+fn lisp::Value* instance_field(lisp::Value* v, long idx) {
+    if (idx < 0) return lisp::make_nil(g_aot_interp);
+    if (v == null || v.tag != lisp::ValueTag.INSTANCE || v.instance_val == null) return lisp::make_nil(g_aot_interp);
+    usz field_index = (usz)idx;
+    if (field_index >= v.instance_val.field_count) return lisp::make_nil(g_aot_interp);
+    return &v.instance_val.fields[field_index];
+}
+
+fn lisp::Value* dict_get_symbol(lisp::Value* v, char[] key) {
+    if (!is_dict(v)) return lisp::make_nil(g_aot_interp);
+    lisp::Value* lookup_key = lisp::make_symbol(g_aot_interp, g_aot_interp.symbols.intern(key));
+    lisp::Value* found = lisp::hashmap_get(v.hashmap_val, lookup_key);
+    return found != null ? found : lisp::make_nil(g_aot_interp);
+}
+
+fn usz seq_length(lisp::Value* v) {
+    if (v != null && v.tag == lisp::ValueTag.ARRAY && v.array_val != null) {
+        return v.array_val.length;
+    }
+    return lisp::get_list_length(v);
+}
+
+fn lisp::Value* seq_nth(lisp::Value* v, long n) {
+    if (n < 0) return lisp::make_nil(g_aot_interp);
+    if (v != null && v.tag == lisp::ValueTag.ARRAY && v.array_val != null) {
+        usz idx = (usz)n;
+        if (idx >= v.array_val.length) return lisp::make_nil(g_aot_interp);
+        return v.array_val.items[idx];
+    }
+    lisp::Value* out = lisp::get_list_nth(v, (usz)n);
+    return out != null ? out : lisp::make_nil(g_aot_interp);
+}
+
+fn lisp::Value* seq_rest(lisp::Value* v, long n) {
+    if (n < 0) return lisp::make_nil(g_aot_interp);
+    return lisp::get_list_rest(v, (usz)n, g_aot_interp);
 }
 
 fn bool is_list(lisp::Value* v) {
@@ -274,14 +372,6 @@ fn lisp::Value* lookup_prim(char[] name) {
 
 // Legacy/debug bridge only. Normal compiler lowering must not emit this path.
 // Kept for explicit manual debugging of serialized forms.
-fn lisp::Value* eval_serialized_expr(char[] source) @deprecated("Legacy debug-only bridge; compiler should use direct lowering helpers") {
-    lisp::EvalResult r = lisp::run(source, g_aot_interp);
-    if (r.error.has_error) {
-        return lisp::make_error(g_aot_interp, r.error.message[:256]);
-    }
-    return r.value != null ? r.value : lisp::make_nil(g_aot_interp);
-}
-
 // =============================================================================
 // Variable Table Operations
 // =============================================================================
@@ -295,6 +385,77 @@ fn lisp::Value* lookup_var(char[] name) {
     lisp::SymbolId sid = g_aot_interp.symbols.intern(name);
     lisp::Value* v = g_aot_interp.global_env.lookup(sid);
     return v != null ? v : lisp::make_nil(g_aot_interp);
+}
+
+fn lisp::Value* import_module(char[] name, char[] path, bool has_path, bool import_all) {
+    lisp::Expr expr;
+    expr.tag = lisp::ExprTag.E_IMPORT;
+    expr.import_expr.name = aot_symbol_from_text(name);
+    expr.import_expr.has_path = has_path;
+    expr.import_expr.path = has_path ? path.ptr : null;
+    expr.import_expr.path_len = has_path ? path.len : 0;
+    expr.import_expr.imports = null;
+    expr.import_expr.aliases = null;
+    expr.import_expr.import_count = 0;
+    expr.import_expr.import_capacity = 0;
+    expr.import_expr.import_all = import_all;
+
+    lisp::EvalResult r = lisp::jit_eval_import_impl(&expr, g_aot_interp.global_env, g_aot_interp);
+    if (r.error.has_error) {
+        char[768] msg_buf;
+        char[] err = r.error.message[:256];
+        if (has_path) {
+            if (err.len > 0) {
+                if (try msg = io::bprintf(&msg_buf, "aot import failed for '%s' from '%s': %s", (ZString)name, (ZString)path, (ZString)err)) {
+                    return lisp::make_error(g_aot_interp, msg);
+                }
+            } else {
+                if (try msg = io::bprintf(&msg_buf, "aot import failed for '%s' from '%s'", (ZString)name, (ZString)path)) {
+                    return lisp::make_error(g_aot_interp, msg);
+                }
+            }
+        } else {
+            if (err.len > 0) {
+                if (try msg = io::bprintf(&msg_buf, "aot import failed for '%s': %s", (ZString)name, (ZString)err)) {
+                    return lisp::make_error(g_aot_interp, msg);
+                }
+            } else {
+                if (try msg = io::bprintf(&msg_buf, "aot import failed for '%s'", (ZString)name)) {
+                    return lisp::make_error(g_aot_interp, msg);
+                }
+            }
+        }
+        return lisp::make_error(g_aot_interp, "aot import failed");
+    }
+    lisp::Value* bound = g_aot_interp.global_env.lookup(expr.import_expr.name);
+    return bound != null ? bound : lisp::make_void(g_aot_interp);
+}
+
+fn lisp::Value* field_access(lisp::Value* current, lisp::Value* field_name) {
+    if (current == null) {
+        return lisp::make_error(g_aot_interp, "aot field_access: null target");
+    }
+    if (current.tag == lisp::ValueTag.ERROR) return current;
+    if (field_name == null) {
+        return lisp::make_error(g_aot_interp, "aot field_access: missing field name");
+    }
+
+    char[] field_text;
+    switch (field_name.tag) {
+        case lisp::ValueTag.STRING:
+            field_text = field_name.str_chars[:field_name.str_len];
+        case lisp::ValueTag.SYMBOL:
+            field_text = g_aot_interp.symbols.get_name(field_name.sym_val);
+        default:
+            return lisp::make_error(g_aot_interp, "aot field_access: field name must be string or symbol");
+    }
+
+    lisp::SymbolId key = aot_symbol_from_text(field_text);
+    lisp::EvalResult step = lisp::eval_path_step(current, key, g_aot_interp);
+    if (step.error.has_error) {
+        return lisp::make_error(g_aot_interp, step.error.message[:256]);
+    }
+    return step.value != null ? step.value : lisp::make_nil(g_aot_interp);
 }
 
 fn void set_var(char[] name, lisp::Value* val) {
@@ -351,7 +512,7 @@ fn void print_value(lisp::Value* v) {
 }
 
 // =============================================================================
-// Dict/Array Operations
+// Dictionary/Array Operations
 // =============================================================================
 
 fn lisp::Value* dict_from_args(lisp::Value* arg_list) {

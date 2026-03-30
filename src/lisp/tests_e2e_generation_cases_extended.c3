@@ -44,8 +44,8 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "stdlib id compose", "((compose id id) 42)" },
     { "stdlib map filter", "(foldl + 0 (filter (lambda (x) (> x 2)) (quote (1 2 3 4 5))))" },
 
-    // === Dict operations ===
-    { "dict empty", "(dict? (dict))" },
+    // === Dictionary operations ===
+    { "dict empty", "(dict? (Dictionary))" },
     { "dict create ref", "(ref (Dictionary 1 10 2 20) 1)" },
     { "dict ref 2", "(ref (Dictionary 1 10 2 20) 2)" },
     { "dict? yes", "(dict? (Dictionary 1 2))" },
@@ -104,6 +104,9 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "match on map result", "(match (map (lambda (x) (* x 10)) (quote (1 2 3))) ([a b c] (+ a (+ b c))))" },
     // Command-valued guard subjects with top-level define/set! still generate invalid AOT locals.
     { "match command Void guard truthy", "(match (block 0 1) ((? (lambda (v) v)) 7) (_ 0))" },
+    { "match guard false falls through", "(match 5 ((? false) 1) (_ 0))" },
+    { "match guard subpattern binding", "(match 5 ((? (> x 3) x) x) (_ 0))" },
+    { "match guard error propagates", "(match 5 ((? (/ 1 0)) 1) (_ 0))" },
     // Legacy AOT guard-trace parity rows; runtime coverage stays elsewhere.
     { "closure over let rec", "(let ^rec (f (lambda (n) (if (<= n 1) 1 (* n (f (- n 1)))))) (f 7))" },
     // Legacy AOT nested-handle parity row; runtime/effect coverage stays elsewhere.

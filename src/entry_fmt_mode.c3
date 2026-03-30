@@ -16,7 +16,18 @@ fn char* find_fmt_input_file(int argc, char** argv, int fmt_idx) {
     for (int i = fmt_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--write")) continue;
         if (str_eq(argv[i], "--check")) continue;
+        if (cli_arg_starts_with_dash(argv[i])) return null;
         return argv[i];
+    }
+    return null;
+}
+
+fn char* find_fmt_option_like_arg(int argc, char** argv, int fmt_idx) {
+    for (int i = fmt_idx + 1; i < argc; i++) {
+        if (str_eq(argv[i], "--write")) continue;
+        if (str_eq(argv[i], "--check")) continue;
+        if (cli_arg_starts_with_dash(argv[i])) return argv[i];
+        return null;
     }
     return null;
 }
@@ -452,7 +463,17 @@ fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
     if (write && check) return print_fmt_usage();
 
     char* input_file = find_fmt_input_file(argc, argv, fmt_idx);
-    if (input_file == null) return print_fmt_usage();
+    if (input_file == null) {
+        char* unexpected = find_fmt_option_like_arg(argc, argv, fmt_idx);
+        if (unexpected != null) {
+            return print_unexpected_mode_arg("--fmt", unexpected);
+        }
+        return print_fmt_usage();
+    }
+    char* extra = find_extra_mode_arg(argc, argv, fmt_idx, 1, false, true, true);
+    if (extra != null) {
+        return print_unexpected_mode_arg("--fmt", extra);
+    }
 
     char[] input_path = input_file[:cstr_len(input_file)];
     if (try source = io::file::load_temp((String)input_path)) {
@@ -465,8 +486,24 @@ fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
 
         if (write) {
             if (try file = io::file::open((String)input_path, "w")) {
-                defer (void)file.close();
-                file.write(formatted)!!;
+                char[] remaining = formatted;
+                bool write_ok = true;
+                while (write_ok && remaining.len > 0) {
+                    usz? written_opt = file.write(remaining);
+                    if (catch err = written_opt) {
+                        write_ok = false;
+                        break;
+                    }
+                    if (written_opt == 0) {
+                        write_ok = false;
+                        break;
+                    }
+                    remaining = remaining[written_opt..];
+                }
+                if (catch err = file.close()) write_ok = false;
+                if (!write_ok) {
+                    return print_fmt_write_error(input_file);
+                }
                 return 0;
             }
             return print_fmt_write_error(input_file);

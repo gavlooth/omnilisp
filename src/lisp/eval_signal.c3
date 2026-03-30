@@ -1,5 +1,7 @@
 module lisp;
 
+import std::atomic::types;
+
 // =============================================================================
 // POSIX SIGNAL HANDLING
 // =============================================================================
@@ -13,4 +15,22 @@ bool g_interrupted = false;
 
 fn void sigint_handler(CInt sig) {
     g_interrupted = true;
+}
+
+fn bool interp_interrupt_requested(Interp* interp) @inline {
+    if (g_interrupted) return true;
+    return interp != null &&
+        interp.interrupt_flag != null &&
+        interp.interrupt_flag.load() != 0;
+}
+
+fn void interp_interrupt_clear(Interp* interp) @inline {
+    g_interrupted = false;
+    if (interp != null && interp.interrupt_flag != null) {
+        interp.interrupt_flag.store(0);
+    }
+}
+
+fn Value* interp_interrupt_error(Interp* interp) @inline {
+    return raise_error(interp, "evaluation interrupted");
 }

@@ -320,6 +320,8 @@ fn Expr* vte_special_form(SymbolId sym, Value* rest, Interp* interp) {
         Expr* e = interp.alloc_expr();
         e.tag = E_PERFORM;
         e.perform.tag = val_to_sym(rest.cons_val.car);
+        e.perform.tag_expr = null;
+        e.perform.has_tag_expr = false;
         rest = rest.cons_val.cdr;
         e.perform.arg = rest_car_expr(rest, interp);
         return e;

@@ -77,7 +77,7 @@ Status legend: `done`, `partial`, `missing`.
 
 | Family | Owner | Status | Current public behavior | Target behavior | Notes |
 |--------|-------|--------|--------------------------|-----------------|-------|
-| Stdlib `try`/`assert!` base | `stdlib` | `done` | `try` normalizes caught raise payloads; `assert!` emits canonical payloads | enforce canonical payload keys | normalized in `stdlib/stdlib.lisp`; regression coverage includes payload shape, domain/code/message, and legacy string-raise normalization |
+| Stdlib `try`/`assert!` base | `stdlib` | `done` | `try` normalizes caught raise payloads; `assert!` emits canonical payloads | enforce canonical payload keys | normalized in `stdlib/stdlib.lisp`; regression coverage includes payload shape, domain/code/message, and string-raise normalization |
 | Regex match/search primitives | `pika` | `done` | canonical payloaded `raise` for bad args and malformed patterns; `nil` for valid no-match paths | `nil` for no match only; `raise` for bad args/pattern failures | malformed-pattern signaling is now deterministic across `re-*` primitives (`CP-03`) |
 | Pika grammar APIs | `pika` | `done` | canonical payloaded `raise` for invalid args/grammar-not-found/invalid grammar forms; `nil` for parse absence | canonical `raise` payload | `lisp_pika.c3` print-and-nil control flow removed for programmer/recoverable failures |
 | File I/O effect wrappers | `runtime-io` | `done` | canonical payloaded `raise` with stable wrapper codes (`io/read-file-*`, `io/write-file-*`, `io/file-exists?-*`, `io/read-lines-*`) | canonical payload shape normalized | missing-path/error-path coverage now asserts canonical codes per wrapper (`CP-04`) |

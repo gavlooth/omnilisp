@@ -53,6 +53,7 @@ fn bool expr_contains_shift(Expr* e) {
         case E_DEFINE:
             return expr_contains_shift(e.define.value);
         case E_PERFORM:
+            if (e.perform.has_tag_expr && expr_contains_shift(e.perform.tag_expr)) return true;
             return expr_contains_shift(e.perform.arg);
         case E_RESOLVE:
             return expr_contains_shift(e.resolve.value);
@@ -104,6 +105,9 @@ fn void jit_cache_expr(Expr* expr, Interp* interp) {
 
 fn void jit_warm_handle_clauses(Expr* expr, Interp* interp) {
     for (usz i = 0; i < expr.handle.clause_count; i++) {
+        if (expr.handle.clauses[i].has_effect_tag_expr) {
+            jit_warm_expr_cache(expr.handle.clauses[i].effect_tag_expr, interp);
+        }
         jit_warm_expr_cache(expr.handle.clauses[i].handler_body, interp);
     }
 }
@@ -157,6 +161,9 @@ fn void jit_warm_expr_cache(Expr* expr, Interp* interp) {
         case E_SHIFT:
             jit_warm_expr_cache(expr.shift.body, interp);
         case E_PERFORM:
+            if (expr.perform.has_tag_expr) {
+                jit_warm_expr_cache(expr.perform.tag_expr, interp);
+            }
             jit_warm_expr_cache(expr.perform.arg, interp);
         case E_HANDLE:
             jit_warm_expr_cache(expr.handle.body, interp);

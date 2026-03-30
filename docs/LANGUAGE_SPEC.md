@@ -53,7 +53,7 @@ Omni without learning advanced semantics first.
 - Surface naming policy for contributors:
   - prefer one canonical language-facing name per concept,
   - prefer descriptive non-abbreviated canonical names,
-  - do not preserve compatibility aliases by default during pre-alpha cleanup,
+  - do not preserve non-canonical alternates by default during pre-alpha cleanup,
   - only keep shorthand spellings when explicitly approved.
 
 ### 0.2 First-Steps Command Set
@@ -309,11 +309,11 @@ null?
 |-------|-------------|
 | `_` | Wildcard (in patterns), NOT a symbol |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Legacy compatibility token for old leading-dot-bracket parsing; parser now handles dot-bracket index as dot-token + array-literal (`.[` is emitted as `.` `[` internally) |
+| `.[` | Parser token for leading-dot-bracket parsing; parser now handles dot-bracket index as dot-token + array-literal (`.[` is emitted as `.` `[` internally) |
 | `.` | Dot for field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Array literals, bracket attributes, and patterns |
-| `{` `}` | Dict literals |
+| `{` `}` | Dictionary literals |
 
 ### 1.4 Reader Dispatch (`#`)
 
@@ -350,7 +350,7 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
 | Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
 | Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (lambda () body))` |
-| void | `VOID` | Singleton no-result value | `(Void)` |
+| void | `VOID` | Singleton no-result value | `#<void>` |
 
 Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
 cover the language's empty/false value, while `Void` is now a real builtin
@@ -371,7 +371,7 @@ Normative predicate contract:
 |---|---|---|---|
 | `nil` | `nil` | falsy | Absence/false value |
 | `false` | `false` | falsy | Value-level alias of `nil` |
-| `Void` | `(Void)` | truthy | Command/effect completion token |
+| `Void` | `#<void>` | truthy | Command/effect completion token |
 | numbers | `0`, `-1`, `3.14` | truthy | Zero is still truthy |
 | strings | `""`, `"omni"` | truthy | Empty string is truthy |
 | collections | `'()`, `[]`, `{}` | truthy | Empty collections are truthy |
@@ -428,7 +428,7 @@ Contract examples:
 ; Typed parameters (for dispatch)
 (lambda ((^Integer x) (^String y)) body)
 
-; Dict destructuring parameter — caller passes a dict
+; Dictionary destructuring parameter — caller passes a dict
 (lambda ({name age}) (println name age))
 ; called as: (f {'name "Alice" 'age 30})
 
@@ -454,7 +454,7 @@ Contract examples:
 (define (describe (^String s)) "string")
 (define (describe x) "other")   ; fallback
 
-; Dict destructuring parameter
+; Dictionary destructuring parameter
 (define (connect {host port timeout}) (tcp-connect host port))
 ; called as: (connect {'host "localhost" 'port 8080 'timeout 5000})
 
@@ -560,7 +560,7 @@ Counterexample (non-canonical syntax; do not add):
 (let ([head .. tail] '(1 2 3)) head)   ; => 1
 (let ([a b ..] '(1 2 3 4 5)) (+ a b)) ; => 3
 
-; Dict destructuring
+; Dictionary destructuring
 (let ({name age} {'name "Alice" 'age 30}) name) ; => "Alice"
 (let ({x y} {'x 10 'y 20}) (+ x y))             ; => 30
 
@@ -708,13 +708,13 @@ Canonical naming direction:
 
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
-- `Dict` remains the only accepted compatibility alias.
-- alias policy is input-tolerant but output-canonical:
-  - aliases are accepted in constructor/type-annotation input position,
+- `Dictionary` remains the only accepted short form.
+- alternate-spelling policy is input-tolerant but output-canonical:
+  - alternate spellings are accepted in constructor/type-annotation input position,
   - docs/examples and introspection outputs use canonical names (`Integer`,
     `Boolean`, `Dictionary`),
   - constructor failure messages/payload text use canonical constructor names
-    even when invocation used an alias.
+    even when invocation used an alternate spelling.
 - collection/time constructor policy:
   - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
   - retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
@@ -805,7 +805,7 @@ Printing/introspection contract:
   `#<type Integer>`, `#<type Dictionary>`, etc.
 - Abstract/meta type descriptors for `Any`, `Number`, and `Collection` follow
   the same canonical `#<type Name>` rendering.
-- constructor aliases (`Dict`) normalize to canonical type
+- constructor aliases (`Dictionary`) normalize to canonical type
   identity in introspection (`type-of`, descriptor rendering).
 - Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
 
@@ -933,7 +933,7 @@ Ambiguity decision invariants:
 includes:
 - method index/name/signature/constraints/source
 - applicability flag
-- score breakdown (`value`, `exact`, `subtype`, `any`, `total`; legacy `widen` key remains in explain output for compatibility and is currently `0`)
+- score breakdown (`value`, `exact`, `subtype`, `any`, `total`; older `widen` key remains in explain output for migration and is currently `0`)
 - failure classification (`none`, `arity-mismatch`, `value-literal-mismatch`, `type-mismatch`, `constraint-mismatch`)
 
 Example:
@@ -1140,19 +1140,20 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 | Prim | Arity | Description |
 |------|-------|-------------|
+| `read-line` | 0 | Read one line from standard input; returns `nil` on EOF |
 | `read-file` | 1 | Read file as string |
 | `write-file` | 2 | Write string to file (returns `Void` on success) |
 | `file-exists?` | 1 | Check file existence |
 | `read-lines` | 1 | Read file as list of lines |
 | `load` | 1 | Load and evaluate a .omni file |
 
-### 7.10 Dict Operations (1)
+### 7.10 Dictionary Operations (1)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `Dictionary` / `Dict` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
+| `Dictionary` / `Dictionary` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
 
-Canonical constructor surface is `Dictionary` (with `Dict` shorthand).
+Canonical constructor surface is `Dictionary` (with `Dictionary` shorthand).
 Dictionary keys are value-typed: symbols, strings, integers, and other stable
 value keys are supported.
 Style guidance:
@@ -1284,7 +1285,7 @@ Numeric conversion policy:
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred; `^Ptr` remains a compatibility shorthand) → pointer, `^Void` → void, `^Boolean` → sint64
+- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
@@ -1604,7 +1605,7 @@ I/O operations go through effects with a fast path:
 ; => "captured"
 ```
 
-Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-file`, `io/write-file`, `io/file-exists?`, `io/read-lines`
+Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-line`, `io/read-file`, `io/write-file`, `io/file-exists?`, `io/read-lines`
 
 ### 10.5 Typed Dispatch in Handlers
 
@@ -1708,11 +1709,13 @@ For helper-style handler composition in examples and public-facing docs:
 ## 13. REPL
 
 ```bash
-./build/main --repl    # or -repl
+omni --repl
+omni --repl --project
+omni --repl --load demo.omni
 ```
 
 ```
-Lisp REPL (type 'quit' or 'exit' to leave)
+Omni Lisp REPL (type 'quit' or 'exit' to leave)
 ---
 > (define x 10)
 10
@@ -1725,6 +1728,25 @@ Lisp REPL (type 'quit' or 'exit' to leave)
 > quit
 Goodbye!
 ```
+
+Project preload:
+
+```bash
+omni --repl --project
+omni --repl --project myproject
+omni --repl --load demo.omni
+```
+
+- `--project` resolves an Omni project root from the current directory or the
+  optional directory argument.
+- It requires `omni.toml` and preloads `src/main.omni` before the interactive
+  session starts.
+- `--load` preloads one Omni source file directly and works for standalone
+  example/workspace trees that are not full Omni projects.
+- Relative imports inside `src/main.omni` use the entry file's source
+  directory, the same way script execution does.
+- REPL preload (`--project` or `--load`) is text-REPL-only; it is not
+  supported with `--json`.
 
 ---
 
@@ -1783,7 +1805,7 @@ Goodbye!
 (length nums)           ; => 5
 (push! nums 6)          ; mutates, adds 6
 
-; Dict literal
+; Dictionary literal
 (define person {'name "Alice" 'age 30})
 (ref person 'name)      ; => "Alice"
 (has? person 'age)      ; => true
@@ -1822,22 +1844,25 @@ p.car                   ; => 99
 ### 15.1 Running Programs
 
 ```bash
-LD_LIBRARY_PATH=/usr/local/lib ./build/main script.omni    # Run a script
-LD_LIBRARY_PATH=/usr/local/lib ./build/main --repl          # Interactive REPL
+omni script.omni    # Run a script
+omni --repl         # Start the REPL (explicit)
+omni --repl --project [dir]  # Start REPL with project entry preloaded
+omni --repl --load <file>    # Start REPL with one file preloaded
+omni                # Start the REPL (default)
 ```
 
 ### 15.2 Compilation
 
 ```bash
-./build/main --compile input.lisp output.c3                 # Lisp → C3 source
-./build/main --build input.lisp -o output                   # Lisp → standalone binary (AOT)
+omni --compile input.omni output.c3                         # Omni → C3 source
+omni --build input.omni -o output                           # Omni → standalone binary (AOT)
 ```
 
 ### 15.3 Project Management
 
 ```bash
-./build/main --init myproject                               # Scaffold project directory
-./build/main --bind myproject/                              # Generate FFI bindings from omni.toml
+omni --init myproject                                       # Scaffold project directory
+omni --bind myproject/                                      # Generate FFI bindings from omni.toml
 ```
 
 - `--init` creates `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, `build/` (with generated `project.json`)
@@ -1921,7 +1946,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | macros | Y | Y** | Y** |
 | modules | Y | Y | Y |
 
-† Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), while type-definition and typed-define registration lower through explicit structured AOT helpers rather than `aot::eval_serialized_expr(...)`. AOT closure wrappers are classified semantically as `Closure` for runtime introspection parity, and compiled module/import/export surfaces are intentionally static (inline module bodies, `import`/`export-from` no-op `Void` lowering).
+† Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), while type-definition and typed-define registration lower through explicit structured AOT helpers. AOT closure wrappers are classified semantically as `Closure` for runtime introspection parity, and compiled module/import/export surfaces are intentionally static (inline module bodies, `import`/`export-from` no-op `Void` lowering).
 **Y** = macro expansion at parse time
 
 ---

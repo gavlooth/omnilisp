@@ -41,12 +41,11 @@ Audit snapshot:
 | `__raw-print`, `__raw-println`, `__raw-newline`, `__raw-display` | command-style | Return `Void` after console side effect |
 | `__raw-write-file` | command-style | Returns `Void` after write completion |
 | `__raw-fs-close`, `__raw-fs-rename`, `__raw-fs-unlink` | command-style | Return `Void` after lifecycle/path mutation |
-| `fs-close`, `fs-rename`, `fs-unlink` | command-style | Return `Void` (public alias surface) |
-| `filesystem-close`, `filesystem-rename`, `filesystem-unlink` | command-style | Return `Void` (long-form alias surface) |
+| `fs-close`, `fs-rename`, `fs-unlink` | command-style | Return `Void` |
 | `__raw-udp-bind`, `__raw-udp-close`, `__raw-tcp-close`, `__raw-process-kill`, `__raw-signal-unhandle`, `__raw-async-sleep`, `__raw-tls-close` | command-style | Return `Void` after side-effecting operation |
 | `sleep`, `exit` | command-style | `sleep` returns `Void`; `exit` is process-terminal |
 | `__raw-read-file`, `__raw-file-exists?`, `__raw-read-lines`, `__raw-fs-open`, `__raw-fs-read`, `__raw-fs-write`, `__raw-fs-stat`, `__raw-fs-readdir` | query-style | Return data/handles/metrics (`nil` only for absence-style queries) |
-| `fs-open`, `fs-read`, `fs-write`, `fs-stat`, `fs-readdir`, `filesystem-open`, `filesystem-read`, `filesystem-write`, `filesystem-stat`, `filesystem-read-directory` | query-style | Return handles/data/metrics |
+| `fs-open`, `fs-read`, `fs-write`, `fs-stat`, `fs-readdir` | query-style | Return handles/data/metrics |
 | `__raw-tcp-connect`, `__raw-tcp-listen`, `__raw-tcp-accept`, `__raw-tcp-read`, `__raw-tcp-write`, `__raw-udp-socket`, `__raw-udp-send`, `__raw-udp-recv`, `__raw-pipe-connect`, `__raw-pipe-listen`, `__raw-process-spawn`, `__raw-process-wait`, `__raw-signal-handle`, `__raw-dns-resolve`, `__raw-tls-connect`, `__raw-tls-server-wrap`, `__raw-tls-read`, `__raw-tls-write`, `__raw-http-get`, `__raw-http-request` | query-style | Return handles, payloads, or result dictionaries |
 
 #### Scheduler Classification
@@ -60,7 +59,7 @@ Audit snapshot:
 #### Exhaustive Classification Rule
 
 Command-style primitive set (`42` names):
-`set!`, `push!`, `remove!`, `set-add`, `set-remove`, `unsafe-free!`, `deduce/commit`, `deduce/abort`, `deduce/fact!`, `deduce/retract!`, `deduce/clear!`, `deduce/drop!`, `deduce/rule!`, `__raw-print`, `__raw-println`, `__raw-newline`, `__raw-display`, `__raw-write-file`, `__raw-fs-close`, `__raw-fs-rename`, `__raw-fs-unlink`, `fs-close`, `fs-rename`, `fs-unlink`, `filesystem-close`, `filesystem-rename`, `filesystem-unlink`, `__raw-udp-bind`, `__raw-udp-close`, `__raw-tcp-close`, `__raw-process-kill`, `__raw-signal-unhandle`, `__raw-async-sleep`, `__raw-thread-cancel`, `__raw-task-cancel`, `__raw-tls-close`, `sleep`, `exit`, `fiber-cancel`, `run-fibers`.
+`set!`, `push!`, `remove!`, `set-add`, `set-remove`, `unsafe-free!`, `deduce/commit`, `deduce/abort`, `deduce/fact!`, `deduce/retract!`, `deduce/clear!`, `deduce/drop!`, `deduce/rule!`, `__raw-print`, `__raw-println`, `__raw-newline`, `__raw-display`, `__raw-write-file`, `__raw-fs-close`, `__raw-fs-rename`, `__raw-fs-unlink`, `fs-close`, `fs-rename`, `fs-unlink`, `fs-close`, `fs-rename`, `fs-unlink`, `__raw-udp-bind`, `__raw-udp-close`, `__raw-tcp-close`, `__raw-process-kill`, `__raw-signal-unhandle`, `__raw-async-sleep`, `__raw-thread-cancel`, `__raw-task-cancel`, `__raw-tls-close`, `sleep`, `exit`, `fiber-cancel`, `run-fibers`.
 
 All remaining registered primitive names are query-style.
 
@@ -116,7 +115,7 @@ These support user extension via method tables.
 | `List` | variadic | Canonical list constructor / conversion surface |
 | `null?` | 1 | Is nil? |
 | `pair?` | 1 | Is cons? |
-| `list` | variadic | Public helper + compatibility alias for list construction/conversion |
+| `list` | variadic | Public helper for list construction/conversion |
 
 **Boolean:**
 
@@ -132,6 +131,7 @@ These support user extension via method tables.
 | `__raw-println` | 1 | Raw println |
 | `__raw-newline` | 0 | Raw newline |
 | `__raw-display` | 1 | Raw display |
+| `__raw-read-line` | 0 | Raw stdin line reader |
 | `__raw-read-file` | 1 | Raw file read |
 | `__raw-write-file` | 2 | Raw file write |
 | `__raw-file-exists?` | 1 | Raw file check |
@@ -141,14 +141,14 @@ These support user extension via method tables.
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `filesystem-open` | variadic | Open file handle with mode/options |
-| `filesystem-read` | 2 | Read bytes/chars from handle |
-| `filesystem-write` | 2 | Write bytes/chars to handle |
-| `filesystem-close` | 1 | Close file handle |
-| `filesystem-stat` | 1 | File metadata lookup |
-| `filesystem-read-directory` | 1 | Read directory entries |
-| `filesystem-rename` | 2 | Rename/move file |
-| `filesystem-unlink` | 1 | Remove file path |
+| `fs-open` | variadic | Open file handle with mode/options |
+| `fs-read` | 2 | Read bytes/chars from handle |
+| `fs-write` | 2 | Write bytes/chars to handle |
+| `fs-close` | 1 | Close file handle |
+| `fs-stat` | 1 | File metadata lookup |
+| `fs-readdir` | 1 | Read directory entries |
+| `fs-rename` | 2 | Rename/move file |
+| `fs-unlink` | 1 | Remove file path |
 
 Compatibility shorthands (same behavior/arity):
 `fs-open`, `fs-read`, `fs-write`, `fs-close`, `fs-stat`, `fs-readdir`,
@@ -202,7 +202,7 @@ symbol literal).
 | `symbol->string` | 1 | Symbol to string |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `Int`, `Double`, `String`, `Symbol`, `Boolean`, `Bool`, `Nil`,
+`Integer`, `Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Boolean`, `Nil`,
 `Void`, and `Closure`.
 
 **Math:**
@@ -240,7 +240,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 |------|-------|-------------|
 | `Array` | variadic | Canonical array constructor / conversion surface |
 | `Dictionary` | variadic | Create dictionary |
-| `Dict` | variadic | Public shorthand alias for `Dictionary` |
+| `Dictionary` | variadic | Public shorthand alias for `Dictionary` |
 | `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |

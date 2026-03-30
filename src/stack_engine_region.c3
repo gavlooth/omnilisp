@@ -11,8 +11,15 @@ struct StackRegion {
     void* stack_top;   // Top of usable stack (highest address, initial RSP)
 }
 
-const usz DEFAULT_STACK_SIZE = 65536; // 64KB usable stack (normal builds)
-const usz ASAN_STACK_SIZE = 262144;   // 256KB usable stack (ASAN-instrumented builds)
+// Higher-order stdlib work inside handle/reset stack contexts now regularly exceeds
+// 64KB even on small lists, so normal runtime stacks need more headroom than the
+// original coroutine-only budget.
+const usz DEFAULT_STACK_SIZE = 131072; // 128KB usable stack (normal builds)
+// Sanitizer-instrumented recursive eval paths burn substantially more stack per
+// frame than normal builds. Keep the ASAN coroutine/checkpoint stack budget
+// large enough to validate deep recursion contracts without tripping on
+// sanitizer frame inflation first.
+const usz ASAN_STACK_SIZE = 524288;   // 512KB usable stack (ASAN-instrumented builds)
 const usz GUARD_SIZE = PAGE_SIZE;     // 4KB guard page
 
 const usz STACK_APPLY_MIN_HEADROOM = 24 * 1024;

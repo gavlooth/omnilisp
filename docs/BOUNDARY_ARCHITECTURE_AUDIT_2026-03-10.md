@@ -10,7 +10,7 @@ Scope: boundary ownership/lifetime architecture, invariants contract, and residu
   - `boundary_finalize_scoped_result(...)`
   - `boundary_commit_escape(...)`
 - Eval and JIT return paths are aligned on shared boundary policy and typed fault/outcome surfaces.
-- Direct legacy transition primitives are guarded by policy:
+- Direct transition primitives are guarded by policy:
   - `scripts/check_boundary_facade_usage.sh`
   - policy map `scripts/boundary_facade_policy.txt`
   - surface report `docs/BOUNDARY_SURFACE_AUDIT.md`
@@ -46,9 +46,9 @@ These invariants are the required runtime contract for boundary-sensitive work.
 
 - Boundary facade guard: zero violations (`scripts/check_boundary_facade_usage.sh`).
 - Boundary surface audit: zero violations (`docs/BOUNDARY_SURFACE_AUDIT.md`).
-- Session 44 Commit A legacy entrypoint sweep is closed:
+- Session 44 Commit A entrypoint sweep is closed:
   - retired fully replaced env-copy wrappers from runtime surface.
-  - guard/audit symbol inventories now track live legacy symbols only.
+  - guard/audit symbol inventories now track live removed symbols only.
 - Local safety validation remains workstation-safe:
   - `c3c build`
   - targeted low-memory suites (`scope`, `stack`)

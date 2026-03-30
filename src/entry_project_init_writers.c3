@@ -2,37 +2,64 @@ module main;
 
 import std::io;
 
-fn void write_init_toml(char* name, usz name_len) {
+fn bool write_init_toml(char* name, usz name_len) {
     char[512] path_buf;
-    usz plen = build_project_path(path_buf[..], name, name_len, "omni.toml");
-    if (try file = io::file::open((String)path_buf[:plen], "w")) {
-        defer (void)file.close();
-        file.write("[project]\n")!!;
-        file.write("name = \"")!!;
-        file.write(name[:name_len])!!;
-        file.write("\"\nversion = \"0.2.0\"\n\n")!!;
-        file.write("[build]\n")!!;
-        file.write("output-dir = \"build\"\n")!!;
-        file.write("safety = \"safe\"        # \"safe\", \"fast\", or \"none\"\n")!!;
-        file.write("opt = \"O0\"             # \"O0\", \"O1\", \"O2\", \"O3\", \"Os\", \"Oz\"\n")!!;
-        file.write("debug-info = \"full\"    # \"full\", \"line-tables\", \"none\"\n")!!;
-        file.write("# sanitize = \"none\"    # \"none\", \"address\", \"memory\", \"thread\"\n")!!;
-        file.write("# single-module = false\n\n")!!;
-        file.write("# FFI dependencies — uncomment and edit:\n")!!;
-        file.write("# [dependencies.ffi.math]\n")!!;
-        file.write("# library = \"m\"\n")!!;
-        file.write("# headers = [\"/usr/include/math.h\"]\n")!!;
-        file.write("# functions = [\"sin\", \"cos\", \"sqrt\"]\n")!!;
+    usz plen = 0;
+    if (!build_project_path(path_buf[..], &plen, name, name_len, "omni.toml")) {
+        io::printn("Error: project path too long for omni.toml");
+        return false;
     }
+
+    char[2048] text_buf;
+    char[] text;
+    if (try rendered = io::bprintf(&text_buf,
+            "[project]\nname = \"%s\"\nversion = \"0.2.0\"\n\n"
+            "[build]\n"
+            "output-dir = \"build\"\n"
+            "safety = \"safe\"        # \"safe\", \"fast\", or \"none\"\n"
+            "opt = \"O0\"             # \"O0\", \"O1\", \"O2\", \"O3\", \"Os\", \"Oz\"\n"
+            "debug-info = \"full\"    # \"full\", \"line-tables\", \"none\"\n"
+            "# sanitize = \"none\"    # \"none\", \"address\", \"memory\", \"thread\"\n"
+            "# single-module = false\n\n"
+            "# FFI dependencies — uncomment and edit:\n"
+            "# [dependencies.ffi.math]\n"
+            "# library = \"m\"\n"
+            "# headers = [\"/usr/include/math.h\"]\n"
+            "# functions = [\"sin\", \"cos\", \"sqrt\"]\n",
+            (ZString)name)) {
+        text = rendered;
+    } else {
+        io::printfn("Error: failed to compose omni.toml for project '%s'", (ZString)name);
+        return false;
+    }
+
+    if (!write_project_text_file(path_buf[:plen], text)) {
+        io::printfn("Error: cannot write %s", (ZString)&path_buf[0]);
+        return false;
+    }
+    return true;
 }
 
-fn void write_init_main_omni(char* name, usz name_len) {
+fn bool write_init_main_omni(char* name, usz name_len) {
     char[512] path_buf;
-    usz plen = build_project_path(path_buf[..], name, name_len, "src/main.omni");
-    if (try file = io::file::open((String)path_buf[:plen], "w")) {
-        defer (void)file.close();
-        file.write("(println \"Hello from ")!!;
-        file.write(name[:name_len])!!;
-        file.write("!\")\n")!!;
+    usz plen = 0;
+    if (!build_project_path(path_buf[..], &plen, name, name_len, "src/main.omni")) {
+        io::printn("Error: project path too long for src/main.omni");
+        return false;
     }
+
+    char[1024] text_buf;
+    char[] text;
+    if (try rendered = io::bprintf(&text_buf, "(println \"Hello from %s!\")\n", (ZString)name)) {
+        text = rendered;
+    } else {
+        io::printfn("Error: failed to compose src/main.omni for project '%s'", (ZString)name);
+        return false;
+    }
+
+    if (!write_project_text_file(path_buf[:plen], text)) {
+        io::printfn("Error: cannot write %s", (ZString)&path_buf[0]);
+        return false;
+    }
+    return true;
 }

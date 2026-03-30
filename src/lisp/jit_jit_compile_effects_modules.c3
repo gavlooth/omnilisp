@@ -133,18 +133,20 @@ fn bool jit_is_exported_symbol(Module* source_mod, SymbolId sym) {
     return false;
 }
 
-fn void jit_bind_and_reexport(Env* env, Interp* interp, Module* current_mod, SymbolId sym, Value* val) {
-    if (val == null) return;
-    env_define_with_barrier(env, sym, val, interp);
+fn bool jit_bind_and_reexport(Env* env, Interp* interp, Module* current_mod, SymbolId sym, Value* val) {
+    if (val == null) return true;
+    if (env_define_with_barrier_result(env, sym, val, interp) != null) return false;
     jit_append_module_export(current_mod, sym);
+    return true;
 }
 
-fn void jit_reexport_all_symbols(Module* source_mod, Module* current_mod, Env* env, Interp* interp) {
+fn bool jit_reexport_all_symbols(Module* source_mod, Module* current_mod, Env* env, Interp* interp) {
     for (usz i = 0; i < source_mod.export_count; i++) {
         SymbolId sym = source_mod.exports[i];
         Value* val = source_mod.env.lookup(sym);
-        jit_bind_and_reexport(env, interp, current_mod, sym, val);
+        if (!jit_bind_and_reexport(env, interp, current_mod, sym, val)) return false;
     }
+    return true;
 }
 
 fn EvalResult jit_reexport_selected_symbols(Expr* expr, Module* source_mod, Module* current_mod, Env* env, Interp* interp) {
@@ -154,7 +156,9 @@ fn EvalResult jit_reexport_selected_symbols(Expr* expr, Module* source_mod, Modu
             return eval_error("export-from: symbol not exported from source module");
         }
         Value* val = source_mod.env.lookup(sym);
-        jit_bind_and_reexport(env, interp, current_mod, sym, val);
+        if (!jit_bind_and_reexport(env, interp, current_mod, sym, val)) {
+            return eval_error("export-from: out of memory while binding symbol");
+        }
     }
     return eval_ok(make_void(interp));
 }
@@ -172,7 +176,9 @@ fn EvalResult jit_eval_export_from_impl(Expr* expr, Env* env, Interp* interp) {
     }
 
     if (expr.export_from.all) {
-        jit_reexport_all_symbols(source_mod, current_mod, env, interp);
+        if (!jit_reexport_all_symbols(source_mod, current_mod, env, interp)) {
+            return eval_error("export-from: out of memory while binding symbol");
+        }
         return eval_ok(make_void(interp));
     }
     return jit_reexport_selected_symbols(expr, source_mod, current_mod, env, interp);

@@ -2,6 +2,9 @@ local M = {}
 
 local state = {
   job_id = nil,
+  channel_kind = nil,
+  protocol = "legacy_json",
+  session_id = nil,
   bufnr = nil,
   winid = nil,
   eval_annot_ns = vim.api.nvim_create_namespace("omni.nvim.eval_annotations"),
@@ -9,6 +12,7 @@ local state = {
   stderr_partial = "",
   request_seq = 0,
   pending = {},
+  deferred_requests = {},
   auto_scroll = true,
 }
 
@@ -105,6 +109,234 @@ local function stringify_eval_value(value)
   return tostring(value)
 end
 
+local function pretty_values_enabled(config)
+  return not (config and config.output and config.output.pretty_values == false)
+end
+
+local function pretty_width(config)
+  local width = config and config.output and config.output.pretty_width or 72
+  if type(width) ~= "number" or width < 20 then
+    return 72
+  end
+  return math.floor(width)
+end
+
+local function pretty_indent(config)
+  local indent = config and config.output and config.output.pretty_indent or 2
+  if type(indent) ~= "number" or indent < 1 then
+    return 2
+  end
+  return math.floor(indent)
+end
+
+local function skip_pretty_ws(text, index)
+  while index <= #text do
+    local ch = text:sub(index, index)
+    if not ch:match("%s") then
+      break
+    end
+    index = index + 1
+  end
+  return index
+end
+
+local function parse_pretty_string(text, index)
+  local start = index
+  index = index + 1
+  while index <= #text do
+    local ch = text:sub(index, index)
+    if ch == "\\" then
+      index = index + 2
+    elseif ch == "\"" then
+      return { kind = "atom", text = text:sub(start, index) }, index + 1
+    else
+      index = index + 1
+    end
+  end
+  return nil, nil
+end
+
+local function parse_pretty_atom(text, index)
+  local start = index
+  while index <= #text do
+    local ch = text:sub(index, index)
+    if ch:match("%s") or matching[ch] or reverse_matching[ch] then
+      break
+    end
+    index = index + 1
+  end
+  if index == start then
+    return nil, nil
+  end
+  return { kind = "atom", text = text:sub(start, index - 1) }, index
+end
+
+local function parse_pretty_node(text, index)
+  index = skip_pretty_ws(text, index)
+  if index > #text then
+    return nil, index
+  end
+
+  local ch = text:sub(index, index)
+  local close = matching[ch]
+  if close then
+    local children = {}
+    index = index + 1
+    while index <= #text do
+      index = skip_pretty_ws(text, index)
+      if index > #text then
+        return nil, nil
+      end
+      if text:sub(index, index) == close then
+        return {
+          kind = "container",
+          open = ch,
+          close = close,
+          children = children,
+        }, index + 1
+      end
+      local child
+      child, index = parse_pretty_node(text, index)
+      if not child then
+        return nil, nil
+      end
+      table.insert(children, child)
+    end
+    return nil, nil
+  end
+
+  if ch == "\"" then
+    return parse_pretty_string(text, index)
+  end
+
+  return parse_pretty_atom(text, index)
+end
+
+local function parse_pretty_root(text)
+  local node, index = parse_pretty_node(text, 1)
+  if not node then
+    return nil
+  end
+  index = skip_pretty_ws(text, index)
+  if index <= #text then
+    return nil
+  end
+  return node
+end
+
+local function render_pretty_inline(node)
+  if not node then
+    return nil
+  end
+  if node.kind == "atom" then
+    return node.text
+  end
+
+  local parts = {}
+  for _, child in ipairs(node.children or {}) do
+    local rendered = render_pretty_inline(child)
+    if not rendered then
+      return nil
+    end
+    table.insert(parts, rendered)
+  end
+  return node.open .. table.concat(parts, " ") .. node.close
+end
+
+local function extend_block_lines(lines, block)
+  for _, line in ipairs(vim.split(block, "\n", { plain = true })) do
+    table.insert(lines, line)
+  end
+end
+
+local function render_pretty_node(node, config, depth)
+  depth = depth or 0
+  if not node then
+    return ""
+  end
+  if node.kind == "atom" then
+    return node.text
+  end
+
+  local indent_size = pretty_indent(config)
+  local width = pretty_width(config)
+  local indent = string.rep(" ", depth * indent_size)
+  local child_indent = string.rep(" ", (depth + 1) * indent_size)
+  local inline = render_pretty_inline(node)
+  if inline and (#indent + #inline) <= width then
+    return inline
+  end
+
+  if #node.children == 0 then
+    return node.open .. node.close
+  end
+
+  if node.open == "{" then
+    local lines = { indent .. node.open }
+    local i = 1
+    while i <= #node.children do
+      local key = node.children[i]
+      local value = node.children[i + 1]
+      if not value then
+        local rendered = render_pretty_node(key, config, depth + 1)
+        if rendered:find("\n", 1, true) then
+          extend_block_lines(lines, rendered)
+        else
+          table.insert(lines, child_indent .. rendered)
+        end
+        i = i + 1
+      else
+        local key_inline = render_pretty_inline(key) or render_pretty_node(key, config, depth + 1)
+        local value_inline = render_pretty_inline(value)
+        if key_inline and value_inline and (#child_indent + #key_inline + 1 + #value_inline) <= width then
+          table.insert(lines, child_indent .. key_inline .. " " .. value_inline)
+        else
+          table.insert(lines, child_indent .. key_inline)
+          local rendered_value = render_pretty_node(value, config, depth + 2)
+          if rendered_value:find("\n", 1, true) then
+            extend_block_lines(lines, rendered_value)
+          else
+            table.insert(lines, string.rep(" ", (depth + 2) * indent_size) .. rendered_value)
+          end
+        end
+        i = i + 2
+      end
+    end
+    table.insert(lines, indent .. node.close)
+    return table.concat(lines, "\n")
+  end
+
+  local lines = { indent .. node.open }
+  for _, child in ipairs(node.children) do
+    local rendered = render_pretty_node(child, config, depth + 1)
+    if rendered:find("\n", 1, true) then
+      extend_block_lines(lines, rendered)
+    else
+      table.insert(lines, child_indent .. rendered)
+    end
+  end
+  table.insert(lines, indent .. node.close)
+  return table.concat(lines, "\n")
+end
+
+local function format_eval_value(config, value)
+  local display = value
+  if display == nil then
+    return "nil"
+  end
+  if type(display) ~= "string" then
+    display = stringify_eval_value(display)
+  end
+  if not pretty_values_enabled(config) then
+    return display
+  end
+  local parsed = parse_pretty_root(display)
+  if not parsed then
+    return display
+  end
+  return render_pretty_node(parsed, config, 0)
+end
+
 local function annotation_enabled(config, label, selection)
   if not config or type(config.eval) ~= "table" then
     return false, nil, nil
@@ -196,7 +428,8 @@ local function append_lines(lines)
   end
 
   vim.api.nvim_buf_set_lines(state.bufnr, -1, -1, false, normalized)
-  if state.auto_scroll and state.winid and vim.api.nvim_win_is_valid(state.winid) then
+  if state.auto_scroll and state.winid and vim.api.nvim_win_is_valid(state.winid)
+    and vim.api.nvim_win_get_buf(state.winid) == state.bufnr then
     local last = vim.api.nvim_buf_line_count(state.bufnr)
     vim.api.nvim_win_set_cursor(state.winid, { last, 0 })
   end
@@ -222,6 +455,9 @@ function M.open_output(config)
   state.auto_scroll = config.output.auto_scroll ~= false
 
   if state.winid and vim.api.nvim_win_is_valid(state.winid) then
+    if vim.api.nvim_win_get_buf(state.winid) ~= bufnr then
+      vim.api.nvim_win_set_buf(state.winid, bufnr)
+    end
     vim.api.nvim_set_current_win(state.winid)
     return bufnr
   end
@@ -238,18 +474,22 @@ function M.clear_output()
     return
   end
   vim.api.nvim_buf_set_lines(state.bufnr, 0, -1, false, { "" })
-  if state.winid and vim.api.nvim_win_is_valid(state.winid) then
+  if state.winid and vim.api.nvim_win_is_valid(state.winid)
+    and vim.api.nvim_win_get_buf(state.winid) == state.bufnr then
     vim.api.nvim_win_set_cursor(state.winid, { 1, 0 })
   end
 end
 
-local function flush_partial(stream_name)
+local function flush_partial(stream_name, prefix)
   local key = stream_name .. "_partial"
   local partial = state[key]
   if partial == "" then
     return
   end
   state[key] = ""
+  if prefix and partial ~= "" then
+    partial = prefix .. partial
+  end
   append_lines({ strip_ansi(partial) })
 end
 
@@ -306,6 +546,102 @@ local function repl_mode(config)
   return "text"
 end
 
+local function discovery_config(config)
+  local repl_config = config and config.repl or {}
+  local discovery = repl_config.discovery
+  if type(discovery) ~= "table" then
+    discovery = {}
+  end
+  return {
+    enabled = discovery.enabled ~= false,
+    host = type(discovery.host) == "string" and discovery.host ~= "" and discovery.host or "127.0.0.1",
+    port_file = type(discovery.port_file) == "string" and discovery.port_file ~= "" and discovery.port_file or ".omni-repl-port",
+  }
+end
+
+local function root_markers(config)
+  local lsp_config = config and config.lsp or {}
+  if type(lsp_config.root_markers) == "table" and not vim.tbl_isempty(lsp_config.root_markers) then
+    return lsp_config.root_markers
+  end
+  return { "omni.toml", "project.json", ".git" }
+end
+
+local function current_buffer_dir()
+  local path = vim.api.nvim_buf_get_name(0)
+  if type(path) == "string" and path ~= "" then
+    local normalized = vim.fs.normalize(path)
+    if vim.fn.isdirectory(normalized) == 1 then
+      return normalized
+    end
+    return vim.fs.dirname(normalized)
+  end
+  return vim.fn.getcwd()
+end
+
+local function project_root(config)
+  local start = current_buffer_dir()
+  local match = vim.fs.find(root_markers(config), {
+    path = start,
+    upward = true,
+    stop = vim.loop.os_homedir(),
+  })[1]
+  if match then
+    return vim.fs.dirname(match)
+  end
+  return start
+end
+
+local function discover_tcp_endpoint(config)
+  local discovery = discovery_config(config)
+  if not discovery.enabled then
+    return nil
+  end
+
+  local root = project_root(config)
+  local candidates = {}
+  if root and root ~= "" then
+    table.insert(candidates, vim.fs.normalize(root .. "/" .. discovery.port_file))
+  end
+
+  local start = current_buffer_dir()
+  local found = vim.fs.find(discovery.port_file, {
+    path = start,
+    upward = true,
+    stop = vim.loop.os_homedir(),
+  })[1]
+  if found then
+    found = vim.fs.normalize(found)
+    local seen = false
+    for _, candidate in ipairs(candidates) do
+      if candidate == found then
+        seen = true
+        break
+      end
+    end
+    if not seen then
+      table.insert(candidates, found)
+    end
+  end
+
+  for _, path in ipairs(candidates) do
+    if vim.fn.filereadable(path) == 1 then
+      local lines = vim.fn.readfile(path, "", 1)
+      local raw_port = trim(lines[1] or "")
+      local port = tonumber(raw_port)
+      if port and port > 0 and port <= 65535 then
+        return {
+          host = discovery.host,
+          port = math.floor(port),
+          path = path,
+        }
+      end
+    end
+  end
+
+  return nil
+end
+
 local append_eval_result
 
 function M.set_notifier(fn)
@@ -317,11 +653,183 @@ local function reset_request_state()
   state.stderr_partial = ""
   state.request_seq = 0
   state.pending = {}
+  state.deferred_requests = {}
+  state.session_id = nil
 end
 
 local function next_request_id()
   state.request_seq = state.request_seq + 1
   return tostring(state.request_seq)
+end
+
+local function append_prefixed_chunks(prefix, text)
+  if type(text) ~= "string" or text == "" then
+    return
+  end
+  local lines = {}
+  for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
+    table.insert(lines, prefix .. line)
+  end
+  append_lines(lines)
+end
+
+local function flush_server_deferred_requests(config)
+  if state.protocol ~= "server_json" or not state.session_id then
+    return
+  end
+  local queued = state.deferred_requests
+  state.deferred_requests = {}
+  for _, item in ipairs(queued) do
+    local request_id = next_request_id()
+    state.pending[request_id] = {
+      kind = "server_eval",
+      label = item.label,
+      payload = item.payload,
+      annotation_ctx = item.annotation_ctx,
+      output = {},
+    }
+    local request = vim.json.encode({
+      id = request_id,
+      op = "eval",
+      session = state.session_id,
+      code = item.payload,
+      mode = item.mode,
+    })
+    local sent = vim.fn.chansend(state.job_id, request .. "\n")
+    if sent == 0 then
+      state.pending[request_id] = nil
+      append_lines({
+        string.format(">> %s", item.label),
+        item.payload,
+        "!! failed to send request to omni repl server",
+      })
+    end
+  end
+end
+
+local function handle_server_message(decoded)
+  local event = decoded.event
+  local request_id = decoded.id
+  local pending = request_id and state.pending[request_id] or nil
+
+  if event == "session" and pending and pending.kind == "clone" then
+    pending.session_id = decoded.session
+    return
+  end
+
+  if event == "out" or event == "err" then
+    if pending and pending.kind == "server_eval" then
+      local prefix = event == "err" and "stderr| " or "stdout| "
+      local text = tostring(decoded.text or "")
+      if text ~= "" then
+        for _, line in ipairs(vim.split(text, "\n", { plain = true })) do
+          table.insert(pending.output, prefix .. strip_ansi(line))
+        end
+      end
+      return
+    end
+    append_prefixed_chunks(event == "err" and "stderr| " or "stdout| ", strip_ansi(tostring(decoded.text or "")))
+    return
+  end
+
+  if event == "value" and pending and pending.kind == "server_eval" then
+    pending.result = { ok = true, value = decoded.value }
+    return
+  end
+
+  if event == "interrupted" and pending and pending.kind == "server_eval" then
+    state.pending[request_id] = nil
+    local result = {
+      ok = false,
+      error = {
+        message = "evaluation interrupted",
+      },
+    }
+    if #pending.output > 0 then
+      append_lines(pending.output)
+    end
+    append_eval_result((pending.annotation_ctx and pending.annotation_ctx.config) or nil,
+      pending.label,
+      pending.payload,
+      result,
+      pending.annotation_ctx)
+    return
+  end
+
+  if event == "error" and pending and pending.kind == "server_eval" then
+    state.pending[request_id] = nil
+    local error_info = decoded.error or {}
+    local result = {
+      ok = false,
+      error = {
+        message = error_info.message or "unknown evaluation error",
+        range = error_info.range,
+      },
+    }
+    if #pending.output > 0 then
+      append_lines(pending.output)
+    end
+    append_eval_result((pending.annotation_ctx and pending.annotation_ctx.config) or nil,
+      pending.label,
+      pending.payload,
+      result,
+      pending.annotation_ctx)
+    return
+  end
+
+  if event == "done" and pending and pending.kind == "clone" then
+    state.pending[request_id] = nil
+    state.session_id = pending.session_id
+    if state.session_id then
+      append_lines({ string.format("[omni repl] connected to tcp server session %s", state.session_id) })
+      flush_server_deferred_requests(pending.config)
+    else
+      append_lines({ "!! omni repl server did not return a session id" })
+    end
+    return
+  end
+
+  if event == "done" and pending and pending.kind == "server_eval" then
+    state.pending[request_id] = nil
+    local result = pending.result or { ok = true, value = "#<void>" }
+    if #pending.output > 0 then
+      append_lines(pending.output)
+    end
+    append_eval_result((pending.annotation_ctx and pending.annotation_ctx.config) or nil,
+      pending.label,
+      pending.payload,
+      result,
+      pending.annotation_ctx)
+    return
+  end
+
+  if event == "error" then
+    local error_info = decoded.error or {}
+    local message = error_info.message or "unknown repl server error"
+    append_lines({ string.format("!! %s", message) })
+    if request_id and pending then
+      state.pending[request_id] = nil
+    end
+    return
+  end
+end
+
+local function handle_legacy_json_message(decoded, line)
+  local request_id = decoded.id
+  local pending = request_id and state.pending[request_id] or nil
+  if pending then
+    state.pending[request_id] = nil
+    append_eval_result((pending.annotation_ctx and pending.annotation_ctx.config) or nil,
+      pending.label,
+      pending.payload,
+      decoded,
+      pending.annotation_ctx)
+    return
+  end
+
+  local error_info = decoded.error or {}
+  local message = error_info.message or "unknown repl error"
+  append_lines({ string.format("!! %s", message) })
 end
 
 local function handle_json_message(line)
@@ -331,17 +839,13 @@ local function handle_json_message(line)
     return
   end
 
-  local request_id = decoded.id
-  local pending = request_id and state.pending[request_id] or nil
-  if pending then
-    state.pending[request_id] = nil
-    append_eval_result(pending.label, pending.payload, decoded, pending.annotation_ctx)
+  if state.protocol == "server_json" then
+    handle_server_message(decoded)
     return
   end
 
-  local error_info = decoded.error or {}
-  local message = error_info.message or "unknown repl error"
-  append_lines({ string.format("!! %s", message) })
+  flush_partial("stderr", "stderr| ")
+  handle_legacy_json_message(decoded, line)
 end
 
 local function handle_json_stream(data)
@@ -371,13 +875,22 @@ local function handle_json_stream(data)
   state.stdout_partial = partial
 end
 
-function M.start(config)
-  if state.job_id and vim.fn.jobwait({ state.job_id }, 0)[1] == -1 then
+function M.start(config, opts)
+  opts = opts or {}
+  local restore_win = opts.focus == false and vim.api.nvim_get_current_win() or nil
+
+  if state.job_id and (state.channel_kind ~= "job" or vim.fn.jobwait({ state.job_id }, 0)[1] == -1) then
     M.open_output(config)
+    if restore_win and vim.api.nvim_win_is_valid(restore_win) then
+      vim.api.nvim_set_current_win(restore_win)
+    end
     return state.job_id
   end
 
   M.open_output(config)
+  if restore_win and vim.api.nvim_win_is_valid(restore_win) then
+    vim.api.nvim_set_current_win(restore_win)
+  end
   append_lines({
     repl_mode(config) == "json"
       and "[omni repl] starting structured session..."
@@ -385,6 +898,58 @@ function M.start(config)
   })
 
   reset_request_state()
+
+  local endpoint = repl_mode(config) == "json" and discover_tcp_endpoint(config) or nil
+  if endpoint then
+    local channel_id = vim.fn.sockconnect("tcp", string.format("%s:%d", endpoint.host, endpoint.port), {
+      rpc = false,
+      on_data = function(_, data)
+        vim.schedule(function()
+          if data and #data == 1 and data[1] == "" then
+            if state.stdout_partial ~= "" then
+              handle_json_message(state.stdout_partial)
+              state.stdout_partial = ""
+            end
+            append_lines({ string.format("[omni repl] tcp server disconnected (%s:%d)", endpoint.host, endpoint.port) })
+            state.job_id = nil
+            state.channel_kind = nil
+            state.protocol = "legacy_json"
+            reset_request_state()
+            return
+          end
+          handle_json_stream(data)
+        end)
+      end,
+    })
+    if channel_id > 0 then
+      state.job_id = channel_id
+      state.channel_kind = "socket"
+      state.protocol = "server_json"
+      append_lines({ string.format("[omni repl] connecting to tcp server via %s", endpoint.path) })
+      local request_id = next_request_id()
+      state.pending[request_id] = {
+        kind = "clone",
+        config = config,
+      }
+      local request = vim.json.encode({
+        id = request_id,
+        op = "clone",
+      })
+      local sent = vim.fn.chansend(state.job_id, request .. "\n")
+      if sent == 0 then
+        state.pending[request_id] = nil
+        vim.fn.chanclose(state.job_id)
+        state.job_id = nil
+        state.channel_kind = nil
+        state.protocol = "legacy_json"
+        append_lines({ "[omni repl] failed to initialize tcp server session; falling back to local process" })
+      else
+        return channel_id
+      end
+    else
+      append_lines({ string.format("[omni repl] failed to connect to discovered tcp server %s:%d; falling back to local process", endpoint.host, endpoint.port) })
+    end
+  end
 
   local json_mode = repl_mode(config) == "json"
   local job_id = vim.fn.jobstart(shell_command(config), {
@@ -413,18 +978,22 @@ function M.start(config)
         else
           flush_partial("stdout")
         end
-        flush_partial("stderr")
+        flush_partial("stderr", "stderr| ")
         if json_mode then
           for _, pending in pairs(state.pending) do
-            append_lines({
-              string.format(">> %s", pending.label),
-              pending.payload,
-              string.format("!! omni structured repl exited before replying (code %d)", code),
-            })
+            if pending.label and pending.payload then
+              append_lines({
+                string.format(">> %s", pending.label),
+                pending.payload,
+                string.format("!! omni structured repl exited before replying (code %d)", code),
+              })
+            end
           end
         end
         append_lines({ string.format("[omni repl] exited with code %d", code) })
         state.job_id = nil
+        state.channel_kind = nil
+        state.protocol = "legacy_json"
         reset_request_state()
       end)
     end,
@@ -436,6 +1005,8 @@ function M.start(config)
   end
 
   state.job_id = job_id
+  state.channel_kind = "job"
+  state.protocol = "legacy_json"
   return job_id
 end
 
@@ -443,8 +1014,14 @@ function M.stop()
   if not state.job_id then
     return
   end
-  vim.fn.jobstop(state.job_id)
+  if state.channel_kind == "socket" then
+    vim.fn.chanclose(state.job_id)
+  else
+    vim.fn.jobstop(state.job_id)
+  end
   state.job_id = nil
+  state.channel_kind = nil
+  state.protocol = "legacy_json"
   reset_request_state()
 end
 
@@ -453,14 +1030,23 @@ function M.restart(config)
   return M.start(config)
 end
 
-append_eval_result = function(label, payload, result, annotation_ctx)
+append_eval_result = function(config, label, payload, result, annotation_ctx)
   local lines = {
     string.format(">> %s", label),
     payload,
   }
 
   if result.ok then
-    table.insert(lines, string.format("=> %s", result.value or "nil"))
+    local display = format_eval_value(config, result.value)
+    local formatted_lines = vim.split(display, "\n", { plain = true })
+    if #formatted_lines <= 1 then
+      table.insert(lines, string.format("=> %s", display))
+    else
+      table.insert(lines, "=>")
+      for _, line in ipairs(formatted_lines) do
+        table.insert(lines, line)
+      end
+    end
   else
     local error_info = result.error or {}
     local message = error_info.message or "unknown evaluation error"
@@ -492,7 +1078,13 @@ local function eval_once(config, text, label, annotation_ctx)
   if result.code == 0 or result.code == 1 then
     local ok, decoded = pcall(vim.json.decode, result.stdout)
     if ok and type(decoded) == "table" then
-      append_eval_result(label, payload, decoded, annotation_ctx)
+      local stderr = trim(result.stderr or "")
+      if stderr ~= "" then
+        for _, line in ipairs(vim.split(stderr, "\n", { plain = true, trimempty = true })) do
+          append_lines({ string.format("stderr| %s", strip_ansi(line)) })
+        end
+      end
+      append_eval_result(config, label, payload, decoded, annotation_ctx)
       return decoded.ok == true
     end
   end
@@ -528,9 +1120,50 @@ local function send_text(config, text, label, mode_override, annotation_ctx)
     end
   end
 
+  if state.protocol == "server_json" then
+    if not state.session_id then
+      table.insert(state.deferred_requests, {
+        label = label,
+        payload = payload,
+        annotation_ctx = annotation_ctx,
+        mode = mode_override or (label == "buffer" and "program" or "expr"),
+      })
+      append_lines({ "[omni repl] queued request until tcp server session is ready" })
+      return
+    end
+
+    local request_id = next_request_id()
+    state.pending[request_id] = {
+      kind = "server_eval",
+      label = label,
+      payload = payload,
+      annotation_ctx = annotation_ctx,
+      output = {},
+    }
+    local mode = mode_override or (label == "buffer" and "program" or "expr")
+    local request = vim.json.encode({
+      id = request_id,
+      op = "eval",
+      session = state.session_id,
+      code = payload,
+      mode = mode,
+    })
+    local sent = vim.fn.chansend(state.job_id, request .. "\n")
+    if sent == 0 then
+      state.pending[request_id] = nil
+      append_lines({
+        string.format(">> %s", label),
+        payload,
+        "!! failed to send request to omni repl server",
+      })
+    end
+    return
+  end
+
   if repl_mode(config) == "json" then
     local request_id = next_request_id()
     state.pending[request_id] = {
+      kind = "legacy_eval",
       label = label,
       payload = payload,
       annotation_ctx = annotation_ctx,

@@ -104,7 +104,7 @@ Current actionable count: 0
 - [x] Prioritize split candidates by size and hot-path relevance (`schema.c3`, `eval_dispatch_types.c3`, `scheduler_offload_worker.c3`).
 - [x] Investigate/fix bounded `OMNI_LISP_TEST_SLICE=deduce` crash/hang on the worker-scratch recursive-delta lane (current traced run stalls before worker-scratch markers), then re-check `deduce parallel worker-scratch component pass computes serialized recursive deltas`.
 - [x] Run targeted validation for the `deduce_why_result` split after the deduce worker-scratch crash/blocker is resolved.
-- [x] Rename legacy names so they are visible and intentional (`memory-soak`/`syntax` aliases if still used).
+- [x] Rename old names so they are visible and intentional (`memory-soak`/`syntax` aliases if still used).
 - [x] Investigate/fix the remaining unfiltered `OMNI_LISP_TEST_SLICE=deduce` crash/hang starting at `deduce rule-derived reference heads validate against final recursive component snapshot`, then isolate it with a narrow validation slice.
 - [x] Document the minimum required container path for boundary/lifetime changes versus allocator-benchmark work.
 - [x] Stop implying that memory ownership tests are required for syntax/compiler-only changes in contributor docs.

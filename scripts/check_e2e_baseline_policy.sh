@@ -100,13 +100,13 @@ if [[ -f build/e2e_diff.txt ]]; then
   if (( ${#manifest_keys[@]} == 0 )); then
     fail "build/e2e_diff.txt exists but ${manifest} is empty; expected a fully clean e2e baseline"
   elif cmp -s build/e2e_diff.txt "$manifest"; then
-    echo "OK: build/e2e_diff.txt matches the tracked legacy manifest."
+    echo "OK: build/e2e_diff.txt matches the tracked baseline manifest."
   else
     fail "build/e2e_diff.txt exists but does not match ${manifest}"
   fi
 else
   if (( ${#manifest_keys[@]} == 0 )); then
-    echo "OK: e2e baseline policy is clean; no tracked legacy diff rows remain."
+    echo "OK: e2e baseline policy is clean; no tracked baseline diff rows remain."
   else
     echo "OK: manifest and ownership policy are internally consistent."
   fi
