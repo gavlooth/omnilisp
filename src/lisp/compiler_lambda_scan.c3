@@ -10,6 +10,7 @@ import main;
  * Scan expression tree for lambdas and register them.
  */
 fn void Compiler.scan_lambdas(Compiler* self, Expr* expr) {
+    if (self.has_error) return;
     List{SymbolId} empty;
     self.scan_lambdas_with_scope(expr, &empty);
     empty.free();
@@ -132,6 +133,7 @@ fn bool Compiler.scan_lambdas_module_expr(Compiler* self, Expr* expr) {
 }
 
 fn bool Compiler.scan_lambdas_with_scope(Compiler* self, Expr* expr, List{SymbolId}* enclosing_bound) {
+    if (self.has_error) return false;
     if (expr == null) return false;
     switch (expr.tag) {
         case E_LAMBDA: return self.scan_lambdas_lambda(expr, enclosing_bound);

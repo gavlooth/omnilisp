@@ -313,7 +313,10 @@ fn void repl_eval_buffer(void* rx, char[8192]* buf, usz* buf_len, Interp* interp
     runtime_gc_between_top_level_runs();
 
     char[] input = (*buf)[:*buf_len];
-    g_interrupted = false;
+    interp_sigint_bind(interp);
+    defer interp_sigint_unbind(interp);
+    // Drop stale Ctrl+C presses that happened outside active eval.
+    interp_interrupt_clear(interp);
     EvalResult r = repl_eval_line(input, interp);
     repl_print_eval_outcome(r, interp, ansi_red, ansi_green, ansi_reset);
     *buf_len = 0;
@@ -375,7 +378,7 @@ fn bool repl_step(
 
 fn void repl(Interp* interp) {
     // Install SIGINT handler so Ctrl+C interrupts eval instead of killing process
-    signal(SIGINT_VAL, &sigint_handler);
+    interp_sigint_install_handler();
 
     char* history_file = ".omni_history";
     void* rx = null;

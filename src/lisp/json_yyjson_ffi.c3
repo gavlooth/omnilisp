@@ -6,6 +6,8 @@ module lisp;
 
 alias YyjsonDoc = void;
 alias YyjsonVal = void;
+alias YyjsonArrIter = void;
+alias YyjsonObjIter = void;
 alias YyjsonMutDoc = void;
 alias YyjsonMutVal = void;
 
@@ -34,11 +36,15 @@ extern fn int omni_yyjson_get_bool(YyjsonVal* val) @extern("omni_yyjson_get_bool
 
 // Array/Object
 extern fn usz omni_yyjson_arr_size(YyjsonVal* arr) @extern("omni_yyjson_arr_size");
-extern fn YyjsonVal* omni_yyjson_arr_get_first(YyjsonVal* arr) @extern("omni_yyjson_arr_get_first");
+extern fn YyjsonArrIter* omni_yyjson_arr_iter_new(YyjsonVal* arr) @extern("omni_yyjson_arr_iter_new");
+extern fn void omni_yyjson_arr_iter_free(YyjsonArrIter* iter) @extern("omni_yyjson_arr_iter_free");
+extern fn YyjsonVal* omni_yyjson_arr_iter_next(YyjsonArrIter* iter) @extern("omni_yyjson_arr_iter_next");
 extern fn usz omni_yyjson_obj_size(YyjsonVal* obj) @extern("omni_yyjson_obj_size");
 extern fn YyjsonVal* omni_yyjson_obj_getn(YyjsonVal* obj, char* key, usz len) @extern("omni_yyjson_obj_getn");
-extern fn YyjsonVal* omni_yyjson_obj_get_first(YyjsonVal* obj) @extern("omni_yyjson_obj_get_first");
-extern fn YyjsonVal* omni_yyjson_next(YyjsonVal* val) @extern("omni_yyjson_next");
+extern fn YyjsonObjIter* omni_yyjson_obj_iter_new(YyjsonVal* obj) @extern("omni_yyjson_obj_iter_new");
+extern fn void omni_yyjson_obj_iter_free(YyjsonObjIter* iter) @extern("omni_yyjson_obj_iter_free");
+extern fn YyjsonVal* omni_yyjson_obj_iter_next(YyjsonObjIter* iter) @extern("omni_yyjson_obj_iter_next");
+extern fn YyjsonVal* omni_yyjson_obj_iter_get_val(YyjsonVal* key) @extern("omni_yyjson_obj_iter_get_val");
 
 // Mutable API (for json-emit)
 extern fn YyjsonMutDoc* omni_yyjson_mut_doc_new() @extern("omni_yyjson_mut_doc_new");
@@ -49,9 +55,9 @@ extern fn YyjsonMutVal* omni_yyjson_mut_sint(YyjsonMutDoc* doc, long val) @exter
 extern fn YyjsonMutVal* omni_yyjson_mut_real(YyjsonMutDoc* doc, double val) @extern("omni_yyjson_mut_real");
 extern fn YyjsonMutVal* omni_yyjson_mut_strn(YyjsonMutDoc* doc, char* str, usz len) @extern("omni_yyjson_mut_strn");
 extern fn YyjsonMutVal* omni_yyjson_mut_arr(YyjsonMutDoc* doc) @extern("omni_yyjson_mut_arr");
-extern fn void omni_yyjson_mut_arr_append(YyjsonMutVal* arr, YyjsonMutVal* val) @extern("omni_yyjson_mut_arr_append");
+extern fn bool omni_yyjson_mut_arr_append(YyjsonMutVal* arr, YyjsonMutVal* val) @extern("omni_yyjson_mut_arr_append");
 extern fn YyjsonMutVal* omni_yyjson_mut_obj(YyjsonMutDoc* doc) @extern("omni_yyjson_mut_obj");
-extern fn void omni_yyjson_mut_obj_add(YyjsonMutVal* obj, YyjsonMutVal* key, YyjsonMutVal* val) @extern("omni_yyjson_mut_obj_add");
+extern fn bool omni_yyjson_mut_obj_add(YyjsonMutVal* obj, YyjsonMutVal* key, YyjsonMutVal* val) @extern("omni_yyjson_mut_obj_add");
 extern fn void omni_yyjson_mut_doc_set_root(YyjsonMutDoc* doc, YyjsonMutVal* root) @extern("omni_yyjson_mut_doc_set_root");
 extern fn char* omni_yyjson_mut_write(YyjsonMutDoc* doc, usz* len) @extern("omni_yyjson_mut_write");
 extern fn char* omni_yyjson_mut_write_pretty(YyjsonMutDoc* doc, usz* len) @extern("omni_yyjson_mut_write_pretty");

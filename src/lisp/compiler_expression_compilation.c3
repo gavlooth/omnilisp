@@ -1,6 +1,5 @@
 module lisp;
 
-import std::io;
 import std::collections::list;
 import main;
 // =============================================================================
@@ -35,8 +34,7 @@ fn void Compiler.compile_expr(Compiler* self, Expr* expr) {
             self.compile_path(expr);
 
         default:
-            io::printfn("WARNING: compiler: unsupported expr tag %d", expr.tag.ordinal);
-            self.emit("aot::make_nil() /* WARNING: unsupported expr type */");
+            self.set_unsupported_expr_error(expr.tag);
+            self.emit("aot::make_nil()");
     }
 }
-

@@ -38,6 +38,19 @@ fn bool cli_arg_starts_with_dash(char* arg) @inline {
     return arg != null && arg[0] == '-';
 }
 
+fn char* cli_first_mode_arg(int argc, char** argv) @inline {
+    return argc > 1 ? argv[1] : null;
+}
+
+fn bool cli_first_arg_matches(int argc, char** argv, char[] f1, char[] f2 = "", char[] f3 = "") @inline {
+    char* arg = cli_first_mode_arg(argc, argv);
+    if (arg == null) return false;
+    if (str_eq(arg, f1)) return true;
+    if (f2.len > 0 && str_eq(arg, f2)) return true;
+    if (f3.len > 0 && str_eq(arg, f3)) return true;
+    return false;
+}
+
 fn char* find_unexpected_mode_arg(int argc, char** argv, int mode_idx, bool allow_json = false) {
     for (int i = mode_idx + 1; i < argc; i++) {
         if (allow_json && str_eq(argv[i], "--json")) continue;

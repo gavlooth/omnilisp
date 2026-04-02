@@ -49,7 +49,7 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 - Multi-shot handler continuations are explicit with `with-continuation`.
 - Implicit continuation capture in handler clauses is removed; nested clause forms such as `((tag k arg) body)` must hard-fail.
 - `with-handlers` helper indirection in stdlib was removed in favor of explicit composition utilities.
-- Public examples and docs should use canonical `handle` semantics and `resolve`/`perform` primitives as the control surface.
+- Public examples and docs should use canonical `handle` semantics and `resolve`/`signal` primitives as the control surface.
 
 ### 4.1 Module-Qualified Effect Names
 

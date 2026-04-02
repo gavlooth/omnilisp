@@ -12,6 +12,12 @@ fn int run_script_mode(int argc, char** argv, int script_idx) {
     char* script_file = argv[script_idx];
     char[] script_path = script_file[:cstr_len(script_file)];
 
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (!classify_file_read_path(script_path, &read_kind)) {
+        print_script_read_error(script_path, read_kind);
+        return 1;
+    }
+
     // Read script file
     if (try source = io::file::load_temp((String)script_path)) {
         lisp::Interp* interp = create_runtime_interp();
@@ -39,7 +45,7 @@ fn int run_script_mode(int argc, char** argv, int script_idx) {
         print_script_result_if_non_nil(r, interp);
         return 0;
     } else {
-        print_script_read_error(script_file);
+        print_script_read_error(script_path, ENTRY_FILE_READ_GENERIC_FAILURE);
         return 1;
     }
 }

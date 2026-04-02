@@ -8,70 +8,74 @@ import main;
 // =============================================================================
 
 fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "=: expected 2 arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, "=", "2 arguments", args.len);
     bool eq = values_equal(args[0], args[1]);
     return eq ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_lt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "<: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "<: expected number arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, "<", "2 arguments", args.len);
+    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "<", 0, "number", args[0]);
+    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "<", 1, "number", args[1]);
     bool lt = to_double(args[0]) < to_double(args[1]);
     return lt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_gt(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, ">: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, ">: expected number arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, ">", "2 arguments", args.len);
+    if (!is_number(args[0])) return primitive_arg_type_raise(interp, ">", 0, "number", args[0]);
+    if (!is_number(args[1])) return primitive_arg_type_raise(interp, ">", 1, "number", args[1]);
     bool gt = to_double(args[0]) > to_double(args[1]);
     return gt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_le(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "<=: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, "<=: expected number arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, "<=", "2 arguments", args.len);
+    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "<=", 0, "number", args[0]);
+    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "<=", 1, "number", args[1]);
     bool le = to_double(args[0]) <= to_double(args[1]);
     return le ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_ge(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, ">=: expected 2 arguments");
-    if (!is_number(args[0]) || !is_number(args[1])) return raise_error(interp, ">=: expected number arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, ">=", "2 arguments", args.len);
+    if (!is_number(args[0])) return primitive_arg_type_raise(interp, ">=", 0, "number", args[0]);
+    if (!is_number(args[1])) return primitive_arg_type_raise(interp, ">=", 1, "number", args[1]);
     bool ge = to_double(args[0]) >= to_double(args[1]);
     return ge ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_cons(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "cons: expected 2 arguments");
+    if (args.len < 2) return primitive_arity_raise(interp, "cons", "2 arguments", args.len);
     return make_cons(interp, args[0], args[1]);
 }
 
 fn Value* prim_car(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "car: expected 1 argument");
-    if (!is_cons(args[0])) return raise_error(interp, "car: argument must be a pair");
+    if (args.len < 1) return primitive_arity_raise(interp, "car", "1 argument", args.len);
+    if (!is_cons(args[0])) return primitive_arg_type_raise(interp, "car", 0, "pair/list", args[0]);
     return args[0].cons_val.car;
 }
 
 fn Value* prim_cdr(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "cdr: expected 1 argument");
-    if (!is_cons(args[0])) return raise_error(interp, "cdr: argument must be a pair");
+    if (args.len < 1) return primitive_arity_raise(interp, "cdr", "1 argument", args.len);
+    if (!is_cons(args[0])) return primitive_arg_type_raise(interp, "cdr", 0, "pair/list", args[0]);
     return args[0].cons_val.cdr;
 }
 
 fn Value* prim_null(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "null?: expected 1 argument");
+    if (args.len < 1) return primitive_arity_raise(interp, "null?", "1 argument", args.len);
     bool is_null = is_nil(args[0]);
     return is_null ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_pair(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "pair?: expected 1 argument");
+    if (args.len < 1) return primitive_arity_raise(interp, "pair?", "1 argument", args.len);
     bool is_pair = is_cons(args[0]);
     return is_pair ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_not(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "not: expected 1 argument");
+    if (args.len < 1) return primitive_arity_raise(interp, "not", "1 argument", args.len);
     bool falsy = is_falsy(args[0], interp);
     return falsy ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -103,9 +107,9 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_reverse_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 1) return raise_error(interp, "__reverse-list: expected 1 argument");
+    if (args.len != 1) return primitive_arity_raise(interp, "__reverse-list", "1 argument", args.len);
     if (!is_cons(args[0]) && !is_nil(args[0])) {
-        return raise_error(interp, "__reverse-list: expected list");
+        return primitive_arg_type_raise(interp, "__reverse-list", 0, "list", args[0]);
     }
     return dispatch_reverse_list(args[0], interp);
 }
@@ -116,7 +120,7 @@ fn Value* prim_reverse_list(Value*[] args, Env* env, Interp* interp) {
  * (continuation? v) -> true if v is a continuation
  */
 fn Value* prim_is_continuation(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "continuation?: expected 1 argument");
+    if (args.len < 1) return primitive_arity_raise(interp, "continuation?", "1 argument", args.len);
     bool result = args[0].tag == CONTINUATION;
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }

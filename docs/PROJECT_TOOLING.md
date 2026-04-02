@@ -126,7 +126,7 @@ Canonical formatting rules to preserve across editor tooling:
   - keep head symbol first (`if`, `let`, `block`, `handle`, `match`, etc.),
   - single-line forms may stay single-line when concise,
   - multiline forms use one argument/form per line with aligned indentation.
-- vector/dict literals:
+- array/dictionary literals:
   - keep inline when short and legible,
   - for multiline literals, one element/entry per line,
   - align closing delimiter with the opening form indentation.
@@ -158,7 +158,7 @@ Implementation note:
   `filter` / `find` / `partition` / `sort-by` / `for-each`) aligned from the
   lambda's own opening column, keep multiline `Coroutine (lambda ...)` bodies
   on the current in-tree wrapper-lambda layout, keep multiline clause bodies
-  and inline dict/vector payload entries aligned from their opening delimiter
+  and inline dictionary/array payload entries aligned from their opening delimiter
   in current `match` arms and data literals, align wrapped generic call and
   pipeline continuations under their first argument, trim trailing whitespace,
   preserve blank lines, preserve original line-ending style, and avoid
@@ -220,6 +220,9 @@ Current behavior:
 - evaluates that file before the REPL loop starts,
 - resolves relative imports from the loaded file's directory,
 - works for standalone example trees that are not full Omni projects,
+- text-mode preload read failures preserve their concrete file-read cause
+  (`file not found`, `permission denied`, `invalid path`, or generic
+  `read failed`),
 - is also intentionally incompatible with `--json` for the same stdout/protocol
   reason as `--project`.
 
@@ -272,7 +275,7 @@ Current behavior:
   - keep multiline `Coroutine (lambda ...)` bodies on the current in-tree
     wrapper-lambda layout instead of flattening them toward generic lambda
     indentation,
-  - keep multiline clause bodies and inline dict/vector payload entries aligned
+  - keep multiline clause bodies and inline dict/array payload entries aligned
     from their opening delimiter in current `match` arms and data literals,
   - align wrapped generic call and pipeline continuation lines under their
     first argument,
@@ -361,7 +364,11 @@ Current behavior:
 - returns one JSON response per request line,
 - reserves stdout for protocol JSON only; user-facing `(print ...)`/`(display ...)`
   output is emitted on stderr instead,
-- exits cleanly on stdin EOF.
+- exits cleanly on stdin EOF,
+- emits one machine-readable startup error object on stdout when preflight fails
+  before request processing; incompatible preload flags currently return
+  `cli/usage` and interpreter bootstrap failure returns
+  `runtime/bootstrap-failed`.
 
 Current first-party usage:
 
@@ -392,11 +399,17 @@ Runs a local REPL server over a Unix domain socket using newline-delimited JSON.
 Current phase-1 behavior:
 
 - binds a filesystem Unix socket at the requested path,
+- emits one machine-readable startup error object on stdout when CLI/preflight
+  setup fails before any client attaches; invalid invocation uses `cli/usage`
+  and bind failure uses `io/listen-failed`,
 - accepts one JSON request per line and returns one or more JSON events,
 - supports explicit per-connection sessions via `clone` and `close`,
 - accepts `--project [dir]`; when present, each new `clone` session resolves
   the project root the same way as `omni --repl --project` and preloads
   `src/main.omni` before the session is announced,
+- when that per-clone preload fails, `clone` emits a structured `error`
+  event before the normal `session` / `done` announcement, and the session
+  stays alive for follow-up requests,
 - supports the current ops:
   - `describe`,
   - `clone`,
@@ -439,8 +452,12 @@ Runs the same JSON-line REPL server protocol directly on stdin/stdout.
 Current behavior:
 
 - uses the same request/event protocol as `--repl-server --socket`,
+- emits one machine-readable startup error object on stdout instead of
+  plaintext CLI usage text when preflight fails before request processing,
 - accepts `--project [dir]` with the same per-clone preload behavior as the
   socket and TCP transports,
+- emits a structured preload `error` event before the normal `session` /
+  `done` announcement when that per-clone preload fails,
 - supports the same current ops:
   - `describe`,
   - `clone`,
@@ -475,10 +492,15 @@ Runs the same JSON-line REPL server protocol over a TCP listener.
 Current behavior:
 
 - uses the same request/event protocol as the Unix-socket server,
+- emits one machine-readable startup error object on stdout when preflight
+  fails before any client attaches; listener and discovery-file startup
+  failures now use stable JSON error codes instead of plaintext text,
 - advertises `tcp` in the `describe` transport list,
 - supports the same current ops, including routed `stdin`,
 - accepts `--project [dir]`; each new `clone` session preloads the resolved
   project `src/main.omni` before emitting its `session` event,
+- emits a structured preload `error` event before the normal `session` /
+  `done` announcement when that per-clone preload fails,
 - writes `.omni-repl-port` in the current working directory after the TCP
   listener binds successfully; the file currently contains the bound port
   followed by a newline,
@@ -553,6 +575,8 @@ myproject/
     project.json        # C3 build config (generated — do not edit)
 ```
 
+`--init` now fails explicitly if a scaffold subpath already exists as a non-directory and rolls back the new project root if a later file write fails, so a failed run does not leave a half-created tree behind.
+
 The generated `src/main.omni` contains a hello-world program:
 
 ```lisp
@@ -585,9 +609,33 @@ omni --bind myproject/
 omni --bind                 # uses current directory
 ```
 
-Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`.
+Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`. The generator now fails closed on overlong header paths and on header sets that exceed the current fixed parse scratch limit, instead of truncating the path or emitting a partial module.
 
 **Requires:** libclang installed on the system (see [Dependencies](#dependencies) below).
+
+### `--build` — AOT Binary Build
+
+```bash
+omni --build input.omni -o output
+```
+
+Current shipped backend contract:
+
+- loads the input Omni source, lowers it to generated C3, and stages that
+  generated file under `build/_aot_temp_*.c3`,
+- invokes `c3c compile` against the checked-in runtime sources plus the staged
+  generated file,
+- excludes `src/lisp/tests*` from production AOT source collection,
+- links the runtime support libraries required by the shipped backend rather
+  than a tiny standalone-only subset: `omni_chelpers`, GNU Lightning, libffi,
+  libuv, replxx, utf8proc, libdeflate, yyjson, BearSSL, LMDB, `libdl`, and
+  `libm`.
+
+Practical consequence:
+
+- `--build` produces a standalone executable artifact, but it is not a
+  minimal-libc-only backend; it currently ships with the same runtime support
+  stack the generated program depends on inside this repo.
 
 ---
 
@@ -1034,7 +1082,7 @@ Running `--bind` produces one `.omni` file per dependency in `lib/ffi/`.
 
 - A `module` with an `export` list of all bound functions
 - A `_lib` handle opened via `ffi-open`
-- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`) and a body calling `ffi-call` with canonical type annotations
+- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, `^Void`) and a body calling `ffi-call` with canonical type annotations
 - C `snake_case` names are converted to Omni `kebab-case` (e.g., `string_length` becomes `string-length`)
 - Variadic C functions are skipped with a comment (Omni's FFI doesn't support variadic calls)
 
@@ -1071,9 +1119,10 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 
 ### Limitations
 
-- **Struct parameters/returns**: C functions that pass or return structs by value cannot be bound (Omni's `ffi-call` only handles scalars and pointers)
+- **Struct parameters/returns**: C functions that pass or return structs by value are rejected explicitly; `--bind` fails instead of emitting a pointer-coerced binding (Omni's `ffi-call` only handles scalars and pointers)
 - **Variadic functions**: Skipped automatically (e.g., `printf`)
 - **Function pointers as parameters**: Mapped as `'ptr`/`^Pointer` (callback registration requires manual wrappers)
+- **Unsupported parameter metadata allocation**: `--bind` now fails closed if it cannot allocate parameter descriptors instead of silently emitting malformed zero-argument wrappers
 - **Macros**: `#define` constants and macro-functions are not parsed (libclang only sees declarations)
 
 ---

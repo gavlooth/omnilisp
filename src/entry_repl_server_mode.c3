@@ -1,6 +1,5 @@
 module main;
 
-import std::io;
 import lisp;
 
 struct ReplServerModeOptions {
@@ -85,20 +84,19 @@ fn ReplServerModeOptions parse_repl_server_mode_options(int argc, char** argv, i
     return options;
 }
 
-fn int print_repl_server_usage() {
-    io::printn("Usage: omni --repl-server --socket <path> [--project [dir]]");
-    io::printn("       omni --repl-server --tcp <host> <port> [--project [dir]]");
-    io::printn("       omni --repl-server --stdio [--project [dir]]");
+fn int print_repl_server_usage_json() {
+    print_cli_usage_json("usage: omni --repl-server (--socket <path> | --tcp <host> <port> | --stdio) [--project [dir]]");
     return 1;
 }
 
 fn int run_repl_server_mode(int argc, char** argv, int repl_server_idx) {
     ReplServerModeOptions options = parse_repl_server_mode_options(argc, argv, repl_server_idx);
     if (options.unexpected != null) {
-        return print_unexpected_mode_arg("--repl-server", options.unexpected);
+        print_cli_unexpected_arg_json("--repl-server", options.unexpected);
+        return 1;
     }
     if (options.socket_path == null && !options.stdio_mode && !options.tcp_mode) {
-        return print_repl_server_usage();
+        return print_repl_server_usage_json();
     }
     if (options.stdio_mode) return lisp::repl_server_stdio(options.load_project, options.project_dir);
     if (options.tcp_mode) return lisp::repl_server_tcp(options.tcp_host, options.tcp_port, options.load_project, options.project_dir);

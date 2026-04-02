@@ -185,7 +185,7 @@ fn Value* prim_deflate(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return compression_type_raise(interp, "type/arity", "inflate: expected 1-2 arguments");
+    if (args.len < 1 || args.len > 2) return compression_type_raise(interp, "type/arity", "inflate: expected 1-2 arguments");
     // fault: lisp::EXPECTED_STRING
     if (!is_string(args[0])) return compression_type_raise(interp, "type/arg-mismatch", "inflate: expected string argument");
 
@@ -199,8 +199,15 @@ fn Value* prim_inflate(Value*[] args, Env* env, Interp* interp) {
 
     // If original size provided, use it directly
     usz try_size;
-    if (args.len >= 2 && is_int(args[1])) {
-        try_size = (usz)args[1].int_val;
+    if (args.len == 2) {
+        if (!is_int(args[1])) {
+            return compression_type_raise(interp, "type/arg-mismatch", "inflate: original-size must be an integer");
+        }
+        long requested = args[1].int_val;
+        if (requested <= 0) {
+            return compression_type_raise(interp, "type/arg-mismatch", "inflate: original-size must be > 0");
+        }
+        try_size = (usz)requested;
     } else {
         try_size = src.len * 4;
         if (try_size < 256) try_size = 256;

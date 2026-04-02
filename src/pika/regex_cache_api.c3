@@ -2,6 +2,7 @@ module pika;
 
 import std::core::mem;
 import std::io;
+import std::thread;
 
 const int REGEX_CACHE_INIT_CAP = 32;
 const int REGEX_CACHE_MAX_ENTRIES = 128;
@@ -22,8 +23,23 @@ usz g_regex_cache_evictions = 0;
 usz g_regex_fallback_uses = 0;
 usz g_regex_compiled_unusable_compile = 0;
 usz g_regex_compiled_unusable_cache = 0;
-char[256] g_regex_last_compile_error;
-bool g_regex_last_compile_error_set = false;
+tlocal char[256] g_regex_last_compile_error;
+tlocal bool g_regex_last_compile_error_set = false;
+thread::Mutex g_regex_cache_mu;
+thread::OnceFlag g_regex_cache_mu_once;
+
+fn void regex_cache_mu_init_once() {
+    g_regex_cache_mu.init()!!;
+}
+
+fn void regex_cache_lock() @inline {
+    g_regex_cache_mu_once.call(&regex_cache_mu_init_once);
+    g_regex_cache_mu.lock();
+}
+
+fn void regex_cache_unlock() @inline {
+    g_regex_cache_mu.unlock();
+}
 
 fn void regex_clear_last_compile_error() @inline {
     g_regex_last_compile_error_set = false;
@@ -70,6 +86,9 @@ fn void regex_cache_grow() {
 }
 
 fn void regex_cache_reset() {
+    regex_cache_lock();
+    defer regex_cache_unlock();
+
     for (int i = 0; i < g_regex_cache_len; i++) {
         if (g_regex_cache[i].pattern.len > 0) mem::free(g_regex_cache[i].pattern.ptr);
         regex_free(g_regex_cache[i].rx);
@@ -422,6 +441,9 @@ fn void regex_matches_push(RegexMatch[]* matches, int* count, int* cap, RegexMat
 }
 
 fn RegexMatch regex_search_compiled(char[] pattern, char[] input, bool* usable) {
+    regex_cache_lock();
+    defer regex_cache_unlock();
+
     *usable = false;
     CompiledRegex* rx = regex_get_compiled_cached(pattern);
     if (rx == null) return no_match();
@@ -446,6 +468,9 @@ fn RegexMatch regex_search_compiled(char[] pattern, char[] input, bool* usable) 
 }
 
 fn RegexMatch regex_fullmatch_compiled(char[] pattern, char[] input, bool* usable) {
+    regex_cache_lock();
+    defer regex_cache_unlock();
+
     *usable = false;
     CompiledRegex* rx = regex_get_compiled_cached(pattern);
     if (rx == null) return no_match();
@@ -465,6 +490,9 @@ fn RegexMatch regex_fullmatch_compiled(char[] pattern, char[] input, bool* usabl
 }
 
 fn RegexMatch[] regex_find_all_compiled(char[] pattern, char[] input, int* count, bool* usable) {
+    regex_cache_lock();
+    defer regex_cache_unlock();
+
     RegexMatch[] matches;
     int cap = 0;
     int match_count = 0;
@@ -515,7 +543,11 @@ fn RegexMatch regex_search(char[] pattern, char[] input) {
     regex_clear_last_compile_error();
     bool usable = false;
     RegexMatch m = regex_search_compiled(pattern, input, &usable);
-    if (!usable) g_regex_fallback_uses++;
+    if (!usable) {
+        regex_cache_lock();
+        g_regex_fallback_uses++;
+        regex_cache_unlock();
+    }
     return m;
 }
 
@@ -524,7 +556,11 @@ fn RegexMatch regex_fullmatch(char[] pattern, char[] input) {
     regex_clear_last_compile_error();
     bool usable = false;
     RegexMatch m = regex_fullmatch_compiled(pattern, input, &usable);
-    if (!usable) g_regex_fallback_uses++;
+    if (!usable) {
+        regex_cache_lock();
+        g_regex_fallback_uses++;
+        regex_cache_unlock();
+    }
     return m;
 }
 
@@ -533,6 +569,10 @@ fn RegexMatch[] regex_find_all(char[] pattern, char[] input, int* count) {
     regex_clear_last_compile_error();
     bool usable = false;
     RegexMatch[] matches = regex_find_all_compiled(pattern, input, count, &usable);
-    if (!usable) g_regex_fallback_uses++;
+    if (!usable) {
+        regex_cache_lock();
+        g_regex_fallback_uses++;
+        regex_cache_unlock();
+    }
     return matches;
 }

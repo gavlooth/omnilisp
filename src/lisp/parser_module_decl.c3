@@ -1,38 +1,80 @@
 module lisp;
 
-fn void parser_module_ensure_export_capacity(Parser* self, ExprModule* module_expr) @inline {
-    if (module_expr.export_count < module_expr.export_capacity) return;
+fn bool parser_module_ensure_export_capacity(Parser* self, ExprModule* module_expr) @inline {
+    if (module_expr.export_count < module_expr.export_capacity) return true;
+    if (module_expr.export_capacity == 0 || module_expr.exports == null) {
+        self.set_error("out of memory while growing module export list");
+        return false;
+    }
     usz new_cap = module_expr.export_capacity * 2;
+    if (new_cap <= module_expr.export_capacity) {
+        self.set_error("module export list is too large");
+        return false;
+    }
     SymbolId* new_exports = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
+    if (new_exports == null) {
+        self.set_error("out of memory while growing module export list");
+        return false;
+    }
     for (usz i = 0; i < module_expr.export_count; i++) {
         new_exports[i] = module_expr.exports[i];
     }
     module_expr.exports = new_exports;
     module_expr.export_capacity = new_cap;
+    return true;
 }
 
-fn void parser_module_ensure_body_capacity(Parser* self, ExprModule* module_expr) @inline {
-    if (module_expr.body_count < module_expr.body_capacity) return;
+fn bool parser_module_ensure_body_capacity(Parser* self, ExprModule* module_expr) @inline {
+    if (module_expr.body_count < module_expr.body_capacity) return true;
+    if (module_expr.body_capacity == 0 || module_expr.body == null) {
+        self.set_error("out of memory while growing module body");
+        return false;
+    }
     usz new_cap = module_expr.body_capacity * 2;
+    if (new_cap <= module_expr.body_capacity) {
+        self.set_error("module body is too large");
+        return false;
+    }
     Expr** new_body = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * new_cap);
+    if (new_body == null) {
+        self.set_error("out of memory while growing module body");
+        return false;
+    }
     for (usz i = 0; i < module_expr.body_count; i++) {
         new_body[i] = module_expr.body[i];
     }
     module_expr.body = new_body;
     module_expr.body_capacity = new_cap;
+    return true;
 }
 
 fn Expr* Parser.alloc_module_expr(Parser* self, SymbolId name) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) {
+        self.set_error("out of memory while creating module expression");
+        return null;
+    }
     e.tag = E_MODULE;
     e.module_expr = (ExprModule*)ast_arena_alloc(&self.interp.ast_arena, ExprModule.sizeof);
+    if (e.module_expr == null) {
+        self.set_error("out of memory while creating module expression");
+        return null;
+    }
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
     e.module_expr.export_capacity = 32;
     e.module_expr.exports = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * 32);
+    if (e.module_expr.exports == null) {
+        self.set_error("out of memory while allocating module export list");
+        return null;
+    }
     e.module_expr.body_count = 0;
     e.module_expr.body_capacity = 32;
     e.module_expr.body = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 32);
+    if (e.module_expr.body == null) {
+        self.set_error("out of memory while allocating module body");
+        return null;
+    }
     return e;
 }
 
@@ -52,17 +94,21 @@ fn bool Parser.parse_module_export_keyword(Parser* self) {
     return true;
 }
 
-fn void Parser.module_append_export(Parser* self, ExprModule* module_expr) {
-    parser_module_ensure_export_capacity(self, module_expr);
+fn bool Parser.module_append_export(Parser* self, ExprModule* module_expr) {
+    if (!parser_module_ensure_export_capacity(self, module_expr)) return false;
     module_expr.exports[module_expr.export_count] = self.get_current_symbol();
     module_expr.export_count++;
     self.lexer.advance();
+    return true;
 }
 
-fn void Parser.module_append_body_expr(Parser* self, ExprModule* module_expr) {
-    parser_module_ensure_body_capacity(self, module_expr);
-    module_expr.body[module_expr.body_count] = self.parse_expr();
+fn bool Parser.module_append_body_expr(Parser* self, ExprModule* module_expr) {
+    if (!parser_module_ensure_body_capacity(self, module_expr)) return false;
+    Expr* body_expr = self.parse_expr();
+    if (self.has_error || body_expr == null) return false;
+    module_expr.body[module_expr.body_count] = body_expr;
     module_expr.body_count++;
+    return true;
 }
 
 fn Expr* Parser.parse_module(Parser* self) {
@@ -75,20 +121,23 @@ fn Expr* Parser.parse_module(Parser* self) {
     self.lexer.advance();
 
     Expr* e = self.alloc_module_expr(name);
+    if (self.has_error || e == null) return null;
     ExprModule* module_expr = e.module_expr;
 
     // Parse (export sym1 sym2 ...) — required
     if (!self.parse_module_export_keyword()) return null;
     while (self.lexer.current.type == T_SYMBOL) {
-        self.module_append_export(module_expr);
+        if (!self.module_append_export(module_expr)) return null;
     }
     self.expect(T_RPAREN, ")");  // close export list
+    if (self.has_error) return null;
 
     // Parse remaining body expressions
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
-        self.module_append_body_expr(module_expr);
+        if (!self.module_append_body_expr(module_expr)) return null;
     }
 
     self.expect(T_RPAREN, ")");  // close module
+    if (self.has_error) return null;
     return e;
 }

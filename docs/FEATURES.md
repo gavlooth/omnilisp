@@ -230,7 +230,7 @@
 ```
 - Arrays are mutable dynamic arrays (contiguous memory)
 - Dicts are mutable hash maps with open-addressing and linear probing
-- Dictionary keys can be integers, strings, or symbols
+- Dictionary keys are value-typed; common stable key shapes include symbols, strings, and integers
 - `ref` returns nil for missing keys
 
 ### 1.18 `module` / `import` — Module System
@@ -448,7 +448,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 ### 5.8 File I/O (5)
 | Primitive | Arity | Description |
 |-----------|-------|-------------|
-| `read-file` | 1 | Read entire file as string |
+| `read-file` | 1 | Read entire file as string or raise a canonical I/O error |
 | `write-file` | 2 | Write string to file (returns `Void` on success) |
 | `file-exists?` | 1 | Test if file exists |
 | `read-lines` | 1 | Read file as list of lines |
@@ -458,7 +458,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 | Name | Value |
 |------|-------|
 | `true` | Symbol `true` |
-| `false` | Bound to `nil` |
+| `false` | Alias of `nil` |
 
 **Total: 129+ primitives + 2 constants** (includes math library, bitwise ops, sorting, introspection, type system, generic collection ops, and more not listed above)
 
@@ -479,6 +479,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
 - Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
+- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
 - `Nil` is the language-level empty/false value type; `Void` is a real builtin singleton value/type and FFI `^Void` returns map to it
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
@@ -527,7 +528,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 
 ### 6.3 What Omni Does NOT Have
 - **No call/cc** — uses delimited continuations instead
-- **No garbage collection** — uses scope-region memory with deterministic reclamation (arena-per-call + reference counting)
+- **No stop-the-world garbage collection** — uses deterministic scope-region ownership with dual-lane `TEMP`/`ESCAPE` memory
 - **No continuations across threads** — continuations are thread-local
 
 ### 6.4 Tail-Call Optimization
@@ -580,14 +581,13 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 - Linked-list environment frames (up to 256 bindings per frame)
 - Global environment searched after local
 
-### Memory — Arena-per-Call with RC Escape Hatch
-- **Scope regions**: Lexically-scoped bump arenas. Each function call, `let`, and `run()` gets its own `ScopeRegion` — a bump allocator (~3 instructions per allocation) with a linked-list destructor chain
-- **Deterministic release**: Scopes are freed at known program points (function return, let exit, run completion). No GC pauses
-- **Reference-counted closures**: When a closure escapes its scope (e.g., returned from a function), `copy_to_parent` creates a new Value wrapper sharing the `Closure*` via refcount. The Closure owns a standalone `env_scope` holding its captured environment. Freed when the last reference's destructor runs
-- **TCO scope recycling**: At each tail-call bounce, if the current scope has RC=1 (nothing escaped), the scope is swapped for a fresh one — all body temporaries freed per loop iteration (Perceus-style reuse analysis)
-- **Root scope**: Permanent scope for `define`'d values, primitives, and type instances. Never released
-- **AST allocation**: Expr and Pattern nodes use a dedicated `AstArena` lane — interpreter-lifetime, independent from runtime `ScopeRegion` ownership
-- Hash map entries use `mem::malloc` for contiguous array indexing
+### Memory — Dual-Lane Scope Regions
+- **Scope regions**: Each function call, `let`, and `run()` gets a deterministic `ScopeRegion` owner with separate `TEMP` and `ESCAPE` lanes.
+- **Deterministic release**: `TEMP` allocations are reclaimed at known boundary points; committed `ESCAPE` allocations are retained/released under the same region-centric ownership model. No stop-the-world GC is involved.
+- **Boundary-first ownership**: escape/copy decisions are handled at return, env-copy, and mutation boundaries; language values stay owned by regions rather than by per-type RC lifetimes.
+- **TCO scope recycling**: tail-position evaluation can reset the current scope's `TEMP` lane when the scope is uniquely retained and no surviving boundary state blocks reuse.
+- **Root scope**: permanent scope for `define`d values, primitives, and type instances.
+- **AST allocation**: Expr and Pattern nodes use a dedicated interpreter-lived `AstArena`, separate from runtime value ownership.
 
 ---
 
@@ -660,8 +660,12 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 ### 11b. AOT Compilation
 
 - `omni --build input.omni -o output` — compiles Omni to C3 and then to a standalone binary
-- Generates 5 files: main.c3, continuation.c3, ghost_index.c3, runtime.c3, generated.c3
-- AOT binaries link only libc/libm/libdl (no GNU Lightning, no readline)
+- Emits one generated temp source under `build/_aot_temp_*.c3`, then invokes `c3c compile`
+  against the checked-in runtime sources plus that generated file
+- The AOT backend excludes `src/lisp/tests*` from production builds
+- AOT binaries currently link the same runtime support stack the generated program uses,
+  including `omni_chelpers`, GNU Lightning, libffi, libuv, replxx, utf8proc,
+  libdeflate, yyjson, BearSSL, LMDB, `libdl`, and `libm`
 - All 8 expression types (checkpoint/capture/handle/signal/quasiquote/defmacro/module/import) compile natively
 - Runtime bridge (`runtime_bridge.c3`) provides interpreter-to-runtime conversion
 
@@ -675,7 +679,7 @@ Transpiler (`src/lisp/compiler.c3`) generates C3 source code:
 omni --init myproject
 ```
 
-Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, and `build/` (containing the generated `project.json` for C3).
+Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, and `build/` (containing the generated `project.json` for C3). Failed scaffold runs now roll back the fresh project root instead of leaving a half-created tree behind, and inner non-directory collisions fail explicitly.
 
 ### 12.2 `--bind` — Auto-Generate FFI Bindings
 

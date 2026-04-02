@@ -5,10 +5,27 @@ import std::io;
 import main;
 
 /**
- * (read-file path) -> string contents or nil on error
+ * (read-file path) -> string contents, or raise a canonical I/O error
  */
-fn Value* io_file_raise(Interp* interp, char[] code, char[] message) @inline {
-    return raise_error_with_payload_names(interp, "io", code, message, null);
+fn Value* io_file_raise(Interp* interp, char[] code, char[] message, Value* data = null) @inline {
+    return raise_error_with_payload_names(interp, "io", code, message, data);
+}
+
+fn Value* io_file_wrap_runtime_error(
+    Interp* interp,
+    Value* runtime_err,
+    char[] code,
+    char[] message
+) {
+    Value* cause_data = runtime_err;
+    if (interp.flags.raise_pending) {
+        if (interp.raise_payload != null) cause_data = interp.raise_payload;
+        interp.flags.raise_pending = false;
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
+        interp.raise_msg[0] = 0;
+    }
+    return io_file_raise(interp, code, message, cause_data);
 }
 
 fn Value* io_file_require_async_runtime(Interp* interp, char[] op_name, char[] fiber_code, char[] loop_code) {
@@ -185,7 +202,9 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     if (work.shared == null) return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
 
     Value* out = io_run_fiber_offload(&work, interp);
-    if (out != null && out.tag == ERROR) return out;
+    if (out != null && out.tag == ERROR) {
+        return io_file_wrap_runtime_error(interp, out, "io/write-file-failed", "write-file: write failed");
+    }
     if (is_int(out) && out.int_val >= 0) return make_void(interp);
     return io_file_raise(interp, "io/write-file-failed", "write-file: write failed");
 }

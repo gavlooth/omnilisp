@@ -20,6 +20,10 @@ fn void Lexer.scan_symbol(Lexer* self) {
         self.next_char();
     }
     usz len = self.pos - start;
+    if (len == usz.max) {
+        self.set_error_text("symbol literal too long");
+        return;
+    }
     if (!self.ensure_text_capacity(len + 1)) {
         self.set_error_text("out of memory while lexing symbol");
         return;
@@ -52,11 +56,7 @@ fn void Lexer.scan_number(Lexer* self) {
            self.source[self.pos] >= '0' && self.source[self.pos] <= '9') {
         long digit = (long)(self.source[self.pos] - '0');
         if (val > (long.max - digit) / 10) {
-            self.current.type = T_ERROR;
-            char[] err = "integer literal overflow";
-            for (usz i = 0; i < err.len; i++) self.current.text[i] = err[i];
-            self.current.text[err.len] = 0;
-            self.current.text_len = err.len;
+            self.set_error_text("integer literal overflow");
             return;
         }
         val = val * 10 + digit;

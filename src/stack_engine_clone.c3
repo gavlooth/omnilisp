@@ -74,21 +74,9 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
 
     // Duplicate defer metadata and apply semantic clone hooks.
     if (source.defer_count > 0) {
-        if (!stack_ctx_defer_reserve(clone, source.defer_count)) {
+        if (!stack_ctx_entry_clone_all(&source.defer_inline[0], source.defer_heap, source.defer_count, &clone.defer_inline[0], &clone.defer_heap, &clone.defer_capacity, STACK_CTX_DEFER_INLINE_CAP, true)) {
             stack_ctx_destroy(clone, pool);
             return null;
-        }
-        for (usz i = 0; i < source.defer_count; i++) {
-            StackCtxDeferEntry* src_e = stack_ctx_defer_entry_at(source, i);
-            StackCtxDeferEntry* dst_e = stack_ctx_defer_entry_at(clone, i);
-            dst_e.destroy_fn = src_e.destroy_fn;
-            dst_e.clone_fn = src_e.clone_fn;
-            dst_e.arg = src_e.arg;
-            g_stack_defer_entries_cloned++;
-            if (dst_e.clone_fn != null) {
-                dst_e.clone_fn(dst_e.arg);
-                g_stack_defer_clone_callback_count++;
-            }
         }
         clone.defer_count = source.defer_count;
     }

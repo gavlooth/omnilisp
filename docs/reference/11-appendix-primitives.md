@@ -239,8 +239,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | Name | Arity | Description |
 |------|-------|-------------|
 | `Array` | variadic | Canonical array constructor / conversion surface |
-| `Dictionary` | variadic | Create dictionary |
-| `Dictionary` | variadic | Public shorthand alias for `Dictionary` |
+| `Dictionary` | variadic | Canonical dictionary constructor |
+| `Dict` | variadic | Allowed shorthand alias for `Dictionary` |
 | `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |

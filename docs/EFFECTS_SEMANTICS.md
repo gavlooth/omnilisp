@@ -250,7 +250,7 @@ See `docs/ARCHITECTURE.md` and `docs/ERROR_MODEL.md` for migration status.
 | EFX-1 | `src/lisp/tests_advanced_core_unicode_groups.c3` `signal/resolve basic` (`run_advanced_effect_continuation_tests`), `src/lisp/tests_tests.c3` `handle ^strict: catches unhandled` |
 | EFX-2 | `src/lisp/tests_advanced_io_effect_ffi_groups.c3` `effect wrong type int`, `effect wrong type str`, `effect undeclared canonical`, `io/read-file wrong type` (`run_advanced_io_typed_effect_tests`) |
 | EFX-3 | `src/lisp/tests_advanced_core_unicode_groups.c3` `resolve outside handler`; `with-continuation basic`; `with-continuation single` |
-| EFX-4 | `src/lisp/tests_advanced_core_unicode_groups.c3` `signal abort`; `multi-perform abort` |
+| EFX-4 | `src/lisp/tests_advanced_core_unicode_groups.c3` `signal abort`; `multi-perform abort` (legacy test name covering multi-signal abort semantics) |
 | EFX-5 | `src/lisp/tests_tests.c3` `unhandled effect: shows tag name`; `unhandled effect: shows arg type`; `handle ^strict: catches unhandled` |
 | EFX-6 | `src/lisp/tests_tests.c3` `capture aborts`; `capture k resumes`; `checkpoint passthrough`; `src/lisp/tests_advanced_core_unicode_groups.c3` `multi-capture sum`, `multi-shot k twice`, `multi-shot replay set! in resumed segment`, `multi-shot replay deduce fact writes`, `multi-shot replay handled io effect` |
 | EFX-7 | `src/lisp/tests_tests.c3` `run_scheduler_wakeup_wraparound_boundary_tests`, `run_scheduler_wakeup_mixed_event_boundary_tests`, `run_scheduler_invalid_offload_wakeup_boundary_tests`, `run_scheduler_wakeup_full_payload_ownership_boundary_tests` |

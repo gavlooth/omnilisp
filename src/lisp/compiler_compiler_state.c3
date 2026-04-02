@@ -20,6 +20,9 @@ struct Compiler {
     usz         indent;          // Current indentation level
     usz         temp_counter;    // For generating unique temp names
     usz         lambda_counter;  // For generating lambda function names
+    bool        has_error;       // Hard compile failure encountered
+    char[]      error_message;   // First hard compile failure message
+    char[256]   error_storage;   // Backing storage for formatted compile errors
 
     // Track captured variables for closure generation
     List{SymbolId} current_captures;
@@ -89,4 +92,30 @@ struct LambdaDef {
     SymbolId*   params;          // All fixed params (heap-allocated)
     usz         param_count;     // Number of fixed params (for variadic)
     usz         param_capacity;
+}
+
+// Compiler allocation-failure seams (tests only).
+bool g_compiler_force_program_source_alloc_fail = false;
+bool g_compiler_force_compiled_modules_init_alloc_fail = false;
+bool g_compiler_force_module_registry_alloc_fail = false;
+bool g_compiler_force_module_exports_alloc_fail = false;
+bool g_compiler_force_compiled_modules_init_size_overflow = false;
+bool g_compiler_force_module_registry_growth_overflow = false;
+bool g_compiler_force_module_exports_size_overflow = false;
+bool g_compiler_force_lambda_capture_alloc_fail = false;
+bool g_compiler_force_lambda_param_alloc_fail = false;
+bool g_compiler_force_lambda_capture_growth_alloc_fail = false;
+bool g_compiler_force_lambda_capture_size_overflow = false;
+bool g_compiler_force_lambda_param_size_overflow = false;
+bool g_compiler_force_lambda_lookup_miss = false;
+bool g_compiler_force_lambda_emit_lookup_miss = false;
+
+fn bool compiler_checked_mul_usz(usz left, usz right, usz* out) @inline {
+    if (left == 0 || right == 0) {
+        *out = 0;
+        return true;
+    }
+    if (left > usz.max / right) return false;
+    *out = left * right;
+    return true;
 }

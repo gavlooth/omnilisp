@@ -7,18 +7,31 @@
 #include <bearssl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+static void omni_tls_set_last_errorf(const char *fmt, ...);
+void omni_tls_clear_last_error(void);
+const char *omni_tls_last_error(void);
+int omni_tls_client_last_error(void *client_ctx);
+const char *omni_tls_error_code_string(int err);
+
 /* Socket read callback for br_sslio_init */
 int omni_tls_sock_read(void *ctx, unsigned char *buf, size_t len) {
     int fd = *(int *)ctx;
+    omni_tls_clear_last_error();
     for (;;) {
         long rlen = read(fd, buf, len);
         if (rlen <= 0) {
             if (rlen < 0 && errno == EINTR) continue;
+            if (rlen < 0) {
+                omni_tls_set_last_errorf("socket read failed: %s", strerror(errno));
+            } else {
+                omni_tls_set_last_errorf("socket read failed: end of stream");
+            }
             return -1;
         }
         return (int)rlen;
@@ -28,10 +41,16 @@ int omni_tls_sock_read(void *ctx, unsigned char *buf, size_t len) {
 /* Socket write callback for br_sslio_init */
 int omni_tls_sock_write(void *ctx, const unsigned char *buf, size_t len) {
     int fd = *(int *)ctx;
+    omni_tls_clear_last_error();
     for (;;) {
         long wlen = write(fd, buf, len);
         if (wlen <= 0) {
             if (wlen < 0 && errno == EINTR) continue;
+            if (wlen < 0) {
+                omni_tls_set_last_errorf("socket write failed: %s", strerror(errno));
+            } else {
+                omni_tls_set_last_errorf("socket write failed: short write");
+            }
             return -1;
         }
         return (int)wlen;
@@ -55,6 +74,118 @@ typedef struct {
     br_x509_trust_anchor *anchors;
     size_t count;
 } omni_tls_trust_store;
+
+static pthread_mutex_t g_default_store_lock = PTHREAD_MUTEX_INITIALIZER;
+static omni_tls_trust_store *g_default_store = NULL;
+static __thread char g_omni_tls_last_error[256];
+static __thread char g_omni_tls_engine_error[128];
+
+void omni_tls_clear_last_error(void) {
+    g_omni_tls_last_error[0] = '\0';
+}
+
+const char *omni_tls_last_error(void) {
+    if (g_omni_tls_last_error[0] == '\0') return NULL;
+    return g_omni_tls_last_error;
+}
+
+static void omni_tls_set_last_errorf(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(g_omni_tls_last_error, sizeof(g_omni_tls_last_error), fmt, ap);
+    g_omni_tls_last_error[sizeof(g_omni_tls_last_error) - 1] = '\0';
+    va_end(ap);
+}
+
+int omni_tls_client_last_error(void *client_ctx) {
+    if (client_ctx == NULL) return BR_ERR_BAD_PARAM;
+    return br_ssl_engine_last_error((const br_ssl_engine_context *)client_ctx);
+}
+
+const char *omni_tls_error_code_string(int err) {
+    switch (err) {
+        case BR_ERR_OK:
+            return "no TLS error";
+        case BR_ERR_BAD_PARAM:
+            return "invalid TLS parameter";
+        case BR_ERR_BAD_STATE:
+            return "invalid TLS engine state";
+        case BR_ERR_UNSUPPORTED_VERSION:
+            return "unsupported TLS version";
+        case BR_ERR_BAD_VERSION:
+            return "unexpected TLS version";
+        case BR_ERR_BAD_LENGTH:
+            return "invalid TLS record length";
+        case BR_ERR_TOO_LARGE:
+            return "TLS record or handshake message too large";
+        case BR_ERR_BAD_MAC:
+            return "TLS record authentication failed";
+        case BR_ERR_NO_RANDOM:
+            return "TLS entropy source unavailable";
+        case BR_ERR_UNKNOWN_TYPE:
+            return "unknown TLS record type";
+        case BR_ERR_UNEXPECTED:
+            return "unexpected TLS handshake message";
+        case BR_ERR_BAD_CCS:
+            return "invalid TLS change-cipher-spec";
+        case BR_ERR_BAD_ALERT:
+            return "invalid TLS alert";
+        case BR_ERR_BAD_HANDSHAKE:
+            return "invalid TLS handshake payload";
+        case BR_ERR_OVERSIZED_ID:
+            return "oversized TLS session identifier";
+        case BR_ERR_BAD_CIPHER_SUITE:
+            return "unsupported TLS cipher suite";
+        case BR_ERR_BAD_COMPRESSION:
+            return "unsupported TLS compression";
+        case BR_ERR_BAD_FRAGLEN:
+            return "invalid TLS fragment length";
+        case BR_ERR_BAD_SECRENEG:
+            return "TLS secure renegotiation failed";
+        case BR_ERR_EXTRA_EXTENSION:
+            return "unexpected TLS extension";
+        case BR_ERR_BAD_SNI:
+            return "invalid TLS server name indication";
+        case BR_ERR_BAD_HELLO_DONE:
+            return "invalid TLS hello-done message";
+        case BR_ERR_LIMIT_EXCEEDED:
+            return "TLS implementation limit exceeded";
+        case BR_ERR_BAD_FINISHED:
+            return "TLS finished verification failed";
+        case BR_ERR_RESUME_MISMATCH:
+            return "TLS session resumption mismatch";
+        case BR_ERR_INVALID_ALGORITHM:
+            return "invalid TLS algorithm selection";
+        case BR_ERR_BAD_SIGNATURE:
+            return "invalid TLS signature";
+        case BR_ERR_WRONG_KEY_USAGE:
+            return "invalid TLS key usage";
+        case BR_ERR_NO_CLIENT_AUTH:
+            return "TLS client authentication failed";
+        case BR_ERR_IO:
+            return "TLS transport I/O failed";
+        default:
+            break;
+    }
+
+    if (err >= BR_ERR_SEND_FATAL_ALERT && err < (BR_ERR_SEND_FATAL_ALERT + 256)) {
+        snprintf(g_omni_tls_engine_error, sizeof(g_omni_tls_engine_error),
+            "TLS sent fatal alert %d", err - BR_ERR_SEND_FATAL_ALERT);
+        g_omni_tls_engine_error[sizeof(g_omni_tls_engine_error) - 1] = '\0';
+        return g_omni_tls_engine_error;
+    }
+    if (err >= BR_ERR_RECV_FATAL_ALERT && err < (BR_ERR_RECV_FATAL_ALERT + 256)) {
+        snprintf(g_omni_tls_engine_error, sizeof(g_omni_tls_engine_error),
+            "TLS received fatal alert %d", err - BR_ERR_RECV_FATAL_ALERT);
+        g_omni_tls_engine_error[sizeof(g_omni_tls_engine_error) - 1] = '\0';
+        return g_omni_tls_engine_error;
+    }
+
+    snprintf(g_omni_tls_engine_error, sizeof(g_omni_tls_engine_error),
+        "unknown TLS engine error %d", err);
+    g_omni_tls_engine_error[sizeof(g_omni_tls_engine_error) - 1] = '\0';
+    return g_omni_tls_engine_error;
+}
 
 static void omni_tls_bytes_reset(omni_tls_bytes *b) {
     if (b == NULL) return;
@@ -291,14 +422,19 @@ void *omni_tls_trust_store_load_file(const char *path) {
     omni_tls_anchor_vec vec = {0};
     omni_tls_trust_store *store;
 
+    omni_tls_clear_last_error();
     if (path == NULL || path[0] == '\0') return NULL;
 
     f = fopen(path, "rb");
-    if (f == NULL) return NULL;
+    if (f == NULL) {
+        omni_tls_set_last_errorf("failed to open trust store '%s': %s", path, strerror(errno));
+        return NULL;
+    }
 
     if (!omni_tls_parse_pem_bundle(f, &vec)) {
         fclose(f);
         omni_tls_anchor_vec_free(&vec);
+        omni_tls_set_last_errorf("failed to parse trust store '%s' as PEM certificates", path);
         return NULL;
     }
     fclose(f);
@@ -306,6 +442,7 @@ void *omni_tls_trust_store_load_file(const char *path) {
     store = (omni_tls_trust_store *)malloc(sizeof(*store));
     if (store == NULL) {
         omni_tls_anchor_vec_free(&vec);
+        omni_tls_set_last_errorf("failed to allocate trust store for '%s'", path);
         return NULL;
     }
 
@@ -314,7 +451,7 @@ void *omni_tls_trust_store_load_file(const char *path) {
     return store;
 }
 
-void *omni_tls_trust_store_load_default(void) {
+static omni_tls_trust_store *omni_tls_try_load_default_store(void) {
     static const char *default_paths[] = {
         "/etc/ssl/certs/ca-certificates.crt",
         "/etc/pki/tls/certs/ca-bundle.crt",
@@ -328,21 +465,38 @@ void *omni_tls_trust_store_load_default(void) {
     size_t i;
 
     if (override_path != NULL && override_path[0] != '\0') {
-        void *store = omni_tls_trust_store_load_file(override_path);
+        omni_tls_trust_store *store = (omni_tls_trust_store *)omni_tls_trust_store_load_file(override_path);
         if (store != NULL) return store;
     }
 
     if (ssl_cert_file != NULL && ssl_cert_file[0] != '\0') {
-        void *store = omni_tls_trust_store_load_file(ssl_cert_file);
+        omni_tls_trust_store *store = (omni_tls_trust_store *)omni_tls_trust_store_load_file(ssl_cert_file);
         if (store != NULL) return store;
     }
 
     for (i = 0; i < (sizeof(default_paths) / sizeof(default_paths[0])); i++) {
-        void *store = omni_tls_trust_store_load_file(default_paths[i]);
+        omni_tls_trust_store *store = (omni_tls_trust_store *)omni_tls_trust_store_load_file(default_paths[i]);
         if (store != NULL) return store;
     }
 
     return NULL;
+}
+
+void *omni_tls_trust_store_load_default(void) {
+    void *store;
+
+    omni_tls_clear_last_error();
+    if (pthread_mutex_lock(&g_default_store_lock) != 0) {
+        omni_tls_set_last_errorf("failed to lock default trust store cache");
+        return NULL;
+    }
+
+    if (g_default_store == NULL) {
+        g_default_store = omni_tls_try_load_default_store();
+    }
+    store = g_default_store;
+    pthread_mutex_unlock(&g_default_store_lock);
+    return store;
 }
 
 void *omni_tls_trust_store_get_anchors(void *store_handle) {
@@ -361,6 +515,14 @@ void omni_tls_trust_store_free(void *store_handle) {
     size_t i;
     omni_tls_trust_store *store = (omni_tls_trust_store *)store_handle;
     if (store == NULL) return;
+
+    if (pthread_mutex_lock(&g_default_store_lock) == 0) {
+        if (store == g_default_store) {
+            pthread_mutex_unlock(&g_default_store_lock);
+            return;
+        }
+        pthread_mutex_unlock(&g_default_store_lock);
+    }
 
     if (store->anchors != NULL) {
         for (i = 0; i < store->count; i++) {
@@ -611,16 +773,22 @@ void *omni_tls_server_creds_load(const char *cert_pem_path, const char *key_pem_
     br_rsa_private_key rsa_key = {0};
     omni_tls_server_creds *creds = NULL;
 
+    omni_tls_clear_last_error();
     if (cert_pem_path == NULL || cert_pem_path[0] == '\0' ||
             key_pem_path == NULL || key_pem_path[0] == '\0') {
+        omni_tls_set_last_errorf("server credentials require both certificate and key paths");
         return NULL;
     }
 
     cert_f = fopen(cert_pem_path, "rb");
-    if (cert_f == NULL) return NULL;
+    if (cert_f == NULL) {
+        omni_tls_set_last_errorf("failed to open server certificate '%s': %s", cert_pem_path, strerror(errno));
+        return NULL;
+    }
     if (!omni_tls_parse_cert_chain_pem(cert_f, &cert_chain)) {
         fclose(cert_f);
         omni_tls_cert_vec_free(&cert_chain);
+        omni_tls_set_last_errorf("failed to parse server certificate chain '%s' as PEM", cert_pem_path);
         return NULL;
     }
     fclose(cert_f);
@@ -628,12 +796,14 @@ void *omni_tls_server_creds_load(const char *cert_pem_path, const char *key_pem_
     key_f = fopen(key_pem_path, "rb");
     if (key_f == NULL) {
         omni_tls_cert_vec_free(&cert_chain);
+        omni_tls_set_last_errorf("failed to open server private key '%s': %s", key_pem_path, strerror(errno));
         return NULL;
     }
     if (!omni_tls_parse_rsa_key_pem(key_f, &rsa_key)) {
         fclose(key_f);
         omni_tls_cert_vec_free(&cert_chain);
         omni_tls_rsa_private_key_free(&rsa_key);
+        omni_tls_set_last_errorf("failed to parse server private key '%s' as PEM RSA", key_pem_path);
         return NULL;
     }
     fclose(key_f);
@@ -642,6 +812,7 @@ void *omni_tls_server_creds_load(const char *cert_pem_path, const char *key_pem_
     if (creds == NULL) {
         omni_tls_cert_vec_free(&cert_chain);
         omni_tls_rsa_private_key_free(&rsa_key);
+        omni_tls_set_last_errorf("failed to allocate server credentials for '%s' and '%s'", cert_pem_path, key_pem_path);
         return NULL;
     }
     memset(creds, 0, sizeof(*creds));
@@ -693,12 +864,17 @@ void omni_tls_server_creds_free(void *creds_handle) {
 int omni_tls_client_set_single_rsa(void *client_ctx, void *creds_handle) {
     br_rsa_pkcs1_sign sign_impl;
     omni_tls_server_creds *creds = (omni_tls_server_creds *)creds_handle;
+    omni_tls_clear_last_error();
     if (client_ctx == NULL || creds == NULL || creds->chain == NULL || creds->chain_len == 0) {
+        omni_tls_set_last_errorf("client certificate credentials are missing");
         return 0;
     }
 
     sign_impl = br_rsa_pkcs1_sign_get_default();
-    if (sign_impl == 0) return 0;
+    if (sign_impl == 0) {
+        omni_tls_set_last_errorf("RSA signing support unavailable in BearSSL");
+        return 0;
+    }
 
     br_ssl_client_set_single_rsa(
         (br_ssl_client_context *)client_ctx,

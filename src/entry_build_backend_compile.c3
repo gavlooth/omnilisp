@@ -51,6 +51,35 @@ fn bool string_has_suffix(String text, String suffix) @inline {
     return true;
 }
 
+fn bool string_contains(String text, String needle) @inline {
+    if (needle.len == 0) return true;
+    if (needle.len > text.len) return false;
+    for (usz start = 0; start + needle.len <= text.len; start++) {
+        bool matches = true;
+        for (usz i = 0; i < needle.len; i++) {
+            if (text[start + i] != needle[i]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
+}
+
+fn bool string_contains_char(String text, char needle) @inline {
+    for (usz i = 0; i < text.len; i++) {
+        if (text[i] == needle) return true;
+    }
+    return false;
+}
+
+fn bool should_skip_aot_source(String directory, String relative_name) @inline {
+    if (string_has_prefix(directory, "src/lisp") && string_has_prefix(relative_name, "tests")) return true;
+    if (string_has_prefix(directory, "src/lisp") && string_contains(relative_name, "/tests")) return true;
+    return false;
+}
+
 fn bool append_matching_sources(
     List { String }* out_sources,
     String directory,
@@ -76,6 +105,7 @@ fn bool append_matching_sources(
     foreach (entry : entries) {
         String name = entry.str_view();
         if (!string_has_prefix(name, prefix) || !string_has_suffix(name, suffix)) continue;
+        if (should_skip_aot_source(directory, name)) continue;
         if (try full_path = dir_path.append(tmem, name)) {
             out_sources.push(full_path.str_view().copy(tmem));
         } else {
@@ -158,6 +188,9 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
 
     String c3c_path;
     if (!resolve_aot_c3c_path(&c3c_path)) return 2;
+    if (string_contains_char(c3c_path, '/')) {
+        if (!ensure_required_file(c3c_path, "AOT backend compiler")) return 2;
+    }
 
     int helper_status = run_spawned_command(AOT_HELPER_COMMAND[..], false);
     if (helper_status != 0) return helper_status;

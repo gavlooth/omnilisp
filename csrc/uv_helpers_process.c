@@ -2,6 +2,7 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <uv.h>
 
 typedef struct omni_uv_process {
@@ -12,6 +13,9 @@ typedef struct omni_uv_process {
     int exit_status;
     int term_signal;
 } omni_uv_process_t;
+
+static _Atomic int g_omni_uv_process_poll_calls = 0;
+static _Atomic int g_omni_uv_process_wait_calls = 0;
 
 static void omni_uv_process_exit_cb(uv_process_t* req, int64_t exit_status, int term_signal) {
     omni_uv_process_t* proc = (omni_uv_process_t*)req->data;
@@ -151,6 +155,7 @@ int omni_uv_process_poll(
     int* exit_status_out,
     int* term_signal_out
 ) {
+    atomic_fetch_add_explicit(&g_omni_uv_process_poll_calls, 1, memory_order_relaxed);
     if (completed_out != NULL) *completed_out = 0;
     if (process == NULL) return UV_EINVAL;
     omni_uv_process_t* proc = (omni_uv_process_t*)process;
@@ -167,6 +172,7 @@ int omni_uv_process_poll(
 }
 
 int omni_uv_process_wait(void* process, int* exit_status_out, int* term_signal_out) {
+    atomic_fetch_add_explicit(&g_omni_uv_process_wait_calls, 1, memory_order_relaxed);
     if (process == NULL) return UV_EINVAL;
     omni_uv_process_t* proc = (omni_uv_process_t*)process;
 
@@ -213,4 +219,17 @@ void omni_uv_process_close(void* process) {
     free(proc->loop);
     proc->loop = NULL;
     free(proc);
+}
+
+void omni_uv_process_debug_reset_counters(void) {
+    atomic_store_explicit(&g_omni_uv_process_poll_calls, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_omni_uv_process_wait_calls, 0, memory_order_relaxed);
+}
+
+int omni_uv_process_debug_poll_calls(void) {
+    return atomic_load_explicit(&g_omni_uv_process_poll_calls, memory_order_relaxed);
+}
+
+int omni_uv_process_debug_wait_calls(void) {
+    return atomic_load_explicit(&g_omni_uv_process_wait_calls, memory_order_relaxed);
 }

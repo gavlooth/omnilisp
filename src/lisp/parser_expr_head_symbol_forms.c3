@@ -1,13 +1,5 @@
 module lisp;
 
-fn bool parser_symbol_text_is(char[] text, char[] expected) @inline {
-    if (text.len != expected.len) return false;
-    for (usz i = 0; i < expected.len; i++) {
-        if (text[i] != expected[i]) return false;
-    }
-    return true;
-}
-
 fn bool Parser.is_lambda_head_symbol(Parser* self, SymbolId head) {
     if ((uint)head == (uint)self.interp.sym_lambda) return true;
     char[] head_text = self.interp.symbols.get_name(head);
@@ -38,34 +30,32 @@ fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matche
     if ((uint)head == (uint)self.interp.symbols.intern("^")) return self.parse_constructor_type_application();
     if (self.is_lambda_head_symbol(head)) return self.parse_lambda();
     char[] head_text = self.interp.symbols.get_name(head);
-    if (parser_symbol_text_is(head_text, "fn")) {
-        self.set_error("fn syntax was removed; use lambda");
-        return null;
-    }
-    if (parser_symbol_text_is(head_text, "do")) {
-        self.set_error("do syntax was removed; use block");
-        return null;
-    }
-    if (parser_symbol_text_is(head_text, "letrec")) {
-        self.set_error("letrec syntax was removed; use let ^rec");
-        return null;
+    switch (parser_head_policy_removed_alias_kind(head_text)) {
+        case PARSER_REMOVED_HEAD_ALIAS_FN:
+            self.set_error("fn syntax was removed; use lambda");
+            return null;
+        case PARSER_REMOVED_HEAD_ALIAS_DO:
+            self.set_error("do syntax was removed; use block");
+            return null;
+        case PARSER_REMOVED_HEAD_ALIAS_LETREC:
+            self.set_error("letrec syntax was removed; use let ^rec");
+            return null;
+        case PARSER_REMOVED_HEAD_ALIAS_BEGIN:
+            self.set_error("begin syntax was removed; use block");
+            return null;
+        case PARSER_REMOVED_HEAD_ALIAS_RESET:
+            self.set_error("reset syntax was removed; use checkpoint");
+            return null;
+        case PARSER_REMOVED_HEAD_ALIAS_SHIFT:
+            self.set_error("shift syntax was removed; use capture");
+            return null;
+        default:
+            break;
     }
     if ((uint)head == (uint)self.interp.sym_if) return self.parse_if();
     if ((uint)head == (uint)self.interp.sym_let) return self.parse_let();
     if ((uint)head == (uint)self.interp.sym_define) return self.parse_define();
     if ((uint)head == (uint)self.interp.sym_quote) return self.parse_quote();
-    if (parser_symbol_text_is(head_text, "begin")) {
-        self.set_error("begin syntax was removed; use block");
-        return null;
-    }
-    if (parser_symbol_text_is(head_text, "reset")) {
-        self.set_error("reset syntax was removed; use checkpoint");
-        return null;
-    }
-    if (parser_symbol_text_is(head_text, "shift")) {
-        self.set_error("shift syntax was removed; use capture");
-        return null;
-    }
     if ((uint)head == (uint)self.interp.sym_checkpoint) return self.parse_reset();
     if ((uint)head == (uint)self.interp.sym_capture) return self.parse_shift();
     if ((uint)head == (uint)self.interp.sym_signal) return self.parse_perform();

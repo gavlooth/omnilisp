@@ -923,16 +923,7 @@ fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServer
     }
 
     char[] path = main_path_buf[:main_path_len];
-    if (catch err = io::file::load_temp((String)path)) {
-        (void)err;
-        return repl_server_send_event_error(
-            output,
-            id,
-            session.id_ptr[:session.id_len],
-            "io/file-not-found",
-            "project preload: file not found"
-        );
-    } else if (try source = io::file::load_temp((String)path)) {
+    if (try source = io::file::load_temp((String)path)) {
         Interp* interp = session.interp;
         if (!push_source_dir(path, interp)) {
             return repl_server_send_event_error(
@@ -972,12 +963,29 @@ fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServer
         return true;
     }
 
+    main::EntryFileReadKind read_kind;
+    if (!main::classify_file_read_path(path, &read_kind)) {
+        char[128] msg_buf = {};
+        char[] message = io::bprintf(
+            &msg_buf,
+            "project preload: %s",
+            (ZString)main::file_read_kind_reason(read_kind)
+        )!!;
+        return repl_server_send_event_error(
+            output,
+            id,
+            session.id_ptr[:session.id_len],
+            main::file_read_kind_code(read_kind),
+            message
+        );
+    }
+
     return repl_server_send_event_error(
         output,
         id,
         session.id_ptr[:session.id_len],
-        "io/file-read-failed",
-        "project preload: failed to read file"
+        "io/read-failed",
+        "project preload: read failed"
     );
 }
 
@@ -995,15 +1003,7 @@ fn bool repl_server_eval_session(ReplServerOutput* output, ReplServerSession* se
 }
 
 fn bool repl_server_load_file_session(ReplServerOutput* output, ReplServerSession* session, char[] id, char[] path) {
-    if (catch err = io::file::load_temp((String)path)) {
-        (void)err;
-        return repl_server_send_event_error(output, id, session.id_ptr[:session.id_len], "io/file-not-found", "load-file: file not found");
-    }
-
-    if (catch err = io::file::load_temp((String)path)) {
-        (void)err;
-        return repl_server_send_event_error(output, id, session.id_ptr[:session.id_len], "io/file-read-failed", "load-file: failed to read file");
-    } else if (try source = io::file::load_temp((String)path)) {
+    if (try source = io::file::load_temp((String)path)) {
         Interp* interp = session.interp;
         if (!push_source_dir(path, interp)) {
             return repl_server_send_event_error(
@@ -1057,7 +1057,30 @@ fn bool repl_server_load_file_session(ReplServerOutput* output, ReplServerSessio
         return repl_server_send_done(output, id, session.id_ptr[:session.id_len]);
     }
 
-    return repl_server_send_event_error(output, id, session.id_ptr[:session.id_len], "io/file-read-failed", "load-file: failed to read file");
+    main::EntryFileReadKind read_kind;
+    if (!main::classify_file_read_path(path, &read_kind)) {
+        char[128] msg_buf = {};
+        char[] message = io::bprintf(
+            &msg_buf,
+            "load-file: %s",
+            (ZString)main::file_read_kind_reason(read_kind)
+        )!!;
+        return repl_server_send_event_error(
+            output,
+            id,
+            session.id_ptr[:session.id_len],
+            main::file_read_kind_code(read_kind),
+            message
+        );
+    }
+
+    return repl_server_send_event_error(
+        output,
+        id,
+        session.id_ptr[:session.id_len],
+        "io/read-failed",
+        "load-file: read failed"
+    );
 }
 
 fn bool repl_server_complete_session(ReplServerOutput* output, ReplServerSession* session, char[] id, char[] prefix) {
@@ -1159,8 +1182,7 @@ fn bool repl_server_worker_request_interrupt(
 ) {
     if (worker == null || !worker.mu_ready) return false;
     worker.mu.lock();
-    bool matched = repl_server_worker_matches_active_locked(worker, session, target_id) ||
-        repl_server_worker_command_matches(&worker.pending_command, session, target_id);
+    bool matched = repl_server_worker_matches_active_locked(worker, session, target_id);
     if (matched) {
         session.interrupt_requested.store(1);
         io_input_state_wake(&session.input);
@@ -1338,6 +1360,9 @@ fn bool repl_server_handle_request(ReplServerConnection* conn, ReplServerRequest
     }
 
     if (json_repl_str_eq(request.op, "clone")) {
+        if (repl_server_worker_busy(worker)) {
+            return repl_server_send_protocol_error(output, id, "protocol/server-busy", "repl server is busy");
+        }
         ReplServerSession* session = repl_server_new_session(conn);
         if (session == null) {
             return repl_server_send_protocol_error(output, id, "runtime/session-create-failed", "failed to create session");
@@ -1481,7 +1506,7 @@ fn int repl_server_stdio(bool preload_project = false, char* preload_project_dir
 
 fn int repl_server_socket(char* socket_path, bool preload_project = false, char* preload_project_dir = null) {
     if (socket_path == null || socket_path[0] == 0) {
-        io::printn("Error: missing socket path for --repl-server");
+        main::print_cli_usage_json("missing socket path for --repl-server");
         return 1;
     }
 
@@ -1490,7 +1515,12 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
 
     int listener_fd = -1;
     if (omni_unix_socket_listen_fd(socket_path, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) < 0 || listener_fd < 0) {
-        io::printfn("Error: failed to listen on REPL socket %s", (ZString)socket_path);
+        char[320] msg_buf;
+        if (try msg = io::bprintf(&msg_buf, "failed to listen on REPL socket %s", (ZString)socket_path)) {
+            main::print_cli_error_json("io/listen-failed", msg);
+        } else {
+            main::print_cli_error_json("io/listen-failed", "failed to listen on REPL socket");
+        }
         return 1;
     }
     defer {
@@ -1501,7 +1531,12 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
     while (true) {
         int client_fd = c_accept(listener_fd, null, null);
         if (client_fd < 0) {
-            io::printfn("Error: failed to accept client on REPL socket %s", (ZString)socket_path);
+            char[320] msg_buf;
+            if (try msg = io::bprintf(&msg_buf, "failed to accept client on REPL socket %s", (ZString)socket_path)) {
+                main::print_cli_error_json("io/accept-failed", msg);
+            } else {
+                main::print_cli_error_json("io/accept-failed", "failed to accept client on REPL socket");
+            }
             return 1;
         }
         repl_server_handle_stream(client_fd, client_fd, true, "unix", preload_project, preload_project_dir);
@@ -1513,7 +1548,7 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
 
 fn int repl_server_tcp(char* host, int port, bool preload_project = false, char* preload_project_dir = null) {
     if (host == null || host[0] == 0 || port <= 0 || port > 65535) {
-        io::printn("Error: invalid TCP host/port for --repl-server");
+        main::print_cli_usage_json("invalid TCP host/port for --repl-server");
         return 1;
     }
 
@@ -1522,20 +1557,30 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
 
     int listener_fd = -1;
     if (omni_uv_tcp_listen_fd(host, port, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) != 0 || listener_fd < 0) {
-        io::printfn("Error: failed to listen on TCP REPL socket %s:%d", (ZString)host, port);
+        char[320] msg_buf;
+        if (try msg = io::bprintf(&msg_buf, "failed to listen on TCP REPL socket %s:%d", (ZString)host, port)) {
+            main::print_cli_error_json("io/listen-failed", msg);
+        } else {
+            main::print_cli_error_json("io/listen-failed", "failed to listen on TCP REPL socket");
+        }
         return 1;
     }
     defer if (listener_fd >= 0) c_close_fd(listener_fd);
 
     if (!repl_server_publish_tcp_port_file(port)) {
-        io::printn("Error: failed to write .omni-repl-port for TCP REPL server");
+        main::print_cli_error_json("io/write-failed", "failed to write .omni-repl-port for TCP REPL server");
         return 1;
     }
 
     while (true) {
         int client_fd = c_accept(listener_fd, null, null);
         if (client_fd < 0) {
-            io::printfn("Error: failed to accept client on TCP REPL socket %s:%d", (ZString)host, port);
+            char[320] msg_buf;
+            if (try msg = io::bprintf(&msg_buf, "failed to accept client on TCP REPL socket %s:%d", (ZString)host, port)) {
+                main::print_cli_error_json("io/accept-failed", msg);
+            } else {
+                main::print_cli_error_json("io/accept-failed", "failed to accept client on TCP REPL socket");
+            }
             return 1;
         }
         repl_server_handle_stream(client_fd, client_fd, true, "tcp", preload_project, preload_project_dir);

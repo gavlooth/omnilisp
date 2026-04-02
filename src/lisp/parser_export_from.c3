@@ -21,23 +21,40 @@ fn bool Parser.parse_export_from_source_module(Parser* self, Expr* e) {
     return true;
 }
 
-fn void Parser.ensure_export_from_name_capacity(Parser* self, Expr* e) {
-    if (e.export_from.name_count < e.export_from.name_capacity) return;
+fn bool Parser.ensure_export_from_name_capacity(Parser* self, Expr* e) {
+    if (e.export_from.name_count < e.export_from.name_capacity) return true;
+    if (e.export_from.name_capacity == 0 || e.export_from.names == null) {
+        self.set_error("out of memory while growing export-from list");
+        return false;
+    }
     usz new_cap = e.export_from.name_capacity * 2;
+    if (new_cap <= e.export_from.name_capacity) {
+        self.set_error("export-from list is too large");
+        return false;
+    }
     SymbolId* new_names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
+    if (new_names == null) {
+        self.set_error("out of memory while growing export-from list");
+        return false;
+    }
     for (usz i = 0; i < e.export_from.name_count; i++) {
         new_names[i] = e.export_from.names[i];
     }
     e.export_from.names = new_names;
     e.export_from.name_capacity = new_cap;
+    return true;
 }
 
 fn bool Parser.parse_export_from_name_list(Parser* self, Expr* e) {
     e.export_from.name_capacity = 16;
     e.export_from.names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * 16);
+    if (e.export_from.names == null) {
+        self.set_error("out of memory while allocating export-from list");
+        return false;
+    }
     self.lexer.advance();  // consume '('
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
-        self.ensure_export_from_name_capacity(e);
+        if (!self.ensure_export_from_name_capacity(e)) return false;
         if (self.lexer.current.type != T_SYMBOL) {
             self.set_error("expected symbol in export-from list");
             return false;

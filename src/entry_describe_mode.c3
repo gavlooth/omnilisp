@@ -48,10 +48,11 @@ fn SymbolDescribeInfo describe_lookup_symbol(char* symbol_arg) {
     if (str_eq(symbol_arg, "explain")) return { .found = true, .kind = "special-form", .documentation = "Inspect dispatch or effect resolution using a quoted selector." };
 
     if (str_eq(symbol_arg, "nil")) return { .found = true, .kind = "builtin", .documentation = "The only absence value and one of the two falsy values." };
-    if (str_eq(symbol_arg, "false")) return { .found = true, .kind = "builtin", .documentation = "Alias-level falsy value; only nil and false are falsy in Omni." };
+    if (str_eq(symbol_arg, "false")) return { .found = true, .kind = "builtin", .documentation = "Value-level alias of nil; only nil and false are falsy in Omni." };
     if (str_eq(symbol_arg, "true")) return { .found = true, .kind = "builtin", .documentation = "Truthy boolean value." };
     if (str_eq(symbol_arg, "Array")) return { .found = true, .kind = "builtin", .documentation = "Array constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "Dictionary")) return { .found = true, .kind = "builtin", .documentation = "Dictionary constructor and descriptive type symbol." };
+    if (str_eq(symbol_arg, "Dict")) return { .found = true, .kind = "builtin", .documentation = "Allowed shorthand alias for the canonical Dictionary constructor/type." };
     if (str_eq(symbol_arg, "List")) return { .found = true, .kind = "builtin", .documentation = "List constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "Integer")) return { .found = true, .kind = "builtin", .documentation = "Integer constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "Double")) return { .found = true, .kind = "builtin", .documentation = "Double constructor and descriptive type symbol." };

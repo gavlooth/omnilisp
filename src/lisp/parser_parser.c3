@@ -51,6 +51,17 @@ fn void Parser.set_error(Parser* self, char[] msg) {
 fn void Parser.expect(Parser* self, TokenType t, char[] msg) {
     if (self.has_error) return;
     if (!self.lexer.match(t)) {
+        if (msg.len == 1) {
+            switch (msg[0]) {
+                case '(': self.set_error("expected '('"); return;
+                case ')': self.set_error("expected ')'"); return;
+                case '[': self.set_error("expected '['"); return;
+                case ']': self.set_error("expected ']'"); return;
+                case '{': self.set_error("expected '{'"); return;
+                case '}': self.set_error("expected '}'"); return;
+                default: break;
+            }
+        }
         self.set_error(msg);
     }
 }

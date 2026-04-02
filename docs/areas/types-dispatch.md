@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)  
-As of: 2026-03-27
+As of: 2026-04-01
 
 ## Canonical Sources
 
@@ -46,10 +46,10 @@ As of: 2026-03-27
 - Interpreter/JIT type-definition path is explicit evaluator delegation:
   - `src/lisp/jit_jit_compile_effects_modules.c3`: `jit_compile_deftype/defabstract/defunion/defalias/defeffect` lower via `jit_compile_3arg_helper`.
   - `src/lisp/jit_jit_dispatch_helpers.c3`: `jit_do_deftype/defabstract/defunion/defalias/defeffect` call `eval_def*`.
-- Compiler/AOT gap identified by audit:
-  - `src/lisp/compiler_temp_core.c3` does not lower `E_DEFTYPE/E_DEFABSTRACT/E_DEFUNION/E_DEFALIAS` in `compile_to_temp_non_null`.
-  - Fallback path (`src/lisp/compiler_expression_compilation.c3`) emits `aot::make_nil() /* WARNING: unsupported expr type */`.
-  - Repeated typed `define` names are not method-table merged in AOT compile path and can produce duplicate global declarations (`describe` shadowing) instead of dispatch-table extension.
+- Historical compiler/AOT audit notes:
+  - The former `E_DEFTYPE/E_DEFABSTRACT/E_DEFUNION/E_DEFALIAS` temp-lowering gap in `src/lisp/compiler_temp_core.c3` has since been closed through direct type-form lowering.
+  - The generic fallback path in `src/lisp/compiler_expression_compilation.c3` still emits `aot::make_nil() /* WARNING: unsupported expr type */` for expression tags that have no dedicated AOT lowering.
+  - Repeated typed `define` names are not method-table merged in the AOT compile path and can still produce duplicate global declarations (`describe` shadowing) instead of dispatch-table extension.
 
 ## Known Gaps
 

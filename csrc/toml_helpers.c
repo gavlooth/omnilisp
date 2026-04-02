@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <uv.h>
 
 #include "../third_party/tomlc17/tomlc17.h"
 
@@ -11,6 +12,22 @@ typedef struct {
     toml_result_t result;
     const char*   source;
 } omni_toml_parse_result_t;
+
+static uv_mutex_t g_omni_toml_option_mu;
+static uv_once_t g_omni_toml_option_mu_once = UV_ONCE_INIT;
+
+static void omni_toml_option_mu_init_once(void) {
+    uv_mutex_init(&g_omni_toml_option_mu);
+}
+
+static void omni_toml_option_lock(void) {
+    uv_once(&g_omni_toml_option_mu_once, omni_toml_option_mu_init_once);
+    uv_mutex_lock(&g_omni_toml_option_mu);
+}
+
+static void omni_toml_option_unlock(void) {
+    uv_mutex_unlock(&g_omni_toml_option_mu);
+}
 
 static void omni_copy_err(char* err_buf, size_t err_cap, const char* msg) {
     if (!err_buf || err_cap == 0) return;
@@ -56,7 +73,9 @@ void* omni_toml_parse(const char* src, size_t len, char* err_buf, size_t err_cap
     }
 
     result->source = zsrc;
+    omni_toml_option_lock();
     result->result = toml_parse(zsrc, (int)len);
+    omni_toml_option_unlock();
 
     if (!result->result.ok) {
         omni_copy_err(err_buf, err_cap, result->result.errmsg[0] ? result->result.errmsg : "toml-parse: parse failed");
@@ -92,25 +111,26 @@ void* omni_toml_parse_with_options(const char* src, size_t len, char* err_buf, s
     }
     zsrc[len] = '\0';
 
-    toml_option_t previous = toml_default_option();
-    toml_option_t next = previous;
-    next.check_utf8 = check_utf8;
-    if (check_utf8 != previous.check_utf8) {
-        toml_set_option(next);
-    }
-
     omni_toml_parse_result_t* result = (omni_toml_parse_result_t*)malloc(sizeof(*result));
     if (!result) {
-        if (check_utf8 != previous.check_utf8) {
-            toml_set_option(previous);
-        }
         free(zsrc);
         omni_copy_err(err_buf, err_cap, "toml-parse: out of memory");
         return NULL;
     }
 
     result->source = zsrc;
+    omni_toml_option_lock();
+    toml_option_t previous = toml_default_option();
+    toml_option_t next = previous;
+    next.check_utf8 = check_utf8;
+    if (check_utf8 != previous.check_utf8) {
+        toml_set_option(next);
+    }
     result->result = toml_parse(zsrc, (int)len);
+    if (check_utf8 != previous.check_utf8) {
+        toml_set_option(previous);
+    }
+    omni_toml_option_unlock();
 
     if (!result->result.ok) {
         omni_copy_err(err_buf, err_cap, result->result.errmsg[0] ? result->result.errmsg : "toml-parse: parse failed");
@@ -118,14 +138,7 @@ void* omni_toml_parse_with_options(const char* src, size_t len, char* err_buf, s
         free((void*)result->source);
         free(result);
 
-        if (check_utf8 != previous.check_utf8) {
-            toml_set_option(previous);
-        }
         return NULL;
-    }
-
-    if (check_utf8 != previous.check_utf8) {
-        toml_set_option(previous);
     }
 
     return (void*)result;

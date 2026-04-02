@@ -21,8 +21,13 @@ fn bool Parser.parse_handle_clause(Parser* self, EffectClause* clause) {
     clause.effect_tag_expr = null;
     clause.has_effect_tag_expr = false;
 
+    if (self.lexer.current.type == T_LPAREN) {
+        self.set_error("handle clause syntax was removed; handle clauses must be `(tag arg body)` and nested clause forms are not allowed");
+        return false;
+    }
+
     if (self.lexer.current.type != T_SYMBOL && self.lexer.current.type != T_PATH) {
-        self.set_error("handle clause syntax was removed; use (tag arg body) and with-continuation when needed");
+        self.set_error("expected effect tag or effect name in handle clause");
         return false;
     }
 
@@ -52,9 +57,6 @@ fn Expr* Parser.parse_handle(Parser* self) {
     Expr* body = self.parse_expr();
 
     e.tag = E_HANDLE;
-    e.handle = (ExprHandle*)ast_arena_alloc(&self.interp.ast_arena, ExprHandle.sizeof);
-    e.handle.body = body;
-    e.handle.strict_mode = strict;
 
     List{EffectClause} clause_list;
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
@@ -68,7 +70,16 @@ fn Expr* Parser.parse_handle(Parser* self) {
         clause_list.push(clause);
     }
 
-    // Finalize clauses
+    if (clause_list.len() == 0) {
+        clause_list.free();
+        self.set_error("handle form requires at least one clause after the body");
+        return null;
+    }
+
+    e.handle = (ExprHandle*)ast_arena_alloc(&self.interp.ast_arena, ExprHandle.sizeof);
+    e.handle.body = body;
+    e.handle.strict_mode = strict;
+
     e.handle.clause_count = clause_list.len();
     e.handle.clauses = (EffectClause*)ast_arena_alloc(&self.interp.ast_arena, EffectClause.sizeof * clause_list.len());
     for (usz i = 0; i < clause_list.len(); i++) { e.handle.clauses[i] = clause_list[i]; }

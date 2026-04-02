@@ -109,3 +109,17 @@ int omni_uv_signal_stop(void* signal_watch) {
     free(watch);
     return stop_status;
 }
+
+int omni_uv_signal_debug_set_pending(void* signal_watch, int pending_count) {
+    if (signal_watch == NULL) return UV_EINVAL;
+    omni_uv_signal_watch_t* watch = (omni_uv_signal_watch_t*)signal_watch;
+    if (pending_count < 0) pending_count = 0;
+    watch->pending_count = pending_count;
+    return 0;
+}
+
+int omni_uv_signal_debug_pending(void* signal_watch) {
+    if (signal_watch == NULL) return UV_EINVAL;
+    omni_uv_signal_watch_t* watch = (omni_uv_signal_watch_t*)signal_watch;
+    return watch->pending_count;
+}

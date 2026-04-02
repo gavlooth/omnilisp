@@ -99,7 +99,7 @@ fn bool Parser.parse_import_paren_spec(Parser* self, Expr* e, usz idx) {
 fn bool Parser.parse_import_selective_list(Parser* self, Expr* e) {
     self.lexer.advance();  // consume '('
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
-        self.import_ensure_capacity(e, e.import_expr.import_count + 1);
+        if (!self.import_ensure_capacity(e, e.import_expr.import_count + 1)) return false;
         usz idx = e.import_expr.import_count;
         bool ok = false;
         if (self.lexer.current.type == T_LPAREN) {

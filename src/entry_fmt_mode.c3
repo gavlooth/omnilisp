@@ -1,6 +1,7 @@
 module main;
 
 import std::io;
+import lisp;
 
 struct FmtFrame {
     char close_char;
@@ -105,64 +106,6 @@ fn bool fmt_token_equals(char[] text, usz start, usz end, char[] token) {
     return true;
 }
 
-fn bool fmt_is_block_form_head(char[] text, usz start, usz end) {
-    return fmt_token_equals(text, start, end, "define")
-        || fmt_token_equals(text, start, end, "lambda")
-        || fmt_token_equals(text, start, end, "let")
-        || fmt_token_equals(text, start, end, "if")
-        || fmt_token_equals(text, start, end, "block")
-        || fmt_token_equals(text, start, end, "handle")
-        || fmt_token_equals(text, start, end, "when")
-        || fmt_token_equals(text, start, end, "unless")
-        || fmt_token_equals(text, start, end, "raise")
-        || fmt_token_equals(text, start, end, "match")
-        || fmt_token_equals(text, start, end, "checkpoint")
-        || fmt_token_equals(text, start, end, "module")
-        || fmt_token_equals(text, start, end, "import")
-        || fmt_token_equals(text, start, end, "syntax-match")
-        || fmt_token_equals(text, start, end, "template");
-}
-
-fn bool fmt_is_wide_branch_form_head(char[] text, usz start, usz end) {
-    return fmt_token_equals(text, start, end, "if");
-}
-
-fn bool fmt_align_to_second_token_head(char[] text, usz start, usz end) {
-    return fmt_token_equals(text, start, end, "export")
-        || fmt_token_equals(text, start, end, "export-from");
-}
-
-fn bool fmt_is_higher_order_call_head(char[] text, usz start, usz end) {
-    return fmt_token_equals(text, start, end, "map")
-        || fmt_token_equals(text, start, end, "foldl")
-        || fmt_token_equals(text, start, end, "foldr")
-        || fmt_token_equals(text, start, end, "filter")
-        || fmt_token_equals(text, start, end, "find")
-        || fmt_token_equals(text, start, end, "partition")
-        || fmt_token_equals(text, start, end, "sort-by")
-        || fmt_token_equals(text, start, end, "for-each");
-}
-
-fn bool fmt_is_coroutine_wrapper_head(char[] text, usz start, usz end) {
-    return fmt_token_equals(text, start, end, "Coroutine");
-}
-
-fn bool fmt_prefers_binding_context_alignment(char[] text, usz open_index) {
-    usz head_start = fmt_skip_horizontal_space(text, open_index + 1);
-    if (head_start >= text.len || fmt_is_close_delimiter(text[head_start]) || text[head_start] == ';') return false;
-
-    usz head_end = fmt_scan_token_end(text, head_start);
-    if (head_end <= head_start) return false;
-
-    return fmt_token_equals(text, head_start, head_end, "lambda")
-        || fmt_token_equals(text, head_start, head_end, "let")
-        || fmt_token_equals(text, head_start, head_end, "block")
-        || fmt_token_equals(text, head_start, head_end, "handle")
-        || fmt_token_equals(text, head_start, head_end, "match")
-        || fmt_token_equals(text, head_start, head_end, "syntax-match")
-        || fmt_token_equals(text, head_start, head_end, "template");
-}
-
 fn int fmt_vector_child_column(char[] text, usz open_index, int line_indent_column, int indent_width) {
     usz value_start = fmt_skip_horizontal_space(text, open_index + 1);
     if (value_start >= text.len || fmt_is_close_delimiter(text[value_start]) || text[value_start] == ';') {
@@ -195,18 +138,18 @@ fn int fmt_list_child_column(char[] text, usz open_index, int line_indent_column
     if (head_end <= head_start) return line_indent_column + indent_width;
 
     if (fmt_token_equals(text, head_start, head_end, "let")) *let_binding_pending = true;
-    if (fmt_is_higher_order_call_head(text, head_start, head_end)) *higher_order_lambda_context = true;
-    if (fmt_is_coroutine_wrapper_head(text, head_start, head_end)) *coroutine_lambda_context = true;
-    if (fmt_is_wide_branch_form_head(text, head_start, head_end)) {
+    if (lisp::parser_head_policy_is_higher_order_call(text, head_start, head_end)) *higher_order_lambda_context = true;
+    if (lisp::parser_head_policy_is_coroutine_wrapper(text, head_start, head_end)) *coroutine_lambda_context = true;
+    if (lisp::parser_head_policy_is_wide_branch_form(text, head_start, head_end)) {
         return line_indent_column + (int)open_index + indent_width * 2;
     }
-    if (fmt_is_block_form_head(text, head_start, head_end)) return line_indent_column + indent_width;
+    if (lisp::parser_head_policy_is_block_form(text, head_start, head_end)) return line_indent_column + indent_width;
 
     usz value_start = fmt_skip_horizontal_space(text, head_end);
     if (value_start >= text.len || fmt_is_close_delimiter(text[value_start]) || text[value_start] == ';') {
         return line_indent_column + indent_width;
     }
-    if (!fmt_align_to_second_token_head(text, head_start, head_end)) return line_indent_column + (int)value_start;
+    if (!lisp::parser_head_policy_aligns_to_second_token(text, head_start, head_end)) return line_indent_column + (int)value_start;
     return line_indent_column + (int)value_start;
 }
 
@@ -228,8 +171,11 @@ fn int fmt_line_indent_column(char[] text, FmtFrame[512] stack, int depth) {
     return temp_depth > 0 ? stack[temp_depth - 1].child_column : 0;
 }
 
-fn void fmt_push_frame(FmtFrame[512]* stack, int* depth, char close_char, int open_column, int child_column, bool let_binding_pending = false, bool binding_context = false, bool higher_order_lambda_context = false, bool coroutine_lambda_context = false) {
-    if (*depth >= 512) return;
+fn bool fmt_push_frame(FmtFrame[512]* stack, int* depth, bool* overflowed, char close_char, int open_column, int child_column, bool let_binding_pending = false, bool binding_context = false, bool higher_order_lambda_context = false, bool coroutine_lambda_context = false) {
+    if (*depth >= 512) {
+        *overflowed = true;
+        return false;
+    }
     (*stack)[*depth] = {
         .close_char = close_char,
         .open_column = open_column,
@@ -240,9 +186,10 @@ fn void fmt_push_frame(FmtFrame[512]* stack, int* depth, char close_char, int op
         .coroutine_lambda_context = coroutine_lambda_context,
     };
     (*depth)++;
+    return true;
 }
 
-fn void fmt_update_frames_for_line(char[] text, int line_indent_column, int indent_width, FmtFrame[512]* stack, int* depth) {
+fn void fmt_update_frames_for_line(char[] text, int line_indent_column, int indent_width, FmtFrame[512]* stack, int* depth, bool* overflowed) {
     usz index = 0;
     while (index < text.len) {
         char c = text[index];
@@ -276,7 +223,7 @@ fn void fmt_update_frames_for_line(char[] text, int line_indent_column, int inde
             binding_context = true;
         } else if (c == '(') {
             child_column = fmt_list_child_column(text, index, line_indent_column, indent_width, &let_binding_pending, &higher_order_lambda_context, &coroutine_lambda_context);
-            if (*depth > 0 && (*stack)[*depth - 1].binding_context && fmt_prefers_binding_context_alignment(text, index)) {
+            if (*depth > 0 && (*stack)[*depth - 1].binding_context && lisp::parser_head_policy_prefers_binding_context_alignment(text, index)) {
                 child_column = open_column + indent_width;
             }
             if (*depth > 0 && (*stack)[*depth - 1].higher_order_lambda_context) {
@@ -299,7 +246,20 @@ fn void fmt_update_frames_for_line(char[] text, int line_indent_column, int inde
             child_column = fmt_map_child_column(text, index, line_indent_column, indent_width);
         }
 
-        fmt_push_frame(stack, depth, fmt_matching_closer(c), open_column, child_column, let_binding_pending, binding_context, higher_order_lambda_context, coroutine_lambda_context);
+        if (!fmt_push_frame(
+                stack,
+                depth,
+                overflowed,
+                fmt_matching_closer(c),
+                open_column,
+                child_column,
+                let_binding_pending,
+                binding_context,
+                higher_order_lambda_context,
+                coroutine_lambda_context
+            )) {
+            return;
+        }
         index++;
     }
 }
@@ -385,7 +345,12 @@ fn int fmt_line_indent_delta(char[] text) {
     return delta;
 }
 
-fn char[] formatted_text(char[] text, bool insert_spaces = true, int tab_size = 2) {
+struct FmtFormatResult {
+    bool ok;
+    char[] text;
+}
+
+fn FmtFormatResult formatted_text(char[] text, bool insert_spaces = true, int tab_size = 2) {
     DString out;
     out.init(mem);
     bool use_crlf = fmt_uses_crlf(text);
@@ -403,6 +368,7 @@ fn char[] formatted_text(char[] text, bool insert_spaces = true, int tab_size = 
         int indent_width = tab_size > 0 ? tab_size : 2;
         FmtFrame[512] stack = {};
         int depth = 0;
+        bool overflowed = false;
         usz line_start = 0;
 
         while (line_start < text.len) {
@@ -418,14 +384,15 @@ fn char[] formatted_text(char[] text, bool insert_spaces = true, int tab_size = 
                 int line_indent_column = fmt_line_indent_column(stripped, stack, depth);
                 fmt_append_space_columns(&out, line_indent_column);
                 out.append_string((String)stripped);
-                fmt_update_frames_for_line(stripped, line_indent_column, indent_width, &stack, &depth);
+                fmt_update_frames_for_line(stripped, line_indent_column, indent_width, &stack, &depth, &overflowed);
+                if (overflowed) return { .ok = false, .text = "" };
             }
 
             if (line_end < text.len) fmt_append_newline(&out, use_crlf);
             line_start = line_end + 1;
         }
 
-        return out.str_view();
+        return { .ok = true, .text = out.str_view() };
     }
 
     int indent_level = 0;
@@ -454,7 +421,7 @@ fn char[] formatted_text(char[] text, bool insert_spaces = true, int tab_size = 
         line_start = line_end + 1;
     }
 
-    return out.str_view();
+    return { .ok = true, .text = out.str_view() };
 }
 
 fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
@@ -477,7 +444,9 @@ fn int run_fmt_mode(int argc, char** argv, int fmt_idx) {
 
     char[] input_path = input_file[:cstr_len(input_file)];
     if (try source = io::file::load_temp((String)input_path)) {
-        char[] formatted = formatted_text(source);
+        FmtFormatResult formatted_result = formatted_text(source);
+        if (!formatted_result.ok) return print_fmt_structure_error(input_file);
+        char[] formatted = formatted_result.text;
         bool changed = !fmt_text_equal(formatted, source);
 
         if (check) {

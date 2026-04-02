@@ -534,7 +534,7 @@ fn Value* prim_ui_ftxui_run(Value*[] args, Env* env, Interp* interp) {
     screen_options.abi_version = OMNI_FTXUI_ABI_VERSION;
     screen_options.mode = OMNI_FTXUI_SCREEN_FIT_COMPONENT;
     screen_options.track_mouse = false;
-    screen_options.handle_piped_input = true;
+    screen_options.handle_piped_input = false;
     screen_options.width = { .size = OmniFtxuiDimension.sizeof, .abi_version = OMNI_FTXUI_ABI_VERSION, .kind = OMNI_FTXUI_DIMENSION_FIT, .value = 0 };
     screen_options.height = { .size = OmniFtxuiDimension.sizeof, .abi_version = OMNI_FTXUI_ABI_VERSION, .kind = OMNI_FTXUI_DIMENSION_FIT, .value = 0 };
     status = omni_ftxui_screen_create(state.context, &screen_options, &state.screen);

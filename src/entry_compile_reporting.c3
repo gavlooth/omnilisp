@@ -19,11 +19,17 @@ fn void print_compile_success(char* output_file) {
     io::printfn("Compilation successful: %s", (ZString)output_file);
 }
 
-fn void print_compile_write_error(char* output_file) {
-    io::printfn("Error: cannot write output file %s", (ZString)output_file);
+fn void print_compile_write_error(char[] output_path, EntryFileWriteKind kind) {
+    print_file_write_error_text("output file", output_path, kind);
 }
 
-fn int print_compile_read_error(char* input_file) {
-    io::printfn("Error: cannot read input file %s", (ZString)input_file);
+fn void print_compile_error_message(char[] msg) {
+    io::print("Error: ");
+    io::print((String)msg);
+    io::printn("");
+}
+
+fn int print_compile_read_error(char[] input_path, EntryFileReadKind kind) {
+    print_file_read_error_text("input file", input_path, kind);
     return 1;
 }

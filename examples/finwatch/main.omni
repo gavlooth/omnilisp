@@ -1,7 +1,11 @@
 ;; main.omni — finwatch entry point
 ;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/main.omni
 ;; Canonical product example: financial-service webserver
+;;
+;; Script-mode boot currently needs direct load semantics here: the top-level
+;; import path returns to the CLI after startup, while load keeps the normal
+;; server boot resident.
 
-(import "server.omni" 'all)
+(load "server.omni")
 
 (server/start "127.0.0.1" 8181)

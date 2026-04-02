@@ -52,7 +52,7 @@
 (define [effect] (io/task-cancel (^Any task-handle)))
 (define [effect] (io/tls-connect (^Any args)))
 (define [effect] (io/tls-server-wrap (^Any args)))
-(define [effect] (io/tls-read (^Any handle)))
+(define [effect] (io/tls-read (^Any args)))
 (define [effect] (io/tls-write (^Any args)))
 (define [effect] (io/tls-close (^Any handle)))
 
@@ -384,7 +384,9 @@
 ;; Keep untyped fallback so invalid args still flow through io/tls-connect canonical payload errors.
 (define (tls-connect tcp-handle hostname .. rest) (signal io/tls-connect (cons tcp-handle (cons hostname rest))))
 (define (tls-server-wrap tcp-handle (^String cert-pem-path) (^String key-pem-path)) (signal io/tls-server-wrap (cons tcp-handle (cons cert-pem-path (cons key-pem-path nil)))))
-(define (tls-read handle) (signal io/tls-read handle))
+;; Keep variadic fallback so optional max-bytes and invalid arg shapes flow through
+;; io/tls-read canonical payload errors.
+(define (tls-read handle .. rest) (signal io/tls-read (cons handle rest)))
 (define (tls-write handle data) (signal io/tls-write (cons handle data)))
 (define (tls-close handle) (signal io/tls-close handle))
 

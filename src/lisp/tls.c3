@@ -1,5 +1,7 @@
 module lisp;
 
+import std::io;
+
 // ============================================================
 // BearSSL extern declarations — direct calls, no wrapper
 // ============================================================
@@ -35,6 +37,10 @@ extern fn int br_sslio_close(void* ctx) @extern("br_sslio_close");
 // Socket I/O callbacks + trust-store helpers (from csrc/tls_helpers.c)
 extern fn int omni_tls_sock_read(void* ctx, char* buf, usz len) @extern("omni_tls_sock_read");
 extern fn int omni_tls_sock_write(void* ctx, char* buf, usz len) @extern("omni_tls_sock_write");
+extern fn void omni_tls_clear_last_error() @extern("omni_tls_clear_last_error");
+extern fn char* omni_tls_last_error() @extern("omni_tls_last_error");
+extern fn int omni_tls_client_last_error(void* client_ctx) @extern("omni_tls_client_last_error");
+extern fn char* omni_tls_error_code_string(int err) @extern("omni_tls_error_code_string");
 extern fn void* omni_tls_trust_store_load_file(char* path) @extern("omni_tls_trust_store_load_file");
 extern fn void* omni_tls_trust_store_load_default() @extern("omni_tls_trust_store_load_default");
 extern fn void* omni_tls_trust_store_get_anchors(void* store_handle) @extern("omni_tls_trust_store_get_anchors");
@@ -49,4 +55,29 @@ extern fn void omni_tls_server_creds_free(void* creds_handle) @extern("omni_tls_
 extern fn int omni_tls_client_set_single_rsa(void* client_ctx, void* creds_handle) @extern("omni_tls_client_set_single_rsa");
 extern fn int omni_tls_client_session_cache_load(void* client_ctx, ZString hostname) @extern("omni_tls_client_session_cache_load");
 extern fn int omni_tls_client_session_cache_store(void* client_ctx, ZString hostname) @extern("omni_tls_client_session_cache_store");
+
+fn char[] tls_last_error_text() {
+    char* err = omni_tls_last_error();
+    if (err == null || err[0] == 0) return "";
+    usz len = 0;
+    while (err[len] != 0) len++;
+    return err[:len];
+}
+
+fn char[] tls_engine_error_text(void* client_ctx) {
+    if (client_ctx == null) return "";
+    int err = omni_tls_client_last_error(client_ctx);
+    if (err == 0) return "";
+    char* text = omni_tls_error_code_string(err);
+    if (text == null || text[0] == 0) return "";
+    usz len = 0;
+    while (text[len] != 0) len++;
+    return text[:len];
+}
+
+fn char[] tls_message_with_cause(char[256]* buf, char[] base) {
+    char[] cause = tls_last_error_text();
+    if (cause.len == 0) return base;
+    return io::bprintf(buf, "%s: %s", (ZString)base, (ZString)cause)!!;
+}
 

@@ -352,6 +352,20 @@ fn void run_advanced_parser_import_edge_tests(Interp* interp, int* pass, int* fa
     }
 }
 
+fn void run_advanced_parser_module_edge_tests(Interp* interp, int* pass, int* fail) {
+    Expr* ast = parse_for_jit(
+        "(module bad-mod-fail-closed (export x) (define x 1) (if 1 2))",
+        interp
+    );
+    if (ast == null) {
+        emit_pass_literal("[PASS] parser module malformed body fails closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] parser module malformed body fails closed");
+        (*fail)++;
+    }
+}
+
 fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     // === MODULE SYSTEM TESTS ===
     run_advanced_module_qualified_cached_tests(interp, pass, fail);
@@ -360,6 +374,7 @@ fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_module_reexport_shorthand_tests(interp, pass, fail);
     run_advanced_parser_import_edge_tests(interp, pass, fail);
     run_advanced_parser_export_from_edge_tests(interp, pass, fail);
+    run_advanced_parser_module_edge_tests(interp, pass, fail);
 }
 
 fn void run_advanced_collections_module_tests(Interp* interp, int* pass, int* fail) {

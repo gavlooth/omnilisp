@@ -1,9 +1,15 @@
 module main;
 
 import std::io;
+import std::io::path;
+import libc;
 
 extern fn int c_getpid() @extern("getpid");
 extern fn isz c_readlink(char* path, char* buf, usz size) @extern("readlink");
+extern fn int c_access(char* path, int mode) @extern("access");
+
+const int BUILD_ACCESS_EXEC = 1;
+const int BUILD_ACCESS_WRITE = 2;
 
 usz g_aot_temp_seq = 0;
 
@@ -200,14 +206,77 @@ fn char* derive_default_output_name(char* input_file, char[] default_out) {
     return &default_out[0];
 }
 
-fn bool load_build_source(char* input_file, char[]* source_out) {
+fn bool load_build_source(char* input_file, char[]* source_out, EntryFileReadKind* kind_out = null) {
     char[] input_path = input_file[:cstr_len(input_file)];
     if (try src = io::file::load_temp((String)input_path)) {
         *source_out = src;
+        if (kind_out != null) *kind_out = ENTRY_FILE_READ_OK;
         return true;
     }
-    io::printfn("Error: cannot read input file '%s'", (ZString)input_file);
+    if (kind_out != null && !classify_file_read_path(input_path, kind_out)) {
+        return false;
+    }
+    if (kind_out != null) *kind_out = ENTRY_FILE_READ_GENERIC_FAILURE;
     return false;
+}
+
+fn bool validate_output_target_path(char* output_path_cstr, EntryFileWriteKind* kind_out = null) {
+    if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    if (output_path_cstr == null || output_path_cstr[0] == 0) return false;
+
+    char[] output_path = output_path_cstr[:cstr_len(output_path_cstr)];
+    if (output_path.len == 0) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
+
+    if (try out_path = path::temp((String)output_path)) {
+        if (path::is_dir(out_path)) {
+            if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+            return false;
+        }
+    }
+
+    while (output_path.len > 1 && output_path[output_path.len - 1] == '/') {
+        output_path = output_path[..output_path.len - 1];
+    }
+    if (output_path.len == 0 || output_path[output_path.len - 1] == '/') {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
+
+    isz last_slash = -1;
+    for (usz i = 0; i < output_path.len; i++) {
+        if (output_path[i] == '/') last_slash = (isz)i;
+    }
+
+    char[] parent_dir = ".";
+    if (last_slash == 0) {
+        parent_dir = "/";
+    } else if (last_slash > 0) {
+        parent_dir = output_path[..(usz)last_slash];
+    }
+
+    if (!io::file::is_dir((String)parent_dir)) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
+
+    char[1024] parent_buf = {};
+    if (parent_dir.len >= parent_buf.len) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
+        return false;
+    }
+    for (usz i = 0; i < parent_dir.len; i++) parent_buf[i] = parent_dir[i];
+    parent_buf[parent_dir.len] = 0;
+
+    if (c_access(&parent_buf[0], BUILD_ACCESS_WRITE | BUILD_ACCESS_EXEC) != 0) {
+        if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PERMISSION_DENIED;
+        return false;
+    }
+
+    if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_OK;
+    return true;
 }
 
 fn void parse_build_print_flags(int argc, char** argv, bool* print_last, bool* print_all) {
@@ -226,9 +295,11 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
         if (try file = io::file::open((String)temp_path_buf[:path_len], "wx")) {
             char[] remaining = c3_code;
             bool write_ok = true;
+            EntryFileWriteKind write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
             while (write_ok && remaining.len > 0) {
                 usz? written_opt = file.write(remaining);
                 if (catch err = written_opt) {
+                    write_kind = classify_file_write_errno();
                     write_ok = false;
                     break;
                 }
@@ -238,13 +309,20 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
                 }
                 remaining = remaining[written_opt..];
             }
-            if (catch err = file.close()) write_ok = false;
+            if (catch err = file.close()) {
+                write_kind = classify_file_write_errno();
+                write_ok = false;
+            }
             if (!write_ok) {
-                io::printn("Error: cannot write AOT temp file in build/");
+                print_file_write_error_text("AOT temp file", temp_path_buf[:path_len], write_kind);
                 return false;
             }
             *path_len_out = path_len;
             return true;
+        }
+        if (libc::errno() != errno::EEXIST) {
+            print_file_write_error_text("AOT temp file", temp_path_buf[:path_len], classify_file_write_errno());
+            return false;
         }
     }
     io::printn("Error: cannot write unique AOT temp file in build/");

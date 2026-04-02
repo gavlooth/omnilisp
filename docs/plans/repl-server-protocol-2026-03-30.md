@@ -21,7 +21,20 @@ Shipped now:
   - when the server starts with `--project [dir]`, each new `clone` session
     resolves an Omni project the same way as `omni --repl --project` and
     evaluates `src/main.omni` before emitting the `session` event
+  - when that preload fails, the server emits `error` tagged with the new
+    session id before the normal `session` / `done` announcement, and the
+    session remains available for follow-up requests
 - newline-delimited JSON protocol framing
+- current single-worker execution semantics:
+  - only one runtime request may be active at a time,
+  - `clone`, `eval`, `load-file`, `complete`, and `close` fail with
+    `protocol/server-busy` while another runtime request is in flight or
+    already queued,
+  - `interrupt` only targets the currently running request; queued work is
+    rejected as `protocol/no-such-target`,
+  - `stdin` may still be routed to the currently running request or the single
+    queued request so blocked `(read-line)` workflows can stage input before
+    execution resumes
 - ops:
   - `describe`
   - `clone`
@@ -239,6 +252,10 @@ Response:
 {"id":"2","event":"done","session":"s1"}
 ```
 
+With server-side `--project [dir]` preload enabled, a failing preload first
+emits `error`, then the server still announces the session and ends the clone
+request with `done`.
+
 ### `close`
 
 Purpose:
@@ -306,6 +323,13 @@ Error example:
 Purpose:
 
 - request cancellation of an in-flight eval in the same session.
+
+Current status:
+
+- shipped only for the currently running target request,
+- if the target is merely queued and has not started execution yet, the server
+  returns `protocol/no-such-target` instead of acknowledging an interrupt that
+  would be cleared before execution begins.
 
 Request:
 

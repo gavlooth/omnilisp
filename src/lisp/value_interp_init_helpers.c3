@@ -96,7 +96,9 @@ fn void interp_init_runtime_flags(Interp* self) {
     self.console_capture_len = 0;
     self.console_capture_cap = 0;
     self.input_state = null;
+    self.sigint_requested = 0;
     self.interrupt_flag = null;
+    self.signal_handles_head = null;
     self.jit_env = null;
     self.jit_tco_expr = null;
     self.jit_tco_env = null;

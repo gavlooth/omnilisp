@@ -59,7 +59,7 @@ fn bool stack_has_apply_headroom(usz required) @inline {
  * Stack grows downward, so stack_top is the initial RSP.
  */
 fn StackRegion stack_region_alloc(usz stack_size) {
-    StackRegion r;
+    StackRegion r = {};
     usz total = stack_size + GUARD_SIZE;
 
     void* mem = mmap(null, total, PROT_READ | PROT_WRITE,
@@ -74,7 +74,10 @@ fn StackRegion stack_region_alloc(usz stack_size) {
     }
 
     // Guard page at lowest address — crashes on stack overflow.
-    mprotect(mem, GUARD_SIZE, PROT_NONE);
+    if (mprotect(mem, GUARD_SIZE, PROT_NONE) < 0) {
+        munmap(mem, total);
+        return r;
+    }
 
     r.base = mem;
     r.total_size = total;

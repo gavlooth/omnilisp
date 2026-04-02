@@ -80,12 +80,18 @@ extern fn int omni_uv_process_poll(
     int* exit_status_out,
     int* term_signal_out
 ) @extern("omni_uv_process_poll");
+extern fn int omni_uv_process_wait(void* process, int* exit_status_out, int* term_signal_out) @extern("omni_uv_process_wait");
 extern fn int omni_uv_process_kill(void* process, int sig) @extern("omni_uv_process_kill");
 extern fn int omni_uv_process_pid(void* process) @extern("omni_uv_process_pid");
 extern fn void omni_uv_process_close(void* process) @extern("omni_uv_process_close");
+extern fn void omni_uv_process_debug_reset_counters() @extern("omni_uv_process_debug_reset_counters");
+extern fn int omni_uv_process_debug_poll_calls() @extern("omni_uv_process_debug_poll_calls");
+extern fn int omni_uv_process_debug_wait_calls() @extern("omni_uv_process_debug_wait_calls");
 extern fn int omni_uv_signal_start(int signum, void** out_watch) @extern("omni_uv_signal_start");
 extern fn int omni_uv_signal_poll_pending(void* signal_watch) @extern("omni_uv_signal_poll_pending");
 extern fn int omni_uv_signal_stop(void* signal_watch) @extern("omni_uv_signal_stop");
+extern fn int omni_uv_signal_debug_set_pending(void* signal_watch, int pending_count) @extern("omni_uv_signal_debug_set_pending");
+extern fn int omni_uv_signal_debug_pending(void* signal_watch) @extern("omni_uv_signal_debug_pending");
 extern fn int omni_uv_pipe_connect_start(
     void* loop,
     char* path,

@@ -6,23 +6,42 @@ import lisp;
 const char[] JSON_ERROR_SEVERITY = "error";
 const char[] JSON_PARSE_ERROR_CODE = "parser/syntax-error";
 const char[] JSON_COMPILE_ERROR_CODE = "compiler/lowering-error";
-const char[] JSON_IO_ERROR_CODE = "io/read-failed";
 
-fn void print_check_usage_json() {
-    io::print("{\"ok\":false,\"code\":\"cli/usage\",\"severity\":\"error\",\"message\":");
-    print_json_escaped_string("usage: omni --check [--json] <file>");
+fn void print_cli_error_json(char[] code, char[] message) {
+    io::print("{\"ok\":false,\"code\":");
+    print_json_escaped_string(code);
+    io::print(",\"severity\":");
+    print_json_escaped_string(JSON_ERROR_SEVERITY);
+    io::print(",\"message\":");
+    print_json_escaped_string(message);
     io::print("}\n");
 }
 
-fn void print_check_unexpected_arg_json(char* arg) {
-    io::print("{\"ok\":false,\"code\":\"cli/usage\",\"severity\":\"error\",\"message\":");
+fn void print_cli_usage_json(char[] message) {
+    print_cli_error_json("cli/usage", message);
+}
+
+fn void print_cli_unexpected_arg_json(char* mode, char* arg) {
     char[256] msg_buf;
-    if (try msg = io::bprintf(&msg_buf, "unexpected argument after --check: %s", (ZString)arg)) {
-        print_json_escaped_string(msg);
-    } else {
-        print_json_escaped_string("unexpected argument after --check");
+    if (try msg = io::bprintf(&msg_buf, "unexpected argument after %s: %s", (ZString)mode, (ZString)arg)) {
+        print_cli_usage_json(msg);
+        return;
     }
-    io::print("}\n");
+
+    char[192] fallback_buf;
+    if (try fallback = io::bprintf(&fallback_buf, "unexpected argument after %s", (ZString)mode)) {
+        print_cli_usage_json(fallback);
+    } else {
+        print_cli_usage_json("unexpected argument");
+    }
+}
+
+fn void print_check_usage_json() {
+    print_cli_usage_json("usage: omni --check [--json] <file>");
+}
+
+fn void print_check_unexpected_arg_json(char* arg) {
+    print_cli_unexpected_arg_json("--check", arg);
 }
 
 fn int print_check_usage() {
@@ -32,7 +51,8 @@ fn int print_check_usage() {
 
 fn void print_json_hex_byte(char c) {
     char[] hex = "0123456789abcdef";
-    io::printf("%c%c", hex[(usz)(c >> 4) & 0xF], hex[(usz)c & 0xF]);
+    uint byte = (uint)c;
+    io::printf("%c%c", hex[(usz)((byte >> 4) & 0xF)], hex[(usz)(byte & 0xF)]);
 }
 
 fn void print_json_escaped_string(char[] value) {
@@ -50,7 +70,8 @@ fn void print_json_escaped_string(char[] value) {
             case '\t':
                 io::print("\\t");
             default:
-                if (c < 0x20) {
+                uint byte = (uint)c;
+                if (byte < 0x20 || byte >= 0x7f) {
                     io::print("\\u00");
                     print_json_hex_byte(c);
                 } else {
@@ -118,18 +139,22 @@ fn void print_check_result_json(char[] path, lisp::EvalResult result, char[] cod
     io::print("]}\n");
 }
 
-fn void print_check_read_error_json(char[] path) {
+fn void print_check_read_error_json(char[] path, EntryFileReadKind kind) {
+    char[] code = file_read_kind_code(kind);
+    char[] reason = file_read_kind_reason(kind);
     io::print("{\"ok\":false,\"path\":");
     print_json_escaped_string(path);
     io::print(",\"diagnostics\":[{\"code\":");
-    print_json_escaped_string(JSON_IO_ERROR_CODE);
+    print_json_escaped_string(code);
     io::print(",\"severity\":");
     print_json_escaped_string(JSON_ERROR_SEVERITY);
     io::print(",\"message\":");
-    print_json_escaped_string("cannot read input file");
+    char[320] msg_buf;
+    char[] msg = io::bprintf(&msg_buf, "cannot read input file '%s': %s", (ZString)path, (ZString)reason)!!;
+    print_json_escaped_string(msg);
     io::print(",\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":1}}}]}\n");
 }
 
-fn void print_check_read_error(char* input_file) {
-    io::printfn("Error: cannot read input file %s", (ZString)input_file);
+fn void print_check_read_error(char[] path, EntryFileReadKind kind) {
+    print_file_read_error_text("input file", path, kind);
 }

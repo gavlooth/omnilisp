@@ -56,7 +56,11 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
             return null;  // mmap failed
         }
         // Register guard page for stack overflow detection
-        stack_guard_register(c.stack.base, GUARD_SIZE);
+        if (stack_guard_register(c.stack.base, GUARD_SIZE) != 0) {
+            stack_region_free(&c.stack);
+            mem::free(c);
+            return null;
+        }
         stack_pool_link_ctx(pool, c);
     }
 

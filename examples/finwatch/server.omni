@@ -221,18 +221,20 @@
 ;; Each source is fire-and-forget — failures are logged but don't abort the poll.
 ;; for-each: side-effect only (storing into cache), not building a list.
 ;; match (Ok/Err) replaces null? checks on feed results.
+(define (server/store-quotes! result)
+  (match result
+    ((Ok quotes) (for-each cache/store-quote! quotes))
+    ((Err msg)   (println (format "[poll] fetch error: %s" msg)))))
+
+(define (server/store-news! result)
+  (match result
+    ((Ok items) (for-each cache/store-news! items))
+    ((Err msg)  (println (format "[poll] news error: %s" msg)))))
+
 (define (server-poll-once!)
-  (define (store-quotes! result)
-    (match result
-      ((Ok quotes) (for-each cache/store-quote! quotes))
-      ((Err msg)   (println (format "[poll] fetch error: %s" msg)))))
-  (define (store-news! result)
-    (match result
-      ((Ok items) (for-each cache/store-news! items))
-      ((Err msg)  (println (format "[poll] news error: %s" msg)))))
-  (spawn (lambda () (store-quotes! (feed/fetch-fx))))
-  (spawn (lambda () (store-quotes! (feed/fetch-crypto))))
-  (spawn (lambda () (store-news!   (feed/fetch-news))))
+  (spawn (lambda () (server/store-quotes! (feed/fetch-fx))))
+  (spawn (lambda () (server/store-quotes! (feed/fetch-crypto))))
+  (spawn (lambda () (server/store-news!   (feed/fetch-news))))
   (cache/set-last-refresh! (time))
   (println (format "[poll] refresh at %d" (time))))
 

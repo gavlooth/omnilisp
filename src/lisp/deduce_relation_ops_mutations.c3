@@ -1,5 +1,17 @@
 module lisp;
 
+fn void deduce_clear_post_commit_raise_state(Interp* interp) {
+    if (interp == null) return;
+    interp.flags.raise_pending = false;
+    interp.raise_msg_len = 0;
+    interp.raise_payload = null;
+}
+
+fn void deduce_ignore_post_commit_error(Value* err, Interp* interp) {
+    if (err == null) return;
+    deduce_clear_post_commit_raise_state(interp);
+}
+
 fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return deduce_raise(interp, "deduce/fact-expected-relation-values", "fact!: expected (fact! relation val...)");
@@ -150,7 +162,7 @@ fn Value* prim_assert_fact(Value*[] args, Env* env, Interp* interp) {
     if (!existed) {
         deduce_relation_schema_note_insert(rel);
         Value* mutation_err = deduce_db_note_insert_mutation(rel, &key_buf[0], key_len, interp);
-        if (mutation_err != null) return mutation_err;
+        deduce_ignore_post_commit_error(mutation_err, interp);
     }
     return make_void(interp);
 }
@@ -277,7 +289,7 @@ fn Value* prim_retract_fact(Value*[] args, Env* env, Interp* interp) {
     if (deleted) {
         deduce_relation_schema_note_delete(rel);
         Value* mutation_err = deduce_db_note_mutation(rel, true, interp);
-        if (mutation_err != null) return mutation_err;
+        deduce_ignore_post_commit_error(mutation_err, interp);
     }
     return make_void(interp);
 }
@@ -335,7 +347,7 @@ fn Value* prim_deduce_clear(Value*[] args, Env* env, Interp* interp) {
     }
     deduce_relation_schema_note_clear(rel);
     Value* mutation_err = deduce_db_note_mutation(rel, true, interp);
-    if (mutation_err != null) return mutation_err;
+    deduce_ignore_post_commit_error(mutation_err, interp);
     return make_void(interp);
 }
 
@@ -393,7 +405,7 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
 
     deduce_relation_schema_note_clear(rel);
     Value* mutation_err = deduce_db_note_mutation(rel, true, interp);
-    if (mutation_err != null) return mutation_err;
+    deduce_ignore_post_commit_error(mutation_err, interp);
     DeduceRelationSchema* schema = deduce_relation_lookup_schema(rel);
     if (schema != null) schema.dropped = true;
     rel.dropped = true;
@@ -409,6 +421,6 @@ fn Value* prim_deduce_drop(Value*[] args, Env* env, Interp* interp) {
         true,
         interp
     );
-    if (meta_err != null) return meta_err;
+    deduce_ignore_post_commit_error(meta_err, interp);
     return make_void(interp);
 }

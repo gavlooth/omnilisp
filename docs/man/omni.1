@@ -71,7 +71,7 @@ Scaffold a new Omni project.
 .BI --bind " [project-dir]"
 Generate FFI bindings from
 .I omni.toml
-\&.
+\&. Overlong header paths and header sets that exceed the current fixed parse buffer fail with an error instead of producing partial bindings.
 .TP
 .B --gen-e2e
 Generate end-to-end compiler tests.
@@ -135,6 +135,8 @@ printf '%s\n' '{"id":"1","input":"(+ 1 2)","mode":"expr"}' | omni --repl --json
 .EE
 In JSON REPL transport mode, stdout is reserved for protocol replies and user
 print/display output is emitted on stderr.
+Preflight failures before request processing now return one JSON error object
+on stdout instead of plaintext CLI text.
 .TP
 Unix-socket REPL server:
 .EX
@@ -168,6 +170,8 @@ operation routes data into
 and accepts an optional
 .B eof
 flag to close routed input.
+Startup failures before any client attaches now return one JSON error object on
+stdout instead of plaintext CLI/listener text.
 .TP
 Stdio REPL server:
 .EX
@@ -175,7 +179,9 @@ printf '%s\n' '{"id":"1","op":"describe"}' | omni --repl-server --stdio
 printf '%s\n' '{"id":"1","op":"clone"}' | omni --repl-server --stdio --project ./demo
 .EE
 This uses the same session/op/event protocol as the Unix-socket server, but on
-stdin/stdout instead of a filesystem socket path. While a request is running,
+stdin/stdout instead of a filesystem socket path. Preflight failures before
+request processing now return one JSON error object on stdout. While a request
+is running,
 additional non-\fBinterrupt\fR requests receive
 .B protocol/server-busy .
 .TP
@@ -185,7 +191,8 @@ omni --repl-server --tcp 127.0.0.1 5555
 omni --repl-server --tcp 127.0.0.1 5555 --project ./demo
 .EE
 This uses the same protocol over a TCP listener and currently serves one client
-connection at a time.
+connection at a time. Startup failures before client attach now return one JSON
+error object on stdout instead of plaintext CLI/listener text.
 After the listener binds successfully, Omni writes
 .B .omni-repl-port
 in the current working directory so editor plugins can discover the TCP port.

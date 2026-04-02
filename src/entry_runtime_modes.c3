@@ -119,12 +119,6 @@ fn bool repl_resolve_project_main_path(char* project_dir, char[] main_path_buf, 
 }
 
 fn bool repl_load_file_into_interp(lisp::Interp* interp, char[] load_path, bool json, char[] label) {
-    if (catch err = io::file::load_temp((String)load_path)) {
-        (void)err;
-        io::printfn("Error: %s not found at %s", (ZString)label.ptr, (ZString)load_path.ptr);
-        return false;
-    }
-
     if (try source = io::file::load_temp((String)load_path)) {
         if (!lisp::push_source_dir(load_path, interp)) {
             io::printfn("Error: failed to allocate source directory context for '%s'", (ZString)load_path.ptr);
@@ -160,7 +154,13 @@ fn bool repl_load_file_into_interp(lisp::Interp* interp, char[] load_path, bool 
         return true;
     }
 
-    io::printfn("Error: failed to read %s '%s'", (ZString)label.ptr, (ZString)load_path.ptr);
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (!classify_file_read_path(load_path, &read_kind)) {
+        print_file_read_error_text(label, load_path, read_kind);
+        return false;
+    }
+
+    print_file_read_error_text(label, load_path, ENTRY_FILE_READ_GENERIC_FAILURE);
     return false;
 }
 
@@ -208,14 +208,22 @@ fn int run_gen_e2e_mode(int argc, char** argv, int gen_idx) {
 fn int run_repl_mode(int argc, char** argv, int repl_idx) {
     ReplModeOptions options = parse_repl_mode_options(argc, argv, repl_idx);
     if (options.unexpected != null) {
+        if (options.json) {
+            print_cli_unexpected_arg_json("--repl", options.unexpected);
+            return 1;
+        }
         return print_unexpected_mode_arg("--repl", options.unexpected);
     }
     if (options.load_project && options.load_file) {
+        if (options.json) {
+            print_cli_usage_json("choose either --repl --project or --repl --load <file>");
+            return 1;
+        }
         io::printn("Error: choose either --repl --project or --repl --load <file>");
         return 1;
     }
     if (options.json && (options.load_project || options.load_file)) {
-        io::printn("Error: REPL preload is not supported with --json");
+        print_cli_usage_json("REPL preload is not supported with --json");
         return 1;
     }
 
@@ -229,6 +237,10 @@ fn int run_repl_mode(int argc, char** argv, int repl_idx) {
 
     lisp::Interp* interp = create_runtime_interp();
     if (interp == null) {
+        if (options.json) {
+            print_cli_error_json("runtime/bootstrap-failed", "failed to create runtime interpreter for --repl");
+            return 1;
+        }
         io::printn("Error: failed to create runtime interpreter for --repl");
         return 1;
     }

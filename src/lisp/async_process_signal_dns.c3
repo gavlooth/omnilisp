@@ -64,8 +64,7 @@ fn Value* prim_signal_unhandle(Value*[] args, Env* env, Interp* interp) {
 
     // Drain pending signals before teardown to preserve callback delivery.
     drain_signal_handle_pending(sh, interp);
-    unregister_signal_handle(sh);
-    close_signal_handle(sh);
+    signal_handle_detach_runtime_state(sh);
     return make_void(interp);
 }
 

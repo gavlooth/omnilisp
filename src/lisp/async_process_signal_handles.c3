@@ -12,12 +12,23 @@ struct ProcessHandle {
 struct SignalHandle {
     void* uv_signal_watch;
     Value* callback;
+    main::ScopeRegion* callback_owner_scope;
+    Interp* owner_interp;
+    SignalHandle* registry_prev;
+    SignalHandle* registry_next;
     int signum;
     bool open;
 }
 
-const usz MAX_SIGNAL_HANDLES = 32;
-SignalHandle*[MAX_SIGNAL_HANDLES] g_signal_handles;
+usz g_signal_debug_dispatch_count = 0;
+
+fn void signal_debug_reset_dispatch_count() {
+    g_signal_debug_dispatch_count = 0;
+}
+
+fn usz signal_debug_dispatch_count() {
+    return g_signal_debug_dispatch_count;
+}
 
 fn void tcp_handle_finalizer(void* handle) {
     TcpHandle* th = (TcpHandle*)handle;
@@ -107,23 +118,62 @@ fn bool signal_callback_callable(Value* v) @inline {
     return t == CLOSURE || t == PRIMITIVE || t == PARTIAL_PRIM || t == METHOD_TABLE;
 }
 
-fn bool register_signal_handle(SignalHandle* sh) {
-    if (sh == null) return false;
-    for (usz i = 0; i < MAX_SIGNAL_HANDLES; i++) {
-        if (g_signal_handles[i] != null) continue;
-        g_signal_handles[i] = sh;
-        return true;
+fn main::ScopeRegion* resolve_signal_callback_owner_scope(Value* callback_v, Interp* interp) {
+    if (callback_v == null || interp == null) return null;
+    main::ScopeRegion* scope = interp.current_scope;
+    while (scope != null) {
+        if (main::is_in_scope((void*)callback_v, scope)) return scope;
+        scope = scope.parent;
     }
-    return false;
+    if (interp.root_scope != null && main::is_in_scope((void*)callback_v, interp.root_scope)) {
+        return interp.root_scope;
+    }
+    return null;
+}
+
+fn void release_signal_callback_owner_scope(SignalHandle* sh) {
+    if (sh == null) return;
+    if (sh.callback_owner_scope != null) {
+        main::scope_release(sh.callback_owner_scope);
+        sh.callback_owner_scope = null;
+    }
+    sh.callback = null;
+}
+
+fn bool register_signal_handle(Interp* interp, SignalHandle* sh) {
+    if (interp == null || sh == null) return false;
+    SignalHandle* head = (SignalHandle*)interp.signal_handles_head;
+    sh.owner_interp = interp;
+    sh.registry_prev = null;
+    sh.registry_next = head;
+    if (head != null) {
+        head.registry_prev = sh;
+    }
+    interp.signal_handles_head = (void*)sh;
+    return true;
 }
 
 fn void unregister_signal_handle(SignalHandle* sh) {
     if (sh == null) return;
-    for (usz i = 0; i < MAX_SIGNAL_HANDLES; i++) {
-        if (g_signal_handles[i] != sh) continue;
-        g_signal_handles[i] = null;
+    Interp* owner = sh.owner_interp;
+    if (owner == null) {
+        sh.registry_prev = null;
+        sh.registry_next = null;
         return;
     }
+
+    if (sh.registry_prev != null) {
+        sh.registry_prev.registry_next = sh.registry_next;
+    } else {
+        owner.signal_handles_head = (void*)sh.registry_next;
+    }
+    if (sh.registry_next != null) {
+        sh.registry_next.registry_prev = sh.registry_prev;
+    }
+
+    sh.registry_prev = null;
+    sh.registry_next = null;
+    sh.owner_interp = null;
 }
 
 fn void close_signal_handle(SignalHandle* sh) {
@@ -133,12 +183,17 @@ fn void close_signal_handle(SignalHandle* sh) {
     sh.open = false;
 }
 
-fn void signal_handle_finalizer(void* handle) {
-    SignalHandle* sh = (SignalHandle*)handle;
+fn void signal_handle_detach_runtime_state(SignalHandle* sh) {
     if (sh == null) return;
     unregister_signal_handle(sh);
     close_signal_handle(sh);
-    sh.callback = null;
+    release_signal_callback_owner_scope(sh);
+}
+
+fn void signal_handle_finalizer(void* handle) {
+    SignalHandle* sh = (SignalHandle*)handle;
+    if (sh == null) return;
+    signal_handle_detach_runtime_state(sh);
 }
 
 fn bool ffi_handle_name_equals(Value* v, char[] expected) @inline {
@@ -189,29 +244,37 @@ fn Value* make_signal_handle(Interp* interp, void* uv_signal_watch, int signum, 
         return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
     }
 
-    Value* callback_root = boundary_promote_to_root(callback_v, interp);
-    if (callback_root == null) {
+    main::ScopeRegion* callback_owner_scope = resolve_signal_callback_owner_scope(callback_v, interp);
+    if (callback_owner_scope == null) {
         (void)omni_uv_signal_stop(uv_signal_watch);
         mem::free(sh);
-        return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
+        return io_raise(
+            interp,
+            "io/signal-handle-callback-lifetime-invalid",
+            "signal-handle: callback lifetime is not owned by the active interpreter scope chain"
+        );
     }
 
+    main::scope_retain(callback_owner_scope);
     sh.uv_signal_watch = uv_signal_watch;
-    sh.callback = callback_root;
+    sh.callback = callback_v;
+    sh.callback_owner_scope = callback_owner_scope;
+    sh.owner_interp = null;
+    sh.registry_prev = null;
+    sh.registry_next = null;
     sh.signum = signum;
     sh.open = true;
 
-    if (!register_signal_handle(sh)) {
-        close_signal_handle(sh);
+    if (!register_signal_handle(interp, sh)) {
+        signal_handle_detach_runtime_state(sh);
         mem::free(sh);
-        return io_raise(interp, "io/signal-handle-limit-reached", "signal-handle: max active signal handlers reached");
+        return io_raise(interp, "io/signal-handle-failed", "signal-handle: failed to register signal handle");
     }
 
     Value* v = make_ffi_handle_ex(interp, (void*)sh, "signal-handle",
         &signal_handle_finalizer, true, false);
     if (v == null) {
-        unregister_signal_handle(sh);
-        close_signal_handle(sh);
+        signal_handle_detach_runtime_state(sh);
         mem::free(sh);
         return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
     }
@@ -222,6 +285,7 @@ fn void dispatch_signal_callback(SignalHandle* sh, int signum, Interp* interp) {
     if (sh == null || !sh.open || sh.callback == null) return;
     if (!signal_callback_callable(sh.callback)) return;
 
+    g_signal_debug_dispatch_count++;
     Value* arg = make_int(interp, (long)signum);
     Value* result = jit_apply_value(sh.callback, arg, interp);
     if (result != null && result.tag == ERROR) {
@@ -235,18 +299,18 @@ fn void drain_signal_handle_pending(SignalHandle* sh, Interp* interp) {
     int pending = omni_uv_signal_poll_pending(sh.uv_signal_watch);
     if (pending <= 0) return;
 
-    int capped = pending > 1024 ? 1024 : pending;
-    for (int i = 0; i < capped; i++) {
+    for (int i = 0; i < pending; i++) {
         dispatch_signal_callback(sh, sh.signum, interp);
     }
 }
 
 fn void dispatch_pending_signal_callbacks(Interp* interp) {
     if (interp == null) return;
-    for (usz i = 0; i < MAX_SIGNAL_HANDLES; i++) {
-        SignalHandle* sh = g_signal_handles[i];
-        if (sh == null) continue;
+    SignalHandle* sh = (SignalHandle*)interp.signal_handles_head;
+    while (sh != null) {
+        SignalHandle* next = sh.registry_next;
         drain_signal_handle_pending(sh, interp);
+        sh = next;
     }
 }
 

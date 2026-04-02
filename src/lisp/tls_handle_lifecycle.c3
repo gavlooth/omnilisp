@@ -18,10 +18,10 @@ struct TlsHandle {
     types::Atomic{int} in_flight;
 }
 
-fn Value* make_tls_handle_val(Interp* interp, TlsHandle* th) {
+fn Value* make_tls_handle_val(Interp* interp, TlsHandle* th, char[] oom_code, char[] oom_message) {
     Value* v = make_ffi_handle_ex(interp, (void*)th, "tls-handle", &tls_handle_finalizer, true, false);
     if (v == null) {
-        return tls_raise_async(interp, "io/tls-connect-out-of-memory", "tls-connect: out of memory");
+        return tls_raise_async(interp, oom_code, oom_message);
     }
     return v;
 }

@@ -7,6 +7,7 @@ import main;
 fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Async I/O Tests");
     run_async_tests_io_tls(interp, pass, fail);
+    run_async_tests_repl_server(interp, pass, fail);
 
     // listener lifecycle
     test_tag(interp, "tcp-listen open/close",

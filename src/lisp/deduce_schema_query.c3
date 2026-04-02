@@ -511,7 +511,10 @@ enum DeduceRelationOpenStatus {
     REL_OPEN_OUT_OF_MEMORY,
     REL_OPEN_TXN_BEGIN_FAILED,
     REL_OPEN_DBI_FAILED,
+    REL_OPEN_TXN_COMMIT_FAILED,
 }
+
+bool g_deduce_force_relation_open_commit_fail = false;
 
 fn DeduceRelationOpenStatus deduce_relation_open_dbi(Relation* rel, Interp* interp) {
     // Open LMDB named database for this relation.
@@ -534,7 +537,13 @@ fn DeduceRelationOpenStatus deduce_relation_open_dbi_with_name(Relation* rel, ch
         return REL_OPEN_DBI_FAILED;
     }
 
-    mdb_txn_commit(txn);
+    if (g_deduce_force_relation_open_commit_fail) {
+        mdb_txn_abort(txn);
+        return REL_OPEN_TXN_COMMIT_FAILED;
+    }
+
+    rc = mdb_txn_commit(txn);
+    if (rc != MDB_SUCCESS) return REL_OPEN_TXN_COMMIT_FAILED;
     return REL_OPEN_OK;
 }
 
@@ -597,6 +606,10 @@ fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
         if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
             // fault: lisp::WRITE_FAILED
             return deduce_raise(interp, "deduce/define-relation-txn-open-failed", "__define-relation: txn open failed");
+        }
+        if (open_status == REL_OPEN_TXN_COMMIT_FAILED) {
+            // fault: lisp::WRITE_FAILED
+            return deduce_raise(interp, "deduce/define-relation-txn-commit-failed", "__define-relation: txn commit failed");
         }
         // fault: lisp::WRITE_FAILED
         return deduce_raise(interp, "deduce/define-relation-dbi-open-failed", "__define-relation: dbi open failed");
@@ -727,6 +740,9 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         if (open_status == REL_OPEN_TXN_BEGIN_FAILED) {
             return deduce_raise(interp, "deduce/open-named-txn-open-failed", "deduce-open-named: txn open failed");
         }
+        if (open_status == REL_OPEN_TXN_COMMIT_FAILED) {
+            return deduce_raise(interp, "deduce/open-named-txn-commit-failed", "deduce-open-named: txn commit failed");
+        }
         return deduce_raise(interp, "deduce/open-named-dbi-open-failed", "deduce-open-named: dbi open failed");
     }
 
@@ -789,4 +805,3 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
 // (deduce-query relation filter-fn [rule-index] [engine]) → filtered list of dicts
 // filter-fn takes a dict, returns truthy/nil
 // ============================================================
-

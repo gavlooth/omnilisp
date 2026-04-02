@@ -4,11 +4,44 @@ import std::core::mem;
 import std::io;
 import main;
 
+struct ProcessWaitOffloadCtx {
+    void* uv_process;
+    int wait_status;
+    int exit_code;
+    int term_signal;
+}
+
 fn void close_process_handle(ProcessHandle* ph) {
     if (ph == null || !ph.open || ph.uv_process == null) return;
     omni_uv_process_close(ph.uv_process);
     ph.uv_process = null;
     ph.open = false;
+}
+
+fn OffloadCompletion* process_wait_offload_callback(OffloadWork work) {
+    ProcessWaitOffloadCtx* wait_ctx = (ProcessWaitOffloadCtx*)work.custom_ctx;
+
+    OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+    if (completion == null) return null;
+    *completion = {};
+
+    if (wait_ctx == null || wait_ctx.uv_process == null) {
+        scheduler_set_offload_error(completion, "process-wait: invalid or closed process handle");
+        return completion;
+    }
+
+    wait_ctx.wait_status = omni_uv_process_wait(
+        wait_ctx.uv_process,
+        &wait_ctx.exit_code,
+        &wait_ctx.term_signal
+    );
+    if (wait_ctx.wait_status < 0) {
+        scheduler_set_offload_error(completion, "process-wait: wait failed");
+        return completion;
+    }
+
+    completion.kind = OFFLOAD_RES_NIL;
+    return completion;
 }
 
 // (process-spawn cmd args env) -> dict {'handle process-handle 'pid n 'stdin fs-handle 'stdout fs-handle 'stderr fs-handle}
@@ -197,25 +230,20 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     }
 
     int pid = omni_uv_process_pid(ph.uv_process);
-    int exit_code = 0;
-    int term_signal = 0;
-    while (true) {
-        int completed = 0;
-        int poll_status = omni_uv_process_poll(
-            ph.uv_process,
-            &completed,
-            &exit_code,
-            &term_signal
-        );
-        if (poll_status < 0) {
-            return io_raise(interp, "io/process-wait-failed", "process-wait: wait failed");
-        }
-        if (completed != 0) break;
 
-        Value*[1] sleep_args;
-        sleep_args[0] = make_int(interp, 1);
-        Value* slept = prim_async_sleep(sleep_args[..], null, interp);
-        if (slept != null && slept.tag == ERROR) return slept;
+    ProcessWaitOffloadCtx wait_ctx = {
+        .uv_process = ph.uv_process
+    };
+    Value* wait_result = scheduler_execute_custom_offload_job(
+        &process_wait_offload_callback,
+        &wait_ctx,
+        interp
+    );
+    if (wait_result != null && wait_result.tag == ERROR) {
+        return io_raise(interp, "io/process-wait-failed", "process-wait: wait failed");
+    }
+    if (wait_ctx.wait_status < 0) {
+        return io_raise(interp, "io/process-wait-failed", "process-wait: wait failed");
     }
 
     close_process_handle(ph);
@@ -225,8 +253,8 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     Value* exit_key = make_symbol(interp, interp.symbols.intern("exit-code"));
     Value* sig_key = make_symbol(interp, interp.symbols.intern("term-signal"));
     hashmap_set(out.hashmap_val, pid_key, make_int(interp, pid), interp);
-    hashmap_set(out.hashmap_val, exit_key, make_int(interp, exit_code), interp);
-    hashmap_set(out.hashmap_val, sig_key, make_int(interp, term_signal), interp);
+    hashmap_set(out.hashmap_val, exit_key, make_int(interp, wait_ctx.exit_code), interp);
+    hashmap_set(out.hashmap_val, sig_key, make_int(interp, wait_ctx.term_signal), interp);
     return out;
 }
 

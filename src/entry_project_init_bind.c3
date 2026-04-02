@@ -39,8 +39,13 @@ fn int run_init(int argc, char** argv, int init_idx) {
     }
     usz name_len = cstr_len(name);
 
+    bool project_root_created = false;
+    bool success = false;
+    defer if (project_root_created && !success) cleanup_init_project(name, name_len);
+
     if (!init_project_root_is_fresh(name, name_len)) return 1;
     if (!mkdir_project_path(name, name_len)) return 1;
+    project_root_created = true;
     if (!mkdir_project_path(name, name_len, "src")) return 1;
     if (!mkdir_project_path(name, name_len, "lib")) return 1;
     if (!mkdir_project_path(name, name_len, "lib/ffi")) return 1;
@@ -50,6 +55,8 @@ fn int run_init(int argc, char** argv, int init_idx) {
     if (!write_init_toml(name, name_len)) return 1;
     if (!write_init_project_json(name, name_len)) return 1;
     if (!write_init_main_omni(name, name_len)) return 1;
+
+    success = true;
     print_init_summary(name);
     return 0;
 }

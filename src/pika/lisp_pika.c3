@@ -1,6 +1,7 @@
 module pika;
 
 import std::core::mem;
+import std::thread;
 import lisp;
 
 // ============================================================
@@ -25,6 +26,21 @@ struct NamedGrammar {
 NamedGrammar* g_named_grammars = null;
 int g_grammar_count = 0;
 int g_grammar_capacity = 0;
+thread::Mutex g_named_grammar_mu;
+thread::OnceFlag g_named_grammar_mu_once;
+
+fn void named_grammar_mu_init_once() {
+    g_named_grammar_mu.init()!!;
+}
+
+fn void named_grammar_lock() @inline {
+    g_named_grammar_mu_once.call(&named_grammar_mu_init_once);
+    g_named_grammar_mu.lock();
+}
+
+fn void named_grammar_unlock() @inline {
+    g_named_grammar_mu.unlock();
+}
 
 fn bool ensure_named_grammar_capacity() {
     if (g_grammar_count < g_grammar_capacity) return true;
@@ -43,22 +59,49 @@ fn bool ensure_named_grammar_capacity() {
 // Global Lisp parser (lazy-initialized)
 LispPikaParser g_lisp_parser;
 bool g_lisp_parser_initialized = false;
+thread::OnceFlag g_lisp_parser_once;
 
-fn void ensure_pika_parser() {
-    if (!g_lisp_parser_initialized) {
-        g_lisp_parser = create_lisp_parser();
-        g_lisp_parser_initialized = true;
-    }
+fn void init_lisp_parser_once() {
+    g_lisp_parser = create_lisp_parser();
+    g_lisp_parser_initialized = true;
 }
 
-// Find a stored grammar by name
-fn NamedGrammar* find_grammar(lisp::SymbolId name) {
+fn void ensure_pika_parser() {
+    g_lisp_parser_once.call(&init_lisp_parser_once);
+}
+
+fn int find_grammar_index_locked(lisp::SymbolId name) {
     for (int i = 0; i < g_grammar_count; i++) {
         if ((uint)g_named_grammars[i].name == (uint)name && g_named_grammars[i].valid) {
-            return &g_named_grammars[i];
+            return i;
         }
     }
-    return null;
+    return -1;
+}
+
+fn bool lookup_named_grammar(lisp::SymbolId name, Grammar* out_grammar, int* out_start_clause) {
+    named_grammar_lock();
+    defer named_grammar_unlock();
+
+    int idx = find_grammar_index_locked(name);
+    if (idx < 0) return false;
+    *out_grammar = g_named_grammars[idx].grammar;
+    *out_start_clause = g_named_grammars[idx].start_clause;
+    return true;
+}
+
+fn bool store_named_grammar(lisp::SymbolId grammar_name, Grammar grammar, int start_clause) {
+    named_grammar_lock();
+    defer named_grammar_unlock();
+
+    if (!ensure_named_grammar_capacity()) return false;
+
+    g_named_grammars[g_grammar_count].name = grammar_name;
+    g_named_grammars[g_grammar_count].grammar = grammar;
+    g_named_grammars[g_grammar_count].start_clause = start_clause;
+    g_named_grammars[g_grammar_count].valid = true;
+    g_grammar_count++;
+    return true;
 }
 
 // (pika/parse grammar-name input) -> parse result as nested list
@@ -72,8 +115,9 @@ fn lisp::Value* prim_pika_parse(lisp::Value*[] args, lisp::Env* env, lisp::Inter
         return parser_raise(interp, "parser/parse-grammar-not-symbol", "pika/parse: first argument must be grammar name");
     }
 
-    NamedGrammar* ng = find_grammar(args[0].sym_val);
-    if (ng == null) {
+    Grammar grammar;
+    int start_clause = -1;
+    if (!lookup_named_grammar(args[0].sym_val, &grammar, &start_clause)) {
         return parser_raise(interp, "parser/parse-grammar-not-found", "pika/parse: grammar not found");
     }
 
@@ -85,17 +129,17 @@ fn lisp::Value* prim_pika_parse(lisp::Value*[] args, lisp::Env* env, lisp::Inter
     char[] input = args[1].str_chars[:args[1].str_len];
 
     // Parse
-    ParserState st = parse_simple(&ng.grammar, input);
+    ParserState st = parse_simple(&grammar, input);
 
     // Find top-level match
-    int top_match = lookup_best_match_id(0, ng.start_clause, &st);
+    int top_match = lookup_best_match_id(0, start_clause, &st);
 
     if (top_match < 0) {
         return lisp::make_nil(interp);
     }
 
     // Convert parse tree to Lisp list
-    return parse_tree_to_lisp(&st, &ng.grammar, top_match, input, interp);
+    return parse_tree_to_lisp(&st, &grammar, top_match, input, interp);
 }
 
 // Convert a parse tree match to a Lisp value
@@ -150,8 +194,9 @@ fn lisp::Value* prim_pika_fold(lisp::Value*[] args, lisp::Env* env, lisp::Interp
         return parser_raise(interp, "parser/fold-grammar-not-symbol", "pika/fold: first argument must be grammar name");
     }
 
-    NamedGrammar* ng = find_grammar(args[0].sym_val);
-    if (ng == null) {
+    Grammar grammar;
+    int start_clause = -1;
+    if (!lookup_named_grammar(args[0].sym_val, &grammar, &start_clause)) {
         return parser_raise(interp, "parser/fold-grammar-not-found", "pika/fold: grammar not found");
     }
 
@@ -166,17 +211,17 @@ fn lisp::Value* prim_pika_fold(lisp::Value*[] args, lisp::Env* env, lisp::Interp
     lisp::Value* fold_fn = args[2];
 
     // Parse
-    ParserState st = parse_simple(&ng.grammar, input);
+    ParserState st = parse_simple(&grammar, input);
 
     // Find top-level match
-    int top_match = lookup_best_match_id(0, ng.start_clause, &st);
+    int top_match = lookup_best_match_id(0, start_clause, &st);
 
     if (top_match < 0) {
         return lisp::make_nil(interp);
     }
 
     // Fold over parse tree
-    return fold_parse_tree(&st, &ng.grammar, top_match, input, fold_fn, interp);
+    return fold_parse_tree(&st, &grammar, top_match, input, fold_fn, interp);
 }
 
 // Fold over parse tree, calling fold_fn for each node
@@ -332,6 +377,13 @@ fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::
     int top_match = pika_find_top_match(&g_lisp_parser, &st);
 
     if (top_match < 0) {
+        if (lisp::parse(input, interp) != null) {
+            return parser_raise(
+                interp,
+                "parser/parse-lisp-grammar-drift",
+                "pika/parse-lisp: built-in grammar is behind reader syntax"
+            );
+        }
         return lisp::make_nil(interp);
     }
 
@@ -393,15 +445,16 @@ fn lisp::Value* prim_pika_grammar_rules(lisp::Value*[] args, lisp::Env* env, lis
         return parser_raise(interp, "parser/grammar-rules-name-not-symbol", "pika/grammar-rules: argument must be grammar name symbol");
     }
 
-    NamedGrammar* ng = find_grammar(args[0].sym_val);
-    if (ng == null) {
+    Grammar grammar;
+    int start_clause = -1;
+    if (!lookup_named_grammar(args[0].sym_val, &grammar, &start_clause)) {
         return parser_raise(interp, "parser/grammar-rules-grammar-not-found", "pika/grammar-rules: grammar not found");
     }
 
     // Build list of rule names
     lisp::Value* result = lisp::make_nil(interp);
-    for (int i = (int)ng.grammar.names.len - 1; i >= 0; i--) {
-        char[] name = ng.grammar.names[i];
+    for (int i = (int)grammar.names.len - 1; i >= 0; i--) {
+        char[] name = grammar.names[i];
         lisp::SymbolId sym = interp.symbols.intern(name);
         lisp::Value* name_val = lisp::make_symbol(interp, sym);
         result = lisp::make_cons(interp, name_val, result);
@@ -421,8 +474,9 @@ fn lisp::Value* prim_pika_match_span(lisp::Value*[] args, lisp::Env* env, lisp::
         return parser_raise(interp, "parser/match-span-grammar-not-symbol", "pika/match-span: first argument must be grammar name");
     }
 
-    NamedGrammar* ng = find_grammar(args[0].sym_val);
-    if (ng == null) {
+    Grammar grammar;
+    int start_clause = -1;
+    if (!lookup_named_grammar(args[0].sym_val, &grammar, &start_clause)) {
         return parser_raise(interp, "parser/match-span-grammar-not-found", "pika/match-span: grammar not found");
     }
 
@@ -438,7 +492,7 @@ fn lisp::Value* prim_pika_match_span(lisp::Value*[] args, lisp::Env* env, lisp::
     char[] rule_name = interp.symbols.get_name(args[2].sym_val);
 
     // Parse
-    ParserState st = parse_simple(&ng.grammar, input);
+    ParserState st = parse_simple(&grammar, input);
 
     // Find match for the specified rule at position 0
     int match_idx = find_match_at(&st, (String)rule_name, 0);

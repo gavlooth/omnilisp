@@ -151,6 +151,18 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "tls-read requires fiber context",
         "(tls-read nil)",
         "requires running fiber context", pass, fail);
+    test_error_contains(interp, "tls-read rejects non-integer max-bytes",
+        "(tls-read nil \"x\")",
+        "max-bytes must be an integer", pass, fail);
+    test_str_val(interp, "tls-read non-integer max-bytes payload code",
+        "(handle (tls-read nil \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "io/tls-read-max-bytes-not-integer", pass, fail);
+    test_error_contains(interp, "tls-read rejects non-positive max-bytes",
+        "(tls-read nil 0)",
+        "max-bytes must be > 0", pass, fail);
+    test_str_val(interp, "tls-read non-positive max-bytes payload code",
+        "(handle (tls-read nil 0) (raise msg (symbol->string (ref msg 'code))))",
+        "io/tls-read-max-bytes-invalid", pass, fail);
     test_error_contains(interp, "tls-write requires fiber context",
         "(tls-write nil \"ping\")",
         "requires running fiber context", pass, fail);
@@ -189,6 +201,15 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "tls-write expected data payload code",
         "(handle (tls-write nil 1) (raise msg (symbol->string (ref msg 'code))))",
         "io/tls-write-expected-data-string", pass, fail);
+
+    test_truthy(interp, "tls-connect missing CA bundle preserves path cause",
+        "(block "
+        "  (define missing (string-append \"/tmp/omni-missing-ca-\" (number->string (time-ms)) \".pem\")) "
+        "  (define msg (__raw-tls-trust-store-cause missing)) "
+        "  (and (string? msg) "
+        "       (string-contains? msg missing) "
+        "       (string-contains? msg \"failed to open trust store\")))",
+        pass, fail);
 
     // TLS integration: run server in a separate Omni process to avoid
     // scheduler deadlocks from blocking TLS read/write in same runtime thread.
@@ -373,7 +394,8 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (fs-close (ref proc 'stderr)) "
         "  (and (= (ref status 'exit-code) 0) "
         "       (and (string? client-msg) "
-        "            (string-contains? client-msg \"failed to configure client cert/key\"))))",
+        "            (and (string-contains? client-msg \"failed to configure client cert/key\") "
+        "                 (string-contains? client-msg \"missing-client.key.pem\")))))",
         pass, fail);
     }
 

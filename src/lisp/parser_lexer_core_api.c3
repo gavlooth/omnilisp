@@ -2,8 +2,13 @@ module lisp;
 
 import std::io;
 
+bool g_lexer_force_text_alloc_fail = false;
+bool g_lexer_force_text_growth_alloc_fail = false;
+
 fn bool Lexer.ensure_text_capacity(Lexer* self, usz needed_cap) {
+    if (needed_cap == 0) return false;
     if (needed_cap <= self.current.text_cap) return true;
+    if (g_lexer_force_text_growth_alloc_fail) return false;
 
     usz new_cap = self.current.text_cap > 0 ? self.current.text_cap : LEXER_TEXT_INITIAL_CAP;
     while (new_cap < needed_cap) {
@@ -22,7 +27,9 @@ fn bool Lexer.ensure_text_capacity(Lexer* self, usz needed_cap) {
 }
 
 fn bool Lexer.push_current_text_char(Lexer* self, char c) @inline {
+    if (self.current.text_len == usz.max) return false;
     usz next_len = self.current.text_len + 1;
+    if (next_len == usz.max) return false;
     if (!self.ensure_text_capacity(next_len + 1)) return false;
     self.current.text[self.current.text_len] = c;
     self.current.text_len = next_len;
@@ -32,6 +39,10 @@ fn bool Lexer.push_current_text_char(Lexer* self, char c) @inline {
 
 fn bool Lexer.set_error_text(Lexer* self, char[] msg) {
     self.current.type = T_ERROR;
+    if (msg.len == usz.max) {
+        self.current.text_len = 0;
+        return false;
+    }
     if (!self.ensure_text_capacity(msg.len + 1)) {
         self.current.text_len = 0;
         return false;
@@ -48,11 +59,15 @@ fn void Lexer.init(Lexer* self, char[] source) {
     self.len = source.len;
     self.line = 1;
     self.column = 1;
-    self.current.text = (char*)mem::malloc(LEXER_TEXT_INITIAL_CAP);
+    self.current.text = g_lexer_force_text_alloc_fail
+        ? null
+        : (char*)mem::malloc(LEXER_TEXT_INITIAL_CAP);
     if (self.current.text == null) {
         self.current.text_cap = 0;
         self.current.text_len = 0;
         self.current.type = T_ERROR;
+        self.current.line = 1;
+        self.current.column = 1;
         return;
     }
     self.current.text_cap = LEXER_TEXT_INITIAL_CAP;
@@ -108,7 +123,10 @@ fn bool Lexer.match(Lexer* self, TokenType t) {
 
 fn void Lexer.expect(Lexer* self, TokenType t, char[] msg) {
     if (!self.match(t)) {
-        io::printfn("Parse error at line %d, col %d: expected '%s'", self.line, self.column, msg);
-        unreachable("parse error: expected token not found");
+        if (!self.set_error_text(msg)) {
+            self.current.type = T_ERROR;
+            self.current.text_len = 0;
+            if (self.current.text != null && self.current.text_cap > 0) self.current.text[0] = 0;
+        }
     }
 }

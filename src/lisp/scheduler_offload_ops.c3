@@ -1,5 +1,104 @@
 module lisp;
 
+import std::io;
+
+const usz HTTP_OFFLOAD_INITIAL_RESP_CAP = 16384;
+
+fn bool scheduler_send_all_fd(int fd, char* buf, usz len) {
+    usz sent = 0;
+    while (sent < len) {
+        long written = c_send(fd, buf + sent, len - sent, 0);
+        if (written <= 0) return false;
+        sent += (usz)written;
+    }
+    return true;
+}
+
+fn void scheduler_discard_offload_response_buffer(char** buf_ref, usz* len_ref, usz* cap_ref) {
+    if (*buf_ref != null) {
+        mem::free(*buf_ref);
+        *buf_ref = null;
+    }
+    if (len_ref != null) *len_ref = 0;
+    if (cap_ref != null) *cap_ref = 0;
+}
+
+fn bool scheduler_reserve_offload_response_buffer(char** buf_ref, usz* cap_ref, usz needed, OffloadCompletion* completion) {
+    if (needed <= *cap_ref) return true;
+
+    usz new_cap = *cap_ref == 0 ? HTTP_OFFLOAD_INITIAL_RESP_CAP : *cap_ref;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) {
+            scheduler_discard_offload_response_buffer(buf_ref, null, cap_ref);
+            scheduler_set_offload_error(completion, "offload http-get: response too large");
+            return false;
+        }
+        new_cap *= 2;
+    }
+
+    char* grown = *buf_ref == null
+        ? (char*)mem::malloc(new_cap + 1)
+        : (char*)mem::realloc(*buf_ref, new_cap + 1);
+    if (grown == null) {
+        scheduler_discard_offload_response_buffer(buf_ref, null, cap_ref);
+        scheduler_set_offload_error(completion, "offload http-get: out of memory");
+        return false;
+    }
+
+    *buf_ref = grown;
+    *cap_ref = new_cap;
+    return true;
+}
+
+fn bool scheduler_append_offload_response_chunk(
+    char** buf_ref,
+    usz* len_ref,
+    usz* cap_ref,
+    char* chunk,
+    usz chunk_len,
+    OffloadCompletion* completion
+) {
+    if (chunk_len == 0) return true;
+    if (chunk_len > usz.max - *len_ref) {
+        scheduler_discard_offload_response_buffer(buf_ref, len_ref, cap_ref);
+        scheduler_set_offload_error(completion, "offload http-get: response too large");
+        return false;
+    }
+
+    usz next_len = *len_ref + chunk_len;
+    if (!scheduler_reserve_offload_response_buffer(buf_ref, cap_ref, next_len, completion)) {
+        if (len_ref != null) *len_ref = 0;
+        return false;
+    }
+
+    for (usz i = 0; i < chunk_len; i++) (*buf_ref)[*len_ref + i] = chunk[i];
+    *len_ref = next_len;
+    return true;
+}
+
+fn bool scheduler_publish_offload_response_owned(OffloadCompletion* completion, char* resp_buf, usz resp_len) {
+    if (resp_buf == null) {
+        resp_buf = (char*)mem::malloc(1);
+        if (resp_buf == null) {
+            scheduler_set_offload_error(completion, "offload http-get: out of memory");
+            return false;
+        }
+    }
+
+    resp_buf[resp_len] = 0;
+    if (scheduler_set_offload_bytes_owned(
+            completion,
+            resp_buf,
+            resp_len,
+            "offload http-get: result allocation failed"
+        )) {
+        return true;
+    }
+
+    mem::free(resp_buf);
+    return false;
+}
+
 fn bool scheduler_offload_compress(bool gzip_mode, SharedHandle* input, OffloadCompletion* completion) {
     char[] input_bytes = "";
     if (!scheduler_project_shared(input, &input_bytes)) {
@@ -149,28 +248,34 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
 
                     if (br_sslio_write_all(sslio_ctx, &req_buf, req_len) >= 0 &&
                             br_sslio_flush(sslio_ctx) >= 0) {
-                        usz resp_cap = 131072;
-                        char* resp_buf = (char*)mem::malloc(resp_cap + 1);
-                        if (resp_buf != null) {
-                            usz resp_len = 0;
-                            char[4096] chunk;
-                            while (resp_len < resp_cap) {
-                                int n = br_sslio_read(sslio_ctx, &chunk, chunk.len);
-                                if (n <= 0) break;
-                                usz copy = (usz)n;
-                                if (resp_len + copy > resp_cap) copy = resp_cap - resp_len;
-                                for (usz i = 0; i < copy; i++) resp_buf[resp_len + i] = chunk[i];
-                                resp_len += copy;
+                        char* resp_buf = null;
+                        usz resp_len = 0;
+                        usz resp_cap = 0;
+                        bool read_ok = true;
+                        char[4096] chunk;
+                        while (true) {
+                            int n = br_sslio_read(sslio_ctx, &chunk, chunk.len);
+                            if (n < 0) {
+                                scheduler_discard_offload_response_buffer(&resp_buf, &resp_len, &resp_cap);
+                                scheduler_set_offload_error(completion, "offload http-get: TLS read failed");
+                                read_ok = false;
+                                break;
                             }
-                            resp_buf[resp_len] = 0;
-                            if (scheduler_set_offload_bytes_owned(
-                                    completion,
-                                    resp_buf,
-                                    resp_len,
-                                    "offload http-get: result allocation failed"
+                            if (n == 0) break;
+                            if (!scheduler_append_offload_response_chunk(
+                                    &resp_buf,
+                                    &resp_len,
+                                    &resp_cap,
+                                    &chunk,
+                                    (usz)n,
+                                    completion
                                 )) {
-                                ok = true;
+                                read_ok = false;
+                                break;
                             }
+                        }
+                        if (read_ok && scheduler_publish_offload_response_owned(completion, resp_buf, resp_len)) {
+                            ok = true;
                         }
                     }
                 }
@@ -185,30 +290,35 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
         if (fd_ptr     != null) mem::free(fd_ptr);
         if (trust_store != null) omni_tls_trust_store_free(trust_store);
     } else {
-        long sent = c_send(fd, &req_buf, req_len, 0);
-        if (sent >= 0) {
-            usz resp_cap = 131072;
-            char* resp_buf = (char*)mem::malloc(resp_cap + 1);
-            if (resp_buf != null) {
-                usz resp_len = 0;
-                char[4096] chunk;
-                while (resp_len < resp_cap) {
-                    long n = c_recv(fd, &chunk, chunk.len, 0);
-                    if (n <= 0) break;
-                    usz copy = (usz)n;
-                    if (resp_len + copy > resp_cap) copy = resp_cap - resp_len;
-                    for (usz i = 0; i < copy; i++) resp_buf[resp_len + i] = chunk[i];
-                    resp_len += copy;
+        if (scheduler_send_all_fd(fd, &req_buf, req_len)) {
+            char* resp_buf = null;
+            usz resp_len = 0;
+            usz resp_cap = 0;
+            bool read_ok = true;
+            char[4096] chunk;
+            while (true) {
+                long n = c_recv(fd, &chunk, chunk.len, 0);
+                if (n < 0) {
+                    scheduler_discard_offload_response_buffer(&resp_buf, &resp_len, &resp_cap);
+                    scheduler_set_offload_error(completion, "offload http-get: read failed");
+                    read_ok = false;
+                    break;
                 }
-                resp_buf[resp_len] = 0;
-                if (scheduler_set_offload_bytes_owned(
-                        completion,
-                        resp_buf,
-                        resp_len,
-                        "offload http-get: result allocation failed"
+                if (n == 0) break;
+                if (!scheduler_append_offload_response_chunk(
+                        &resp_buf,
+                        &resp_len,
+                        &resp_cap,
+                        &chunk,
+                        (usz)n,
+                        completion
                     )) {
-                    ok = true;
+                    read_ok = false;
+                    break;
                 }
+            }
+            if (read_ok && scheduler_publish_offload_response_owned(completion, resp_buf, resp_len)) {
+                ok = true;
             }
         }
     }
@@ -267,11 +377,61 @@ fn bool scheduler_split_write_file_payload(char[] payload, char[]* out_path, cha
     return true;
 }
 
+fn void scheduler_set_offload_error_with_status(OffloadCompletion* completion, char[] message, int status) {
+    char[192] ebuf;
+    if (catch err = io::bprintf(&ebuf, "%s (%d)", (ZString)message, status)) {
+        scheduler_set_offload_error(completion, message);
+        return;
+    }
+    char[] msg = io::bprintf(&ebuf, "%s (%d)", (ZString)message, status)!!;
+    scheduler_set_offload_error(completion, msg);
+}
+
+fn bool scheduler_build_atomic_temp_path(
+    char[] path,
+    usz unique_id,
+    char[]* out_temp_path,
+    char** out_heap,
+    OffloadCompletion* completion
+) {
+    if (out_temp_path != null) *out_temp_path = "";
+    if (out_heap != null) *out_heap = null;
+
+    if (path.len == 0) {
+        scheduler_set_offload_error(completion, "offload write-file: invalid path");
+        return false;
+    }
+
+    char[64] suffix_buf;
+    char[] suffix = "";
+    uint unique_lo = (uint)unique_id;
+    if (catch err = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), unique_lo)) {
+        scheduler_set_offload_error(completion, "offload write-file: temp path formatting failed");
+        return false;
+    } else {
+        suffix = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), unique_lo)!!;
+    }
+
+    usz temp_len = path.len + suffix.len;
+    char* temp_heap = (char*)mem::malloc(temp_len + 1);
+    if (temp_heap == null) {
+        scheduler_set_offload_error(completion, "offload write-file: out of memory");
+        return false;
+    }
+    for (usz i = 0; i < path.len; i++) temp_heap[i] = path[i];
+    for (usz i = 0; i < suffix.len; i++) temp_heap[path.len + i] = suffix[i];
+    temp_heap[temp_len] = 0;
+
+    if (out_temp_path != null) *out_temp_path = temp_heap[:temp_len];
+    if (out_heap != null) *out_heap = temp_heap;
+    return true;
+}
+
 fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompletion* completion) {
     char[] payload = "";
     if (!scheduler_project_shared(payload_blob, &payload)) {
-        completion.kind = OFFLOAD_RES_NIL;
-        return true;
+        scheduler_set_offload_error(completion, "offload write-file: missing payload");
+        return false;
     }
 
     char[] path = "";
@@ -281,27 +441,47 @@ fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompleti
         return false;
     }
 
-    int fd = omni_uv_fs_open((ZString)path.ptr, 577, 0o644);
+    char[] temp_path = "";
+    char* temp_path_heap = null;
+    if (!scheduler_build_atomic_temp_path(path, (usz)completion, &temp_path, &temp_path_heap, completion)) {
+        return false;
+    }
+    defer if (temp_path_heap != null) mem::free(temp_path_heap);
+
+    (void)omni_uv_fs_unlink((ZString)temp_path.ptr);
+
+    int fd = omni_uv_fs_open((ZString)temp_path.ptr, 577, 0o644);
     if (fd < 0) {
-        completion.kind = OFFLOAD_RES_NIL;
-        return true;
+        scheduler_set_offload_error_with_status(completion, "offload write-file: open temp failed", fd);
+        return false;
     }
 
     usz written = 0;
-    bool ok = true;
+    bool write_ok = true;
     while (written < content.len) {
         long n = omni_uv_fs_write(fd, content.ptr + written, content.len - written);
         if (n <= 0) {
-            ok = false;
+            write_ok = false;
+            scheduler_set_offload_error_with_status(completion, "offload write-file: write failed", (int)n);
             break;
         }
         written += (usz)n;
     }
-    (void)omni_uv_fs_close(fd);
+    int close_status = omni_uv_fs_close(fd);
+    if (close_status < 0 && completion.kind != OFFLOAD_RES_ERROR) {
+        scheduler_set_offload_error_with_status(completion, "offload write-file: close failed", close_status);
+    }
 
-    if (!ok) {
-        completion.kind = OFFLOAD_RES_NIL;
-        return true;
+    if (!write_ok || close_status < 0) {
+        (void)omni_uv_fs_unlink((ZString)temp_path.ptr);
+        return false;
+    }
+
+    int rename_status = omni_uv_fs_rename((ZString)temp_path.ptr, (ZString)path.ptr);
+    if (rename_status != 0) {
+        (void)omni_uv_fs_unlink((ZString)temp_path.ptr);
+        scheduler_set_offload_error_with_status(completion, "offload write-file: rename failed", rename_status);
+        return false;
     }
 
     completion.kind = OFFLOAD_RES_INT;

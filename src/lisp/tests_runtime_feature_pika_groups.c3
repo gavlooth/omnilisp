@@ -233,6 +233,9 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "    '(rule r7 (scan \"[g]\")) '(rule r8 (scan \"[h]\")) '(rule r9 (scan \"[i]\"))) "
         "  (pika/parse 'g-scan-many \"abcdefghi\"))",
         CONS, pass, fail);
+    test_str_val(interp, "pika/parse-lisp grammar drift fails closed",
+        "(handle (pika/parse-lisp \"#_(+ 1 2) 3\") (raise msg (symbol->string (ref msg 'code))))",
+        "parser/parse-lisp-grammar-drift", pass, fail);
     {
         pika::RuleBuilder rb = pika::rb_new();
         int[] seq_children = mem::new_array(int, 40);

@@ -5,8 +5,6 @@ import lisp;
 
 extern fn char* c_getcwd(char* buf, usz size) @extern("getcwd");
 
-const char[] CHECK_COMPILE_UNSUPPORTED_MARKER = "unsupported expr type";
-
 fn char* find_check_input_file(int argc, char** argv, int check_idx) {
     for (int i = check_idx + 1; i < argc; i++) {
         if (str_eq(argv[i], "--json")) continue;
@@ -43,12 +41,11 @@ fn char[] check_resolve_path(char* input_file, char[] abs_buf) {
 }
 
 fn lisp::EvalResult check_compile_source(char[] source, lisp::Interp* interp) {
-    char[] c3_code = lisp::compile_to_c3(source, interp);
+    char[] compile_error = "";
+    char[] c3_code = lisp::compile_to_c3(source, interp, &compile_error);
     if (c3_code.len == 0) {
+        if (compile_error.len > 0) return lisp::eval_error(compile_error);
         return lisp::eval_error("compiler/lowering failed");
-    }
-    if (cstr_contains(c3_code, CHECK_COMPILE_UNSUPPORTED_MARKER)) {
-        return lisp::eval_error("compiler/lowering failed: unsupported expr type");
     }
     return lisp::eval_ok(null);
 }
@@ -115,6 +112,16 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
     char[4096] abs_buf = {};
     char[] resolved_path = check_resolve_path(input_file, abs_buf[..]);
 
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (!classify_file_read_path(input_path, &read_kind)) {
+        if (json) {
+            print_check_read_error_json(resolved_path, read_kind);
+        } else {
+            print_check_read_error(resolved_path, read_kind);
+        }
+        return 1;
+    }
+
     if (try source = io::file::load_temp((String)input_path)) {
         lisp::Interp* interp = create_runtime_interp();
         if (interp == null) {
@@ -145,9 +152,9 @@ fn int run_check_mode(int argc, char** argv, int check_idx) {
     }
 
     if (json) {
-        print_check_read_error_json(resolved_path);
+        print_check_read_error_json(resolved_path, ENTRY_FILE_READ_GENERIC_FAILURE);
     } else {
-        print_check_read_error(input_file);
+        print_check_read_error(resolved_path, ENTRY_FILE_READ_GENERIC_FAILURE);
     }
     return 1;
 }

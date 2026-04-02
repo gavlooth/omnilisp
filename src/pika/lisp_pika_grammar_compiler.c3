@@ -488,15 +488,9 @@ fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId gram
         return parser_raise(interp, "parser/grammar-missing-start-rule", "pika/grammar: failed to resolve start rule");
     }
 
-    if (!ensure_named_grammar_capacity()) {
+    if (!store_named_grammar(grammar_name, grammar, start_clause)) {
         return parser_raise(interp, "parser/grammar-oom", "pika/grammar: failed to grow grammar table");
     }
-
-    g_named_grammars[g_grammar_count].name = grammar_name;
-    g_named_grammars[g_grammar_count].grammar = grammar;
-    g_named_grammars[g_grammar_count].start_clause = start_clause;
-    g_named_grammars[g_grammar_count].valid = true;
-    g_grammar_count++;
     return lisp::make_symbol(interp, grammar_name);
 }
 

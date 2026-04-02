@@ -116,7 +116,12 @@ omni --compile input.omni output.c3   # Omni -> C3 source
 omni --build input.omni -o output     # Omni -> standalone binary
 ```
 
-AOT binaries link only libc/libm/libdl — no GNU Lightning, no REPL library.
+`--build` stages one generated temp source under `build/_aot_temp_*.c3`, then
+invokes `c3c compile` with the checked-in runtime sources plus that generated
+file. Production AOT builds exclude `src/lisp/tests*`, but they still link the
+runtime support libraries used by the shipped backend, including
+`omni_chelpers`, GNU Lightning, libffi, libuv, replxx, utf8proc, libdeflate,
+yyjson, BearSSL, LMDB, `libdl`, and `libm`.
 
 ### Project Management
 
@@ -157,7 +162,7 @@ functions = ["sin", "cos", "sqrt"]
 
 1. Edit `omni.toml` to declare FFI dependencies
 2. Run `omni --bind myproject/`
-3. Generated modules appear in `lib/ffi/`
+3. Generated modules appear in `lib/ffi/` when header parsing succeeds without overrunning the current fixed bind scratch limits
 4. Import with `(import "lib/ffi/math.omni")`
 
 Requires libclang (only for `--bind`, not for running programs).

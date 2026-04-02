@@ -1,7 +1,7 @@
 # Plans Index
 
 This folder now holds supporting implementation notes and design documents.
-The live backlog has been consolidated into `/home/gavlooth/Documents/code/Omni/TODO.md`.
+The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## Usage Rules
 

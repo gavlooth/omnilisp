@@ -1,41 +1,11 @@
 module main;
 
 fn StackCtxDeferEntry* stack_ctx_lifecycle_entry_at(StackCtx* c, usz idx) @inline {
-    if (c.lifecycle_heap != null) return &c.lifecycle_heap[idx];
-    return &c.lifecycle_inline[idx];
+    return stack_ctx_entry_at(&c.lifecycle_inline[0], c.lifecycle_heap, idx);
 }
 
 fn bool stack_ctx_lifecycle_reserve(StackCtx* c, usz needed) {
-    if (needed <= STACK_CTX_LIFECYCLE_INLINE_CAP && c.lifecycle_heap == null) {
-        c.lifecycle_capacity = STACK_CTX_LIFECYCLE_INLINE_CAP;
-        return true;
-    }
-
-    if (c.lifecycle_heap == null) {
-        usz new_cap = STACK_CTX_LIFECYCLE_INLINE_CAP * 2;
-        while (new_cap < needed) new_cap *= 2;
-        StackCtxDeferEntry* buf = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
-        if (buf == null) return false;
-        for (usz i = 0; i < c.lifecycle_count; i++) {
-            buf[i] = c.lifecycle_inline[i];
-        }
-        c.lifecycle_heap = buf;
-        c.lifecycle_capacity = new_cap;
-        return true;
-    }
-
-    if (needed <= c.lifecycle_capacity) return true;
-    usz new_cap = c.lifecycle_capacity * 2;
-    while (new_cap < needed) new_cap *= 2;
-    StackCtxDeferEntry* grown = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
-    if (grown == null) return false;
-    for (usz i = 0; i < c.lifecycle_count; i++) {
-        grown[i] = c.lifecycle_heap[i];
-    }
-    mem::free(c.lifecycle_heap);
-    c.lifecycle_heap = grown;
-    c.lifecycle_capacity = new_cap;
-    return true;
+    return stack_ctx_entry_reserve(&c.lifecycle_inline[0], &c.lifecycle_heap, c.lifecycle_count, &c.lifecycle_capacity, STACK_CTX_LIFECYCLE_INLINE_CAP, needed, false);
 }
 
 /**
@@ -74,42 +44,18 @@ fn void* stack_ctx_find_lifecycle_arg(StackCtx* c, StackCtxDeferFn destroy_fn, S
 
 fn void stack_ctx_run_lifecycle_destroy(StackCtx* c) {
     stack_require_ctx_owner(c, "stack_ctx_run_lifecycle_destroy");
-    while (c.lifecycle_count > 0) {
-        c.lifecycle_count--;
-        StackCtxDeferEntry* e = stack_ctx_lifecycle_entry_at(c, c.lifecycle_count);
-        if (e.destroy_fn != null) {
-            e.destroy_fn(e.arg);
-        }
-        e.destroy_fn = null;
-        e.clone_fn = null;
-        e.arg = null;
-    }
+    stack_ctx_entry_run_destroy(&c.lifecycle_inline[0], c.lifecycle_heap, &c.lifecycle_count, false);
 }
 
 fn void stack_ctx_clear_lifecycle_storage(StackCtx* c) {
     stack_require_ctx_owner(c, "stack_ctx_clear_lifecycle_storage");
-    if (c.lifecycle_heap != null) {
-        mem::free(c.lifecycle_heap);
-        c.lifecycle_heap = null;
-    }
-    c.lifecycle_count = 0;
-    c.lifecycle_capacity = STACK_CTX_LIFECYCLE_INLINE_CAP;
+    stack_ctx_entry_clear(&c.lifecycle_heap, &c.lifecycle_count, &c.lifecycle_capacity, STACK_CTX_LIFECYCLE_INLINE_CAP);
 }
 
 fn bool stack_ctx_clone_lifecycle_entries(StackCtx* source, StackCtx* clone) {
     stack_require_ctx_owner(source, "stack_ctx_clone_lifecycle_entries_source");
     stack_require_ctx_owner(clone, "stack_ctx_clone_lifecycle_entries_clone");
-    if (!stack_ctx_lifecycle_reserve(clone, source.lifecycle_count)) return false;
-    for (usz i = 0; i < source.lifecycle_count; i++) {
-        StackCtxDeferEntry src_e = *stack_ctx_lifecycle_entry_at(source, i);
-        StackCtxDeferEntry* dst_e = stack_ctx_lifecycle_entry_at(clone, i);
-        dst_e.destroy_fn = src_e.destroy_fn;
-        dst_e.clone_fn = src_e.clone_fn;
-        dst_e.arg = src_e.arg;
-        if (dst_e.clone_fn != null) {
-            dst_e.clone_fn(dst_e.arg);
-        }
-    }
+    if (!stack_ctx_entry_clone_all(&source.lifecycle_inline[0], source.lifecycle_heap, source.lifecycle_count, &clone.lifecycle_inline[0], &clone.lifecycle_heap, &clone.lifecycle_capacity, STACK_CTX_LIFECYCLE_INLINE_CAP, false)) return false;
     clone.lifecycle_count = source.lifecycle_count;
     return true;
 }

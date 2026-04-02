@@ -31,32 +31,37 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
     if (omni_yyjson_is_arr(val) != 0) {
         usz count = omni_yyjson_arr_size(val);
         Value* arr = make_array(interp, count);
-        YyjsonVal* elem = omni_yyjson_arr_get_first(val);
+        if (count == 0) return arr;
+        YyjsonArrIter* iter = omni_yyjson_arr_iter_new(val);
+        if (iter == null) return make_nil(interp);
+        defer omni_yyjson_arr_iter_free(iter);
         for (usz i = 0; i < count; i++) {
+            YyjsonVal* elem = omni_yyjson_arr_iter_next(iter);
+            if (elem == null) return make_nil(interp);
             Value* v = json_val_to_omni(elem, interp);
             arr.array_val.items[i] = boundary_promote_to_root(v, interp);
             arr.array_val.length++;
-            elem = omni_yyjson_next(elem);
         }
         return arr;
     }
     if (omni_yyjson_is_obj(val) != 0) {
         usz count = omni_yyjson_obj_size(val);
         Value* dict = make_hashmap(interp, (uint)(count < 8 ? 8 : count * 2));
-        YyjsonVal* kv = omni_yyjson_obj_get_first(val);
+        if (count == 0) return dict;
+        YyjsonObjIter* iter = omni_yyjson_obj_iter_new(val);
+        if (iter == null) return make_nil(interp);
+        defer omni_yyjson_obj_iter_free(iter);
         for (usz i = 0; i < count; i++) {
-            // kv points to key, kv+1 points to value
-            YyjsonVal* key = kv;
-            YyjsonVal* v = omni_yyjson_next(kv);
+            YyjsonVal* key = omni_yyjson_obj_iter_next(iter);
+            if (key == null) return make_nil(interp);
+            YyjsonVal* v = omni_yyjson_obj_iter_get_val(key);
+            if (v == null) return make_nil(interp);
 
             char* ks = omni_yyjson_get_str(key);
             usz klen = omni_yyjson_get_len(key);
             Value* key_val = make_string(interp, ks[:klen]);
             Value* val_v = json_val_to_omni(v, interp);
             hashmap_set(dict.hashmap_val, key_val, val_v, interp);
-
-            // Advance past key and value (2 slots)
-            kv = omni_yyjson_next(v);
         }
         return dict;
     }

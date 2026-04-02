@@ -64,6 +64,7 @@ fn lisp::Value* make_void() @inline { return lisp::make_void(g_aot_interp); }
 fn lisp::Value* make_int(long n) @inline { return lisp::make_int(g_aot_interp, n); }
 fn lisp::Value* make_double(double d) @inline { return lisp::make_double(g_aot_interp, d); }
 fn lisp::Value* make_string(char[] s) @inline { return lisp::make_string(g_aot_interp, s); }
+fn lisp::Value* make_error(char[] message) @inline { return lisp::make_error(g_aot_interp, message); }
 fn lisp::Value* make_symbol(char[] s) @inline {
     lisp::SymbolId sid = g_aot_interp.symbols.intern(s);
     return lisp::make_symbol(g_aot_interp, sid);

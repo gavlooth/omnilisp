@@ -6,27 +6,41 @@ import std::atomic::types;
 // POSIX SIGNAL HANDLING
 // =============================================================================
 
-const int SIGINT_VAL = 2;
-alias SignalHandler = fn void(CInt);
-extern fn void* signal(int signum, SignalHandler handler) @extern("signal");
+extern fn void omni_sigint_install_handler() @extern("omni_sigint_install_handler");
+extern fn void omni_sigint_bind_slot(int* slot) @extern("omni_sigint_bind_slot");
+extern fn void omni_sigint_unbind_slot(int* slot) @extern("omni_sigint_unbind_slot");
+extern fn int omni_sigint_slot_pending(int* slot) @extern("omni_sigint_slot_pending");
+extern fn void omni_sigint_slot_clear(int* slot) @extern("omni_sigint_slot_clear");
+extern fn void omni_sigint_debug_mark_pending() @extern("omni_sigint_debug_mark_pending");
 
-// Global interrupt flag — set by SIGINT handler, checked by eval loop
-bool g_interrupted = false;
+fn void interp_sigint_install_handler() {
+    omni_sigint_install_handler();
+}
 
-fn void sigint_handler(CInt sig) {
-    g_interrupted = true;
+fn void interp_sigint_bind(Interp* interp) {
+    if (interp == null) return;
+    omni_sigint_bind_slot(&interp.sigint_requested);
+}
+
+fn void interp_sigint_unbind(Interp* interp) {
+    if (interp == null) return;
+    omni_sigint_unbind_slot(&interp.sigint_requested);
+}
+
+fn void interp_sigint_debug_mark_pending() {
+    omni_sigint_debug_mark_pending();
 }
 
 fn bool interp_interrupt_requested(Interp* interp) @inline {
-    if (g_interrupted) return true;
-    return interp != null &&
-        interp.interrupt_flag != null &&
-        interp.interrupt_flag.load() != 0;
+    if (interp == null) return false;
+    if (omni_sigint_slot_pending(&interp.sigint_requested) != 0) return true;
+    return interp.interrupt_flag != null && interp.interrupt_flag.load() != 0;
 }
 
 fn void interp_interrupt_clear(Interp* interp) @inline {
-    g_interrupted = false;
-    if (interp != null && interp.interrupt_flag != null) {
+    if (interp == null) return;
+    omni_sigint_slot_clear(&interp.sigint_requested);
+    if (interp.interrupt_flag != null) {
         interp.interrupt_flag.store(0);
     }
 }

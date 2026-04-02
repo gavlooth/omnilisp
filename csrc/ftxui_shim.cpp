@@ -403,6 +403,14 @@ omni_ftxui_status omni_ftxui_screen_create(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_create: FTXUI backend unavailable");
 #else
+    if (options->handle_piped_input) {
+        return ctx_fail(
+            context,
+            OMNI_FTXUI_STATUS_NOT_SUPPORTED,
+            "screen_create: handle_piped_input is not supported by the FTXUI backend"
+        );
+    }
+
     std::unique_ptr<ftxui::ScreenInteractive> screen;
     switch (options->mode) {
         case OMNI_FTXUI_SCREEN_FULLSCREEN:
@@ -528,7 +536,13 @@ omni_ftxui_status omni_ftxui_screen_set_handle_piped_input(
     (void)enabled;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_set_handle_piped_input: FTXUI backend unavailable");
 #else
-    (void)enabled;
+    if (enabled) {
+        return ctx_fail(
+            context,
+            OMNI_FTXUI_STATUS_NOT_SUPPORTED,
+            "screen_set_handle_piped_input: handle_piped_input is not supported by the FTXUI backend"
+        );
+    }
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
 #endif

@@ -56,7 +56,9 @@ struct Interp {
     // Optional structured input source used by the REPL server stdin routing.
     // When null, input primitives read directly from process stdin.
     InterpInputState* input_state;
+    int sigint_requested;
     types::Atomic{int}* interrupt_flag;
+    void* signal_handles_head;
 
     // Pre-interned common symbols
     SymbolId sym_lambda;

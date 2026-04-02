@@ -11,7 +11,46 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
 
     io::printfn("Parsing headers for '%s' (lib%s)...", (ZString)dep_name, (ZString)dep_lib);
 
-    usz func_count = parse_ffi_dep_headers(clang, dep, funcs, max_funcs);
+    BindHeaderParseResult parse_result = parse_ffi_dep_headers(clang, dep, funcs, max_funcs);
+    usz func_count = parse_result.func_count;
+
+    if (parse_result.path_too_long) {
+        io::printfn("  Error: header path too long for '%s': %s", (ZString)dep_name, (ZString)parse_result.failed_header);
+        return false;
+    }
+    if (parse_result.function_limit_hit) {
+        io::printfn(
+            "  Error: parsed headers exceed bind function limit (%d) for '%s'; refusing partial bindings at %s",
+            (int)max_funcs,
+            (ZString)dep_name,
+            (ZString)parse_result.failed_header
+        );
+        free_parsed_funcs(funcs, func_count);
+        return false;
+    }
+    if (parse_result.param_allocation_failed) {
+        io::printfn(
+            "  Error: out of memory while parsing parameter metadata for '%s': %s",
+            (ZString)dep_name,
+            (ZString)parse_result.failed_header
+        );
+        free_parsed_funcs(funcs, func_count);
+        return false;
+    }
+    if (parse_result.unsupported_type) {
+        io::printfn(
+            "  Error: unsupported C type for '%s' in %s: %s",
+            (ZString)dep_name,
+            (ZString)parse_result.failed_header,
+            (ZString)&parse_result.unsupported_type_name
+        );
+        free_parsed_funcs(funcs, func_count);
+        return false;
+    }
+    if (parse_result.parse_failed) {
+        io::printfn("  Error: failed to parse header for '%s': %s", (ZString)dep_name, (ZString)parse_result.failed_header);
+        return false;
+    }
 
     if (func_count == 0) {
         io::printfn("  Warning: no functions found for '%s'", (ZString)dep_name);

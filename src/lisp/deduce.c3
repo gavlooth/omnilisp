@@ -346,7 +346,12 @@ fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
         deduce_txn_clear_mutation_log(txn);
         return deduce_raise(interp, "deduce/txn-failed", "deduce-commit: txn commit failed");
     }
-    deduce_txn_apply_mutation_log(txn);
+    // If mutation logging degraded during txn execution, do not apply partial
+    // mutation deltas. Route through the untracked-write fallback bookkeeping
+    // path after commit instead.
+    if (!mutation_pending) {
+        deduce_txn_apply_mutation_log(txn);
+    }
     if (mutation_pending && owner_db != null) {
         Value* mutation_err = deduce_db_note_untracked_write_commit(owner_db, interp);
         if (mutation_err != null) {
@@ -354,6 +359,14 @@ fn Value* prim_deduce_commit(Value*[] args, Env* env, Interp* interp) {
             deduce_txn_clear_mutation_log(txn);
             return mutation_err;
         }
+    } else if (mutation_pending) {
+        txn.mutation_pending = false;
+        deduce_txn_clear_mutation_log(txn);
+        return deduce_raise(
+            interp,
+            "deduce/commit-mutation-bookkeeping-missing-db",
+            "deduce-commit: transaction committed with degraded mutation log but owner database was unavailable"
+        );
     }
     txn.mutation_pending = false;
     deduce_txn_clear_mutation_log(txn);

@@ -3,7 +3,7 @@
 **Version:** 0.4.6
 **Date:** 2026-03-09
 
-Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a scope-region memory system (arena-per-call with reference-counted closures) implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
+Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a deterministic scope-region memory system with dual-lane TEMP/ESCAPE ownership, implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
 Normative architecture contracts are recorded in `docs/ARCHITECTURE.md`.
 
@@ -708,7 +708,7 @@ Canonical naming direction:
 
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
-- `Dictionary` remains the only accepted short form.
+- `Dict` is the allowed shorthand alias for `Dictionary`.
 - alternate-spelling policy is input-tolerant but output-canonical:
   - alternate spellings are accepted in constructor/type-annotation input position,
   - docs/examples and introspection outputs use canonical names (`Integer`,
@@ -1151,9 +1151,9 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `Dictionary` / `Dictionary` | variadic | Create dict from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
+| `Dictionary` / `Dict` | variadic | Create a dictionary from key-value pairs; `{'a 1 'b 2}` is equivalent to this |
 
-Canonical constructor surface is `Dictionary` (with `Dictionary` shorthand).
+Canonical constructor surface is `Dictionary` (with `Dict` shorthand).
 Dictionary keys are value-typed: symbols, strings, integers, and other stable
 value keys are supported.
 Style guidance:
@@ -1286,6 +1286,7 @@ Numeric conversion policy:
 
 - Uses libffi via C wrapper for portable ABI support
 - Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
+- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
@@ -1294,7 +1295,7 @@ Numeric conversion policy:
 | Name | Value |
 |------|-------|
 | `true` | Symbol `true` |
-| `false` | Bound to `nil` |
+| `false` | Alias of `nil` |
 | `pi` | 3.141592653589793 |
 | `e` | 2.718281828459045 |
 
@@ -1745,6 +1746,9 @@ omni --repl --load demo.omni
   example/workspace trees that are not full Omni projects.
 - Relative imports inside `src/main.omni` use the entry file's source
   directory, the same way script execution does.
+- text REPL preload read failures preserve the concrete file-read cause
+  (`file not found`, `permission denied`, `invalid path`, or generic
+  `read failed`) instead of collapsing to one generic startup message.
 - REPL preload (`--project` or `--load`) is text-REPL-only; it is not
   supported with `--json`.
 
@@ -1865,7 +1869,7 @@ omni --init myproject                                       # Scaffold project d
 omni --bind myproject/                                      # Generate FFI bindings from omni.toml
 ```
 
-- `--init` creates `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, `build/` (with generated `project.json`)
+- `--init` creates `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, `build/` (with generated `project.json`) and now rolls back the fresh project root if a later scaffold write fails or a subpath collides with a non-directory
 - `--bind` reads `omni.toml`, parses C headers via libclang, writes typed FFI modules to `lib/ffi/`
 - libclang is an optional runtime dependency (only needed for `--bind`)
 

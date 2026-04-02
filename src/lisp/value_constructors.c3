@@ -17,13 +17,15 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
     v.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
     if (v.prim_val == null) return null;
     // Copy name into fixed buffer
+    // Primitive.name is char[64]; keep one byte for the terminator.
+    usz max_len = 63;
     usz len = name.len;
-    if (len > 31) {
+    if (len > max_len) {
         if (!g_warned_primitive_name_truncation) {
-            io::eprintfn("WARNING: primitive names longer than 31 bytes are truncated (further warnings suppressed)");
+            io::eprintfn("WARNING: primitive names longer than %d bytes are truncated (further warnings suppressed)", max_len);
             g_warned_primitive_name_truncation = true;
         }
-        len = 31;
+        len = max_len;
     }
     for (usz i = 0; i < len; i++) {
         v.prim_val.name[i] = name[i];

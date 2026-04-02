@@ -30,11 +30,16 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
 
     // dlopen
+    (void)dlerror();
     void* handle = dlopen((ZString)path_val.str_chars, RTLD_LAZY);
     if (handle == null) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
-            (ZString)path_val.str_chars)!!;
+        char* dl_err = dlerror();
+        char[] msg = dl_err != null && dl_err[0] != 0
+            ? io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s",
+                (ZString)path_val.str_chars, (ZString)dl_err)!!
+            : io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
+                (ZString)path_val.str_chars)!!;
         return raise_error(interp, msg);
     }
 
@@ -51,15 +56,29 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     return ffi_handle;
 }
 
+
+fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, SymbolId base_type) {
+    char[256] ebuf;
+    char[] type_name = interp.symbols.get_name(base_type);
+    char[] msg = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
+        (ZString)role, (ZString)type_name)!!;
+    return raise_error(interp, msg);
+}
+
 fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
     if (bound.fn_ptr != null) return null;
     if (bound.c_name == null) return raise_error(interp, "ffi: internal error — missing symbol name");
+    (void)dlerror();
     bound.fn_ptr = dlsym(bound.lib_handle, (ZString)bound.c_name);
     if (bound.fn_ptr != null) return null;
 
     char[256] ebuf;
-    char[] msg = io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
-        (ZString)bound.c_name)!!;
+    char* dl_err = dlerror();
+    char[] msg = dl_err != null && dl_err[0] != 0
+        ? io::bprintf(&ebuf, "ffi: dlsym failed for '%s': %s",
+            (ZString)bound.c_name, (ZString)dl_err)!!
+        : io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
+            (ZString)bound.c_name)!!;
     return raise_error(interp, msg);
 }
 
@@ -260,12 +279,22 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
             return raise_error(interp, "ffi λ: out of memory for parameter metadata");
         }
         for (usz i = 0; i < ff.param_count; i++) {
-            bound.param_types[i] = type_ann_to_ffi_tag(ff.param_types[i].base_type, interp);
+            if (!type_ann_to_ffi_tag(ff.param_types[i].base_type, interp, &bound.param_types[i])) {
+                mem::free(bound.param_types);
+                mem::free(bound.c_name);
+                mem::free(bound);
+                return ffi_unsupported_type_annotation_error(interp, "parameter", ff.param_types[i].base_type);
+            }
         }
     }
 
     if (ff.has_return_type) {
-        bound.return_type = type_ann_to_ffi_tag(ff.return_type.base_type, interp);
+        if (!type_ann_to_ffi_tag(ff.return_type.base_type, interp, &bound.return_type)) {
+            if (bound.param_types != null) mem::free(bound.param_types);
+            mem::free(bound.c_name);
+            mem::free(bound);
+            return ffi_unsupported_type_annotation_error(interp, "return", ff.return_type.base_type);
+        }
         bound.has_return = true;
     } else {
         bound.return_type = FFI_TYPE_VOID;

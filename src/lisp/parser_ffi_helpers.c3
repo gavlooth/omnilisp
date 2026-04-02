@@ -3,6 +3,10 @@ module lisp;
 import std::collections::list;
 import std::core::mem;
 
+bool g_parser_force_ffi_param_names_alloc_fail = false;
+bool g_parser_force_ffi_param_types_alloc_fail = false;
+bool g_parser_force_ffi_param_table_size_overflow = false;
+
 // (define [ffi λ libname] (fname (^Type param)...) ^RetType)
 fn void Parser.parse_ffi_fn_modifiers(Parser* self, ExprFfiFn* ffi, List{SymbolId}* attrs) {
     for (usz i = 3; i < attrs.len(); i++) {
@@ -55,19 +59,42 @@ fn bool Parser.ensure_ffi_param_capacity(Parser* self, ExprFfiFn* ffi, usz neede
         new_cap *= 2;
     }
 
-    SymbolId* new_names = (SymbolId*)mem::realloc(ffi.param_names, SymbolId.sizeof * new_cap);
-    if (new_names == null) {
-        self.set_error("out of memory while parsing FFI parameters");
+    if (g_parser_force_ffi_param_table_size_overflow
+        || new_cap > usz.max / SymbolId.sizeof
+        || new_cap > usz.max / TypeAnnotation.sizeof) {
+        self.set_error("FFI parameter table size overflow");
         return false;
     }
-    ffi.param_names = new_names;
 
-    TypeAnnotation* new_types = (TypeAnnotation*)mem::realloc(ffi.param_types, TypeAnnotation.sizeof * new_cap);
-    if (new_types == null) {
-        self.set_error("out of memory while parsing FFI parameters");
+    usz name_bytes = SymbolId.sizeof * new_cap;
+    usz type_bytes = TypeAnnotation.sizeof * new_cap;
+
+    SymbolId* grown_names = g_parser_force_ffi_param_names_alloc_fail
+        ? null
+        : (SymbolId*)mem::malloc(name_bytes);
+    if (grown_names == null) {
+        self.set_error("out of memory while allocating FFI parameter name table");
         return false;
     }
-    ffi.param_types = new_types;
+
+    TypeAnnotation* grown_types = g_parser_force_ffi_param_types_alloc_fail
+        ? null
+        : (TypeAnnotation*)mem::malloc(type_bytes);
+    if (grown_types == null) {
+        mem::free(grown_names);
+        self.set_error("out of memory while allocating FFI parameter type table");
+        return false;
+    }
+
+    for (usz i = 0; i < ffi.param_count; i++) {
+        grown_names[i] = ffi.param_names[i];
+        grown_types[i] = ffi.param_types[i];
+    }
+
+    if (ffi.param_names != null) mem::free(ffi.param_names);
+    if (ffi.param_types != null) mem::free(ffi.param_types);
+    ffi.param_names = grown_names;
+    ffi.param_types = grown_types;
     ffi.param_capacity = new_cap;
     return true;
 }

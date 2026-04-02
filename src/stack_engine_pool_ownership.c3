@@ -63,7 +63,9 @@ fn void stack_pool_init(StackPool* pool) {
     pool.next_id = 1;
     pool.stack_size = stack_runtime_asan_enabled() ? ASAN_STACK_SIZE : DEFAULT_STACK_SIZE;
     pool.shutting_down = false;
-    stack_guard_init();
+    if (stack_guard_init() != 0) {
+        unreachable("stack_pool_init: stack guard initialization failed");
+    }
 }
 
 fn void stack_pool_shutdown(StackPool* pool) {

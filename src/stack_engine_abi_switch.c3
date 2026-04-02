@@ -29,7 +29,7 @@ extern fn void fpu_restore(uint mxcsr, uint x87cw) @extern("fpu_restore");
 // D2: Stack overflow detection via SIGSEGV + sigaltstack
 extern fn int stack_guard_init() @extern("stack_guard_init");
 extern fn void stack_guard_shutdown() @extern("stack_guard_shutdown");
-extern fn void stack_guard_register(void* base, usz size) @extern("stack_guard_register");
+extern fn int stack_guard_register(void* base, usz size) @extern("stack_guard_register");
 extern fn void stack_guard_unregister(void* base) @extern("stack_guard_unregister");
 extern fn int stack_guard_protected_switch(void* old_ctx, void* new_ctx) @extern("stack_guard_protected_switch");
 extern fn void stack_asan_start_switch(void** fake_stack_save, void* stack_bottom, usz stack_size) @extern("stack_asan_start_switch");

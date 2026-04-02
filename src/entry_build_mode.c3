@@ -81,8 +81,18 @@ fn int run_build(int argc, char** argv, int build_idx) {
         }
     }
 
+    EntryFileWriteKind output_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+    if (!validate_output_target_path(output_binary, &output_kind)) {
+        print_file_write_error_text("output binary", output_binary[:cstr_len(output_binary)], output_kind);
+        return 1;
+    }
+
     char[] source;
-    if (!load_build_source(input_file, &source)) return 1;
+    EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+    if (!load_build_source(input_file, &source, &read_kind)) {
+        print_file_read_error_text("input file", input_file[:cstr_len(input_file)], read_kind);
+        return 1;
+    }
 
     bool print_last;
     bool print_all;
@@ -100,8 +110,12 @@ fn int run_build(int argc, char** argv, int build_idx) {
     }
     defer destroy_plain_interp(interp);
 
-    char[] c3_code = lisp::compile_to_c3_ext(source, interp, print_last, print_all);
-    if (c3_code.len == 0) return 1;
+    char[] compile_error = "";
+    char[] c3_code = lisp::compile_to_c3_ext(source, interp, print_last, print_all, &compile_error);
+    if (c3_code.len == 0) {
+        if (compile_error.len > 0) print_compile_error_message(compile_error);
+        return 1;
+    }
 
     // Step 2: Write temp C3 file
     char[256] temp_c3_path;
@@ -112,10 +126,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
     // Step 3: Invoke c3c to compile
     io::printfn("Building %s...", (ZString)output_binary);
     int exit_code = run_aot_backend_compile(&temp_c3_path[0], output_binary);
-    if (exit_code != 0) {
-        io::printfn("Error: c3c compilation failed while compiling '%s' to '%s'", (ZString)&temp_c3_path[0], (ZString)output_binary);
-        return 1;
-    }
+    if (exit_code != 0) return 1;
 
     io::printfn("Built: %s", (ZString)output_binary);
     return 0;

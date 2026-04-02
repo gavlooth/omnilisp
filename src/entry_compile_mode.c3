@@ -17,11 +17,17 @@ fn int run_compile_mode(char* input_file, char* output_file) {
         return print_compile_usage();
     }
 
-    print_compile_start(input_file, output_file);
-
     // Read input file
     char[] input_path = input_file[:cstr_len(input_file)];
     if (try source = io::file::load_temp((String)input_path)) {
+        EntryFileWriteKind output_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+        if (!validate_output_target_path(output_file, &output_kind)) {
+            print_compile_write_error(output_file[:cstr_len(output_file)], output_kind);
+            return 1;
+        }
+
+        print_compile_start(input_file, output_file);
+
         // Initialize thread-local registry before interpreter
         thread_registry_init();
 
@@ -34,9 +40,11 @@ fn int run_compile_mode(char* input_file, char* output_file) {
         }
 
         // Compile to C3
-        char[] c3_code = lisp::compile_to_c3(source, interp);
+        char[] compile_error = "";
+        char[] c3_code = lisp::compile_to_c3(source, interp, &compile_error);
 
         if (c3_code.len == 0) {
+            if (compile_error.len > 0) print_compile_error_message(compile_error);
             destroy_plain_interp(interp);
             thread_registry_shutdown();
             return 1;
@@ -47,9 +55,11 @@ fn int run_compile_mode(char* input_file, char* output_file) {
         if (try file = io::file::open((String)output_path, "w")) {
             char[] remaining = c3_code;
             bool write_ok = true;
+            EntryFileWriteKind write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
             while (write_ok && remaining.len > 0) {
                 usz? written_opt = file.write(remaining);
                 if (catch err = written_opt) {
+                    write_kind = classify_file_write_errno();
                     write_ok = false;
                     break;
                 }
@@ -59,9 +69,12 @@ fn int run_compile_mode(char* input_file, char* output_file) {
                 }
                 remaining = remaining[written_opt..];
             }
-            if (catch err = file.close()) write_ok = false;
+            if (catch err = file.close()) {
+                write_kind = classify_file_write_errno();
+                write_ok = false;
+            }
             if (!write_ok) {
-                print_compile_write_error(output_file);
+                print_compile_write_error(output_path, write_kind);
                 destroy_plain_interp(interp);
                 thread_registry_shutdown();
                 return 1;
@@ -71,12 +84,16 @@ fn int run_compile_mode(char* input_file, char* output_file) {
             thread_registry_shutdown();
             return 0;
         } else {
-            print_compile_write_error(output_file);
+            print_compile_write_error(output_path, classify_file_write_errno());
             destroy_plain_interp(interp);
             thread_registry_shutdown();
             return 1;
         }
     } else {
-        return print_compile_read_error(input_file);
+        EntryFileReadKind read_kind = ENTRY_FILE_READ_GENERIC_FAILURE;
+        if (!classify_file_read_path(input_path, &read_kind)) {
+            return print_compile_read_error(input_path, read_kind);
+        }
+        return print_compile_read_error(input_path, ENTRY_FILE_READ_GENERIC_FAILURE);
     }
 }

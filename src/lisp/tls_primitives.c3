@@ -194,11 +194,24 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     TlsHandle* th = (TlsHandle*)(uptr)out.int_val;
     if (th == null) return tls_raise_async(interp, "io/tls-connect-handle-allocation-failed", "tls-connect: failed to allocate TLS handle");
 
-    Value* handle_v = make_tls_handle_val(interp, th);
+    Value* handle_v = make_tls_handle_val(interp, th, "io/tls-connect-out-of-memory", "tls-connect: out of memory");
     if (handle_v != null && handle_v.tag == ERROR) {
         tls_destroy_handle(th);
     }
     return handle_v;
+}
+
+// Regression helper for trust-store cause preservation.
+// Not exported into the public Omni surface.
+fn Value* prim_tls_trust_store_load_cause(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return tls_raise_async(interp, "io/tls-trust-store-load-cause-expected-path", "tls-trust-store-load-cause: expected (tls-trust-store-load-cause path)");
+    if (!is_string(args[0])) return tls_raise_async(interp, "io/tls-trust-store-load-cause-path-not-string", "tls-trust-store-load-cause: path must be a string");
+
+    omni_tls_clear_last_error();
+    void* store = omni_tls_trust_store_load_file((ZString)args[0].str_chars);
+    char[] msg = tls_last_error_text();
+    if (store != null) omni_tls_trust_store_free(store);
+    return make_string(interp, msg);
 }
 
 // ============================================================
@@ -259,9 +272,11 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
 
     th.server_creds = omni_tls_server_creds_load((ZString)cert_path_v.str_chars, (ZString)key_path_v.str_chars);
     if (th.server_creds == null) {
+        char[256] ebuf;
+        char[] msg = tls_message_with_cause(&ebuf, "tls-server-wrap: failed to load server cert/key PEM files (RSA key required)");
         tls_handle_free(th);
         mem::free(th);
-        return tls_raise_async(interp, "io/tls-server-wrap-credentials-load-failed", "tls-server-wrap: failed to load server cert/key PEM files (RSA key required)");
+        return tls_raise_async(interp, "io/tls-server-wrap-credentials-load-failed", msg);
     }
 
     void* chain = omni_tls_server_creds_chain(th.server_creds);
@@ -278,6 +293,7 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
 
     br_ssl_server_init_full_rsa(th.client_ctx, chain, chain_len, rsa_key);
     br_ssl_engine_set_buffer(th.client_ctx, th.iobuf, BEARSSL_IOBUF_SIZE, 1);
+    omni_tls_clear_last_error();
     if (br_ssl_server_reset(th.client_ctx) == 0) {
         tls_handle_free(th);
         mem::free(th);
@@ -288,7 +304,11 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
         (BrSslioCallback)&omni_tls_sock_read, th.fd_ptr,
         (BrSslioCallback)&omni_tls_sock_write, th.fd_ptr);
 
-    return make_tls_handle_val(interp, th);
+    Value* handle_v = make_tls_handle_val(interp, th, "io/tls-server-wrap-out-of-memory", "tls-server-wrap: out of memory");
+    if (handle_v != null && handle_v.tag == ERROR) {
+        tls_destroy_handle(th);
+    }
+    return handle_v;
 }
 
 // ============================================================
@@ -296,8 +316,39 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
-    // fault: lisp::ARITY_MISMATCH
-    if (args.len < 1) return tls_raise_async(interp, "io/tls-read-expected-handle-max-bytes", "tls-read: expected (tls-read handle [max-bytes])");
+    Value* handle_v = null;
+    Value* max_bytes_v = null;
+
+    if (args.len == 1 && is_cons(args[0])) {
+        Value* packed = args[0];
+        handle_v = car(packed);
+        packed = cdr(packed);
+        if (is_cons(packed)) {
+            max_bytes_v = car(packed);
+            packed = cdr(packed);
+        }
+        if (!is_nil(packed)) {
+            return tls_raise_async(interp, "io/tls-read-expected-handle-max-bytes", "tls-read: expected (tls-read handle [max-bytes])");
+        }
+    } else {
+        // fault: lisp::ARITY_MISMATCH
+        if (args.len < 1 || args.len > 2) return tls_raise_async(interp, "io/tls-read-expected-handle-max-bytes", "tls-read: expected (tls-read handle [max-bytes])");
+        handle_v = args[0];
+        if (args.len == 2) max_bytes_v = args[1];
+    }
+
+    usz max_bytes = 4096;
+    if (max_bytes_v != null) {
+        if (!is_int(max_bytes_v)) {
+            return tls_raise_async(interp, "io/tls-read-max-bytes-not-integer", "tls-read: max-bytes must be an integer");
+        }
+        long requested = max_bytes_v.int_val;
+        if (requested <= 0) {
+            return tls_raise_async(interp, "io/tls-read-max-bytes-invalid", "tls-read: max-bytes must be > 0");
+        }
+        max_bytes = (usz)requested;
+        if (max_bytes > 65536) max_bytes = 65536;
+    }
 
     Value* runtime_err = tls_require_async_runtime(
         interp,
@@ -307,17 +358,11 @@ fn Value* prim_tls_read(Value*[] args, Env* env, Interp* interp) {
     );
     if (runtime_err != null) return runtime_err;
 
-    TlsHandle* th = get_tls_handle(args[0]);
+    TlsHandle* th = get_tls_handle(handle_v);
     if (th == null) return tls_raise_async(interp, "io/tls-read-invalid-or-closed-handle", "tls-read: invalid or closed handle");
     if (!tls_try_mark_in_flight(th)) return tls_raise_handle_busy(interp, "tls-read");
     defer tls_unmark_in_flight(th);
     if (!th.connected) return tls_raise_async(interp, "io/tls-read-invalid-or-closed-handle", "tls-read: invalid or closed handle");
-
-    usz max_bytes = 4096;
-    if (args.len >= 2 && is_int(args[1])) {
-        max_bytes = (usz)args[1].int_val;
-        if (max_bytes > 65536) max_bytes = 65536;
-    }
 
     OffloadWork work = {};
     work.op = OFFLOAD_TLS_READ;

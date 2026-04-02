@@ -101,6 +101,61 @@ size_t stack_current_thread_available_bytes(void) {
 }
 
 /* ============================================================
+ * SIGINT routing helpers (signal-safe REPL interrupt path)
+ * ============================================================ */
+
+static __thread volatile sig_atomic_t g_sigint_thread_pending = 0;
+static __thread volatile sig_atomic_t* g_sigint_slot = NULL;
+static __thread int g_sigint_handler_installed = 0;
+
+static void omni_sigint_handler(int sig) {
+    (void)sig;
+    if (g_sigint_slot != NULL) {
+        *g_sigint_slot = 1;
+        return;
+    }
+    g_sigint_thread_pending = 1;
+}
+
+void omni_sigint_install_handler(void) {
+    if (g_sigint_handler_installed) return;
+    signal(SIGINT, omni_sigint_handler);
+    g_sigint_handler_installed = 1;
+}
+
+void omni_sigint_bind_slot(volatile sig_atomic_t* slot) {
+    g_sigint_slot = slot;
+    if (g_sigint_slot != NULL && g_sigint_thread_pending) {
+        *g_sigint_slot = 1;
+        g_sigint_thread_pending = 0;
+    }
+}
+
+void omni_sigint_unbind_slot(volatile sig_atomic_t* slot) {
+    if (g_sigint_slot == slot) g_sigint_slot = NULL;
+}
+
+int omni_sigint_slot_pending(volatile sig_atomic_t* slot) {
+    if (slot == NULL) return 0;
+    if (*slot) return 1;
+    if (g_sigint_thread_pending && g_sigint_slot == slot) {
+        *slot = 1;
+        g_sigint_thread_pending = 0;
+        return 1;
+    }
+    return 0;
+}
+
+void omni_sigint_slot_clear(volatile sig_atomic_t* slot) {
+    if (slot != NULL) *slot = 0;
+    g_sigint_thread_pending = 0;
+}
+
+void omni_sigint_debug_mark_pending(void) {
+    omni_sigint_handler(SIGINT);
+}
+
+/* ============================================================
  * D1: FPU State Save/Restore
  * ============================================================
  * C3 inline asm doesn't support stmxcsr/ldmxcsr/fnstcw/fldcw.
@@ -166,24 +221,27 @@ void stack_raw_copy(void* dst, const void* src, size_t size) {
  * Recovery points form a stack to support nested coro switches.
  */
 
-#define MAX_GUARD_PAGES 256
 #define MAX_RECOVERY_DEPTH 64
+#define INITIAL_GUARD_CAPACITY 16
 
 struct guard_entry {
     void*  base;
     size_t size;
 };
 
-static struct guard_entry g_guards[MAX_GUARD_PAGES];
-static int g_guard_count = 0;
+static __thread struct guard_entry* g_guards = NULL;
+static __thread int g_guard_count = 0;
+static __thread int g_guard_capacity = 0;
+static __thread sigjmp_buf g_recovery_stack[MAX_RECOVERY_DEPTH];
+static __thread int g_recovery_depth = 0;
+static __thread volatile sig_atomic_t g_guard_hit = 0;
 
-static sigjmp_buf g_recovery_stack[MAX_RECOVERY_DEPTH];
-static int g_recovery_depth = 0;
-static volatile sig_atomic_t g_guard_hit = 0;
+static __thread void* g_sigstack = NULL;
+static __thread int g_thread_initialized = 0;
+static __thread int g_thread_init_refcount = 0;
 
-static void* g_sigstack = NULL;
-static int g_initialized = 0;
-static int g_init_refcount = 0;
+static pthread_mutex_t g_guard_lock = PTHREAD_MUTEX_INITIALIZER;
+static int g_handler_refcount = 0;
 
 /* The context switch function defined in stack_engine.c3 (@naked, SysV ABI) */
 extern void omni_context_switch(void* old_ctx, void* new_ctx);
@@ -221,8 +279,8 @@ reraise:
 }
 
 int stack_guard_init(void) {
-    if (g_init_refcount > 0) {
-        g_init_refcount++;
+    if (g_thread_init_refcount > 0) {
+        g_thread_init_refcount++;
         return 0;
     }
 
@@ -240,32 +298,59 @@ int stack_guard_init(void) {
         return -1;
     }
 
-    /* Install SIGSEGV handler on alternate stack */
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_sigaction = sigsegv_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-    if (sigaction(SIGSEGV, &sa, NULL) < 0) {
+    if (pthread_mutex_lock(&g_guard_lock) != 0) {
+        stack_t disable_ss;
+        memset(&disable_ss, 0, sizeof(disable_ss));
+        disable_ss.ss_flags = SS_DISABLE;
+        sigaltstack(&disable_ss, NULL);
         free(g_sigstack); g_sigstack = NULL;
         return -1;
     }
 
-    g_initialized = 1;
-    g_init_refcount = 1;
+    /* Install the process-wide SIGSEGV handler once. */
+    if (g_handler_refcount == 0) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = sigsegv_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+        if (sigaction(SIGSEGV, &sa, NULL) < 0) {
+            pthread_mutex_unlock(&g_guard_lock);
+            stack_t disable_ss;
+            memset(&disable_ss, 0, sizeof(disable_ss));
+            disable_ss.ss_flags = SS_DISABLE;
+            sigaltstack(&disable_ss, NULL);
+            free(g_sigstack); g_sigstack = NULL;
+            return -1;
+        }
+    }
+
+    g_handler_refcount++;
+    pthread_mutex_unlock(&g_guard_lock);
+
+    g_thread_initialized = 1;
+    g_thread_init_refcount = 1;
     return 0;
 }
 
 void stack_guard_shutdown(void) {
-    if (g_init_refcount <= 0) return;
-    g_init_refcount--;
-    if (g_init_refcount > 0) return;
-    if (!g_initialized) return;
+    if (g_thread_init_refcount <= 0) return;
+    g_thread_init_refcount--;
+    if (g_thread_init_refcount > 0) return;
+    if (!g_thread_initialized) return;
 
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = SIG_DFL;
-    sigaction(SIGSEGV, &sa, NULL);
+    if (pthread_mutex_lock(&g_guard_lock) == 0) {
+        if (g_handler_refcount > 0) {
+            g_handler_refcount--;
+            if (g_handler_refcount == 0) {
+                struct sigaction sa;
+                memset(&sa, 0, sizeof(sa));
+                sa.sa_handler = SIG_DFL;
+                sigaction(SIGSEGV, &sa, NULL);
+            }
+        }
+        pthread_mutex_unlock(&g_guard_lock);
+    }
 
     stack_t ss;
     memset(&ss, 0, sizeof(ss));
@@ -273,18 +358,32 @@ void stack_guard_shutdown(void) {
     sigaltstack(&ss, NULL);
 
     free(g_sigstack); g_sigstack = NULL;
+    free(g_guards); g_guards = NULL;
+    g_guard_capacity = 0;
     g_guard_count = 0;
     g_recovery_depth = 0;
-    g_initialized = 0;
-    g_init_refcount = 0;
+    g_thread_initialized = 0;
+    g_thread_init_refcount = 0;
 }
 
-void stack_guard_register(void* base, size_t size) {
-    if (g_guard_count < MAX_GUARD_PAGES) {
-        g_guards[g_guard_count].base = base;
-        g_guards[g_guard_count].size = size;
-        g_guard_count++;
+int stack_guard_register(void* base, size_t size) {
+    if (base == NULL || size == 0) return -1;
+
+    if (g_guard_count == g_guard_capacity) {
+        int new_capacity = g_guard_capacity == 0 ? INITIAL_GUARD_CAPACITY : g_guard_capacity * 2;
+        if (new_capacity < g_guard_capacity) return -1;
+        struct guard_entry* grown = (struct guard_entry*)realloc(
+            g_guards, (size_t)new_capacity * sizeof(*g_guards)
+        );
+        if (grown == NULL) return -1;
+        g_guards = grown;
+        g_guard_capacity = new_capacity;
     }
+
+    g_guards[g_guard_count].base = base;
+    g_guards[g_guard_count].size = size;
+    g_guard_count++;
+    return 0;
 }
 
 void stack_guard_unregister(void* base) {

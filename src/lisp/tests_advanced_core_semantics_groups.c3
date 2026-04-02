@@ -115,10 +115,10 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "/: division by zero", pass, fail);
     test_str_val(interp, "try catch arity error",
         "(try (lambda (xx) (+ )) (lambda (payload) (ref payload 'message)))",
-        "+: expected at least 1 argument", pass, fail);
+        "+: expected at least 1 argument, got 0", pass, fail);
     test_str_val(interp, "try catch type error",
         "(try (lambda (xx) (+ \"a\" 1)) (lambda (payload) (ref payload 'message)))",
-        "+: expected number argument", pass, fail);
+        "+: argument 1 expected number, got \"a\"", pass, fail);
     test_str_val(interp, "try catch oob array",
         "(try (lambda (xx) (ref [1 2 3] 99)) (lambda (payload) (ref payload 'message)))",
         "ref: array index out of bounds", pass, fail);
@@ -127,7 +127,7 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "char-at: index out of range", pass, fail);
     test_str_val(interp, "try catch car nil",
         "(try (lambda (xx) (car 42)) (lambda (payload) (ref payload 'message)))",
-        "car: argument must be a pair", pass, fail);
+        "car: argument 1 expected pair/list, got 42", pass, fail);
     test_str_val(interp, "try catch unbound var",
         "(try (lambda (xx) nonexistent_var_xyz_2) (lambda (payload) (ref payload 'message)))",
         "unbound variable 'nonexistent_var_xyz_2'", pass, fail);

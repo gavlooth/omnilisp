@@ -151,6 +151,9 @@ All concurrency primitives go through effects and can be intercepted.
 | (none) | `void` return | use `^Void` when binding a function that returns C `void` |
 
 Use `^Pointer` in new bindings.
+`ffi λ` currently accepts only the canonical annotations `^Integer`, `^Double`,
+`^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations now
+raise a definition-time error instead of defaulting to pointer ABI metadata.
 `^Integer` and `^Boolean` are not accepted shorthand aliases in new surface text; use
 canonical integer/boolean annotations (`^Integer`, `^Boolean`) instead.
 

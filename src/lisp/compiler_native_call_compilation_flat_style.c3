@@ -10,15 +10,20 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
     usz lambda_id = 0;
     LambdaDef* found_def = null;
 
-    foreach (&def : self.lambda_defs) {
-        if (def.expr == expr) {
-            lambda_id = def.id;
-            found_def = def;
-            break;
+    if (!g_compiler_force_lambda_lookup_miss) {
+        foreach (&def : self.lambda_defs) {
+            if (def.expr == expr) {
+                lambda_id = def.id;
+                found_def = def;
+                break;
+            }
         }
     }
 
-    assert(found_def != null, "compile_lambda_flat: missing lambda definition");
+    if (found_def == null) {
+        self.set_compile_error("compiler: missing lambda definition during AOT lambda lowering");
+        return self.emit_nil_temp();
+    }
 
     if (found_def != null && found_def.capture_count > 0) {
         // Closure with captures - allocate on heap

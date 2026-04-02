@@ -1,7 +1,7 @@
 # Memory and Runtime
 
 Status: `green` (boundary hardening, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)  
-As of: 2026-03-26
+As of: 2026-04-01
 
 ## Canonical Sources
 

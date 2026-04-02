@@ -22,6 +22,9 @@ struct DeduceTxn {
     usz       mutation_entry_capacity;
 }
 
+// Test seam: force transaction mutation-log append/write failure paths.
+bool g_deduce_force_txn_mutation_log_fail = false;
+
 fn bool deduce_txn_ensure_mutation_capacity(DeduceTxn* txn, usz needed) {
     if (txn == null) return false;
     if (needed <= txn.mutation_entry_capacity) return true;
@@ -64,6 +67,7 @@ fn DeduceTxnMutationEntry* deduce_txn_lookup_or_add_mutation_entry(DeduceTxn* tx
 }
 
 fn bool deduce_txn_log_insert(DeduceTxn* txn, Relation* rel, void* key_data, usz key_len) {
+    if (g_deduce_force_txn_mutation_log_fail) return false;
     DeduceTxnMutationEntry* entry = deduce_txn_lookup_or_add_mutation_entry(txn, rel);
     if (entry == null) return false;
     if (entry.inserted_count < ulong.max) entry.inserted_count++;
@@ -71,6 +75,7 @@ fn bool deduce_txn_log_insert(DeduceTxn* txn, Relation* rel, void* key_data, usz
 }
 
 fn bool deduce_txn_log_delete(DeduceTxn* txn, Relation* rel) {
+    if (g_deduce_force_txn_mutation_log_fail) return false;
     DeduceTxnMutationEntry* entry = deduce_txn_lookup_or_add_mutation_entry(txn, rel);
     if (entry == null) return false;
     if (entry.deleted_count < ulong.max) entry.deleted_count++;

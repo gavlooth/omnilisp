@@ -1,4 +1,5 @@
 #include <yyjson.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,28 +41,47 @@ int omni_yyjson_get_bool(yyjson_val* val) { return yyjson_get_bool(val); }
 
 /* Array iteration */
 size_t omni_yyjson_arr_size(yyjson_val* arr) { return yyjson_arr_size(arr); }
-yyjson_val* omni_yyjson_arr_get_first(yyjson_val* arr) { return yyjson_arr_get_first(arr); }
+yyjson_arr_iter* omni_yyjson_arr_iter_new(yyjson_val* arr) {
+    yyjson_arr_iter* iter = (yyjson_arr_iter*)malloc(sizeof(yyjson_arr_iter));
+    if (iter == NULL) return NULL;
+    if (!yyjson_arr_iter_init(arr, iter)) {
+        free(iter);
+        return NULL;
+    }
+    return iter;
+}
+void omni_yyjson_arr_iter_free(yyjson_arr_iter* iter) {
+    if (iter != NULL) free(iter);
+}
+yyjson_val* omni_yyjson_arr_iter_next(yyjson_arr_iter* iter) {
+    if (iter == NULL) return NULL;
+    return yyjson_arr_iter_next(iter);
+}
 
 /* Object iteration */
 size_t omni_yyjson_obj_size(yyjson_val* obj) { return yyjson_obj_size(obj); }
 yyjson_val* omni_yyjson_obj_getn(yyjson_val* obj, const char* key, size_t len) {
     return yyjson_obj_getn(obj, key, len);
 }
-
-/* Unsafe next (works for both array elements and obj key-val pairs) */
-yyjson_val* omni_yyjson_next(yyjson_val* val) {
-    /* yyjson stores values contiguously. For arrays, next element is val+1.
-       For objects, keys and values alternate: key0 val0 key1 val1...
-       This function advances by 1 slot. */
-    return (yyjson_val*)((char*)val + sizeof(yyjson_val));
+yyjson_obj_iter* omni_yyjson_obj_iter_new(yyjson_val* obj) {
+    yyjson_obj_iter* iter = (yyjson_obj_iter*)malloc(sizeof(yyjson_obj_iter));
+    if (iter == NULL) return NULL;
+    if (!yyjson_obj_iter_init(obj, iter)) {
+        free(iter);
+        return NULL;
+    }
+    return iter;
 }
-
-/* Object: get first key (keys and values alternate) */
-yyjson_val* omni_yyjson_obj_get_first(yyjson_val* obj) {
-    size_t len = yyjson_obj_size(obj);
-    if (len == 0) return NULL;
-    /* In yyjson, obj container val is followed by key0, val0, key1, val1, ... */
-    return (yyjson_val*)((char*)obj + sizeof(yyjson_val));
+void omni_yyjson_obj_iter_free(yyjson_obj_iter* iter) {
+    if (iter != NULL) free(iter);
+}
+yyjson_val* omni_yyjson_obj_iter_next(yyjson_obj_iter* iter) {
+    if (iter == NULL) return NULL;
+    return yyjson_obj_iter_next(iter);
+}
+yyjson_val* omni_yyjson_obj_iter_get_val(yyjson_val* key) {
+    if (key == NULL) return NULL;
+    return yyjson_obj_iter_get_val(key);
 }
 
 /* =================== Mutable API for json-emit =================== */
@@ -81,10 +101,10 @@ yyjson_mut_val* omni_yyjson_mut_real(yyjson_mut_doc* doc, double val) { return y
 yyjson_mut_val* omni_yyjson_mut_strn(yyjson_mut_doc* doc, const char* str, size_t len) { return yyjson_mut_strncpy(doc, str, len); }
 
 yyjson_mut_val* omni_yyjson_mut_arr(yyjson_mut_doc* doc) { return yyjson_mut_arr(doc); }
-void omni_yyjson_mut_arr_append(yyjson_mut_val* arr, yyjson_mut_val* val) { yyjson_mut_arr_append(arr, val); }
+bool omni_yyjson_mut_arr_append(yyjson_mut_val* arr, yyjson_mut_val* val) { return yyjson_mut_arr_append(arr, val); }
 
 yyjson_mut_val* omni_yyjson_mut_obj(yyjson_mut_doc* doc) { return yyjson_mut_obj(doc); }
-void omni_yyjson_mut_obj_add(yyjson_mut_val* obj, yyjson_mut_val* key, yyjson_mut_val* val) { yyjson_mut_obj_add(obj, key, val); }
+bool omni_yyjson_mut_obj_add(yyjson_mut_val* obj, yyjson_mut_val* key, yyjson_mut_val* val) { return yyjson_mut_obj_add(obj, key, val); }
 
 void omni_yyjson_mut_doc_set_root(yyjson_mut_doc* doc, yyjson_mut_val* root) { yyjson_mut_doc_set_root(doc, root); }
 
@@ -102,6 +122,6 @@ char* omni_yyjson_mut_write_with_flags(yyjson_mut_doc* doc, yyjson_write_flag fl
 }
 
 yyjson_write_flag omni_yyjson_fp_to_fixed_flag(int precision) {
-    if (precision < 1 || precision > 15) return YYJSON_WRITE_NOFLAG;
+    if (precision < 0 || precision > 15) return YYJSON_WRITE_NOFLAG;
     return YYJSON_WRITE_FP_TO_FIXED((uint32_t)precision);
 }

@@ -261,6 +261,7 @@ fn bool register_regular_primitives_io_and_deduce(Interp* interp) {
         { "fiber-cancel", &prim_fiber_cancel, 1 },
         // TLS
         { "__raw-tls-connect", &prim_tls_connect, -1 },
+        { "__raw-tls-trust-store-cause", &prim_tls_trust_store_load_cause, 1 },
         { "__raw-tls-server-wrap", &prim_tls_server_wrap, -1 },
         { "__raw-tls-read", &prim_tls_read, -1 },
         { "__raw-tls-write", &prim_tls_write, 2 },

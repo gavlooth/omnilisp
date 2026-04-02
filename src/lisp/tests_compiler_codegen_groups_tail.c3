@@ -141,6 +141,7 @@ fn void run_compiler_group_iterative_stdlib_tests(Interp* interp, usz* pass_out,
     }
 
     run_compiler_group_bindgen_canonical_type_tests(interp, &pass, &fail);
+    run_compiler_group_bindgen_parse_guard_tests(interp, &pass, &fail);
     run_compiler_group_bindgen_overflow_guard_tests(interp, &pass, &fail);
 
     *pass_out += pass;
@@ -346,6 +347,173 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         fail++;
         io::printn("[FAIL] Compiler: bindgen canonical types load generated module");
     }
+
+    *pass_out += pass;
+    *fail_out += fail;
+}
+
+
+fn void run_compiler_group_bindgen_parse_guard_tests(Interp* _interp, usz* pass_out, usz* fail_out) {
+    (void)_interp;
+    usz pass = 0;
+    usz fail = 0;
+
+    char[640] long_header_buf;
+    usz long_len = 0;
+    char[] prefix = "/tmp/";
+    for (usz i = 0; i < prefix.len; i++) {
+        long_header_buf[long_len++] = prefix[i];
+    }
+    while (long_len < 520) {
+        long_header_buf[long_len++] = 'a';
+    }
+
+    LibclangHandle dummy = {};
+    ParseHeaderResult long_path_result = parse_header_checked(&dummy, long_header_buf[..long_len], null, 0, null, 0, false);
+    compiler_test_finish_bool(
+        long_path_result.path_too_long &&
+            long_path_result.count == 0 &&
+            !long_path_result.output_limit_hit &&
+            !long_path_result.parse_failed,
+        "Compiler: bindgen parse guards reject overlong header paths",
+        "[FAIL] Compiler: bindgen parse guards reject overlong header paths",
+        &pass,
+        &fail
+    );
+
+    LibclangHandle clang;
+    if (!libclang_init(&clang)) {
+        pass++;
+        compiler_print_pass("Compiler: bindgen parse guards function limit skipped (libclang unavailable)");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer libclang_destroy(&clang);
+
+    char[512] header_path_buf;
+    int pid = compiler_test_getpid();
+    usz seq = g_compiler_bindgen_temp_seq++;
+    char[] header_path;
+    if (try rendered = io::bprintf(
+        &header_path_buf,
+        "/tmp/omni_bindgen_parse_guard-%d-%d.h",
+        pid,
+        (int)seq
+    )) {
+        header_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen parse guards compose header path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer (void)io::file::delete((String)header_path);
+
+    char[] header_source =
+        "int omni_bindgen_limit_a(int x);\n"
+        "int omni_bindgen_limit_b(void);\n"
+        "int omni_bindgen_limit_c(void);\n";
+    if (!compiler_write_text_file(header_path, header_source)) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen parse guards write header");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+
+    const usz MAX_FUNCS = 2;
+    ParsedFunc* funcs = (ParsedFunc*)mem::malloc(ParsedFunc.sizeof * MAX_FUNCS);
+    if (funcs == null) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen parse guards alloc funcs");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer mem::free(funcs);
+    for (usz i = 0; i < MAX_FUNCS; i++) {
+        funcs[i] = {};
+    }
+    defer {
+        for (usz i = 0; i < MAX_FUNCS; i++) {
+            if (funcs[i].params != null) mem::free(funcs[i].params);
+        }
+    }
+
+    ParseHeaderResult limit_result = parse_header_checked(&clang, header_path, funcs, MAX_FUNCS, null, 0, false);
+    compiler_test_finish_bool(
+        limit_result.output_limit_hit &&
+            limit_result.count == MAX_FUNCS &&
+            !limit_result.path_too_long &&
+            !limit_result.param_allocation_failed &&
+            !limit_result.unsupported_type &&
+            !limit_result.parse_failed,
+        "Compiler: bindgen parse guards reject partial header capture at function limit",
+        "[FAIL] Compiler: bindgen parse guards reject partial header capture at function limit",
+        &pass,
+        &fail
+    );
+
+    g_bind_force_param_alloc_fail = true;
+    ParseHeaderResult alloc_fail_result = parse_header_checked(&clang, header_path, funcs, 4, null, 0, false);
+    g_bind_force_param_alloc_fail = false;
+    compiler_test_finish_bool(
+        alloc_fail_result.param_allocation_failed &&
+            alloc_fail_result.count == 0 &&
+            !alloc_fail_result.path_too_long &&
+            !alloc_fail_result.output_limit_hit &&
+            !alloc_fail_result.unsupported_type &&
+            !alloc_fail_result.parse_failed,
+        "Compiler: bindgen parse guards reject parameter allocation failure",
+        "[FAIL] Compiler: bindgen parse guards reject parameter allocation failure",
+        &pass,
+        &fail
+    );
+
+    char[512] unsupported_path_buf;
+    char[] unsupported_path;
+    if (try rendered = io::bprintf(
+        &unsupported_path_buf,
+        "/tmp/omni_bindgen_unsupported_guard-%d-%d.h",
+        pid,
+        (int)(seq + 1)
+    )) {
+        unsupported_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen parse guards compose unsupported header path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+    defer (void)io::file::delete((String)unsupported_path);
+
+    char[] unsupported_header_source =
+        "struct omni_bindgen_struct { int x; };\n"
+        "void omni_bindgen_bad(struct omni_bindgen_struct value);\n";
+    if (!compiler_write_text_file(unsupported_path, unsupported_header_source)) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen parse guards write unsupported header");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
+
+    ParseHeaderResult unsupported_result = parse_header_checked(&clang, unsupported_path, funcs, 4, null, 0, false);
+    compiler_test_finish_bool(
+        unsupported_result.unsupported_type &&
+            unsupported_result.count == 0 &&
+            !unsupported_result.path_too_long &&
+            !unsupported_result.output_limit_hit &&
+            !unsupported_result.param_allocation_failed &&
+            !unsupported_result.parse_failed,
+        "Compiler: bindgen parse guards reject unsupported C types",
+        "[FAIL] Compiler: bindgen parse guards reject unsupported C types",
+        &pass,
+        &fail
+    );
 
     *pass_out += pass;
     *fail_out += fail;

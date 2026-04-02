@@ -296,6 +296,7 @@ struct OmniFtxuiScreenCreateOptions {
     uint abi_version;
     int mode;
     bool track_mouse;
+    // The backend currently reports NOT_SUPPORTED when this is enabled.
     bool handle_piped_input;
     OmniFtxuiDimension width;
     OmniFtxuiDimension height;

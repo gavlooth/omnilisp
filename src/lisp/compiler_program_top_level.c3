@@ -37,6 +37,13 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
 
         if ((*exprs)[i].tag == E_IMPORT) {
             ExprImport imp = (*exprs)[i].import_expr;
+            if (!imp.has_path
+                && imp.import_count == 0
+                && compiler_has_inline_compiled_module(self, imp.name)) {
+                self.emit_indent();
+                self.emit("(void)aot::make_void(); // import: inline module\n");
+                continue;
+            }
             if (imp.has_path) {
                 self.emit_indent();
                 self.emit("aot::import_module(\"");
@@ -44,13 +51,17 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
                 self.emit("\", ");
                 self.emit("\"");
                 self.emit_escaped(imp.path[:imp.path_len]);
-                self.emit("\", true, false);\n");
+                self.emit("\", true, ");
+                self.emit(imp.import_all ? "true" : "false");
+                self.emit(");\n");
             } else {
                 self.emit_indent();
                 self.emit_symbol_name(imp.name);
                 self.emit(" = aot::import_module(\"");
                 self.emit_escaped(self.interp.symbols.get_name(imp.name));
-                self.emit("\", \"\", false, false);\n");
+                self.emit("\", \"\", false, ");
+                self.emit(imp.import_all ? "true" : "false");
+                self.emit(");\n");
             }
 
             for (usz ii = 0; ii < imp.import_count; ii++) {

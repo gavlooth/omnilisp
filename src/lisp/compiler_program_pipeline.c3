@@ -35,11 +35,28 @@ fn void Compiler.emit_code_with_prim_inits(Compiler* self, char[] code_str, usz 
 }
 
 fn char[] Compiler.build_program_source(Compiler* self, char[] source, char** full_buf_out) {
-    usz total = STDLIB_PRELUDE.len + 1 + source.len;
+    *full_buf_out = null;
+    if (g_compiler_force_program_source_alloc_fail) {
+        self.set_compile_error("compiler: out of memory while allocating program source buffer");
+        return "";
+    }
+
+    usz prelude_len = (usz)STDLIB_PRELUDE.len;
+    if (source.len > usz.max - prelude_len - (usz)1) {
+        self.set_compile_error("compiler: program source exceeds maximum supported size");
+        return "";
+    }
+
+    usz total = prelude_len + (usz)1 + source.len;
     char* full_buf = (char*)mem::malloc(total);
-    mem::copy(full_buf, STDLIB_PRELUDE.ptr, STDLIB_PRELUDE.len);
-    full_buf[STDLIB_PRELUDE.len] = ' ';
-    mem::copy(&full_buf[STDLIB_PRELUDE.len + 1], source.ptr, source.len);
+    if (full_buf == null) {
+        self.set_compile_error("compiler: out of memory while allocating program source buffer");
+        return "";
+    }
+
+    mem::copy(full_buf, STDLIB_PRELUDE.ptr, prelude_len);
+    full_buf[prelude_len] = '\n';
+    mem::copy(&full_buf[prelude_len + 1], source.ptr, source.len);
     *full_buf_out = full_buf;
     return full_buf[:total];
 }
@@ -72,11 +89,13 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     char* full_buf = null;
     char[] full = self.build_program_source(source, &full_buf);
     defer mem::free(full_buf);
+    if (self.has_error || full_buf == null || full.len == 0) return "";
 
     List{Expr*} exprs;
     defer exprs.free();
     if (!self.parse_program_exprs(full, &exprs)) return "";
     self.prepare_program_analysis(&exprs);
+    if (self.has_error) return "";
 
     // D2: Two-pass compilation — compile all code into a temp buffer first
     // so we discover all referenced prims before emitting global declarations.
@@ -100,6 +119,12 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     self.emit_code_with_prim_inits(code_str, prim_init_pos);
 
     code_buf.free();
+
+    if (self.has_error) {
+        self.output.free();
+        self.output.init(mem, 8192);
+        return "";
+    }
 
     return self.get_output();
 }

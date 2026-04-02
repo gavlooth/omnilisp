@@ -267,6 +267,119 @@ fn void run_deduce_open_named_test(Interp* interp, int* pass, int* fail) {
     }
 }
 
+fn void run_deduce_relation_open_commit_failure_test(Interp* interp, int* pass, int* fail) {
+    bool saved_force_commit_fail = g_deduce_force_relation_open_commit_fail;
+    g_deduce_force_relation_open_commit_fail = true;
+    EvalResult open_named_result = run(
+        "(handle (deduce 'open-named (deduce 'open 'memory) 'force_commit_fail \"force_commit_fail\" 'name) "
+        "  (raise payload (symbol->string (ref payload 'code))))",
+        interp
+    );
+    EvalResult define_relation_result = run(
+        "(handle (block "
+        "    (define db-force-commit-fail (deduce 'open 'memory)) "
+        "    (__define-relation db-force-commit-fail 'force_commit_fail_rel 'name)) "
+        "  (raise payload (symbol->string (ref payload 'code))))",
+        interp
+    );
+    g_deduce_force_relation_open_commit_fail = saved_force_commit_fail;
+
+    bool open_named_ok = !open_named_result.error.has_error &&
+        open_named_result.value != null &&
+        open_named_result.value.tag == STRING &&
+        deduce_name_equals(open_named_result.value.str_chars[:open_named_result.value.str_len], "deduce/open-named-txn-commit-failed");
+    bool define_relation_ok = !define_relation_result.error.has_error &&
+        define_relation_result.value != null &&
+        define_relation_result.value.tag == STRING &&
+        deduce_name_equals(
+            define_relation_result.value.str_chars[:define_relation_result.value.str_len],
+            "deduce/define-relation-txn-commit-failed"
+        );
+
+    if (open_named_ok && define_relation_ok) {
+        emit_pass_literal("[PASS] deduce relation-open surfaces txn commit failure for open-named and define-relation");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce relation-open surfaces txn commit failure for open-named and define-relation");
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_non_transaction_mutation_post_commit_atomic_surface_test(Interp* interp, int* pass, int* fail) {
+    EvalResult setup = run(
+        "(block "
+        "  (define db-post-commit-atomic (deduce 'open 'memory)) "
+        "  (define rel-post-commit-atomic (deduce 'open-named db-post-commit-atomic 'post_commit_atomic \"post_commit_atomic\" 'id)) "
+        "  (define [relation db-post-commit-atomic materialized] rel-post-commit-atomic-mv (id)) "
+        "  true)",
+        interp
+    );
+    if (setup.error.has_error) {
+        io::printn("[FAIL] deduce non-transaction mutations keep success surface after post-commit metadata failures (setup)");
+        (*fail)++;
+        return;
+    }
+
+    bool saved_force_meta_fail = g_deduce_force_materialized_meta_persist_fail;
+    g_deduce_force_materialized_meta_persist_fail = true;
+    EvalResult r = run(
+        "(block "
+        "  (define mutation-result (handle (deduce 'fact! rel-post-commit-atomic 7) (raise payload (symbol->string (ref payload 'code))))) "
+        "  (and (void? mutation-result) (= (deduce 'count rel-post-commit-atomic) 1)))",
+        interp
+    );
+    g_deduce_force_materialized_meta_persist_fail = saved_force_meta_fail;
+
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce non-transaction mutations keep success surface after post-commit metadata failures");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn(
+                "[FAIL] deduce non-transaction mutations keep success surface after post-commit metadata failures (error: %s)",
+                (ZString)r.error.message[:256]
+            );
+        } else {
+            io::printn("[FAIL] deduce non-transaction mutations keep success surface after post-commit metadata failures");
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_deduce_transaction_mutation_log_failure_bookkeeping_test(Interp* interp, int* pass, int* fail) {
+    bool saved_force_log_fail = g_deduce_force_txn_mutation_log_fail;
+    g_deduce_force_txn_mutation_log_fail = true;
+    EvalResult r = run(
+        "(block "
+        "  (define db-txn-log-fail (deduce 'open 'memory)) "
+        "  (define rel-txn-log-fail (deduce 'open-named db-txn-log-fail 'txn_log_fail \"txn_log_fail\" 'id)) "
+        "  (define tx-txn-log-fail (deduce 'block db-txn-log-fail)) "
+        "  (deduce 'fact! tx-txn-log-fail rel-txn-log-fail 1) "
+        "  (define commit-result (handle (deduce 'commit tx-txn-log-fail) (raise payload (symbol->string (ref payload 'code))))) "
+        "  (define analyzed (deduce 'analyze db-txn-log-fail)) "
+        "  (and (void? commit-result) "
+        "       (= (deduce 'count rel-txn-log-fail) 1) "
+        "       (= ('incremental-invalidation-mode analyzed) 'full-recompute)))",
+        interp
+    );
+    g_deduce_force_txn_mutation_log_fail = saved_force_log_fail;
+
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] deduce transaction commit records full-recompute bookkeeping when mutation logging fails");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn(
+                "[FAIL] deduce transaction commit records full-recompute bookkeeping when mutation logging fails (error: %s)",
+                (ZString)r.error.message[:256]
+            );
+        } else {
+            io::printn("[FAIL] deduce transaction commit records full-recompute bookkeeping when mutation logging fails");
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_relation_attr_define_test(Interp* interp, int* pass, int* fail) {
     EvalResult r = run(
         "(block "
@@ -2085,6 +2198,9 @@ fn void run_deduce_basics_block(Interp* interp, int* pass, int* fail) {
     run_deduce_open_smoke_test(interp, pass, fail);
     run_deduce_namespaced_alias_smoke_test(interp, pass, fail);
     run_deduce_open_named_test(interp, pass, fail);
+    run_deduce_relation_open_commit_failure_test(interp, pass, fail);
+    run_deduce_non_transaction_mutation_post_commit_atomic_surface_test(interp, pass, fail);
+    run_deduce_transaction_mutation_log_failure_bookkeeping_test(interp, pass, fail);
     run_deduce_durability_restart_test(interp, pass, fail);
 }
 

@@ -1,6 +1,7 @@
 module lisp;
 
 import std::core::mem;
+import std::io;
 
 struct TlsConnectOffloadReq {
     int fd;
@@ -28,6 +29,15 @@ fn void tls_connect_req_free(TlsConnectOffloadReq* req) {
     if (req.client_cert_path != null) mem::free(req.client_cert_path);
     if (req.client_key_path != null) mem::free(req.client_key_path);
     mem::free(req);
+}
+
+fn char[] tls_offload_error_with_cause(char[256]* buf, char[] base, TlsHandle* th = null) {
+    char[] cause = tls_last_error_text();
+    if (cause.len == 0 && th != null) {
+        cause = tls_engine_error_text(th.client_ctx);
+    }
+    if (cause.len == 0) return base;
+    return io::bprintf(buf, "%s: %s", (ZString)base, (ZString)cause)!!;
 }
 
 fn bool scheduler_offload_tls_connect(long req_raw, OffloadCompletion* completion) {
@@ -77,17 +87,19 @@ fn bool scheduler_offload_tls_connect(long req_raw, OffloadCompletion* completio
     }
 
     if (req.ca_bundle_path != null) {
+        omni_tls_clear_last_error();
         th.trust_store = omni_tls_trust_store_load_file((ZString)req.ca_bundle_path);
     } else {
+        omni_tls_clear_last_error();
         th.trust_store = omni_tls_trust_store_load_default();
     }
     if (th.trust_store == null) {
+        char[256] ebuf;
+        char[] msg = req.ca_bundle_path != null
+            ? tls_offload_error_with_cause(&ebuf, "tls-connect: failed to load CA trust store from ca-bundle-path")
+            : tls_offload_error_with_cause(&ebuf, "tls-connect: failed to load CA trust store (set OMNI_TLS_CA_FILE or SSL_CERT_FILE)");
         tls_destroy_handle(th);
-        if (req.ca_bundle_path != null) {
-            scheduler_set_offload_error(completion, "tls-connect: failed to load CA trust store from ca-bundle-path");
-        } else {
-            scheduler_set_offload_error(completion, "tls-connect: failed to load CA trust store (set OMNI_TLS_CA_FILE or SSL_CERT_FILE)");
-        }
+        scheduler_set_offload_error(completion, msg);
         return false;
     }
 
@@ -102,11 +114,14 @@ fn bool scheduler_offload_tls_connect(long req_raw, OffloadCompletion* completio
     br_ssl_client_init_full(th.client_ctx, th.x509_ctx, trust_anchors, trust_anchor_count);
 
     if (req.client_cert_path != null) {
+        omni_tls_clear_last_error();
         th.server_creds = omni_tls_server_creds_load((ZString)req.client_cert_path, (ZString)req.client_key_path);
         int client_cert_status = th.server_creds != null ? omni_tls_client_set_single_rsa(th.client_ctx, th.server_creds) : 0;
         if (th.server_creds == null || client_cert_status <= 0) {
+            char[256] ebuf;
+            char[] msg = tls_offload_error_with_cause(&ebuf, "tls-connect: failed to configure client cert/key");
             tls_destroy_handle(th);
-            scheduler_set_offload_error(completion, "tls-connect: failed to configure client cert/key (PEM RSA required)");
+            scheduler_set_offload_error(completion, msg);
             return false;
         }
     }
@@ -117,10 +132,13 @@ fn bool scheduler_offload_tls_connect(long req_raw, OffloadCompletion* completio
     }
 
     int resume_flag = th.resume_session ? 1 : 0;
+    omni_tls_clear_last_error();
     int reset_ok = br_ssl_client_reset(th.client_ctx, req.host, resume_flag);
     if (reset_ok == 0) {
+        char[256] ebuf;
+        char[] msg = tls_offload_error_with_cause(&ebuf, "tls-connect: TLS client reset failed", th);
         tls_destroy_handle(th);
-        scheduler_set_offload_error(completion, "tls-connect: TLS client reset failed");
+        scheduler_set_offload_error(completion, msg);
         return false;
     }
 
@@ -143,12 +161,12 @@ fn bool scheduler_offload_tls_read(long tls_raw, long max_bytes_raw, OffloadComp
         return false;
     }
 
-    usz max_bytes = 4096;
-    if (max_bytes_raw > 0) {
-        max_bytes = (usz)max_bytes_raw;
+    if (max_bytes_raw <= 0) {
+        scheduler_set_offload_error(completion, "tls-read: max-bytes must be > 0");
+        return false;
     }
+    usz max_bytes = (usz)max_bytes_raw;
     if (max_bytes > 65536) max_bytes = 65536;
-    if (max_bytes == 0) max_bytes = 1;
 
     char* tmp = (char*)mem::malloc(max_bytes);
     if (tmp == null) {
@@ -159,9 +177,12 @@ fn bool scheduler_offload_tls_read(long tls_raw, long max_bytes_raw, OffloadComp
 
     int received = 0;
     for (int attempt = 0; attempt < TLS_READ_EMPTY_RETRY_MAX; attempt++) {
+        omni_tls_clear_last_error();
         received = br_sslio_read(th.sslio_ctx, tmp, max_bytes);
         if (received < 0) {
-            scheduler_set_offload_error(completion, "tls-read: read failed");
+            char[256] ebuf;
+            scheduler_set_offload_error(completion,
+                tls_offload_error_with_cause(&ebuf, "tls-read: read failed", th));
             return false;
         }
         if (received > 0) break;
@@ -200,15 +221,21 @@ fn bool scheduler_offload_tls_write(long tls_raw, SharedHandle* data_blob, Offlo
         return false;
     }
 
+    omni_tls_clear_last_error();
     int status = br_sslio_write_all(th.sslio_ctx, data.ptr, data.len);
     if (status < 0) {
-        scheduler_set_offload_error(completion, "tls-write: write failed");
+        char[256] ebuf;
+        scheduler_set_offload_error(completion,
+            tls_offload_error_with_cause(&ebuf, "tls-write: write failed", th));
         return false;
     }
 
+    omni_tls_clear_last_error();
     int flush_status = br_sslio_flush(th.sslio_ctx);
     if (flush_status < 0) {
-        scheduler_set_offload_error(completion, "tls-write: flush failed");
+        char[256] ebuf;
+        scheduler_set_offload_error(completion,
+            tls_offload_error_with_cause(&ebuf, "tls-write: flush failed", th));
         return false;
     }
 

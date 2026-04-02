@@ -9,6 +9,13 @@ fn void Compiler.add_global_if_missing(Compiler* self, SymbolId sym) {
     }
 }
 
+fn bool compiler_has_inline_compiled_module(Compiler* self, SymbolId module_name) {
+    for (usz i = 0; i < self.compiled_module_count; i++) {
+        if (self.compiled_modules[i].name == module_name) return true;
+    }
+    return false;
+}
+
 fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
     if (expr == null) return;
 

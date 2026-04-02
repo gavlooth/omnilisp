@@ -22,3 +22,8 @@ fn int print_fmt_write_error(char* output_file) {
     io::printfn("Error: cannot write formatted file %s", (ZString)output_file);
     return 1;
 }
+
+fn int print_fmt_structure_error(char* input_file) {
+    io::printfn("Error: formatter nesting exceeds supported depth in %s", (ZString)input_file);
+    return 1;
+}

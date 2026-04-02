@@ -91,6 +91,10 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-emit 1 '((precision 99)))", "precision must be an integer between 0 and 15", pass, fail);
     test_error_contains(interp, "json-emit validates pretty-two-spaces option type",
         "(json-emit 1 '((pretty-two-spaces 1)))", "must be a boolean", pass, fail);
+    test_error_contains(interp, "json-emit rejects unsupported root value type",
+        "(json-emit (lambda (x) x))", "json-emit: unsupported value type", pass, fail);
+    test_error_contains(interp, "json-emit rejects unsupported dictionary key type",
+        "(json-emit (Dictionary 1 2))", "json-emit: unsupported dictionary key type", pass, fail);
 
     // Round-trip: emit then parse
     test_eq(interp, "json round-trip integer",
@@ -255,6 +259,12 @@ fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
         "(gunzip (gzip \"hello world\" 1))", "hello world", pass, fail);
     test_str_val(interp, "deflate/inflate round-trip level 12",
         "(inflate (deflate \"test data\" 12))", "test data", pass, fail);
+    test_error_contains(interp, "inflate rejects ignored extra args",
+        "(inflate (deflate \"test data\") 32 64)", "expected 1-2 arguments", pass, fail);
+    test_error_contains(interp, "inflate rejects non-integer original-size",
+        "(inflate (deflate \"test data\") \"32\")", "original-size must be an integer", pass, fail);
+    test_error_contains(interp, "inflate rejects non-positive original-size",
+        "(inflate (deflate \"test data\") 0)", "original-size must be > 0", pass, fail);
     test_str_val(interp, "zlib round-trip",
         "(zlib-decompress (zlib-compress \"zlib payload\"))", "zlib payload", pass, fail);
     test_str_val(interp, "zlib round-trip level 9",

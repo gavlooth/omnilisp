@@ -107,6 +107,32 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "  (await hf))",
         pass, fail);
 
+    // Finwatch normal poll tick should also complete inside a spawned fiber
+    // when the fetchers are stubbed, guarding the real startup path without
+    // depending on public network availability.
+    {
+        EvalResult r = run(
+            "(block "
+            "  (load \"examples/finwatch/server.omni\") "
+            "  (define (feed/fetch-fx) (Ok nil)) "
+            "  (define (feed/fetch-crypto) (Ok nil)) "
+            "  (define (feed/fetch-news) (Ok nil)) "
+            "  (await (spawn (lambda () (block (server-poll-once!) true)))))",
+            interp
+        );
+        if (!r.error.has_error && r.value != null && r.value.tag != NIL) {
+            emit_pass_literal("[PASS] finwatch poll tick runs in a spawned fiber");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] finwatch poll tick runs in a spawned fiber (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printfn("[FAIL] finwatch poll tick runs in a spawned fiber (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+            }
+            (*fail)++;
+        }
+    }
+
     // Finwatch canonical boot smoke (bounded): module/import boot path, interp-only by design.
     {
         EvalResult r = run(

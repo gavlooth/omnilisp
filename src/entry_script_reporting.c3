@@ -27,6 +27,6 @@ fn void print_script_result_if_non_nil(lisp::EvalResult r, lisp::Interp* interp)
     }
 }
 
-fn void print_script_read_error(char* script_file) {
-    io::printfn("Error: cannot read script file '%s'", (ZString)script_file);
+fn void print_script_read_error(char[] script_path, EntryFileReadKind kind) {
+    print_file_read_error_text("script file", script_path, kind);
 }

@@ -118,6 +118,9 @@ const usz DEDUCE_INTEGRITY_HISTORY_LIMIT = 8;
 const char DEDUCE_PERSISTED_RELATION_META_VERSION = 2;
 const char DEDUCE_PERSISTED_RULE_CATALOG_VERSION = 1;
 const char DEDUCE_PERSISTED_RULE_SIGNATURE_VERSION = 1;
+
+// Test seam: force relation metadata persistence failure paths.
+bool g_deduce_force_materialized_meta_persist_fail = false;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_MATERIALIZED = 1 << 0;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH = 1 << 1;
 const char DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH = 1 << 2;
@@ -1568,6 +1571,10 @@ fn Value* deduce_relation_meta_persist_state(
     if (db == null || !db.open || relation_name == (SymbolId)0 || interp == null) {
         return deduce_raise(interp, "deduce/materialized-meta-invalid-state",
             "deduce: invalid relation metadata persistence state");
+    }
+    if (g_deduce_force_materialized_meta_persist_fail) {
+        return deduce_raise(interp, "deduce/materialized-meta-forced-failed",
+            "deduce: forced materialized relation metadata persistence failure");
     }
 
     MdbTxn* txn = null;

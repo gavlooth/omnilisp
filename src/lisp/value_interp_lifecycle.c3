@@ -196,6 +196,9 @@ fn void Interp.destroy(Interp* self) {
         self.console_capture_active = false;
     }
     self.input_state = null;
+    self.sigint_requested = 0;
+    self.interrupt_flag = null;
+    self.signal_handles_head = null;
     if (self.module_hash_index != null) { mem::free(self.module_hash_index); self.module_hash_index = null; }
     if (self.handler_stack != null) { mem::free(self.handler_stack); self.handler_stack = null; }
     main::stack_pool_shutdown(&self.stack_ctx_pool);

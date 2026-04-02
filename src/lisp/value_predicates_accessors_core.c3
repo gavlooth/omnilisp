@@ -82,16 +82,33 @@ fn bool is_ffi_handle(Value* v) @inline {
     return v != null && v.tag == FFI_HANDLE;
 }
 
-// Convert a ^Type annotation base_type symbol to FfiTypeTag
-fn FfiTypeTag type_ann_to_ffi_tag(SymbolId base_type, Interp* interp) {
-    if (base_type == interp.sym_Integer) return FFI_TYPE_INT;
-    if (base_type == interp.sym_Double) return FFI_TYPE_DOUBLE;
-    if (base_type == interp.sym_String) return FFI_TYPE_PTR;
-    if (base_type == interp.sym_Pointer) return FFI_TYPE_PTR;
-    if (base_type == interp.sym_Boolean) return FFI_TYPE_BOOL;
-    if (base_type == interp.sym_Void) return FFI_TYPE_VOID;
-    // Unknown type — default to pointer (handles opaque types)
-    return FFI_TYPE_PTR;
+// Convert a ^Type annotation base_type symbol to FfiTypeTag.
+fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_tag) {
+    if (base_type == interp.sym_Integer) {
+        *out_tag = FFI_TYPE_INT;
+        return true;
+    }
+    if (base_type == interp.sym_Double) {
+        *out_tag = FFI_TYPE_DOUBLE;
+        return true;
+    }
+    if (base_type == interp.sym_String) {
+        *out_tag = FFI_TYPE_PTR;
+        return true;
+    }
+    if (base_type == interp.sym_Pointer) {
+        *out_tag = FFI_TYPE_PTR;
+        return true;
+    }
+    if (base_type == interp.sym_Boolean) {
+        *out_tag = FFI_TYPE_BOOL;
+        return true;
+    }
+    if (base_type == interp.sym_Void) {
+        *out_tag = FFI_TYPE_VOID;
+        return true;
+    }
+    return false;
 }
 
 fn bool is_array(Value* v) @inline {
