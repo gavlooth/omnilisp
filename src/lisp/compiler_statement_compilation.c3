@@ -19,10 +19,27 @@ fn void Compiler.compile_statement(Compiler* self, Expr* expr) {
             self.emit(" = ");
             self.emit_temp_ref(init_r);
             self.emit(";\n");
+        case E_FFI_LIB:
+            usz ffi_lib_r = self.compile_to_temp(expr);
+            self.emit_indent();
+            self.emit_symbol_name(expr.ffi_lib.name);
+            self.emit(" = ");
+            self.emit_temp_ref(ffi_lib_r);
+            self.emit(";\n");
+        case E_FFI_FN:
+            if (expr.ffi_fn != null) {
+                usz ffi_fn_r = self.compile_to_temp(expr);
+                self.emit_indent();
+                self.emit_symbol_name(expr.ffi_fn.fn_name);
+                self.emit(" = ");
+                self.emit_temp_ref(ffi_fn_r);
+                self.emit(";\n");
+            } else {
+                self.compile_to_temp(expr);
+            }
 
         default:
             // Other expressions: evaluate and discard result
             self.compile_to_temp(expr);
     }
 }
-

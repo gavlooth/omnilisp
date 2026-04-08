@@ -94,7 +94,12 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
         char[256] ubuf;
         char[] utag = interp.symbols.get_name(hstate.signal_tag);
         char[] uarg = interp.symbols.get_name(value_type_name(hstate.signal_arg, interp));
-        char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
+        char[] umsg;
+        if (try char[] formatted = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)) {
+            umsg = formatted;
+        } else {
+            umsg = "unhandled effect";
+        }
         return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", umsg);
     }
 

@@ -41,6 +41,8 @@ fn void run_advanced_lambda_syntax_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "indexed placeholder rejects _0", "((+ _0 1) 2)", "invalid indexed placeholder", pass, fail);
     test_error_contains(interp, "indexed placeholder rejects negative form", "((+ _-1 1) 2)", "invalid indexed placeholder", pass, fail);
     test_error_contains(interp, "indexed placeholder rejects non-numeric suffix", "((+ _1x 1) 2)", "invalid indexed placeholder", pass, fail);
+    test_error_contains(interp, "primitive no auto-partial", "(+ 3)", "arity", pass, fail);
+    test_error_contains(interp, "primitive higher-order no auto-partial", "(map (+ 1) '(1 2 3))", "arity", pass, fail);
 
     // Pipe |> operator
     test_eq(interp, "pipe basic", "(|> 5 (+ 3))", 8, pass, fail);

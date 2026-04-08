@@ -8,7 +8,8 @@ import std::collections::list;
  */
 fn void Parser.init_defunion_expr(Parser* self, Expr* e) {
     e.tag = E_DEFUNION;
-    e.defunion = (ExprDefUnion*)ast_arena_alloc(&self.interp.ast_arena, ExprDefUnion.sizeof);
+    e.defunion = (ExprDefUnion*)self.alloc_ast_bytes(ExprDefUnion.sizeof, "out of memory while creating union definition");
+    if (e.defunion == null) return;
     e.defunion.type_params = null;
     e.defunion.type_param_count = 0;
     e.defunion.variants = null;
@@ -72,6 +73,7 @@ fn bool Parser.parse_defunion_variant(Parser* self, List{UnionVariant}* variants
 
 fn Expr* Parser.parse_defunion(Parser* self, Expr* e) {
     self.init_defunion_expr(e);
+    if (self.has_error || e.defunion == null) return null;
     if (!self.parse_defunion_name(e)) return null;
 
     List{UnionVariant} variants;

@@ -1,8 +1,5 @@
 module lisp;
 
-
-import std::io;
-
 alias AdvancedFfiSystemGroupFn = fn void(Interp* interp, int* pass, int* fail);
 
 fn bool advanced_group_filter_matches_selected_exact(char[] name) {
@@ -43,307 +40,43 @@ fn void run_advanced_ffi_system_selected_exact_group(
 }
 
 fn void run_advanced_process_wait_event_driven_test(Interp* interp, int* pass, int* fail) {
-    omni_uv_process_debug_reset_counters();
-
-    EvalResult waited = run(
-        "(block "
-        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.05\"] nil)) "
-        "(define st (await (spawn (lambda () (process-wait (ref p 'handle)))))) "
-        "(fs-close (ref p 'stdin)) "
-        "(fs-close (ref p 'stdout)) "
-        "(fs-close (ref p 'stderr)) "
-        "(= (ref st 'exit-code) 0))",
-        interp
-    );
-
-    int poll_calls = omni_uv_process_debug_poll_calls();
-    int wait_calls = omni_uv_process_debug_wait_calls();
-    bool ok = !waited.error.has_error &&
-        waited.value != null &&
-        waited.value.tag != ERROR &&
-        waited.value.tag != NIL &&
-        wait_calls >= 1 &&
-        poll_calls == 0;
-
-    if (ok) {
-        emit_pass("process wait uses event-driven worker wakeup path");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] process wait uses event-driven worker wakeup path (wait_err=%s wait_calls=%d poll_calls=%d)",
-            waited.error.has_error ? "yes" : "no",
-            wait_calls,
-            poll_calls
-        );
-        (*fail)++;
-    }
+    run_advanced_process_wait_event_driven_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_signal_burst_delivery_test(Interp* interp, int* pass, int* fail) {
-    EvalResult setup_hits = run("(define signal-burst-hits {'n 0})", interp);
-    EvalResult setup_handle = run(
-        "(define signal-burst-h (signal-handle 10 (lambda (sig) nil)))",
-        interp
-    );
-
-    bool ok = !setup_hits.error.has_error &&
-        !setup_handle.error.has_error;
-    int set_status = -1;
-    int pending_before = -1;
-    int pending_after = -1;
-    int dispatch_count = -1;
-    if (ok) {
-        Value* handle_v = interp.global_env.lookup(interp.symbols.intern("signal-burst-h"));
-        SignalHandle* signal_handle = get_signal_handle(handle_v);
-        ok = signal_handle != null &&
-            signal_handle.open &&
-            signal_handle.uv_signal_watch != null;
-        if (ok) {
-            signal_debug_reset_dispatch_count();
-            set_status = omni_uv_signal_debug_set_pending(signal_handle.uv_signal_watch, 1205);
-            pending_before = omni_uv_signal_debug_pending(signal_handle.uv_signal_watch);
-            dispatch_pending_signal_callbacks(interp);
-            pending_after = omni_uv_signal_debug_pending(signal_handle.uv_signal_watch);
-            dispatch_count = (int)signal_debug_dispatch_count();
-        }
-
-        ok = set_status == 0 &&
-            pending_before >= 1205 &&
-            pending_after == 0 &&
-            dispatch_count >= 1205;
-    }
-
-    EvalResult cleanup = run("(signal-unhandle signal-burst-h)", interp);
-    ok = ok &&
-        !cleanup.error.has_error &&
-        cleanup.value != null &&
-        cleanup.value.tag == VOID;
-
-    if (ok) {
-        emit_pass("signal callback burst delivery drains all pending callbacks without 1024-cap loss");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] signal callback burst delivery drains all pending callbacks without 1024-cap loss (setup_hits_err=%s setup_handle_err=%s set_status=%d pending_before=%d pending_after=%d dispatch_count=%d cleanup_err=%s)",
-            setup_hits.error.has_error ? "yes" : "no",
-            setup_handle.error.has_error ? "yes" : "no",
-            set_status,
-            pending_before,
-            pending_after,
-            dispatch_count,
-            cleanup.error.has_error ? "yes" : "no"
-        );
-        (*fail)++;
-    }
+    run_advanced_signal_burst_delivery_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_sigint_interrupt_routing_test(Interp* interp, int* pass, int* fail) {
-    Interp other = {};
-    other.init();
-    defer other.destroy();
-
-    interp_interrupt_clear(interp);
-    interp_interrupt_clear(&other);
-
-    interp_sigint_bind(interp);
-    defer interp_sigint_unbind(interp);
-    interp_sigint_debug_mark_pending();
-
-    bool active_requested = interp_interrupt_requested(interp);
-    bool other_requested = interp_interrupt_requested(&other);
-    interp_interrupt_clear(interp);
-    interp_interrupt_clear(&other);
-
-    if (active_requested && !other_requested) {
-        emit_pass("sigint interrupt routing targets only bound interpreter");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] sigint interrupt routing targets only bound interpreter (active_requested=%s other_requested=%s)",
-            active_requested ? "true" : "false",
-            other_requested ? "true" : "false"
-        );
-        (*fail)++;
-    }
-}
-
-fn Value* build_signal_noop_callback(Interp* interp) {
-    EvalResult callback_eval = run("(lambda (sig) nil)", interp);
-    if (callback_eval.error.has_error) return null;
-    if (callback_eval.value == null || callback_eval.value.tag == ERROR) return null;
-    if (!signal_callback_callable(callback_eval.value)) return null;
-    return callback_eval.value;
+    run_advanced_sigint_interrupt_routing_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_signal_handle_registry_scaling_test(Interp* interp, int* pass, int* fail) {
-    const usz HANDLE_COUNT = 40;
-    Value*[HANDLE_COUNT] handles;
-    for (usz i = 0; i < HANDLE_COUNT; i++) handles[i] = null;
-
-    bool ok = true;
-    int create_fail_index = -1;
-    int cleanup_fail_index = -1;
-    Value* callback = build_signal_noop_callback(interp);
-    if (callback == null) {
-        ok = false;
-    }
-
-    usz created_count = 0;
-    if (ok) {
-        for (usz i = 0; i < HANDLE_COUNT; i++) {
-            Value*[2] create_args;
-            create_args[0] = make_int(interp, 10);
-            create_args[1] = callback;
-            Value* created = prim_signal_handle(create_args[..], null, interp);
-            if (created == null || created.tag == ERROR) {
-                ok = false;
-                create_fail_index = (int)i;
-                break;
-            }
-            handles[i] = created;
-            created_count++;
-        }
-    }
-
-    for (usz i = 0; i < created_count; i++) {
-        Value*[1] close_args;
-        close_args[0] = handles[i];
-        Value* closed = prim_signal_unhandle(close_args[..], null, interp);
-        if (closed == null || closed.tag == ERROR || closed.tag != VOID) {
-            ok = false;
-            if (cleanup_fail_index < 0) cleanup_fail_index = (int)i;
-        }
-    }
-
-    if (ok) {
-        emit_pass("signal-handle supports >32 active handles without fixed registry cap");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] signal-handle supports >32 active handles without fixed registry cap (created_count=%d create_fail_index=%d cleanup_fail_index=%d)",
-            (int)created_count,
-            create_fail_index,
-            cleanup_fail_index
-        );
-        (*fail)++;
-    }
+    run_advanced_signal_handle_registry_scaling_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_signal_dispatch_owner_interp_isolation_test(Interp* interp, int* pass, int* fail) {
-    Value* callback = build_signal_noop_callback(interp);
-    bool ok = callback != null && signal_callback_callable(callback);
-    int set_status = -1;
-    int after_other = -1;
-    int after_owner = -1;
-    int cleanup_ok = 0;
-
-    Value* handle_value = null;
-    SignalHandle* sh = null;
-    if (ok) {
-        Value*[2] create_args;
-        create_args[0] = make_int(interp, 10);
-        create_args[1] = callback;
-        handle_value = prim_signal_handle(create_args[..], null, interp);
-        sh = get_signal_handle(handle_value);
-        ok = handle_value != null &&
-            handle_value.tag != ERROR &&
-            sh != null &&
-            sh.open &&
-            sh.uv_signal_watch != null;
-    }
-
-    if (ok) {
-        Interp other = {};
-        other.init();
-        defer other.destroy();
-
-        signal_debug_reset_dispatch_count();
-        set_status = omni_uv_signal_debug_set_pending(sh.uv_signal_watch, 3);
-        dispatch_pending_signal_callbacks(&other);
-        after_other = (int)signal_debug_dispatch_count();
-        dispatch_pending_signal_callbacks(interp);
-        after_owner = (int)signal_debug_dispatch_count();
-
-        ok = set_status == 0 &&
-            after_other == 0 &&
-            after_owner >= 3;
-    }
-
-    if (handle_value != null && handle_value.tag != ERROR) {
-        Value*[1] close_args;
-        close_args[0] = handle_value;
-        Value* closed = prim_signal_unhandle(close_args[..], null, interp);
-        cleanup_ok = (closed != null && closed.tag == VOID) ? 1 : 0;
-        ok = ok && cleanup_ok == 1;
-    }
-
-    if (ok) {
-        emit_pass("signal callback dispatch stays isolated to owning interpreter");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] signal callback dispatch stays isolated to owning interpreter (set_status=%d after_other=%d after_owner=%d cleanup_ok=%d)",
-            set_status,
-            after_other,
-            after_owner,
-            cleanup_ok
-        );
-        (*fail)++;
-    }
+    run_advanced_signal_dispatch_owner_interp_isolation_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_signal_callback_scope_release_test(Interp* interp, int* pass, int* fail) {
-    bool ok = interp != null && interp.root_scope != null;
-    uint root_before = ok ? interp.root_scope.refcount : 0;
-    uint root_after_create = 0;
-    uint root_after_unhandle = 0;
-    int cleanup_ok = 0;
+    run_advanced_signal_callback_scope_release_test_impl(interp, pass, fail);
+}
 
-    Value* handle_value = null;
-    if (ok) {
-        Value* callback = build_signal_noop_callback(interp);
-        ok = callback != null && signal_callback_callable(callback);
-        if (ok) {
-            Value*[2] create_args;
-            create_args[0] = make_int(interp, 10);
-            create_args[1] = callback;
-            handle_value = prim_signal_handle(create_args[..], null, interp);
-            ok = handle_value != null && handle_value.tag != ERROR;
-            if (ok) {
-                root_after_create = interp.root_scope.refcount;
-            }
-        }
-    }
+fn void run_advanced_uv_timer_callback_register_invoke_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_register_invoke_test_impl(interp, pass, fail);
+}
 
-    if (handle_value != null && handle_value.tag != ERROR) {
-        Value*[1] close_args;
-        close_args[0] = handle_value;
-        Value* closed = prim_signal_unhandle(close_args[..], null, interp);
-        cleanup_ok = (closed != null && closed.tag == VOID) ? 1 : 0;
-        if (interp.root_scope != null) {
-            root_after_unhandle = interp.root_scope.refcount;
-        }
-        ok = ok &&
-            cleanup_ok == 1 &&
-            root_after_create == (root_before + 1) &&
-            root_after_unhandle == root_before;
-    } else {
-        ok = false;
-    }
+fn void run_advanced_uv_timer_callback_unhandle_idempotence_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_unhandle_idempotence_test_impl(interp, pass, fail);
+}
 
-    if (ok) {
-        emit_pass("signal-handle releases retained callback owner scope on unhandle");
-        (*pass)++;
-    } else {
-        io::printfn(
-            "[FAIL] signal-handle releases retained callback owner scope on unhandle (root_before=%d root_after_create=%d root_after_unhandle=%d cleanup_ok=%d)",
-            (int)root_before,
-            (int)root_after_create,
-            (int)root_after_unhandle,
-            cleanup_ok
-        );
-        (*fail)++;
-    }
+fn void run_advanced_uv_timer_callback_scope_release_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_scope_release_test_impl(interp, pass, fail);
+}
+
+fn void run_advanced_uv_timer_callback_handle_isolation_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_handle_isolation_test_impl(interp, pass, fail);
 }
 
 fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail) {
@@ -610,14 +343,7 @@ fn void run_advanced_union_memory_limit_tests(Interp* interp, int* pass, int* fa
     test_eq_interp(interp, "match ctor wildcard", "(match (Ok 42) ((Ok _) 1) ((Err _) 2))", 1, pass, fail);
 
     // === MEMORY RECLAMATION TESTS ===
-    // unsafe-free! on array: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! array UAF", "(let (a [1 2 3]) (block (unsafe-free! a) a))", pass, fail);
-    // unsafe-free! on dict: releases backing, accessing freed value errors
-    test_error(interp, "unsafe-free! dict UAF", "(let (d {'a 1 'b 2}) (block (unsafe-free! d) d))", pass, fail);
-    // unsafe-free! on non-collection: no-op, returns Void
-    test_tag(interp, "unsafe-free! int noop returns Void", "(unsafe-free! 42)", VOID, pass, fail);
-    // unsafe-free! on nil: no-op, returns Void
-    test_tag(interp, "unsafe-free! nil noop returns Void", "(unsafe-free! nil)", VOID, pass, fail);
+    run_advanced_memory_reclamation_tests(interp, pass, fail);
 
     // === RAISED LIMITS TESTS ===
     // Match with 17 clauses (was max 16, now 32)
@@ -679,13 +405,31 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     setup(interp, "(define [ffi λ libm] (ldexp (^Double x) (^Integer exp)) ^Double)");
     test_eq_double(interp, "ffi λ ldexp", "(ldexp 1.0 10)", 1024.0, pass, fail);
 
+    setup(interp, "(define [ffi λ libc] (strtol (^String s) (^Pointer endptr) (^Integer base)) ^Integer)");
+    test_eq(interp, "ffi λ strtol mixed scalar pointer", "(strtol \"12345\" nil 10)", 12345, pass, fail);
+
     // Void return (canonical pointer annotation)
     setup(interp, "(define [ffi λ libc] (free (^Pointer p)))");
-    test_truthy(interp, "ffi λ free null (^Pointer)", "(= (type-of (free 0)) 'Void)", pass, fail);
+    test_truthy(interp, "ffi λ free null (^Pointer)", "(= (type-of (free nil)) 'Void)", pass, fail);
     setup(interp, "(define [ffi λ libc] (free (^Pointer p)))");
-    test_truthy(interp, "ffi λ free null (^Pointer alias)", "(= (type-of (free 0)) 'Void)", pass, fail);
+    test_truthy(interp, "ffi λ free raw zero (^Pointer)", "(= (type-of (free 0)) 'Void)", pass, fail);
 
     // Error cases
+    test_error_contains(interp, "ffi λ strlen rejects non-string arg",
+        "(strlen 123)",
+        "argument 1 expected String, got Integer", pass, fail);
+    test_error_contains(interp, "ffi λ abs rejects boolean arg",
+        "(abs false)",
+        "argument 1 expected Integer, got Boolean", pass, fail);
+    test_error_contains(interp, "ffi λ sqrt rejects boolean arg",
+        "(sqrt false)",
+        "argument 1 expected Double, got Boolean", pass, fail);
+    test_error_contains(interp, "ffi λ free rejects string arg",
+        "(free \"hello\")",
+        "argument 1 expected Pointer, got String", pass, fail);
+    test_error_contains(interp, "ffi λ exact arity rejects extra args",
+        "(getpid 1)",
+        "expected 0 args, got 1", pass, fail);
     test_error_contains(interp, "ffi lib bad",
         "(define [ffi lib] bad-lib \"nonexistent_xyz.so\")",
         "dlopen failed for", pass, fail);
@@ -705,6 +449,12 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi λ unsupported return annotation",
         "(block (define [ffi lib] bad-ffi-lib2 \"libc.so.6\") (define [ffi λ bad-ffi-lib2] (strlen (^String s)) ^Symbol))",
         "unsupported return type annotation '^Symbol'", pass, fail);
+    test_error_contains(interp, "ffi λ variadic declarations are rejected",
+        "(block (define [ffi lib] libc-var \"libc.so.6\") (define [ffi λ libc-var variadic] (printf (^String fmt)) ^Integer))",
+        "variadic bindings are not supported yet", pass, fail);
+    test_error_contains(interp, "ffi λ Boolean requires real booleans",
+        "(block (define [ffi λ libc] (abs (^Boolean flag)) ^Integer) (abs 1))",
+        "argument 1 expected Boolean, got Integer", pass, fail);
 
     // === SYSTEM PRIMITIVES TESTS ===
     // random — returns double in [0,1)
@@ -724,6 +474,11 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_str_val(interp, "shell echo", "(shell \"echo hello\")", "hello", pass, fail);
     // sleep — returns void (tiny sleep to not slow tests)
     test_tag_interp(interp, "sleep tiny", "(sleep 0.001)", VOID, pass, fail);
+
+    run_advanced_uv_timer_callback_register_invoke_test(interp, pass, fail);
+    run_advanced_uv_timer_callback_unhandle_idempotence_test(interp, pass, fail);
+    run_advanced_uv_timer_callback_scope_release_test(interp, pass, fail);
+    run_advanced_uv_timer_callback_handle_isolation_test(interp, pass, fail);
 }
 
 fn void run_advanced_ffi_system_long_symbol_tests(Interp* interp, int* pass, int* fail) {

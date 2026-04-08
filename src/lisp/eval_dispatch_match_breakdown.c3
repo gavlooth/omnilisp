@@ -31,8 +31,6 @@ fn bool dispatch_text_equals(char[] a, char[] b) @inline {
 fn bool dispatch_value_literal_matches(ValueLiteralKey* literal, Value* arg, Interp* interp) @inline {
     switch (literal.tag) {
         case NIL:
-            // `^(Value false)` compiles to a NIL literal key because runtime `false` resolves to nil.
-            if ((uint)literal.sym_value == (uint)interp.sym_false) return arg == null || arg.tag == NIL;
             return arg != null && arg.tag == NIL;
         case INT:
             return arg != null && arg.tag == INT && arg.int_val == literal.int_value;

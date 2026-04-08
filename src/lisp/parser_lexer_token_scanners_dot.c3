@@ -22,10 +22,10 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
         }
     }
 
-    // Compact dot + bracket surface: .[
+    // Compact postfix dot + bracket surface: expr.[key]
     // Emit the '.' token only; the next lexer advance will emit '['.
-    // This keeps leading-dot accessor shorthand and postfix expr.[key]
-    // on the same parser path while preserving compact spelling.
+    // This preserves compact postfix indexing without reintroducing
+    // removed leading-dot accessor forms.
     if (self.pos + 1 < self.len && self.source[self.pos + 1] == '[') {
         if (!self.ensure_text_capacity(2)) {
             self.set_error_text("out of memory while lexing token");

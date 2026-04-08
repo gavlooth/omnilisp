@@ -10,24 +10,22 @@ fn bool Parser.collect_application_args(Parser* self, List{Expr*}* args) {
 }
 
 fn Expr* Parser.build_call_expr(Parser* self, Expr* func, List{Expr*}* args, usz line, usz col) {
-    Expr* e = self.interp.alloc_expr();
+    Expr* e = self.alloc_expr();
+    if (e == null) return null;
     e.tag = E_CALL;
-    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
+    e.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating call expression");
+    if (e.call == null) return null;
     e.loc_line = line;
     e.loc_column = col;
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
+    e.call.args = null;
+    if (args.len() > 0) {
+        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * args.len(), "out of memory while allocating call arguments");
+        if (e.call.args == null) return null;
+    }
     for (usz i = 0; i < args.len(); i++) {
         e.call.args[i] = (*args)[i];
     }
     return e;
-}
-
-fn bool Parser.reject_nullary_accessor_shorthand_call(Parser* self, Expr* func, usz arg_count) {
-    if (func == null || func.tag != E_LAMBDA || func.lambda == null) return false;
-    if (!func.lambda.is_accessor_shorthand || arg_count != 0) return false;
-
-    self.set_error("leading-dot accessor cannot be parenthesized on its own; use .expr as a value or apply it directly");
-    return true;
 }

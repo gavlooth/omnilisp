@@ -46,7 +46,7 @@ Omni Lisp REPL (type 'quit' or 'exit' to leave)
 #<closure>
 > (square 5)
 25
-> (map (+ 1) '(1 2 3))
+> (map (+ 1 _) '(1 2 3))
 (2 3 4)
 > quit
 Goodbye!
@@ -58,7 +58,7 @@ Goodbye!
 
 | Type | Tag | Literal | Description |
 |------|-----|---------|-------------|
-| nil | `NIL` | `nil`, `()` | Empty/false value (`Nil` type symbol) |
+| nil | `NIL` | `nil`, `()` | Empty / absence value (`Nil` type symbol) |
 | int | `INT` | `42`, `-17` | 64-bit signed integer |
 | double | `DOUBLE` | `3.14`, `-0.5` | 64-bit floating point |
 | string | `STRING` | `"hello"` | Immutable string |
@@ -67,7 +67,7 @@ Goodbye!
 | closure | `CLOSURE` | `(lambda (x) x)` | Function with captured environment |
 | continuation | `CONTINUATION` | — | Captured via `capture` |
 | primitive | `PRIMITIVE` | `+`, `car` | Built-in function |
-| partial | `PARTIAL_PRIM` | `(+ 3)` | Partially applied binary primitive |
+| partial | `PARTIAL_PRIM` | `(partial + 3)` | Explicit partial value |
 | error | `ERROR` | `(error "oops")` | Error value |
 | Dictionary | `HASHMAP` | `{'a 1}` | Mutable hash table |
 | Array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
@@ -82,7 +82,7 @@ Goodbye!
 
 ### Truthiness
 
-**Falsy:** `nil` and `false` (which is bound to `nil`).
+**Falsy:** `nil` and `false`.
 
 **Truthy:** Everything else — including `0`, `""`, and `'()`.
 

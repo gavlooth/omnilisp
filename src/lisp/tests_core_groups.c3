@@ -49,33 +49,25 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "mylist.[2] => 30", "mylist.[2]", 30, pass, fail);
     setup(interp, "(define idx 3)");
     test_eq(interp, "mylist.[idx] => 40", "mylist.[idx]", 40, pass, fail);
-    test_eq(interp, "direct .1 accessor on list", "(.1 (quote (10 20 30)))", 20, pass, fail);
-    test_eq(interp, "direct .-1 accessor on list", "(.-1 (quote (10 20 30)))", 30, pass, fail);
-    setup(interp, "(define sample-list (quote (10 20 30 40)))");
-    test_truthy(interp, "direct .3 equals ref list 3", "(= (.3 sample-list) (ref sample-list 3))", pass, fail);
-    setup(interp, "(define sample-array (Array 10 20 30 40))");
-    test_truthy(interp, "direct .3 equals ref array 3", "(= (.3 sample-array) (ref sample-array 3))", pass, fail);
-    test_eq(interp, "direct .2 on array", "(.2 [0 1 2])", 2, pass, fail);
-    test_eq(interp, "direct .2 on int-key dict", "(.2 {2 77})", 77, pass, fail);
-    test_eq(interp, "direct .\"2\" on string-key dict", "(.\"2\" {\"2\" 78})", 78, pass, fail);
-    test_eq(interp, "direct . [2] on array-key dict", "(. [2] {[2] 79})", 79, pass, fail);
-    test_eq(interp, "direct .name accessor on dict", "(.name {'name 91})", 91, pass, fail);
-    test_eq(interp, "direct .\"name\" accessor on dict", "(.\"name\" {\"name\" 93})", 93, pass, fail);
-    test_eq(interp, "direct .\"name\" accessor on dict", "(.\"name\" {\"name\" 93})", 93, pass, fail);
-    test_eq(interp, "direct . [3] accessor on array key", "(. [3] { [3] 40 })", 40, pass, fail);
-    test_eq(interp, "direct .[ array-key ] accessor on dict", "(.[[1 2]] { [ [1 2] ] 99 })", 99, pass, fail);
-    test_eq(interp, "direct .3 accessor on list", "(.3 (quote (10 20 30 40)))", 40, pass, fail);
-    test_eq(interp, "direct .3 accessor on array", "(.3 [10 20 30 40])", 40, pass, fail);
-    test_eq(interp, "map .1 accessor shorthand car", "(car (map .1 '((10 20) (30 40))))", 20, pass, fail);
-    test_eq(interp, "map .1 accessor shorthand second", "(car (cdr (map .1 '((10 20) (30 40)))))", 40, pass, fail);
-    test_truthy(interp, "map .1 accessor shorthand", "(= (map .1 '((10 20) (30 40))) '(20 40))", pass, fail);
-    test_error_contains(interp, "wrapped .3 accessor invalid", "((.3) [10 20 30 40])",
-        "leading-dot accessor cannot be parenthesized on its own", pass, fail);
-    test_error_contains(interp, "nullary .3 accessor invalid", "(.3)",
-        "leading-dot accessor cannot be parenthesized on its own", pass, fail);
-    setup(interp, "(define key 'name)");
-    test_eq(interp, "direct . key accessor on dict", "(. key {'name 95})", 95, pass, fail);
-    test_eq(interp, "direct .key shorthand key lookup", "(.key {'key 95})", 95, pass, fail);
+    test_eq(interp, "dict dot-bracket symbol key", "(let (m {'a 1 'b 2}) m.['a])", 1, pass, fail);
+    test_eq(interp, "dict dot-bracket string key", "(let (m {\"name\" 78}) m.[\"name\"])", 78, pass, fail);
+    test_truthy(interp, "index/ref parity list", "(= (ref '(10 20 30) 1) (let (l '(10 20 30)) l.[1]))", pass, fail);
+    test_truthy(interp, "index/ref parity list negative", "(= (ref '(10 20 30) -1) (let (l '(10 20 30)) l.[-1]))", pass, fail);
+    test_truthy(interp, "index/ref parity array", "(= (ref [10 20 30] 2) (let (a [10 20 30]) a.[2]))", pass, fail);
+    test_truthy(interp, "index/ref parity array negative", "(= (ref [10 20 30] -2) (let (a [10 20 30]) a.[-2]))", pass, fail);
+    test_truthy(interp, "index/ref parity dict", "(= (ref {'a 1 'b 2} 'b) (let (m {'a 1 'b 2}) m.['b]))", pass, fail);
+    test_truthy(interp, "index/ref parity string", "(= (ref \"xyz\" 1) (\"xyz\".[1]))", pass, fail);
+    test_truthy(interp, "index/ref parity string negative", "(= (ref \"xyz\" -1) (\"xyz\".[-1]))", pass, fail);
+    test_error_contains(interp, "leading-dot int accessor removed", "(.1 (quote (10 20 30)))",
+        "leading-dot accessors were removed", pass, fail);
+    test_error_contains(interp, "leading-dot symbol accessor removed", "(.name {'name 91})",
+        "leading-dot accessors were removed", pass, fail);
+    test_error_contains(interp, "leading-dot bracket accessor removed", "(.[2] {[2] 79})",
+        "leading-dot accessors were removed", pass, fail);
+    test_error_contains(interp, "leading-dot dynamic accessor removed", "(. key {'name 95})",
+        "leading-dot accessors were removed", pass, fail);
+    test_error_contains(interp, "leading-dot higher-order accessor removed", "(map .1 '((10 20) (30 40)))",
+        "leading-dot accessors were removed", pass, fail);
 
     // Pattern matching basics
     test_eq(interp, "match literal", "(match 42 (42 1) (x 0))", 1, pass, fail);
@@ -98,6 +90,14 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     setup(interp, "(define testperson {'name \"Alice\" 'age 30})");
     test_str(interp, "testperson.name => string", "testperson.name", pass, fail);
     test_eq(interp, "testperson.age => 30", "testperson.age", 30, pass, fail);
+    test_truthy(interp, "path/ref parity dict symbol key", "(= (let (m {'name 42}) m.name) (ref {'name 42} 'name))", pass, fail);
+    test_nil(interp, "ref missing dict key => nil", "(ref {'name 42} 'age)", pass, fail);
+    test_error_contains(interp, "path missing dict key errors", "(let (m {'name 42}) m.age)",
+        "cannot access '.age' on Dictionary value", pass, fail);
+    test_eq(interp, "cons path .car", "(let (p (cons 10 20)) p.car)", 10, pass, fail);
+    test_eq(interp, "cons path .cdr", "(let (p (cons 10 20)) p.cdr)", 20, pass, fail);
+    test_error_contains(interp, "ref cons symbol key rejected", "(ref (cons 10 20) 'car)",
+        "ref: list requires int index", pass, fail);
 
     // Nested path
     setup(interp, "(define testperson2 {'name \"Bob\" 'address {'city \"NYC\" 'zip 10001}})");
@@ -127,8 +127,8 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
 
     // And/or
     test_truthy(interp, "and true true", "(and true true)", pass, fail);
-    test_nil(interp, "and false true => nil", "(and false true)", pass, fail);
-    test_nil(interp, "and true false => nil", "(and true false)", pass, fail);
+    test_truthy(interp, "and false true => false", "(= (and false true) false)", pass, fail);
+    test_truthy(interp, "and true false => false", "(= (and true false) false)", pass, fail);
     test_eq(interp, "and 1 42 => 42", "(and 1 42)", 42, pass, fail);
     test_truthy(interp, "or true false", "(or true false)", pass, fail);
     test_nil(interp, "or false nil => nil", "(or false nil)", pass, fail);

@@ -144,11 +144,10 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "bare # dispatch rejected",
         "(+ 1 # 2)", "unknown # dispatch sequence", pass, fail);
 
-    // Symbol-as-function: ('name dict) => (ref dict 'name)
-    test_str_val(interp, "symbol-as-function on dict",
-        "('name (Dictionary 'name \"Alice\" 'age 30))", "Alice", pass, fail);
-    test_eq(interp, "symbol-as-function on dict returns int",
-        "('age (Dictionary 'name \"Alice\" 'age 30))", 30, pass, fail);
+    test_error_contains(interp, "quoted symbol is not callable on dict",
+        "('name (Dictionary 'name \"Alice\" 'age 30))", "not a function", pass, fail);
+    test_error_contains(interp, "quoted symbol is not callable on dict int case",
+        "('age (Dictionary 'name \"Alice\" 'age 30))", "not a function", pass, fail);
 }
 
 fn void run_reader_dispatch_tests_isolated(int* pass, int* fail) {

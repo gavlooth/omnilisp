@@ -2,15 +2,22 @@ module lisp;
 
 import main;
 
+bool g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
+
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = v.tag;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     usz len = v.str_len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;
-    result.str_chars = (char*)mem::malloc(cap);
+    char* chars = g_boundary_force_escape_string_or_error_promotion_alloc_fail
+        ? null
+        : (char*)mem::malloc(cap);
+    if (chars == null) return v;
+
+    Value* result = interp.alloc_value_escape();
+    result.tag = v.tag;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    result.str_chars = chars;
     for (usz i = 0; i < len; i++) {
         result.str_chars[i] = v.str_chars[i];
     }

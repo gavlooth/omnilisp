@@ -6,6 +6,7 @@ module lisp;
 fn Expr* Parser.parse_import(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();  // consume 'import'
 
     self.init_import_expr(e);

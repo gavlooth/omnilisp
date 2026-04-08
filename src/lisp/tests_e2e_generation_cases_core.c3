@@ -65,13 +65,13 @@ const E2ETestCase[] E2E_TESTS_CORE = {
 
     // === If ===
     { "if true", "(if true 1 2)" },
-    { "if false", "(if nil 1 2)" },
+    { "if false", "(if false 1 2)" },
     { "if nested", "(if (> 5 3) (if (< 2 1) 10 20) 30)" },
     { "if no else", "(if true 42)" },
 
     // === And/Or ===
     { "and true true", "(and 1 42)" },
-    { "and false short", "(and nil 42)" },
+    { "and false short", "(and false 42)" },
     { "or first truthy", "(or 42 99)" },
     { "or fallback", "(or nil 99)" },
 
@@ -148,8 +148,8 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "match fallthrough", "(match 42 (0 100) (1 200) (x x))" },
     { "match underscore", "(match (quote (1 2 3)) ([_ second _] second))" },
     { "match nil literal pattern", "(match nil (nil 1) (_ 0))" },
-    { "match false aliases nil literal", "(match false (nil 1) (_ 0))" },
-    { "match nil matches false literal", "(match nil (false 1) (_ 0))" },
+    { "match false literal", "(match false (false 1) (_ 0))" },
+    { "match nil does not match false literal", "(match nil (false 1) (_ 0))" },
     // Legacy AOT match-literal parity row; runtime coverage stays elsewhere.
     { "match wildcard after nil false Void literals", "(match 42 (nil 1) (false 2) (Void 3) (_ 9))" },
     // Legacy AOT match-guard binding parity row; runtime coverage stays elsewhere.

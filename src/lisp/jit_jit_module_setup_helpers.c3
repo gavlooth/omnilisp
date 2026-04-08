@@ -1,0 +1,190 @@
+module lisp;
+
+import std::collections::list;
+import main;
+
+fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
+    SymbolId name = expr.module_expr.name;
+
+    Module* existing = find_module(name, interp);
+    if (existing != null) {
+        if (existing.loaded) {
+            return eval_error("module already defined");
+        }
+        existing.name = (SymbolId)0;
+    }
+
+    if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
+    Module* mod = &interp.modules[interp.module_count];
+    mod.name = name;
+    mod.loaded = false;
+    mod.path = null;
+    mod.path_len = 0;
+    usz exp_cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
+    mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * exp_cap);
+    mod.export_capacity = exp_cap;
+    mod.export_count = expr.module_expr.export_count;
+    for (usz i = 0; i < expr.module_expr.export_count; i++) {
+        mod.exports[i] = expr.module_expr.exports[i];
+    }
+
+    Env* mod_env = boundary_make_env_in_root(interp, interp.global_env);
+    mod.env = mod_env;
+    interp.module_count++;
+
+    usz mod_idx = interp.module_count - 1;
+    usz mh_slot = (usz)name % interp.module_hash_capacity;
+    while (interp.module_hash_index[mh_slot] != usz.max) {
+        mh_slot = (mh_slot + 1) % interp.module_hash_capacity;
+    }
+    interp.module_hash_index[mh_slot] = mod_idx;
+
+    Env* saved_global = interp.global_env;
+    interp.global_env = mod_env;
+
+    EvalResult last_result = eval_ok(make_void(interp));
+    for (usz i = 0; i < expr.module_expr.body_count; i++) {
+        last_result = jit_eval_to_result(expr.module_expr.body[i], mod_env, interp);
+        if (last_result.error.has_error) {
+            interp.global_env = saved_global;
+            return last_result;
+        }
+    }
+
+    interp.global_env = saved_global;
+    mod.loaded = true;
+    return eval_ok(make_void(interp));
+}
+
+fn usz path_dir_len(char[] path) {
+    usz last_slash = 0;
+    bool found = false;
+    for (usz i = 0; i < path.len; i++) {
+        if (path[i] == '/') {
+            last_slash = i;
+            found = true;
+        }
+    }
+    return found ? last_slash + 1 : 0;
+}
+
+fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_cap) {
+    usz pos = 0;
+    if (interp.source_dir_count > 0) {
+        char* dir = interp.source_dirs[interp.source_dir_count - 1];
+        usz di = 0;
+        while (dir[di] != 0 && pos < buf_cap - 1) {
+            buf[pos] = dir[di];
+            pos++;
+            di++;
+        }
+    }
+    for (usz i = 0; i < rel_path.len && pos < buf_cap - 1; i++) {
+        buf[pos] = rel_path[i];
+        pos++;
+    }
+    buf[pos] = 0;
+    return pos;
+}
+
+fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
+    if (needed <= interp.source_dir_capacity) return true;
+    usz new_cap = interp.source_dir_capacity > 0 ? interp.source_dir_capacity : 8;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) {
+            new_cap = needed;
+            break;
+        }
+        new_cap *= 2;
+    }
+    char** new_dirs = (char**)mem::realloc(interp.source_dirs, uptr.sizeof * new_cap);
+    if (new_dirs == null) return false;
+    interp.source_dirs = new_dirs;
+    interp.source_dir_capacity = new_cap;
+    return true;
+}
+
+fn bool push_source_dir(char[] file_path, Interp* interp) {
+    usz dlen = path_dir_len(file_path);
+    if (dlen == 0) return true;
+    if (!ensure_source_dir_capacity(interp, interp.source_dir_count + 1)) return false;
+    char* dir = (char*)mem::malloc(dlen + 1);
+    if (dir == null) return false;
+    usz slot = interp.source_dir_count;
+    for (usz i = 0; i < dlen; i++) {
+        dir[i] = file_path[i];
+    }
+    dir[dlen] = 0;
+    interp.source_dirs[slot] = dir;
+    interp.source_dir_count++;
+    return true;
+}
+
+fn void pop_source_dir(Interp* interp) {
+    if (interp.source_dir_count == 0) return;
+    usz top = interp.source_dir_count - 1;
+    if (interp.source_dirs[top] != null) {
+        mem::free(interp.source_dirs[top]);
+        interp.source_dirs[top] = null;
+    }
+    interp.source_dir_count--;
+}
+
+fn bool module_copy_path(Module* mod, char[] path) {
+    if (mod.path != null) {
+        mem::free(mod.path);
+        mod.path = null;
+    }
+    char* stored = (char*)mem::malloc(path.len + 1);
+    if (stored == null) {
+        mod.path_len = 0;
+        return false;
+    }
+    for (usz i = 0; i < path.len; i++) {
+        stored[i] = path[i];
+    }
+    stored[path.len] = 0;
+    mod.path = stored;
+    mod.path_len = path.len;
+    return true;
+}
+
+fn void module_ensure_export_capacity(Module* mod) {
+    if (mod.export_count < mod.export_capacity) return;
+    usz new_cap = mod.export_capacity * 2;
+    SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+    for (usz i = 0; i < mod.export_count; i++) new_exports[i] = mod.exports[i];
+    mem::free(mod.exports);
+    mod.exports = new_exports;
+    mod.export_capacity = new_cap;
+}
+
+fn void module_append_export(Module* mod, SymbolId name) {
+    module_ensure_export_capacity(mod);
+    mod.exports[mod.export_count] = name;
+    mod.export_count++;
+}
+
+fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
+    if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
+    Module* mod = &interp.modules[interp.module_count];
+    mod.name = name;
+    mod.loaded = false;
+    mod.path = null;
+    mod.path_len = 0;
+    if (!module_copy_path(mod, path)) return null;
+    mod.export_count = 0;
+    mod.export_capacity = 32;
+    mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
+
+    mod.env = boundary_make_env_in_root(interp, interp.global_env);
+
+    interp.module_count++;
+    usz mod_idx = interp.module_count - 1;
+    usz slot = (usz)name % interp.module_hash_capacity;
+    while (interp.module_hash_index[slot] != usz.max) {
+        slot = (slot + 1) % interp.module_hash_capacity;
+    }
+    interp.module_hash_index[slot] = mod_idx;
+    return mod;
+}

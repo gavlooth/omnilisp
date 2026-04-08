@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 typedef struct omni_uv_signal_watch {
     uv_loop_t* loop;

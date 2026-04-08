@@ -45,6 +45,8 @@ fn Env* Interp.alloc_env(Interp* self) @inline {
     e.hash_capacity = 0;
     e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.generation;
+    e.owner_scope = self.current_scope;
+    e.owner_escape_lane = false;
     return e;
 }
 
@@ -59,6 +61,8 @@ fn Env* Interp.alloc_env_escape(Interp* self) @inline {
     e.hash_capacity = 0;
     e.lifetime_kind = ENV_LIFETIME_LOCAL_SCOPE_FRAME;
     e.scope_gen = self.current_scope.escape_generation;
+    e.owner_scope = self.current_scope;
+    e.owner_escape_lane = true;
     return e;
 }
 

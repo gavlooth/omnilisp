@@ -3,7 +3,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <stdatomic.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 typedef struct omni_uv_process {
     uv_loop_t* loop;

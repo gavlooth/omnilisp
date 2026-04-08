@@ -20,16 +20,16 @@ fn void stack_ctx_switch_to(StackCtx* c, StackContext* parent_ctx) {
     c.parent_stack_ctx = saved;
     g_current_stack_ctx = c;
 
-    // D1: Save parent FPU state before switch
-    fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
+    // Save parent backend FP/control state before switch.
+    stack_backend_save_fp_state(parent_ctx);
 
     // D2: Protected switch with stack overflow recovery
     asan_switch_out(saved, c);
-    int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+    int overflow = stack_backend_protected_switch(parent_ctx, &c.ctx);
     asan_switch_in(saved);
 
-    // D1: Restore parent FPU state (also after overflow — siglongjmp doesn't restore FPU)
-    fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
+    // Restore parent backend FP/control state (also after overflow).
+    stack_backend_restore_fp_state(parent_ctx);
 
     if (overflow != 0) {
         c.status = CTX_DEAD;
@@ -50,14 +50,22 @@ fn void stack_ctx_suspend() {
     assert(c != null, "stack_ctx_suspend: not inside a coroutine");
     stack_require_ctx_owner(c, "stack_ctx_suspend");
     c.status = CTX_SUSPENDED;
-    // D1: Save FPU state before switch to parent
-    fpu_save(&c.ctx.mxcsr, &c.ctx.x87cw);
+    // Save backend FP/control state before switching to parent.
+    stack_backend_save_fp_state(&c.ctx);
     asan_switch_out(c, c.parent_stack_ctx);
-    stack_context_switch(&c.ctx, c.parent_ctx);
-    asan_switch_in(c);
-    // Execution resumes here when parent calls stack_ctx_resume
-    // D1: Restore FPU state on resume
-    fpu_restore(c.ctx.mxcsr, c.ctx.x87cw);
+    stack_backend_switch(&c.ctx, c.parent_ctx);
+
+    // Execution resumes here when parent calls stack_ctx_resume.
+    //
+    // IMPORTANT: this frame can be resumed from a cloned continuation stack.
+    // In that path, local `c` may still point at the source template context
+    // copied in suspended frame slots. Rebind from TLS after switch return.
+    StackCtx* resumed = g_current_stack_ctx;
+    assert(resumed != null, "stack_ctx_suspend: resumed without current context");
+    stack_require_ctx_owner(resumed, "stack_ctx_suspend:resumed");
+    asan_switch_in(resumed);
+    // Restore backend FP/control state on the actually resumed context.
+    stack_backend_restore_fp_state(&resumed.ctx);
 }
 
 /**
@@ -72,16 +80,16 @@ fn void stack_ctx_resume(StackCtx* c, StackContext* parent_ctx) {
     c.parent_stack_ctx = saved;
     g_current_stack_ctx = c;
 
-    // D1: Save parent FPU state before switch
-    fpu_save(&parent_ctx.mxcsr, &parent_ctx.x87cw);
+    // Save parent backend FP/control state before switch.
+    stack_backend_save_fp_state(parent_ctx);
 
     // D2: Protected switch with stack overflow recovery
     asan_switch_out(saved, c);
-    int overflow = stack_guard_protected_switch(parent_ctx, &c.ctx);
+    int overflow = stack_backend_protected_switch(parent_ctx, &c.ctx);
     asan_switch_in(saved);
 
-    // D1: Restore parent FPU state
-    fpu_restore(parent_ctx.mxcsr, parent_ctx.x87cw);
+    // Restore parent backend FP/control state.
+    stack_backend_restore_fp_state(parent_ctx);
 
     if (overflow != 0) {
         c.status = CTX_DEAD;

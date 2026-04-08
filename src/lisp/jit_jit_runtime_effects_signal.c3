@@ -6,30 +6,62 @@ fn Value* runtime_effects_raise(Interp* interp, char[] code, char[] message) @in
     return raise_error_with_payload_names(interp, "runtime", code, message, null);
 }
 
-fn Value* jit_signal_eval_result_or_error(EvalResult r, Interp* interp) @inline {
-    if (r.error.has_error) return runtime_effects_raise(interp, "runtime/fast-path-primitive-failed", r.error.message[:256]);
-    return r.value;
+fn Value* jit_signal_call_fast_path_primitive_preserving_error(Interp* interp, Value* fp_prim, Value* arg) @inline {
+    Value*[8] args;
+    args[0] = arg;
+    interp.constructor_type_id = fp_prim.prim_val.tag;
+    interp.prim_user_data = fp_prim.prim_val.user_data;
+    Value* result = fp_prim.prim_val.func(args[:1], null, interp);
+    if (result != null && result.tag == ERROR) return result;
+    return result;
+}
+
+fn Value* jit_signal_call_fast_path_primitive_list_preserving_error(Interp* interp, Value* fp_prim, Value* arg_list) {
+    usz argc = 0;
+    Value* curr = arg_list;
+    while (curr != null && curr.tag == CONS) {
+        argc++;
+        curr = curr.cons_val.cdr;
+    }
+    // stdlib wrappers often encode fixed-arity payloads as dotted cons spines.
+    if (curr != null && curr.tag != NIL) argc++;
+
+    Value** argv = argc > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * argc) : null;
+    if (argc > 0 && argv == null) {
+        return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+    }
+
+    curr = arg_list;
+    usz i = 0;
+    while (curr != null && curr.tag == CONS) {
+        argv[i++] = curr.cons_val.car;
+        curr = curr.cons_val.cdr;
+    }
+    if (curr != null && curr.tag != NIL) {
+        argv[i++] = curr;
+    }
+
+    interp.constructor_type_id = fp_prim.prim_val.tag;
+    interp.prim_user_data = fp_prim.prim_val.user_data;
+    Value* result = fp_prim.prim_val.func(argv[..i], null, interp);
+    if (result != null && result.tag == ERROR) return result;
+    return result;
 }
 
 fn Value* jit_signal_apply_fast_path_prim(Interp* interp, Value* fp_prim, Value* arg, bool* handled) {
     int fp_arity = fp_prim.prim_val.arity;
     if (fp_arity == 0) {
         *handled = true;
-        return jit_signal_eval_result_or_error(apply_primitive(fp_prim, make_nil(interp), interp), interp);
+        return jit_signal_call_fast_path_primitive_preserving_error(interp, fp_prim, make_nil(interp));
     }
     if (fp_arity == 1 || fp_arity == -1) {
         *handled = true;
-        return jit_signal_eval_result_or_error(apply_primitive(fp_prim, arg, interp), interp);
+        return jit_signal_call_fast_path_primitive_preserving_error(interp, fp_prim, arg);
     }
     if (arg == null || !is_cons(arg)) return null;
 
     *handled = true;
-    EvalResult first = apply_primitive(fp_prim, car(arg), interp);
-    Value* applied = jit_signal_eval_result_or_error(first, interp);
-    if (applied != null && applied.tag == ERROR) return applied;
-    Value* result = jit_apply_value(applied, cdr(arg), interp);
-    if (result != null && result.tag == ERROR) return result;
-    return result;
+    return jit_signal_call_fast_path_primitive_list_preserving_error(interp, fp_prim, arg);
 }
 
 fn bool jit_signal_try_resume_handler(Interp* interp, main::StackCtx* current, SymbolId tag_sym, Value* arg, Value** out_result) {

@@ -26,6 +26,7 @@ alias JitLocalList = List{JitLocal};
 
 struct JitLocals {
     JitLocalList locals;
+    int interp_stack_offset;
 }
 
 // Global JIT initialization flag
@@ -41,6 +42,7 @@ bool g_jit_pool_warned = false;
 bool g_jit_gc_needed = false;  // signals that GC should run between evals
 usz g_jit_exec_depth = 0;      // active generated JIT frame depth
 usz g_jit_suspended_guard_count = 0; // suspended StackCtx frames retained by JIT scope guards
+tlocal int g_jit_interp_stack_offset = 0;
 
 // JIT compilation cache: Expr* → compiled-handle (open-addressing hash on pointer value)
 struct JitCompiledFn {

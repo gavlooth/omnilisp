@@ -25,6 +25,7 @@ ALLOWED_TOOLS="${ALLOWED_TOOLS:-Bash(git:*) Bash(rg:*) Bash(ls:*) Bash(cat:*) Ba
 MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 RUN_TESTS="${RUN_TESTS:-}"
 STOP_ON_TEST_FAIL="${STOP_ON_TEST_FAIL:-1}"
+CLAUDE_LOOP_KEEP_WINDOW="${CLAUDE_LOOP_KEEP_WINDOW:-1}"
 
 if [[ ! -f "$PROMPT_FILE" ]]; then
   echo "Missing prompt file: $PROMPT_FILE" >&2
@@ -35,6 +36,33 @@ if [[ -z "${ALLOW_DIRTY:-}" ]] && [[ -n "$(git status --porcelain)" ]]; then
   echo "Working tree not clean. Commit/stash or set ALLOW_DIRTY=1." >&2
   exit 1
 fi
+
+pause_before_exit() {
+  local exit_code="$1"
+  if [[ "$CLAUDE_LOOP_KEEP_WINDOW" != "1" ]]; then
+    return
+  fi
+  if [[ -z "${TMUX:-}" ]] || [[ ! -t 1 ]]; then
+    return
+  fi
+
+  printf '\nClaude loop finished with exit code %d.\n' "$exit_code"
+  printf 'Press Enter to close this tmux window.\n'
+  if [[ -r /dev/tty ]]; then
+    read -r _ </dev/tty || true
+  else
+    read -r _ || true
+  fi
+}
+
+cleanup_exit() {
+  local exit_code="$?"
+  trap - EXIT
+  pause_before_exit "$exit_code"
+  exit "$exit_code"
+}
+
+trap cleanup_exit EXIT
 
 append_prompt="$(cat "$PROMPT_FILE")"
 if [[ -n "$BMAD_AGENT_FILE" ]]; then

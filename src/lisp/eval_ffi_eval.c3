@@ -57,177 +57,12 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
 }
 
 
-fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, SymbolId base_type) {
-    char[256] ebuf;
-    char[] type_name = interp.symbols.get_name(base_type);
-    char[] msg = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
-        (ZString)role, (ZString)type_name)!!;
-    return raise_error(interp, msg);
-}
-
-fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
-    if (bound.fn_ptr != null) return null;
-    if (bound.c_name == null) return raise_error(interp, "ffi: internal error — missing symbol name");
-    (void)dlerror();
-    bound.fn_ptr = dlsym(bound.lib_handle, (ZString)bound.c_name);
-    if (bound.fn_ptr != null) return null;
-
-    char[256] ebuf;
-    char* dl_err = dlerror();
-    char[] msg = dl_err != null && dl_err[0] != 0
-        ? io::bprintf(&ebuf, "ffi: dlsym failed for '%s': %s",
-            (ZString)bound.c_name, (ZString)dl_err)!!
-        : io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
-            (ZString)bound.c_name)!!;
-    return raise_error(interp, msg);
-}
-
-fn void ffi_pack_call_arg(Value* arg, FfiTypeTag param_type,
-                          long* int_slot, double* dbl_slot, void** ptr_slot,
-                          int* out_arg_type, void** out_arg_value,
-                          Interp* interp) {
-    switch (param_type) {
-        case FFI_TYPE_INT:
-        case FFI_TYPE_BOOL:
-            if (arg.tag == INT) {
-                *int_slot = arg.int_val;
-            } else if (arg.tag == DOUBLE) {
-                *int_slot = (long)arg.double_val;
-            } else if (!is_falsy(arg, interp)) {
-                *int_slot = 1;
-            } else {
-                *int_slot = 0;
-            }
-            *out_arg_type = (int)param_type;
-            *out_arg_value = (void*)int_slot;
-            return;
-        case FFI_TYPE_DOUBLE:
-            if (arg.tag == DOUBLE) {
-                *dbl_slot = arg.double_val;
-            } else if (arg.tag == INT) {
-                *dbl_slot = (double)arg.int_val;
-            } else {
-                *dbl_slot = 0.0;
-            }
-            *out_arg_type = (int)param_type;
-            *out_arg_value = (void*)dbl_slot;
-            return;
-        case FFI_TYPE_PTR:
-            if (arg.tag == STRING) {
-                *ptr_slot = (void*)arg.str_chars;
-            } else if (arg.tag == INT) {
-                *ptr_slot = (void*)(uptr)arg.int_val;
-            } else if (arg.tag == NIL) {
-                *ptr_slot = null;
-            } else if (arg.tag == FFI_HANDLE) {
-                *ptr_slot = arg.ffi_val.lib_handle;
-            } else {
-                *ptr_slot = (void*)(uptr)arg.int_val;
-            }
-            *out_arg_type = (int)param_type;
-            *out_arg_value = (void*)ptr_slot;
-            return;
-        default:
-            *out_arg_type = (int)FfiTypeTag.FFI_TYPE_PTR;
-            *ptr_slot = null;
-            *out_arg_value = (void*)ptr_slot;
-            return;
-    }
-}
-
-fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, double* ret_dbl, void** ret_ptr) {
-    switch (return_type) {
-        case FFI_TYPE_INT:
-        case FFI_TYPE_BOOL:
-            return (void*)ret_int;
-        case FFI_TYPE_DOUBLE:
-            return (void*)ret_dbl;
-        case FFI_TYPE_PTR:
-            return (void*)ret_ptr;
-        case FFI_TYPE_VOID:
-            return (void*)ret_int;  // unused but must be valid
-        default:
-            return (void*)ret_int;
-    }
-}
-
-fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_dbl, void* ret_ptr, Interp* interp) {
-    switch (return_type) {
-        case FFI_TYPE_INT:
-            return make_int(interp, ret_int);
-        case FFI_TYPE_BOOL:
-            if (ret_int != 0) return make_symbol(interp, interp.sym_true);
-            return make_symbol(interp, interp.sym_false);
-        case FFI_TYPE_DOUBLE:
-            return make_double(interp, ret_dbl);
-        case FFI_TYPE_PTR:
-            if (ret_ptr == null) return make_nil(interp);
-            return make_int(interp, (long)(uptr)ret_ptr);
-        case FFI_TYPE_VOID:
-            return make_void(interp);
-        default:
-            return make_nil(interp);
-    }
-}
-
-// prim_ffi_bound_call — primitive handler for bound FFI functions.
-// user_data points to a heap-allocated FfiBoundFn.
-fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
-    FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
-    if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
-
-    // Lazy dlsym: resolve on first call
-    if (Value* err = ffi_resolve_bound_fn(bound, interp)) return err;
-
-    // Validate arg count
-    if (args.len < bound.param_count) {
-        char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "ffi: expected %d args, got %d",
-            (int)bound.param_count, (int)args.len)!!;
-        return raise_error(interp, msg);
-    }
-
-    // Prepare C argument storage
-    long* int_store = null;
-    double* dbl_store = null;
-    void** ptr_store = null;
-    int* arg_types = null;
-    void** arg_values = null;
-
-    if (bound.param_count > 0) {
-        int_store = (long*)interp.current_scope.alloc(long.sizeof * bound.param_count);
-        dbl_store = (double*)interp.current_scope.alloc(double.sizeof * bound.param_count);
-        ptr_store = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);
-        arg_types = (int*)interp.current_scope.alloc(int.sizeof * bound.param_count);
-        arg_values = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);
-        if (int_store == null || dbl_store == null || ptr_store == null || arg_types == null || arg_values == null) {
-            return raise_error(interp, "ffi: out of memory while preparing call arguments");
-        }
-    }
-
-    for (usz i = 0; i < bound.param_count; i++) {
-        ffi_pack_call_arg(args[i], bound.param_types[i],
-            &int_store[i], &dbl_store[i], &ptr_store[i],
-            &arg_types[i], &arg_values[i], interp);
-    }
-
-    // Call via libffi
-    int ret_type = (int)bound.return_type;
-    long ret_int = 0;
-    double ret_dbl = 0.0;
-    void* ret_ptr = null;
-    void* ret_storage = ffi_return_storage_for(bound.return_type, &ret_int, &ret_dbl, &ret_ptr);
-
-    int rc = omni_ffi_call(bound.fn_ptr, (int)bound.param_count,
-                           arg_types, arg_values, ret_type, ret_storage);
-    if (rc != 0) return raise_error(interp, "ffi: libffi call failed");
-
-    return ffi_return_value_for(bound.return_type, ret_int, ret_dbl, ret_ptr, interp);
-}
-
 // eval_ffi_fn — (define [ffi λ libname] (fname (^T arg)...) ^RetT)
 fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     ExprFfiFn* ff = expr.ffi_fn;
+    if (ff.is_variadic) {
+        return raise_error(interp, "ffi λ: variadic bindings are not supported yet");
+    }
 
     // Look up library handle
     Value* lib_val = env.lookup(ff.lib_name);
@@ -249,16 +84,41 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     }
     bound.fn_ptr = null;  // resolved lazily on first call
     bound.lib_handle = lib_val.ffi_val.lib_handle;
+    bound.required_library = true;
+    bound.required_symbol = true;
+    bound.is_unavailable = false;
+    if (lib_val.ffi_val.name_len > 0) {
+        if (lib_val.ffi_val.name_len == usz.max) {
+            mem::free(bound);
+            return raise_error(interp, "ffi λ: library name is too long");
+        }
+        bound.lib_name = (char*)mem::malloc(lib_val.ffi_val.name_len + 1);
+        if (bound.lib_name == null) {
+            mem::free(bound);
+            return raise_error(interp, "ffi λ: out of memory for library name");
+        }
+        for (usz i = 0; i < lib_val.ffi_val.name_len; i++) {
+            bound.lib_name[i] = lib_val.ffi_val.lib_name[i];
+        }
+        bound.lib_name[lib_val.ffi_val.name_len] = 0;
+        bound.lib_name_len = lib_val.ffi_val.name_len;
+    } else {
+        bound.lib_name = null;
+        bound.lib_name_len = 0;
+    }
     if (ff.c_name == null) {
+        if (bound.lib_name != null) mem::free(bound.lib_name);
         mem::free(bound);
         return raise_error(interp, "ffi λ: missing C symbol name");
     }
     if (ff.c_name_len == usz.max) {
+        if (bound.lib_name != null) mem::free(bound.lib_name);
         mem::free(bound);
         return raise_error(interp, "ffi λ: C symbol name is too long");
     }
     bound.c_name = (char*)mem::malloc(ff.c_name_len + 1);
     if (bound.c_name == null) {
+        if (bound.lib_name != null) mem::free(bound.lib_name);
         mem::free(bound);
         return raise_error(interp, "ffi λ: out of memory for symbol name");
     }
@@ -274,6 +134,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     if (ff.param_count > 0) {
         bound.param_types = (FfiTypeTag*)mem::malloc(FfiTypeTag.sizeof * ff.param_count);
         if (bound.param_types == null) {
+            if (bound.lib_name != null) mem::free(bound.lib_name);
             mem::free(bound.c_name);
             mem::free(bound);
             return raise_error(interp, "ffi λ: out of memory for parameter metadata");
@@ -281,6 +142,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         for (usz i = 0; i < ff.param_count; i++) {
             if (!type_ann_to_ffi_tag(ff.param_types[i].base_type, interp, &bound.param_types[i])) {
                 mem::free(bound.param_types);
+                if (bound.lib_name != null) mem::free(bound.lib_name);
                 mem::free(bound.c_name);
                 mem::free(bound);
                 return ffi_unsupported_type_annotation_error(interp, "parameter", ff.param_types[i].base_type);
@@ -291,6 +153,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     if (ff.has_return_type) {
         if (!type_ann_to_ffi_tag(ff.return_type.base_type, interp, &bound.return_type)) {
             if (bound.param_types != null) mem::free(bound.param_types);
+            if (bound.lib_name != null) mem::free(bound.lib_name);
             mem::free(bound.c_name);
             mem::free(bound);
             return ffi_unsupported_type_annotation_error(interp, "return", ff.return_type.base_type);

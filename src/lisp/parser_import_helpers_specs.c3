@@ -14,11 +14,8 @@ fn bool Parser.parse_import_target(Parser* self, Expr* e) {
             self.set_error("import path is too long");
             return false;
         }
-        char* path_buf = (char*)ast_arena_alloc(&self.interp.ast_arena, len + 1);
-        if (path_buf == null) {
-            self.set_error("out of memory while parsing import path");
-            return false;
-        }
+        char* path_buf = (char*)self.alloc_ast_bytes(len + 1, "out of memory while parsing import path");
+        if (path_buf == null) return false;
         for (usz i = 0; i < len; i++) {
             path_buf[i] = str[i];
         }

@@ -1,5 +1,101 @@
 module main;
 
+import std::io;
+
+const ulong STACK_CLONE_LOW56_MASK = (ulong.max >> 8);
+const ulong STACK_CLONE_TOPBYTE_MASK = ~STACK_CLONE_LOW56_MASK;
+
+fn bool stack_clone_is_source_stack_ptr_raw(ulong value, usz src_lo, usz src_hi) @inline {
+    usz addr = (usz)value;
+    return addr >= src_lo && addr < src_hi;
+}
+
+fn bool stack_clone_is_source_stack_ptr_low56(ulong value, usz src_lo, usz src_hi) @inline {
+    ulong low = value & STACK_CLONE_LOW56_MASK;
+    ulong lo = (ulong)src_lo & STACK_CLONE_LOW56_MASK;
+    ulong hi = (ulong)src_hi & STACK_CLONE_LOW56_MASK;
+    return low >= lo && low < hi;
+}
+
+fn ulong stack_clone_relocate_ptr_if_needed(ulong value, usz src_lo, usz src_hi, long delta) @inline {
+    if (stack_clone_is_source_stack_ptr_raw(value, src_lo, src_hi)) {
+        return (ulong)((long)value + delta);
+    }
+    if (!stack_clone_is_source_stack_ptr_low56(value, src_lo, src_hi)) return value;
+
+    // AArch64 may carry non-address metadata in the top byte. Relocate using
+    // low 56 bits and preserve the tagged top byte unchanged.
+    ulong top = value & STACK_CLONE_TOPBYTE_MASK;
+    ulong low = value & STACK_CLONE_LOW56_MASK;
+    ulong relocated_low = (ulong)((long)low + delta) & STACK_CLONE_LOW56_MASK;
+    return top | relocated_low;
+}
+
+fn usz stack_clone_relocate_ctx_field(ulong* field, usz src_lo, usz src_hi, long delta) @inline {
+    ulong before = *field;
+    ulong after = stack_clone_relocate_ptr_if_needed(before, src_lo, src_hi, delta);
+    *field = after;
+    return after != before ? 1 : 0;
+}
+
+fn usz stack_clone_relocate_ctx_stack_pointers(StackContext* ctx, usz src_lo, usz src_hi, long delta) {
+    usz relocated = 0;
+
+    // x86_64 save set
+    relocated += stack_clone_relocate_ctx_field(&ctx.rbx, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.rbp, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.r12, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.r13, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.r14, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.r15, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.rsp, src_lo, src_hi, delta);
+
+    // aarch64 save set tail (x24..x28 + platform register x18)
+    relocated += stack_clone_relocate_ctx_field(&ctx.x24, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.x25, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.x26, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.x27, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.x28, src_lo, src_hi, delta);
+    relocated += stack_clone_relocate_ctx_field(&ctx.x18, src_lo, src_hi, delta);
+
+    return relocated;
+}
+
+fn usz stack_clone_relocate_active_stack_words(usz dst_rsp, usz active_bytes, usz src_lo, usz src_hi, long delta) {
+    if (active_bytes < ulong.sizeof) return 0;
+
+    usz word_count = active_bytes / ulong.sizeof;
+    ulong* words = (ulong*)(ulong)dst_rsp;
+    usz relocated = 0;
+    for (usz i = 0; i < word_count; i++) {
+        ulong before = words[i];
+        ulong after = stack_clone_relocate_ptr_if_needed(before, src_lo, src_hi, delta);
+        words[i] = after;
+        if (after != before) relocated++;
+    }
+    return relocated;
+}
+
+fn usz stack_clone_count_source_stack_words(usz dst_rsp, usz active_bytes, usz src_lo, usz src_hi) {
+    if (active_bytes < ulong.sizeof) return 0;
+    usz word_count = active_bytes / ulong.sizeof;
+    ulong* words = (ulong*)(ulong)dst_rsp;
+    usz remaining = 0;
+    for (usz i = 0; i < word_count; i++) {
+        ulong value = words[i];
+        if (stack_clone_is_source_stack_ptr_raw(value, src_lo, src_hi) ||
+            stack_clone_is_source_stack_ptr_low56(value, src_lo, src_hi)) {
+            remaining++;
+        }
+    }
+    return remaining;
+}
+
+fn bool stack_clone_trace_enabled() @inline {
+    ZString raw = getenv("OMNI_STACK_CLONE_TRACE");
+    return raw != null && raw[0] != 0;
+}
+
 /**
  * Clone a suspended coroutine for multi-shot continuation invocation.
  *
@@ -26,17 +122,23 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     StackCtx* clone = stack_ctx_create(pool);
     if (clone == null) return null;
 
-    // Copy only the active stack segment [RSP, stack_top). This preserves live frames
-    // and avoids touching unrelated bytes below RSP.
-    usz active_bytes = src_hi - src_rsp;
-    if (active_bytes > clone.stack.usable_size) {
+    // Copy strategy:
+    // - x86_64: keep active-segment clone [RSP, stack_top) for lower overhead.
+    // - aarch64: clone full usable stack lane for correctness. JIT continuation
+    //   resumes can rely on pre-suspend spill slots that may live below the
+    //   instantaneous RSP at capture-time.
+    bool full_stack_clone = stack_backend_kind() == STACK_BACKEND_AARCH64;
+    usz copy_src = full_stack_clone ? src_lo : src_rsp;
+    usz copy_bytes = full_stack_clone ? source.stack.usable_size : (src_hi - src_rsp);
+    if (copy_bytes > clone.stack.usable_size) {
         stack_ctx_destroy(clone, pool);
         return null;
     }
 
     usz dst_hi = (usz)clone.stack.stack_top;
-    usz dst_rsp = dst_hi - active_bytes;
-    stack_raw_copy((void*)dst_rsp, (void*)src_rsp, active_bytes);
+    usz dst_lo = (usz)clone.stack.base + GUARD_SIZE;
+    usz copy_dst = full_stack_clone ? dst_lo : (dst_hi - copy_bytes);
+    stack_raw_copy((void*)copy_dst, (void*)copy_src, copy_bytes);
 
     // Copy register context and relocate stack pointers into the cloned stack.
     clone.ctx = source.ctx;
@@ -47,13 +149,13 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
     clone.asan_fake_stack = null;
     clone.defer_count = 0;
 
-    long delta = (long)(dst_rsp - src_rsp);
-    clone.ctx.rsp = (ulong)((long)source.ctx.rsp + delta);
-    clone.ctx.rbp = (ulong)((long)source.ctx.rbp + delta);
+    long delta = (long)(copy_dst - copy_src);
+    usz dst_rsp = (usz)((long)source.ctx.rsp + delta);
+    usz relocated_ctx_fields = stack_clone_relocate_ctx_stack_pointers(&clone.ctx, src_lo, src_hi, delta);
 
     // Walk and fixup the RBP chain on the cloned stack.
-    usz lo = (usz)clone.stack.base + GUARD_SIZE;
-    usz hi = (usz)clone.stack.stack_top;
+    usz lo = dst_lo;
+    usz hi = dst_hi;
 
     ulong* bp = (ulong*)(ulong)clone.ctx.rbp;
     for (int safety = 0; safety < 10000; safety++) {
@@ -70,6 +172,32 @@ fn StackCtx* stack_ctx_clone(StackCtx* source, StackPool* pool) {
         }
 
         bp = (ulong*)*bp;
+    }
+
+    // Relocate stack-internal pointers saved in spilled locals/register saves.
+    // These can survive suspension in active frames and must point at clone memory.
+    usz scan_dst = full_stack_clone ? dst_lo : dst_rsp;
+    usz scan_bytes = full_stack_clone ? clone.stack.usable_size : copy_bytes;
+    usz relocated_stack_words = stack_clone_relocate_active_stack_words(scan_dst, scan_bytes, src_lo, src_hi, delta);
+    usz remaining_source_words = stack_clone_count_source_stack_words(scan_dst, scan_bytes, src_lo, src_hi);
+
+    if (stack_clone_trace_enabled()) {
+        io::printfn(
+            "stack-clone: full=%d src=[%p,%p) dst=[%p,%p) src_rsp=%p dst_rsp=%p delta=%d ctx_reloc=%d word_reloc=%d word_src_remain=%d src_rbp=%p clone_rbp=%p",
+            full_stack_clone ? 1 : 0,
+            (void*)src_lo,
+            (void*)src_hi,
+            (void*)dst_lo,
+            clone.stack.stack_top,
+            (void*)src_rsp,
+            (void*)dst_rsp,
+            (int)delta,
+            (int)relocated_ctx_fields,
+            (int)relocated_stack_words,
+            (int)remaining_source_words,
+            (void*)source.ctx.rbp,
+            (void*)clone.ctx.rbp
+        );
     }
 
     // Duplicate defer metadata and apply semantic clone hooks.

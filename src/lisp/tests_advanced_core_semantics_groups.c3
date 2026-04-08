@@ -15,8 +15,8 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
     test_eq(interp, "match [h .. t] tail len", "(match (quote (1 2 3 4 5)) ([h .. t] (length t)))", 4, pass, fail);
     test_eq(interp, "match _ wildcard", "(match 42 (_ 0))", 0, pass, fail);
     test_eq(interp, "match nil literal pattern", "(match nil (nil 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "match false literal pattern aliases nil", "(match false (nil 1) (_ 0))", 1, pass, fail);
-    test_eq(interp, "match nil matches false literal pattern", "(match nil (false 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match false literal pattern", "(match false (false 1) (_ 0))", 1, pass, fail);
+    test_eq(interp, "match nil does not match false literal", "(match nil (false 1) (_ 0))", 0, pass, fail);
     test_eq(interp, "match Void literal pattern", "(match (Void) (Void 1) (_ 0))", 1, pass, fail);
     test_eq(interp, "match wildcard fallthrough after nil false Void literals",
         "(match 42 (nil 1) (false 2) (Void 3) (_ 9))",

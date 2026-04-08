@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 void* omni_uv_work_req_new(void) {
     return malloc(sizeof(uv_work_t));

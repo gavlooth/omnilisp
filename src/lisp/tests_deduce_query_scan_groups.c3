@@ -73,7 +73,7 @@ fn void run_deduce_scan_tests(Interp* interp, int* pass, int* fail) {
 
     deduce_test_expect_string(
         interp,
-        "('name (car (deduce 'scan person)))",
+        "(ref (car (deduce 'scan person)) 'name)",
         "[PASS] deduce 'scan dict result",
         "[FAIL] deduce 'scan dict result",
         pass,
@@ -266,7 +266,7 @@ fn void run_deduce_query_filter_tests(Interp* interp, int* pass, int* fail) {
 
     deduce_test_expect_int_at_least(
         interp,
-        "(length (deduce 'query person (lambda (row) (> ('age row) 28))))",
+        "(length (deduce 'query person (lambda (row) (> row.age 28))))",
         1,
         "[PASS] deduce 'query filter",
         "[FAIL] deduce 'query filter (got %d)",
@@ -286,7 +286,7 @@ fn void run_deduce_query_filter_tests(Interp* interp, int* pass, int* fail) {
 
     deduce_test_expect_string(
         interp,
-        "('name (car (deduce 'query person (lambda (row) (> ('age row) 28)))))",
+        "(ref (car (deduce 'query person (lambda (row) (> row.age 28)))) 'name)",
         "[PASS] deduce 'query dict result",
         "[FAIL] deduce 'query dict result",
         pass,

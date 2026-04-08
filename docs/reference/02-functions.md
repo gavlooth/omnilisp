@@ -76,19 +76,8 @@ Lambda, define, and let bodies support multiple expressions:
 
 ## 8. Partial Application & Pipe
 
-Omni lambdas have strict arity. Three mechanisms provide partial application:
-
-### Binary Primitive Auto-Partial
-
-Binary primitives (`+`, `-`, `*`, `/`, `%`, `=`, `<`, `>`, `<=`, `>=`, `cons`)
-return a `PARTIAL_PRIM` when given one argument:
-
-```lisp
-(+ 3)                  ;; => partial that adds 3
-((+ 3) 7)              ;; => 10
-(map (+ 1) '(1 2 3))   ;; => (2 3 4)
-(filter (> 3) '(1 2 3 4 5))  ;; => (1 2)
-```
+Omni lambdas have strict arity. Omni keeps two explicit partial-application
+mechanisms plus pipeline sugar:
 
 ### `_` Placeholder
 

@@ -3,7 +3,8 @@ module lisp;
 import std::collections::list;
 
 fn Pattern* Parser.parse_string_pattern_literal(Parser* self) {
-    Pattern* p = self.interp.alloc_pattern();
+    Pattern* p = self.alloc_pattern();
+    if (p == null) return null;
     p.tag = PAT_LIT;
     p.lit_value = self.interp.alloc_value_root();
     p.lit_value.tag = STRING;
@@ -22,7 +23,8 @@ fn Pattern* Parser.parse_string_pattern_literal(Parser* self) {
 fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     self.lexer.advance();  // consume '['
 
-    Pattern* p = self.interp.alloc_pattern();
+    Pattern* p = self.alloc_pattern();
+    if (p == null) return null;
     p.tag = PAT_SEQ;
     p.rest_pos = REST_NONE;
     p.rest_binding = 0;
@@ -38,7 +40,8 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
         if (self.has_error) { elems.free(); return null; }
 
         p.elem_count = elems.len();
-        p.elements = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * elems.len());
+        p.elements = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * elems.len(), "out of memory while allocating sequence pattern");
+        if (p.elements == null && elems.len() > 0) { elems.free(); return null; }
         for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
         elems.free();
 
@@ -51,7 +54,8 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     }
 
     p.elem_count = elems.len();
-    p.elements = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * elems.len());
+    p.elements = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * elems.len(), "out of memory while allocating sequence pattern");
+    if (p.elements == null && elems.len() > 0) { elems.free(); return null; }
     for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
     elems.free();
 
@@ -77,7 +81,8 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
 fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     self.lexer.advance();  // consume '{'
 
-    Pattern* p = self.interp.alloc_pattern();
+    Pattern* p = self.alloc_pattern();
+    if (p == null) return null;
     p.tag = PAT_DICT;
 
     List{SymbolId} keys;
@@ -88,7 +93,8 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     if (self.has_error) { keys.free(); return null; }
 
     p.dict_key_count = keys.len();
-    p.dict_keys = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * keys.len());
+    p.dict_keys = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * keys.len(), "out of memory while allocating dict pattern keys");
+    if (p.dict_keys == null && keys.len() > 0) { keys.free(); return null; }
     for (usz i = 0; i < keys.len(); i++) { p.dict_keys[i] = keys[i]; }
     keys.free();
 
@@ -100,12 +106,17 @@ fn Pattern* Parser.parse_symbol_pattern(Parser* self) {
     SymbolId sym = self.get_current_symbol();
     SymbolId sym_nil = self.interp.symbols.intern("nil");
 
-    Pattern* p = self.interp.alloc_pattern();
-    if ((uint)sym == (uint)sym_nil || (uint)sym == (uint)self.interp.sym_false) {
-        // `nil` and `false` are literal falsy constants in pattern position.
+    Pattern* p = self.alloc_pattern();
+    if (p == null) return null;
+    if ((uint)sym == (uint)sym_nil) {
         p.tag = PAT_LIT;
         p.lit_value = self.interp.alloc_value_root();
         p.lit_value.tag = NIL;
+    } else if ((uint)sym == (uint)self.interp.sym_false) {
+        p.tag = PAT_LIT;
+        p.lit_value = self.interp.alloc_value_root();
+        p.lit_value.tag = SYMBOL;
+        p.lit_value.sym_val = self.interp.sym_false;
     } else if ((uint)sym == (uint)self.interp.sym_Void) {
         // `Void` is a literal singleton value in pattern position.
         p.tag = PAT_LIT;

@@ -10,6 +10,7 @@ fn Expr* Parser.parse_list_form(Parser* self) {
     if (lex.current.type == T_RPAREN) {
         // Empty list () = nil literal
         Expr* e = self.alloc_expr_here();  // Capture location before consuming
+        if (e == null) return null;
         lex.advance();
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value_root();

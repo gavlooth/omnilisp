@@ -11,11 +11,8 @@ fn bool parser_module_ensure_export_capacity(Parser* self, ExprModule* module_ex
         self.set_error("module export list is too large");
         return false;
     }
-    SymbolId* new_exports = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
-    if (new_exports == null) {
-        self.set_error("out of memory while growing module export list");
-        return false;
-    }
+    SymbolId* new_exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing module export list");
+    if (new_exports == null) return false;
     for (usz i = 0; i < module_expr.export_count; i++) {
         new_exports[i] = module_expr.exports[i];
     }
@@ -35,11 +32,8 @@ fn bool parser_module_ensure_body_capacity(Parser* self, ExprModule* module_expr
         self.set_error("module body is too large");
         return false;
     }
-    Expr** new_body = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * new_cap);
-    if (new_body == null) {
-        self.set_error("out of memory while growing module body");
-        return false;
-    }
+    Expr** new_body = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * new_cap, "out of memory while growing module body");
+    if (new_body == null) return false;
     for (usz i = 0; i < module_expr.body_count; i++) {
         new_body[i] = module_expr.body[i];
     }
@@ -55,26 +49,17 @@ fn Expr* Parser.alloc_module_expr(Parser* self, SymbolId name) {
         return null;
     }
     e.tag = E_MODULE;
-    e.module_expr = (ExprModule*)ast_arena_alloc(&self.interp.ast_arena, ExprModule.sizeof);
-    if (e.module_expr == null) {
-        self.set_error("out of memory while creating module expression");
-        return null;
-    }
+    e.module_expr = (ExprModule*)self.alloc_ast_bytes(ExprModule.sizeof, "out of memory while creating module expression");
+    if (e.module_expr == null) return null;
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
     e.module_expr.export_capacity = 32;
-    e.module_expr.exports = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * 32);
-    if (e.module_expr.exports == null) {
-        self.set_error("out of memory while allocating module export list");
-        return null;
-    }
+    e.module_expr.exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * 32, "out of memory while allocating module export list");
+    if (e.module_expr.exports == null) return null;
     e.module_expr.body_count = 0;
     e.module_expr.body_capacity = 32;
-    e.module_expr.body = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 32);
-    if (e.module_expr.body == null) {
-        self.set_error("out of memory while allocating module body");
-        return null;
-    }
+    e.module_expr.body = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 32, "out of memory while allocating module body");
+    if (e.module_expr.body == null) return null;
     return e;
 }
 

@@ -16,16 +16,14 @@
  *     └── coroutines (coroutine/yield/resume) ← a usage pattern
  *
  * Implementation layering (this file):
- *   StackContext + stack_context_switch ← x86_64 assembly
+ *   StackContext + backend switch contract
  *   StackRegion (mmap + guard page)    ← stack allocation
  *   StackPool (free-list)              ← recycling
  *   StackCtx (execution context handle)     ← lifecycle management
  *
- * Platform: x86_64 Linux only.
+ * Backend status: x86_64 backend is implemented; other targets fail closed.
  */
 module main;
-
-import std::io;
 
 // =============================================================================
 // SECTION 9: COROUTINE INITIALIZATION (set up initial stack frame)
@@ -55,18 +53,7 @@ fn void stack_ctx_init(StackCtx* c, StackCtxEntryFn entry, void* arg) {
     // after the push, which is what the function prologue expects.
     sp -= 8;
 
-    c.ctx.rsp = sp;
-    c.ctx.rip = (ulong)&stack_ctx_trampoline;
-    c.ctx.rbp = 0;  // Clean frame pointer (no parent frame)
-    c.ctx.rbx = 0;
-    c.ctx.r12 = 0;
-    c.ctx.r13 = 0;
-    c.ctx.r14 = 0;
-    c.ctx.r15 = 0;
-
-    // Default FPU control values
-    c.ctx.mxcsr = 0x1F80;  // All exceptions masked
-    c.ctx.x87cw = 0x037F;  // Double precision, all masked
+    stack_backend_init_context(&c.ctx, sp, (ulong)&stack_ctx_trampoline);
 
     // Store bootstrap info on the StackCtx itself (read by trampoline)
     c.boot.entry = entry;

@@ -16,6 +16,9 @@
 (lambda ({name age}) name)        ;; dict destructuring param
 ```
 
+Canonical function-expression spelling is `lambda`. Plain `λ` is accepted as an
+equivalent input spelling.
+
 Multi-param lambdas require exactly the right number of arguments. Use `_`
 placeholder, `|>` pipe, or `partial` for partial application (see
 [Section 8](02-functions.md#8-partial-application--pipe)).

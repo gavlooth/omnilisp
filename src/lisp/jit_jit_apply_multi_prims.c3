@@ -15,9 +15,11 @@ fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
 fn Value* jit_null_callable_error(Interp* interp) {
     if ((uint)interp.last_call_name != 0) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
-            (ZString)interp.symbols.get_name(interp.last_call_name))!!;
-        return raise_error(interp, msg);
+        if (try char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
+            (ZString)interp.symbols.get_name(interp.last_call_name))) {
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "called value is not defined");
     }
     return raise_error(interp, "called value is nil — not a function");
 }

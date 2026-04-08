@@ -39,7 +39,12 @@ fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
     int start_status = omni_uv_signal_start(signum, &uv_watch);
     if (start_status < 0 || uv_watch == null) {
         char[96] err_buf;
-        char[] err_msg = io::bprintf(&err_buf, "signal-handle: failed to start (%d)", start_status)!!;
+        char[] err_msg;
+        if (try char[] formatted = io::bprintf(&err_buf, "signal-handle: failed to start (%d)", start_status)) {
+            err_msg = formatted;
+        } else {
+            err_msg = "signal-handle: failed to start";
+        }
         return io_raise(interp, "io/signal-handle-failed", err_msg);
     }
 

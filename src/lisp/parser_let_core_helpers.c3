@@ -16,7 +16,8 @@ fn Expr* Parser.build_let_expr_chain(Parser* self, Expr* outer, Expr* body, List
 
     Expr* inner = body;
     for (usz i = binding_count; i > 1; i--) {
-        Expr* wrapper = self.interp.alloc_expr();
+        Expr* wrapper = self.alloc_expr();
+        if (wrapper == null) return null;
         wrapper.tag = E_LET;
         wrapper.loc_line = outer.loc_line;
         wrapper.loc_column = outer.loc_column;

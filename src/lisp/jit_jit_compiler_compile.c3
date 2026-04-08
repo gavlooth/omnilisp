@@ -97,10 +97,15 @@ fn JitCompiledFn jit_compile(Expr* expr, Interp* interp) {
 
     // Compile the expression, result goes to R0.
     JitLocals locals = {};
+    locals.interp_stack_offset = _jit_allocai(s, 8);
+    g_jit_interp_stack_offset = locals.interp_stack_offset;
+    _jit_new_node_www(s, CODE_STXI_L, (long)locals.interp_stack_offset, (long)JIT_FP, (long)JIT_V0);
     if (catch err = jit_compile_expr(s, expr, interp, &locals, true)) {
+        g_jit_interp_stack_offset = 0;
         _jit_destroy_state(s);
         return jit_compiled_fn_null();
     }
+    g_jit_interp_stack_offset = 0;
 
     // Return R0
     _jit_retr(s, JIT_R0, CODE_RETR_L);

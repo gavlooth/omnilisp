@@ -1,6 +1,6 @@
 # Omni Lisp — Project Tooling
 
-**Last updated:** 2026-03-26
+**Last updated:** 2026-04-08
 
 Omni provides CLI commands for creating projects and auto-generating FFI bindings from C headers.
 
@@ -179,6 +179,15 @@ Keep validation scope aligned with the change family:
   not implicitly require memory-ownership coverage.
 - FTXUI surface changes should run `scripts/run_ftxui_smoke.sh` after rebuild
   and before broader gates so the example subtree stays exercised.
+- AArch64 stack backend evidence for `STACK-AARCH64-CONT-001` should be recorded
+  with the exact host/runtime checks that passed on 2026-04-08:
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite stack` -> `Stack engine: 23 passed, 0 failed`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(resume (Coroutine (lambda () (+ 1 2))))"` -> `3`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))"` -> `11`
+  - continuation multi-shot parity closure checks:
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (with-continuation k (k 41))))"` -> `42`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(checkpoint (+ 1 (capture k (k 10))))"` -> `11`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-continuation OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=56 fail=0`
 
 ---
 
@@ -610,6 +619,9 @@ omni --bind                 # uses current directory
 ```
 
 Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`. The generator now fails closed on overlong header paths and on header sets that exceed the current fixed parse scratch limit, instead of truncating the path or emitting a partial module.
+Generated modules use declarative `ffi` forms, so this output currently targets
+interpreter/JIT workflows; compiler/AOT currently rejects declarative `ffi`
+forms.
 
 **Requires:** libclang installed on the system (see [Dependencies](#dependencies) below).
 
@@ -1054,42 +1066,81 @@ headers = ["/usr/include/curl/curl.h"]
 
 ## Generated Bindings
 
-Running `--bind` produces one `.omni` file per dependency in `lib/ffi/`.
+Running `--bind` now produces two files per dependency in `lib/ffi/`:
+
+- `lib/ffi/<name>_raw.omni`: regenerated low-level declarative FFI bindings
+- `lib/ffi/<name>.omni`: facade stub created only when missing; intended place for Omni-facing cleanup
+
+### Example: `lib/ffi/math_raw.omni`
+
+```lisp
+;; Auto-generated raw FFI bindings for libm
+;; Regenerate with: omni --bind
+
+(module ffi-math-raw (export cos sin sqrt)
+
+  (define [ffi lib] _lib "libm.so")
+
+  (define [ffi lambda _lib] (cos (^Double x)) ^Double)
+
+  (define [ffi lambda _lib] (sin (^Double x)) ^Double)
+
+  (define [ffi lambda _lib] (sqrt (^Double x)) ^Double)
+
+)
+```
 
 ### Example: `lib/ffi/math.omni`
 
 ```lisp
-;; Auto-generated FFI bindings for libm
-;; Regenerate with: omni --bind
+;; Auto-generated FFI facade stub for libm
+;; Raw bindings live in the sibling *_raw.omni file.
+;; This facade is created only when missing so local edits survive reruns.
 
 (module ffi-math (export cos sin sqrt)
 
-  (define _lib (ffi-open "libm.so"))
+  (import "math_raw.omni")
+  (import ffi-math-raw ((cos 'as raw-cos) (sin 'as raw-sin) (sqrt 'as raw-sqrt)))
 
-  (define (cos (^Double arg0))
-    (ffi-call _lib "cos" 'double arg0 'double))
+  ;; Edit this facade to add Omni-facing naming, ownership, or buffer cleanup.
+  (define cos raw-cos)
+  (define sin raw-sin)
+  (define sqrt raw-sqrt)
+)
+```
 
-  (define (sin (^Double arg0))
-    (ffi-call _lib "sin" 'double arg0 'double))
+For non-trivial string/pointer/callback contracts, the facade emits a typed
+wrapper scaffold instead of only a raw alias:
 
-  (define (sqrt (^Double arg0))
-    (ffi-call _lib "sqrt" 'double arg0 'double))
-
+```lisp
+;; TODO(bindgen): review ret-string — string return ownership/nullability is not automatic.
+(define (ret-string)
+  (let (result (raw-ret-string)
+        result_text result)
+    ;; REVIEW: decide whether to copy, borrow, or null-check the returned string.
+    result_text)
 )
 ```
 
 ### What Gets Generated
 
-- A `module` with an `export` list of all bound functions
-- A `_lib` handle opened via `ffi-open`
-- Each function gets typed parameters (`^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, `^Void`) and a body calling `ffi-call` with canonical type annotations
+- A regenerated raw module with the low-level declarative bindings
+- A facade stub that imports the raw module and:
+  - re-exports trivial bindings as simple aliases
+  - emits typed wrapper-function scaffolds for non-trivial string/pointer/callback contracts
+  - gives return-bearing wrappers a local `result` binding plus category-specific edit-point locals such as `result_text` or `result_handle`
+  - gives parameter-shaped wrappers category-specific local aliases such as `buffer_input`, `callback_handle`, or `<name>_handle` before the raw call
+- Pure `const char *` input functions stay simple aliases even though the raw file still records their metadata; wrapper scaffolds are reserved for contracts that actually need body-level review work
+- The facade file is only created when missing, so rerunning `--bind` does not overwrite local wrapper edits
 - C `snake_case` names are converted to Omni `kebab-case` (e.g., `string_length` becomes `string-length`)
-- Variadic C functions are skipped with a comment (Omni's FFI doesn't support variadic calls)
+- C parameter names are preserved when libclang exposes them; unnamed prototypes fall back to `argN`
+- Non-trivial string/pointer/callback contracts now emit `bindgen-meta` comments in the raw module and `TODO(bindgen)` review markers plus wrapper-function scaffolds in the facade stub
+- Variadic C functions are skipped with a comment because declarative `ffi` variadics are not a shipped runtime contract yet
 
 ### Using Generated Bindings
 
 ```lisp
-;; Import the generated module
+;; Import the facade module
 (import "lib/ffi/math.omni")
 
 ;; Use via qualified access
@@ -1113,13 +1164,14 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 | `size_t`, `ssize_t` | `'int` | `^Integer` | Resolved via typedef |
 | `enum` types | `'int` | `^Integer` | Enums are integers |
 | `float`, `double` | `'double` | `^Double` | All floating-point types |
-| `char *`, `const char *` | `'string` | `^String` | Detected by type spelling |
+| `const char *`, `char *` returns | `'string` | `^String` | Treated as string-shaped values; return ownership/nullability is still surfaced via metadata/comments |
+| mutable `char *` parameters | `'ptr` | `^Pointer` | Fail-closed default for in/out buffers; emitted metadata still marks these as `string-buffer` for facade scaffolding |
 | `void *`, other pointers | `'ptr` | `^Pointer` | Opaque handle as pointer-sized value (`^Pointer` shorthand supported) |
 | `void` (return only) | `'void` | `^Void` | Returns the runtime `Void` singleton value |
 
 ### Limitations
 
-- **Struct parameters/returns**: C functions that pass or return structs by value are rejected explicitly; `--bind` fails instead of emitting a pointer-coerced binding (Omni's `ffi-call` only handles scalars and pointers)
+- **Struct parameters/returns**: C functions that pass or return structs by value are rejected explicitly; `--bind` fails instead of emitting a pointer-coerced binding (the declarative `ffi` surface only ships scalar/pointer calls today)
 - **Variadic functions**: Skipped automatically (e.g., `printf`)
 - **Function pointers as parameters**: Mapped as `'ptr`/`^Pointer` (callback registration requires manual wrappers)
 - **Unsupported parameter metadata allocation**: `--bind` now fails closed if it cannot allocate parameter descriptors instead of silently emitting malformed zero-argument wrappers
@@ -1178,7 +1230,10 @@ EOF
 # 3. Generate FFI bindings
 omni --bind calculator/
 
-# 4. Write your program
+# 4. Inspect or edit the generated facade if needed
+sed -n '1,80p' calculator/lib/ffi/math.omni
+
+# 5. Write your program
 cat > calculator/src/main.omni << 'EOF'
 (import "lib/ffi/math.omni")
 
@@ -1187,9 +1242,12 @@ cat > calculator/src/main.omni << 'EOF'
 (println "2^10      =" (ffi-math.pow 2.0 10.0))
 EOF
 
-# 5. Run it
+# 6. Run it
 cd calculator
 omni src/main.omni
+
+# AOT note: generated declarative ffi modules are currently interpreter/JIT-only.
+# `omni --build` rejects declarative ffi forms today.
 ```
 
 ---
@@ -1204,7 +1262,7 @@ omni.toml ──► TOML Parser ──► TomlConfig
 C Headers ──► libclang (dlopen) ──► ParsedFunc[]
                                     │
                                     ▼
-                            Binding Generator ──► lib/ffi/*.omni
+                            Binding Generator ──► lib/ffi/*_raw.omni + facade stubs
 ```
 
 ### Source Files
@@ -1219,6 +1277,6 @@ C Headers ──► libclang (dlopen) ──► ParsedFunc[]
 ### Design Decisions
 
 - **`omni.toml` + `build/project.json`**: Omni's config lives at project root; C3's `project.json` is generated inside `build/` to keep the root clean and make the ownership clear. C3 is invoked with `--path build/` to find it.
-- **libclang via C3-level dlopen** (not Omni FFI): libclang returns structs by value (`CXString`, `CXCursor`, `CXType`) which Omni's `ffi-call` can't handle. C3 function pointer aliases with proper struct types handle the x86-64 hidden-pointer ABI correctly.
+- **libclang via C3-level dlopen** (not Omni declarative FFI): libclang returns structs by value (`CXString`, `CXCursor`, `CXType`) which the declarative `ffi` surface does not model. C3 function pointer aliases with proper struct types handle the host ABI correctly.
 - **Optional runtime dependency**: libclang is only loaded when `--bind` is invoked. Projects that don't use `--bind` have zero additional dependencies.
 - **Canonical type resolution**: The type mapper calls `clang_getCanonicalType` to resolve typedefs before mapping, so `size_t` correctly maps to `'int` regardless of the typedef chain.

@@ -1,81 +1,5 @@
 module lisp;
 
-import std::io;
-
-fn bool jit_try_index_list(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (!is_cons(collection) || !is_int(index)) return false;
-
-    long idx = index.int_val;
-    if (idx < 0) {
-        long len = 0;
-        Value* c = collection;
-        while (is_cons(c)) {
-            len++;
-            c = cdr(c);
-        }
-        idx += len;
-        if (idx < 0) {
-            *out = raise_error(interp, "list index out of bounds");
-            return true;
-        }
-    }
-
-    Value* current = collection;
-    for (long i = 0; i < idx; i++) {
-        if (!is_cons(current)) {
-            *out = raise_error(interp, "list index out of bounds");
-            return true;
-        }
-        current = cdr(current);
-    }
-    if (!is_cons(current)) {
-        *out = raise_error(interp, "list index out of bounds");
-        return true;
-    }
-    *out = car(current);
-    return true;
-}
-
-fn bool jit_try_index_string(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (!is_string(collection) || !is_int(index)) return false;
-
-    char[] bytes = collection.str_chars[:collection.str_len];
-    usz cp_count = utf8_strlen(bytes);
-    long idx = index.int_val;
-    if (idx < 0) idx += (long)cp_count;
-    if (idx < 0 || idx >= (long)cp_count) {
-        *out = raise_error(interp, "string index out of bounds");
-        return true;
-    }
-    usz byte_off = utf8_byte_offset(bytes, (usz)idx);
-    usz pos = byte_off;
-    uint cp = utf8_decode(bytes, &pos);
-    *out = make_int(interp, (long)cp);
-    return true;
-}
-
-fn bool jit_try_index_array(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (collection.tag != ARRAY || !is_int(index)) return false;
-
-    long idx = index.int_val;
-    long alen = (long)collection.array_val.length;
-    if (idx < 0) idx += alen;
-    if (idx < 0 || idx >= alen) {
-        *out = raise_error(interp, "array index out of bounds");
-        return true;
-    }
-    *out = collection.array_val.items[(usz)idx];
-    return true;
-}
-
-fn bool jit_try_index_dict(Interp* interp, Value* collection, Value* index, Value** out) {
-    if (collection.tag != HASHMAP) return false;
-    Value* result = hashmap_get(collection.hashmap_val, index);
-    if (result == null) result = make_nil(interp);
-    *out = result;
-    return true;
-}
-
 fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, Value** out) {
     if (collection.tag != INSTANCE) return false;
 
@@ -87,22 +11,11 @@ fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, 
     return true;
 }
 
-fn Value* jit_index_type_error(Interp* interp, Value* collection) {
-    char[256] ebuf;
-    char[] msg = io::bprintf(&ebuf, "cannot index %s (expected array, dict, list, or string)",
-        (ZString)interp.symbols.get_name(value_type_name(collection, interp)))!!;
-    return raise_error(interp, msg);
-}
-
 fn Value* jit_do_index(Interp* interp, Value* collection, Value* index) {
-    if (collection == null) return raise_error(interp, "index: nil collection");
     Value* result = null;
-    if (jit_try_index_list(interp, collection, index, &result)) return result;
-    if (jit_try_index_string(interp, collection, index, &result)) return result;
-    if (jit_try_index_array(interp, collection, index, &result)) return result;
-    if (jit_try_index_dict(interp, collection, index, &result)) return result;
+    if (ref_try_lookup_collection(interp, collection, index, &result)) return result;
     if (jit_try_index_instance(interp, collection, index, &result)) return result;
-    return jit_index_type_error(interp, collection);
+    return ref_type_error(interp);
 }
 
 fn Value* jit_do_path(Interp* interp, Expr* expr, Env* env) {

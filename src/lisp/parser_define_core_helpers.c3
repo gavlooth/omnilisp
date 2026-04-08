@@ -42,7 +42,8 @@ fn Expr* Parser.build_shorthand_define_lambda(
     SymbolId define_rest_param,
     Expr* body
 ) {
-    Expr* lambda_expr = self.interp.alloc_expr();
+    Expr* lambda_expr = self.alloc_expr();
+    if (lambda_expr == null) return null;
     lambda_expr.loc_line = e.loc_line;
     lambda_expr.loc_column = e.loc_column;
     self.finalize_lambda_expr(
@@ -54,5 +55,6 @@ fn Expr* Parser.build_shorthand_define_lambda(
         define_rest_param,
         body
     );
+    if (self.has_error || lambda_expr.lambda == null) return null;
     return lambda_expr;
 }

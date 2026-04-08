@@ -15,6 +15,7 @@
 (lambda ({name age}) body)   ; dict destructuring parameter
 (lambda ({x y} z) body)     ; mixed dict + positional params
 ```
+- Canonical function-expression form is `lambda`; plain `λ` is accepted as an equivalent input spelling
 - Multi-param lambdas have strict arity: `(lambda (x y) body)` requires exactly 2 arguments
 - Use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial` for partial application
 - Variadic lambdas: `(lambda (x .. rest) body)`, rest collects extra args as list
@@ -289,7 +290,7 @@ Dynamic element count per pattern (no fixed limit).
 
 | Type | Tag | Description | Examples |
 |------|-----|-------------|---------|
-| `nil` | NIL | Empty/false value | `nil`, `()` |
+| `nil` | NIL | Empty / absence value | `nil`, `()` |
 | `int` | INT | 64-bit signed integer | `42`, `-17`, `0` |
 | `double` | DOUBLE | 64-bit floating point | `3.14`, `-0.5` |
 | `string` | STRING | Immutable string (heap-allocated) | `"hello"`, `"line\nbreak"` |
@@ -298,7 +299,7 @@ Dynamic element count per pattern (no fixed limit).
 | `closure` | CLOSURE | Lambda with captured environment | `(lambda (x) x)` |
 | `continuation` | CONTINUATION | Delimited continuation | captured by `capture` |
 | `primitive` | PRIMITIVE | Built-in function | `+`, `car` |
-| `partial_prim` | PARTIAL_PRIM | Partially applied primitive | `(+ 3)` |
+| `partial_prim` | PARTIAL_PRIM | Explicit partial value | `(partial + 3)` |
 | `error` | ERROR | Error value | `(error "oops")` |
 | `Dictionary` | HASHMAP | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
 | `Array` | ARRAY | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
@@ -315,18 +316,23 @@ Dynamic element count per pattern (no fixed limit).
 
 ## 4. Syntax Extensions
 
-### 4.1 Leading-Dot Accessor Shorthand
+### 4.1 Access Syntax
 ```lisp
-.name            ; key expression 'name
-.1               ; key expression 1
-.-1              ; key expression -1
-.'key            ; key expression 'key
+user.name        ; symbol-key / field access
+arr.[0]          ; dynamic/index access
+(ref dict 'name) ; canonical lookup operation
 ```
 
-- Leading dot expands to a one-arg lookup lambda equivalent to `(lambda (x) (ref x key-expr))`
-- The key is the next full expression after `.`
-- This is separate from path notation and postfix indexing
-- Canonical spelling omits whitespace after the leading `.`
+- Dot syntax is access-only. It does not construct standalone accessor
+  functions.
+- Removed forms now hard-error:
+  - `.name`
+  - `.1`
+  - `.'key`
+  - `.[expr]`
+  - `('name dict)`
+- Use `expr.name`, `expr.[key]`, `ref`, or an explicit lambda for
+  higher-order accessors.
 
 ### 4.2 Postfix Index Syntax
 ```lisp
@@ -382,7 +388,7 @@ pair.cdr                 ; cons cell cdr access
 | `/` | 2 | Integer division (error on div by zero) |
 | `%` | 2 | Modulo (error on div by zero) |
 
-Binary primitives (`+`, `-`, `*`, `/`, `%`, comparisons, `cons`) partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is a built-in mechanism for binary primitives only — user-defined lambdas have strict arity. For general partial application, use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial`.
+Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` is an arity error outside rewrite contexts such as `|>`. For partial application, use `_` placeholder `(+ 1 _)`, `|>` pipe, or `partial`.
 
 ### 5.2 Comparison (5)
 | Primitive | Arity | Description |
@@ -458,7 +464,7 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 | Name | Value |
 |------|-------|
 | `true` | Symbol `true` |
-| `false` | Alias of `nil` |
+| `false` | Boolean false |
 
 **Total: 129+ primitives + 2 constants** (includes math library, bitwise ops, sorting, introspection, type system, generic collection ops, and more not listed above)
 
@@ -480,9 +486,17 @@ When no handler is installed, a fast path calls raw primitives directly (zero ov
 - Uses libffi via C wrapper (`csrc/ffi_helpers.c`) for portable ABI support
 - Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
 - Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
+- Argument conversion is fail-closed:
+  - `^Integer`: Omni `Integer` only
+  - `^Double`: Omni `Double` or `Integer`
+  - `^Boolean`: Omni `true` / `false` only
+  - `^String`: Omni `String`, or `nil` for a null `char*`
+  - `^Pointer`: Omni `Integer` raw address, live `FFI_HANDLE`, or `nil` for null
+- Declarative `variadic` bindings are currently rejected at definition time until the runtime carries explicit fixed/variadic metadata
 - `Nil` is the language-level empty/false value type; `Void` is a real builtin singleton value/type and FFI `^Void` returns map to it
 - Lazy dlsym: symbol resolution deferred to first call and cached
 - Handles allocated in root scope (permanent, survive scope release)
+- Execution mode contract: declarative FFI is currently interpreter/JIT-only; compiler/AOT currently rejects declarative `ffi` forms
 
 
 ### 5.11 Coroutine Primitives (4)
@@ -561,7 +575,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 | handle/signal | Y | Y |
 | quasiquote | Y | Y |
 | modules | Y | Y |
-| dot-bracket index `expr.[i]` | Y | Y |
+| postfix index `expr.[i]` | Y | Y |
 | path `a.b.c` | Y | Y |
 
 ---
@@ -572,7 +586,7 @@ The Omni compiler (`src/lisp/compiler.c3`) translates Lisp AST to C3 source code
 - `(f a b c)` parsed as `E_CALL` with func + args list
 - Primitives receive all args at once
 - Multi-param closures receive all args at once (strict arity — arity mismatch is an error)
-- Binary primitives are the exception: `(+ 3)` returns a `PARTIAL_PRIM` (not a lambda)
+- Bare one-argument primitive calls are arity errors; partial application uses `_`, `|>`, or `partial`
 - `_` placeholder creates a lambda at parse time: `(f 1 _)` → `(lambda (__p1) (f 1 __p1))`
 - Dynamic argument count (no fixed limit on AST; JIT compiles up to 16 args natively)
 
@@ -687,7 +701,10 @@ Creates a project directory with `omni.toml`, `src/main.omni`, `lib/ffi/`, `incl
 omni --bind myproject/
 ```
 
-Reads `omni.toml`, parses C headers using libclang, and generates typed Omni FFI modules in `lib/ffi/`.
+Reads `omni.toml`, parses C headers using libclang, and generates raw-plus-facade Omni FFI modules in `lib/ffi/`.
+Generated modules use declarative `ffi` forms, so this output currently targets
+interpreter/JIT workflows; compiler/AOT currently rejects declarative `ffi`
+forms.
 
 **omni.toml format:**
 
@@ -702,18 +719,29 @@ headers = ["/usr/include/math.h"]
 functions = ["sin", "cos", "sqrt"]    # optional filter
 ```
 
-**Generated `lib/ffi/math.omni`:**
+**Generated `lib/ffi/math_raw.omni`:**
 
 ```lisp
-(module ffi-math (export cos sin sqrt)
-  (define _lib (ffi-open "libm.so"))
-  (define (sin (^Double arg0))
-    (ffi-call _lib "sin" 'double arg0 'double))
+(module ffi-math-raw (export cos sin sqrt)
+  (define [ffi lib] _lib "libm.so")
+  (define [ffi lambda _lib] (sin (^Double x)) ^Double)
   ;; ...
 )
 ```
 
-**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer`, `double`/`float` → `'double`/`^Double`, `char*` → `'string`/`^String`, `void*` → `'ptr`/`^Pointer` (preferred).
+**Generated `lib/ffi/math.omni`:**
+
+```lisp
+(module ffi-math (export cos sin sqrt)
+  (import "math_raw.omni")
+  (import ffi-math-raw ((sin 'as raw-sin)))
+  (define sin raw-sin)
+  ;; edit this facade to add Omni-facing cleanup
+)
+```
+
+**C-to-Omni type mapping:** `int`/`long` → `'int`/`^Integer`, `double`/`float` → `'double`/`^Double`, `const char*` and char-pointer returns → `'string`/`^String`, mutable `char*` parameters → `'ptr`/`^Pointer` plus `string-buffer` metadata, `void*` → `'ptr`/`^Pointer` (preferred).
+Generated raw modules preserve real C parameter names when libclang exposes them and fall back to `argN` only for unnamed prototypes. Non-trivial string/pointer/callback signatures emit `bindgen-meta` comments in the raw file and typed wrapper-function scaffolds with `TODO(bindgen)` review notes in the facade; return-bearing wrappers get a local `result` binding plus category-specific edit-point locals such as `result_text` or `result_handle`, and parameter-shaped wrappers get local aliases such as `buffer_input`, `callback_handle`, or `<name>_handle` before the raw call. The raw file is regenerated on every bind run; the facade stub is only created when missing so local wrapper edits survive reruns.
 
 **Requires:** libclang (optional runtime dependency, only loaded when `--bind` runs).
 

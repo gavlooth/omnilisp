@@ -5,6 +5,7 @@ import std::collections::list;
 fn Expr* Parser.parse_define(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'define' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'define'
 
     // Check for bracket annotation: (define [attr...] ...)

@@ -17,7 +17,9 @@ fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
         if (explain_r != usz.max) return explain_r;
     }
 
-    if (self.call_head_is(expr, "Dictionary")) return self.compile_list_or_dict_call_flat(expr, true);
+    if (self.call_head_is(expr, "Dictionary") || self.call_head_is(expr, "Dict")) {
+        return self.compile_list_or_dict_call_flat(expr, true);
+    }
     // Keep single-arg list calls on primitive dispatch so runtime conversion
     // semantics (`(list iterator)` / `(list array)`) remain intact.
     if (self.call_head_is(expr, "list") && arg_count != 1) return self.compile_list_or_dict_call_flat(expr, false);

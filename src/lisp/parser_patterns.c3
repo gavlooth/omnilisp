@@ -16,20 +16,23 @@ fn Pattern* Parser.parse_pattern(Parser* self) {
     if (self.has_error) return null;
     switch (self.lexer.current.type) {
         case T_UNDERSCORE: {
-            Pattern* p = self.interp.alloc_pattern();
+            Pattern* p = self.alloc_pattern();
+            if (p == null) return null;
             p.tag = PAT_WILDCARD;
             self.lexer.advance();
             return p;
         }
         case T_QUOTE: {
             self.lexer.advance();
-            Pattern* p = self.interp.alloc_pattern();
+            Pattern* p = self.alloc_pattern();
+            if (p == null) return null;
             p.tag = PAT_QUOTE;
             p.quote_datum = self.parse_datum();
             return p;
         }
         case T_INT: {
-            Pattern* p = self.interp.alloc_pattern();
+            Pattern* p = self.alloc_pattern();
+            if (p == null) return null;
             p.tag = PAT_LIT;
             p.lit_value = self.interp.alloc_value_root();
             p.lit_value.tag = INT;

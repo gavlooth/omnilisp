@@ -14,7 +14,7 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
         return interp.global_env.lookup(interp.symbols.intern("true"));
     }
     if (omni_yyjson_is_false(val) != 0) {
-        return make_nil(interp);  // false = nil in Omni
+        return make_symbol(interp, interp.sym_false);
     }
     if (omni_yyjson_is_int(val) != 0) {
         return make_int(interp, omni_yyjson_get_sint(val));

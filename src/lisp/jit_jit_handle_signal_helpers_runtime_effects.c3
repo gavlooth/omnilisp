@@ -7,9 +7,47 @@ fn Value* runtime_effect_raise(Interp* interp, char[] code, char[] message) @inl
     return raise_error_with_payload_names(interp, "runtime", code, message, null);
 }
 
-fn Value* eval_result_or_runtime_raise(EvalResult r, Interp* interp, char[] code) @inline {
-    if (r.error.has_error) return runtime_effect_raise(interp, code, r.error.message[:256]);
-    return r.value;
+fn Value* call_fast_path_primitive_preserving_error(Value* fp_prim, Value* arg, Interp* interp) @inline {
+    Value*[8] args;
+    args[0] = arg;
+    interp.constructor_type_id = fp_prim.prim_val.tag;
+    interp.prim_user_data = fp_prim.prim_val.user_data;
+    Value* result = fp_prim.prim_val.func(args[:1], null, interp);
+    if (result != null && result.tag == ERROR) return result;
+    return result;
+}
+
+fn Value* call_fast_path_primitive_list_preserving_error(Value* fp_prim, Value* arg_list, Interp* interp) {
+    usz argc = 0;
+    Value* curr = arg_list;
+    while (curr != null && curr.tag == CONS) {
+        argc++;
+        curr = curr.cons_val.cdr;
+    }
+    // stdlib wrappers often pass cons spines with a final non-list tail:
+    // (cons a b) for binary calls, (cons a (cons b c)) for ternary calls.
+    if (curr != null && curr.tag != NIL) argc++;
+
+    Value** argv = argc > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * argc) : null;
+    if (argc > 0 && argv == null) {
+        return runtime_effect_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+    }
+
+    curr = arg_list;
+    usz i = 0;
+    while (curr != null && curr.tag == CONS) {
+        argv[i++] = curr.cons_val.car;
+        curr = curr.cons_val.cdr;
+    }
+    if (curr != null && curr.tag != NIL) {
+        argv[i++] = curr;
+    }
+
+    interp.constructor_type_id = fp_prim.prim_val.tag;
+    interp.prim_user_data = fp_prim.prim_val.user_data;
+    Value* result = fp_prim.prim_val.func(argv[..i], null, interp);
+    if (result != null && result.tag == ERROR) return result;
+    return result;
 }
 
 fn void handle_effect_entry(void* arg) {
@@ -27,7 +65,12 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
     char[256] ubuf;
     char[] utag = interp.symbols.get_name(tag);
     char[] uarg = interp.symbols.get_name(value_type_name(arg_v, interp));
-    char[] umsg = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)!!;
+    char[] umsg;
+    if (try char[] formatted = io::bprintf(&ubuf, "unhandled effect '%s' with arg type %s", (ZString)utag, (ZString)uarg)) {
+        umsg = formatted;
+    } else {
+        umsg = "unhandled effect";
+    }
 
     Value* data = make_hashmap(interp, 8);
     if (data != null && data.tag == HASHMAP) {
@@ -42,8 +85,13 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
 fn Value* runtime_effect_invalid_tag(Value* tag_value, Interp* interp, char[] context) {
     char[256] ebuf;
     char[] type_name = interp.symbols.get_name(value_type_name(tag_value, interp));
-    char[] msg = io::bprintf(&ebuf, "%s: effect tag must resolve to symbol, got %s",
-        (ZString)context, (ZString)type_name)!!;
+    char[] msg;
+    if (try char[] formatted = io::bprintf(&ebuf, "%s: effect tag must resolve to symbol, got %s",
+        (ZString)context, (ZString)type_name)) {
+        msg = formatted;
+    } else {
+        msg = "effect tag must resolve to symbol";
+    }
     return runtime_effect_raise(interp, "runtime/effect-invalid-tag", msg);
 }
 
@@ -127,19 +175,13 @@ fn Value* jit_signal_try_fast_path(SymbolId tag, Value* arg_v, Interp* interp) {
         Value* fp_prim = interp.fast_path_table[i].prim;
         int fp_arity = fp_prim.prim_val.arity;
         if (fp_arity == 0) {
-            EvalResult r = apply_primitive(fp_prim, make_nil(interp), interp);
-            return eval_result_or_runtime_raise(r, interp, "runtime/fast-path-primitive-failed");
+            return call_fast_path_primitive_preserving_error(fp_prim, make_nil(interp), interp);
         }
         if (fp_arity == 1 || fp_arity == -1) {
-            EvalResult r = apply_primitive(fp_prim, arg_v, interp);
-            return eval_result_or_runtime_raise(r, interp, "runtime/fast-path-primitive-failed");
+            return call_fast_path_primitive_preserving_error(fp_prim, arg_v, interp);
         }
         if (arg_v != null && is_cons(arg_v)) {
-            EvalResult r = apply_primitive(fp_prim, car(arg_v), interp);
-            if (r.error.has_error) return runtime_effect_raise(interp, "runtime/fast-path-primitive-failed", r.error.message[:256]);
-            Value* result = jit_apply_value(r.value, cdr(arg_v), interp);
-            if (result != null && result.tag == ERROR) return result;
-            return result;
+            return call_fast_path_primitive_list_preserving_error(fp_prim, arg_v, interp);
         }
         return null;
     }

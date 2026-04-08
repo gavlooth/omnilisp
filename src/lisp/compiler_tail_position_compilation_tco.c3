@@ -101,6 +101,22 @@ fn usz Compiler.compile_module_flat(Compiler* self, Expr* expr) {
             self.emit_temp_ref(init_r);
             self.emit(";\n");
             last_id = init_r;
+        } else if (body_expr.tag == E_FFI_LIB) {
+            usz init_r = self.compile_to_temp(body_expr);
+            self.emit_indent();
+            self.emit_symbol_name(body_expr.ffi_lib.name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+            last_id = init_r;
+        } else if (body_expr.tag == E_FFI_FN && body_expr.ffi_fn != null) {
+            usz init_r = self.compile_to_temp(body_expr);
+            self.emit_indent();
+            self.emit_symbol_name(body_expr.ffi_fn.fn_name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+            last_id = init_r;
         } else {
             // Non-define: compile inline
             last_id = self.compile_to_temp(body_expr);

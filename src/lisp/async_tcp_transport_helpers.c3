@@ -129,12 +129,16 @@ fn Value* dns_result_to_ipv4_string(Interp* interp, void* result) {
 
 fn Value* tcp_raise_fiber_required(Interp* interp, char[] op_name, char[] code) {
     char[96] ebuf;
-    char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)!!;
-    return io_raise(interp, code, msg);
+    if (try char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)) {
+        return io_raise(interp, code, msg);
+    }
+    return io_raise(interp, code, "tcp op: requires running fiber context");
 }
 
 fn Value* tcp_raise_loop_unavailable(Interp* interp, char[] op_name, char[] code) {
     char[96] ebuf;
-    char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)!!;
-    return io_raise(interp, code, msg);
+    if (try char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)) {
+        return io_raise(interp, code, msg);
+    }
+    return io_raise(interp, code, "tcp op: libuv loop unavailable");
 }

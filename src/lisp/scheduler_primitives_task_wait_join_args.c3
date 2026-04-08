@@ -5,13 +5,17 @@ import std::io;
 fn Value* scheduler_validate_task_join_context(char[] op_name, Interp* interp) {
     if (!g_scheduler.thread_task_mu_ready) {
         char[96] ebuf;
-        char[] msg = io::bprintf(&ebuf, "%s: task mutex unavailable", (ZString)op_name)!!;
-        return scheduler_raise(interp, "scheduler/task-mutex-unavailable", msg);
+        if (try char[] msg = io::bprintf(&ebuf, "%s: task mutex unavailable", (ZString)op_name)) {
+            return scheduler_raise(interp, "scheduler/task-mutex-unavailable", msg);
+        }
+        return scheduler_raise(interp, "scheduler/task-mutex-unavailable", "task join: task mutex unavailable");
     }
     if (!scheduler_is_running_fiber_context() && !g_scheduler.thread_task_cv_ready) {
         char[96] ebuf;
-        char[] msg = io::bprintf(&ebuf, "%s: task condition variable unavailable", (ZString)op_name)!!;
-        return scheduler_raise(interp, "scheduler/task-condition-unavailable", msg);
+        if (try char[] msg = io::bprintf(&ebuf, "%s: task condition variable unavailable", (ZString)op_name)) {
+            return scheduler_raise(interp, "scheduler/task-condition-unavailable", msg);
+        }
+        return scheduler_raise(interp, "scheduler/task-condition-unavailable", "task join: task condition variable unavailable");
     }
     return null;
 }

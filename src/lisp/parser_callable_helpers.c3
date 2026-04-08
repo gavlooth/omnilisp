@@ -20,11 +20,14 @@ fn Expr* Parser.parse_implicit_block(Parser* self) {
     while (self.lexer.current.type != T_RPAREN && !self.has_error) {
         items.push(self.parse_expr());
     }
-    Expr* block_e = self.interp.alloc_expr();
+    Expr* block_e = self.alloc_expr();
+    if (block_e == null) { items.free(); return null; }
     block_e.tag = E_BLOCK;
-    block_e.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
+    block_e.block = (ExprBlock*)self.alloc_ast_bytes(ExprBlock.sizeof, "out of memory while allocating implicit block");
+    if (block_e.block == null) { items.free(); return null; }
     block_e.block.expr_count = items.len();
-    block_e.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * items.len());
+    block_e.block.exprs = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * items.len(), "out of memory while allocating implicit block expressions");
+    if (block_e.block.exprs == null && items.len() > 0) { items.free(); return null; }
     for (usz i = 0; i < items.len(); i++) { block_e.block.exprs[i] = items[i]; }
     items.free();
     return block_e;
@@ -32,14 +35,16 @@ fn Expr* Parser.parse_implicit_block(Parser* self) {
 
 fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Expr* body, List{Pattern*} patterns, List{SymbolId} names) {
     for (usz di = patterns.len(); di > 0; di--) {
-        Expr* let_wrap = self.interp.alloc_expr();
+        Expr* let_wrap = self.alloc_expr();
+        if (let_wrap == null) return null;
         let_wrap.tag = E_LET;
         let_wrap.loc_line = lambda_expr.loc_line;
         let_wrap.loc_column = lambda_expr.loc_column;
         let_wrap.let_expr.name = (SymbolId)0;
         let_wrap.let_expr.pattern = patterns[di - 1];
 
-        Expr* var_ref = self.interp.alloc_expr();
+        Expr* var_ref = self.alloc_expr();
+        if (var_ref == null) return null;
         var_ref.tag = E_VAR;
         var_ref.var_expr.name = names[di - 1];
 
@@ -54,12 +59,14 @@ fn Expr* Parser.wrap_body_with_destructuring(Parser* self, Expr* lambda_expr, Ex
 fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params, List{TypeAnnotation} param_anns, bool has_any_typed, bool has_rest, SymbolId rest_param, Expr* body) {
     usz param_count = params.len();
     e.tag = E_LAMBDA;
-    e.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
+    e.lambda = (ExprLambda*)self.alloc_ast_bytes(ExprLambda.sizeof, "out of memory while allocating lambda");
+    if (e.lambda == null) return;
     e.lambda.param = param_count > 0 ? params[0] : INVALID_SYMBOL_ID;
     e.lambda.param_count = param_count;
     e.lambda.params = null;
     if (param_count > 0) {
-        e.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
+        e.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating lambda parameters");
+        if (e.lambda.params == null) return;
         for (usz i = 0; i < param_count; i++) {
             e.lambda.params[i] = params[i];
         }
@@ -69,13 +76,13 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
     e.lambda.has_typed_params = has_any_typed;
     e.lambda.param_annotations = null;
     if (has_any_typed && param_count > 0) {
-        e.lambda.param_annotations = (TypeAnnotation*)ast_arena_alloc(&self.interp.ast_arena, TypeAnnotation.sizeof * param_count);
+        e.lambda.param_annotations = (TypeAnnotation*)self.alloc_ast_bytes(TypeAnnotation.sizeof * param_count, "out of memory while allocating lambda parameter annotations");
+        if (e.lambda.param_annotations == null) return;
         for (usz i = 0; i < param_count; i++) {
             e.lambda.param_annotations[i] = param_anns[i];
         }
     }
     e.lambda.body = body;
-    e.lambda.is_accessor_shorthand = false;
 }
 
 fn bool Parser.parse_rest_param(Parser* self, SymbolId* rest_param) {
@@ -107,6 +114,8 @@ fn Expr* Parser.finalize_lambda_with_params(Parser* self, Expr* e, List{SymbolId
         return null;
     }
     body = self.wrap_body_with_destructuring(e, body, destr_patterns, destr_param_names);
+    if (body == null || self.has_error) return null;
     self.finalize_lambda_expr(e, params, param_anns, has_any_typed, has_rest, rest_param, body);
+    if (self.has_error || e.lambda == null) return null;
     return e;
 }

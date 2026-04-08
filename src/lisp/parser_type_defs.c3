@@ -8,7 +8,8 @@ import std::collections::list;
  */
 fn void Parser.init_deftype_expr(Parser* self, Expr* e) {
     e.tag = E_DEFTYPE;
-    e.deftype = (ExprDefType*)ast_arena_alloc(&self.interp.ast_arena, ExprDefType.sizeof);
+    e.deftype = (ExprDefType*)self.alloc_ast_bytes(ExprDefType.sizeof, "out of memory while creating type definition");
+    if (e.deftype == null) return;
     e.deftype.has_parent = false;
     e.deftype.fields = null;
     e.deftype.field_count = 0;
@@ -69,6 +70,7 @@ fn bool Parser.parse_deftype_bare_field(Parser* self, List{TypeField}* fields) {
 
 fn Expr* Parser.parse_deftype(Parser* self, Expr* e) {
     self.init_deftype_expr(e);
+    if (self.has_error || e.deftype == null) return null;
 
     if (!self.parse_deftype_name(e)) return null;
 

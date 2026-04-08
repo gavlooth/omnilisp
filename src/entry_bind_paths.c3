@@ -39,7 +39,7 @@ fn bool build_bind_toml_path(char[] toml_path, usz* path_len_out, char* proj_dir
     return true;
 }
 
-fn bool build_bind_output_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name) {
+fn bool build_bind_module_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name, char[] suffix) {
     usz olen = 0;
     for (usz i = 0; i < proj_dir_len; i++) {
         if (olen >= out_path.len - 1) return false;
@@ -54,12 +54,19 @@ fn bool build_bind_output_path(char[] out_path, usz* path_len_out, char* proj_di
         if (olen >= out_path.len - 1) return false;
         out_path[olen++] = dep_name[i];
     }
-    char[] omni_ext = ".omni";
-    for (usz i = 0; i < omni_ext.len; i++) {
+    for (usz i = 0; i < suffix.len; i++) {
         if (olen >= out_path.len - 1) return false;
-        out_path[olen++] = omni_ext[i];
+        out_path[olen++] = suffix[i];
     }
     out_path[olen] = 0;
     *path_len_out = olen;
     return true;
+}
+
+fn bool build_bind_output_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name) {
+    return build_bind_module_path(out_path, path_len_out, proj_dir, proj_dir_len, dep_name, ".omni");
+}
+
+fn bool build_bind_raw_output_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name) {
+    return build_bind_module_path(out_path, path_len_out, proj_dir, proj_dir_len, dep_name, "_raw.omni");
 }

@@ -46,7 +46,8 @@ Omni without learning advanced semantics first.
   - truthy: everything else (`0`, `""`, empty collections, symbols, etc.)
 - Start with these value families:
   - scalars: int, double, string, symbol, nil
-  - functions: closures (`lambda`)
+- functions: closures (`lambda`)
+- function spelling: `lambda` is canonical; `λ` is accepted equivalently
   - collections: list, array, dict
 - Prefer generic collection operations (`length`, `ref`, `map`, `filter`,
   `foldl`) instead of type-specific naming.
@@ -213,8 +214,9 @@ Pitfall:
 Only `nil` and `false` are falsy. Everything else is truthy, including `0`,
 empty strings, and empty collections.
 
-`false` is a value-level alias of `nil` in Omni's current stable semantics.
-Use quoted `'false` if you need the literal symbol name as symbol data.
+`false` is a distinct boolean false value, while `nil` represents absence.
+Both are falsy. Use quoted `'false` if you need the literal symbol name as
+symbol data.
 
 ```lisp
 (if 0 'yes 'no)            ; => 'yes
@@ -309,7 +311,7 @@ null?
 |-------|-------------|
 | `_` | Wildcard (in patterns), NOT a symbol |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Parser token for leading-dot-bracket parsing; parser now handles dot-bracket index as dot-token + array-literal (`.[` is emitted as `.` `[` internally) |
+| `.[` | Parser token pattern used for postfix index parsing (`expr.[key]`) |
 | `.` | Dot for field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Array literals, bracket attributes, and patterns |
@@ -336,7 +338,7 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 
 | Type | Tag | Description | Example |
 |------|-----|-------------|---------|
-| nil | `NIL` | Empty/false value | `nil`, `()` |
+| nil | `NIL` | Empty / absence value | `nil`, `()` |
 | int | `INT` | 64-bit signed integer | `42`, `-17` |
 | double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
@@ -345,7 +347,7 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | closure | `CLOSURE` | User-defined function with environment | `(lambda (x) x)` |
 | continuation | `CONTINUATION` | Captured delimited continuation | via `capture` |
 | primitive | `PRIMITIVE` | Built-in function | `+`, `car` |
-| partial | `PARTIAL_PRIM` | Partially applied primitive | `(+ 3)` |
+| partial | `PARTIAL_PRIM` | Explicit partially applied primitive | `(partial + 3)` |
 | error | `ERROR` | Error value | `(error "oops")` |
 | Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
 | Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
@@ -369,8 +371,8 @@ Normative predicate contract:
 
 | Predicate input | Example | Truthiness | Notes |
 |---|---|---|---|
-| `nil` | `nil` | falsy | Absence/false value |
-| `false` | `false` | falsy | Value-level alias of `nil` |
+| `nil` | `nil` | falsy | Absence value |
+| `false` | `false` | falsy | Boolean false |
 | `Void` | `#<void>` | truthy | Command/effect completion token |
 | numbers | `0`, `-1`, `3.14` | truthy | Zero is still truthy |
 | strings | `""`, `"omni"` | truthy | Empty string is truthy |
@@ -708,7 +710,7 @@ Canonical naming direction:
 
 - prefer descriptive language-facing type symbols and constructors over abbreviations,
 - `Integer`, `Boolean`, and `Dictionary` are the canonical builtin names,
-- `Dict` is the allowed shorthand alias for `Dictionary`.
+- `Dict` is the allowed shorthand constructor alias for `Dictionary`.
 - alternate-spelling policy is input-tolerant but output-canonical:
   - alternate spellings are accepted in constructor/type-annotation input position,
   - docs/examples and introspection outputs use canonical names (`Integer`,
@@ -717,6 +719,7 @@ Canonical naming direction:
     even when invocation used an alternate spelling.
 - collection/time constructor policy:
   - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
+  - allowed constructor shorthand: `Dict` for `Dictionary`
   - retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
 
 ### 4.1 Struct Types
@@ -805,7 +808,7 @@ Printing/introspection contract:
   `#<type Integer>`, `#<type Dictionary>`, etc.
 - Abstract/meta type descriptors for `Any`, `Number`, and `Collection` follow
   the same canonical `#<type Name>` rendering.
-- constructor aliases (`Dictionary`) normalize to canonical type
+- constructor aliases (`Dict` -> `Dictionary`) normalize to canonical type
   identity in introspection (`type-of`, descriptor rendering).
 - Ordinary callable primitives keep primitive rendering (`#<primitive +>`).
 
@@ -950,63 +953,7 @@ Example:
 
 ## 6. Path and Index Notation
 
-### 6.1 Leading-Dot Accessor Shorthand
-
-Leading dot is its own syntax family. It is distinct from path syntax and from
-postfix index syntax.
-
-Normative rule:
-- leading `.` consumes the next full expression as the lookup key expression
-- the form lowers to a single-argument accessor lambda
-- canonical spelling omits whitespace after the leading `.`
-
-Equivalent lowering:
-
-```lisp
-.expr    ; equivalent to (lambda (x) (ref x expr))
-```
-
-Examples:
-
-```lisp
-.name                ; key expression 'name
-.1                   ; key expression 1
-.-1                  ; key expression -1
-.'key                ; key expression 'key
-```
-
-Applied examples:
-
-```lisp
-.1 '(10 20 30)                   ; => 20
-.name {'name 91}                 ; => 91
-.'key {'key 92}                  ; => 92
-.["name"] {["name"] 93}          ; => 93
-
-(define arr [0 1 2])
-(.2 arr)                         ; => 2
-
-(.2 {2 "int-key"})               ; => "int-key"
-(."2" {"2" "string-key"})        ; => "string-key"
-(.[2] {[2] "array-key"})         ; => "array-key"
-
-((lambda (x) (ref x 2)) {2 "int-key"})        ; => "int-key"
-((lambda (x) (ref x "2")) {"2" "string-key"}) ; => "string-key"
-((lambda (x) (ref x [2])) {[2] "array-key"})  ; => "array-key"
-```
-
-Shorthand notes:
-- `.name` is shorthand for symbol key expression `'name`
-- `."name"` is shorthand for string key expression `"name"`
-- `.'key` is shorthand for quoted-symbol key expression `'key`
-- `.1` / `.-1` are shorthand numeric key expressions `1` and `-1`
-- when `.` is followed by any other expression, that full expression is the key
-- leading-dot accessors are first-class values, so `(map .3 rows)` is valid
-- `(.3)` and wrapped forms like `((.3) coll)` are invalid; use `(.3 coll)` for direct application
-
-### 6.2 Postfix Index Syntax
-
-Postfix index syntax is separate from leading-dot accessor shorthand.
+### 6.1 Postfix Index Syntax
 
 ```lisp
 list.[0]            ; first element
@@ -1018,21 +965,36 @@ dict.['key]         ; dict key lookup
 
 `expr.[key]` means lookup/index on `expr`. It is not leading-dot syntax.
 
-### 6.3 Path Notation (Field Access)
+### 6.2 Path Notation (Field Access)
 
 ```lisp
-point.x             ; struct field access
-config.port         ; dictionary symbol-key access
-line.start.y        ; nested field access (up to 8 segments)
+point.x              ; struct field access
+config.port          ; dictionary symbol-key access
+line.start.y         ; nested field access (up to 8 segments)
 pair.car             ; cons cell car access
 pair.cdr             ; cons cell cdr access
 ```
 
-Path notation is non-leading dotted syntax. It is distinct from leading-dot
-accessor shorthand and from postfix index syntax.
+Path notation is a distinct field/path operation for symbol-key and field
+lookup. It shares lookup intent with `ref`, but it is not a full desugar to
+`ref`.
 
 Path notation resolves segments on instances, modules, and dictionaries with
 symbol keys. Cons cells only support `.car` and `.cdr` as special field names.
+
+Removed accessor forms that must hard-error:
+
+```lisp
+.name
+.1
+.'key
+.[expr]
+('name dict)
+```
+
+Use `(ref coll key)` for dynamic collection lookup, `expr.name` for path-step
+access, and `expr.[key]` for postfix dynamic/index access. For higher-order
+code, write the lambda explicitly: `(lambda (x) (ref x 'name))`.
 
 ---
 
@@ -1048,7 +1010,7 @@ symbol keys. Cons cells only support `.car` and `.cdr` as special field names.
 | `/` | 2 | Integer/float division |
 | `%` | 2 | Modulo |
 
-Binary primitives partially apply when given one argument: `(+ 3)` returns a `PARTIAL_PRIM` that adds 3. This is built-in for binary primitives only — user-defined lambdas have strict arity (see `_` / `_n` placeholders, `|>` pipe, or `partial` for general partial application).
+Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` is an arity error outside rewrite contexts such as `|>`. Use `_` / `_n` placeholders, `|>` pipe, or `partial` for partial application.
 
 ### 7.2 Comparison (5)
 
@@ -1287,6 +1249,14 @@ Numeric conversion policy:
 - Uses libffi via C wrapper for portable ABI support
 - Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
 - Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
+- Argument conversion is fail-closed:
+  - `^Integer`: Omni `Integer` only
+  - `^Double`: Omni `Double` or `Integer`
+  - `^Boolean`: Omni `true` / `false` only
+  - `^String`: Omni `String`, or `nil` for a null `char*`
+  - `^Pointer`: Omni `Integer` raw address, live `FFI_HANDLE`, or `nil` for null
+- Declarative `variadic` bindings are currently rejected at definition time until the runtime carries explicit fixed/variadic metadata
+- Execution mode contract: declarative FFI is interpreter/JIT-only in the current shipped backend surface; AOT currently rejects declarative `ffi` forms
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 
@@ -1295,7 +1265,7 @@ Numeric conversion policy:
 | Name | Value |
 |------|-------|
 | `true` | Symbol `true` |
-| `false` | Alias of `nil` |
+| `false` | Boolean false |
 | `pi` | 3.141592653589793 |
 | `e` | 2.718281828459045 |
 
@@ -1401,7 +1371,7 @@ Higher-order functions and utilities defined in Omni:
 | `remove` | `(pred lst)` | Remove matching elements |
 | `find` | `(pred lst)` | First matching element |
 
-Stdlib functions take multiple parameters with strict arity. For partial application: binary primitives auto-partial `(map (+ 1) '(1 2 3))`, `_` placeholder creates lambdas `(map (+ 1 _) '(1 2 3))`, `_n` placeholders support reuse/reordering (`((- _2 _1) 3 10)`), or use `partial` from stdlib.
+Stdlib functions take multiple parameters with strict arity. For partial application, `_` placeholders create lambdas `(map (+ 1 _) '(1 2 3))`, `_n` placeholders support reuse/reordering (`((- _2 _1) 3 10)`), `|>` rewrites pipeline steps by appending the piped value, and `partial` provides runtime partial application.
 
 Compatibility note: `_n` placeholder desugaring is only active in call-argument position. Outside call arguments `_n` remains a normal symbol; however, existing call-argument bindings named like `_2` will now be interpreted as indexed placeholders.
 
@@ -1870,7 +1840,7 @@ omni --bind myproject/                                      # Generate FFI bindi
 ```
 
 - `--init` creates `omni.toml`, `src/main.omni`, `lib/ffi/`, `include/`, `build/` (with generated `project.json`) and now rolls back the fresh project root if a later scaffold write fails or a subpath collides with a non-directory
-- `--bind` reads `omni.toml`, parses C headers via libclang, writes typed FFI modules to `lib/ffi/`
+- `--bind` reads `omni.toml`, parses C headers via libclang, writes regenerated raw FFI modules plus facade stubs to `lib/ffi/`
 - libclang is an optional runtime dependency (only needed for `--bind`)
 
 See `docs/PROJECT_TOOLING.md` for the complete reference including `omni.toml` format, build configuration, type mapping, and workflow examples.
@@ -1925,7 +1895,7 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | Lambda params | Dynamic (no fixed limit) |
 | String literal (inline) | 63 bytes (lexer limit) |
 | Macros | 64 |
-| Macro clauses | 8 |
+| Macro transformer branches | Dynamic (inside `syntax-match`) |
 | Modules | 32 |
 | Module exports | 128 |
 | Eval depth | 5000 |
@@ -1949,9 +1919,11 @@ symbol_char = letter | digit | "_" | "-" | "+" | "*" | "/"
 | dispatch | Y | Y | Y† |
 | macros | Y | Y** | Y** |
 | modules | Y | Y | Y |
+| declarative FFI (`[ffi lib]` / `[ffi λ]`) | Y | Y | N‡ |
 
 † Compiler parity for type definitions and dispatch is validated. Generated calls go through `aot::invoke`/`aot::apply_multi` (non-AOT callables route to `jit_apply*`), while type-definition and typed-define registration lower through explicit structured AOT helpers. AOT closure wrappers are classified semantically as `Closure` for runtime introspection parity, and compiled module/import/export surfaces are intentionally static (inline module bodies, `import`/`export-from` no-op `Void` lowering).
 **Y** = macro expansion at parse time
+‡ Compiler tests currently assert declarative FFI forms are rejected in AOT mode.
 
 ---
 

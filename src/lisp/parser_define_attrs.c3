@@ -37,11 +37,8 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     if (!self.parse_macro_syntax_match_body(&clauses)) return null;
 
     if (clauses.len() > 0) {
-        e.define_macro.clauses = (MacroClause*)ast_arena_alloc(&self.interp.ast_arena, MacroClause.sizeof * clauses.len());
-        if (e.define_macro.clauses == null) {
-            self.set_error("out of memory while parsing macro clauses");
-            return null;
-        }
+        e.define_macro.clauses = (MacroClause*)self.alloc_ast_bytes(MacroClause.sizeof * clauses.len(), "out of memory while parsing macro clauses");
+        if (e.define_macro.clauses == null) return null;
         for (usz i = 0; i < clauses.len(); i++) e.define_macro.clauses[i] = clauses[i];
         e.define_macro.clause_count = clauses.len();
     }
@@ -61,7 +58,8 @@ fn Expr* Parser.parse_define_schema_attr(Parser* self, Expr* e) {
 
     e.tag = E_DEFINE;
     e.define.name = name;
-    Expr* quote_expr = self.interp.alloc_expr();
+    Expr* quote_expr = self.alloc_expr();
+    if (quote_expr == null) return null;
     quote_expr.tag = E_QUOTE;
     quote_expr.quote.datum = body;
     e.define.value = quote_expr;

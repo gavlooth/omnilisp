@@ -1,5 +1,9 @@
 module lisp;
 
+fn void emit_restore_interp_reg(void* s) @inline {
+    _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V0, (long)JIT_FP, (long)g_jit_interp_stack_offset);
+}
+
 /**
  * Emit a call to fn(interp), result in R0.
  * The function takes one Interp* argument.
@@ -9,6 +13,7 @@ fn void emit_call_1(void* s, void* fn_ptr) {
     _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);  // arg0 = interp
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, reg1) -> R0
@@ -18,6 +23,7 @@ fn void emit_call_2(void* s, void* fn_ptr, int reg0, int reg1) {
     _jit_pushargr(s, reg1, CODE_PUSHARGR_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, imm1) -> R0
@@ -27,6 +33,7 @@ fn void emit_call_2i(void* s, void* fn_ptr, int reg0, long imm1) {
     _jit_pushargi(s, imm1, CODE_PUSHARGI_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, reg1, reg2) -> R0
@@ -37,6 +44,7 @@ fn void emit_call_3(void* s, void* fn_ptr, int reg0, int reg1, int reg2) {
     _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, imm1, reg2) -> R0
@@ -47,6 +55,7 @@ fn void emit_call_3i(void* s, void* fn_ptr, int reg0, long imm1, int reg2) {
     _jit_pushargr(s, reg2, CODE_PUSHARGR_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, reg1, imm2, reg3) -> R0
@@ -58,6 +67,7 @@ fn void emit_call_4_rrir(void* s, void* fn_ptr, int reg0, int reg1, long imm2, i
     _jit_pushargr(s, reg3, CODE_PUSHARGR_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, imm1, reg2, reg3) -> R0
@@ -69,6 +79,7 @@ fn void emit_call_4_rirr(void* s, void* fn_ptr, int reg0, long imm1, int reg2, i
     _jit_pushargr(s, reg3, CODE_PUSHARGR_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /// Emit fn(reg0, reg1, reg2, imm3) -> R0
@@ -80,6 +91,7 @@ fn void emit_call_4_rrri(void* s, void* fn_ptr, int reg0, int reg1, int reg2, lo
     _jit_pushargi(s, imm3, CODE_PUSHARGI_L);
     _jit_finishi(s, fn_ptr);
     _jit_retval_l(s, JIT_R0);
+    emit_restore_interp_reg(s);
 }
 
 /**
@@ -96,6 +108,7 @@ fn void emit_load_env(void* s, int target_reg) {
     _jit_pushargr(s, JIT_V0, CODE_PUSHARGR_L);  // arg0 = interp
     _jit_finishi(s, (void*)&jit_get_env);
     _jit_retval_l(s, target_reg);
+    emit_restore_interp_reg(s);
 }
 
 fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
@@ -126,6 +139,7 @@ fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
             _jit_pushargr(s, JIT_R1, CODE_PUSHARGR_L);    // arg3 = value
             _jit_finishi(s, (void*)&jit_env_extend);
             _jit_retval_l(s, JIT_V2);  // V2 = updated env
+            emit_restore_interp_reg(s);
         }
     }
 

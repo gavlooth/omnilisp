@@ -240,6 +240,7 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
     defer libclang_destroy(&clang);
 
     char[512] header_path_buf;
+    char[512] raw_output_path_buf;
     char[512] output_path_buf;
     int pid = compiler_test_getpid();
     usz seq = g_compiler_bindgen_temp_seq++;
@@ -273,10 +274,30 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         *fail_out += fail;
         return;
     }
+    char[] raw_output_path;
+    if (try rendered = io::bprintf(
+        &raw_output_path_buf,
+        "/tmp/omni_bindgen_canonical_types-%d-%d_raw.omni",
+        pid,
+        (int)seq
+    )) {
+        raw_output_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types compose raw output path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
     char[] header_source =
-        "int omni_bindgen_int(int x);\n"
-        "void omni_bindgen_void_ptr(void* p);\n"
+        "int omni_bindgen_int(int count);\n"
+        "int omni_bindgen_const_string(const char* name);\n"
+        "char* omni_bindgen_buffer(char* buffer, int buffer_len);\n"
+        "void omni_bindgen_void_ptr(void* opaque_handle);\n"
+        "void omni_bindgen_callback(void (*callback)(int));\n"
+        "int omni_bindgen_unnamed(int);\n"
         "void* omni_bindgen_ret_ptr(void);\n"
+        "const char* omni_bindgen_ret_string(void);\n"
         "void omni_bindgen_void_ret(void);\n";
 
     if (!compiler_write_text_file(header_path, header_source)) {
@@ -288,6 +309,7 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
     }
     defer (void)io::file::delete((String)header_path);
     defer (void)io::file::delete((String)output_path);
+    defer (void)io::file::delete((String)raw_output_path);
 
     const usz MAX_FUNCS = 32;
     ParsedFunc* funcs = (ParsedFunc*)mem::malloc(ParsedFunc.sizeof * MAX_FUNCS);
@@ -312,7 +334,7 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
     }
 
     usz func_count = parse_header(&clang, header_path, funcs, MAX_FUNCS, null, 0, false);
-    bool parsed = func_count >= 4;
+    bool parsed = func_count >= 8;
     if (!parsed) {
         fail++;
         io::printn("[FAIL] Compiler: bindgen canonical types parse header");
@@ -321,31 +343,181 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         return;
     }
 
-    bool generated_ok = generate_ffi_module("bindgen-canonical", "bindgen", funcs, func_count, output_path);
+    bool generated_ok = generate_ffi_module_pair("bindgen-canonical", "bindgen", funcs, func_count, raw_output_path, output_path);
     if (!generated_ok) {
         fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types generate module");
+        io::printn("[FAIL] Compiler: bindgen canonical types generate raw/facade modules");
         *pass_out += pass;
         *fail_out += fail;
         return;
     }
 
-    if (try generated = io::file::load_temp((String)output_path)) {
-        bool has_integer = str_contains(generated, "(^Integer arg0)");
-        bool has_pointer = str_contains(generated, "(^Pointer arg0)");
+    bool raw_ok = false;
+    if (try generated = io::file::load_temp((String)raw_output_path)) {
+        bool has_raw_module = str_contains(generated, "(module ffi-bindgen-canonical-raw");
+        bool has_integer = str_contains(generated, "(^Integer count)");
+        bool has_const_string_param = str_contains(generated, "(^String name)");
+        bool has_buffer_pointer = str_contains(generated, "(^Pointer buffer)");
+        bool has_buffer_size_param = str_contains(generated, "(^Integer buffer_len)");
+        bool has_string_input = str_contains(generated, "param name c-type=const char * role=string-input ownership=borrowed nullability=unknown teardown=none");
+        bool has_string_buffer = str_contains(generated, "param buffer c-type=char * role=string-buffer ownership=borrowed nullability=unknown teardown=manual-review buffer-direction=inout size-param=buffer_len");
+        bool has_pointer = str_contains(generated, "(^Pointer opaque_handle)");
+        bool has_pointer_meta = str_contains(generated, "param opaque_handle c-type=void * role=opaque-pointer ownership=borrowed nullability=unknown teardown=none");
+        bool has_callback_meta = str_contains(generated, "param callback c-type=void (*)(int) role=callback ownership=borrowed nullability=unknown teardown=callback-unregister");
+        bool has_function_shape = str_contains(generated, "bindgen-meta-record: function c-symbol=omni_bindgen_buffer omni-name=omni-bindgen-buffer");
+        bool has_param_shape = str_contains(generated, "bindgen-meta-record: param name=buffer c-type=char * ffi-type='ptr omni-type=Pointer role=string-buffer ownership=borrowed nullability=unknown teardown=manual-review buffer-direction=inout size-param=buffer_len");
+        bool has_return_shape = str_contains(generated, "bindgen-meta-record: return c-type=const char * ffi-type='string omni-type=String role=string-return ownership=borrowed nullability=unknown teardown=manual-review");
+        bool has_fallback = str_contains(generated, "(define [ffi lambda _lib] (omni-bindgen-unnamed (^Integer arg0)) ^Integer)");
         bool has_void = str_contains(generated, ") ^Void)");
         bool has_ret_pointer = str_contains(generated, ") ^Pointer)");
-        bool ok = has_integer && has_pointer && has_void && has_ret_pointer;
-        if (ok) {
-            pass++;
-            compiler_print_pass("Compiler: bindgen canonical Integer/Pointer/Void annotations");
-        } else {
-            fail++;
-            io::printn("[FAIL] Compiler: bindgen canonical Integer/Pointer/Void annotations");
-        }
+        bool has_ret_string_meta = str_contains(generated, "return c-type=const char * role=string-return ownership=borrowed nullability=unknown teardown=manual-review");
+        raw_ok = has_raw_module && has_integer && has_const_string_param && has_buffer_pointer &&
+            has_buffer_size_param &&
+            has_string_input && has_string_buffer &&
+            has_pointer && has_pointer_meta && has_callback_meta && has_fallback &&
+            has_function_shape && has_param_shape && has_return_shape &&
+            has_void && has_ret_pointer && has_ret_string_meta;
+        compiler_test_finish_bool(
+            raw_ok,
+            "Compiler: bindgen raw module preserves canonical names and metadata annotations",
+            "[FAIL] Compiler: bindgen raw module preserves canonical names and metadata annotations",
+            &pass,
+            &fail
+        );
     } else {
         fail++;
-        io::printn("[FAIL] Compiler: bindgen canonical types load generated module");
+        io::printn("[FAIL] Compiler: bindgen canonical types load generated raw module");
+    }
+
+    if (try generated = io::file::load_temp((String)output_path)) {
+        bool has_facade_module = str_contains(generated, "(module ffi-bindgen-canonical (export");
+        bool imports_raw_file = str_contains(generated, "(import \"bindgen-canonical_raw.omni\")");
+        bool aliases_raw = str_contains(generated, "(import ffi-bindgen-canonical-raw (");
+        bool defines_wrapper = str_contains(generated, "(define omni-bindgen-int raw-omni-bindgen-int)");
+        bool defines_const_string_alias = str_contains(generated, "(define omni-bindgen-const-string raw-omni-bindgen-const-string)");
+        bool skips_const_string_wrapper = !str_contains(generated, "TODO(bindgen): review omni-bindgen-const-string");
+        bool has_buffer_size_validator = str_contains(generated, "(define (bindgen-validate-string-buffer-size buffer-size direction)");
+        bool has_buffer_helper = str_contains(generated, "(define (bindgen-prepare-string-buffer buffer buffer-size role ownership nullability teardown direction)");
+        bool has_buffer_manual_helper = str_contains(generated, "(define (bindgen-prepare-string-buffer-manual-review buffer buffer-size role ownership nullability teardown direction)");
+        bool has_buffer_nil_guard = str_contains(generated, "(if (nil? buffer)") &&
+            str_contains(generated, "(raise \"bindgen/string-buffer-nil\")");
+        bool has_buffer_unsupported_teardown_guard = str_contains(generated, "(raise \"bindgen/string-buffer-unsupported-teardown\")");
+        bool has_buffer_role_guard = str_contains(generated, "(raise \"bindgen/string-buffer-role-mismatch\")");
+        bool has_buffer_ownership_guard = str_contains(generated, "(raise \"bindgen/string-buffer-ownership-mismatch\")");
+        bool has_buffer_size_required_guard = str_contains(generated, "(raise \"bindgen/string-buffer-size-required\")");
+        bool has_buffer_size_type_guard = str_contains(generated, "(raise \"bindgen/string-buffer-size-type-mismatch\")");
+        bool has_buffer_size_positive_guard = str_contains(generated, "(raise \"bindgen/string-buffer-size-nonpositive\")");
+        bool has_buffer_direction_guard = str_contains(generated, "(raise \"bindgen/string-buffer-direction-mismatch\")");
+        bool has_callback_helper = str_contains(generated, "(define (bindgen-register-callback callback role ownership nullability teardown)");
+        bool has_callback_cleanup_helper = str_contains(generated, "(define (bindgen-unregister-callback callback-handle role ownership nullability teardown)");
+        bool has_callback_nil_guard = str_contains(generated, "(raise \"bindgen/callback-nil\")");
+        bool has_callback_role_guard = str_contains(generated, "(raise \"bindgen/callback-role-mismatch\")");
+        bool has_callback_ownership_guard = str_contains(generated, "(raise \"bindgen/callback-ownership-mismatch\")");
+        bool has_callback_unsupported_teardown_guard = str_contains(generated, "(raise \"bindgen/callback-unsupported-teardown\")");
+        bool registers_callback_via_uv_shim = str_contains(generated, "(__raw-uv-timer-callback-handle callback)");
+        bool unregisters_callback_via_uv_shim = str_contains(generated, "(__raw-uv-timer-callback-unhandle callback-handle)");
+        bool has_opaque_arg_helper = str_contains(generated, "(define (bindgen-wrap-opaque-arg handle role ownership nullability teardown)");
+        bool has_string_return_borrowed_helper = str_contains(generated, "(define (bindgen-wrap-string-return-borrowed text role ownership nullability teardown)");
+        bool has_string_return_unknown_helper = str_contains(generated, "(define (bindgen-wrap-string-return-unknown text role ownership nullability teardown)");
+        bool has_opaque_return_manual_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-manual-review handle role ownership nullability teardown)");
+        bool has_opaque_return_none_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-none handle role ownership nullability teardown)");
+        bool flags_buffer_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-buffer — string return ownership/nullability is not automatic; mutable char* buffer direction/size must be wrapped explicitly.");
+        bool flags_pointer_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-void-ptr — opaque pointer ownership/lifetime must be reviewed.");
+        bool flags_callback_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-callback — callback registration and teardown must be wrapped explicitly.");
+        bool wraps_buffer = str_contains(generated, "(define (omni-bindgen-buffer (^Pointer buffer) (^Integer buffer_len))");
+        bool wraps_pointer = str_contains(generated, "(define (omni-bindgen-void-ptr (^Pointer opaque_handle))");
+        bool wraps_callback = str_contains(generated, "(define (omni-bindgen-callback (^Pointer callback))");
+        bool wraps_string_return = str_contains(generated, "(define (omni-bindgen-ret-string)");
+        bool wraps_pointer_return = str_contains(generated, "(define (omni-bindgen-ret-ptr)");
+        bool wraps_buffer_result = str_contains(
+            generated,
+            "(let (buffer_input (bindgen-prepare-string-buffer buffer buffer_len \"string-buffer\" \"borrowed\" \"unknown\" \"manual-review\" \"inout\")"
+        ) && str_contains(
+            generated,
+            "result (raw-omni-bindgen-buffer buffer_input buffer_len)"
+        ) && str_contains(
+            generated,
+            "result_text result"
+        );
+        bool wraps_return_result = str_contains(generated, "(let (result (raw-omni-bindgen-ret-string)") &&
+            str_contains(generated, "result_text result");
+        bool wraps_pointer_result = str_contains(generated, "(let (result (raw-omni-bindgen-ret-ptr)") &&
+            str_contains(generated, "result_handle result");
+        bool binds_callback_handle = str_contains(generated, "(let (callback_handle (bindgen-register-callback callback \"callback\" \"borrowed\" \"unknown\" \"callback-unregister\"))\n");
+        bool binds_pointer_handle = str_contains(generated, "(let (opaque_handle_handle (bindgen-wrap-opaque-arg opaque_handle \"opaque-pointer\" \"borrowed\" \"unknown\" \"none\"))\n");
+        bool has_buffer_body_note = str_contains(generated, "REVIEW: mutable char* buffers need explicit allocation, size, and output semantics.");
+        bool has_callback_body_note = str_contains(generated, "REVIEW: confirm callback-handle registration/unregister policy matches the target subsystem contract.");
+        bool has_pointer_return_note = str_contains(generated, "REVIEW: wrap opaque returns in a handle/finalizer policy before exposing them broadly.");
+        bool forwards_callback = str_contains(generated, "(raw-omni-bindgen-callback callback_handle)");
+        bool wraps_borrowed_string_return_via_helper = str_contains(
+            generated,
+            "(bindgen-wrap-string-return-borrowed result_text \"string-return\" \"borrowed\" \"unknown\" \"manual-review\")"
+        );
+        bool wraps_unknown_string_return_via_helper = str_contains(
+            generated,
+            "(bindgen-wrap-string-return-unknown result_text \"string-return\" \"unknown\" \"unknown\" \"manual-review\")"
+        );
+        bool wraps_opaque_return_via_helper = str_contains(
+            generated,
+            "(bindgen-wrap-opaque-return-manual-review result_handle \"opaque-pointer\" \"unknown\" \"unknown\" \"manual-review\")"
+        );
+        bool routes_buffer_through_helper = str_contains(generated, "(bindgen-prepare-string-buffer buffer buffer_len \"string-buffer\" \"borrowed\" \"unknown\" \"manual-review\" \"inout\")");
+        bool routes_callback_through_helper = str_contains(generated, "(bindgen-register-callback callback \"callback\" \"borrowed\" \"unknown\" \"callback-unregister\")");
+        bool routes_opaque_through_helper = str_contains(generated, "(bindgen-wrap-opaque-arg opaque_handle \"opaque-pointer\" \"borrowed\" \"unknown\" \"none\")");
+        bool emits_callback_cleanup = str_contains(generated, "(bindgen-unregister-callback callback_handle \"callback\" \"borrowed\" \"unknown\" \"callback-unregister\")");
+        compiler_test_finish_bool(
+            has_facade_module && imports_raw_file && aliases_raw && defines_wrapper &&
+                defines_const_string_alias && skips_const_string_wrapper &&
+                has_buffer_size_validator &&
+                has_buffer_helper && has_buffer_manual_helper &&
+                has_buffer_nil_guard && has_buffer_unsupported_teardown_guard &&
+                has_buffer_role_guard && has_buffer_ownership_guard &&
+                has_buffer_size_required_guard && has_buffer_size_type_guard &&
+                has_buffer_size_positive_guard && has_buffer_direction_guard &&
+                has_callback_helper && has_callback_cleanup_helper && has_opaque_arg_helper &&
+                has_callback_nil_guard && has_callback_role_guard &&
+                has_callback_ownership_guard && has_callback_unsupported_teardown_guard &&
+                registers_callback_via_uv_shim && unregisters_callback_via_uv_shim &&
+                has_string_return_borrowed_helper && has_string_return_unknown_helper &&
+                has_opaque_return_manual_helper && has_opaque_return_none_helper &&
+                flags_buffer_review && flags_pointer_review && flags_callback_review && wraps_buffer && wraps_pointer &&
+                wraps_callback && wraps_string_return && has_buffer_body_note &&
+                has_callback_body_note && forwards_callback &&
+                wraps_buffer_result && wraps_return_result &&
+                wraps_pointer_return && wraps_pointer_result && has_pointer_return_note &&
+                binds_callback_handle && binds_pointer_handle &&
+                routes_buffer_through_helper && routes_callback_through_helper && routes_opaque_through_helper &&
+                wraps_borrowed_string_return_via_helper &&
+                wraps_unknown_string_return_via_helper &&
+                wraps_opaque_return_via_helper &&
+                emits_callback_cleanup,
+            "Compiler: bindgen facade module imports raw, scaffolds wrappers, and flags manual review",
+            "[FAIL] Compiler: bindgen facade module imports raw, scaffolds wrappers, and flags manual review",
+            &pass,
+            &fail
+        );
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen canonical types load generated facade module");
+    }
+
+    if (!compiler_write_text_file(output_path, ";; user facade\n")) {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen facade preservation write sentinel");
+    } else {
+        bool preserved = generate_ffi_module_pair("bindgen-canonical", "bindgen", funcs, func_count, raw_output_path, output_path);
+        if (try generated = io::file::load_temp((String)output_path)) {
+            compiler_test_finish_bool(
+                preserved && str_contains(generated, ";; user facade"),
+                "Compiler: bindgen preserves existing facade file",
+                "[FAIL] Compiler: bindgen preserves existing facade file",
+                &pass,
+                &fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: bindgen preserve existing facade load");
+        }
     }
 
     *pass_out += pass;
@@ -546,6 +718,7 @@ fn void run_compiler_group_bindgen_overflow_guard_tests(Interp* _interp, usz* pa
     }
 
     char[512] output_path_buf;
+    char[512] raw_output_path_buf;
     int pid = compiler_test_getpid();
     usz seq = g_compiler_bindgen_temp_seq++;
     char[] output_path;
@@ -563,11 +736,31 @@ fn void run_compiler_group_bindgen_overflow_guard_tests(Interp* _interp, usz* pa
         *fail_out += fail;
         return;
     }
+    char[] raw_output_path;
+    if (try rendered = io::bprintf(
+        &raw_output_path_buf,
+        "/tmp/omni_bindgen_overflow_guard-%d-%d_raw.omni",
+        pid,
+        (int)seq
+    )) {
+        raw_output_path = rendered;
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: bindgen overflow guard compose raw output path");
+        *pass_out += pass;
+        *fail_out += fail;
+        return;
+    }
     defer (void)io::file::delete((String)output_path);
+    defer (void)io::file::delete((String)raw_output_path);
 
-    bool generated_ok = generate_ffi_module("bindgen-overflow", "bindgen", funcs, OVERFLOW_FUNCS, output_path);
+    bool generated_ok = generate_ffi_module_pair("bindgen-overflow", "bindgen", funcs, OVERFLOW_FUNCS, raw_output_path, output_path);
     bool wrote_file = false;
     if (try file = io::file::open((String)output_path, "r")) {
+        wrote_file = true;
+        (void)file.close();
+    }
+    if (try file = io::file::open((String)raw_output_path, "r")) {
         wrote_file = true;
         (void)file.close();
     }

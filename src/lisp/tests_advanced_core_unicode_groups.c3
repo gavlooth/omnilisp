@@ -37,15 +37,15 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Symbol ctor from string", "(= (Symbol \"alpha\") 'alpha)", pass, fail);
     test_truthy(interp, "Symbol ctor identity", "(= (Symbol 'alpha) 'alpha)", pass, fail);
     test_truthy(interp, "Boolean ctor from truthy int", "(Boolean 0)", pass, fail);
-    test_nil(interp, "Boolean ctor from nil", "(Boolean nil)", pass, fail);
-    test_nil(interp, "Boolean ctor from false", "(Boolean false)", pass, fail);
-    test_nil(interp, "Boolean ctor from quoted false symbol", "(Boolean 'false)", pass, fail);
+    test_truthy(interp, "Boolean ctor from nil", "(= (Boolean nil) false)", pass, fail);
+    test_truthy(interp, "Boolean ctor from false", "(= (Boolean false) false)", pass, fail);
+    test_truthy(interp, "Boolean ctor from quoted false symbol", "(= (Boolean 'false) false)", pass, fail);
     test_truthy(interp, "Boolean shorthand ctor from truthy int", "(Boolean 0)", pass, fail);
     test_truthy(interp, "Boolean ctor type", "(= (type-of (Boolean 0)) 'Boolean)", pass, fail);
-    test_truthy(interp, "false collapses to nil", "(= false nil)", pass, fail);
-    test_truthy(interp, "type-of false is Nil", "(= (type-of false) 'Nil)", pass, fail);
+    test_nil(interp, "false distinct from nil", "(= false nil)", pass, fail);
+    test_truthy(interp, "type-of false is Boolean", "(= (type-of false) 'Boolean)", pass, fail);
     test_nil(interp, "Nil ctor from nil", "(Nil nil)", pass, fail);
-    test_nil(interp, "Nil ctor from false", "(Nil false)", pass, fail);
+    test_error_contains(interp, "Nil ctor rejects false", "(Nil false)", "Nil: expected nil", pass, fail);
     test_truthy(interp, "Void singleton type", "(= (type-of (Void)) 'Void)", pass, fail);
     test_truthy(interp, "Void singleton equality", "(= (Void) (Void))", pass, fail);
     test_truthy(interp, "Void singleton truthy", "(if (Void) true nil)", pass, fail);
@@ -58,7 +58,7 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_eq(interp, "Array ctor from list ref", "(ref (Array '(7 8 9)) 1)", 8, pass, fail);
     test_eq(interp, "Array ctor from iterator ref", "(ref (Array (Iterator [7 8 9])) 1)", 8, pass, fail);
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
-    test_eq(interp, "Dictionary shorthand ctor", "(ref (Dictionary 'a 1 'b 2) 'b)", 2, pass, fail);
+    test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
     test_eq(interp, "Set ctor dedup", "(set-size (Set 1 2 2 3))", 3, pass, fail);
     test_truthy(interp, "Iterator ctor from list type", "(= (type-of (Iterator '(1 2 3))) 'Iterator)", pass, fail);
@@ -94,8 +94,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
-        "Dictionary shorthand odd-arity payload code",
-        "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "Dict shorthand odd-arity payload code",
+        "(handle (Dict 'a) (raise msg (symbol->string (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
         "Nil ctor invalid payload code",

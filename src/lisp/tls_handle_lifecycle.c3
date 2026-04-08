@@ -77,7 +77,12 @@ fn void tls_unmark_in_flight(TlsHandle* th) @inline {
 
 fn Value* tls_raise_handle_busy(Interp* interp, char[] op_name) {
     char[112] ebuf;
-    char[] msg = io::bprintf(&ebuf, "%s: handle has operation in flight", (ZString)op_name)!!;
+    char[] msg;
+    if (try char[] formatted = io::bprintf(&ebuf, "%s: handle has operation in flight", (ZString)op_name)) {
+        msg = formatted;
+    } else {
+        msg = "tls handle has operation in flight";
+    }
     return tls_raise_async(interp, "io/tls-handle-busy", msg);
 }
 

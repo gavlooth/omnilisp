@@ -1,15 +1,5 @@
 module lisp;
 
-enum ParserRemovedHeadAliasKind {
-    PARSER_REMOVED_HEAD_ALIAS_NONE,
-    PARSER_REMOVED_HEAD_ALIAS_FN,
-    PARSER_REMOVED_HEAD_ALIAS_DO,
-    PARSER_REMOVED_HEAD_ALIAS_LETREC,
-    PARSER_REMOVED_HEAD_ALIAS_BEGIN,
-    PARSER_REMOVED_HEAD_ALIAS_RESET,
-    PARSER_REMOVED_HEAD_ALIAS_SHIFT,
-}
-
 fn bool parser_head_policy_text_is(char[] text, char[] expected) @inline {
     if (text.len != expected.len) return false;
     for (usz i = 0; i < expected.len; i++) {
@@ -83,14 +73,4 @@ fn bool parser_head_policy_prefers_binding_context_alignment(char[] text, usz op
         || parser_head_policy_text_is(text[head_start:head_end - head_start], "match")
         || parser_head_policy_text_is(text[head_start:head_end - head_start], "syntax-match")
         || parser_head_policy_text_is(text[head_start:head_end - head_start], "template");
-}
-
-fn ParserRemovedHeadAliasKind parser_head_policy_removed_alias_kind(char[] text) {
-    if (parser_head_policy_text_is(text, "fn")) return PARSER_REMOVED_HEAD_ALIAS_FN;
-    if (parser_head_policy_text_is(text, "do")) return PARSER_REMOVED_HEAD_ALIAS_DO;
-    if (parser_head_policy_text_is(text, "letrec")) return PARSER_REMOVED_HEAD_ALIAS_LETREC;
-    if (parser_head_policy_text_is(text, "begin")) return PARSER_REMOVED_HEAD_ALIAS_BEGIN;
-    if (parser_head_policy_text_is(text, "reset")) return PARSER_REMOVED_HEAD_ALIAS_RESET;
-    if (parser_head_policy_text_is(text, "shift")) return PARSER_REMOVED_HEAD_ALIAS_SHIFT;
-    return PARSER_REMOVED_HEAD_ALIAS_NONE;
 }

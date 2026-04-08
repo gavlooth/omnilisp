@@ -58,6 +58,7 @@ fn bool Parser.collect_let_bindings(Parser* self, List{SymbolId}* names, List{Pa
 fn Expr* Parser.parse_let(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'let' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'let'
 
     bool is_recursive = self.consume_let_rec_annotation();

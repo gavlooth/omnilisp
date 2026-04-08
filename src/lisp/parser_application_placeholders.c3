@@ -76,14 +76,17 @@ fn void Parser.replace_indexed_placeholders(Parser* self, Expr* call, SymbolId* 
 // (f _ b _) => (lambda (__p1 __p2) (f __p1 b __p2))
 // This lets the result be passed directly to map/filter/foldl without extra wrapping.
 fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId* param_syms, usz param_count, usz line, usz col) {
-    Expr* lam = self.interp.alloc_expr();
+    Expr* lam = self.alloc_expr();
+    if (lam == null) return null;
     lam.tag = E_LAMBDA;
-    lam.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
+    lam.lambda = (ExprLambda*)self.alloc_ast_bytes(ExprLambda.sizeof, "out of memory while allocating placeholder lambda");
+    if (lam.lambda == null) return null;
     lam.loc_line = line;
     lam.loc_column = col;
     lam.lambda.param = param_syms[0];
     lam.lambda.param_count = param_count;
-    lam.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
+    lam.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating placeholder lambda parameters");
+    if (lam.lambda.params == null && param_count > 0) return null;
     for (usz i = 0; i < param_count; i++) {
         lam.lambda.params[i] = param_syms[i];
     }
@@ -92,6 +95,5 @@ fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId
     lam.lambda.rest_param = 0;
     lam.lambda.has_typed_params = false;
     lam.lambda.body = body;
-    lam.lambda.is_accessor_shorthand = false;
     return lam;
 }

@@ -30,6 +30,7 @@ fn bool Parser.parse_effect_tag_ref(
 fn Expr* Parser.parse_reset(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'checkpoint' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'checkpoint'
 
     Expr* body = self.parse_expr();
@@ -44,6 +45,7 @@ fn Expr* Parser.parse_reset(Parser* self) {
 fn Expr* Parser.parse_shift(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'capture' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'capture'
 
     if (self.lexer.current.type != T_SYMBOL) { self.set_error("expected continuation name"); return null; }
@@ -63,6 +65,7 @@ fn Expr* Parser.parse_shift(Parser* self) {
 fn Expr* Parser.parse_perform(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'perform' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'perform'
 
     SymbolId etag = (SymbolId)0;
@@ -85,6 +88,7 @@ fn Expr* Parser.parse_perform(Parser* self) {
 fn Expr* Parser.parse_resolve(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();  // consume 'resolve'
 
     Expr* val = self.parse_expr();
@@ -100,6 +104,7 @@ fn Expr* Parser.parse_resolve(Parser* self) {
 fn Expr* Parser.parse_with_continuation(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();  // consume 'with-continuation'
 
     if (!self.in_handle_clause) {
@@ -118,7 +123,8 @@ fn Expr* Parser.parse_with_continuation(Parser* self) {
     // Desugar to canonical Omni let syntax: (let (k __k) body)
     e.tag = E_LET;
     e.let_expr.name = k_name;
-    Expr* var_ref = self.interp.alloc_expr();
+    Expr* var_ref = self.alloc_expr();
+    if (var_ref == null) return null;
     var_ref.tag = E_VAR;
     var_ref.var_expr.name = self.interp.sym__k;
     e.let_expr.init = var_ref;

@@ -11,6 +11,7 @@ enum {
     OMNI_FFI_DOUBLE = 2,
     OMNI_FFI_PTR    = 3,  // pointer (includes String, Ptr)
     OMNI_FFI_BOOL   = 4,
+    OMNI_FFI_STRING = 5,
 };
 
 static ffi_type* omni_to_ffi_type(int t) {
@@ -20,6 +21,7 @@ static ffi_type* omni_to_ffi_type(int t) {
         case OMNI_FFI_DOUBLE: return &ffi_type_double;
         case OMNI_FFI_PTR:    return &ffi_type_pointer;
         case OMNI_FFI_BOOL:   return &ffi_type_sint64;
+        case OMNI_FFI_STRING: return &ffi_type_pointer;
         default:              return &ffi_type_pointer;
     }
 }

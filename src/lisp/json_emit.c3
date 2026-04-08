@@ -13,21 +13,36 @@ fn Value* json_emit_set_allocated_value(
         return null;
     }
     char[128] ebuf;
-    char[] msg = io::bprintf(&ebuf, "json-emit: failed to allocate %s", (ZString)what)!!;
+    char[] msg;
+    if (try char[] formatted = io::bprintf(&ebuf, "json-emit: failed to allocate %s", (ZString)what)) {
+        msg = formatted;
+    } else {
+        msg = "json-emit: allocation failed";
+    }
     return raise_error(interp, msg);
 }
 
 fn Value* json_emit_raise_unsupported_value_type(Value* val, Interp* interp) {
     char[128] ebuf;
     char[] type_name = interp.symbols.get_name(value_type_name(val, interp));
-    char[] msg = io::bprintf(&ebuf, "json-emit: unsupported value type '%s'", (ZString)type_name)!!;
+    char[] msg;
+    if (try char[] formatted = io::bprintf(&ebuf, "json-emit: unsupported value type '%s'", (ZString)type_name)) {
+        msg = formatted;
+    } else {
+        msg = "json-emit: unsupported value type";
+    }
     return raise_error(interp, msg);
 }
 
 fn Value* json_emit_raise_unsupported_dict_key_type(Value* key_v, Interp* interp) {
     char[128] ebuf;
     char[] type_name = interp.symbols.get_name(value_type_name(key_v, interp));
-    char[] msg = io::bprintf(&ebuf, "json-emit: unsupported dictionary key type '%s'", (ZString)type_name)!!;
+    char[] msg;
+    if (try char[] formatted = io::bprintf(&ebuf, "json-emit: unsupported dictionary key type '%s'", (ZString)type_name)) {
+        msg = formatted;
+    } else {
+        msg = "json-emit: unsupported dictionary key type";
+    }
     return raise_error(interp, msg);
 }
 

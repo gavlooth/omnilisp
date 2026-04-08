@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 typedef void (*omni_uv_thread_entry_cb)(void* arg);
 

@@ -2,6 +2,7 @@ module lisp;
 
 fn Expr* Parser.parse_int_literal_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     long val = self.lexer.current.int_value;
     self.lexer.advance();
 
@@ -14,6 +15,7 @@ fn Expr* Parser.parse_int_literal_expr(Parser* self) {
 
 fn Expr* Parser.parse_float_literal_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     double dval = self.lexer.current.double_value;
     self.lexer.advance();
 
@@ -26,6 +28,7 @@ fn Expr* Parser.parse_float_literal_expr(Parser* self) {
 
 fn Expr* Parser.parse_string_literal_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     e.tag = E_LIT;
     e.lit.value = self.interp.alloc_value_root();
     e.lit.value.tag = STRING;
@@ -44,10 +47,11 @@ fn Expr* Parser.parse_string_literal_expr(Parser* self) {
 
 fn Expr* Parser.parse_symbol_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     char[] tok = self.lexer.current.text[:self.lexer.current.text_len];
     if (tok.len > 0 && tok[0] == '.') {
-        Expr* acc = self.parse_dot_accessor_shorthand(tok, e.loc_line, e.loc_column);
-        if (acc != null || self.has_error) return acc;
+        self.set_error("leading-dot accessors were removed; use ref or access syntax like expr.[key]");
+        return null;
     }
 
     SymbolId sym = self.get_current_symbol();
@@ -59,6 +63,7 @@ fn Expr* Parser.parse_symbol_expr(Parser* self) {
 
 fn Expr* Parser.parse_placeholder_expr(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_VAR;
     e.var_expr.name = self.interp.sym_placeholder;

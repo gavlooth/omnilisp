@@ -1,0 +1,93 @@
+module lisp;
+
+import std::io;
+import main;
+
+bool g_boundary_force_destination_error_escape_alloc_fail = false;
+
+fn Value* boundary_fallback_disallowed_error(Interp* interp, BoundaryCommitFault fault_code) @noinline {
+    char[192] msg_buf;
+    if (try msg = io::bprintf(
+        &msg_buf,
+        "boundary: traversal fallback disallowed for commit path (%s)",
+        (ZString)boundary_commit_fault_name(fault_code)
+    )) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "boundary: traversal fallback disallowed for commit path");
+}
+
+fn Value* boundary_destination_promote_routed_escape(
+    Value* routed,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    PromotionContext* ctx = null
+) @inline {
+    if (routed == null) return null;
+    if (ctx != null && ctx.aborted) return routed;
+    if (routed.scope_gen == target_scope.escape_generation) return routed;
+    return boundary_promote_to_escape(routed, interp);
+}
+
+fn bool boundary_destination_iterator_inner_needs_detach(
+    Value* inner,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (inner == null || target_scope == null) return false;
+    if (boundary_ptr_in_scope((void*)inner, target_scope) &&
+        inner.scope_gen == target_scope.generation) {
+        return true;
+    }
+    if (inner.tag == CLOSURE &&
+        boundary_closure_payload_in_scope(inner, target_scope)) {
+        return true;
+    }
+    return false;
+}
+
+fn Value* boundary_destination_detach_iterator_inner(
+    Value* inner,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    PromotionContext* ctx = null
+) {
+    if (!boundary_destination_iterator_inner_needs_detach(inner, target_scope)) {
+        return inner;
+    }
+
+    main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
+    interp.releasing_scope = target_scope;
+    defer interp.releasing_scope = saved_releasing_scope;
+    (void)ctx;
+    return boundary_copy_to_parent_site_ctx(inner, interp, COPY_SITE_GENERIC, null);
+}
+
+fn main::ScopeRegion* boundary_destination_build_scope_begin(
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope
+) @inline {
+    main::ScopeRegion* build_scope = main::scope_create(target_scope);
+    if (build_scope == null) return null;
+    interp.current_scope = build_scope;
+    interp.releasing_scope = releasing_scope;
+    return build_scope;
+}
+
+fn void boundary_destination_build_scope_abort(main::ScopeRegion** build_scope_io) @inline {
+    if (build_scope_io == null) return;
+    if (*build_scope_io == null) return;
+    main::scope_release(*build_scope_io);
+    *build_scope_io = null;
+}
+
+fn void boundary_destination_build_scope_commit(
+    main::ScopeRegion** build_scope_io,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (build_scope_io == null) return;
+    main::ScopeRegion* build_scope = *build_scope_io;
+    if (build_scope == null || target_scope == null) return;
+    main::scope_splice_escapes(target_scope, build_scope);
+    *build_scope_io = null;
+}

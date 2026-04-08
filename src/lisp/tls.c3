@@ -78,6 +78,9 @@ fn char[] tls_engine_error_text(void* client_ctx) {
 fn char[] tls_message_with_cause(char[256]* buf, char[] base) {
     char[] cause = tls_last_error_text();
     if (cause.len == 0) return base;
-    return io::bprintf(buf, "%s: %s", (ZString)base, (ZString)cause)!!;
+    if (try char[] msg = io::bprintf(buf, "%s: %s", (ZString)base, (ZString)cause)) {
+        return msg;
+    }
+    return base;
 }
 

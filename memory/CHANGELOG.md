@@ -1,3 +1,41 @@
+## 2026-04-08
+
+- Closed arm64 language-level continuation multi-shot parity (`STACK-AARCH64-CONT-001`) after backend landing:
+  - corrected arm64 GNU lightning register ID mapping in
+    `src/lisp/jit_lightning_constants.c3` for `JIT_R*`, `JIT_V*`, and `JIT_FP`.
+  - updated effect fast-path primitive dispatch in:
+    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+    - `src/lisp/jit_jit_runtime_effects_signal.c3`
+  - fast-path changes now:
+    - preserve primitive error payloads (domain/code/message) instead of
+      rewriting them to generic runtime codes,
+    - expand dotted cons payloads used by stdlib fixed-arity wrappers (for
+      example `(cons host port)`) into positional primitive arguments.
+  - verification evidence:
+    - `c3c build`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite stack` ->
+      `Stack engine: 23 passed, 0 failed`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (resolve 10)))"` -> `11`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(handle (+ 1 (signal ask 0)) (ask x (with-continuation k (k 41))))"` -> `42`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(checkpoint (+ 1 (capture k (k 10))))"` -> `11`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-effect-continuation OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` ->
+      `pass=56 fail=0`
+    - `OMNI_JIT_POLICY_FILTER=multishot-capture-scope-guard-clone OMNI_LISP_TEST_SLICE=jit-policy OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` ->
+      `pass=1 fail=0`
+
+## 2026-04-07
+
+- Hardened the automated Claude training loop so tmux-attached runs do not
+  drop the window immediately on exit:
+  - `scripts/claude-loop.sh` now installs an EXIT handler that pauses before
+    shell termination when the loop is running inside tmux and stdout is a
+    terminal.
+  - The pause is opt-out via `CLAUDE_LOOP_KEEP_WINDOW=0`, so non-interactive
+    automation can still terminate without blocking.
+  - This keeps the training output visible after a long run or a failure
+    instead of closing the tmux window as soon as the foreground process
+    exits.
+
 ## 2026-04-01
 
 - Hardened AOT closure allocation paths to fail closed across compiler emission
@@ -9810,3 +9848,80 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `clone` emits `out` for `"Hello from demo!"`
       - then `session`
       - then `done`
+
+- 2026-04-08 (syntax cleanup slice 1: fail-closed accessor removal):
+  - removed leading-dot accessor shorthand from the active language surface:
+    - `.name`
+    - `.'key`
+    - `.1`
+    - `.[expr]`
+    - `. [expr]`
+  - removed quoted-symbol callable lookup from the active language surface:
+    - `('name dict)`
+  - kept access syntax centered on the existing canonical operations:
+    - path access for normal member/symbol-key lookup such as `person.name`
+    - postfix index access such as `expr.[key]`
+    - explicit `(ref coll key)` as the semantic lookup core
+  - compatibility posture:
+    - this cleanup is intentionally fail-closed,
+    - removed accessor surfaces now hard-error instead of remaining as legacy aliases.
+  - implementation notes:
+    - parser no longer treats leading-dot forms as implicit lookup lambdas,
+    - runtime no longer treats bare symbol values as callable lookup shorthands.
+  - validation:
+    - pending during active implementation
+
+- 2026-04-08 (syntax cleanup slice 2-3: primitive arity tightening and false/nil split):
+  - removed primitive auto-partial from ordinary one-argument primitive calls:
+    - bare calls like `(+ 3)` now raise arity errors,
+    - partial application remains available through `_`, `|>`, and `partial`,
+    - `PARTIAL_PRIM` remains a runtime value for explicit/internal partial payloads.
+  - split `false` from `nil` in the active language/runtime contract:
+    - `false` now binds to a distinct boolean symbol value,
+    - `nil` remains the absence value,
+    - both remain falsy in conditional positions.
+  - implementation notes:
+    - interpreter and JIT single-arg primitive apply paths now reject missing arguments instead of manufacturing partials,
+    - JSON false now materializes as Omni `false`,
+    - value-literal dispatch/pattern parsing no longer collapse `false` into `nil`,
+    - Boolean/Nil constructors now respect the separation (`Boolean nil => false`, `Nil false` rejects).
+  - validation:
+    - `c3c build` unavailable in current environment; static/source-only verification performed
+
+- 2026-04-08 (arm64 build lane repaired for current tree):
+  - fixed split-file/compiler regressions that were blocking `c3c build` before
+    the cleanup work could be verified:
+    - restored persisted relation metadata structs after the deduce split,
+    - corrected stale return/type mismatches and pointer-decay bugs in
+      deduce/boundary helper files,
+    - fixed allocator imports/usages for worker thread pool setup,
+    - removed a stale prototype-only declaration from the boundary commit split.
+  - rebuilt the static vendored dependency lane for arm64 in `deps/lib`:
+    - `libutf8proc.a`
+    - `libdeflate.a`
+    - `libyyjson.a`
+    - `libuv.a`
+    - `libbearssl.a`
+    - `liblmdb.a`
+  - repaired local build integration around helper/link artifacts:
+    - `project.json` now compiles `clib/mathutils.c` directly instead of
+      pretending `mathutils` is a prebuilt library,
+    - `project.json` restores the `omni_ftxui` archive link edge and embeds
+      `RUNPATH=$ORIGIN` so repo-local shared libraries in `build/` resolve at
+      runtime,
+    - `scripts/build_omni_chelpers.sh` now passes vendored include dirs so the
+      helper archives can be rebuilt from the repo tree on this host,
+    - local shared libraries for GNU Lightning and replxx were built and staged
+      into `build/`.
+  - arm64 stack-engine note:
+    - x86_64-only context switching no longer blocks the build on this host,
+      but the non-x86 path is intentionally fail-closed at runtime rather than
+      pretending continuations/coroutine stack switching work on arm64.
+  - validation:
+    - `bash deps/build_static.sh`
+    - `make -C deps/src/lmdb/libraries/liblmdb clean all`
+    - `bash scripts/build_omni_chelpers.sh`
+    - `~/.local/bin/c3c build`
+    - `readelf -d build/main`
+    - `ldd build/main`
+    - `./build/main --help`

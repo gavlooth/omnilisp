@@ -17,7 +17,7 @@
 | T_RBRACKET | `]` | Right bracket for array literals, patterns, attributes |
 | T_LBRACE | `{` | Left brace for dict literals, metadata dictionaries |
 | T_RBRACE | `}` | Right brace for dict literals, metadata dictionaries |
-| T_DOT_BRACKET | `.[` | Parser token used while parsing postfix index syntax `expr.[key]`. Leading-dot accessors are a separate `.` + expression surface. |
+| T_DOT_BRACKET | `.[` | Parser token pattern used while parsing postfix index syntax `expr.[key]`. |
 | T_QUOTE | `'` | Quote shorthand |
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
@@ -71,7 +71,7 @@
 | E_DEFUNION | `(define [union] ...)` | Union type definition |
 | E_DEFALIAS | `(define [alias] ...)` | Type alias definition |
 | E_INDEX | `arr.[i]` | Postfix indexing |
-| E_PATH | `a.b.c` | Dot-path field access |
+| E_PATH | `a.b.c` | Dot-path field access (distinct path-step semantics; not a full `ref` desugar) |
 
 ---
 
@@ -325,8 +325,12 @@ Leading-dot accessor shorthand:
 
 ```lisp
 .name             ;; lookup lambda using key expression 'name
+.3                ;; lookup lambda using key expression 3
 .'key             ;; lookup lambda using key expression 'key
 ```
+
+Any expression after leading `.` is the key expression, including bracketed
+forms like `.[expr]` or `. [expr]`.
 
 Postfix index syntax:
 
@@ -359,22 +363,9 @@ pair.cdr          ;; cons cell cdr access
 
 Lambdas have **strict arity** — `(lambda (x y) body)` requires exactly 2 arguments.
 
-There are three mechanisms for partial application:
+There are two explicit partial-application mechanisms plus pipeline sugar:
 
-### 7.1 Binary Primitive Partial Application (built-in)
-
-Binary primitives (`+`, `-`, `*`, `/`, `%`, `=`, `<`, `>`, `<=`, `>=`, `cons`) automatically
-return a `PARTIAL_PRIM` when given one argument instead of two:
-
-```lisp
-(+ 3)              ;; => PARTIAL_PRIM that adds 3
-((+ 3) 7)          ;; => 10
-(map (+ 1) '(1 2 3))  ;; => '(2 3 4)
-```
-
-This only works for binary primitives, not for user-defined functions or lambdas.
-
-### 7.2 `_` Placeholder (parser-level desugaring)
+### 7.1 `_` Placeholder (parser-level desugaring)
 
 The `_` token in a call expression creates a lambda at parse time. Works with any function:
 
@@ -401,7 +392,7 @@ Rules:
 - Invalid `_n` forms in call args (`_0`, `_-1`, `_1x`) are rejected.
 - `_n` is not globally reserved syntax; outside call arguments it remains a normal symbol.
 
-### 7.3 `|>` Pipe Operator (parser-level desugaring)
+### 7.2 `|>` Pipe Operator (parser-level desugaring)
 
 Left-fold that appends the piped value as the **last** argument:
 
@@ -410,7 +401,7 @@ Left-fold that appends the piped value as the **last** argument:
 (|> data (filter odd?) (map square))
 ```
 
-### 7.4 `partial` (stdlib function)
+### 7.3 `partial` (stdlib function)
 
 Runtime partial application — prepends initial args to a variadic lambda:
 

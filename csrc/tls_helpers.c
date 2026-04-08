@@ -4,7 +4,7 @@
  * - Trust store loading (PEM CA bundle -> BearSSL trust anchors)
  */
 
-#include <bearssl.h>
+#include "../deps/src/BearSSL/inc/bearssl.h"
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>

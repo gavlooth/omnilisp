@@ -107,7 +107,10 @@ fn EvalResult run_program(char[] source, Interp* interp) {
 
     List{Expr*} exprs;
     while (!lex.at_end() && !p.has_error) {
-        exprs.push(p.parse_expr());
+        Expr* expr = p.parse_expr();
+        if (expr != null && !p.has_error) {
+            exprs.push(expr);
+        }
     }
 
     if (p.has_error) {

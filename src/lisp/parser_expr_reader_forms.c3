@@ -5,6 +5,7 @@ module lisp;
  */
 fn Expr* Parser.parse_backtick_shorthand(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_QUASIQUOTE;
     e.quasiquote.body = self.parse_qq_template();
@@ -13,6 +14,7 @@ fn Expr* Parser.parse_backtick_shorthand(Parser* self) {
 
 fn Expr* Parser.parse_unquote_shorthand(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_UNQUOTE;
     e.unquote.body = self.parse_expr();
@@ -21,6 +23,7 @@ fn Expr* Parser.parse_unquote_shorthand(Parser* self) {
 
 fn Expr* Parser.parse_unquote_splicing_shorthand(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_UNQUOTE_SPLICING;
     e.unquote_splicing.body = self.parse_expr();
@@ -40,6 +43,7 @@ fn Expr* Parser.parse_form_comment_expr(Parser* self) {
 fn Expr* Parser.parse_regex_literal_expr(Parser* self) {
     char[] pat = self.lexer.current.text[:self.lexer.current.text_len];
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     e.tag = E_LIT;
     e.lit.value = make_string(self.interp, pat);
     self.lexer.advance();
@@ -48,6 +52,7 @@ fn Expr* Parser.parse_regex_literal_expr(Parser* self) {
 
 fn Expr* Parser.parse_quote_shorthand(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_QUOTE;
     e.quote.datum = self.parse_datum();

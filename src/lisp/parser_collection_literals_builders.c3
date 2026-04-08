@@ -10,9 +10,11 @@ import std::core::mem;
 fn Expr* Parser.parse_dict_literal(Parser* self) {
     Lexer* lex = self.lexer;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
 
     // Build E_CALL: func = E_VAR("Dictionary"), args = collected expressions
-    Expr* func = self.interp.alloc_expr();
+    Expr* func = self.alloc_expr();
+    if (func == null) return null;
     func.tag = E_VAR;
     func.var_expr.name = self.interp.symbols.intern("Dictionary");
 
@@ -24,10 +26,15 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
     }
 
     e.tag = E_CALL;
-    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
+    e.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating dictionary literal");
+    if (e.call == null) { args.free(); return null; }
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
+    e.call.args = null;
+    if (args.len() > 0) {
+        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * args.len(), "out of memory while allocating dictionary literal arguments");
+        if (e.call.args == null) { args.free(); return null; }
+    }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
 
@@ -47,9 +54,11 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
 fn Expr* Parser.parse_array_literal(Parser* self) {
     Lexer* lex = self.lexer;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
 
     // Build E_CALL: func = E_VAR("Array"), args = collected expressions
-    Expr* func = self.interp.alloc_expr();
+    Expr* func = self.alloc_expr();
+    if (func == null) return null;
     func.tag = E_VAR;
     func.var_expr.name = self.interp.symbols.intern("Array");
 
@@ -61,10 +70,15 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     }
 
     e.tag = E_CALL;
-    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
+    e.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating array literal");
+    if (e.call == null) { args.free(); return null; }
     e.call.func = func;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * args.len());
+    e.call.args = null;
+    if (args.len() > 0) {
+        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * args.len(), "out of memory while allocating array literal arguments");
+        if (e.call.args == null) { args.free(); return null; }
+    }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
 

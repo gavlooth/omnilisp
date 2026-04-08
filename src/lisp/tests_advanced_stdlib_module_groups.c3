@@ -36,7 +36,9 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     setup(interp, "(define hm5 (Dictionary))");
     test_eq(interp, "dict empty count", "(length hm5)", 0, pass, fail);
     test_truthy(interp, "dict? Dictionary", "(dict? (Dictionary 1 2))", pass, fail);
+    test_truthy(interp, "dict? Dict shorthand", "(dict? (Dict 1 2))", pass, fail);
     test_eq(interp, "Dictionary canonical constructor", "(ref (Dictionary 1 10 2 20) 1)", 10, pass, fail);
+    test_eq(interp, "Dict shorthand constructor", "(ref (Dict 1 10 2 20) 1)", 10, pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
     setup(interp, "(define hm-big (Dictionary))");
     setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (set! hm-big i (* i i)) (loop (+ i 1)))))");

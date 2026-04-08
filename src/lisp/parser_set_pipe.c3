@@ -9,6 +9,7 @@ import std::collections::list;
  */
 fn Expr* Parser.build_set_call_symbol(Parser* self, usz line, usz col) {
     Expr* fn_expr = self.alloc_expr_here();
+    if (fn_expr == null) return null;
     fn_expr.tag = E_VAR;
     fn_expr.loc_line = line;
     fn_expr.loc_column = col;
@@ -30,8 +31,10 @@ fn Expr* Parser.parse_generic_set_call(Parser* self, Expr* lhs, Expr* rhs, usz l
     self.expect(T_RPAREN, ")");
 
     Expr* set_fn = self.build_set_call_symbol(line, col);
+    if (set_fn == null) { args.free(); return null; }
     Expr* call_expr = self.build_call_expr(set_fn, &args, line, col);
     args.free();
+    if (call_expr == null || self.has_error) return null;
     return self.parse_postfix_index(call_expr);
 }
 
@@ -53,6 +56,7 @@ fn Expr* Parser.parse_set(Parser* self) {
 
     // Mutation special form surface: (set! name value) or (set! obj.field value)
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     e.loc_line = set_line;
     e.loc_column = set_col;
     e.tag = E_SET;

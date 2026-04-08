@@ -18,11 +18,13 @@ fn bool parse_explain_selector_symbol(Parser* self, Expr* selector_expr, SymbolI
 }
 
 fn Expr* make_explain_target_thunk(Parser* self, Expr* body) {
-    Expr* thunk = self.interp.alloc_expr();
+    Expr* thunk = self.alloc_expr();
+    if (thunk == null) return null;
     thunk.tag = E_LAMBDA;
     thunk.loc_line = body != null ? body.loc_line : 0;
     thunk.loc_column = body != null ? body.loc_column : 0;
-    thunk.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
+    thunk.lambda = (ExprLambda*)self.alloc_ast_bytes(ExprLambda.sizeof, "out of memory while allocating explain thunk");
+    if (thunk.lambda == null) return null;
     thunk.lambda.param = INVALID_SYMBOL_ID;
     thunk.lambda.params = null;
     thunk.lambda.param_count = 0;
@@ -31,13 +33,13 @@ fn Expr* make_explain_target_thunk(Parser* self, Expr* body) {
     thunk.lambda.body = body;
     thunk.lambda.param_annotations = null;
     thunk.lambda.has_typed_params = false;
-    thunk.lambda.is_accessor_shorthand = false;
     return thunk;
 }
 
 fn Expr* Parser.parse_explain(Parser* self) {
     if (self.has_error) return null;
     Expr* call_expr = self.alloc_expr_here();
+    if (call_expr == null) return null;
     self.lexer.advance();  // consume 'explain'
 
     Expr* selector_expr = self.parse_expr();
@@ -58,18 +60,22 @@ fn Expr* Parser.parse_explain(Parser* self) {
 
     // Keep explain target unevaluated by wrapping it in a nullary thunk.
     Expr* thunk_expr = make_explain_target_thunk(self, target_expr);
+    if (thunk_expr == null || self.has_error) return null;
 
-    Expr* explain_fn = self.interp.alloc_expr();
+    Expr* explain_fn = self.alloc_expr();
+    if (explain_fn == null) return null;
     explain_fn.tag = E_VAR;
     explain_fn.var_expr.name = self.interp.symbols.intern("explain");
     explain_fn.loc_line = call_expr.loc_line;
     explain_fn.loc_column = call_expr.loc_column;
 
     call_expr.tag = E_CALL;
-    call_expr.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
+    call_expr.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating explain call");
+    if (call_expr.call == null) return null;
     call_expr.call.func = explain_fn;
     call_expr.call.arg_count = 2;
-    call_expr.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * 2);
+    call_expr.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 2, "out of memory while allocating explain call args");
+    if (call_expr.call.args == null) return null;
     call_expr.call.args[0] = selector_expr;
     call_expr.call.args[1] = thunk_expr;
     return call_expr;

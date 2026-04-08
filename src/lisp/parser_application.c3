@@ -13,13 +13,10 @@ fn Expr* Parser.parse_application(Parser* self) {
         arg_list.free();
         return null;
     }
-    if (self.reject_nullary_accessor_shorthand_call(func, arg_list.len())) {
-        arg_list.free();
-        return null;
-    }
     self.lexer.advance();
     Expr* e = self.build_call_expr(func, &arg_list, app_line, app_col);
     arg_list.free();
+    if (e == null || self.has_error) return null;
 
     usz placeholder_count = 0;
     usz indexed_placeholder_max = 0;
@@ -49,6 +46,7 @@ fn Expr* Parser.parse_application(Parser* self) {
         self.replace_placeholders(e, &param_syms);
         Expr* body = self.wrap_with_placeholder_lambdas(e, &param_syms[0], param_syms.len(), app_line, app_col);
         param_syms.free();
+        if (body == null || self.has_error) return null;
         return self.parse_postfix_index(body);
     }
 
@@ -60,6 +58,7 @@ fn Expr* Parser.parse_application(Parser* self) {
         self.replace_indexed_placeholders(e, &param_syms[0], param_syms.len());
         Expr* body = self.wrap_with_placeholder_lambdas(e, &param_syms[0], param_syms.len(), app_line, app_col);
         param_syms.free();
+        if (body == null || self.has_error) return null;
         return self.parse_postfix_index(body);
     }
 

@@ -58,13 +58,19 @@ fn void? jit_compile_quote(void* s, Expr* expr, Interp* interp) {
 }
 
 fn void? jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
-    // Compile collection sub-expression → R0, save to V1
+    // Compile collection sub-expression → R0, spill to stack.
+    // We must not keep it only in V1 while compiling index, because helper
+    // calls emitted by index compilation (e.g. int literals) can clobber V1.
+    int collection_slot = _jit_allocai(s, 8);
     jit_compile_expr(s, expr.index.collection, interp, locals)!;
-    _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
+    _jit_new_node_www(s, CODE_STXI_L, (long)collection_slot, (long)JIT_FP, (long)JIT_R0);
 
     // Compile index sub-expression → R0, save to V2
     jit_compile_expr(s, expr.index.index, interp, locals)!;
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+
+    // Restore collection into V1, then call helper.
+    _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)collection_slot);
 
     // Call jit_do_index(interp=V0, collection=V1, index=V2)
     emit_call_3(s, (void*)&jit_do_index, JIT_V0, JIT_V1, JIT_V2);

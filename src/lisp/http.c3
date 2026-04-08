@@ -9,14 +9,18 @@ import main;
 // ============================================================
 fn Value* http_raise_fiber_required(Interp* interp, char[] op_name, char[] code) {
     char[96] ebuf;
-    char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)!!;
-    return io_raise(interp, code, msg);
+    if (try char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)) {
+        return io_raise(interp, code, msg);
+    }
+    return io_raise(interp, code, "http op: requires running fiber context");
 }
 
 fn Value* http_raise_loop_unavailable(Interp* interp, char[] op_name, char[] code) {
     char[96] ebuf;
-    char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)!!;
-    return io_raise(interp, code, msg);
+    if (try char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)) {
+        return io_raise(interp, code, msg);
+    }
+    return io_raise(interp, code, "http op: libuv loop unavailable");
 }
 
 // ============================================================

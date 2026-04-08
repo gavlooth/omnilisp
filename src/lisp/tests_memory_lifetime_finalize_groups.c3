@@ -435,6 +435,160 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
         }
     }
 
+    // Invariant: mutating a detached copied env frame routes through target-scope
+    // authority and never leaves raw source TEMP values in detached bindings.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved);
+        main::ScopeRegion* detached = main::scope_create(null);
+        bool setup_ok = source != null && detached != null;
+        if (!setup_ok) {
+            if (source != null) main::scope_release(source);
+            if (detached != null) main::scope_release(detached);
+            io::printn("[FAIL] lifetime: env_set_with_barrier detached copied env scope authority");
+            (*fail)++;
+        } else {
+            interp.current_scope = source;
+
+            SymbolId sid = interp.symbols.intern("__barrier_detached_copied_env");
+            Env* source_env = make_env(interp, interp.global_env);
+            env_define_with_barrier(source_env, sid, make_int(interp, 1), interp);
+            Env* detached_env = boundary_copy_env_to_target_scope(source_env, interp, detached);
+            Value* temp_pair = make_cons(interp, make_int(interp, 42), make_nil(interp));
+
+            bool write_ok = detached_env != null;
+            if (write_ok) {
+                if (catch err = env_set_with_barrier(detached_env, sid, temp_pair, interp)) {
+                    write_ok = false;
+                }
+            }
+
+            Value* got = detached_env != null ? detached_env.lookup(sid) : null;
+            bool got_in_detached = got != null && main::is_in_scope((void*)got, detached);
+            bool got_in_source = got != null && main::is_in_scope((void*)got, source);
+
+            interp.current_scope = saved;
+            main::scope_release(source);
+
+            bool post_release_ok = got_in_detached &&
+                                   got != null &&
+                                   got.tag == CONS &&
+                                   got.cons_val.car != null &&
+                                   got.cons_val.car.tag == INT &&
+                                   got.cons_val.car.int_val == 42;
+            main::scope_release(detached);
+
+            bool ok = write_ok &&
+                      detached_env != null &&
+                      detached_env.scope_gen == detached.generation &&
+                      got != null &&
+                      got != temp_pair &&
+                      got_in_detached &&
+                      !got_in_source &&
+                      post_release_ok;
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: env_set_with_barrier detached copied env scope authority");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: env_set_with_barrier detached copied env scope authority (write_ok=%s detached_env=%s got_same=%s in_detached=%s in_source=%s post_release_ok=%s)",
+                    write_ok ? "yes" : "no",
+                    detached_env != null ? "yes" : "no",
+                    got == temp_pair ? "yes" : "no",
+                    got_in_detached ? "yes" : "no",
+                    got_in_source ? "yes" : "no",
+                    post_release_ok ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: after closure env normalization into a detached env_scope,
+    // env-set barrier writes into normalized env authority rather than source TEMP.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved);
+        bool setup_ok = source != null;
+        if (!setup_ok) {
+            io::printn("[FAIL] lifetime: env_set_with_barrier normalized detached closure env scope authority");
+            (*fail)++;
+        } else {
+            interp.current_scope = source;
+
+            SymbolId sid = interp.symbols.intern("__barrier_detached_normalized_env");
+            Env* captured_env = make_env(interp, interp.global_env);
+            env_define_with_barrier(captured_env, sid, make_int(interp, 2), interp);
+
+            Value* closure = make_closure_no_param(interp, null, captured_env);
+            main::ScopeRegion* stale_scope = null;
+            bool normalized_ok = closure != null && closure.tag == CLOSURE;
+            if (normalized_ok) {
+                stale_scope = main::scope_create(null);
+                normalized_ok = stale_scope != null;
+            }
+            if (normalized_ok && stale_scope != null) {
+                closure.closure_val.env_scope = stale_scope;
+                Value* normalized = boundary_commit_normalize_closure_env(closure, interp, null);
+                normalized_ok = normalized != null &&
+                                normalized == closure &&
+                                closure.closure_val.env_scope != null &&
+                                closure.closure_val.env_scope != stale_scope &&
+                                closure.closure_val.env != null &&
+                                boundary_ptr_in_scope((void*)closure.closure_val.env, closure.closure_val.env_scope);
+            }
+
+            Value* temp_pair = make_cons(interp, make_int(interp, 84), make_nil(interp));
+            bool write_ok = normalized_ok;
+            if (write_ok) {
+                if (catch err = env_set_with_barrier(closure.closure_val.env, sid, temp_pair, interp)) {
+                    write_ok = false;
+                }
+            }
+
+            Value* got = normalized_ok ? closure.closure_val.env.lookup(sid) : null;
+            main::ScopeRegion* normalized_scope = normalized_ok ? closure.closure_val.env_scope : null;
+            bool got_in_normalized = got != null && normalized_scope != null && main::is_in_scope((void*)got, normalized_scope);
+            bool got_in_source = got != null && main::is_in_scope((void*)got, source);
+
+            if (normalized_scope != null) main::scope_retain(normalized_scope);
+            interp.current_scope = saved;
+            main::scope_release(source);
+
+            bool post_release_ok = got_in_normalized &&
+                                   got != null &&
+                                   got.tag == CONS &&
+                                   got.cons_val.car != null &&
+                                   got.cons_val.car.tag == INT &&
+                                   got.cons_val.car.int_val == 84;
+
+            if (normalized_scope != null) main::scope_release(normalized_scope);
+
+            bool ok = write_ok &&
+                      normalized_ok &&
+                      got != null &&
+                      got != temp_pair &&
+                      got_in_normalized &&
+                      !got_in_source &&
+                      post_release_ok;
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: env_set_with_barrier normalized detached closure env scope authority");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: env_set_with_barrier normalized detached closure env scope authority (normalized_ok=%s write_ok=%s got_same=%s in_normalized=%s in_source=%s post_release_ok=%s)",
+                    normalized_ok ? "yes" : "no",
+                    write_ok ? "yes" : "no",
+                    got == temp_pair ? "yes" : "no",
+                    got_in_normalized ? "yes" : "no",
+                    got_in_source ? "yes" : "no",
+                    post_release_ok ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: checked env-set surfaces barrier write failure and preserves
     // the previously installed binding value.
     {

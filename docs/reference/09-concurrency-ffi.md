@@ -154,8 +154,19 @@ Use `^Pointer` in new bindings.
 `ffi λ` currently accepts only the canonical annotations `^Integer`, `^Double`,
 `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations now
 raise a definition-time error instead of defaulting to pointer ABI metadata.
+Argument conversion is fail-closed:
+- `^Integer`: Omni `Integer` only
+- `^Double`: Omni `Double` or `Integer`
+- `^Boolean`: Omni `true` / `false` only
+- `^String`: Omni `String`, or `nil` for a null `char*`
+- `^Pointer`: Omni `Integer` raw address, live `FFI_HANDLE`, or `nil` for null
+Declarative `variadic` bindings are rejected at definition time until the
+runtime carries truthful fixed/variadic metadata.
 `^Integer` and `^Boolean` are not accepted shorthand aliases in new surface text; use
 canonical integer/boolean annotations (`^Integer`, `^Boolean`) instead.
+Execution mode contract:
+- Declarative FFI is currently interpreter/JIT-only.
+- Compiler/AOT currently rejects declarative `ffi` forms.
 
 ### Features
 

@@ -233,7 +233,7 @@ fn void run_deduce_scan_query_count_benchmarks(Interp* interp) {
     usz query_expected = 0;
     bool seeded_ok = deduce_bench_seed_relation(interp, &rel, &query_expected);
 
-    EvalResult filter_eval = run("(lambda (row) (> ('score row) 50))", interp);
+    EvalResult filter_eval = run("(lambda (row) (> row.score 50))", interp);
     Value* filter_fn = filter_eval.value;
     bool filter_ok = !filter_eval.error.has_error && filter_fn != null && filter_fn.tag != ERROR;
 

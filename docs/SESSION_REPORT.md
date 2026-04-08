@@ -4683,3 +4683,228 @@
     entrypoint later, both REPL paths should resolve through that metadata.
   - The server still serializes one connected client at a time.
 - Signature: Codex (GPT-5)
+
+2026-04-08 08:41 CEST - Omni language surface audit and external criticism scan
+
+- Objectives attempted:
+  - Audit Omni's current language surface for likely external reception,
+    especially syntax and feature-density concerns.
+  - Compare the current design against public criticism patterns from Reddit,
+    Hacker News, blog posts, and one recent algebraic-effects verification
+    paper.
+- Relevant workspace/target:
+  - Language/docs surface only; no runtime or compiler behavior was modified.
+- Code/config changes made:
+  - None.
+- Commands run:
+  - `sed -n '1,220p' docs/LANGUAGE_SPEC.md`
+  - `sed -n '1,220p' docs/README.md`
+  - `sed -n '1,220p' docs/C3_STYLE.md`
+  - `sed -n '1,220p' docs/syntax-decision.md`
+  - `sed -n '1,220p' docs/type-system-syntax.md`
+  - `sed -n '1,220p' docs/OMNI_REFERENCE.md`
+  - `sed -n '1,220p' docs/reference/02-functions.md`
+  - `sed -n '1,220p' docs/reference/03-collections.md`
+  - `sed -n '1,220p' docs/reference/04-type-system.md`
+  - `sed -n '1,220p' docs/reference/05-macros-modules.md`
+  - `sed -n '1,220p' docs/reference/06-effects.md`
+  - targeted `rg` scans across `docs/`, `src/`, and `test/`
+  - targeted `nl -ba ... | sed -n ...` line-anchor extraction for final audit
+- Key results and conclusions:
+  - Omni's strongest design assets are the coherent expression model, generic
+    collection operations, explicit effect/control operators, strict arity,
+    and the choice to keep macro authoring word-based instead of punctuation
+    heavy.
+  - The biggest adoption risk is not any single feature; it is the cumulative
+    stack: Lisp syntax + multiple dispatch + structural typing + algebraic
+    effects + delimited continuations + deterministic region memory. Public
+    criticism patterns found on similar systems line up with exactly that kind
+    of cognitive load and debugging fear.
+  - The current surface is powerful but not visually minimal. In addition to
+    ordinary s-expressions it uses square/curly literals, leading-dot accessor
+    lambdas, postfix `.[...]`, quoted-symbol callable accessors, `^Type`,
+    `^(Value ...)`, attribute brackets, slash-qualified effect names, and
+    dot-qualified module access. This reads more like a dense PL toolkit than
+    a small Lisp.
+  - The most criticism-prone local semantics are:
+    - `false` collapsing to `nil`,
+    - callable quoted symbols like `('name dict)`,
+    - multiple overlapping partial-application mechanisms,
+    - optional effect declarations,
+    - multi-shot continuations with replayed side effects,
+    - the trust burden created by pairing advanced control flow with explicit
+      lifetime management.
+- Invalidated assumptions or failed approaches worth preserving:
+  - A prior memory note claiming that `Dict` was docs-only was stale. Current
+    source registers `Dict` in runtime and compiler surfaces and has coverage
+    for it.
+- Best current recommendation/checkpoint:
+  - Position Omni externally around a much narrower "core profile" instead of
+    leading with the full advanced feature inventory.
+  - If syntax simplification is pursued, prefer removing or de-emphasizing
+    cute secondary surfaces before touching the core expression model. The
+    highest-friction candidates are callable quoted-symbol accessors and the
+    combination of leading-dot accessor lambdas with postfix indexing.
+  - If feature pruning is considered, the hardest sell to mainstream users is
+    likely the simultaneous presence of both algebraic effects and delimited
+    continuations rather than either feature in isolation.
+- Unresolved issues and next actions:
+  - Decide whether the owner wants Omni optimized first for PL enthusiasts,
+    Lisp users, systems programmers, or mainstream application developers; the
+    right syntax/features message depends heavily on that audience choice.
+  - If another session continues this work, convert the audit into a ranked
+    simplification plan rather than another broad critique pass.
+- Signature: Codex (GPT-5)
+
+2026-04-08 08:49 CEST - Omni syntax cleanup direction locked by owner
+
+- Objectives attempted:
+  - Convert the audit conclusions into an explicit owner-approved cleanup
+    direction for syntax and semantics.
+- Code/config changes made:
+  - None.
+- Decision checkpoint:
+  - Backward compatibility is not a goal for this cleanup. Removed surfaces
+    should not linger as legacy aliases or migration spellings.
+  - Approved direction:
+    - remove leading-dot accessor lambdas,
+    - remove callable quoted-symbol accessors,
+    - keep path expressions as access-only sugar over `ref`,
+    - keep pipeline `|>`,
+    - split `false` from `nil` while keeping both falsy,
+    - treat effects as the normal application-facing control surface and
+      continuations as advanced.
+- Best current recommendation/checkpoint:
+  - Implement the cleanup as a fail-closed language contract pass, not as a
+    compatibility layer.
+  - Prefer one canonical surface per concept and hard errors for removed forms.
+- Signature: Codex (GPT-5)
+
+2026-04-08 09:35 CEST - Omni cleanup implementation slices 1-3 started
+
+- Objectives attempted:
+  - Land the first concrete cleanup slices from the owner-approved language
+    simplification pass.
+- Code/config changes made:
+  - Accessor cleanup:
+    - removed leading-dot accessor parsing and dead accessor-lambda AST/parser
+      plumbing from parser-facing code,
+    - removed quoted-symbol callable lookup behavior from runtime apply,
+    - updated affected tests to use `ref`, path access, or fail-closed errors.
+  - Primitive call tightening:
+    - ordinary one-argument primitive calls no longer auto-create
+      `PARTIAL_PRIM`,
+    - interpreter and JIT single-arg primitive apply now report arity
+      mismatch instead.
+  - `false`/`nil` split:
+    - `false` now binds to a distinct symbol value instead of `nil`,
+    - Boolean/Nil constructor semantics were updated around the split,
+    - parser pattern/value-literal handling and JSON false conversion were
+      updated so `false` no longer aliases `nil`.
+  - Docs/planning artifacts updated:
+    - `.agents/PLAN.md`
+    - `memory/CHANGELOG.md`
+    - public spec/reference docs for access syntax, truthiness, partial
+      application, and boolean/nil semantics.
+- Commands run:
+  - multiple `rg`/`sed` inspection passes across `docs/` and `src/lisp/`
+  - `c3c build`
+    - failed locally because `c3c` is not installed in this environment
+- Key results and conclusions:
+  - Slice 1 is now fail-closed in parser/runtime/test surfaces touched here:
+    removed accessor forms should error instead of silently surviving as
+    legacy spellings.
+  - Slice 2 is materially implemented: bare `(+ 3)` style calls should now be
+    arity errors, while pipe syntax remains intact because `|>` rewrites call
+    shapes before evaluation.
+  - Slice 3 has started and the core contract changed on disk, but it still
+    needs a broader consistency sweep across remaining docs/tests and any
+    runtime corners not covered by the files touched in this session.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep assuming the accessor cleanup is “just parser sugar”; quoted
+    symbol calls and test corpus usage made it a broader runtime/doc sweep.
+  - Do not assume primitive auto-partial is required for pipe syntax; `|>`
+    expansion can keep pipe ergonomics without preserving bare primitive
+    partial calls.
+- Current best recommendation/checkpoint:
+  - Next session should finish the `false`/`nil` split before calling this
+    cleanup complete:
+    - sweep remaining docs that still describe `false` as `nil`,
+    - sweep remaining tests that encode alias expectations,
+    - run actual build/tests once `c3c` is available.
+- Unresolved issues:
+  - This session could not run compile/test verification because `c3c` is not
+    installed in the current environment.
+  - The worktree was already dirty before these edits; current cleanup edits
+    were kept narrow, but a real validation pass is still required.
+- Signature: Codex (GPT-5)
+
+2026-04-08 11:52 CEST - Arm64 build lane repaired and binary startup restored
+
+- Objectives attempted:
+  - Fix the current tree so `c3c build` succeeds on this Ubuntu 24.04 arm64
+    host and verify that the produced binary actually starts.
+- Code/config changes made:
+  - Repaired compile regressions surfaced during the first real build pass:
+    - `src/lisp/deduce_schema_query_define_relation.c3`
+    - `src/lisp/deduce_db_handles_core.c3`
+    - `src/lisp/deduce_relation_ops_query.c3`
+    - `src/lisp/eval_boundary_commit_escape.c3`
+    - `src/lisp/eval_repl_server_worker.c3`
+    - `src/lisp/scheduler_thread_tasks.c3`
+    - `src/lisp/eval_boundary_commit_flow.c3`
+  - Reworked the arm64 stack-engine compile path so x86_64-only context switch
+    assembly no longer blocks whole-program builds:
+    - `src/stack_engine_abi_switch.c3`
+    - `csrc/stack_helpers.c`
+  - Repaired C-helper include/build plumbing around vendored dependencies:
+    - `csrc/json_helpers.c`
+    - `csrc/tls_helpers.c`
+    - `csrc/uv_helpers.c`
+    - `csrc/uv_helpers_work.c`
+    - `csrc/uv_helpers_thread.c`
+    - `csrc/uv_helpers_pipe.c`
+    - `csrc/uv_helpers_tcp.c`
+    - `csrc/uv_helpers_process.c`
+    - `csrc/uv_helpers_signal.c`
+    - `csrc/toml_helpers.c`
+    - `scripts/build_omni_chelpers.sh`
+    - `project.json`
+  - Adjusted local link truth:
+    - `project.json` now compiles `clib/mathutils.c` directly,
+    - `project.json` restores the `omni_ftxui` archive link edge,
+    - `project.json` now embeds `RUNPATH=$ORIGIN`,
+    - local `liblightning` and `libreplxx` shared libraries were staged into
+      `build/`.
+- Commands run:
+  - `~/.local/bin/c3c build` repeatedly while fixing blockers
+  - `git show 65b2841:src/lisp/deduce_db_handles.c3`
+  - `bash deps/build_static.sh`
+  - `make -C deps/src/lmdb/libraries/liblmdb clean all`
+  - `bash scripts/build_omni_chelpers.sh`
+  - `readelf -d build/main`
+  - `ldd build/main`
+  - `./build/main --help`
+- Key results and conclusions:
+  - `~/.local/bin/c3c build` now exits 0 and links `build/main`.
+  - `build/main` now carries `RUNPATH=$ORIGIN`, and `ldd build/main` resolves
+    `liblightning.so.2` and `libreplxx.so.0.0.4` from `build/`.
+  - `./build/main --help` executes successfully on this host.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep assuming the old `deps/lib/*.a` archives are usable on arm64;
+    they were stale/incompatible and had to be rebuilt locally.
+  - Do not assume `c3c` will compile the FTXUI C++ shim directly from the
+    `.cpp` entries in `project.json`; the repo still relies on the separate
+    `omni_ftxui` archive built by `scripts/build_omni_chelpers.sh`.
+  - Do not assume arm64 stack-engine support exists just because the build now
+    passes; the non-x86 path is fail-closed for context switching.
+- Current best recommendation/checkpoint:
+  - The build lane is healthy enough again to continue cleanup work or run
+    targeted validation.
+  - The next cleanup step should return to the unfinished `false`/`nil` sweep
+    rather than more build plumbing.
+- Unresolved issues:
+  - Warnings remain in entry/reporting and REPL server code, but they are not
+    build blockers.
+  - Continuation/coroutine stack switching is still effectively x86_64-only.
+- Signature: Codex (GPT-5)

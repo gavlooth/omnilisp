@@ -3,7 +3,8 @@ module lisp;
 import std::collections::list;
 
 fn Expr* parser_make_bool_literal_expr(Parser* self, bool truthy, usz line, usz column) {
-    Expr* e = self.interp.alloc_expr();
+    Expr* e = self.alloc_expr();
+    if (e == null) return null;
     e.loc_line = line;
     e.loc_column = column;
     e.tag = E_LIT;
@@ -25,7 +26,8 @@ fn Expr* parser_make_logical_chain_expr(
 
     Expr* nested = (*items)[items.len() - 1];
     for (isz i = (isz)items.len() - 2; i >= 0; i--) {
-        Expr* e = self.interp.alloc_expr();
+        Expr* e = self.alloc_expr();
+        if (e == null) return null;
         e.loc_line = line;
         e.loc_column = column;
         e.tag = is_and ? E_AND : E_OR;
@@ -44,6 +46,7 @@ fn Expr* parser_make_logical_chain_expr(
 fn Expr* Parser.parse_quote(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'quote' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'quote'
 
     Value* datum = self.parse_datum();
@@ -112,6 +115,7 @@ fn Expr* Parser.parse_or(Parser* self) {
 fn Expr* Parser.parse_block(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'block' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'block'
 
     List{Expr*} items;
@@ -129,9 +133,11 @@ fn Expr* Parser.parse_block(Parser* self) {
         e.lit.value.tag = NIL;
     } else {
         e.tag = E_BLOCK;
-        e.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
+        e.block = (ExprBlock*)self.alloc_ast_bytes(ExprBlock.sizeof, "out of memory while allocating block expression");
+        if (e.block == null) { items.free(); return null; }
         e.block.expr_count = items.len();
-        e.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * items.len());
+        e.block.exprs = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * items.len(), "out of memory while allocating block expressions");
+        if (e.block.exprs == null && items.len() > 0) { items.free(); return null; }
         for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
         items.free();
     }

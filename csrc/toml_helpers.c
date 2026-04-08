@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 #include "../third_party/tomlc17/tomlc17.h"
 

@@ -250,7 +250,7 @@ Lazy sequences that compute values on demand.
 ### Lazy Combinators
 
 ```lisp
-(map (+ 1) (Iterator '(1 2 3)))         ;; lazy +1 on each
+(map (+ 1 _) (Iterator '(1 2 3)))       ;; lazy +1 on each
 (filter even? (Iterator '(1 2 3 4)))    ;; lazy keep evens
 (take 5 (range-from 0))                  ;; first 5 naturals
 (drop 3 (Iterator '(1 2 3 4 5)))        ;; skip first 3
@@ -283,7 +283,7 @@ Lazy sequences that compute values on demand.
 Passing an iterator keeps lazy semantics:
 
 ```lisp
-(map (+ 1) (Iterator '(1 2 3)))     ;; lazy iterator, not a list
+(map (+ 1 _) (Iterator '(1 2 3)))   ;; lazy iterator, not a list
 (filter even? (Iterator '(1 2 3 4))) ;; lazy iterator
 (take 3 (range-from 0))              ;; lazy iterator
 ```

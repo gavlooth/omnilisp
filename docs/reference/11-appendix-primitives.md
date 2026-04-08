@@ -187,8 +187,8 @@ Compatibility shorthands (same behavior/arity):
 `Nil` is the language-level empty/false value type. `Void` is now a real
 singleton value constructor with zero arguments, and FFI `^Void` returns map to
 that same runtime value.
-Value-level `false` remains a stable alias of `nil` (quoted `'false` is still a
-symbol literal).
+`false` is a distinct boolean false value. Both `nil` and `false` are falsy
+(quoted `'false` is still a symbol literal).
 
 **Conversion:**
 
@@ -240,7 +240,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 |------|-------|-------------|
 | `Array` | variadic | Canonical array constructor / conversion surface |
 | `Dictionary` | variadic | Canonical dictionary constructor |
-| `Dict` | variadic | Allowed shorthand alias for `Dictionary` |
+| `Dict` | variadic | Allowed shorthand constructor alias for `Dictionary` |
 | `Set` | variadic | Create set |
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |

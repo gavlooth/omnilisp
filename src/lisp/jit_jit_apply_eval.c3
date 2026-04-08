@@ -21,6 +21,64 @@ fn bool expr_contains_shift_binary(Expr* left, Expr* right) {
     return expr_contains_shift(left) || expr_contains_shift(right);
 }
 
+fn bool expr_slice_contains_perform(Expr** exprs, usz count) {
+    for (usz i = 0; i < count; i++) {
+        if (expr_contains_perform(exprs[i])) return true;
+    }
+    return false;
+}
+
+fn bool match_results_contain_perform(MatchClause* clauses, usz clause_count) {
+    for (usz i = 0; i < clause_count; i++) {
+        if (expr_contains_perform(clauses[i].result)) return true;
+    }
+    return false;
+}
+
+fn bool expr_contains_perform_binary(Expr* left, Expr* right) {
+    return expr_contains_perform(left) || expr_contains_perform(right);
+}
+
+fn bool expr_contains_perform(Expr* e) {
+    if (e == null) return false;
+    if (e.tag == E_PERFORM) return true;
+    switch (e.tag) {
+        case E_IF:
+            return expr_contains_perform(e.if_expr.test) ||
+                expr_contains_perform_binary(e.if_expr.then_branch, e.if_expr.else_branch);
+        case E_LET:
+            return expr_contains_perform_binary(e.let_expr.init, e.let_expr.body);
+        case E_LAMBDA:
+            return false;
+        case E_BLOCK:
+            return expr_slice_contains_perform(e.block.exprs, e.block.expr_count);
+        case E_CALL:
+            if (expr_contains_perform(e.call.func)) return true;
+            return expr_slice_contains_perform(e.call.args, e.call.arg_count);
+        case E_APP:
+            return expr_contains_perform_binary(e.app.func, e.app.arg);
+        case E_MATCH:
+            if (expr_contains_perform(e.match.scrutinee)) return true;
+            return match_results_contain_perform(e.match.clauses, e.match.clause_count);
+        case E_AND:
+            return expr_contains_perform_binary(e.and_expr.left, e.and_expr.right);
+        case E_OR:
+            return expr_contains_perform_binary(e.or_expr.left, e.or_expr.right);
+        case E_SET:
+            return expr_contains_perform(e.set_expr.value);
+        case E_DEFINE:
+            return expr_contains_perform(e.define.value);
+        case E_RESOLVE:
+            return expr_contains_perform(e.resolve.value);
+        case E_RESET:
+            return false;
+        case E_HANDLE:
+            return false;
+        default:
+            return false;
+    }
+}
+
 fn bool expr_contains_shift(Expr* e) {
     if (e == null) return false;
     if (e.tag == E_SHIFT) return true;

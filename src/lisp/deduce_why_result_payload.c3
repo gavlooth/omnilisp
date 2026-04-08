@@ -1,0 +1,170 @@
+module lisp;
+
+fn Value* deduce_why_result_build_goal_directed_read_context(
+    Relation* rel,
+    Interp* interp
+) {
+    if (rel == null || rel.db == null || interp == null) return make_nil(interp);
+    DeduceRelationSchema* schema = deduce_relation_lookup_schema(rel);
+    if (schema == null || schema.last_goal_directed_read_execution_path == (SymbolId)0) {
+        return make_nil(interp);
+    }
+
+    Value* out = make_hashmap(interp, 16);
+    if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
+    explain_dict_set(out, interp, "relation", make_symbol(interp, rel.name));
+    explain_dict_set(out, interp, "execution-path", make_symbol(interp, schema.last_goal_directed_read_execution_path));
+    explain_dict_set(out, interp, "surface",
+        schema.last_goal_directed_read_surface != (SymbolId)0
+            ? make_symbol(interp, schema.last_goal_directed_read_surface)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "fallback-reason",
+        schema.last_goal_directed_read_fallback_reason != (SymbolId)0
+            ? make_symbol(interp, schema.last_goal_directed_read_fallback_reason)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "selector-rule-index",
+        schema.last_goal_directed_read_selector_rule_index >= 0
+            ? make_int(interp, schema.last_goal_directed_read_selector_rule_index)
+            : make_nil(interp));
+    explain_dict_set(out, interp, "mutation-epoch", make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch));
+    explain_dict_set(out, interp, "requested-bound-count", make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count));
+    explain_dict_set(out, interp, "requested-bound-positions",
+        deduce_bound_positions_payload(
+            schema.last_goal_directed_read_requested_bound_positions,
+            schema.last_goal_directed_read_requested_bound_count,
+            interp
+        ));
+    explain_dict_set(out, interp, "applied-bound-count", make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count));
+    explain_dict_set(out, interp, "applied-bound-positions",
+        deduce_bound_positions_payload(
+            schema.last_goal_directed_read_applied_bound_positions,
+            schema.last_goal_directed_read_applied_bound_count,
+            interp
+        ));
+    explain_dict_set(out, interp, "step-counters",
+        schema.last_goal_directed_read_step_count > 0
+            ? deduce_explain_observed_step_counter_payload(
+                schema.last_goal_directed_read_step_counters,
+                schema.last_goal_directed_read_step_count,
+                interp
+            )
+            : make_nil(interp));
+    return out;
+}
+
+fn Value* deduce_why_result_build_path_goal_directed_read_context(
+    Relation* rel,
+    char* subject_key,
+    usz subject_key_len,
+    Interp* interp
+) {
+    if (rel == null || interp == null || subject_key == null || subject_key_len == 0) return make_nil(interp);
+    DeduceRelationSchema* schema = deduce_relation_lookup_schema(rel);
+    SymbolId query_surface = interp.symbols.intern("query");
+    SymbolId match_surface = interp.symbols.intern("match");
+    SymbolId scan_surface = interp.symbols.intern("scan");
+    SymbolId scan_range_surface = interp.symbols.intern("scan-range");
+    if (schema == null ||
+        schema.last_goal_directed_read_execution_path == (SymbolId)0 ||
+        (schema.last_goal_directed_read_surface != query_surface &&
+            schema.last_goal_directed_read_surface != match_surface &&
+            schema.last_goal_directed_read_surface != scan_surface &&
+            schema.last_goal_directed_read_surface != scan_range_surface) ||
+        !schema.last_goal_directed_read_subject_keys.complete ||
+        schema.last_goal_directed_read_subject_keys.count == 0) {
+        return make_nil(interp);
+    }
+
+    for (usz key_index = 0; key_index < schema.last_goal_directed_read_subject_keys.count; key_index++) {
+        if (schema.last_goal_directed_read_subject_keys.key_lens[key_index] != subject_key_len) continue;
+        bool match = true;
+        for (usz i = 0; i < subject_key_len; i++) {
+            if (schema.last_goal_directed_read_subject_keys.keys[key_index][i] != subject_key[i]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            return deduce_why_result_build_goal_directed_read_context(rel, interp);
+        }
+    }
+    return make_nil(interp);
+}
+
+fn void deduce_why_result_maybe_attach_path_goal_directed_read_context(
+    Value* path,
+    Relation* rel,
+    char* subject_key,
+    usz subject_key_len,
+    Interp* interp
+) {
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return;
+    Value* context = deduce_why_result_build_path_goal_directed_read_context(rel, subject_key, subject_key_len, interp);
+    if (context != null && !is_nil(context)) {
+        explain_dict_set(path, interp, "goal-directed-read-context", context);
+    }
+}
+
+fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
+    Value* node,
+    Relation* rel,
+    Value*[] tuple,
+    Interp* interp
+) {
+    if (node == null || node.tag != HASHMAP || node.hashmap_val == null ||
+        rel == null || tuple.len != rel.col_count || interp == null) {
+        return;
+    }
+
+    char[4096] key_buf;
+    usz subject_key_len = 0;
+    usz? key_len = encode_tuple(tuple, key_buf[..], key_buf.len);
+    if (catch err = key_len) {
+        (void)err;
+        return;
+    }
+    subject_key_len = key_len;
+
+    Value* context = deduce_why_result_build_path_goal_directed_read_context(
+        rel,
+        &key_buf[0],
+        subject_key_len,
+        interp
+    );
+    if (context != null && !is_nil(context)) {
+        explain_dict_set(node, interp, "goal-directed-read-context", context);
+    }
+}
+
+fn Value* deduce_why_result_build_payload(
+    Relation* rel,
+    Value*[] tuple,
+    SymbolId status,
+    Value* paths,
+    long path_count,
+    long max_depth,
+    bool truncated,
+    Interp* interp,
+    SymbolId code = (SymbolId)0
+) {
+    Value* out = make_hashmap(interp, 16);
+    if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
+    explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("why-result"));
+    explain_dict_set_symbol(out, interp, "status", status);
+    explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("provenance-snapshot"));
+    explain_dict_set_symbol(out, interp, "subject-kind", interp.symbols.intern("row"));
+    explain_dict_set(out, interp, "subject", deduce_why_result_build_row_subject(rel, tuple, interp));
+    explain_dict_set(out, interp, "path-count", make_int(interp, path_count));
+    explain_dict_set(out, interp, "max-depth", make_int(interp, max_depth));
+    explain_dict_set(out, interp, "truncated", explain_bool_value(interp, truncated));
+    explain_dict_set(out, interp, "paths", paths);
+    Value* goal_directed_read_context = deduce_why_result_build_goal_directed_read_context(rel, interp);
+    if (goal_directed_read_context != null &&
+        !(is_nil(goal_directed_read_context))) {
+        explain_dict_set(out, interp, "goal-directed-read-context", goal_directed_read_context);
+    }
+    if (code != (SymbolId)0) {
+        explain_dict_set(out, interp, "code", make_symbol(interp, code));
+    }
+    return out;
+}

@@ -282,7 +282,7 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_truthy(interp, "number? double", "(number? 3.14)", pass, fail);
     test_nil(interp, "number? string", "(number? \"hello\")", pass, fail);
     test_truthy(interp, "boolean? true", "(boolean? true)", pass, fail);
-    test_truthy(interp, "boolean? nil", "(boolean? nil)", pass, fail);
+    test_nil(interp, "boolean? nil", "(boolean? nil)", pass, fail);
     test_nil(interp, "boolean? int", "(boolean? 42)", pass, fail);
     test_truthy(interp, "list? yes", "(list? (quote (1 2 3)))", pass, fail);
     test_truthy(interp, "list? nil", "(list? nil)", pass, fail);
@@ -344,7 +344,7 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-no");
         test_nil(interp, "bound? no", "(bound? 'xyzzy-undefined)", pass, fail);
         test_truthy(interp, "bound? Dictionary canonical", "(bound? 'Dictionary)", pass, fail);
-        test_truthy(interp, "bound? Dictionary shorthand", "(bound? 'Dictionary)", pass, fail);
+        test_truthy(interp, "bound? Dict shorthand", "(bound? 'Dict)", pass, fail);
         test_nil(interp, "bound? dictionary removed", "(bound? 'dictionary)", pass, fail);
         test_nil(interp, "bound? dict removed", "(bound? 'dict)", pass, fail);
         test_truthy(interp, "bound? Array canonical", "(bound? 'Array)", pass, fail);

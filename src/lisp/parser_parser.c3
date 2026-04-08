@@ -5,6 +5,10 @@ module lisp;
 
 const int PARSER_MAX_NESTING = 1024;
 
+bool g_parser_force_ast_expr_alloc_fail = false;
+bool g_parser_force_ast_pattern_alloc_fail = false;
+bool g_parser_force_ast_alloc_fail = false;
+
 struct Parser {
     Lexer*    lexer;
     Interp*   interp;
@@ -66,11 +70,44 @@ fn void Parser.expect(Parser* self, TokenType t, char[] msg) {
     }
 }
 
+fn void* Parser.alloc_ast_bytes(Parser* self, usz size, char[] err_msg) {
+    if (self.has_error) return null;
+    if (g_parser_force_ast_alloc_fail) {
+        self.set_error(err_msg);
+        return null;
+    }
+    void* ptr = ast_arena_alloc(&self.interp.ast_arena, size);
+    if (ptr == null) {
+        self.set_error(err_msg);
+        return null;
+    }
+    return ptr;
+}
+
+fn Expr* Parser.alloc_expr(Parser* self) {
+    if (self.has_error) return null;
+    if (g_parser_force_ast_expr_alloc_fail) {
+        self.set_error("parser: out of memory while allocating expression");
+        return null;
+    }
+    return (Expr*)self.alloc_ast_bytes(Expr.sizeof, "parser: out of memory while allocating expression");
+}
+
+fn Pattern* Parser.alloc_pattern(Parser* self) {
+    if (self.has_error) return null;
+    if (g_parser_force_ast_pattern_alloc_fail) {
+        self.set_error("parser: out of memory while allocating pattern");
+        return null;
+    }
+    return (Pattern*)self.alloc_ast_bytes(Pattern.sizeof, "parser: out of memory while allocating pattern");
+}
+
 /**
  * Allocate an expression and capture current source location.
  */
 fn Expr* Parser.alloc_expr_here(Parser* self) {
-    Expr* e = self.interp.alloc_expr();
+    Expr* e = self.alloc_expr();
+    if (e == null) return null;
     e.loc_line = self.lexer.current.line;
     e.loc_column = self.lexer.current.column;
     return e;

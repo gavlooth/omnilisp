@@ -4,6 +4,7 @@ import std::collections::list;
 
 fn Expr* Parser.parse_qq_string_literal(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     e.tag = E_LIT;
     e.lit.value = self.interp.alloc_value_root();
     e.lit.value.tag = STRING;
@@ -24,6 +25,7 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
 
     if (self.lexer.current.type == T_RPAREN) {
         Expr* e = self.alloc_expr_here();
+        if (e == null) return null;
         self.lexer.advance();
         e.tag = E_LIT;
         e.lit.value = self.interp.alloc_value_root();
@@ -39,12 +41,18 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
     if (self.has_error) { qq_args.free(); return null; }
     self.lexer.advance();  // consume ')'
 
-    Expr* e = self.interp.alloc_expr();
+    Expr* e = self.alloc_expr();
+    if (e == null) { qq_args.free(); return null; }
     e.tag = E_CALL;
-    e.call = (ExprCall*)ast_arena_alloc(&self.interp.ast_arena, ExprCall.sizeof);
+    e.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating quasiquote call");
+    if (e.call == null) { qq_args.free(); return null; }
     e.call.func = func;
     e.call.arg_count = qq_args.len();
-    e.call.args = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * qq_args.len());
+    e.call.args = null;
+    if (qq_args.len() > 0) {
+        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * qq_args.len(), "out of memory while allocating quasiquote call arguments");
+        if (e.call.args == null) { qq_args.free(); return null; }
+    }
     for (usz i = 0; i < qq_args.len(); i++) { e.call.args[i] = qq_args[i]; }
     qq_args.free();
     return e;
@@ -52,6 +60,7 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
 
 fn Expr* Parser.parse_qq_backtick(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_QUASIQUOTE;
     e.quasiquote.body = self.parse_qq_template();
@@ -60,6 +69,7 @@ fn Expr* Parser.parse_qq_backtick(Parser* self) {
 
 fn Expr* Parser.parse_qq_unquote(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_UNQUOTE;
     e.unquote.body = self.parse_expr();
@@ -68,6 +78,7 @@ fn Expr* Parser.parse_qq_unquote(Parser* self) {
 
 fn Expr* Parser.parse_qq_unquote_splicing(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_UNQUOTE_SPLICING;
     e.unquote_splicing.body = self.parse_expr();
@@ -76,6 +87,7 @@ fn Expr* Parser.parse_qq_unquote_splicing(Parser* self) {
 
 fn Expr* Parser.parse_qq_quote_datum(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_QUOTE;
     e.quote.datum = self.parse_datum();
@@ -84,6 +96,7 @@ fn Expr* Parser.parse_qq_quote_datum(Parser* self) {
 
 fn Expr* Parser.parse_qq_int_literal(Parser* self) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     long val = self.lexer.current.int_value;
     self.lexer.advance();
     e.tag = E_LIT;
@@ -95,6 +108,7 @@ fn Expr* Parser.parse_qq_int_literal(Parser* self) {
 
 fn Expr* Parser.parse_qq_var_symbol(Parser* self, SymbolId sym) {
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();
     e.tag = E_VAR;
     e.var_expr.name = sym;

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
 
 static void omni_uv_close_free_handle_cb(uv_handle_t* handle) {
     if (handle != NULL) free(handle);

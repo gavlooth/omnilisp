@@ -95,9 +95,9 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     Value* v = args[0];
     if (v == null) return make_void(interp);
 
-    // Free heap-allocated backing storage and mark as error.
-    // Note: Array struct is malloc'd, but HashMap/Instance structs are region-allocated.
-    // Only free what was actually malloc'd.
+    // Free backing storage and mark as error.
+    // Array and HashMap payloads are malloc-backed; Instance payloads are
+    // scope-owned and must release their owner scope instead of raw-freeing.
     switch (v.tag) {
         case ARRAY:
             if (v.array_val != null) {
@@ -116,9 +116,9 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
                 v.hashmap_val.capacity = 0;
             }
         case INSTANCE:
-            // Instance struct is malloc'd in make_instance
+            // Instance payloads are owned by a dedicated scope.
             if (v.instance_val != null) {
-                mem::free(v.instance_val);
+                instance_release(v.instance_val);
                 v.instance_val = null;
             }
         case STRING:

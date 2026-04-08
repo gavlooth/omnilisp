@@ -34,9 +34,14 @@ fn void Compiler.serialize_type_val_literal_to_buf(Compiler* self, TypeAnnotatio
             char[] str_lit = self.interp.symbols.get_name(ann.val_literal.sym_value);
             self.serialize_quoted_text_to_buf(str_lit, buf);
         case SYMBOL:
-            buf.push('\'');
             char[] sym_name = self.interp.symbols.get_name(ann.val_literal.sym_value);
-            self.buf_append(buf, sym_name);
+            if ((uint)ann.val_literal.sym_value == (uint)self.interp.sym_true ||
+                (uint)ann.val_literal.sym_value == (uint)self.interp.sym_false) {
+                self.buf_append(buf, sym_name);
+            } else {
+                buf.push('\'');
+                self.buf_append(buf, sym_name);
+            }
         case NIL:
             if ((uint)ann.val_literal.sym_value == (uint)self.interp.sym_false) {
                 self.buf_append(buf, "false");

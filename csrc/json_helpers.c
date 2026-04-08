@@ -1,4 +1,4 @@
-#include <yyjson.h>
+#include "../deps/src/yyjson/src/yyjson.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>

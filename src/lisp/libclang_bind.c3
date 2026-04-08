@@ -60,6 +60,7 @@ alias ClangDisposeTranslationUnitFn = fn void(void*);
 // Struct-returning functions — C3 uses hidden pointer ABI on x86-64
 alias ClangGetTranslationUnitCursorFn = fn CXCursor(void*);
 alias ClangGetCursorTypeFn            = fn CXType(CXCursor);
+alias ClangCursorGetArgumentFn        = fn CXCursor(CXCursor, uint);
 alias ClangGetResultTypeFn            = fn CXType(CXType);
 alias ClangGetArgTypeFn               = fn CXType(CXType, uint);
 alias ClangGetCursorSpellingFn        = fn CXString(CXCursor);
@@ -83,16 +84,60 @@ struct ParsedParam {
     char[64] c_type;      // Original C type string from clang
     char[16] ffi_type;    // Mapped: 'int, 'double, 'string, 'ptr, 'void
     char[16] omni_type;   // Mapped: Integer, Double, String, Pointer (for ptrs)
+    BindgenOwnershipTag ownership;
+    BindgenNullabilityTag nullability;
+    BindgenRoleTag role;
+    BindgenBufferDirectionTag buffer_direction;
+    int buffer_size_param_index;
+    BindgenTeardownTag teardown;
+}
+
+enum BindgenOwnershipTag : char {
+    BINDGEN_OWNERSHIP_NONE,
+    BINDGEN_OWNERSHIP_BORROWED,
+    BINDGEN_OWNERSHIP_UNKNOWN,
+}
+
+enum BindgenNullabilityTag : char {
+    BINDGEN_NULLABILITY_NA,
+    BINDGEN_NULLABILITY_UNKNOWN,
+}
+
+enum BindgenRoleTag : char {
+    BINDGEN_ROLE_VALUE,
+    BINDGEN_ROLE_STRING_INPUT,
+    BINDGEN_ROLE_STRING_BUFFER,
+    BINDGEN_ROLE_STRING_RETURN,
+    BINDGEN_ROLE_OPAQUE_POINTER,
+    BINDGEN_ROLE_CALLBACK,
+}
+
+enum BindgenBufferDirectionTag : char {
+    BINDGEN_BUFFER_DIRECTION_NA,
+    BINDGEN_BUFFER_DIRECTION_IN,
+    BINDGEN_BUFFER_DIRECTION_OUT,
+    BINDGEN_BUFFER_DIRECTION_INOUT,
+}
+
+enum BindgenTeardownTag : char {
+    BINDGEN_TEARDOWN_NONE,
+    BINDGEN_TEARDOWN_MANUAL_REVIEW,
+    BINDGEN_TEARDOWN_CALLBACK_UNREGISTER,
 }
 
 struct ParsedFunc {
     char[128] name;
+    char[64] return_c_type;
     char[16] return_ffi_type;
     char[16] return_omni_type;
     ParsedParam* params;
     usz param_count;
     usz param_capacity;
     bool is_variadic;
+    BindgenOwnershipTag return_ownership;
+    BindgenNullabilityTag return_nullability;
+    BindgenRoleTag return_role;
+    BindgenTeardownTag return_teardown;
 }
 
 // --- LibclangHandle holds all function pointers ---
@@ -106,6 +151,7 @@ struct LibclangHandle {
     ClangDisposeTranslationUnitFn dispose_tu;
     ClangGetTranslationUnitCursorFn get_tu_cursor;
     ClangGetCursorTypeFn         get_cursor_type;
+    ClangCursorGetArgumentFn     get_arg_cursor;
     ClangGetResultTypeFn         get_result_type;
     ClangGetArgTypeFn            get_arg_type;
     ClangGetNumArgTypesFn        get_num_arg_types;
@@ -123,15 +169,21 @@ struct LibclangHandle {
  */
 fn bool libclang_init(LibclangHandle* h) {
     // Try common libclang paths
-    char*[4] paths = {
+    char*[10] paths = {
         "libclang.so",
         "libclang.so.1",
         "/usr/lib/libclang.so",
-        "/usr/lib/llvm/lib/libclang.so"
+        "/usr/lib/libclang.so.1",
+        "/usr/lib/llvm/lib/libclang.so",
+        "/usr/lib/llvm/lib/libclang.so.1",
+        "/usr/lib/llvm-18/lib/libclang.so",
+        "/usr/lib/llvm-18/lib/libclang.so.1",
+        "/usr/lib/llvm-17/lib/libclang.so",
+        "/usr/lib/llvm-17/lib/libclang.so.1"
     };
 
     h.dl_handle = null;
-    for (usz i = 0; i < 4; i++) {
+    for (usz i = 0; i < 10; i++) {
         h.dl_handle = dlopen(paths[i], RTLD_LAZY);
         if (h.dl_handle != null) break;
     }
@@ -144,6 +196,7 @@ fn bool libclang_init(LibclangHandle* h) {
     h.dispose_tu      = (ClangDisposeTranslationUnitFn)dlsym(h.dl_handle, "clang_disposeTranslationUnit");
     h.get_tu_cursor   = (ClangGetTranslationUnitCursorFn)dlsym(h.dl_handle, "clang_getTranslationUnitCursor");
     h.get_cursor_type = (ClangGetCursorTypeFn)dlsym(h.dl_handle, "clang_getCursorType");
+    h.get_arg_cursor  = (ClangCursorGetArgumentFn)dlsym(h.dl_handle, "clang_Cursor_getArgument");
     h.get_result_type = (ClangGetResultTypeFn)dlsym(h.dl_handle, "clang_getResultType");
     h.get_arg_type    = (ClangGetArgTypeFn)dlsym(h.dl_handle, "clang_getArgType");
     h.get_num_arg_types = (ClangGetNumArgTypesFn)dlsym(h.dl_handle, "clang_getNumArgTypes");

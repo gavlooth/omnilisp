@@ -31,7 +31,8 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
 
     if (self.current_is_dot_symbol()) {
         self.lexer.advance();  // consume '.'
-        Pattern* p = self.interp.alloc_pattern();
+        Pattern* p = self.alloc_pattern();
+        if (p == null) return null;
         p.tag = PAT_CONS;
         p.car_pat = first;
         p.cdr_pat = self.parse_pattern();
@@ -41,7 +42,8 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
     }
 
     if (self.lexer.current.type == T_QUOTE) {
-        Pattern* p = self.interp.alloc_pattern();
+        Pattern* p = self.alloc_pattern();
+        if (p == null) return null;
         p.tag = PAT_AS;
         p.as_sub = first;
         if (!self.parse_as_pattern_marker()) return null;
@@ -68,7 +70,8 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
 
     SymbolId sym = first.var_name;
     if ((uint)sym == (uint)self.interp.sym_question) {
-        Pattern* p = self.interp.alloc_pattern();
+        Pattern* p = self.alloc_pattern();
+        if (p == null) return null;
         p.tag = PAT_GUARD;
         p.guard_pred = self.parse_expr();
         if (self.lexer.current.type != T_RPAREN) {
@@ -80,7 +83,8 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
         return p;
     }
 
-    Pattern* p = self.interp.alloc_pattern();
+    Pattern* p = self.alloc_pattern();
+    if (p == null) return null;
     p.tag = PAT_CONSTRUCTOR;
     p.constructor_name = sym;
     List{Pattern*} subs;
@@ -88,7 +92,8 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
         subs.push(self.parse_pattern());
     }
     p.ctor_sub_count = subs.len();
-    p.ctor_sub_patterns = (Pattern**)ast_arena_alloc(&self.interp.ast_arena, Pattern*.sizeof * subs.len());
+    p.ctor_sub_patterns = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * subs.len(), "out of memory while allocating constructor pattern arguments");
+    if (p.ctor_sub_patterns == null && subs.len() > 0) { subs.free(); return null; }
     for (usz i = 0; i < subs.len(); i++) { p.ctor_sub_patterns[i] = subs[i]; }
     subs.free();
     self.expect(T_RPAREN, ")");

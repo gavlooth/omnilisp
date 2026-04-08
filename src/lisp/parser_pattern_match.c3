@@ -9,12 +9,14 @@ import std::collections::list;
 fn Expr* Parser.parse_match(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'match' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'match'
 
     Expr* scrutinee = self.parse_expr();
 
     e.tag = E_MATCH;
-    e.match = (ExprMatch*)ast_arena_alloc(&self.interp.ast_arena, ExprMatch.sizeof);
+    e.match = (ExprMatch*)self.alloc_ast_bytes(ExprMatch.sizeof, "out of memory while allocating match expression");
+    if (e.match == null) return null;
     e.match.scrutinee = scrutinee;
 
     List{MatchClause} match_clauses;
@@ -45,7 +47,8 @@ fn Expr* Parser.parse_match(Parser* self) {
     }
 
     e.match.clause_count = match_clauses.len();
-    e.match.clauses = (MatchClause*)ast_arena_alloc(&self.interp.ast_arena, MatchClause.sizeof * match_clauses.len());
+    e.match.clauses = (MatchClause*)self.alloc_ast_bytes(MatchClause.sizeof * match_clauses.len(), "out of memory while allocating match clauses");
+    if (e.match.clauses == null && match_clauses.len() > 0) { match_clauses.free(); return null; }
     for (usz i = 0; i < match_clauses.len(); i++) { e.match.clauses[i] = match_clauses[i]; }
     match_clauses.free();
 

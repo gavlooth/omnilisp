@@ -5,60 +5,100 @@ import std::core::mem;
 import main;
 
 // Collection primitives: generic ref/push/keys/values + set operations.
-fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "ref: expected collection and key");
-    Value* coll = args[0];
+fn Value* ref_type_error(Interp* interp) {
+    return raise_error(interp, "ref: expected array, dict, cons, or string");
+}
+
+fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value** out) {
+    if (coll == null) return false;
 
     // Array: (ref arr idx) — supports negative indexing
     if (coll.tag == ARRAY) {
-        if (!is_int(args[1])) return raise_error(interp, "ref: array requires int index");
-        long idx = args[1].int_val;
+        if (!is_int(key)) {
+            *out = raise_error(interp, "ref: array requires int index");
+            return true;
+        }
+        long idx = key.int_val;
         long alen = (long)coll.array_val.length;
         if (idx < 0) idx += alen;
-        if (idx < 0 || idx >= alen) { return raise_error(interp, "ref: array index out of bounds"); }
-        return coll.array_val.items[(usz)idx];
+        if (idx < 0 || idx >= alen) {
+            *out = raise_error(interp, "ref: array index out of bounds");
+            return true;
+        }
+        *out = coll.array_val.items[(usz)idx];
+        return true;
     }
 
     // Dictionary: (ref dict key)
     if (coll.tag == HASHMAP) {
-        Value* result = hashmap_get(coll.hashmap_val, args[1]);
-        if (result == null) return make_nil(interp);
-        return result;
+        Value* result = hashmap_get(coll.hashmap_val, key);
+        *out = result == null ? make_nil(interp) : result;
+        return true;
     }
 
     // Cons/list: walk cons chain — supports negative indexing
     if (coll.tag == CONS) {
-        if (!is_int(args[1])) return raise_error(interp, "ref: list requires int index");
-        long idx = args[1].int_val;
+        if (!is_int(key)) {
+            *out = raise_error(interp, "ref: list requires int index");
+            return true;
+        }
+        long idx = key.int_val;
         if (idx < 0) {
             long len = 0;
             Value* c = coll;
             while (is_cons(c)) { len++; c = c.cons_val.cdr; }
             idx += len;
-            if (idx < 0) return raise_error(interp, "ref: list index out of bounds");
+            if (idx < 0) {
+                *out = raise_error(interp, "ref: list index out of bounds");
+                return true;
+            }
         }
         Value* current = coll;
         for (long i = 0; i < idx; i++) {
-            if (!is_cons(current)) return raise_error(interp, "ref: list index out of bounds");
+            if (!is_cons(current)) {
+                *out = raise_error(interp, "ref: list index out of bounds");
+                return true;
+            }
             current = cdr(current);
         }
-        if (is_cons(current)) return car(current);
+        if (is_cons(current)) {
+            *out = car(current);
+            return true;
+        }
         // Dotted pair terminal: (ref (cons 10 20) 1) => 20
-        if (idx > 0) return current;
-        return raise_error(interp, "ref: list index out of bounds");
+        if (idx > 0) {
+            *out = current;
+            return true;
+        }
+        *out = raise_error(interp, "ref: list index out of bounds");
+        return true;
     }
 
-    // String: (ref str idx) = char as int — supports negative indexing
+    // String: (ref str idx) = byte as int — supports negative indexing
     if (coll.tag == STRING) {
-        if (!is_int(args[1])) return raise_error(interp, "ref: string requires int index");
-        long idx = args[1].int_val;
+        if (!is_int(key)) {
+            *out = raise_error(interp, "ref: string requires int index");
+            return true;
+        }
+        long idx = key.int_val;
         long slen = (long)coll.str_len;
         if (idx < 0) idx += slen;
-        if (idx < 0 || idx >= slen) { return raise_error(interp, "ref: string index out of bounds"); }
-        return make_int(interp, (long)coll.str_chars[(usz)idx]);
+        if (idx < 0 || idx >= slen) {
+            *out = raise_error(interp, "ref: string index out of bounds");
+            return true;
+        }
+        *out = make_int(interp, (long)coll.str_chars[(usz)idx]);
+        return true;
     }
 
-    return raise_error(interp, "ref: expected array, dict, cons, or string");
+    return false;
+}
+
+fn Value* prim_ref(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2) return raise_error(interp, "ref: expected collection and key");
+    Value* result = null;
+    if (ref_try_lookup_collection(interp, args[0], args[1], &result)) return result;
+    return ref_type_error(interp);
 }
 
 fn Value* prim_push(Value*[] args, Env* env, Interp* interp) {

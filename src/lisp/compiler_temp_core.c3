@@ -45,6 +45,8 @@ fn usz Compiler.compile_to_temp_non_null(Compiler* self, Expr* expr) {
         case E_MATCH: return self.compile_match_flat(expr);
         case E_INDEX: return self.compile_index_flat(expr);
         case E_DEFINE: return self.compile_define_flat(expr);
+        case E_FFI_LIB: return self.compile_ffi_lib_direct(expr);
+        case E_FFI_FN: return self.compile_ffi_fn_direct(expr);
         case E_DEFTYPE:
         case E_DEFABSTRACT:
         case E_DEFUNION:

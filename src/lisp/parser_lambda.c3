@@ -5,6 +5,7 @@ import std::collections::list;
 fn Expr* Parser.parse_lambda(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'lambda' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'lambda'
 
     self.expect(T_LPAREN, "(");
@@ -51,6 +52,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
 fn Expr* Parser.parse_if(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'if' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'if'
 
     Expr* test = self.parse_expr();

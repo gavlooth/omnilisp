@@ -65,7 +65,7 @@
 "hello\nworld"    ;; string (escapes: \n \t \\ \")
 'symbol           ;; quoted symbol
 true              ;; boolean true (symbol)
-false             ;; boolean false (bound to nil)
+false             ;; boolean false
 nil               ;; nil value
 ()                ;; empty list (same as nil)
 ```
@@ -91,7 +91,7 @@ nil               ;; nil value
 |-------|-------------|
 | `_` | Wildcard in patterns, placeholder in calls |
 | `..` | Rest/spread in patterns and variadic params |
-| `.[` | Parser token used for postfix index parsing (`expr.[key]`); leading-dot accessor syntax is separate |
+| `.[` | Parser token used for postfix index parsing (`expr.[key]`) and leading-dot bracketed key expressions (`.[expr]`) |
 | `.` | Field/path access |
 | `^` | Type annotation prefix |
 | `[` `]` | Arrays, patterns, bracket attributes |
@@ -162,8 +162,9 @@ functions = ["sin", "cos", "sqrt"]
 
 1. Edit `omni.toml` to declare FFI dependencies
 2. Run `omni --bind myproject/`
-3. Generated modules appear in `lib/ffi/` when header parsing succeeds without overrunning the current fixed bind scratch limits
+3. Generated raw modules and facade stubs appear in `lib/ffi/` when header parsing succeeds without overrunning the current fixed bind scratch limits
 4. Import with `(import "lib/ffi/math.omni")`
+5. Execution-mode note: generated modules are declarative FFI and therefore currently target interpreter/JIT workflows; AOT currently rejects declarative `ffi` forms
 
 Requires libclang (only for `--bind`, not for running programs).
 

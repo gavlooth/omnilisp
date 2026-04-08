@@ -8,7 +8,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     // Dictionary/collection ops
     prim_hash_insert(st.intern("Array"), "aot::lookup_prim(\"Array\")");
     prim_hash_insert(st.intern("Dictionary"), "aot::lookup_prim(\"Dictionary\")");
-    prim_hash_insert(st.intern("Dictionary"), "aot::lookup_prim(\"Dictionary\")");
+    prim_hash_insert(st.intern("Dict"), "aot::lookup_prim(\"Dict\")");
     prim_hash_insert(st.intern("dict?"), "aot::lookup_prim(\"dict?\")");
     prim_hash_insert(st.intern("Set"), "aot::lookup_prim(\"Set\")");
     prim_hash_insert(st.intern("set-add"), "aot::lookup_prim(\"set-add\")");

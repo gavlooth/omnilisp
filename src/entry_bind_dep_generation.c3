@@ -57,9 +57,17 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
         return true;
     }
 
-    char[512] out_path;
-    usz olen = 0;
-    if (!build_bind_output_path(out_path[..], &olen, &proj_dir[0], proj_dir_len, dep_name)) {
+    char[512] raw_out_path;
+    usz raw_olen = 0;
+    if (!build_bind_raw_output_path(raw_out_path[..], &raw_olen, &proj_dir[0], proj_dir_len, dep_name)) {
+        io::printfn("  Error: bind raw output path too long for '%s'", (ZString)dep_name);
+        free_parsed_funcs(funcs, func_count);
+        return false;
+    }
+
+    char[512] facade_out_path;
+    usz facade_olen = 0;
+    if (!build_bind_output_path(facade_out_path[..], &facade_olen, &proj_dir[0], proj_dir_len, dep_name)) {
         io::printfn("  Error: bind output path too long for '%s'", (ZString)dep_name);
         free_parsed_funcs(funcs, func_count);
         return false;
@@ -70,15 +78,40 @@ fn bool process_bind_dependency(char[] proj_dir, usz proj_dir_len, lisp::Libclan
     usz dep_lib_len = 0;
     while (dep_lib[dep_lib_len] != 0) dep_lib_len++;
 
-    if (lisp::generate_ffi_module(dep_name[:dep_name_len], dep_lib[:dep_lib_len],
-        funcs, func_count, out_path[:olen])) {
-        io::printfn("  Generated %s (%d functions)", (ZString)&out_path[0], (int)func_count);
+    bool facade_existed = false;
+    if (try file = io::file::open((String)facade_out_path[..facade_olen], "r")) {
+        facade_existed = true;
+        (void)file.close();
+    }
+
+    if (lisp::generate_ffi_module_pair(dep_name[:dep_name_len], dep_lib[:dep_lib_len],
+        funcs, func_count, raw_out_path[:raw_olen], facade_out_path[:facade_olen])) {
+        if (facade_existed) {
+            io::printfn(
+                "  Generated %s and preserved existing %s (%d functions)",
+                (ZString)&raw_out_path[0],
+                (ZString)&facade_out_path[0],
+                (int)func_count
+            );
+        } else {
+            io::printfn(
+                "  Generated %s and %s (%d functions)",
+                (ZString)&raw_out_path[0],
+                (ZString)&facade_out_path[0],
+                (int)func_count
+            );
+        }
         *total_bindings += func_count;
         *total_libs += 1;
         free_parsed_funcs(funcs, func_count);
         return true;
     } else {
-        io::printfn("  Error: failed to write %s", (ZString)&out_path[0]);
+        io::printfn(
+            "  Error: failed to write bind outputs for '%s' (%s, %s)",
+            (ZString)dep_name,
+            (ZString)&raw_out_path[0],
+            (ZString)&facade_out_path[0]
+        );
         free_parsed_funcs(funcs, func_count);
         return false;
     }

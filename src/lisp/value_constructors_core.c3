@@ -2,111 +2,11 @@ module lisp;
 
 import main;
 
+bool g_value_force_make_string_alloc_fail = false;
+
 // =============================================================================
-// SECTION 2: VALUE CONSTRUCTORS (Core + Destructors)
+// SECTION 2: VALUE CONSTRUCTORS (Core Surface)
 // =============================================================================
-
-// Scope destructor for Values with heap-allocated backing data.
-// Mirrors destroy_value in eval.c3 but called from scope_region lifecycle.
-fn void scope_dtor_value(void* ptr) {
-    // Dtors re-enabled after fixing use-after-free (parser literals, module env)
-    Value* v = (Value*)ptr;
-    switch (v.tag) {
-        case STRING:
-        case ERROR:
-            if (v.str_chars != null) {
-                mem::free(v.str_chars);
-                v.str_chars = null;
-            }
-        case CLOSURE:
-            // Handled by scope_dtor_closure now
-            break;
-        case PRIMITIVE:
-            if (v.prim_val != null) {
-                mem::free(v.prim_val);
-                v.prim_val = null;
-            }
-        case ARRAY:
-            if (v.array_val != null) {
-                if (v.array_val.items != null) mem::free(v.array_val.items);
-                mem::free(v.array_val);
-                v.array_val = null;
-            }
-        case INSTANCE:
-            if (v.instance_val != null) {
-                instance_release(v.instance_val);
-                v.instance_val = null;
-            }
-        case METHOD_TABLE:
-            if (v.method_table_val != null) {
-                if (v.method_table_val.entries != null) {
-                    for (usz i = 0; i < v.method_table_val.entry_count; i++) {
-                        method_signature_destroy_heap(&v.method_table_val.entries[i].sig);
-                    }
-                    mem::free(v.method_table_val.entries);
-                }
-                mem::free(v.method_table_val);
-                v.method_table_val = null;
-            }
-        case HASHMAP:
-        case SET:
-            if (v.hashmap_val != null) {
-                if (v.hashmap_val.entries != null) mem::free(v.hashmap_val.entries);
-                mem::free(v.hashmap_val);
-                v.hashmap_val = null;
-            }
-        case FFI_HANDLE:
-            if (v.ffi_val != null) {
-                ffi_handle_release(v.ffi_val);
-                v.ffi_val = null;
-            }
-        case COROUTINE:
-            // Abandoned coroutines must return their StackCtx to the pool at scope teardown.
-            if (v.coroutine_val != null) {
-                if (v.coroutine_val.user_data != null) {
-                    mem::free(v.coroutine_val.user_data);
-                    v.coroutine_val.user_data = null;
-                }
-                main::StackPool* owner_pool = v.coroutine_val.owner_pool;
-                if (owner_pool != null) {
-                    main::stack_ctx_destroy(v.coroutine_val, owner_pool);
-                }
-                v.coroutine_val = null;
-            }
-        case VOID:
-            break;
-        // CONTINUATION lifetime remains managed by reset/shift/handle paths.
-        default: {}
-    }
-}
-
-// Scope destructor for Env objects — frees malloc'd bindings and hash table.
-fn void scope_dtor_closure(void* ptr) {
-    Value* v = (Value*)ptr;
-    if (v.closure_val != null && v.closure_val.env_scope != null) {
-        main::scope_release(v.closure_val.env_scope);
-        v.closure_val.env_scope = null;
-    }
-}
-
-fn bool closure_env_scope_is_root_owned(Value* v, Interp* interp) @inline {
-    if (v == null || interp == null || v.tag != CLOSURE || v.closure_val == null) return false;
-    if (v.closure_val.env_scope == null || interp.root_scope == null) return false;
-    if (v.closure_val.env_scope != interp.root_scope || v.closure_val.env == null) return false;
-    return boundary_ptr_in_scope((void*)v.closure_val.env, interp.root_scope);
-}
-
-fn void scope_dtor_env(void* ptr) {
-    Env* env = (Env*)ptr;
-    if (!env.is_inline && env.bindings != null) {
-        mem::free(env.bindings);
-        env.bindings = null;
-    }
-    if (env.hash_table != null) {
-        mem::free(env.hash_table);
-        env.hash_table = null;
-    }
-}
 
 <* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
@@ -140,13 +40,25 @@ fn Value* make_double(Interp* interp, double d) @inline {
 
 <* @ensure return != null *>
 fn Value* make_string(Interp* interp, char[] str) {
-    Value* v = interp.alloc_value();
-    v.tag = STRING;
-    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     usz len = str.len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;  // minimum allocation
-    v.str_chars = (char*)mem::malloc(cap);
+    char* chars = g_value_force_make_string_alloc_fail
+        ? null
+        : (char*)mem::malloc(cap);
+    if (chars == null) {
+        Value* fail = interp.alloc_value();
+        fail.tag = ERROR;
+        char[] msg = "out of memory while allocating string";
+        fail.str_chars = (char*)msg.ptr;
+        fail.str_len = msg.len;
+        return fail;
+    }
+
+    Value* v = interp.alloc_value();
+    v.tag = STRING;
+    main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
+    v.str_chars = chars;
     for (usz i = 0; i < len; i++) {
         v.str_chars[i] = str[i];
     }

@@ -150,12 +150,52 @@ fn bool pop_scope_guard_defer(main::StackCtx* fallback_ctx) {
     // the original source context pointer.
     main::StackCtx* active = main::g_current_stack_ctx;
     if (active != null) {
-        if (main::stack_ctx_undefer(active)) return true;
+        if (main::stack_ctx_undefer(active)) {
+            if (jit_cont_trace_enabled()) {
+                io::printfn(
+                    "cont-scope-guard-pop: active-ok active=%p id=%d defer_count=%d fallback=%p",
+                    (void*)active,
+                    (int)active.id,
+                    (int)active.defer_count,
+                    (void*)fallback_ctx
+                );
+            }
+            return true;
+        }
+        if (jit_cont_trace_enabled()) {
+            io::printfn(
+                "cont-scope-guard-pop: active-miss active=%p id=%d defer_count=%d fallback=%p",
+                (void*)active,
+                (int)active.id,
+                (int)active.defer_count,
+                (void*)fallback_ctx
+            );
+        }
         if (fallback_ctx == null || fallback_ctx == active) return false;
-        return main::stack_ctx_undefer(fallback_ctx);
+        bool fallback_ok = main::stack_ctx_undefer(fallback_ctx);
+        if (jit_cont_trace_enabled()) {
+            io::printfn(
+                "cont-scope-guard-pop: fallback-%s fallback=%p id=%d defer_count=%d",
+                fallback_ok ? (ZString)"ok" : (ZString)"miss",
+                (void*)fallback_ctx,
+                (int)fallback_ctx.id,
+                (int)fallback_ctx.defer_count
+            );
+        }
+        return fallback_ok;
     }
     if (fallback_ctx == null) return false;
-    return main::stack_ctx_undefer(fallback_ctx);
+    bool fallback_ok = main::stack_ctx_undefer(fallback_ctx);
+    if (jit_cont_trace_enabled()) {
+        io::printfn(
+            "cont-scope-guard-pop: no-active fallback-%s fallback=%p id=%d defer_count=%d",
+            fallback_ok ? (ZString)"ok" : (ZString)"miss",
+            (void*)fallback_ctx,
+            (int)fallback_ctx.id,
+            (int)fallback_ctx.defer_count
+        );
+    }
+    return fallback_ok;
 }
 
 fn bool suspend_with_scope_guard(main::StackCtx* current, main::ScopeRegion* scope) {
@@ -169,6 +209,14 @@ fn bool suspend_with_scope_guard(main::StackCtx* current, main::ScopeRegion* sco
         main::scope_release(scope);
         return false;
     }
+    if (jit_cont_trace_enabled()) {
+        io::printfn(
+            "cont-scope-guard-push: ctx=%p id=%d defer_count=%d",
+            (void*)current,
+            (int)current.id,
+            (int)current.defer_count
+        );
+    }
     jit_suspend_guard_register();
 
     main::stack_ctx_suspend();
@@ -180,6 +228,5 @@ fn bool suspend_with_scope_guard(main::StackCtx* current, main::ScopeRegion* sco
         return false;
     }
     jit_suspend_guard_unregister("jit_suspend_guard_unregister_pop");
-    main::scope_release(scope);
     return true;
 }

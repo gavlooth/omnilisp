@@ -1,6 +1,15 @@
 #include <stdlib.h>
 #include <string.h>
-#include <uv.h>
+#include "../deps/src/libuv/include/uv.h"
+
+typedef void (*omni_uv_timer_callback_fn)(void* user_data);
+
+typedef struct omni_uv_timer_callback_handle {
+    omni_uv_timer_callback_fn callback;
+    void* user_data;
+    int open;
+    int invoke_count;
+} omni_uv_timer_callback_handle_t;
 
 void* omni_uv_getaddrinfo_req_new(void) {
     return malloc(sizeof(uv_getaddrinfo_t));
@@ -159,4 +168,68 @@ int omni_uv_fs_scandir_join(char* path, char** out_buf, size_t* out_len) {
     *out_buf = out;
     *out_len = len;
     return 0;
+}
+
+int omni_uv_timer_callback_register(
+    omni_uv_timer_callback_fn callback,
+    void* user_data,
+    void** out_handle
+) {
+    if (out_handle != NULL) *out_handle = NULL;
+    if (out_handle == NULL || callback == NULL) return UV_EINVAL;
+
+    omni_uv_timer_callback_handle_t* handle =
+        (omni_uv_timer_callback_handle_t*)calloc(1, sizeof(omni_uv_timer_callback_handle_t));
+    if (handle == NULL) return UV_ENOMEM;
+
+    handle->callback = callback;
+    handle->user_data = user_data;
+    handle->open = 1;
+    handle->invoke_count = 0;
+    *out_handle = handle;
+    return 0;
+}
+
+int omni_uv_timer_callback_invoke(void* callback_handle) {
+    if (callback_handle == NULL) return UV_EINVAL;
+    omni_uv_timer_callback_handle_t* handle =
+        (omni_uv_timer_callback_handle_t*)callback_handle;
+
+    if (!handle->open || handle->callback == NULL) return UV_ECANCELED;
+
+    handle->invoke_count += 1;
+    handle->callback(handle->user_data);
+    return 0;
+}
+
+int omni_uv_timer_callback_unregister(void* callback_handle) {
+    if (callback_handle == NULL) return UV_EINVAL;
+    omni_uv_timer_callback_handle_t* handle =
+        (omni_uv_timer_callback_handle_t*)callback_handle;
+
+    if (!handle->open) return 0;
+
+    handle->open = 0;
+    handle->callback = NULL;
+    handle->user_data = NULL;
+    return 0;
+}
+
+void omni_uv_timer_callback_free(void* callback_handle) {
+    if (callback_handle == NULL) return;
+    free(callback_handle);
+}
+
+int omni_uv_timer_callback_debug_is_open(void* callback_handle) {
+    if (callback_handle == NULL) return 0;
+    omni_uv_timer_callback_handle_t* handle =
+        (omni_uv_timer_callback_handle_t*)callback_handle;
+    return handle->open ? 1 : 0;
+}
+
+int omni_uv_timer_callback_debug_invoke_count(void* callback_handle) {
+    if (callback_handle == NULL) return UV_EINVAL;
+    omni_uv_timer_callback_handle_t* handle =
+        (omni_uv_timer_callback_handle_t*)callback_handle;
+    return handle->invoke_count;
 }

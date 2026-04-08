@@ -31,7 +31,7 @@ fn bool Compiler.parse_program_exprs(Compiler* self, char[] full, List{Expr*}* e
 
     while (!lex.at_end() && !p.has_error) {
         Expr* e = p.parse_expr();
-        if (e != null) {
+        if (e != null && !p.has_error) {
             exprs.push(e);
         }
     }

@@ -50,6 +50,7 @@ fn bool Parser.parse_handle_clause(Parser* self, EffectClause* clause) {
 fn Expr* Parser.parse_handle(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();  // Capture 'handle' location
+    if (e == null) return null;
     self.lexer.advance();  // consume 'handle'
 
     bool strict = self.consume_handle_strict_annotation();
@@ -76,12 +77,14 @@ fn Expr* Parser.parse_handle(Parser* self) {
         return null;
     }
 
-    e.handle = (ExprHandle*)ast_arena_alloc(&self.interp.ast_arena, ExprHandle.sizeof);
+    e.handle = (ExprHandle*)self.alloc_ast_bytes(ExprHandle.sizeof, "out of memory while allocating handle expression");
+    if (e.handle == null) { clause_list.free(); return null; }
     e.handle.body = body;
     e.handle.strict_mode = strict;
 
     e.handle.clause_count = clause_list.len();
-    e.handle.clauses = (EffectClause*)ast_arena_alloc(&self.interp.ast_arena, EffectClause.sizeof * clause_list.len());
+    e.handle.clauses = (EffectClause*)self.alloc_ast_bytes(EffectClause.sizeof * clause_list.len(), "out of memory while allocating handle clauses");
+    if (e.handle.clauses == null && clause_list.len() > 0) { clause_list.free(); return null; }
     for (usz i = 0; i < clause_list.len(); i++) { e.handle.clauses[i] = clause_list[i]; }
     clause_list.free();
 

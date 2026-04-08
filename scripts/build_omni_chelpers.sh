@@ -32,7 +32,11 @@ compile_c_source() {
   local obj_name="${src//\//__}"
   obj_name="${obj_name//./_}.o"
   local obj="$OBJ_DIR/$obj_name"
-  cc -O2 -c "$src" -o "$obj"
+  cc -O2 \
+    -Ideps/src/yyjson/src \
+    -Ideps/src/BearSSL/inc \
+    -Ideps/src/libuv/include \
+    -c "$src" -o "$obj"
   objects+=("$obj")
 }
 

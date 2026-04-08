@@ -84,7 +84,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "    (define res (await cf)) "
         "    (await sf) "
         "    (tcp-close listener) "
-        "    (and (= ('status res) 200) (= ('body res) \"ok\"))))) "
+        "    (and (= res.status 200) (= res.body \"ok\"))))) "
         "  (await hf))",
         pass, fail);
 
@@ -103,7 +103,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "    (define res (await cf)) "
         "    (await sf) "
         "    (tcp-close listener) "
-        "    (and (= ('status res) 201) (= ('body res) \"yes\"))))) "
+        "    (and (= res.status 201) (= res.body \"yes\"))))) "
         "  (await hf))",
         pass, fail);
 
@@ -180,7 +180,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (let (req (pipeline/decode-request \"GET /items HTTP/1.1\\nHost: x\\n\\n\")) "
-            "    (and (= ('method req) \"GET\") (= ('path req) \"/items\"))))",
+            "    (and (= req.method \"GET\") (= req.path \"/items\"))))",
             interp);
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
             emit_pass_literal("[PASS] crud pipeline decode LF fallback");
@@ -198,7 +198,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"BROKENLINE\\r\\n\\r\\n\")) "
             "  (define out (pipeline/result->response (pipeline/execute req))) "
-            "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
+            "  (and (= out.status \"error\") (= out.error \"route not found\")))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
@@ -221,7 +221,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define req (pipeline/decode-request \"GET\\r\\n\\r\\n\")) "
             "  (define out (pipeline/result->response (pipeline/execute req))) "
-            "  (and (= ('status out) \"error\") (= ('error out) \"route not found\")))",
+            "  (and (= out.status \"error\") (= out.error \"route not found\")))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
@@ -243,9 +243,9 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         setup(interp, "(define post-res (pipeline/result->response (pipeline/execute post-req)))");
         setup(interp, "(define get-res (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items/11\" 'body nil})))");
         EvalResult r = run(
-            "(and (= ('status post-res) \"ok\") "
-            "     (and (= ('status get-res) \"ok\") "
-            "          (= ('name ('data get-res)) \"paper\")))",
+            "(and (= post-res.status \"ok\") "
+            "     (and (= get-res.status \"ok\") "
+            "          (= get-res.data.name \"paper\")))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
@@ -270,9 +270,9 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         setup(interp, "(define del-res (pipeline/result->response (pipeline/execute {'method \"DELETE\" 'path \"/items\" 'body {'id 12}})))");
         setup(interp, "(define row-after-del (repo/get-by-id 12))");
         EvalResult r = run(
-            "(and (= ('status put-res) \"ok\") "
+            "(and (= put-res.status \"ok\") "
             "     (and (= row-after-put.qty 9) "
-            "          (and (= ('status del-res) \"ok\") "
+            "          (and (= del-res.status \"ok\") "
             "               (null? row-after-del))))",
             interp
         );
@@ -295,7 +295,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define bad (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/items/not-int\" 'body nil}))) "
-            "  (and (= ('status bad) \"error\") (= ('error bad) \"route not found\")))",
+            "  (and (= bad.status \"error\") (= bad.error \"route not found\")))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
@@ -317,7 +317,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "(block "
             "  (load \"examples/deduce_crud_server.omni\") "
             "  (define miss (pipeline/result->response (pipeline/execute {'method \"GET\" 'path \"/unknown\" 'body nil}))) "
-            "  (and (= ('status miss) \"error\") (= ('error miss) \"route not found\")))",
+            "  (and (= miss.status \"error\") (= miss.error \"route not found\")))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
@@ -390,10 +390,10 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
             "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
             "  (define r1 (pipeline/result->response (await c1))) "
             "  (define r2 (pipeline/result->response (await c2))) "
-            "  (define r1-ok (= ('status r1) \"ok\")) "
-            "  (define r1-dup (= ('error r1) \"item already exists\")) "
-            "  (define r2-ok (= ('status r2) \"ok\")) "
-            "  (define r2-dup (= ('error r2) \"item already exists\")) "
+            "  (define r1-ok (= r1.status \"ok\")) "
+            "  (define r1-dup (= r1.error \"item already exists\")) "
+            "  (define r2-ok (= r2.status \"ok\")) "
+            "  (define r2-dup (= r2.error \"item already exists\")) "
             "  (define cnt (deduce 'count items)) "
             "  (and (= cnt 1) "
             "       (or (and r1-ok r2-dup) (and r2-ok r1-dup)))) )",

@@ -6,7 +6,8 @@ import main;
 fn isz find_last_non_define(List{Expr*}* exprs) {
     isz last_non_define = -1;
     for (usz i = 0; i < exprs.len(); i++) {
-        if ((*exprs)[i].tag != E_DEFINE) {
+        ExprTag tag = (*exprs)[i].tag;
+        if (tag != E_DEFINE && tag != E_FFI_LIB && tag != E_FFI_FN) {
             last_non_define = (isz)i;
         }
     }
@@ -33,6 +34,24 @@ fn void Compiler.emit_top_level_exprs(Compiler* self, List{Expr*}* exprs) {
                 self.emit(";\n");
                 continue;
             }
+        }
+        if ((*exprs)[i].tag == E_FFI_LIB) {
+            usz init_r = self.compile_to_temp((*exprs)[i]);
+            self.emit_indent();
+            self.emit_symbol_name((*exprs)[i].ffi_lib.name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+            continue;
+        }
+        if ((*exprs)[i].tag == E_FFI_FN && (*exprs)[i].ffi_fn != null) {
+            usz init_r = self.compile_to_temp((*exprs)[i]);
+            self.emit_indent();
+            self.emit_symbol_name((*exprs)[i].ffi_fn.fn_name);
+            self.emit(" = ");
+            self.emit_temp_ref(init_r);
+            self.emit(";\n");
+            continue;
         }
 
         if ((*exprs)[i].tag == E_IMPORT) {

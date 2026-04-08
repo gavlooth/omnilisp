@@ -10,19 +10,19 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 ### 1. Functions
 
 - Canonical function-expression form is `lambda`.
+- Plain `λ` is accepted as an equivalent function-expression spelling.
 - Shorthand function declarations use `define` with direct function syntax:
 
 ```lisp
 (define (udp-open host port) ...)
 ```
 
-- `fn` is removed; canonical errors point to `lambda`.
+- `fn` is removed and is not a supported migration spelling.
 
 ### 2. Sequencing
 
 - Canonical sequencing form is `block`.
-- `begin` remains parser-reserved only for migration checks and is not a first-class public sequencing form.
-- `do` is not part of the canonical surface.
+- `begin` and `do` are removed and are not supported migration spellings.
 
 ### 3. Local Binding
 
@@ -42,6 +42,7 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
   - `(let loop ((i 0) (acc nil)) ...)`
   - `(letrec ...)`
 - Bracket single-binding shorthand such as `(let [x 10] ...)` is not part of the canonical surface.
+- Historical continuation spellings `reset` / `shift` are also removed; use `checkpoint` / `capture`.
 
 ### 4. Effect Handlers
 
@@ -87,6 +88,26 @@ It is a short reference for contributors to avoid reintroducing removed aliases 
 - Migration note:
   - historical helper spellings `with-handlers` and `handle-chain` should be
     treated as non-canonical in public-facing examples/docs.
+
+### 7.1 Accessor Shorthand
+
+- Leading-dot accessor shorthand was removed.
+- Canonical access surface is now:
+  - path access for symbol-key/field lookup: `expr.name`
+  - postfix index access for dynamic/index lookup: `expr.[key]`
+  - explicit lookup via `(ref expr key)` as the collection lookup core
+- `expr.name` is a distinct path operation, not a full desugar to `ref`.
+- Dot syntax is access syntax only. It does not construct standalone function
+  values.
+- Removed forms that must hard-error:
+  - `.name`
+  - `.'key`
+  - `.3`
+  - `. [expr]`
+  - `.[expr]`
+  - callable quoted-symbol accessors like `('name dict)`
+- Use an explicit lambda such as `(lambda (x) (ref x key))` when you want a
+  higher-order accessor function value.
 
 ### 8. Macro Surface Model (Locked 2026-03-11)
 

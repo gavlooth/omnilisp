@@ -73,7 +73,7 @@ fn lisp::Value* make_time_point(int kind, int year, int month, int day, int hour
     return lisp::make_time_point(g_aot_interp, (lisp::TimePointKind)kind, year, month, day, hour, minute, second, microsecond, tz_offset);
 }
 fn lisp::Value* make_true() @inline { return lisp::make_symbol(g_aot_interp, g_aot_interp.sym_true); }
-fn lisp::Value* make_false() @inline { return lisp::make_nil(g_aot_interp); }
+fn lisp::Value* make_false() @inline { return lisp::make_symbol(g_aot_interp, g_aot_interp.sym_false); }
 
 // =============================================================================
 // List Operations

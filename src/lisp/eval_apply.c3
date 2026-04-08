@@ -16,15 +16,7 @@ fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
         return eval_ok(result);
     }
 
-    // For multi-arity primitives, create a partial application
-    Value* partial = interp.alloc_value();
-    partial.tag = PARTIAL_PRIM;
-    partial.partial_val.func = prim.prim_val.func;
-    partial.partial_val.first_arg = arg;
-    partial.partial_val.second_arg = null;
-    partial.partial_val.remaining = arity - 1;
-
-    return eval_ok(partial);
+    return eval_error("arity mismatch");
 }
 
 fn EvalResult apply_partial(Value* partial, Value* arg, Interp* interp) {

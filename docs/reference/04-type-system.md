@@ -70,7 +70,8 @@ None              ;; nullary variant
 (String 3)           ;; => "3"
 (Symbol "name")      ;; => 'name
 (Boolean 0)          ;; => true
-(Boolean nil)        ;; => nil
+(Boolean nil)        ;; => false
+(Boolean false)      ;; => false
 (Nil nil)            ;; => nil
 (Closure (lambda (x) x))
 (Coroutine (lambda () 1))
@@ -96,6 +97,7 @@ Alias policy is input-tolerant but output-canonical:
 
 Collection/time constructor naming policy:
 - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
+- allowed constructor shorthand: `Dict` for `Dictionary`
 - retained public helper: `list`
 
 Meta/abstract symbols `Any`, `Number`, and `Collection` remain annotation/dispatch
@@ -112,8 +114,8 @@ value. `Void` is a real builtin singleton type/value, constructed with
 `(Void)`, printed as `#<void>`, and FFI `^Void` maps to that same runtime
 value.
 
-Current stable rule: value-level `false` collapses to `nil`. If you need the
-symbol name itself as data, use quoted `'false`.
+`false` is a distinct boolean value. `nil` is the absence value. Both are
+falsy. If you need the symbol name itself as data, use quoted `'false`.
 
 Command-style success paths should now prefer `Void` over `nil` where possible so
 query/absence semantics remain on `Nil` and side-effect completion is explicitly

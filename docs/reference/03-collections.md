@@ -88,39 +88,40 @@ These work across collection types:
 | `length` | count | count | count | char count |
 | `push!` | — | append | — | — |
 
-### Dot-Bracket Index Access
+### Access Syntax
 
-### Leading-Dot Accessor Shorthand
+Omni keeps related but distinct access operations:
 
-```lisp
-.name                   ;; key expression 'name
-.1                      ;; key expression 1
-.-1                     ;; key expression -1
-.'key                   ;; key expression 'key
-```
-
-Leading dot is separate from postfix indexing. It lowers to a one-argument
-lookup lambda over the next full expression.
-Canonical spelling omits whitespace after the leading `.`.
+- `(ref coll key)` is the canonical dynamic collection lookup operation.
+- `expr.name` is a distinct path-step operation (module/instance/dict-symbol/cons step semantics), not a full `ref` desugar.
+- `expr.[key]` is postfix dynamic/index access syntax aligned with `ref` collection lookup semantics.
 
 Examples:
 
 ```lisp
+(define user {'name "Alice" 'age 30})
+user.name                         ;; => "Alice"
+
 (define arr [0 1 2])
-(.2 arr)                         ;; => 2
+arr.[2]                           ;; => 2
 
-(.2 {2 "int-key"})               ;; => "int-key"
-(."2" {"2" "string-key"})        ;; => "string-key"
-(.[2] {[2] "array-key"})         ;; => "array-key"
-(map .1 '((10 20) (30 40)))      ;; => (20 40)
-
-((lambda (x) (ref x 2)) {2 "int-key"})        ;; => "int-key"
-((lambda (x) (ref x "2")) {"2" "string-key"}) ;; => "string-key"
-((lambda (x) (ref x [2])) {[2] "array-key"})  ;; => "array-key"
+(ref {2 "int-key"} 2)            ;; => "int-key"
+(ref {"2" "string-key"} "2")     ;; => "string-key"
+(ref {[2] "array-key"} [2])      ;; => "array-key"
 ```
 
-`(.2)` and wrapped forms like `((.2) arr)` are invalid. Use `(.2 arr)` for
-direct application, or pass `.2` as a value in higher-order calls.
+Removed forms:
+
+```lisp
+.name
+.1
+.'key
+.[expr]
+('name user)
+```
+
+These removed forms now hard-error. Use `expr.name`, `expr.[key]`, `ref`, or
+an explicit lambda like `(lambda (x) (ref x 'name))` for higher-order code.
 
 ### Postfix Index Access
 

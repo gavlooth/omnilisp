@@ -22,7 +22,7 @@
 | String literal (inline) | 63 bytes (lexer limit) |
 | String value | Dynamic (no limit) |
 | Macros | 64 |
-| Macro clauses | 8 per macro |
+| Macro transformer branches | Dynamic (inside `syntax-match`) |
 | Modules | 32 |
 | Module exports | 128 per module |
 | Eval depth | 5,000 |

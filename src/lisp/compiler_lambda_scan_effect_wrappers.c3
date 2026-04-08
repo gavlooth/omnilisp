@@ -17,7 +17,6 @@ fn Expr* Compiler.make_synthetic_lambda(Compiler* self, Expr* source_expr, Symbo
     wrapper.lambda.rest_param = 0;
     wrapper.lambda.has_typed_params = false;
     wrapper.lambda.body = body;
-    wrapper.lambda.is_accessor_shorthand = false;
     return wrapper;
 }
 

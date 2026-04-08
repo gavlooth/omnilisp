@@ -41,14 +41,17 @@ fn bool Parser.parse_named_let_bindings(Parser* self, List{SymbolId}* params, Li
 
 fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* params, Expr* body) {
     usz param_count = (*params).len();
-    Expr* lambda_expr = self.interp.alloc_expr();
+    Expr* lambda_expr = self.alloc_expr();
+    if (lambda_expr == null) return null;
     lambda_expr.tag = E_LAMBDA;
-    lambda_expr.lambda = (ExprLambda*)ast_arena_alloc(&self.interp.ast_arena, ExprLambda.sizeof);
+    lambda_expr.lambda = (ExprLambda*)self.alloc_ast_bytes(ExprLambda.sizeof, "out of memory while allocating named let lambda");
+    if (lambda_expr.lambda == null) return null;
     lambda_expr.loc_line = e.loc_line;
     lambda_expr.loc_column = e.loc_column;
     lambda_expr.lambda.param = (*params)[0];
     lambda_expr.lambda.param_count = param_count;
-    lambda_expr.lambda.params = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * param_count);
+    lambda_expr.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating named let parameters");
+    if (lambda_expr.lambda.params == null && param_count > 0) return null;
     for (usz i = 0; i < param_count; i++) {
         lambda_expr.lambda.params[i] = (*params)[i];
     }
@@ -57,7 +60,6 @@ fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* pa
     lambda_expr.lambda.has_typed_params = false;
     lambda_expr.lambda.param_annotations = null;
     lambda_expr.lambda.body = body;
-    lambda_expr.lambda.is_accessor_shorthand = false;
     return lambda_expr;
 }
 
@@ -76,6 +78,11 @@ fn Expr* Parser.parse_named_let(Parser* self, Expr* e, SymbolId loop_name) {
     self.expect(T_RPAREN, ")");  // consume outer ')' of let form
 
     Expr* lambda_expr = self.build_named_let_lambda(e, &params, body);
+    if (lambda_expr == null || self.has_error) {
+        params.free();
+        inits.free();
+        return null;
+    }
     Expr* result = self.build_named_let_sequential_body(e, loop_name, &params, &inits, lambda_expr);
     params.free();
     inits.free();

@@ -59,7 +59,8 @@ constructor or coercion surface.
 (String 3)       ; => "3"
 (Symbol "name")  ; => 'name
 (Boolean 0)      ; => true
-(Boolean nil)    ; => nil
+(Boolean nil)    ; => false
+(Boolean false)  ; => false
 (Nil nil)        ; => nil
 (Closure (lambda (x) x))
 (Coroutine (lambda () 1))

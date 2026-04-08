@@ -8,7 +8,13 @@
     "targets": {
         "main": {
             "type": "executable",
+            "c-include-dirs": [
+                "deps/src/yyjson/src",
+                "deps/src/BearSSL/inc",
+                "deps/src/libuv/include"
+            ],
             "c-sources": [
+                "clib/mathutils.c",
                 "csrc/stack_helpers.c",
                 "csrc/ffi_helpers.c",
                 "csrc/json_helpers.c",
@@ -97,9 +103,9 @@
                 "third_party/ftxui/src/ftxui/screen/string.cpp",
                 "third_party/ftxui/src/ftxui/screen/terminal.cpp"
             ],
-            "linked-libraries": ["mathutils", "m", "lightning", "replxx", "dl", "ffi", "omni_ftxui", "stdc++"],
+            "linked-libraries": ["m", "lightning", "replxx", "dl", "ffi", "omni_ftxui", "stdc++"],
             "linker-search-paths": ["build", "/usr/local/lib", "deps/lib"],
-            "link-args": ["-Wl,-Bstatic", "-lutf8proc", "-ldeflate", "-lyyjson", "-luv", "-lbearssl", "-llmdb", "-Wl,-Bdynamic"]
+            "link-args": ["-Wl,-Bstatic", "-lutf8proc", "-ldeflate", "-lyyjson", "-luv", "-lbearssl", "-llmdb", "-Wl,-Bdynamic", "-Wl,-rpath,\\$ORIGIN"]
         }
     }
 }

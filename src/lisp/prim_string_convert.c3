@@ -111,12 +111,13 @@ fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Boolean: expected 1 argument");
-    return is_falsy(args[0], interp) ? make_nil(interp) : make_symbol(interp, interp.sym_true);
+    return is_falsy(args[0], interp) ? make_symbol(interp, interp.sym_false) : make_symbol(interp, interp.sym_true);
 }
 
 fn Value* prim_ctor_nil(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return conversion_type_raise(interp, "Nil: expected nil/false");
-    return is_falsy(args[0], interp) ? make_nil(interp) : conversion_type_raise(interp, "Nil: expected nil/false");
+    if (args.len < 1) return conversion_type_raise(interp, "Nil: expected nil");
+    Value* arg = args[0];
+    return (arg == null || arg.tag == NIL) ? make_nil(interp) : conversion_type_raise(interp, "Nil: expected nil");
 }
 
 fn Value* prim_ctor_void(Value*[] args, Env* env, Interp* interp) {

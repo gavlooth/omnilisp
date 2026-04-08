@@ -237,7 +237,7 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     }
 
     {
-        EvalResult r = run("('name (car (deduce 'match person '(person ?name ?age))))", interp);
+        EvalResult r = run("(ref (car (deduce 'match person '(person ?name ?age))) 'name)", interp);
         if (!r.error.has_error && is_string(r.value)) {
             emit_pass_literal("[PASS] deduce 'match ?var binding");
             (*pass)++;

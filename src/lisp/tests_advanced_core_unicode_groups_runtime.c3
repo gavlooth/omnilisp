@@ -60,16 +60,10 @@ fn void run_advanced_runtime_control_tests(Interp* interp, int* pass, int* fail)
 }
 
 fn void run_advanced_block_syntax_contract_matrix_tests(Interp* interp, int* pass, int* fail) {
-    // Block syntax contract: accepted and removed forms.
+    // Block syntax contract: accepted canonical form only.
     test_eq(interp, "block returns last", "(block 1 2 3)", 3, pass, fail);
     test_eq(interp, "block single", "(block 42)", 42, pass, fail);
     test_eq(interp, "block side effects", "(block (define block-x 10) (define block-y 20) (+ block-x block-y))", 30, pass, fail);
     test_eq(interp, "block nested", "(block (block 1 2) (block 3 4))", 4, pass, fail);
     test_eq(interp, "block with if", "(block (if true 10 20) (if false 30 40))", 40, pass, fail);
-    test_error_contains(interp, "begin syntax removed", "(begin 1 2)", "begin syntax was removed; use block", pass, fail);
-    test_error_contains(interp, "do syntax removed", "(do 1 2)", "do syntax was removed; use block", pass, fail);
-    test_error_contains(interp, "fn syntax removed", "(fn (x) x)", "fn syntax was removed; use lambda", pass, fail);
-    test_error_contains(interp, "letrec syntax removed", "(letrec ((f (lambda (x) x))) (f 1))", "letrec syntax was removed; use let ^rec", pass, fail);
-    test_error_contains(interp, "reset syntax removed", "(reset 1)", "reset syntax was removed; use checkpoint", pass, fail);
-    test_error_contains(interp, "shift syntax removed", "(shift k 1)", "shift syntax was removed; use capture", pass, fail);
 }

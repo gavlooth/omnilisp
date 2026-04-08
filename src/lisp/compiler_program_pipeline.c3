@@ -80,6 +80,7 @@ fn void Compiler.emit_compiled_main_body(Compiler* self, List{Expr*}* exprs, usz
 
     *prim_init_pos = self.output.str_view().len;
     self.emit_newline();
+    self.emit_ffi_startup_preload(exprs);
     self.declared_vars.free();
     self.emit_top_level_exprs(exprs);
     self.emit_main_end();
@@ -114,6 +115,7 @@ fn char[] Compiler.compile_program(Compiler* self, char[] source) {
     // Assemble final output: prelude + globals + compiled code (with prim init inserted)
     self.emit_prelude();
     self.emit_global_declarations();
+    self.emit_ffi_contract_manifest(&exprs);
 
     char[] code_str = code_buf.str_view();
     self.emit_code_with_prim_inits(code_str, prim_init_pos);

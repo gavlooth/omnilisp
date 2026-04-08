@@ -7,11 +7,8 @@ fn bool Parser.copy_symbol_list(Parser* self, SymbolId** out, List{SymbolId}* it
         *out = null;
         return true;
     }
-    SymbolId* buf = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * items.len());
-    if (buf == null) {
-        self.set_error(oom_error);
-        return false;
-    }
+    SymbolId* buf = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * items.len(), oom_error);
+    if (buf == null) return false;
     for (usz i = 0; i < items.len(); i++) buf[i] = (*items)[i];
     *out = buf;
     return true;
@@ -22,11 +19,8 @@ fn bool Parser.copy_type_field_list(Parser* self, TypeField** out, List{TypeFiel
         *out = null;
         return true;
     }
-    TypeField* buf = (TypeField*)ast_arena_alloc(&self.interp.ast_arena, TypeField.sizeof * items.len());
-    if (buf == null) {
-        self.set_error("out of memory while parsing type fields");
-        return false;
-    }
+    TypeField* buf = (TypeField*)self.alloc_ast_bytes(TypeField.sizeof * items.len(), "out of memory while parsing type fields");
+    if (buf == null) return false;
     for (usz i = 0; i < items.len(); i++) buf[i] = (*items)[i];
     *out = buf;
     return true;
@@ -37,11 +31,8 @@ fn bool Parser.copy_union_variant_list(Parser* self, UnionVariant** out, List{Un
         *out = null;
         return true;
     }
-    UnionVariant* buf = (UnionVariant*)ast_arena_alloc(&self.interp.ast_arena, UnionVariant.sizeof * items.len());
-    if (buf == null) {
-        self.set_error("out of memory while parsing union variants");
-        return false;
-    }
+    UnionVariant* buf = (UnionVariant*)self.alloc_ast_bytes(UnionVariant.sizeof * items.len(), "out of memory while parsing union variants");
+    if (buf == null) return false;
     for (usz i = 0; i < items.len(); i++) buf[i] = (*items)[i];
     *out = buf;
     return true;

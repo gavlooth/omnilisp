@@ -29,7 +29,12 @@ fn Value* jit_apply_multi_args_tail_variadic(Interp* interp, Value* func, Value*
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d", (int)pc, (int)arg_count)!!;
+        char[] msg;
+        if (try char[] formatted = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d", (int)pc, (int)arg_count)) {
+            msg = formatted;
+        } else {
+            msg = "variadic lambda arity mismatch";
+        }
         return raise_error(interp, msg);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);

@@ -32,11 +32,8 @@ fn bool Parser.ensure_export_from_name_capacity(Parser* self, Expr* e) {
         self.set_error("export-from list is too large");
         return false;
     }
-    SymbolId* new_names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * new_cap);
-    if (new_names == null) {
-        self.set_error("out of memory while growing export-from list");
-        return false;
-    }
+    SymbolId* new_names = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing export-from list");
+    if (new_names == null) return false;
     for (usz i = 0; i < e.export_from.name_count; i++) {
         new_names[i] = e.export_from.names[i];
     }
@@ -47,11 +44,8 @@ fn bool Parser.ensure_export_from_name_capacity(Parser* self, Expr* e) {
 
 fn bool Parser.parse_export_from_name_list(Parser* self, Expr* e) {
     e.export_from.name_capacity = 16;
-    e.export_from.names = (SymbolId*)ast_arena_alloc(&self.interp.ast_arena, SymbolId.sizeof * 16);
-    if (e.export_from.names == null) {
-        self.set_error("out of memory while allocating export-from list");
-        return false;
-    }
+    e.export_from.names = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * 16, "out of memory while allocating export-from list");
+    if (e.export_from.names == null) return false;
     self.lexer.advance();  // consume '('
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
         if (!self.ensure_export_from_name_capacity(e)) return false;
@@ -94,6 +88,7 @@ fn bool Parser.parse_export_from_specifiers(Parser* self, Expr* e) {
 fn Expr* Parser.parse_export_from(Parser* self) {
     if (self.has_error) return null;
     Expr* e = self.alloc_expr_here();
+    if (e == null) return null;
     self.lexer.advance();  // consume 'export-from'
 
     self.init_export_from_expr(e);
