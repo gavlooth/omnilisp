@@ -450,7 +450,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "argument 1 expected Pointer, got String", pass, fail);
     test_error_contains(interp, "ffi λ exact arity rejects extra args",
         "(getpid 1)",
-        "expected 0 args, got 1", pass, fail);
+        "arity mismatch: expected 0 argument(s), got 1", pass, fail);
     test_error_contains(interp, "ffi lib bad",
         "(define [ffi lib] bad-lib \"nonexistent_xyz.so\")",
         "dlopen failed for", pass, fail);
