@@ -1,25 +1,15 @@
 module lisp;
 
 import std::collections::list;
-import std::core::mem;
 
 bool g_parser_force_ffi_fn_alloc_fail = false;
 
 fn void parser_free_ffi_fn_partial(ExprFfiFn* ffi) {
     if (ffi == null) return;
-    if (ffi.c_name != null) {
-        mem::free(ffi.c_name);
-        ffi.c_name = null;
-    }
-    if (ffi.param_names != null) {
-        mem::free(ffi.param_names);
-        ffi.param_names = null;
-    }
-    if (ffi.param_types != null) {
-        mem::free(ffi.param_types);
-        ffi.param_types = null;
-    }
-    mem::free(ffi);
+    // FFI AST payloads are arena-backed and are reclaimed with whole-AST teardown.
+    ffi.c_name = null;
+    ffi.param_names = null;
+    ffi.param_types = null;
 }
 
 // (define [ffi lib] name "path.so")
@@ -52,7 +42,7 @@ fn Expr* Parser.parse_ffi_fn(Parser* self, Expr* e, List{SymbolId}* attrs) {
 
     ExprFfiFn* ffi = g_parser_force_ffi_fn_alloc_fail
         ? null
-        : (ExprFfiFn*)mem::malloc(ExprFfiFn.sizeof);
+        : (ExprFfiFn*)self.alloc_ast_bytes(ExprFfiFn.sizeof, "out of memory while creating FFI function expression");
     if (ffi == null) {
         self.set_error("out of memory while creating FFI function expression");
         return null;

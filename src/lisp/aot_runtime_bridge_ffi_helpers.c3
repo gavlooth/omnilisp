@@ -1,16 +1,17 @@
 module lisp::aot;
 
-import std::core::mem;
 import lisp;
 
-fn bool aot_copy_cstring(char[] text, char** out_text, usz* out_len) @inline {
+fn bool aot_copy_cstring(lisp::Interp* interp, char[] text, char** out_text, usz* out_len) @inline {
     *out_text = null;
     *out_len = 0;
     if (text.len == 0) return true;
-    if (text.len == usz.max) return false;
-    char* buf = (char*)mem::malloc(text.len + 1);
+    if (interp == null || interp.root_scope == null || text.len == usz.max) return false;
+    char* buf = (char*)interp.root_scope.alloc(text.len + 1);
     if (buf == null) return false;
-    mem::copy(buf, text.ptr, text.len);
+    for (usz i = 0; i < text.len; i++) {
+        buf[i] = text[i];
+    }
     buf[text.len] = 0;
     *out_text = buf;
     *out_len = text.len;
@@ -43,9 +44,7 @@ fn bool aot_ffi_type_tag_from_int(int raw_tag, lisp::FfiTypeTag* out_tag) @inlin
 }
 
 fn void aot_ffi_free_bound(lisp::FfiBoundFn* bound) @inline {
-    if (bound == null) return;
-    if (bound.param_types != null) mem::free(bound.param_types);
-    if (bound.lib_name != null) mem::free(bound.lib_name);
-    if (bound.c_name != null) mem::free(bound.c_name);
-    mem::free(bound);
+    // AOT FFI bindings are root-scope-owned and are reclaimed when the
+    // interpreter root scope is released.
+    (void)bound;
 }

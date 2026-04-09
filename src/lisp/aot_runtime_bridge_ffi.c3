@@ -1,6 +1,5 @@
 module lisp::aot;
 
-import std::core::mem;
 import std::io;
 import lisp;
 
@@ -37,7 +36,7 @@ fn lisp::Value* ffi_declare_fn(
         if (prim == null || prim.tag != lisp::ValueTag.PRIMITIVE || prim.prim_val == null) {
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while creating unavailable primitive");
         }
-        lisp::FfiBoundFn* unavailable = (lisp::FfiBoundFn*)mem::malloc(lisp::FfiBoundFn.sizeof);
+        lisp::FfiBoundFn* unavailable = (lisp::FfiBoundFn*)interp.root_scope.alloc(lisp::FfiBoundFn.sizeof);
         if (unavailable == null) {
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while allocating unavailable binding");
         }
@@ -64,7 +63,7 @@ fn lisp::Value* ffi_declare_fn(
         return prim;
     }
 
-    lisp::FfiBoundFn* bound = (lisp::FfiBoundFn*)mem::malloc(lisp::FfiBoundFn.sizeof);
+    lisp::FfiBoundFn* bound = (lisp::FfiBoundFn*)interp.root_scope.alloc(lisp::FfiBoundFn.sizeof);
     if (bound == null) {
         return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while allocating bound function");
     }
@@ -74,7 +73,7 @@ fn lisp::Value* ffi_declare_fn(
     bound.required_symbol = required_symbol;
     bound.is_unavailable = false;
     if (lib_val.ffi_val.name_len > 0) {
-        if (!aot_copy_cstring(lib_val.ffi_val.lib_name[:lib_val.ffi_val.name_len], &bound.lib_name, &bound.lib_name_len)) {
+        if (!aot_copy_cstring(interp, lib_val.ffi_val.lib_name[:lib_val.ffi_val.name_len], &bound.lib_name, &bound.lib_name_len)) {
             aot_ffi_free_bound(bound);
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while copying library soname");
         }
@@ -94,12 +93,14 @@ fn lisp::Value* ffi_declare_fn(
         aot_ffi_free_bound(bound);
         return aot_make_error_best_effort(interp, "aot ffi λ: C symbol name is too long");
     }
-    bound.c_name = (char*)mem::malloc(c_symbol.len + 1);
+    bound.c_name = (char*)interp.root_scope.alloc(c_symbol.len + 1);
     if (bound.c_name == null) {
         aot_ffi_free_bound(bound);
         return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while copying symbol name");
     }
-    mem::copy(bound.c_name, c_symbol.ptr, c_symbol.len);
+    for (usz i = 0; i < c_symbol.len; i++) {
+        bound.c_name[i] = c_symbol[i];
+    }
     bound.c_name[c_symbol.len] = 0;
 
     if (param_count > 0) {
@@ -107,7 +108,7 @@ fn lisp::Value* ffi_declare_fn(
             aot_ffi_free_bound(bound);
             return aot_make_error_best_effort(interp, "aot ffi λ: parameter ABI table size overflow");
         }
-        bound.param_types = (lisp::FfiTypeTag*)mem::malloc(lisp::FfiTypeTag.sizeof * param_count);
+        bound.param_types = (lisp::FfiTypeTag*)interp.root_scope.alloc(lisp::FfiTypeTag.sizeof * param_count);
         if (bound.param_types == null) {
             aot_ffi_free_bound(bound);
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while allocating parameter ABI tags");

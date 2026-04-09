@@ -155,7 +155,7 @@ fn lisp::Value* make_closure(void* data, AotClosureFn invoke) {
     }
     AotClosureData* cd = g_aot_force_closure_data_alloc_fail
         ? null
-        : (AotClosureData*)mem::malloc(AotClosureData.sizeof);
+        : (AotClosureData*)active_interp.root_scope.alloc(AotClosureData.sizeof);
     if (cd == null) {
         return lisp::make_error(active_interp, "aot make_closure: out of memory while allocating closure payload");
     }
@@ -164,7 +164,6 @@ fn lisp::Value* make_closure(void* data, AotClosureFn invoke) {
         ? null
         : lisp::make_primitive(active_interp, "aot-closure", &aot_closure_apply, 1);
     if (v == null) {
-        mem::free(cd);
         return lisp::make_error(active_interp, "aot make_closure: out of memory while allocating primitive");
     }
     v.prim_val.user_data = (void*)cd;
@@ -180,7 +179,7 @@ fn lisp::Value* make_variadic_closure(void* data, AotVariadicFn invoke) {
     }
     AotClosureData* cd = g_aot_force_variadic_closure_data_alloc_fail
         ? null
-        : (AotClosureData*)mem::malloc(AotClosureData.sizeof);
+        : (AotClosureData*)active_interp.root_scope.alloc(AotClosureData.sizeof);
     if (cd == null) {
         return lisp::make_error(active_interp, "aot make_variadic_closure: out of memory while allocating closure payload");
     }
@@ -189,7 +188,6 @@ fn lisp::Value* make_variadic_closure(void* data, AotVariadicFn invoke) {
         ? null
         : lisp::make_primitive(active_interp, "aot-closure-var", &aot_variadic_apply, -1);
     if (v == null) {
-        mem::free(cd);
         return lisp::make_error(active_interp, "aot make_variadic_closure: out of memory while allocating primitive");
     }
     v.prim_val.user_data = (void*)cd;

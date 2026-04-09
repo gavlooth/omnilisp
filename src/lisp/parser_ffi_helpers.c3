@@ -1,7 +1,6 @@
 module lisp;
 
 import std::collections::list;
-import std::core::mem;
 
 bool g_parser_force_ffi_param_names_alloc_fail = false;
 bool g_parser_force_ffi_param_types_alloc_fail = false;
@@ -29,7 +28,7 @@ fn bool Parser.set_ffi_c_name(Parser* self, ExprFfiFn* ffi) {
         self.set_error("FFI symbol name is too long");
         return false;
     }
-    char* c_name = (char*)mem::malloc(clen + 1);
+    char* c_name = (char*)self.alloc_ast_bytes(clen + 1, "out of memory while parsing FFI symbol name");
     if (c_name == null) {
         self.set_error("out of memory while parsing FFI symbol name");
         return false;
@@ -71,7 +70,7 @@ fn bool Parser.ensure_ffi_param_capacity(Parser* self, ExprFfiFn* ffi, usz neede
 
     SymbolId* grown_names = g_parser_force_ffi_param_names_alloc_fail
         ? null
-        : (SymbolId*)mem::malloc(name_bytes);
+        : (SymbolId*)self.alloc_ast_bytes(name_bytes, "out of memory while allocating FFI parameter name table");
     if (grown_names == null) {
         self.set_error("out of memory while allocating FFI parameter name table");
         return false;
@@ -79,9 +78,8 @@ fn bool Parser.ensure_ffi_param_capacity(Parser* self, ExprFfiFn* ffi, usz neede
 
     TypeAnnotation* grown_types = g_parser_force_ffi_param_types_alloc_fail
         ? null
-        : (TypeAnnotation*)mem::malloc(type_bytes);
+        : (TypeAnnotation*)self.alloc_ast_bytes(type_bytes, "out of memory while allocating FFI parameter type table");
     if (grown_types == null) {
-        mem::free(grown_names);
         self.set_error("out of memory while allocating FFI parameter type table");
         return false;
     }
@@ -91,8 +89,6 @@ fn bool Parser.ensure_ffi_param_capacity(Parser* self, ExprFfiFn* ffi, usz neede
         grown_types[i] = ffi.param_types[i];
     }
 
-    if (ffi.param_names != null) mem::free(ffi.param_names);
-    if (ffi.param_types != null) mem::free(ffi.param_types);
     ffi.param_names = grown_names;
     ffi.param_types = grown_types;
     ffi.param_capacity = new_cap;
