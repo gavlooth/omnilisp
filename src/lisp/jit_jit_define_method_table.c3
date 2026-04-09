@@ -128,6 +128,8 @@ fn Value* jit_eval_define_typed_closure(Interp* interp, SymbolId name, Value* st
 <* @require interp != null : "jit_eval_define: null interp"
    @require value != null : "jit_eval_define: null value" *>
 fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     // Promote to root scope/region for globals (so value survives scope release).
     Value* stored_val = boundary_promote_to_root_site(
         value,

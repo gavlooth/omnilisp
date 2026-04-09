@@ -11,9 +11,10 @@ fn void interp_init_runtime_state(Interp* self) {
     self.root_scope = main::scope_create(null);
     self.current_scope = self.root_scope;
 
-    self.handler_capacity = HANDLER_INITIAL_CAPACITY;
     self.handler_count = 0;
-    self.handler_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * self.handler_capacity);
+    self.handler_capacity = 0;
+    self.handler_stack = null;
+    self.ensure_handler_capacity(HANDLER_INITIAL_CAPACITY);
     self.reset_depth = 0;
     self.source_dir_count = 0;
     self.source_dir_capacity = 8;

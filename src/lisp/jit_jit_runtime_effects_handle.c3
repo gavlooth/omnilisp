@@ -165,7 +165,9 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
 
     main::stack_ctx_init(ctx, &handle_effect_entry, state);
 
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    if (!interp.ensure_handler_capacity(interp.handler_count + 1)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to grow handler stack");
+    }
     usz my_idx = interp.handler_count;
     EffectHandler* h = &interp.handler_stack[my_idx];
     jit_handle_fill_handler(h, count, state, strict_mode);

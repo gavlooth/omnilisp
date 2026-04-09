@@ -3,6 +3,8 @@ module main;
 import std::io;
 import std::io::path;
 
+const usz BUILD_PATH_BUFFER_CAP = 4096;
+
 fn char* find_build_output_arg(int argc, char** argv, int build_idx, bool* missing_value = null) {
     if (missing_value != null) *missing_value = false;
     for (int i = build_idx + 2; i < argc; i++) {
@@ -189,7 +191,7 @@ fn bool validate_output_target_path(char* output_path_cstr, EntryFileWriteKind* 
         return false;
     }
 
-    char[1024] parent_buf = {};
+    char[BUILD_PATH_BUFFER_CAP] parent_buf = {};
     if (parent_dir.len >= parent_buf.len) {
         if (kind_out != null) *kind_out = ENTRY_FILE_WRITE_PATH_FAILURE;
         return false;

@@ -4,7 +4,27 @@ import std::io;
 import std::collections::list;
 import main;
 
+fn bool jit_pointer_looks_canonical(void* ptr) @inline {
+    ulong raw = (ulong)ptr;
+    if (raw < 0x10000) return false;
+    if ((raw & 0x7) != 0) return false;
+    ulong top = raw >> 48;
+    return top == 0 || top == 0xFFFF;
+}
+
+fn Value* jit_stabilize_staged_value(Value* value, Interp* interp) @inline {
+    if (value == null || interp == null || interp.current_scope == null) return value;
+    if (value.tag == ERROR) return value;
+    if (value.scope_gen == interp.current_scope.escape_generation) return value;
+    if (value.scope_gen == interp.current_scope.generation) {
+        return boundary_promote_to_escape(value, interp);
+    }
+    return value;
+}
+
 fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, bool is_tail) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     if (expr == null || expr.tag != E_CALL) {
         return raise_error(interp, "jit: continuation-safe call helper expects call expression");
     }
@@ -18,6 +38,8 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
     }
 
     Value* func = jit_eval(expr.call.func, env, interp);
+    if (func != null && func.tag == ERROR) return func;
+    func = jit_stabilize_staged_value(func, interp);
     if (func != null && func.tag == ERROR) return func;
 
     usz argc = expr.call.arg_count;
@@ -38,15 +60,20 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
         return jit_apply_value(func, arg, interp);
     }
 
-    Value** argv = (Value**)interp.current_scope.alloc(Value*.sizeof * argc);
+    Value** argv = interp.current_scope != null
+        ? (Value**)interp.current_scope.alloc_escape(Value*.sizeof * argc)
+        : null;
     if (argv == null) return raise_error(interp, "jit: out of memory while staging continuation-sensitive call args");
     for (usz i = 0; i < argc; i++) {
         Value* arg = jit_eval(expr.call.args[i], env, interp);
         if (arg != null && arg.tag == ERROR) return arg;
+        arg = jit_stabilize_staged_value(arg, interp);
+        if (arg != null && arg.tag == ERROR) return arg;
         argv[i] = arg;
     }
 
-    Value* arg_list = make_nil(interp);
+    Value* arg_list = boundary_promote_to_escape(make_nil(interp), interp);
+    if (arg_list != null && arg_list.tag == ERROR) return arg_list;
     for (usz i = argc; i > 0; i--) {
         Value* next = make_cons(interp, argv[i - 1], arg_list);
         if (next == null) {
@@ -69,7 +96,21 @@ fn Value* jit_eval_call_cont_safe_tail(Interp* interp, Expr* expr, Env* env) {
     return jit_eval_call_cont_safe_common(interp, expr, env, true);
 }
 
+// General staged-call helper for 2+ arg call sites. This shares the same
+// runtime argument staging path as the continuation-safe helper and avoids
+// JIT-side cons-list construction across helper calls.
+fn Value* jit_eval_call_staged(Interp* interp, Expr* expr, Env* env) {
+    return jit_eval_call_cont_safe_common(interp, expr, env, false);
+}
+
+fn Value* jit_eval_call_staged_tail(Interp* interp, Expr* expr, Env* env) {
+    return jit_eval_call_cont_safe_common(interp, expr, env, true);
+}
+
 fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
+    if (func != null && !jit_pointer_looks_canonical((void*)func)) {
+        return raise_error(interp, "jit: invalid callable pointer");
+    }
     if (func == null) {
         if ((uint)interp.last_call_name != 0) {
             char[256] ebuf;
@@ -111,8 +152,9 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
     }
 }
 
-<* @require func != null : "jit_apply_value called with null func" *>
 fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     Value* frame_error = interp_apply_frame_enter(interp);
     if (frame_error != null) return frame_error;
     Value* result = jit_apply_value_impl(func, arg, interp);
@@ -123,6 +165,8 @@ fn Value* jit_apply_value(Value* func, Value* arg, Interp* interp) {
 // Tail-call variant: sets TCO bounce fields for CLOSURE instead of recursing.
 // ONLY called when the result goes directly to R0 as the function return value.
 fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     if (func == null) {
         if ((uint)interp.last_call_name != 0) {
             char[256] ebuf;
@@ -185,12 +229,16 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
 }
 
 fn Value* jit_eval_fallback(Expr* expr, Env* env, Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     return jit_eval(expr, env, interp);
 }
 
 // Adapter: converts jit_eval's Value* return to EvalResult.
 // Used to mechanically replace eval() calls in EvalResult-returning functions.
 fn EvalResult jit_eval_to_result(Expr* expr, Env* env, Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return eval_ok(null);
     Value* v = jit_eval(expr, env, interp);
     if (v != null && v.tag == ERROR) {
         return eval_error_expr(v.str_chars[:v.str_len], expr);
@@ -200,11 +248,13 @@ fn EvalResult jit_eval_to_result(Expr* expr, Env* env, Interp* interp) {
 
 // Variable lookup that checks jit_env first (for sub-expression evaluation with local bindings)
 fn Value* jit_lookup_var(Interp* interp, uint sym_id) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     SymbolId name = (SymbolId)sym_id;
     // Check JIT env first (set during jit_eval sub-expression evaluation)
     if (interp.jit_env != null) {
         Value* v = interp.jit_env.lookup(name);
-        if (v != null) return v;
+        if (v != null && jit_pointer_looks_canonical((void*)v)) return v;
     }
     // Fall back to global
     Value* v = interp.global_env.lookup(name);

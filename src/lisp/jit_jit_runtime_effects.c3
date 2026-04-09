@@ -9,7 +9,9 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     bool had_retained = k.handle_retained;
 
     // Reinstall effect handler copy from when the signal occurred
-    HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
+    HandleEffectState* hstate = null;
+    Value* push_err = jit_resolve_push_handler_copy(interp, k, &hstate);
+    if (push_err != null) return push_err;
     main::StackCtx* target_ctx = k.ctx;
 
     // Consume one-shot continuation before resuming, so re-entrant use from
@@ -106,7 +108,12 @@ fn Value* jit_apply_handle_continuation_value(Interp* interp, Value* k_val, Valu
         );
     }
 
-    HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
+    HandleEffectState* hstate = null;
+    Value* push_err = jit_resolve_push_handler_copy(interp, k, &hstate);
+    if (push_err != null) {
+        jit_resolve_destroy_ctx(interp, target_ctx);
+        return push_err;
+    }
 
     SavedInterpState saved;
     save_interp_state(interp, &saved);

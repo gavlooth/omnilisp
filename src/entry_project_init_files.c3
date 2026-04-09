@@ -99,7 +99,7 @@ fn bool mkdir_project_path(char* name, usz name_len, char[] suffix = "") {
     (void)plen;
     maybe_force_init_test_file_collision(&path_buf[0], suffix);
     if (mkdir(&path_buf[0], 0o755) == 0) return true;
-    if (libc::errno() == errno::EEXIST) {
+    if (libc::errno() == EEXIST) {
         if (io::file::is_dir(((ZString)&path_buf[0]).str_view())) return true;
         io::printfn("Error: cannot create directory %s: non-directory already exists", (ZString)&path_buf[0]);
         return false;

@@ -24,19 +24,6 @@ fn char* find_eval_option_like_arg(int argc, char** argv, int eval_idx) {
     return null;
 }
 
-fn lisp::Interp* create_plain_interp() {
-    lisp::Interp* interp = (lisp::Interp*)mem::malloc(lisp::Interp.sizeof);
-    if (interp == null) return null;
-    interp.init();
-    return interp;
-}
-
-fn void destroy_plain_interp(lisp::Interp* interp) {
-    if (interp == null) return;
-    interp.destroy();
-    mem::free(interp);
-}
-
 fn lisp::Interp* create_runtime_interp() {
     thread_registry_init();
     lisp::Interp* interp = create_plain_interp();

@@ -81,7 +81,7 @@ fn bool write_aot_temp_file(char[] c3_code, char[] temp_path_buf, usz* path_len_
             *path_len_out = path_len;
             return true;
         }
-        if (libc::errno() != errno::EEXIST) {
+        if (libc::errno() != EEXIST) {
             print_file_write_error_text("AOT temp file", temp_path_buf[:path_len], classify_file_write_errno());
             return false;
         }

@@ -14,7 +14,9 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
         existing.name = (SymbolId)0;
     }
 
-    if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
+    if (!interp.ensure_module_capacity(interp.module_count + 1)) {
+        return eval_error("module: out of memory while growing module table");
+    }
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
@@ -22,6 +24,9 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     mod.path_len = 0;
     usz exp_cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * exp_cap);
+    if (mod.exports == null) {
+        return eval_error("module: out of memory while allocating exports");
+    }
     mod.export_capacity = exp_cap;
     mod.export_count = expr.module_expr.export_count;
     for (usz i = 0; i < expr.module_expr.export_count; i++) {
@@ -182,24 +187,29 @@ fn bool module_copy_path(Module* mod, char[] path) {
     return true;
 }
 
-fn void module_ensure_export_capacity(Module* mod) {
-    if (mod.export_count < mod.export_capacity) return;
-    usz new_cap = mod.export_capacity * 2;
+fn bool module_ensure_export_capacity(Module* mod) {
+    if (mod == null) return false;
+    if (mod.exports != null && mod.export_count < mod.export_capacity) return true;
+    usz new_cap = mod.export_capacity > 0 ? mod.export_capacity * 2 : 16;
+    if (new_cap == 0) return false;
     SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+    if (new_exports == null) return false;
     for (usz i = 0; i < mod.export_count; i++) new_exports[i] = mod.exports[i];
     mem::free(mod.exports);
     mod.exports = new_exports;
     mod.export_capacity = new_cap;
+    return true;
 }
 
-fn void module_append_export(Module* mod, SymbolId name) {
-    module_ensure_export_capacity(mod);
+fn bool module_append_export(Module* mod, SymbolId name) {
+    if (!module_ensure_export_capacity(mod)) return false;
     mod.exports[mod.export_count] = name;
     mod.export_count++;
+    return true;
 }
 
 fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
-    if (interp.module_count >= interp.module_capacity) interp.grow_module_table();
+    if (!interp.ensure_module_capacity(interp.module_count + 1)) return null;
     Module* mod = &interp.modules[interp.module_count];
     mod.name = name;
     mod.loaded = false;
@@ -209,6 +219,12 @@ fn Module* jit_create_file_module(SymbolId name, char[] path, Interp* interp) {
     mod.export_count = 0;
     mod.export_capacity = 32;
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * 32);
+    if (mod.exports == null) {
+        mem::free(mod.path);
+        mod.path = null;
+        mod.path_len = 0;
+        return null;
+    }
 
     mod.env = boundary_make_env_in_root(interp, interp.global_env);
 

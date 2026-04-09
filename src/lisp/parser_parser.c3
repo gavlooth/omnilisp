@@ -1,4 +1,5 @@
 module lisp;
+import std::core::mem;
 // =============================================================================
 // SECTION 2: PARSER
 // =============================================================================
@@ -8,6 +9,7 @@ const int PARSER_MAX_NESTING = 1024;
 bool g_parser_force_ast_expr_alloc_fail = false;
 bool g_parser_force_ast_pattern_alloc_fail = false;
 bool g_parser_force_ast_alloc_fail = false;
+bool g_parser_force_string_literal_alloc_fail = false;
 
 struct Parser {
     Lexer*    lexer;
@@ -111,6 +113,38 @@ fn Expr* Parser.alloc_expr_here(Parser* self) {
     e.loc_line = self.lexer.current.line;
     e.loc_column = self.lexer.current.column;
     return e;
+}
+
+fn bool Parser.init_root_string_literal_value(
+    Parser* self,
+    Value* value,
+    char[] text,
+    char[] err_msg = "parser: out of memory while allocating string literal"
+) {
+    if (value == null) {
+        self.set_error(err_msg);
+        return false;
+    }
+
+    usz len = text.len;
+    usz cap = len + 1;
+    if (cap < 32) cap = 32;
+    char* chars = g_parser_force_string_literal_alloc_fail
+        ? null
+        : (char*)mem::malloc(cap);
+    if (chars == null) {
+        self.set_error(err_msg);
+        return false;
+    }
+
+    value.tag = STRING;
+    value.str_chars = chars;
+    for (usz i = 0; i < len; i++) {
+        value.str_chars[i] = text[i];
+    }
+    value.str_chars[len] = 0;
+    value.str_len = len;
+    return true;
 }
 
 /**

@@ -158,7 +158,10 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
         return eval_ok(make_nil(interp));
     }
 
-    if (interp.macro_count >= interp.macro_capacity) interp.grow_macro_table();
+    if (!interp.ensure_macro_capacity(interp.macro_count + 1)) {
+        macro_def_destroy(&new_def);
+        return eval_error("define-macro: out of memory while growing macro table");
+    }
     macro_idx = interp.macro_count;
     interp.macro_table[macro_idx] = new_def;
     interp.macro_count++;

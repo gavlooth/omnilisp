@@ -216,7 +216,9 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
 
     main::stack_ctx_init(ctx, &handle_effect_entry, state);
 
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    if (!interp.ensure_handler_capacity(interp.handler_count + 1)) {
+        return eval_error("handle: failed to grow handler stack");
+    }
     usz my_idx = interp.handler_count;
     EffectHandler* h = &interp.handler_stack[my_idx];
     jit_handle_init_handler(h, expr, env, state);

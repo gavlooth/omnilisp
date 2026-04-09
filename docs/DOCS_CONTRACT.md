@@ -36,7 +36,7 @@ Operational truth beats stale prose. Reference docs are not normative contracts.
 | Modules/import/export semantics | `docs/LANGUAGE_SPEC.md` section 12 | `docs/reference/05-macros-modules.md` | normative + operational | module/load/import tests |
 | Runtime ownership and memory lanes | `docs/areas/memory-runtime.md` | `memory/DESTINATION_ARENA_PLAN.md`, `memory/CHANGELOG.md` | operational + in-progress | memory-lifetime test lanes and container gates |
 | Compiler/parser refactor status | `docs/areas/compiler-parser-refactor.md` | `docs/plans/compiler-parser-refactor-plan.md` | in-progress | targeted compile/test lanes |
-| Deduce query/runtime semantics | `docs/deduce-datalog-spec.md` | `docs/areas/README.md`, related plans | operational + in-progress | deduce test slices and changelog entries |
+| Deduce query/runtime semantics | `docs/deduce-datalog-spec.md` | `docs/areas/deduce-runtime.md`, related plans | operational + in-progress | deduce test slices and changelog entries |
 | FFI and callback model | `docs/plans/ffi-*.md` decision docs | `docs/reference/09-concurrency-ffi.md` | in-progress | targeted FFI build/test lanes |
 | Tooling, CLI, REPL workflow | `docs/PROJECT_TOOLING.md` | man pages + top-level `README.md` | operational | local/tooling scripts and validation gates |
 | Release and active work queue | `docs/RELEASE_STATUS.md` + `TODO.md` | `docs/areas/README.md`, `docs/plans/README.md` | operational | latest committed status/docs sweep |

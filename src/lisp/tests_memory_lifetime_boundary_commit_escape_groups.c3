@@ -1194,4 +1194,28 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
             (*fail)++;
         }
     }
+
+    // Invariant: generic error constructor fails closed under forced allocation
+    // failure without writing through null pointers.
+    {
+        g_value_force_make_error_chars_alloc_fail_nth = 1;
+        Value* made = make_error(interp, "constructor oom");
+        g_value_force_make_error_chars_alloc_fail_nth = 0;
+
+        bool ok = made != null &&
+                  made.tag == ERROR &&
+                  made.str_chars != null &&
+                  made.str_len > 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: make_error OOM fails closed");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: make_error OOM fails closed (tag=%d chars=%s len=%d)",
+                made != null ? (int)made.tag : -1,
+                made != null && made.str_chars != null ? "yes" : "no",
+                made != null ? (int)made.str_len : -1);
+            (*fail)++;
+        }
+    }
 }

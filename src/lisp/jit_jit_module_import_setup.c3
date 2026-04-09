@@ -46,7 +46,9 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
         EvalResult r = jit_eval_to_result(expr, mod.env, interp);
         if (r.error.has_error) return r;
         if (export_candidate) {
-            module_append_export(mod, export_name);
+            if (!module_append_export(mod, export_name)) {
+                return eval_error("module: out of memory while growing exports");
+            }
         }
     }
     mod.loaded = true;

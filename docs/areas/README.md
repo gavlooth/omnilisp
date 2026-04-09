@@ -25,6 +25,7 @@ When documents disagree, use this precedence:
 - `effects-error-model.md`
 - `types-dispatch.md`
 - `compiler-parser-refactor.md`
+- `deduce-runtime.md`
 
 ## Status Legend
 

@@ -4,81 +4,168 @@ import std::collections::list;
 import std::io;
 import main;
 
-fn void Interp.grow_macro_table(Interp* self) {
-    usz new_cap = self.macro_capacity * 2;
-    MacroDef* old_table = self.macro_table;
-    usz* old_hash = self.macro_hash_index;
-    MacroDef* new_table = (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
-    assert(new_table != null, "grow_macro_table: macro table alloc failed");
-    for (usz i = 0; i < self.macro_count; i++) new_table[i] = old_table[i];
+bool g_interp_force_macro_table_alloc_fail = false;
+bool g_interp_force_macro_hash_alloc_fail = false;
+bool g_interp_force_grow_macro_table_alloc_fail = false;
+bool g_interp_force_grow_macro_hash_alloc_fail = false;
+bool g_interp_force_module_table_alloc_fail = false;
+bool g_interp_force_module_hash_alloc_fail = false;
+bool g_interp_force_grow_module_table_alloc_fail = false;
+bool g_interp_force_grow_module_hash_alloc_fail = false;
+bool g_interp_force_handler_stack_alloc_fail = false;
+bool g_interp_force_grow_handler_stack_alloc_fail = false;
 
-    // Rebuild hash
+fn usz interp_capacity_for_need(usz current, usz initial, usz needed) @inline {
+    usz cap = current > 0 ? current : initial;
+    while (cap < needed) {
+        if (cap > usz.max / 2) return 0;
+        cap *= 2;
+    }
+    return cap;
+}
+
+fn bool Interp.ensure_macro_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.macro_table != null &&
+        self.macro_hash_index != null &&
+        self.macro_capacity >= needed &&
+        self.macro_hash_capacity >= self.macro_capacity * 2) {
+        return true;
+    }
+
+    usz new_cap = interp_capacity_for_need(self.macro_capacity, MACRO_INITIAL_CAPACITY, needed);
+    if (new_cap == 0 || new_cap > usz.max / 2) return false;
     usz new_hash_cap = new_cap * 2;
-    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
-    assert(new_hash != null, "grow_macro_table: macro hash alloc failed");
+
+    bool growing = self.macro_table != null || self.macro_hash_index != null || self.macro_capacity > 0;
+    MacroDef* new_table =
+        (growing ? g_interp_force_grow_macro_table_alloc_fail : g_interp_force_macro_table_alloc_fail)
+            ? null
+            : (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
+    if (new_table == null) return false;
+
+    usz* new_hash =
+        (growing ? g_interp_force_grow_macro_hash_alloc_fail : g_interp_force_macro_hash_alloc_fail)
+            ? null
+            : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    if (new_hash == null) {
+        mem::free(new_table);
+        return false;
+    }
+
+    for (usz i = 0; i < self.macro_count; i++) new_table[i] = self.macro_table[i];
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
 
     for (usz i = 0; i < self.macro_count; i++) {
-        usz slot = (usz)new_table[i].name % new_hash_cap;
+        usz h = (usz)new_table[i].name;
         for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) % new_hash_cap;
             if (new_hash[slot] == usz.max) {
                 new_hash[slot] = i;
                 break;
             }
-            slot = (slot + 1) % new_hash_cap;
         }
     }
 
+    mem::free(self.macro_table);
+    mem::free(self.macro_hash_index);
     self.macro_table = new_table;
-    self.macro_capacity = new_cap;
     self.macro_hash_index = new_hash;
+    self.macro_capacity = new_cap;
     self.macro_hash_capacity = new_hash_cap;
-    mem::free(old_table);
-    mem::free(old_hash);
+    return true;
 }
 
-fn void Interp.grow_module_table(Interp* self) {
-    usz new_cap = self.module_capacity * 2;
-    Module* old_mods = self.modules;
-    usz* old_hash = self.module_hash_index;
-    Module* new_mods = (Module*)mem::malloc(Module.sizeof * new_cap);
-    assert(new_mods != null, "grow_module_table: module table alloc failed");
-    for (usz i = 0; i < self.module_count; i++) new_mods[i] = old_mods[i];
+fn bool Interp.ensure_module_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.modules != null &&
+        self.module_hash_index != null &&
+        self.module_capacity >= needed &&
+        self.module_hash_capacity >= self.module_capacity * 2) {
+        return true;
+    }
 
-    // Rebuild hash
+    usz new_cap = interp_capacity_for_need(self.module_capacity, MODULE_INITIAL_CAPACITY, needed);
+    if (new_cap == 0 || new_cap > usz.max / 2) return false;
     usz new_hash_cap = new_cap * 2;
-    usz* new_hash = (usz*)mem::malloc(usz.sizeof * new_hash_cap);
-    assert(new_hash != null, "grow_module_table: module hash alloc failed");
+
+    bool growing = self.modules != null || self.module_hash_index != null || self.module_capacity > 0;
+    Module* new_modules =
+        (growing ? g_interp_force_grow_module_table_alloc_fail : g_interp_force_module_table_alloc_fail)
+            ? null
+            : (Module*)mem::malloc(Module.sizeof * new_cap);
+    if (new_modules == null) return false;
+
+    usz* new_hash =
+        (growing ? g_interp_force_grow_module_hash_alloc_fail : g_interp_force_module_hash_alloc_fail)
+            ? null
+            : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    if (new_hash == null) {
+        mem::free(new_modules);
+        return false;
+    }
+
+    for (usz i = 0; i < self.module_count; i++) new_modules[i] = self.modules[i];
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
 
     for (usz i = 0; i < self.module_count; i++) {
-        usz slot = (usz)new_mods[i].name % new_hash_cap;
+        usz h = (usz)new_modules[i].name;
         for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) % new_hash_cap;
             if (new_hash[slot] == usz.max) {
                 new_hash[slot] = i;
                 break;
             }
-            slot = (slot + 1) % new_hash_cap;
         }
     }
 
-    self.modules = new_mods;
-    self.module_capacity = new_cap;
+    mem::free(self.modules);
+    mem::free(self.module_hash_index);
+    self.modules = new_modules;
     self.module_hash_index = new_hash;
+    self.module_capacity = new_cap;
     self.module_hash_capacity = new_hash_cap;
-    mem::free(old_mods);
-    mem::free(old_hash);
+    return true;
+}
+
+fn bool Interp.ensure_handler_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.handler_stack != null && self.handler_capacity >= needed) return true;
+
+    usz new_cap = interp_capacity_for_need(self.handler_capacity, HANDLER_INITIAL_CAPACITY, needed);
+    if (new_cap == 0) return false;
+
+    bool growing = self.handler_stack != null || self.handler_capacity > 0;
+    EffectHandler* new_stack =
+        (growing ? g_interp_force_grow_handler_stack_alloc_fail : g_interp_force_handler_stack_alloc_fail)
+            ? null
+            : (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
+    if (new_stack == null) return false;
+
+    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = self.handler_stack[i];
+
+    mem::free(self.handler_stack);
+    self.handler_stack = new_stack;
+    self.handler_capacity = new_cap;
+    return true;
+}
+
+fn void Interp.grow_macro_table(Interp* self) {
+    usz needed = self.macro_capacity > 0 ? self.macro_capacity * 2 : MACRO_INITIAL_CAPACITY;
+    assert(self.ensure_macro_capacity(needed), "grow_macro_table: macro table alloc failed");
+}
+
+fn void Interp.grow_module_table(Interp* self) {
+    usz needed = self.module_capacity > 0 ? self.module_capacity * 2 : MODULE_INITIAL_CAPACITY;
+    assert(self.ensure_module_capacity(needed), "grow_module_table: module table alloc failed");
 }
 
 fn void Interp.grow_handler_stack(Interp* self) {
-    usz new_cap = self.handler_capacity * 2;
-    EffectHandler* old_stack = self.handler_stack;
-    EffectHandler* new_stack = (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
-    assert(new_stack != null, "grow_handler_stack: handler stack alloc failed");
-    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = old_stack[i];
-    self.handler_stack = new_stack;
-    self.handler_capacity = new_cap;
-    mem::free(old_stack);
+    usz needed = self.handler_capacity > 0 ? self.handler_capacity * 2 : HANDLER_INITIAL_CAPACITY;
+    assert(self.ensure_handler_capacity(needed), "grow_handler_stack: handler stack alloc failed");
 }
 
 fn bool interp_handle_state_seen_before(Continuation* head, Continuation* stop, void* state) {

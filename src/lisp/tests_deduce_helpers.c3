@@ -120,7 +120,7 @@ fn bool deduce_test_capture_analyze_raise_payload(
     if (out_payload != null) *out_payload = null;
     if (interp == null || db_val == null) return false;
 
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    if (!interp.ensure_handler_capacity(interp.handler_count + 1)) return false;
     SymbolId[1] handler_tags = { interp.sym_raise };
     EffectHandler handler = {
         .tags = &handler_tags[0],
