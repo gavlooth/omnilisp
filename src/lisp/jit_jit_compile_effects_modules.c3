@@ -22,6 +22,8 @@ fn bool jit_resolve_is_effect_continuation(Value* k_val) @inline {
 }
 
 fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     // Evaluate the value to resolve with
     Value* val = jit_eval(expr.resolve.value, env, interp);
     if (val != null && val.tag == ERROR) return val;
@@ -96,6 +98,8 @@ fn void? jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* loca
 }
 
 fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     EvalResult r = jit_eval_export_from_impl(expr, env, interp);
     if (r.error.has_error) return raise_error_with_payload_names(interp, "runtime", "runtime/export-from-failed", r.error.message[:256]);
     return r.value;

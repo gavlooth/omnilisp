@@ -3,6 +3,13 @@ module lisp;
 import std::io;
 import main;
 
+tlocal Interp* g_jit_active_interp = null;
+
+fn Interp* jit_resolve_interp(Interp* interp) @inline {
+    if (g_jit_active_interp != null) return g_jit_active_interp;
+    return interp;
+}
+
 fn Value* jit_tco_sentinel() {
     return &g_jit_tco_sentinel;
 }
@@ -17,6 +24,9 @@ fn Value* runtime_backend_exec_compiled_checked_expr(RuntimeCompiledExpr compile
     if (!jit_compiled_fn_is_live_for_interp(jit_compiled, interp)) {
         return raise_error(interp, "jit: stale or foreign compiled function pointer");
     }
+    Interp* saved_active_interp = g_jit_active_interp;
+    g_jit_active_interp = interp;
+    defer g_jit_active_interp = saved_active_interp;
     runtime_exec_enter(interp);
     Value* result = jit_compiled.code_fn(interp);
     runtime_exec_leave(interp);
@@ -45,19 +55,27 @@ fn Value* jit_exec(JitCompiledFn compiled, Interp* interp) {
 
 // Returns jit_env if set (sub-expression context), else global_env
 fn Env* jit_get_env(Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     if (interp.jit_env != null) return interp.jit_env;
     return interp.global_env;
 }
 
 fn bool jit_is_falsy(Value* v, Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return v == null || v.tag == NIL;
     return is_falsy(v, interp);
 }
 
 fn Value* jit_make_true(Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     return make_symbol(interp, interp.sym_true);
 }
 
 fn Value* jit_make_false(Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     return make_symbol(interp, interp.sym_false);
 }
 

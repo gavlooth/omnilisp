@@ -1,11 +1,5 @@
 module lisp;
 
-fn bool interp_init_checked_mul_usz(usz a, usz b, usz* out) @inline {
-    if (b != 0 && a > usz.max / b) return false;
-    *out = a * b;
-    return true;
-}
-
 fn bool interp_init_symbol(Interp* self, SymbolId* out, char[] name) @inline {
     if (self == null || out == null) return false;
     SymbolId sid = self.symbols.intern(name);
@@ -99,19 +93,11 @@ fn void interp_init_module_state(Interp* self) {
     assert(interp_init_symbol(self, &self.sym_all, "all"), "interp module symbol intern failed");
     assert(interp_init_symbol(self, &self.sym_export_from, "export-from"), "interp module symbol intern failed");
     self.module_count = 0;
-    self.module_capacity = MODULE_INITIAL_CAPACITY;
-    usz module_bytes = 0;
-    assert(interp_init_checked_mul_usz(Module.sizeof, self.module_capacity, &module_bytes), "interp module table size overflow");
-    self.modules = (Module*)mem::malloc(module_bytes);
-    assert(self.modules != null, "interp module table alloc failed");
-    usz module_hash_capacity = 0;
-    assert(interp_init_checked_mul_usz(self.module_capacity, (usz)2, &module_hash_capacity), "interp module hash capacity overflow");
-    self.module_hash_capacity = module_hash_capacity;
-    usz module_hash_bytes = 0;
-    assert(interp_init_checked_mul_usz(usz.sizeof, self.module_hash_capacity, &module_hash_bytes), "interp module hash size overflow");
-    self.module_hash_index = (usz*)mem::malloc(module_hash_bytes);
-    assert(self.module_hash_index != null, "interp module hash alloc failed");
-    for (usz i = 0; i < self.module_hash_capacity; i++) self.module_hash_index[i] = usz.max;
+    self.module_capacity = 0;
+    self.modules = null;
+    self.module_hash_capacity = 0;
+    self.module_hash_index = null;
+    (void)self.ensure_module_capacity(MODULE_INITIAL_CAPACITY);
 }
 
 fn void interp_init_runtime_flags(Interp* self) {
@@ -142,18 +128,10 @@ fn void interp_init_runtime_flags(Interp* self) {
 
 fn void interp_init_macro_state(Interp* self) {
     self.macro_count = 0;
-    self.macro_capacity = MACRO_INITIAL_CAPACITY;
-    usz macro_bytes = 0;
-    assert(interp_init_checked_mul_usz(MacroDef.sizeof, self.macro_capacity, &macro_bytes), "interp macro table size overflow");
-    self.macro_table = (MacroDef*)mem::malloc(macro_bytes);
-    assert(self.macro_table != null, "interp macro table alloc failed");
+    self.macro_capacity = 0;
+    self.macro_table = null;
     self.gensym_counter = 0;
-    usz macro_hash_capacity = 0;
-    assert(interp_init_checked_mul_usz(self.macro_capacity, (usz)2, &macro_hash_capacity), "interp macro hash capacity overflow");
-    self.macro_hash_capacity = macro_hash_capacity;
-    usz macro_hash_bytes = 0;
-    assert(interp_init_checked_mul_usz(usz.sizeof, self.macro_hash_capacity, &macro_hash_bytes), "interp macro hash size overflow");
-    self.macro_hash_index = (usz*)mem::malloc(macro_hash_bytes);
-    assert(self.macro_hash_index != null, "interp macro hash alloc failed");
-    for (usz i = 0; i < self.macro_hash_capacity; i++) self.macro_hash_index[i] = usz.max;
+    self.macro_hash_capacity = 0;
+    self.macro_hash_index = null;
+    (void)self.ensure_macro_capacity(MACRO_INITIAL_CAPACITY);
 }

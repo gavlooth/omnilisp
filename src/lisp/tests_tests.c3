@@ -175,7 +175,7 @@ fn void emit_pass(char[] name) @inline {
 
 fn void emit_pass_literal(char[] msg) @inline {
     if (test_quiet_enabled()) return;
-    io::printn(msg);
+    io::printfn("%s", (ZString)msg);
 }
 
 fn void emit_test_section_banner(char[] name) @inline {

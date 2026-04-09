@@ -3,6 +3,8 @@ module lisp;
 import main;
 
 fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     Value* init_val = jit_eval(expr.let_expr.init, env, interp);
     if (init_val != null && init_val.tag == ERROR) return init_val;
 
@@ -101,6 +103,8 @@ fn bool jit_letrec_body_has_shift(Value* actual_value, Expr* init_expr) {
 }
 
 fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     Value* placeholder = make_nil(interp);
     Env* rec_env = jit_env_extend(interp, env, expr.let_expr.name, placeholder);
     if (rec_env == null) return raise_error(interp, "let: out of memory while binding recursive name");
@@ -119,6 +123,8 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 }
 
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     bool found = false;
     Value* write_err = env_set_with_barrier_result(env, name, value, interp, &found);
     if (write_err != null) return write_err;
@@ -234,6 +240,8 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
 }
 
 fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     Value* current = jit_resolve_set_path_root(interp, expr, env);
     if (current != null && current.tag == ERROR) return current;
 

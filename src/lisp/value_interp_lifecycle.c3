@@ -4,131 +4,173 @@ import std::collections::list;
 import std::io;
 import main;
 
-fn bool interp_checked_mul_usz(usz left, usz right, usz* out) @inline {
-    if (out == null) return false;
-    if (left == 0 || right == 0) {
-        *out = 0;
+bool g_interp_force_macro_table_alloc_fail = false;
+bool g_interp_force_macro_hash_alloc_fail = false;
+bool g_interp_force_grow_macro_table_alloc_fail = false;
+bool g_interp_force_grow_macro_hash_alloc_fail = false;
+bool g_interp_force_module_table_alloc_fail = false;
+bool g_interp_force_module_hash_alloc_fail = false;
+bool g_interp_force_grow_module_table_alloc_fail = false;
+bool g_interp_force_grow_module_hash_alloc_fail = false;
+bool g_interp_force_handler_stack_alloc_fail = false;
+bool g_interp_force_grow_handler_stack_alloc_fail = false;
+
+fn usz interp_capacity_for_need(usz current, usz initial, usz needed) @inline {
+    usz cap = current > 0 ? current : initial;
+    while (cap < needed) {
+        if (cap > usz.max / 2) return 0;
+        cap *= 2;
+    }
+    return cap;
+}
+
+fn bool Interp.ensure_macro_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.macro_table != null &&
+        self.macro_hash_index != null &&
+        self.macro_capacity >= needed &&
+        self.macro_hash_capacity >= self.macro_capacity * 2) {
         return true;
     }
-    if (left > usz.max / right) return false;
-    *out = left * right;
+
+    usz new_cap = interp_capacity_for_need(self.macro_capacity, MACRO_INITIAL_CAPACITY, needed);
+    if (new_cap == 0 || new_cap > usz.max / 2) return false;
+    if (new_cap > usz.max / MacroDef.sizeof) return false;
+    usz new_hash_cap = new_cap * 2;
+    if (new_hash_cap > usz.max / usz.sizeof) return false;
+
+    bool growing = self.macro_table != null || self.macro_hash_index != null || self.macro_capacity > 0;
+    MacroDef* new_table =
+        (growing ? g_interp_force_grow_macro_table_alloc_fail : g_interp_force_macro_table_alloc_fail)
+            ? null
+            : (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
+    if (new_table == null) return false;
+
+    usz* new_hash =
+        (growing ? g_interp_force_grow_macro_hash_alloc_fail : g_interp_force_macro_hash_alloc_fail)
+            ? null
+            : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    if (new_hash == null) {
+        mem::free(new_table);
+        return false;
+    }
+
+    for (usz i = 0; i < self.macro_count; i++) new_table[i] = self.macro_table[i];
+    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
+
+    for (usz i = 0; i < self.macro_count; i++) {
+        usz h = (usz)new_table[i].name;
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) % new_hash_cap;
+            if (new_hash[slot] == usz.max) {
+                new_hash[slot] = i;
+                break;
+            }
+        }
+    }
+
+    mem::free(self.macro_table);
+    mem::free(self.macro_hash_index);
+    self.macro_table = new_table;
+    self.macro_hash_index = new_hash;
+    self.macro_capacity = new_cap;
+    self.macro_hash_capacity = new_hash_cap;
+    return true;
+}
+
+fn bool Interp.ensure_module_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.modules != null &&
+        self.module_hash_index != null &&
+        self.module_capacity >= needed &&
+        self.module_hash_capacity >= self.module_capacity * 2) {
+        return true;
+    }
+
+    usz new_cap = interp_capacity_for_need(self.module_capacity, MODULE_INITIAL_CAPACITY, needed);
+    if (new_cap == 0 || new_cap > usz.max / 2) return false;
+    if (new_cap > usz.max / Module.sizeof) return false;
+    usz new_hash_cap = new_cap * 2;
+    if (new_hash_cap > usz.max / usz.sizeof) return false;
+
+    bool growing = self.modules != null || self.module_hash_index != null || self.module_capacity > 0;
+    Module* new_modules =
+        (growing ? g_interp_force_grow_module_table_alloc_fail : g_interp_force_module_table_alloc_fail)
+            ? null
+            : (Module*)mem::malloc(Module.sizeof * new_cap);
+    if (new_modules == null) return false;
+
+    usz* new_hash =
+        (growing ? g_interp_force_grow_module_hash_alloc_fail : g_interp_force_module_hash_alloc_fail)
+            ? null
+            : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
+    if (new_hash == null) {
+        mem::free(new_modules);
+        return false;
+    }
+
+    for (usz i = 0; i < self.module_count; i++) new_modules[i] = self.modules[i];
+    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
+
+    for (usz i = 0; i < self.module_count; i++) {
+        usz h = (usz)new_modules[i].name;
+        for (usz probe = 0; probe < new_hash_cap; probe++) {
+            usz slot = (h + probe) % new_hash_cap;
+            if (new_hash[slot] == usz.max) {
+                new_hash[slot] = i;
+                break;
+            }
+        }
+    }
+
+    mem::free(self.modules);
+    mem::free(self.module_hash_index);
+    self.modules = new_modules;
+    self.module_hash_index = new_hash;
+    self.module_capacity = new_cap;
+    self.module_hash_capacity = new_hash_cap;
+    return true;
+}
+
+fn bool Interp.ensure_handler_capacity(Interp* self, usz needed) {
+    if (self == null) return false;
+    if (needed == 0) return true;
+    if (self.handler_stack != null && self.handler_capacity >= needed) return true;
+
+    usz new_cap = interp_capacity_for_need(self.handler_capacity, HANDLER_INITIAL_CAPACITY, needed);
+    if (new_cap == 0) return false;
+    if (new_cap > usz.max / EffectHandler.sizeof) return false;
+
+    bool growing = self.handler_stack != null || self.handler_capacity > 0;
+    EffectHandler* new_stack =
+        (growing ? g_interp_force_grow_handler_stack_alloc_fail : g_interp_force_handler_stack_alloc_fail)
+            ? null
+            : (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
+    if (new_stack == null) return false;
+
+    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = self.handler_stack[i];
+
+    mem::free(self.handler_stack);
+    self.handler_stack = new_stack;
+    self.handler_capacity = new_cap;
     return true;
 }
 
 fn bool Interp.grow_macro_table(Interp* self) {
-    if (self.macro_capacity == 0 || self.macro_capacity > usz.max / 2) return false;
-    usz new_cap = self.macro_capacity * 2;
-    if (new_cap > usz.max / MacroDef.sizeof) return false;
-    MacroDef* old_table = self.macro_table;
-    usz* old_hash = self.macro_hash_index;
-    usz table_bytes = 0;
-    if (!interp_checked_mul_usz(MacroDef.sizeof, new_cap, &table_bytes)) return false;
-    MacroDef* new_table = (MacroDef*)mem::malloc(table_bytes);
-    if (new_table == null) return false;
-    for (usz i = 0; i < self.macro_count; i++) new_table[i] = old_table[i];
-
-    // Rebuild hash
-    if (new_cap > usz.max / 2) {
-        mem::free(new_table);
-        return false;
-    }
-    usz new_hash_cap = new_cap * 2;
-    usz hash_bytes = 0;
-    if (!interp_checked_mul_usz(usz.sizeof, new_hash_cap, &hash_bytes)) {
-        mem::free(new_table);
-        return false;
-    }
-    usz* new_hash = (usz*)mem::malloc(hash_bytes);
-    if (new_hash == null) {
-        mem::free(new_table);
-        return false;
-    }
-    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
-
-    for (usz i = 0; i < self.macro_count; i++) {
-        usz slot = (usz)new_table[i].name % new_hash_cap;
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            if (new_hash[slot] == usz.max) {
-                new_hash[slot] = i;
-                break;
-            }
-            slot = (slot + 1) % new_hash_cap;
-        }
-    }
-
-    self.macro_table = new_table;
-    self.macro_capacity = new_cap;
-    self.macro_hash_index = new_hash;
-    self.macro_hash_capacity = new_hash_cap;
-    mem::free(old_table);
-    mem::free(old_hash);
-    return true;
+    usz needed = self.macro_capacity > 0 ? self.macro_capacity * 2 : MACRO_INITIAL_CAPACITY;
+    return self.ensure_macro_capacity(needed);
 }
 
 fn bool Interp.grow_module_table(Interp* self) {
-    if (self.module_capacity == 0 || self.module_capacity > usz.max / 2) return false;
-    usz new_cap = self.module_capacity * 2;
-    if (new_cap > usz.max / Module.sizeof) return false;
-    Module* old_mods = self.modules;
-    usz* old_hash = self.module_hash_index;
-    usz table_bytes = 0;
-    if (!interp_checked_mul_usz(Module.sizeof, new_cap, &table_bytes)) return false;
-    Module* new_mods = (Module*)mem::malloc(table_bytes);
-    if (new_mods == null) return false;
-    for (usz i = 0; i < self.module_count; i++) new_mods[i] = old_mods[i];
-
-    // Rebuild hash
-    if (new_cap > usz.max / 2) {
-        mem::free(new_mods);
-        return false;
-    }
-    usz new_hash_cap = new_cap * 2;
-    usz hash_bytes = 0;
-    if (!interp_checked_mul_usz(usz.sizeof, new_hash_cap, &hash_bytes)) {
-        mem::free(new_mods);
-        return false;
-    }
-    usz* new_hash = (usz*)mem::malloc(hash_bytes);
-    if (new_hash == null) {
-        mem::free(new_mods);
-        return false;
-    }
-    for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
-
-    for (usz i = 0; i < self.module_count; i++) {
-        if (new_mods[i].name == (SymbolId)0 || new_mods[i].name == INVALID_SYMBOL_ID) continue;
-        usz slot = (usz)new_mods[i].name % new_hash_cap;
-        for (usz probe = 0; probe < new_hash_cap; probe++) {
-            if (new_hash[slot] == usz.max) {
-                new_hash[slot] = i;
-                break;
-            }
-            slot = (slot + 1) % new_hash_cap;
-        }
-    }
-
-    self.modules = new_mods;
-    self.module_capacity = new_cap;
-    self.module_hash_index = new_hash;
-    self.module_hash_capacity = new_hash_cap;
-    mem::free(old_mods);
-    mem::free(old_hash);
-    return true;
+    usz needed = self.module_capacity > 0 ? self.module_capacity * 2 : MODULE_INITIAL_CAPACITY;
+    return self.ensure_module_capacity(needed);
 }
 
 fn bool Interp.grow_handler_stack(Interp* self) {
-    if (self.handler_capacity == 0 || self.handler_capacity > usz.max / 2) return false;
-    usz new_cap = self.handler_capacity * 2;
-    EffectHandler* old_stack = self.handler_stack;
-    usz stack_bytes = 0;
-    if (!interp_checked_mul_usz(EffectHandler.sizeof, new_cap, &stack_bytes)) return false;
-    EffectHandler* new_stack = (EffectHandler*)mem::malloc(stack_bytes);
-    if (new_stack == null) return false;
-    for (usz i = 0; i < self.handler_count; i++) new_stack[i] = old_stack[i];
-    self.handler_stack = new_stack;
-    self.handler_capacity = new_cap;
-    mem::free(old_stack);
-    return true;
+    usz needed = self.handler_capacity > 0 ? self.handler_capacity * 2 : HANDLER_INITIAL_CAPACITY;
+    return self.ensure_handler_capacity(needed);
 }
 
 fn bool interp_handle_state_seen_before(Continuation* head, Continuation* stop, void* state) {

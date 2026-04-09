@@ -210,6 +210,8 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
 // Phase 4b: Closures allocated in current_scope (not root_scope). Env copied to a
 // standalone env_scope (refcounted). Temporary closures freed when scope releases.
 fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
     bool need_env_copy = (interp.current_scope != interp.root_scope);
     BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
 

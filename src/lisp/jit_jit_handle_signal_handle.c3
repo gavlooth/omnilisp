@@ -18,10 +18,14 @@ fn Value* dispatch_pending_raise(Expr* expr, EffectHandler* h, Env* env, Interp*
         if ((h.tags != null && (uint)h.tags[ci] == (uint)raise_sym) ||
             (h.tags == null && (uint)expr.handle.clauses[ci].effect_tag == (uint)raise_sym)) {
             EffectClause* clause = &expr.handle.clauses[ci];
+            interp.flags.raise_pending = false;
             Value* msg_val = interp.raise_payload;
             if (msg_val == null) {
                 msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
             }
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.raise_msg[0] = 0;
             if (msg_val == null) {
                 return make_error(interp, "handle: failed to materialize raise payload");
             }
@@ -43,10 +47,6 @@ fn Value* dispatch_pending_raise(Expr* expr, EffectHandler* h, Env* env, Interp*
                     "raise handler failed to bind clause environment"
                 );
             }
-            interp.flags.raise_pending = false;
-            interp.raise_payload = null;
-            interp.raise_msg_len = 0;
-            interp.raise_msg[0] = 0;
             Value* handler_v = jit_eval(clause.handler_body, clause_env, interp);
             if (handler_v == null) {
                 return runtime_effect_raise(interp, "runtime/raise-handler-returned-nil", "raise handler returned nil");
@@ -87,10 +87,6 @@ fn void jit_handle_init_handler(EffectHandler* h, Expr* expr, Env* env, HandleEf
 }
 
 fn Value* jit_handle_copy_clauses(EffectHandler* h, Expr* expr, Env* env, Interp* interp) {
-    if (expr.handle.clause_count > usz.max / SymbolId.sizeof ||
-        expr.handle.clause_count > usz.max / EffectClause.sizeof) {
-        return make_error(interp, "handle: failed to allocate clauses");
-    }
     h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * expr.handle.clause_count);
     h.clauses = (EffectClause*)mem::malloc(EffectClause.sizeof * expr.handle.clause_count);
     h.closures = null;
@@ -220,7 +216,7 @@ fn EvalResult jit_handle_impl(Expr* expr, Env* env, Interp* interp) {
 
     main::stack_ctx_init(ctx, &handle_effect_entry, state);
 
-    if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) {
+    if (!interp.ensure_handler_capacity(interp.handler_count + 1)) {
         return eval_error("handle: failed to grow handler stack");
     }
     usz my_idx = interp.handler_count;

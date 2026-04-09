@@ -93,15 +93,23 @@ fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation*
     return null;
 }
 
-fn HandleEffectState* jit_resolve_push_handler_copy(Interp* interp, Continuation* k) {
+fn Value* jit_resolve_push_handler_copy(Interp* interp, Continuation* k, HandleEffectState** out_hstate) {
     HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
+    if (out_hstate != null) *out_hstate = hstate;
     if (hstate != null) {
-        if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) return null;
+        if (!interp.ensure_handler_capacity(interp.handler_count + 1)) {
+            return raise_error_with_payload_names(
+                interp,
+                "runtime",
+                "runtime/out-of-memory",
+                "resolve: failed to grow handler stack"
+            );
+        }
         interp.handler_stack[interp.handler_count] = hstate.handler_copy;
         interp.handler_stack[interp.handler_count].effect_state = hstate;
         interp.handler_count++;
     }
-    return hstate;
+    return null;
 }
 
 fn void jit_resolve_pop_handler_copy(Interp* interp, HandleEffectState* hstate) @inline {

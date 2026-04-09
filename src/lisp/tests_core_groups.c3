@@ -163,6 +163,307 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "empty string is truthy", "(if \"\" 1 0)", 1, pass, fail);
 }
 
+fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* fail) {
+    {
+        SymbolTable table = {};
+        g_symbol_table_force_entries_alloc_fail = true;
+        table.init();
+        g_symbol_table_force_entries_alloc_fail = false;
+
+        bool ok = table.entries == null
+            && table.hash_index == null
+            && table.capacity == 0
+            && table.hash_capacity == 0
+            && table.intern("alpha") == INVALID_SYMBOL_ID;
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table init allocation failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table init allocation failure fails closed");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+
+    {
+        SymbolTable table = {};
+        table.init();
+        SymbolId first = table.intern("alpha");
+
+        g_symbol_table_force_name_alloc_fail = true;
+        SymbolId failed = table.intern("beta");
+        g_symbol_table_force_name_alloc_fail = false;
+
+        SymbolId later = table.intern("gamma");
+        bool ok = first != INVALID_SYMBOL_ID
+            && failed == INVALID_SYMBOL_ID
+            && later != INVALID_SYMBOL_ID
+            && table.count == 2
+            && scheduler_str_eq(table.get_name(first), "alpha")
+            && scheduler_str_eq(table.get_name(later), "gamma");
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table name allocation failure preserves table");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table name allocation failure preserves table");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+
+    {
+        SymbolTable table = {};
+        table.init();
+        bool seeded = true;
+        usz i = 0;
+        while (seeded && (table.count + 1) * 10 < table.capacity * 7) {
+            char[32] name_buf;
+            if (try char[] name = io::bprintf(&name_buf, "sym-%d", (int)i)) {
+                if (table.intern(name) == INVALID_SYMBOL_ID) {
+                    seeded = false;
+                    break;
+                }
+            } else {
+                seeded = false;
+                break;
+            }
+            i++;
+        }
+
+        SymbolId before = table.intern("stable-before-grow");
+        usz count_before = table.count;
+        g_symbol_table_force_grow_entries_alloc_fail = true;
+        SymbolId failed = table.intern("trigger-grow-fail");
+        g_symbol_table_force_grow_entries_alloc_fail = false;
+        SymbolId after = table.intern("after-grow-ok");
+
+        bool ok = seeded
+            && before != INVALID_SYMBOL_ID
+            && failed == INVALID_SYMBOL_ID
+            && after != INVALID_SYMBOL_ID
+            && table.capacity > SYMBOL_INITIAL_CAPACITY
+            && table.count == count_before + 1
+            && scheduler_str_eq(table.get_name(before), "stable-before-grow")
+            && scheduler_str_eq(table.get_name(after), "after-grow-ok");
+        if (ok) {
+            emit_pass_literal("[PASS] symbol table grow allocation failure preserves table");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] symbol table grow allocation failure preserves table");
+            (*fail)++;
+        }
+        table.destroy();
+    }
+}
+
+fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int* fail) {
+    {
+        Interp local = {};
+        g_interp_force_macro_table_alloc_fail = true;
+        local.init();
+        g_interp_force_macro_table_alloc_fail = false;
+
+        bool ok = local.macro_table == null
+            && local.macro_hash_index == null
+            && local.macro_capacity == 0
+            && local.macro_hash_capacity == 0
+            && local.ensure_macro_capacity(1)
+            && local.macro_table != null
+            && local.macro_hash_index != null;
+        if (ok) {
+            emit_pass_literal("[PASS] interp macro init allocation failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp macro init allocation failure fails closed");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        g_interp_force_module_table_alloc_fail = true;
+        local.init();
+        g_interp_force_module_table_alloc_fail = false;
+
+        bool ok = local.modules == null
+            && local.module_hash_index == null
+            && local.module_capacity == 0
+            && local.module_hash_capacity == 0
+            && local.ensure_module_capacity(1)
+            && local.modules != null
+            && local.module_hash_index != null;
+        if (ok) {
+            emit_pass_literal("[PASS] interp module init allocation failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp module init allocation failure fails closed");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        g_interp_force_handler_stack_alloc_fail = true;
+        local.init();
+        g_interp_force_handler_stack_alloc_fail = false;
+
+        bool ok = local.handler_stack == null
+            && local.handler_capacity == 0
+            && local.ensure_handler_capacity(1)
+            && local.handler_stack != null
+            && local.handler_capacity >= 1;
+        if (ok) {
+            emit_pass_literal("[PASS] interp handler stack init allocation failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp handler stack init allocation failure fails closed");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        SymbolId name = local.symbols.intern("macro-grow-check");
+        local.macro_table[0] = (MacroDef){
+            .name = name,
+            .clauses = null,
+            .clause_count = 0,
+            .captured_bindings = null,
+            .captured_count = 0,
+        };
+        local.macro_count = 1;
+        usz slot = (usz)name % local.macro_hash_capacity;
+        while (local.macro_hash_index[slot] != usz.max) {
+            slot = (slot + 1) % local.macro_hash_capacity;
+        }
+        local.macro_hash_index[slot] = 0;
+
+        MacroDef* before_table = local.macro_table;
+        usz* before_hash = local.macro_hash_index;
+        usz before_cap = local.macro_capacity;
+        usz before_hash_cap = local.macro_hash_capacity;
+
+        g_interp_force_grow_macro_table_alloc_fail = true;
+        bool failed = !local.ensure_macro_capacity(local.macro_capacity + 1);
+        g_interp_force_grow_macro_table_alloc_fail = false;
+        bool preserved = local.macro_count == 1
+            && before_table == local.macro_table
+            && before_hash == local.macro_hash_index
+            && before_cap == local.macro_capacity
+            && before_hash_cap == local.macro_hash_capacity;
+        bool recovered = local.ensure_macro_capacity(before_cap + 1);
+
+        bool ok = failed
+            && preserved
+            && recovered
+            && lookup_macro_index(name, &local) == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] interp macro grow allocation failure preserves lookup");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp macro grow allocation failure preserves lookup");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        SymbolId name = local.symbols.intern("module-grow-check");
+        local.modules[0] = (Module){
+            .name = name,
+            .env = null,
+            .exports = null,
+            .export_count = 0,
+            .export_capacity = 0,
+            .loaded = true,
+            .path = null,
+            .path_len = 0,
+        };
+        local.module_count = 1;
+        usz slot = (usz)name % local.module_hash_capacity;
+        while (local.module_hash_index[slot] != usz.max) {
+            slot = (slot + 1) % local.module_hash_capacity;
+        }
+        local.module_hash_index[slot] = 0;
+
+        Module* before_modules = local.modules;
+        usz* before_hash = local.module_hash_index;
+        usz before_cap = local.module_capacity;
+        usz before_hash_cap = local.module_hash_capacity;
+
+        g_interp_force_grow_module_table_alloc_fail = true;
+        bool failed = !local.ensure_module_capacity(local.module_capacity + 1);
+        g_interp_force_grow_module_table_alloc_fail = false;
+        bool preserved = local.module_count == 1
+            && before_modules == local.modules
+            && before_hash == local.module_hash_index
+            && before_cap == local.module_capacity
+            && before_hash_cap == local.module_hash_capacity;
+        bool recovered = local.ensure_module_capacity(before_cap + 1);
+
+        bool ok = failed
+            && preserved
+            && recovered
+            && find_module(name, &local) == &local.modules[0];
+        if (ok) {
+            emit_pass_literal("[PASS] interp module grow allocation failure preserves lookup");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp module grow allocation failure preserves lookup");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        local.handler_stack[0] = (EffectHandler){
+            .tags = null,
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = true,
+            .effect_state = null,
+        };
+        local.handler_count = 1;
+
+        EffectHandler* before_stack = local.handler_stack;
+        usz before_cap = local.handler_capacity;
+
+        g_interp_force_grow_handler_stack_alloc_fail = true;
+        bool failed = !local.ensure_handler_capacity(local.handler_capacity + 1);
+        g_interp_force_grow_handler_stack_alloc_fail = false;
+        bool preserved = before_stack == local.handler_stack
+            && before_cap == local.handler_capacity
+            && local.handler_count == 1;
+        bool recovered = local.ensure_handler_capacity(before_cap + 1);
+
+        bool ok = failed
+            && preserved
+            && recovered
+            && local.handler_stack[0].clause_count == 1
+            && local.handler_stack[0].strict_mode;
+        if (ok) {
+            emit_pass_literal("[PASS] interp handler stack grow allocation failure preserves handlers");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp handler stack grow allocation failure preserves handlers");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+}
+
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Basic Tests");
 
@@ -171,6 +472,8 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     run_basic_let_destructure_tests(interp, pass, fail);
     run_basic_function_param_destructure_tests(interp, pass, fail);
     run_basic_control_flow_tests(interp, pass, fail);
+    run_basic_symbol_table_hardening_tests(interp, pass, fail);
+    run_basic_interp_storage_hardening_tests(interp, pass, fail);
 }
 
 fn void run_memory_stress_tests(Interp* interp, int* pass, int* fail) {
