@@ -4978,3 +4978,60 @@
     build blockers.
   - Continuation/coroutine stack switching is still effectively x86_64-only.
 - Signature: Codex (GPT-5)
+
+2026-04-09 06:05 CEST - Documentation contract and compatibility hardening
+
+- Objectives attempted:
+  - Aggressively improve top-level documentation quality/coverage.
+  - Remove remaining top-level documentation drift around legacy syntax and
+    duplicate authority.
+  - Establish one explicit compatibility source for removed/renamed surface
+    syntax.
+- Code/config/doc changes made:
+  - Added documentation authority matrix and update discipline:
+    - `docs/DOCS_CONTRACT.md`
+  - Added canonical compatibility map for removed/changed syntax:
+    - `docs/SURFACE_COMPATIBILITY.md`
+  - Reworked top-level docs entrypoint and authority policy:
+    - `docs/README.md`
+  - Replaced `docs/FEATURES.md` with an index/coverage map (no longer a second
+    full spec).
+  - Updated reference navigation contract:
+    - `docs/OMNI_REFERENCE.md`
+  - Updated spec docs to reference authority/compatibility sources and remove
+    duplicate legacy accessor examples:
+    - `docs/LANGUAGE_SPEC.md`
+    - `docs/SYNTAX_SPEC.md`
+    - `docs/reference/03-collections.md`
+- Commands run:
+  - `jj status`
+  - `jj diff --stat`
+  - `rg` audits across updated docs for:
+    - callable quoted-symbol accessor remnants,
+    - removed alias spellings (`fn`, `begin`, `letrec`, `reset`, `shift`,
+      `with-handlers`, `handle-chain`)
+  - `sed` inspection passes on edited docs
+- Key results and conclusions:
+  - Documentation now has an explicit authority contract (`DOCS_CONTRACT`) and
+    explicit compatibility contract (`SURFACE_COMPATIBILITY`).
+  - `FEATURES.md` now acts as a high-signal index instead of duplicating large
+    parts of `LANGUAGE_SPEC.md`.
+  - Legacy callable quoted-symbol accessor syntax is no longer presented as
+    active syntax in top-level/user-reference docs; it is now scoped to
+    compatibility/removal policy.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating `FEATURES.md` as a second spec source; duplicate specs
+    drift quickly and blur authority.
+  - Do not scatter removed-syntax notes across many top-level docs; use
+    `SURFACE_COMPATIBILITY.md` as the single compatibility source.
+- Current best recommendation/checkpoint:
+  - Keep future syntax-surface updates in one patch touching:
+    - `SYNTAX_SPEC`,
+    - `LANGUAGE_SPEC`,
+    - `SURFACE_COMPATIBILITY`,
+    - and `DOCS_CONTRACT` when authority/coverage scope changes.
+- Unresolved issues:
+  - This pass did not run compiler/runtime tests because changes were docs-only.
+  - Historical plan/session artifacts still include legacy names by design;
+    those files are historical records, not canonical language contracts.
+- Signature: Codex (GPT-5)

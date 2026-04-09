@@ -117,12 +117,13 @@ Removed forms:
 .1
 .'key
 .[expr]
-('name user)
 ```
 
 These removed forms now hard-error. Use `expr.name`, `expr.[key]`, or `ref`.
 For higher-order code, write the lambda explicitly:
 `(lambda (x) (ref x 'name))`.
+Compatibility/removal details are centralized in
+`docs/SURFACE_COMPATIBILITY.md`.
 
 ### Postfix Index Access
 

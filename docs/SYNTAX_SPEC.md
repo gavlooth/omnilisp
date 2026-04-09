@@ -328,10 +328,11 @@ Removed leading-dot accessor forms (hard-error):
 .3
 .'key
 .[expr]
-('name user)
 ```
 
 Use `expr.name`, `expr.[key]`, and `ref` instead.
+Compatibility/removal details are maintained in
+`docs/SURFACE_COMPATIBILITY.md`.
 
 Postfix index syntax:
 

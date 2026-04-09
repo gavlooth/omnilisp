@@ -1,17 +1,28 @@
 # Omni Lisp Reference
 
-**Version 0.2.0** | **March 2026**
+**Version 0.2.1** | **April 2026**
 
-Omni is a Lisp with modern semantics: strict-arity lambdas, algebraic effects,
-delimited continuations, multiple dispatch, structural types, and region-based
-memory. It compiles via GNU Lightning JIT and runs without a garbage collector.
+This file is a navigation index for the reference chapters.
+It is not the normative language contract.
+
+Normative sources:
+- `docs/LANGUAGE_SPEC.md`
+- `docs/SYNTAX_SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/ERROR_MODEL.md`
+
+Compatibility/removal policy:
+- `docs/SURFACE_COMPATIBILITY.md`
+
+Authority and coverage map:
+- `docs/DOCS_CONTRACT.md`
 
 ---
 
 ## Chapters
 
 | # | Chapter | Sections |
-|---|---------|----------|
+|---|---|---|
 | 0 | [Overview, Data Types & Truthiness](reference/00-overview.md) | 1-3 |
 | 1 | [Special Forms, Pattern Matching & Destructuring](reference/01-special-forms.md) | 4-6 |
 | 2 | [Functions & Partial Application](reference/02-functions.md) | 7-8 |
@@ -27,12 +38,11 @@ memory. It compiles via GNU Lightning JIT and runs without a garbage collector.
 ## Appendices
 
 | | Appendix | |
-|---|---------|---|
-| A | [Primitive Reference](reference/11-appendix-primitives.md) | ~180 built-in primitives |
-| B | [Stdlib Reference](reference/12-appendix-stdlib.md) | ~80 stdlib functions/macros |
-| C-D | [Limits & EBNF Grammar](reference/13-appendix-limits-grammar.md) | Resource limits, formal grammar |
+|---|---|---|
+| A | [Primitive Reference](reference/11-appendix-primitives.md) | built-in primitives |
+| B | [Stdlib Reference](reference/12-appendix-stdlib.md) | stdlib functions/macros |
+| C-D | [Limits & EBNF Grammar](reference/13-appendix-limits-grammar.md) | resource limits + grammar |
 
 ---
 
-*Omni Lisp -- A Lisp with delimited continuations, algebraic effects,
-strict-arity lambdas, multiple dispatch, and structural types.*
+If reference content disagrees with normative docs, follow normative docs.

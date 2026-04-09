@@ -1,11 +1,15 @@
 # Omni Lisp Language Specification
 
-**Version:** 0.4.6
-**Date:** 2026-03-09
+**Version:** 0.4.7
+**Date:** 2026-04-09
 
 Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a deterministic scope-region memory system with dual-lane TEMP/ESCAPE ownership, implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
 Normative architecture contracts are recorded in `docs/ARCHITECTURE.md`.
+Documentation authority and cross-doc coverage mapping are defined in
+`docs/DOCS_CONTRACT.md`.
+Removed/renamed surface syntax is centralized in
+`docs/SURFACE_COMPATIBILITY.md`.
 
 ---
 
@@ -46,9 +50,10 @@ Omni without learning advanced semantics first.
   - truthy: everything else (`0`, `""`, empty collections, symbols, etc.)
 - Start with these value families:
   - scalars: int, double, string, symbol, nil
-- functions: closures (`lambda`)
-- function spelling: `lambda` is canonical; `λ` is accepted equivalently
+  - functions: closures (`lambda`)
   - collections: list, array, dict
+- Function spelling: `lambda` is canonical; plain `λ` is accepted as an
+  equivalent input spelling.
 - Prefer generic collection operations (`length`, `ref`, `map`, `filter`,
   `foldl`) instead of type-specific naming.
 - Surface naming policy for contributors:
@@ -982,19 +987,21 @@ lookup. It shares lookup intent with `ref`, but it is not a full desugar to
 Path notation resolves segments on instances, modules, and dictionaries with
 symbol keys. Cons cells only support `.car` and `.cdr` as special field names.
 
-Removed accessor forms that must hard-error:
+Removed accessor forms must hard-error:
 
 ```lisp
 .name
 .1
 .'key
 .[expr]
-('name dict)
 ```
 
 Use `(ref coll key)` for dynamic collection lookup, `expr.name` for path-step
 access, and `expr.[key]` for postfix dynamic/index access. For higher-order
 code, write the lambda explicitly: `(lambda (x) (ref x 'name))`.
+
+Compatibility/removal details (including callable quoted-symbol accessor
+removal) are maintained in `docs/SURFACE_COMPATIBILITY.md`.
 
 ---
 
