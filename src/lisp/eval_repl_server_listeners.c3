@@ -12,7 +12,7 @@ fn bool repl_server_tcp_host_is_loopback(char[] host) {
 
 fn int repl_server_socket(char* socket_path, bool preload_project = false, char* preload_project_dir = null) {
     if (socket_path == null || socket_path[0] == 0) {
-        main::print_cli_usage_json("missing socket path for --repl-server");
+        main::repl_emit_cli_usage_json("missing socket path for --repl-server");
         return 1;
     }
 
@@ -23,9 +23,9 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
     if (omni_unix_socket_listen_fd(socket_path, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) < 0 || listener_fd < 0) {
         char[320] msg_buf;
         if (try msg = io::bprintf(&msg_buf, "failed to listen on REPL socket %s", (ZString)socket_path)) {
-            main::print_cli_error_json("io/listen-failed", msg);
+            main::repl_emit_cli_error_json("io/listen-failed", msg);
         } else {
-            main::print_cli_error_json("io/listen-failed", "failed to listen on REPL socket");
+            main::repl_emit_cli_error_json("io/listen-failed", "failed to listen on REPL socket");
         }
         return 1;
     }
@@ -39,9 +39,9 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
         if (client_fd < 0) {
             char[320] msg_buf;
             if (try msg = io::bprintf(&msg_buf, "failed to accept client on REPL socket %s", (ZString)socket_path)) {
-                main::print_cli_error_json("io/accept-failed", msg);
+                main::repl_emit_cli_error_json("io/accept-failed", msg);
             } else {
-                main::print_cli_error_json("io/accept-failed", "failed to accept client on REPL socket");
+                main::repl_emit_cli_error_json("io/accept-failed", "failed to accept client on REPL socket");
             }
             return 1;
         }
@@ -54,12 +54,12 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
 
 fn int repl_server_tcp(char* host, int port, bool preload_project = false, char* preload_project_dir = null) {
     if (host == null || host[0] == 0 || port <= 0 || port > 65535) {
-        main::print_cli_usage_json("invalid TCP host/port for --repl-server");
+        main::repl_emit_cli_usage_json("invalid TCP host/port for --repl-server");
         return 1;
     }
     char[] host_slice = host[:repl_server_cstr_len(host)];
     if (!repl_server_tcp_host_is_loopback(host_slice)) {
-        main::print_cli_error_json(
+        main::repl_emit_cli_error_json(
             "security/repl-tcp-loopback-required",
             "TCP REPL server must bind to localhost, 127.0.0.1, or ::1"
         );
@@ -68,7 +68,7 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
 
     char* auth_token = main::getenv("OMNI_REPL_TCP_AUTH_TOKEN");
     if (auth_token == null || auth_token[0] == 0) {
-        main::print_cli_error_json(
+        main::repl_emit_cli_error_json(
             "security/auth-required",
             "set OMNI_REPL_TCP_AUTH_TOKEN before starting TCP REPL server"
         );
@@ -82,16 +82,16 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
     if (omni_uv_tcp_listen_fd(host, port, REPL_SERVER_LISTEN_BACKLOG, &listener_fd) != 0 || listener_fd < 0) {
         char[320] msg_buf;
         if (try msg = io::bprintf(&msg_buf, "failed to listen on TCP REPL socket %s:%d", (ZString)host, port)) {
-            main::print_cli_error_json("io/listen-failed", msg);
+            main::repl_emit_cli_error_json("io/listen-failed", msg);
         } else {
-            main::print_cli_error_json("io/listen-failed", "failed to listen on TCP REPL socket");
+            main::repl_emit_cli_error_json("io/listen-failed", "failed to listen on TCP REPL socket");
         }
         return 1;
     }
     defer if (listener_fd >= 0) c_close_fd(listener_fd);
 
     if (!repl_server_publish_tcp_port_file(port)) {
-        main::print_cli_error_json("io/write-failed", "failed to write .omni-repl-port for TCP REPL server");
+        main::repl_emit_cli_error_json("io/write-failed", "failed to write .omni-repl-port for TCP REPL server");
         return 1;
     }
 
@@ -100,9 +100,9 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
         if (client_fd < 0) {
             char[320] msg_buf;
             if (try msg = io::bprintf(&msg_buf, "failed to accept client on TCP REPL socket %s:%d", (ZString)host, port)) {
-                main::print_cli_error_json("io/accept-failed", msg);
+                main::repl_emit_cli_error_json("io/accept-failed", msg);
             } else {
-                main::print_cli_error_json("io/accept-failed", "failed to accept client on TCP REPL socket");
+                main::repl_emit_cli_error_json("io/accept-failed", "failed to accept client on TCP REPL socket");
             }
             return 1;
         }

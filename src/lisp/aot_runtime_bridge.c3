@@ -62,9 +62,10 @@ fn lisp::Value* index(lisp::Value* collection, lisp::Value* idx) {
     if (interp == null) return aot_make_error_best_effort(null, "aot index: runtime interpreter unavailable");
     lisp::Value* ref_fn = interp.global_env.lookup(interp.symbols.intern("ref"));
     if (ref_fn == null) return lisp::raise_error(interp, "ref: primitive not found");
-    lisp::Value* partial = lisp::jit_apply_value(ref_fn, collection, interp);
-    if (partial != null && partial.tag == lisp::ValueTag.ERROR) return partial;
-    return lisp::jit_apply_value(partial, idx, interp);
+    lisp::Value* args = lisp::make_nil(interp);
+    args = lisp::make_cons(interp, idx, args);
+    args = lisp::make_cons(interp, collection, args);
+    return apply_multi(ref_fn, args, 2);
 }
 
 // =============================================================================

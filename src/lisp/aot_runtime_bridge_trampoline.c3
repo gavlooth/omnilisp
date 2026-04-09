@@ -87,14 +87,19 @@ fn lisp::Value* apply_multi_once(lisp::Value* func, lisp::Value* arg_list, long 
             return aot_missing_variadic_closure_payload_error(active_interp);
         }
         if (pfn == &aot_closure_apply) {
-            // Mirror the JIT apply path: feed each argument through successive unary closure applications.
+            // Stay on the AOT trampoline path for curried closure application.
+            // Routing through jit_apply_value re-enters aot_closure_apply recursively
+            // and defeats tail-call flattening for self-recursive AOT closures.
+            if (argc == 0) {
+                return invoke(func, lisp::make_nil(active_interp));
+            }
             lisp::Value* result = func;
             lisp::Value* curr = arg_list;
             for (long i = 0; i < argc; i++) {
                 if (curr == null || curr.tag != lisp::ValueTag.CONS) {
                     return lisp::raise_error(active_interp, "arg list too short");
                 }
-                result = lisp::jit_apply_value(result, curr.cons_val.car, active_interp);
+                result = invoke(result, curr.cons_val.car);
                 if (result != null && result.tag == lisp::ValueTag.ERROR) return result;
                 curr = curr.cons_val.cdr;
             }

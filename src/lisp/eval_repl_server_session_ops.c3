@@ -59,7 +59,7 @@ fn bool repl_server_send_eval_result(ReplServerOutput* output, char[] id, char[]
 fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServerSession* session, char[] id, char* project_dir) {
     char[1280] main_path_buf = {};
     usz main_path_len = 0;
-    if (!main::repl_resolve_project_main_path(project_dir, main_path_buf[..], &main_path_len)) {
+    if (!main::repl_shared_resolve_project_main_path(project_dir, main_path_buf[..], &main_path_len)) {
         return repl_server_send_event_error(
             output,
             id,
@@ -110,14 +110,14 @@ fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServer
         return true;
     }
 
-    main::EntryFileReadKind read_kind;
-    if (!main::classify_file_read_path(path, &read_kind)) {
+    main::ReplFileReadKind read_kind;
+    if (!main::repl_classify_file_read_path(path, &read_kind)) {
         char[128] msg_buf = {};
         char[] message = "project preload: read failed";
         if (try rendered = io::bprintf(
             &msg_buf,
             "project preload: %s",
-            (ZString)main::file_read_kind_reason(read_kind)
+            (ZString)main::repl_file_read_kind_reason(read_kind)
         )) {
             message = rendered;
         }
@@ -125,7 +125,7 @@ fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServer
             output,
             id,
             session.id_ptr[:session.id_len],
-            main::file_read_kind_code(read_kind),
+            main::repl_file_read_kind_code(read_kind),
             message
         );
     }
@@ -207,14 +207,14 @@ fn bool repl_server_load_file_session(ReplServerOutput* output, ReplServerSessio
         return repl_server_send_done(output, id, session.id_ptr[:session.id_len]);
     }
 
-    main::EntryFileReadKind read_kind;
-    if (!main::classify_file_read_path(path, &read_kind)) {
+    main::ReplFileReadKind read_kind;
+    if (!main::repl_classify_file_read_path(path, &read_kind)) {
         char[128] msg_buf = {};
         char[] message = "load-file: read failed";
         if (try rendered = io::bprintf(
             &msg_buf,
             "load-file: %s",
-            (ZString)main::file_read_kind_reason(read_kind)
+            (ZString)main::repl_file_read_kind_reason(read_kind)
         )) {
             message = rendered;
         }
@@ -222,7 +222,7 @@ fn bool repl_server_load_file_session(ReplServerOutput* output, ReplServerSessio
             output,
             id,
             session.id_ptr[:session.id_len],
-            main::file_read_kind_code(read_kind),
+            main::repl_file_read_kind_code(read_kind),
             message
         );
     }

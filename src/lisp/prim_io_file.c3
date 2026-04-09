@@ -188,14 +188,14 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         }
         return r.value;
     }
-    main::EntryFileReadKind read_kind;
-    (void)main::classify_file_read_path(path, &read_kind);
+    main::ReplFileReadKind read_kind;
+    (void)main::repl_classify_file_read_path(path, &read_kind);
     char[384] ebuf;
     if (try char[] msg = io::bprintf(
         &ebuf,
         "load: cannot read '%s': %s",
         (ZString)path.ptr,
-        (ZString)main::file_read_kind_reason(read_kind)
+        (ZString)main::repl_file_read_kind_reason(read_kind)
     )) {
         return raise_error(interp, msg);
     }

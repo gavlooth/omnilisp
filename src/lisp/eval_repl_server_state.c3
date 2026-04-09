@@ -77,10 +77,10 @@ fn usz repl_server_cstr_len(char* text) @inline {
 
 fn bool repl_server_create_interp(Interp** out_interp) {
     *out_interp = null;
-    Interp* interp = main::create_plain_interp();
+    Interp* interp = main::repl_create_plain_interp();
     if (interp == null) return false;
     if (!bootstrap_runtime_interp(interp)) {
-        main::destroy_plain_interp(interp);
+        main::repl_destroy_plain_interp(interp);
         return false;
     }
     interp.flags.jit_enabled = true;
@@ -90,7 +90,7 @@ fn bool repl_server_create_interp(Interp** out_interp) {
 
 fn void repl_server_destroy_interp(Interp* interp) {
     if (interp == null) return;
-    main::destroy_plain_interp(interp);
+    main::repl_destroy_plain_interp(interp);
 }
 
 fn void repl_server_close_session(ReplServerSession* session) {
