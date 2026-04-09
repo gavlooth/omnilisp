@@ -25,13 +25,16 @@ fn Value* root_store_clone_primitive_to_scope(
         main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
         return result;
     }
-    if (src_prim.user_data != null) {
+    if (primitive_has_opaque_user_data(src)) {
         return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
     }
 
     Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
     if (dst_prim == null) return null;
-    *dst_prim = *src_prim;
+    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+        mem::free(dst_prim);
+        return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
+    }
 
     result.prim_val = dst_prim;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);

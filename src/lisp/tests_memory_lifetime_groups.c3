@@ -97,6 +97,173 @@ fn void run_memory_lifetime_escape_disjoint_fallback_test(Interp* interp, int* p
     }
 }
 
+fn void run_memory_lifetime_escape_primitive_guard_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: disjoint-scope primitive wrappers crossing into ESCAPE must
+    // clone plain primitive headers and reject opaque payload aliases.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: escape primitive plain clone path");
+            (*fail)++;
+        } else {
+            interp.current_scope = foreign;
+            Value* src = interp.alloc_value();
+            src.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign, (void*)src, &scope_dtor_value);
+            src.prim_val = null;
+
+            Primitive* prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            if (prim == null) {
+                interp.current_scope = saved;
+                main::scope_release(foreign);
+                main::scope_release(target);
+                io::printn("[FAIL] lifetime: escape primitive plain clone path (setup primitive)");
+                (*fail)++;
+                return;
+            }
+            *prim = {};
+            prim.name[0] = 'e';
+            prim.name[1] = 0;
+            prim.arity = 2;
+            prim.tag = 451;
+            src.prim_val = prim;
+
+            interp.current_scope = target;
+            usz base_site = copy_to_parent_site_calls(COPY_SITE_GENERIC);
+            Value* promoted = promote_to_escape(src, interp);
+            usz site_delta = copy_to_parent_site_calls(COPY_SITE_GENERIC) - base_site;
+
+            bool pre_ok = promoted != null &&
+                          promoted != src &&
+                          promoted.tag == PRIMITIVE &&
+                          promoted.scope_gen == target.escape_generation &&
+                          promoted.prim_val != null &&
+                          promoted.prim_val != src.prim_val &&
+                          promoted.prim_val.arity == 2 &&
+                          promoted.prim_val.tag == 451 &&
+                          promoted.prim_val.name[0] == 'e' &&
+                          promoted.prim_val.name[1] == 0 &&
+                          site_delta == 0 &&
+                          !main::is_in_scope((void*)promoted, foreign);
+
+            main::scope_release(foreign);
+
+            bool post_ok = promoted != null &&
+                           promoted.tag == PRIMITIVE &&
+                           promoted.prim_val != null &&
+                           promoted.prim_val.arity == 2 &&
+                           promoted.prim_val.tag == 451 &&
+                           promoted.prim_val.name[0] == 'e' &&
+                           promoted.prim_val.name[1] == 0;
+
+            interp.current_scope = saved;
+            main::scope_release(target);
+
+            bool ok = pre_ok && post_ok;
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: escape primitive plain clone path");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] lifetime: escape primitive plain clone path (site_delta=%d pre_ok=%s post_ok=%s same_payload=%s)",
+                    (long)site_delta,
+                    pre_ok ? "yes" : "no",
+                    post_ok ? "yes" : "no",
+                    (promoted != null && src != null && promoted.tag == PRIMITIVE && src.tag == PRIMITIVE && promoted.prim_val == src.prim_val) ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: escape primitive opaque payload reject");
+            (*fail)++;
+        } else {
+            interp.current_scope = foreign;
+            Value* src = interp.alloc_value();
+            src.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign, (void*)src, &scope_dtor_value);
+            src.prim_val = null;
+
+            Primitive* prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            if (prim == null) {
+                interp.current_scope = saved;
+                main::scope_release(foreign);
+                main::scope_release(target);
+                io::printn("[FAIL] lifetime: escape primitive opaque payload reject (setup primitive)");
+                (*fail)++;
+                return;
+            }
+            *prim = {};
+            prim.name[0] = 'o';
+            prim.name[1] = 0;
+            prim.arity = 1;
+            prim.tag = 452;
+            int* opaque_payload = (int*)mem::malloc(int.sizeof);
+            if (opaque_payload == null) {
+                mem::free(prim);
+                interp.current_scope = saved;
+                main::scope_release(foreign);
+                main::scope_release(target);
+                io::printn("[FAIL] lifetime: escape primitive opaque payload reject (setup payload)");
+                (*fail)++;
+                return;
+            }
+            *opaque_payload = 91;
+            prim.user_data = (void*)opaque_payload;
+            src.prim_val = prim;
+
+            interp.current_scope = target;
+            usz base_site = copy_to_parent_site_calls(COPY_SITE_GENERIC);
+            Value* promoted = promote_to_escape(src, interp);
+            usz site_delta = copy_to_parent_site_calls(COPY_SITE_GENERIC) - base_site;
+
+            bool pre_ok = promoted != null &&
+                          promoted.tag == ERROR &&
+                          promoted.str_chars != null &&
+                          str_contains(
+                              promoted.str_chars[:promoted.str_len],
+                              "boundary: refusing primitive escape promotion with opaque user_data"
+                          ) &&
+                          site_delta == 0;
+
+            main::scope_release(foreign);
+
+            bool post_ok = promoted != null &&
+                           promoted.tag == ERROR &&
+                           promoted.str_chars != null &&
+                           str_contains(
+                               promoted.str_chars[:promoted.str_len],
+                               "boundary: refusing primitive escape promotion with opaque user_data"
+                           );
+
+            interp.current_scope = saved;
+            main::scope_release(target);
+
+            bool ok = pre_ok && post_ok;
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: escape primitive opaque payload reject");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] lifetime: escape primitive opaque payload reject (site_delta=%d pre_ok=%s post_ok=%s)",
+                    (long)site_delta,
+                    pre_ok ? "yes" : "no",
+                    post_ok ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+}
+
 fn void run_memory_lifetime_resume_missing_yield_scope_gate_test(Interp* interp, int* pass, int* fail) {
     // Invariant: coroutine resume boundary requires explicit yield provenance.
     // Missing yield_scope must hard-error and must not re-enter copy fallback.
@@ -235,5 +402,6 @@ fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* 
     run_memory_lifetime_root_boundary_primitive_clone_test(interp, pass, fail);
     run_memory_lifetime_cons_barrier_fallback_gate_test(interp, pass, fail);
     run_memory_lifetime_escape_disjoint_fallback_test(interp, pass, fail);
+    run_memory_lifetime_escape_primitive_guard_tests(interp, pass, fail);
     run_memory_lifetime_resume_missing_yield_scope_gate_test(interp, pass, fail);
 }

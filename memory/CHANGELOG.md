@@ -37,6 +37,21 @@
     - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` now covers both
       the allowed plain primitive clone path and the fail-closed rejection path
       for child-owned primitives with non-null `user_data`.
+  - Ordinary ESCAPE-lane primitive promotion now follows the same ownership
+    rule instead of raw-copying primitive wrapper pointers:
+    - `src/lisp/eval_promotion_escape_leaf.c3` now deep-clones plain
+      `Primitive` headers into the destination ESCAPE lane, which avoids
+      double-freeing the same heap `Primitive*` when TEMP and ESCAPE wrappers
+      teardown in the same scope.
+    - ESCAPE promotion now rejects child/disjoint primitive wrappers carrying
+      opaque `user_data` with an explicit boundary error instead of aliasing
+      foreign payload ownership through the shared-wrapper fast path.
+    - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now centralizes the
+      primitive opaque-payload predicate and plain-header clone helper used by
+      both root-store and ESCAPE promotion paths.
+    - `src/lisp/tests_memory_lifetime_groups.c3` now covers both the plain
+      primitive ESCAPE clone path and the fail-closed opaque-payload rejection
+      path for disjoint-scope promotion.
   - Validation:
     - `c3c build --sanitize=address`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->

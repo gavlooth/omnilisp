@@ -39,6 +39,31 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
 
 fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
+    if (v.tag == PRIMITIVE) {
+        Value* result = interp.alloc_value_escape();
+        result.tag = PRIMITIVE;
+        result.prim_val = null;
+
+        Primitive* src_prim = v.prim_val;
+        if (src_prim == null) {
+            main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+            return result;
+        }
+        if (primitive_has_opaque_user_data(v)) {
+            return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
+        }
+
+        Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (dst_prim == null) return null;
+        if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+            mem::free(dst_prim);
+            return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
+        }
+
+        result.prim_val = dst_prim;
+        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
     Value* result = interp.alloc_value_escape();
     *result = *v;
     result.scope_gen = interp.current_scope.escape_generation;

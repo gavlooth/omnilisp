@@ -133,6 +133,19 @@ fn bool needs_wrapper_copy(Value* v, Interp* interp) @inline {
     return !boundary_can_reuse_value(v, interp);
 }
 
+fn bool primitive_has_opaque_user_data(Value* v) @inline {
+    return v != null &&
+           v.tag == PRIMITIVE &&
+           v.prim_val != null &&
+           v.prim_val.user_data != null;
+}
+
+fn bool primitive_clone_plain_header(Primitive* dst, Primitive* src) @inline {
+    if (dst == null || src == null || src.user_data != null) return false;
+    *dst = *src;
+    return true;
+}
+
 fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
     if (!needs_wrapper_copy(v, interp)) return v;
     Value* result = interp.alloc_value();
