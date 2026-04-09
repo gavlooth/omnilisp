@@ -101,7 +101,7 @@ fn Value* copy_to_parent_by_route(
         case CP_ROUTE_CLOSURE:
             return copy_closure_to_parent(v, interp, fault_out);
         case CP_ROUTE_PRIMITIVE:
-            return v;
+            return copy_primitive_to_parent(v, interp, fault_out);
         case CP_ROUTE_PARTIAL_PRIM:
             // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too.
             return copy_partial_prim_to_parent(v, interp);

@@ -214,6 +214,146 @@ fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp,
         }
     }
 
+    // Invariant: primitive wrappers already in target chain are reused, while
+    // disjoint plain primitive wrappers are cloned and opaque payloads fail as
+    // typed boundary-copy faults.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* releasing = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || releasing == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (releasing != null) main::scope_release(releasing);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: primitive wrapper copy policy");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = target;
+        Value* reusable = interp.alloc_value();
+        reusable.tag = PRIMITIVE;
+        main::scope_register_dtor(target, (void*)reusable, &scope_dtor_value);
+        Primitive* reusable_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (reusable_prim == null) {
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: primitive wrapper copy policy (setup reusable)");
+            (*fail)++;
+            return;
+        }
+        *reusable_prim = {};
+        reusable_prim.name[0] = 'r';
+        reusable_prim.name[1] = 0;
+        reusable_prim.arity = 1;
+        reusable_prim.tag = 601;
+        reusable.prim_val = reusable_prim;
+
+        interp.current_scope = foreign;
+        Value* disjoint = interp.alloc_value();
+        disjoint.tag = PRIMITIVE;
+        main::scope_register_dtor(foreign, (void*)disjoint, &scope_dtor_value);
+        Primitive* disjoint_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (disjoint_prim == null) {
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: primitive wrapper copy policy (setup disjoint)");
+            (*fail)++;
+            return;
+        }
+        *disjoint_prim = {};
+        disjoint_prim.name[0] = 'd';
+        disjoint_prim.name[1] = 0;
+        disjoint_prim.arity = 2;
+        disjoint_prim.tag = 602;
+        disjoint.prim_val = disjoint_prim;
+
+        Value* opaque = interp.alloc_value();
+        opaque.tag = PRIMITIVE;
+        main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        if (opaque_prim == null || opaque_payload == null) {
+            if (opaque_prim != null) mem::free(opaque_prim);
+            if (opaque_payload != null) mem::free(opaque_payload);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: primitive wrapper copy policy (setup opaque)");
+            (*fail)++;
+            return;
+        }
+        *opaque_prim = {};
+        *opaque_payload = 603;
+        opaque_prim.name[0] = 'o';
+        opaque_prim.name[1] = 0;
+        opaque_prim.arity = 3;
+        opaque_prim.tag = 603;
+        opaque_prim.user_data = (void*)opaque_payload;
+        opaque.prim_val = opaque_prim;
+
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+
+        Value* reused = copy_to_parent(reusable, interp);
+        Value* copied = copy_to_parent(disjoint, interp);
+        BoundaryCopyResult rejected = boundary_copy_to_parent_site_ctx_checked(
+            opaque,
+            interp,
+            COPY_SITE_GENERIC,
+            null
+        );
+
+        bool reuse_ok = reused == reusable;
+        bool copied_ok = copied != null &&
+                         copied.tag == PRIMITIVE &&
+                         copied != disjoint &&
+                         copied.prim_val != null &&
+                         copied.prim_val != disjoint.prim_val &&
+                         copied.prim_val.arity == 2 &&
+                         copied.prim_val.tag == 602 &&
+                         copied.prim_val.name[0] == 'd' &&
+                         copied.prim_val.name[1] == 0;
+        bool reject_ok = !boundary_copy_result_ok(rejected) &&
+                         rejected.value == null &&
+                         rejected.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+
+        main::scope_release(foreign);
+
+        bool post_ok = copied != null &&
+                       copied.tag == PRIMITIVE &&
+                       copied.prim_val != null &&
+                       copied.prim_val.arity == 2 &&
+                       copied.prim_val.tag == 602 &&
+                       copied.prim_val.name[0] == 'd' &&
+                       copied.prim_val.name[1] == 0;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(releasing);
+        main::scope_release(target);
+
+        bool ok = reuse_ok && copied_ok && reject_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: primitive wrapper copy policy");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: primitive wrapper copy policy (reuse_ok=%s copied_ok=%s reject_ok=%s post_ok=%s fault=%s)",
+                reuse_ok ? "yes" : "no",
+                copied_ok ? "yes" : "no",
+                reject_ok ? "yes" : "no",
+                post_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(rejected.fault_code));
+            (*fail)++;
+        }
+    }
+
     // Invariant: splice fast-path rejects sibling/foreign/retained-child transfers with explicit reasons.
     {
         main::ScopeRegion* saved = interp.current_scope;

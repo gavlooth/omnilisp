@@ -80,6 +80,8 @@ fn char[] boundary_copy_fault_message(BoundaryCopyFault fault_code) @inline {
             return "boundary: copy_to_parent_site_ctx aborted";
         case BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY:
             return "boundary: closure type signature copy failed in copy_to_parent";
+        case BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD:
+            return "boundary: refusing primitive copy with opaque user_data";
         case BOUNDARY_COPY_FAULT_NULL_RESULT:
             return "boundary: copy_to_parent_site_ctx returned null for non-null input";
     }

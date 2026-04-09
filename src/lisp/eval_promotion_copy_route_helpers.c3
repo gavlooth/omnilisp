@@ -26,6 +26,39 @@ fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
     return result;
 }
 
+fn Value* copy_primitive_to_parent(
+    Value* v,
+    Interp* interp,
+    BoundaryCopyFault* fault_out = null
+) {
+    if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
+    Value* result = interp.alloc_value();
+    result.tag = PRIMITIVE;
+    result.prim_val = null;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+
+    Primitive* src_prim = v.prim_val;
+    if (src_prim == null) return result;
+    if (primitive_has_opaque_user_data(v)) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+        return null;
+    }
+
+    Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+    if (dst_prim == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return null;
+    }
+    if (!primitive_clone_plain_header(dst_prim, src_prim)) {
+        mem::free(dst_prim);
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+        return null;
+    }
+
+    result.prim_val = dst_prim;
+    return result;
+}
+
 fn Value* copy_iterator_to_parent(Value* v, Interp* interp) {
     Value* promoted_thunk = copy_to_parent(v.iterator_val, interp);
     Value* result = interp.alloc_value();

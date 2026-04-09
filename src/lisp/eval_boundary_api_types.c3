@@ -92,6 +92,7 @@ enum BoundaryCopyFault : char {
     BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE,
     BOUNDARY_COPY_FAULT_CONTEXT_ABORTED,
     BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY,
+    BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD,
     BOUNDARY_COPY_FAULT_NULL_RESULT,
 }
 
@@ -222,6 +223,7 @@ const char[][] BOUNDARY_COPY_FAULT_NAMES = {
     "missing-scope-provenance",
     "context-aborted",
     "closure-type-sig-copy",
+    "opaque-primitive-payload",
     "null-result",
 };
 

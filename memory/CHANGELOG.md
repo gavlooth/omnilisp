@@ -52,6 +52,19 @@
     - `src/lisp/tests_memory_lifetime_groups.c3` now covers both the plain
       primitive ESCAPE clone path and the fail-closed opaque-payload rejection
       path for disjoint-scope promotion.
+  - Parent-boundary and env-copy primitive handling now use the same contract:
+    - `src/lisp/eval_promotion_copy.c3` no longer returns child-owned
+      `PRIMITIVE` wrappers unchanged from `copy_to_parent(...)`; plain
+      primitive headers are cloned into the target scope and opaque
+      `user_data` payloads now surface as a typed boundary-copy fault.
+    - `src/lisp/eval_env_copy_values.c3` no longer treats all primitive values
+      as root/external-lifetime by default during env copy; disjoint plain
+      primitives are cloned through boundary policy and opaque payloads now
+      fail the env copy with `BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY`.
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3` and
+      `src/lisp/tests_memory_lifetime_env_copy_groups.c3` now cover the plain
+      primitive clone path plus opaque-payload rejection for return/env-copy
+      boundaries.
   - Validation:
     - `c3c build --sanitize=address`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->

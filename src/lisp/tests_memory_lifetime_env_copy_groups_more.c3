@@ -562,6 +562,7 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_memo_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_persistent_parent_rewrite_test(interp, pass, fail);
     run_memory_lifetime_env_copy_mixed_chain_rewrite_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_primitive_policy_test(interp, pass, fail);
     run_memory_lifetime_escape_env_lane_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_fault_surface_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_invalid_persistent_in_place_guard_test(interp, pass, fail);

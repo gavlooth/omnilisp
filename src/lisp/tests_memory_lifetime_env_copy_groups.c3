@@ -321,3 +321,120 @@ fn void run_memory_lifetime_env_copy_closure_retain_stress_test(Interp* interp, 
         }
     }
 }
+
+fn void run_memory_lifetime_env_copy_primitive_policy_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy clones disjoint plain primitive headers and rejects
+    // opaque primitive payloads with binding-value-copy fault.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved);
+        main::ScopeRegion* target = main::scope_create(saved);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy primitive policy");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId plain_sym = interp.symbols.intern("__copy_env_plain_primitive");
+        SymbolId opaque_sym = interp.symbols.intern("__copy_env_opaque_primitive");
+
+        interp.current_scope = source;
+        Env* plain_env = make_env(interp, interp.global_env);
+        Value* plain = interp.alloc_value();
+        plain.tag = PRIMITIVE;
+        main::scope_register_dtor(source, (void*)plain, &scope_dtor_value);
+        Primitive* plain_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (plain_env == null || plain_prim == null) {
+            if (plain_prim != null) mem::free(plain_prim);
+            interp.current_scope = saved;
+            main::scope_release(source);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy primitive policy (setup plain)");
+            (*fail)++;
+            return;
+        }
+        *plain_prim = {};
+        plain_prim.name[0] = 'p';
+        plain_prim.name[1] = 0;
+        plain_prim.arity = 4;
+        plain_prim.tag = 701;
+        plain.prim_val = plain_prim;
+        env_define_with_barrier(plain_env, plain_sym, plain, interp);
+
+        BoundaryEnvCopyResult plain_copy = boundary_copy_env_to_target_scope_checked(plain_env, interp, target);
+        Value* plain_copied = boundary_env_copy_result_ok(plain_copy) && plain_copy.env != null
+            ? plain_copy.env.lookup(plain_sym)
+            : null;
+
+        bool plain_ok = boundary_env_copy_result_ok(plain_copy) &&
+                        plain_copy.env != null &&
+                        plain_copied != null &&
+                        plain_copied.tag == PRIMITIVE &&
+                        plain_copied != plain &&
+                        plain_copied.prim_val != null &&
+                        plain_copied.prim_val != plain.prim_val &&
+                        plain_copied.prim_val.arity == 4 &&
+                        plain_copied.prim_val.tag == 701 &&
+                        plain_copied.prim_val.name[0] == 'p' &&
+                        plain_copied.prim_val.name[1] == 0;
+
+        Env* opaque_env = make_env(interp, interp.global_env);
+        Value* opaque = interp.alloc_value();
+        opaque.tag = PRIMITIVE;
+        main::scope_register_dtor(source, (void*)opaque, &scope_dtor_value);
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        if (opaque_env == null || opaque_prim == null || opaque_payload == null) {
+            if (opaque_prim != null) mem::free(opaque_prim);
+            if (opaque_payload != null) mem::free(opaque_payload);
+            interp.current_scope = saved;
+            main::scope_release(source);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy primitive policy (setup opaque)");
+            (*fail)++;
+            return;
+        }
+        *opaque_prim = {};
+        *opaque_payload = 702;
+        opaque_prim.name[0] = 'q';
+        opaque_prim.name[1] = 0;
+        opaque_prim.arity = 5;
+        opaque_prim.tag = 702;
+        opaque_prim.user_data = (void*)opaque_payload;
+        opaque.prim_val = opaque_prim;
+        env_define_with_barrier(opaque_env, opaque_sym, opaque, interp);
+
+        BoundaryEnvCopyResult opaque_copy = boundary_copy_env_to_target_scope_checked(opaque_env, interp, target);
+        bool opaque_ok = !boundary_env_copy_result_ok(opaque_copy) &&
+                         opaque_copy.env == null &&
+                         opaque_copy.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY;
+
+        main::scope_release(source);
+
+        bool post_ok = plain_copied != null &&
+                       plain_copied.tag == PRIMITIVE &&
+                       plain_copied.prim_val != null &&
+                       plain_copied.prim_val.arity == 4 &&
+                       plain_copied.prim_val.tag == 701 &&
+                       plain_copied.prim_val.name[0] == 'p' &&
+                       plain_copied.prim_val.name[1] == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(target);
+
+        bool ok = plain_ok && opaque_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy primitive policy");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: env-copy primitive policy (plain_ok=%s opaque_ok=%s post_ok=%s opaque_fault=%s)",
+                plain_ok ? "yes" : "no",
+                opaque_ok ? "yes" : "no",
+                post_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(opaque_copy.fault_code));
+            (*fail)++;
+        }
+    }
+}
