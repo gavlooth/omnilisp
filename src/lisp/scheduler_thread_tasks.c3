@@ -1,6 +1,6 @@
 module lisp;
 
-import std::core::mem::allocators;
+import std::core::mem::allocator;
 
 struct OsThreadStartCtx {
     usz thread_id;
@@ -55,7 +55,7 @@ fn bool scheduler_get_os_thread_generation(usz thread_id, uint* out_generation) 
 }
 
 fn void scheduler_os_thread_entry(void* ctx_ptr) {
-    @pool_init(&allocators::LIBC_ALLOCATOR, 65536)
+    @pool_init(&allocator::LIBC_ALLOCATOR, 65536)
     {
         OsThreadStartCtx* ctx = (OsThreadStartCtx*)ctx_ptr;
         if (ctx == null) return;

@@ -234,6 +234,12 @@ fn bool deduce_query_expr_try_extract_call_literal_value(
         return true;
     }
 
+    // Do not fold row-dependent calls into literals. If we evaluate these with no row binding,
+    // they can collapse to falsy values and incorrectly prune disjunctive demand branches.
+    if (deduce_query_expr_contains_row_param((Expr*)expr.call, row_param)) {
+        return false;
+    }
+
     Env* lookup_env = capture_env != null ? capture_env : (interp != null ? interp.global_env : null);
     if (lookup_env != null) {
         Value* call_value = runtime_eval_expr((Expr*)expr.call, lookup_env, interp);

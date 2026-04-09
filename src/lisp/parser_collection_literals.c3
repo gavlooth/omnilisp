@@ -35,6 +35,13 @@ fn Expr* Parser.parse_postfix_index(Parser* self, Expr* base) {
             self.lexer.advance(); // consume '['
         }
 
+        // Fail closed with bracket-specific diagnostics when the postfix index
+        // body is missing entirely (for example: `expr.[`).
+        if (self.lexer.current.type == T_EOF) {
+            self.set_error("expected ']'");
+            return null;
+        }
+
         // Parse the index expression
         Expr* idx = self.parse_expr();
         if (self.has_error || idx == null) return null;

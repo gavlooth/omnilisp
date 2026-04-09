@@ -52,8 +52,12 @@ fn void deduce_analyze_set_result_payload_fields(
         make_int(interp, summary.parallel_batch_count));
     explain_dict_set(out, interp, "parallel-max-batch-size",
         make_int(interp, summary.parallel_max_batch_size));
-    explain_dict_set_symbol(out, interp, "parallel-runtime-mode",
-        interp.symbols.intern("metadata-only"));
+    deduce_set_parallel_runtime_truth_fields(
+        out,
+        summary.parallel_batched_component_count,
+        summary.parallel_max_batch_size,
+        interp
+    );
     explain_dict_set(out, interp, "parallel-batch-topology",
         deduce_parallel_component_batch_topology_payload(
             scc_plan,

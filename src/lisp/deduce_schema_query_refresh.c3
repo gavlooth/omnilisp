@@ -60,6 +60,15 @@ fn Value* prim_deduce_refresh(Value*[] args, Env* env, Interp* interp) {
         explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates);
         explain_dict_set(out, interp, "remaining-dirty-predicates", remaining_dirty_predicates);
         explain_dict_set(out, interp, "remaining-stale-materialized-relations", remaining_stale_relations);
+        // Refresh payload should report the target's stale state explicitly.
+        explain_dict_set(
+            out,
+            interp,
+            "materialized-stale",
+            deduce_relation_schema_is_materialized_stale(db, target_schema)
+                ? make_symbol(interp, interp.sym_true)
+                : make_symbol(interp, interp.sym_false)
+        );
         return out;
     }
     return deduce_refresh_db_wide(&refresh, env, interp);

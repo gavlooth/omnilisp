@@ -1657,9 +1657,14 @@ For helper-style handler composition in examples and public-facing docs:
 (import math-utils 'all)
 (add 3 4)  ; => 7
 
+;; Dotted/path module target
+(import ui.nodes)
+(ui.nodes.text "ok")
+
 ;; Re-export
 (export-from math-utils (add))
 (export-from math-utils 'all)
+(export-from ui.nodes (text))
 ```
 
 - Default import is **qualified-only**: `(import mod)` binds module as value, access via `mod.sym`
@@ -1668,6 +1673,10 @@ For helper-style handler composition in examples and public-facing docs:
 - `'all` imports all exports unqualified (opt-in)
 - Omni has no dedicated keyword type; `'as`/`'all` are quoted symbols used as explicit module markers
 - `export-from` re-exports symbols from another module
+- Module targets for `module` / `import` / `export-from` can be:
+  - symbol (`math-utils`)
+  - dotted/path token (`ui.nodes`)
+  - string file path (`"path/to/file.omni"`)
 - File-based import: `(import "path/to/file.omni")`
 - Cached: modules loaded only once
 - Circular import detection

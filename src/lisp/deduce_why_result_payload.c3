@@ -1,5 +1,34 @@
 module lisp;
 
+fn bool deduce_why_result_relation_has_positive_self_recursive_rule(Relation* rel) {
+    if (rel == null || rel.db == null || rel.name == (SymbolId)0) return false;
+    for (usz i = 0; i < rel.db.rule_signature_count; i++) {
+        DeduceRuleSignature* sig = &rel.db.rule_signatures[i];
+        if (sig == null || sig.head_predicate != rel.name || sig.body_count == 0 || sig.body_predicates == null) {
+            continue;
+        }
+        for (usz body_idx = 0; body_idx < sig.body_count; body_idx++) {
+            if (sig.body_predicates[body_idx] != rel.name) continue;
+            if (sig.body_negated != null && sig.body_negated[body_idx]) continue;
+            return true;
+        }
+    }
+    return false;
+}
+
+fn Value* deduce_why_result_truncated_value(
+    Relation* rel,
+    bool truncated,
+    Interp* interp
+) {
+    if (interp == null) return null;
+    if (truncated) return make_symbol(interp, interp.sym_true);
+    if (deduce_why_result_relation_has_positive_self_recursive_rule(rel)) {
+        return make_symbol(interp, interp.sym_false);
+    }
+    return make_nil(interp);
+}
+
 fn Value* deduce_why_result_build_goal_directed_read_context(
     Relation* rel,
     Interp* interp
@@ -156,7 +185,8 @@ fn Value* deduce_why_result_build_payload(
     explain_dict_set(out, interp, "subject", deduce_why_result_build_row_subject(rel, tuple, interp));
     explain_dict_set(out, interp, "path-count", make_int(interp, path_count));
     explain_dict_set(out, interp, "max-depth", make_int(interp, max_depth));
-    explain_dict_set(out, interp, "truncated", explain_bool_value(interp, truncated));
+    explain_dict_set(out, interp, "truncated",
+        deduce_why_result_truncated_value(rel, truncated, interp));
     explain_dict_set(out, interp, "paths", paths);
     Value* goal_directed_read_context = deduce_why_result_build_goal_directed_read_context(rel, interp);
     if (goal_directed_read_context != null &&

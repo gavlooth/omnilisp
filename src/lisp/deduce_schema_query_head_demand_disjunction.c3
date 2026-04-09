@@ -19,7 +19,8 @@ fn Value* deduce_query_collect_disjunctive_head_demands_from_expr(
             if (expr.or_expr.left == null || expr.or_expr.right == null) return null;
 
             Value* left_value = null;
-            if (deduce_query_expr_try_extract_literal_value(
+            if (!deduce_query_expr_contains_row_param(expr.or_expr.left, row_param) &&
+                deduce_query_expr_try_extract_literal_value(
                     expr.or_expr.left,
                     row_param,
                     capture_env,
@@ -39,7 +40,8 @@ fn Value* deduce_query_collect_disjunctive_head_demands_from_expr(
             }
 
             Value* right_value = null;
-            if (deduce_query_expr_try_extract_literal_value(
+            if (!deduce_query_expr_contains_row_param(expr.or_expr.right, row_param) &&
+                deduce_query_expr_try_extract_literal_value(
                     expr.or_expr.right,
                     row_param,
                     capture_env,

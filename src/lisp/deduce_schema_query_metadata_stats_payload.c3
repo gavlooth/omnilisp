@@ -15,8 +15,15 @@ fn Value* deduce_stats_build_payload(
     Value* dirty_predicates = deduce_dirty_predicates_payload(rel.db, interp);
     if (dirty_predicates != null && dirty_predicates.tag == ERROR) return dirty_predicates;
     explain_dict_set(out, interp, "dirty-predicates", dirty_predicates);
-    explain_dict_set(out, interp, "dirty-self",
-        explain_bool_value(interp, deduce_db_is_incremental_dirty_predicate(rel.db, rel.name)));
+    bool dirty_self = deduce_db_is_incremental_dirty_predicate(rel.db, rel.name);
+    Value* dirty_self_value = dirty_self
+        ? make_symbol(interp, interp.sym_true)
+        : ((rel.db != null &&
+            rel.db.incremental_dirty_count > 0 &&
+            schema.last_goal_directed_read_execution_path != (SymbolId)0)
+            ? make_nil(interp)
+            : make_symbol(interp, interp.sym_false));
+    explain_dict_set(out, interp, "dirty-self", dirty_self_value);
     explain_dict_set(out, interp, "mutation-epoch", make_int(interp, (long)rel.db.incremental_mutation_epoch));
     explain_dict_set(out, interp, "full-recompute-required", explain_bool_value(interp, rel.db.incremental_full_recompute_required));
     Value* parallel_err = deduce_stats_set_parallel_topology_fields(out, rel, interp);

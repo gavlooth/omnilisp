@@ -95,11 +95,16 @@ fn Value* scheduler_require_fiber_root_context(char[] op_name, Interp* interp) {
     if (!scheduler_is_running_fiber_context()) return null;
     if (scheduler_is_running_fiber_root_context()) return null;
     char[128] ebuf;
-    char[] msg = io::bprintf(
-        &ebuf,
-        "%s: blocking scheduler op requires the fiber root context",
-        (ZString)op_name
-    )!!;
+    char[] msg;
+    if (try formatted = io::bprintf(
+            &ebuf,
+            "%s: blocking scheduler op requires the fiber root context",
+            (ZString)op_name
+        )) {
+        msg = formatted;
+    } else {
+        msg = "blocking scheduler op requires the fiber root context";
+    }
     return scheduler_raise(
         interp,
         "scheduler/fiber-nested-blocking-op",

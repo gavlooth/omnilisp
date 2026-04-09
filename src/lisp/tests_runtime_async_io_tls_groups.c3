@@ -3,6 +3,32 @@ module lisp;
 import std::io;
 import main;
 
+struct DnsTestAddrInfo {
+    int flags;
+    int family;
+    int socktype;
+    int protocol;
+    uint addrlen;
+    void* addr;
+    void* canonname;
+    void* next;
+}
+
+struct DnsTestSockaddrIn {
+    ushort sin_family;
+    ushort sin_port;
+    uint sin_addr;
+    char[8] sin_zero;
+}
+
+struct DnsTestSockaddrIn6 {
+    ushort sin6_family;
+    ushort sin6_port;
+    uint sin6_flowinfo;
+    char[16] sin6_addr;
+    uint sin6_scope_id;
+}
+
 fn bool async_tls_integration_enabled() @inline {
     // TLS integration fixtures can leak subprocesses in plain full-suite runs.
     // Keep them opt-in until process-lifecycle stability is finalized.
@@ -10,7 +36,45 @@ fn bool async_tls_integration_enabled() @inline {
     return test_c_getenv("OMNI_SKIP_TLS_INTEGRATION") == null;
 }
 
+fn bool dns_test_value_equals(Value* value, char[] expected) {
+    if (value == null || !is_string(value)) return false;
+    if (value.str_len != expected.len) return false;
+    for (usz i = 0; i < expected.len; i++) {
+        if (value.str_chars[i] != expected[i]) return false;
+    }
+    return true;
+}
+
+fn void run_async_dns_render_tests(Interp* interp, int* pass, int* fail) {
+    DnsTestSockaddrIn addr4 = {};
+    addr4.sin_family = (ushort)AF_INET;
+    addr4.sin_addr = c_inet_addr("127.0.0.1");
+    DnsTestAddrInfo ai4 = {};
+    ai4.family = AF_INET;
+    ai4.addr = &addr4;
+
+    DnsTestSockaddrIn6 addr6 = {};
+    addr6.sin6_family = (ushort)AF_INET6;
+    addr6.sin6_addr[15] = 1;
+    DnsTestAddrInfo ai6 = {};
+    ai6.family = AF_INET6;
+    ai6.addr = &addr6;
+
+    Value* rendered4 = dns_result_to_ip_string(interp, &ai4);
+    Value* rendered6 = dns_result_to_ip_string(interp, &ai6);
+    if (dns_test_value_equals(rendered4, "127.0.0.1") &&
+        dns_test_value_equals(rendered6, "::1")) {
+        emit_pass_literal("[PASS] dns-resolve renders IPv4 and IPv6 addrinfo payloads");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] dns-resolve renders IPv4 and IPv6 addrinfo payloads");
+        (*fail)++;
+    }
+}
+
 fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
+    run_async_dns_render_tests(interp, pass, fail);
+
     // DNS resolve localhost (fiber-only path)
     test_str_val(interp, "dns-resolve localhost (fiber)",
         "(await (spawn (lambda () (dns-resolve \"localhost\"))))", "127.0.0.1", pass, fail);

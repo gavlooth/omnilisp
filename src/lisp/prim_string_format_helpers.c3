@@ -100,12 +100,22 @@ fn void format_append_display(StringVal* sv, Value* a, Interp* interp) {
         strval_append(sv, "nil");
     } else if (is_int(a)) {
         char[32] nbuf;
-        char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)!!;
-        strval_append(sv, nslice);
+        if (try nslice = io::bprintf(&nbuf, "%d", a.int_val)) {
+            strval_append(sv, nslice);
+        } else {
+            char[64] rendered;
+            usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
+            strval_append(sv, rendered[:rendered_len]);
+        }
     } else if (is_double(a)) {
         char[64] nbuf;
-        char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
-        strval_append(sv, nslice);
+        if (try nslice = io::bprintf(&nbuf, "%.15g", a.double_val)) {
+            strval_append(sv, nslice);
+        } else {
+            char[64] rendered;
+            usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
+            strval_append(sv, rendered[:rendered_len]);
+        }
     } else if (a.tag == STRING) {
         strval_append(sv, a.str_chars[:a.str_len]);
     } else if (is_symbol(a)) {

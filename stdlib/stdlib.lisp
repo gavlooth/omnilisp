@@ -115,7 +115,7 @@
 (define (number? x) (is? x 'Number))
 (define (string? x) (is? x 'String))
 (define (symbol? x) (is? x 'Symbol))
-(define (boolean? x) (or (null? x) (= x true)))
+(define (boolean? x) (or (= x true) (= x false)))
 (define (bool? x) (boolean? x))
 (define (list? x) (or (null? x) (pair? x)))
 (define (closure? x) (is? x 'Closure))
@@ -141,8 +141,25 @@
 (define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (block (push! result (ref arr j)) (loop j)))))))
 
 ;; map: (map f coll) — apply f to each element, return same collection type
-(define (map f (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (loop (cdr xs) (cons (f (car xs)) acc)))))
-(define (map f (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (block (push! result (f (ref arr i))) (loop (+ i 1)))))))
+(define (map f (^List lst))
+  (let loop (xs lst acc nil)
+    (if (null? xs)
+        (reverse acc)
+        (let (mapped (f (car xs)))
+          (if (error? mapped)
+              mapped
+              (loop (cdr xs) (cons mapped acc)))))))
+(define (map f (^Array arr))
+  (let (len (length arr) result [])
+    (let loop (i 0)
+      (if (= i len)
+          result
+          (let (mapped (f (ref arr i)))
+            (if (error? mapped)
+                mapped
+                (block
+                  (push! result mapped)
+                  (loop (+ i 1)))))))))
 (define (map (^Closure f)) (lambda (coll) (map f coll)))
 
 ;; filter: (filter pred coll) — keep elements where (pred x) is truthy

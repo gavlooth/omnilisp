@@ -26,7 +26,7 @@
 (define server-running false)
 
 (define (item->row row)
-  (Item ('id row) ('name row) ('qty row)))
+  (Item (ref row 'id) (ref row 'name) (ref row 'qty)))
 
 (define (to-json (^Item item))
   {'id item.id 'name item.name 'qty item.qty})
@@ -57,7 +57,7 @@
       (_                {'method "" 'path "/" 'body body}))))
 
 (define (repo/get-by-id id)
-  (match (deduce 'query items (compose (= _ id) 'id))
+  (match (deduce 'query items (lambda (row) (= (ref row 'id) id)))
     ([row ..] (item->row row))
     (_ nil)))
 
@@ -66,34 +66,34 @@
 
 (define (repo/create body)
   (if (validate 'item-write body)
-      (match (repo/get-by-id ('id body))
+      (match (repo/get-by-id (ref body 'id))
         (nil (block
-                (deduce 'fact! items ('id body) ('name body) ('qty body))
+                (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
                 (Ok (item->row body))))
         (_ (Err "item already exists")))
       (Err "validation failed")))
 
 (define (repo/update body)
   (if (validate 'item-write body)
-      (match (repo/get-by-id ('id body))
+      (match (repo/get-by-id (ref body 'id))
         (nil (Err "item not found"))
         (existing (block
                     (deduce 'retract! items existing.id existing.name existing.qty)
-                    (deduce 'fact! items ('id body) ('name body) ('qty body))
+                    (deduce 'fact! items (ref body 'id) (ref body 'name) (ref body 'qty))
                     (Ok (item->row body)))))
       (Err "validation failed")))
 
 (define (repo/delete body)
-  (match (repo/get-by-id ('id body))
+  (match (repo/get-by-id (ref body 'id))
     (nil (Err "item not found"))
     (existing (block
                 (deduce 'retract! items existing.id existing.name existing.qty)
                 (Ok existing)))))
 
 (define (pipeline/execute req)
-  (let (method ('method req)
-        path ('path req)
-        body ('body req))
+  (let (method (ref req 'method)
+        path (ref req 'path)
+        body (ref req 'body))
     (match [method path]
       (["GET" "/items"] (Ok (repo/list)))
       (["POST" "/items"]
@@ -123,9 +123,9 @@
 (define (server-dispatch method path body)
   (let (payload (pipeline/result->response (pipeline/execute {'method method 'path path 'body body})))
     (http/response
-      (match ('status payload)
+      (match (ref payload 'status)
         ("ok" "200 OK")
-        (_ (match ('error payload)
+        (_ (match (ref payload 'error)
              ("missing request body" "400 Error")
              ("validation failed" "400 Error")
              ("item already exists" "400 Error")

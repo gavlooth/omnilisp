@@ -66,15 +66,50 @@ fn Value* deduce_why_result_build_derived_payload(
         );
     }
 
+    // Keep derived subjects on a structured provenance surface even when exact
+    // support reconstruction cannot prove a concrete path in this pass.
+    long fallback_rule_index = -1;
+    for (usz i = 0; i < rel.db.rule_signature_count; i++) {
+        if (rel.db.rule_signatures[i].head_predicate == rel.name) {
+            fallback_rule_index = (long)i;
+            break;
+        }
+    }
+    Value* fallback_path = deduce_why_result_build_derived_path(
+        rel,
+        tuple,
+        fallback_rule_index >= 0 ? fallback_rule_index : 0,
+        make_nil(interp),
+        interp
+    );
+    deduce_why_result_maybe_attach_path_goal_directed_read_context(
+        fallback_path,
+        rel,
+        subject_key,
+        subject_key_len,
+        interp
+    );
+    if (fallback_path == null || fallback_path.tag != HASHMAP || fallback_path.hashmap_val == null) {
+        return deduce_why_result_build_payload(
+            rel,
+            tuple,
+            interp.symbols.intern("partial"),
+            make_nil(interp),
+            0,
+            0,
+            true,
+            interp
+        );
+    }
+    Value* fallback_paths = make_cons(interp, fallback_path, make_nil(interp));
     return deduce_why_result_build_payload(
         rel,
         tuple,
-        interp.symbols.intern("error"),
-        make_nil(interp),
-        0,
-        0,
-        false,
-        interp,
-        interp.symbols.intern("deduce/why-result-derived-subject-not-yet-supported")
+        interp.symbols.intern("partial"),
+        fallback_paths,
+        1,
+        1,
+        true,
+        interp
     );
 }

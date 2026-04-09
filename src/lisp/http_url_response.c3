@@ -100,7 +100,12 @@ fn usz? build_request(char[] method, ParsedUrl* url, char[] headers, char[] body
     // Content-Length for body
     if (body.len > 0) {
         char[32] cl_buf;  // buffer: build-string (DString candidate) — formats Content-Length header
-        usz cl_len = io::bprintf(&cl_buf, "Content-Length: %d\r\n", (int)body.len)!!.len;
+        usz cl_len = 0;
+        if (try cl_line = io::bprintf(&cl_buf, "Content-Length: %d\r\n", (int)body.len)) {
+            cl_len = cl_line.len;
+        } else {
+            return WRITE_FAILED~;
+        }
         for (usz i = 0; i < cl_len && pos < buf_size; i++) buf[pos++] = cl_buf[i];
     }
 

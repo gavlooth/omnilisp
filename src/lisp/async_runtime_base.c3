@@ -165,6 +165,8 @@ struct SockaddrIn {
 // addrinfo result — we only need ai_family, ai_addrlen, ai_addr, ai_next
 // offsets vary by platform, so we read fields via helpers
 const int AF_INET = 2;
+const int AF_INET6 @if(env::DARWIN) = 30;
+const int AF_INET6 @if(!env::DARWIN) = 10;
 const int SOCK_STREAM = 1;
 const int SOCK_DGRAM = 2;
 const int IPPROTO_TCP = 6;

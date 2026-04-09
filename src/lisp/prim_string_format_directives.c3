@@ -65,12 +65,32 @@ fn Value* format_int_directive(StringVal* builder, Value* a, FormatSpec spec, ch
         }
     }
     char[32] buf;
-    char[] val;
+    char[] val = "";
     switch (directive) {
-        case 'd': val = io::bprintf(&buf, "%d", a.int_val)!!;
-        case 'x': val = io::bprintf(&buf, "%x", a.int_val)!!;
-        case 'X': val = io::bprintf(&buf, "%X", a.int_val)!!;
-        case 'o': val = io::bprintf(&buf, "%o", a.int_val)!!;
+        case 'd':
+            if (try char[] rendered = io::bprintf(&buf, "%d", a.int_val)) {
+                val = rendered;
+            } else {
+                return raise_error(interp, "format: internal integer formatting failure");
+            }
+        case 'x':
+            if (try char[] rendered = io::bprintf(&buf, "%x", a.int_val)) {
+                val = rendered;
+            } else {
+                return raise_error(interp, "format: internal integer formatting failure");
+            }
+        case 'X':
+            if (try char[] rendered = io::bprintf(&buf, "%X", a.int_val)) {
+                val = rendered;
+            } else {
+                return raise_error(interp, "format: internal integer formatting failure");
+            }
+        case 'o':
+            if (try char[] rendered = io::bprintf(&buf, "%o", a.int_val)) {
+                val = rendered;
+            } else {
+                return raise_error(interp, "format: internal integer formatting failure");
+            }
         default: return raise_error(interp, "format: unknown integer directive");
     }
     strval_append_num_padded(builder, val, spec.width, spec.left_align);
@@ -81,9 +101,20 @@ fn Value* format_float_directive(StringVal* builder, Value* a, FormatSpec spec, 
     double num;
     if (!value_as_double(a, &num)) return raise_error(interp, "format: %f expects number");
     char[128] buf;
-    char[] val = spec.has_precision
-        ? truncate_after_decimal(io::bprintf(&buf, "%.20f", num)!!, spec.precision)
-        : io::bprintf(&buf, "%.6f", num)!!;
+    char[] val;
+    if (spec.has_precision) {
+        if (try char[] rendered = io::bprintf(&buf, "%.20f", num)) {
+            val = truncate_after_decimal(rendered, spec.precision);
+        } else {
+            return raise_error(interp, "format: internal float formatting failure");
+        }
+    } else {
+        if (try char[] rendered = io::bprintf(&buf, "%.6f", num)) {
+            val = rendered;
+        } else {
+            return raise_error(interp, "format: internal float formatting failure");
+        }
+    }
     strval_append_num_padded(builder, val, spec.width, spec.left_align);
     return null;
 }
@@ -95,9 +126,17 @@ fn Value* format_scientific_directive(StringVal* builder, Value* a, FormatSpec s
     char[] val;
     if (spec.has_precision) {
         char[128] tmp;
-        val = truncate_scientific(io::bprintf(&buf, "%.20e", num)!!, spec.precision, tmp[0:128]);
+        if (try char[] rendered = io::bprintf(&buf, "%.20e", num)) {
+            val = truncate_scientific(rendered, spec.precision, tmp[0:128]);
+        } else {
+            return raise_error(interp, "format: internal scientific formatting failure");
+        }
     } else {
-        val = io::bprintf(&buf, "%e", num)!!;
+        if (try char[] rendered = io::bprintf(&buf, "%e", num)) {
+            val = rendered;
+        } else {
+            return raise_error(interp, "format: internal scientific formatting failure");
+        }
     }
     strval_append_num_padded(builder, val, spec.width, spec.left_align);
     return null;
@@ -184,12 +223,18 @@ fn void cl_format_directive(StringVal* builder, char directive, Value*[] args, u
                 strval_append(builder, "nil");
             } else if (is_int(a)) {
                 char[32] nbuf;
-                char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)!!;
-                strval_append(builder, nslice);
+                if (try char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)) {
+                    strval_append(builder, nslice);
+                } else {
+                    strval_append(builder, "#<fmt-error>");
+                }
             } else if (is_double(a)) {
                 char[64] nbuf;
-                char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)!!;
-                strval_append(builder, nslice);
+                if (try char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)) {
+                    strval_append(builder, nslice);
+                } else {
+                    strval_append(builder, "#<fmt-error>");
+                }
             } else if (a.tag == STRING) {
                 if (directive == 's') {
                     strval_push(builder, '"');

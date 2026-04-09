@@ -69,6 +69,9 @@ fn ReplServerRequest repl_server_parse_request(char[] line) {
         return request;
     }
 
+    if (!repl_server_parse_optional_string_field(root, "auth", 4, "request field 'auth' must be a string", "out of memory while copying request field 'auth'", &request.auth, &request.has_auth, &request)) {
+        return request;
+    }
     if (!repl_server_parse_optional_string_field(root, "session", 7, "request field 'session' must be a string", "out of memory while copying request field 'session'", &request.session, &request.has_session, &request)) {
         return request;
     }

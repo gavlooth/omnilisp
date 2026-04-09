@@ -5,8 +5,13 @@ import std::io;
 fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, SymbolId base_type) {
     char[256] ebuf;
     char[] type_name = interp.symbols.get_name(base_type);
-    char[] msg = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
-        (ZString)role, (ZString)type_name)!!;
+    char[] msg;
+    if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
+        (ZString)role, (ZString)type_name)) {
+        msg = formatted;
+    } else {
+        msg = "ffi λ: unsupported type annotation";
+    }
     return raise_error(interp, msg);
 }
 
@@ -31,11 +36,17 @@ fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
                 return null;
             }
             if (dl_err != null && dl_err[0] != 0) {
-                return raise_error(interp, io::bprintf(&ebuf, "ffi: dlopen failed for '%s': %s",
-                    (ZString)bound.lib_name, (ZString)dl_err)!!);
+                if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s': %s",
+                    (ZString)bound.lib_name, (ZString)dl_err)) {
+                    return raise_error(interp, msg);
+                }
+                return raise_error(interp, "ffi: dlopen failed");
             }
-            return raise_error(interp, io::bprintf(&ebuf, "ffi: dlopen failed for '%s'",
-                (ZString)bound.lib_name)!!);
+            if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s'",
+                (ZString)bound.lib_name)) {
+                return raise_error(interp, msg);
+            }
+            return raise_error(interp, "ffi: dlopen failed");
         }
     }
     if (bound.c_name == null) return raise_error(interp, "ffi: internal error — missing symbol name");
@@ -50,11 +61,17 @@ fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
         return null;
     }
     if (dl_err != null && dl_err[0] != 0) {
-        return raise_error(interp, io::bprintf(&ebuf, "ffi: dlsym failed for '%s': %s",
-            (ZString)bound.c_name, (ZString)dl_err)!!);
+        if (try msg = io::bprintf(&ebuf, "ffi: dlsym failed for '%s': %s",
+            (ZString)bound.c_name, (ZString)dl_err)) {
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "ffi: dlsym failed");
     }
-    return raise_error(interp, io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
-        (ZString)bound.c_name)!!);
+    if (try msg = io::bprintf(&ebuf, "ffi: dlsym failed for '%s'",
+        (ZString)bound.c_name)) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "ffi: dlsym failed");
 }
 
 fn Value* ffi_arg_type_error(Interp* interp, usz arg_index, SymbolId expected_type, Value* actual) {
@@ -194,8 +211,13 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     // Validate arg count
     if (args.len != bound.param_count) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "ffi: expected %d args, got %d",
-            (int)bound.param_count, (int)args.len)!!;
+        char[] msg;
+        if (try formatted = io::bprintf(&ebuf, "ffi: expected %d args, got %d",
+            (int)bound.param_count, (int)args.len)) {
+            msg = formatted;
+        } else {
+            msg = "ffi: argument count mismatch";
+        }
         return raise_error(interp, msg);
     }
 

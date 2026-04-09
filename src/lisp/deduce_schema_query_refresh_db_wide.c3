@@ -5,7 +5,7 @@ fn Value* deduce_refresh_db_wide(
     Env* env,
     Interp* interp
 ) {
-    if (refresh == null || env == null || interp == null) {
+    if (refresh == null || interp == null) {
         return deduce_raise(interp, "deduce/refresh-invalid-state",
             "deduce/refresh!: invalid refresh state");
     }
@@ -31,6 +31,7 @@ fn Value* deduce_refresh_db_wide(
     }
 
     Value*[1] analyze_args = { analyze_handle };
+    // prim_deduce_analyze does not require an environment pointer.
     Value* result = prim_deduce_analyze(analyze_args[..], env, interp);
     if (result == null || result.tag == ERROR) return result;
     for (usz i = 0; i < db.relation_schema_count; i++) {

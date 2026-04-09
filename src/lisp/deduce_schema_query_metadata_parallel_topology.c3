@@ -1,7 +1,5 @@
 module lisp;
 
-import std::core::mem;
-
 fn void deduce_parallel_batch_topology_counts_from_metadata(
     DeduceSccPlan* scc_plan,
     usz[] parallel_wave_ids,
@@ -59,47 +57,4 @@ fn void deduce_parallel_batch_topology_counts_from_metadata(
     if (batched_component_count_out != null) *batched_component_count_out = batched_component_count;
     if (batch_count_out != null) *batch_count_out = batch_count;
     if (max_batch_size_out != null) *max_batch_size_out = max_batch_size;
-}
-
-fn Value* deduce_parallel_batch_topology_counts(
-    DeduceDb* db,
-    long* recursive_component_count_out,
-    long* batched_component_count_out,
-    long* batch_count_out,
-    long* max_batch_size_out,
-    Interp* interp
-) {
-    if (recursive_component_count_out != null) *recursive_component_count_out = 0;
-    if (batched_component_count_out != null) *batched_component_count_out = 0;
-    if (batch_count_out != null) *batch_count_out = 0;
-    if (max_batch_size_out != null) *max_batch_size_out = 0;
-    if (db == null || interp == null) return null;
-
-    DeduceSccPlan scc_plan = {};
-    Value* plan_err = deduce_build_scc_plan(db, &scc_plan, interp);
-    if (plan_err != null) return plan_err;
-    defer deduce_scc_plan_free(&scc_plan);
-
-    usz[] parallel_wave_ids = {};
-    usz[] parallel_batch_sizes = {};
-    Value* parallel_err = deduce_build_parallel_component_batch_metadata(
-        &scc_plan,
-        &parallel_wave_ids,
-        &parallel_batch_sizes,
-        interp
-    );
-    if (parallel_err != null) return parallel_err;
-    defer if (parallel_wave_ids.ptr != null) mem::free(parallel_wave_ids.ptr);
-    defer if (parallel_batch_sizes.ptr != null) mem::free(parallel_batch_sizes.ptr);
-
-    deduce_parallel_batch_topology_counts_from_metadata(
-        &scc_plan,
-        parallel_wave_ids[..],
-        parallel_batch_sizes[..],
-        recursive_component_count_out,
-        batched_component_count_out,
-        batch_count_out,
-        max_batch_size_out
-    );
-    return null;
 }

@@ -35,11 +35,20 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     if (handle == null) {
         char[256] ebuf;
         char* dl_err = dlerror();
-        char[] msg = dl_err != null && dl_err[0] != 0
-            ? io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s",
-                (ZString)path_val.str_chars, (ZString)dl_err)!!
-            : io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
-                (ZString)path_val.str_chars)!!;
+        char[] msg;
+        if (dl_err != null && dl_err[0] != 0) {
+            if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s",
+                    (ZString)path_val.str_chars, (ZString)dl_err)) {
+                msg = formatted;
+            } else {
+                msg = "ffi lib: dlopen failed (error formatting failed)";
+            }
+        } else if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
+                (ZString)path_val.str_chars)) {
+            msg = formatted;
+        } else {
+            msg = "ffi lib: dlopen failed";
+        }
         return raise_error(interp, msg);
     }
 
@@ -69,8 +78,13 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     if (lib_val == null) lib_val = interp.global_env.lookup(ff.lib_name);
     if (lib_val == null || lib_val.tag != FFI_HANDLE) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "ffi λ: library '%s' not found",
-            (ZString)interp.symbols.get_name(ff.lib_name))!!;
+        char[] msg;
+        if (try formatted = io::bprintf(&ebuf, "ffi λ: library '%s' not found",
+                (ZString)interp.symbols.get_name(ff.lib_name))) {
+            msg = formatted;
+        } else {
+            msg = "ffi λ: library not found";
+        }
         return raise_error(interp, msg);
     }
     if (lib_val.ffi_val.lib_handle == null) {

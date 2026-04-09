@@ -111,7 +111,8 @@ fn bool deduce_query_filter_expr_try_collect_equalities(
             if (expr.or_expr.left == null || expr.or_expr.right == null) return false;
 
             Value* left_value = null;
-            if (deduce_query_expr_try_extract_literal_value(
+            if (!deduce_query_expr_contains_row_param(expr.or_expr.left, row_param) &&
+                deduce_query_expr_try_extract_literal_value(
                     expr.or_expr.left,
                     row_param,
                     capture_env,
@@ -132,7 +133,8 @@ fn bool deduce_query_filter_expr_try_collect_equalities(
             }
 
             Value* right_value = null;
-            if (deduce_query_expr_try_extract_literal_value(
+            if (!deduce_query_expr_contains_row_param(expr.or_expr.right, row_param) &&
+                deduce_query_expr_try_extract_literal_value(
                     expr.or_expr.right,
                     row_param,
                     capture_env,

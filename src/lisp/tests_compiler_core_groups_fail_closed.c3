@@ -223,16 +223,19 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value*[] ffi_optional_args = {};
             Value* ffi_optional_call = null;
             if (ffi_optional_fn != null && ffi_optional_fn.tag == ValueTag.PRIMITIVE) {
-                ffi_optional_call = ffi_optional_fn.prim_val.func(ffi_optional_args, null, aot_interp);
+                ffi_optional_call = aot::apply_multi(ffi_optional_fn, aot::make_nil(), 0);
             }
 
-            ok = closure_data_fail != null && closure_data_fail.tag == ValueTag.ERROR
+            bool closure_factory_errors_ok =
+                closure_data_fail != null && closure_data_fail.tag == ValueTag.ERROR
                 && closure_prim_fail != null && closure_prim_fail.tag == ValueTag.ERROR
                 && variadic_data_fail != null && variadic_data_fail.tag == ValueTag.ERROR
                 && variadic_prim_fail != null && variadic_prim_fail.tag == ValueTag.ERROR
                 && closure_missing_invoke != null && closure_missing_invoke.tag == ValueTag.ERROR
-                && variadic_missing_invoke != null && variadic_missing_invoke.tag == ValueTag.ERROR
-                && apply_missing_payload != null && apply_missing_payload.tag == ValueTag.ERROR
+                && variadic_missing_invoke != null && variadic_missing_invoke.tag == ValueTag.ERROR;
+
+            bool closure_apply_errors_ok =
+                apply_missing_payload != null && apply_missing_payload.tag == ValueTag.ERROR
                 && variadic_apply_missing_payload != null && variadic_apply_missing_payload.tag == ValueTag.ERROR
                 && apply_null_interp != null && apply_null_interp.tag == ValueTag.ERROR
                 && variadic_apply_null_interp != null && variadic_apply_null_interp.tag == ValueTag.ERROR
@@ -241,8 +244,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && invoke_dispatch_interp_unavailable != null && invoke_dispatch_interp_unavailable.tag == ValueTag.ERROR
                 && apply_multi_dispatch_interp_unavailable != null && apply_multi_dispatch_interp_unavailable.tag == ValueTag.ERROR
                 && invoke_tail_dispatch_interp_unavailable != null && invoke_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
-                && apply_multi_tail_dispatch_interp_unavailable != null && apply_multi_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
-                && lookup_prim_bridge_interp_unavailable != null && lookup_prim_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && apply_multi_tail_dispatch_interp_unavailable != null && apply_multi_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR;
+
+            bool bridge_interp_errors_ok =
+                lookup_prim_bridge_interp_unavailable != null && lookup_prim_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && lookup_var_bridge_interp_unavailable != null && lookup_var_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && import_bridge_interp_unavailable != null && import_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && field_access_bridge_interp_unavailable != null && field_access_bridge_interp_unavailable.tag == ValueTag.ERROR
@@ -260,11 +265,18 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && compiled_shift_bridge_interp_unavailable != null && compiled_shift_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && compiled_resolve_bridge_interp_unavailable != null && compiled_resolve_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && explain_effect_signal_bridge_interp_unavailable != null && explain_effect_signal_bridge_interp_unavailable.tag == ValueTag.ERROR
-                && explain_effect_resolve_bridge_interp_unavailable != null && explain_effect_resolve_bridge_interp_unavailable.tag == ValueTag.ERROR
-                && ffi_optional_lib != null && ffi_optional_lib.tag == ValueTag.FFI_HANDLE
+                && explain_effect_resolve_bridge_interp_unavailable != null && explain_effect_resolve_bridge_interp_unavailable.tag == ValueTag.ERROR;
+
+            bool ffi_optional_path_ok =
+                ffi_optional_lib != null && ffi_optional_lib.tag == ValueTag.FFI_HANDLE
                 && ffi_optional_fn != null && ffi_optional_fn.tag == ValueTag.PRIMITIVE
                 && ffi_optional_call != null && ffi_optional_call.tag == ValueTag.ERROR
                 && str_contains(ffi_optional_call.str_chars[:ffi_optional_call.str_len], "unavailable");
+
+            ok = closure_factory_errors_ok &&
+                closure_apply_errors_ok &&
+                bridge_interp_errors_ok &&
+                ffi_optional_path_ok;
         }
         if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT closure factory allocation failures fail closed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: AOT closure factory allocation failures fail closed"); }

@@ -75,6 +75,8 @@ fn Value* deduce_query_build_selector_ephemeral_projected_demands(
                 selected_component_id,
                 &projected_head_demand
             )) {
+            deduce_rule_head_demand_release(&projected_head_demand);
+            if (unsupported_shape != null) *unsupported_shape = true;
             return null;
         }
         if (deduce_query_recursive_component_requires_projected_head_demand_fallback(
@@ -83,6 +85,8 @@ fn Value* deduce_query_build_selector_ephemeral_projected_demands(
                 selected_component_id,
                 &projected_head_demand
             )) {
+            deduce_rule_head_demand_release(&projected_head_demand);
+            if (unsupported_shape != null) *unsupported_shape = true;
             return null;
         }
 

@@ -189,7 +189,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/dns-resolve-resolution-failed", "dns-resolve: resolution failed");
     }
 
-    Value* resolved = dns_result_to_ipv4_string(interp, result);
+    Value* resolved = dns_result_to_ip_string(interp, result);
     omni_uv_freeaddrinfo(result);
     scheduler_free_dns_callback_ctx(done_ctx);
     omni_uv_getaddrinfo_req_free(done_req);

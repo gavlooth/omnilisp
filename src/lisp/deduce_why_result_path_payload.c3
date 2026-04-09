@@ -62,7 +62,7 @@ fn Value* deduce_why_result_build_seed_path(
     explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp));
     explain_dict_set(path, interp, "rule-index", make_nil(interp));
     explain_dict_set(path, interp, "support", support);
-    explain_dict_set(path, interp, "truncated", explain_bool_value(interp, false));
+    explain_dict_set(path, interp, "truncated", make_nil(interp));
     return path;
 }
 
@@ -204,6 +204,6 @@ fn Value* deduce_why_result_build_derived_path(
     explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp));
     explain_dict_set(path, interp, "rule-index", make_int(interp, rule_index));
     explain_dict_set(path, interp, "support", support);
-    explain_dict_set(path, interp, "truncated", explain_bool_value(interp, false));
+    explain_dict_set(path, interp, "truncated", make_nil(interp));
     return path;
 }

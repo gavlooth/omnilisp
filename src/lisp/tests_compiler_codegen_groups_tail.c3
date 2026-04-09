@@ -395,7 +395,7 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         bool aliases_raw = str_contains(generated, "(import ffi-bindgen-canonical-raw (");
         bool defines_wrapper = str_contains(generated, "(define omni-bindgen-int raw-omni-bindgen-int)");
         bool defines_const_string_alias = str_contains(generated, "(define omni-bindgen-const-string raw-omni-bindgen-const-string)");
-        bool skips_const_string_wrapper = !str_contains(generated, "TODO(bindgen): review omni-bindgen-const-string");
+        bool skips_const_string_wrapper = !str_contains(generated, "REVIEW(bindgen): review omni-bindgen-const-string");
         bool has_buffer_size_validator = str_contains(generated, "(define (bindgen-validate-string-buffer-size buffer-size direction)");
         bool has_buffer_helper = str_contains(generated, "(define (bindgen-prepare-string-buffer buffer buffer-size role ownership nullability teardown direction)");
         bool has_buffer_manual_helper = str_contains(generated, "(define (bindgen-prepare-string-buffer-manual-review buffer buffer-size role ownership nullability teardown direction)");
@@ -421,9 +421,9 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         bool has_string_return_unknown_helper = str_contains(generated, "(define (bindgen-wrap-string-return-unknown text role ownership nullability teardown)");
         bool has_opaque_return_manual_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-manual-review handle role ownership nullability teardown)");
         bool has_opaque_return_none_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-none handle role ownership nullability teardown)");
-        bool flags_buffer_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-buffer — string return ownership/nullability is not automatic; mutable char* buffer direction/size must be wrapped explicitly.");
-        bool flags_pointer_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-void-ptr — opaque pointer ownership/lifetime must be reviewed.");
-        bool flags_callback_review = str_contains(generated, ";; TODO(bindgen): review omni-bindgen-callback — callback registration and teardown must be wrapped explicitly.");
+        bool flags_buffer_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-buffer — string return ownership/nullability is not automatic; mutable char* buffer direction/size must be wrapped explicitly.");
+        bool flags_pointer_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-void-ptr — opaque pointer ownership/lifetime must be reviewed.");
+        bool flags_callback_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-callback — callback registration and teardown must be wrapped explicitly.");
         bool wraps_buffer = str_contains(generated, "(define (omni-bindgen-buffer (^Pointer buffer) (^Integer buffer_len))");
         bool wraps_pointer = str_contains(generated, "(define (omni-bindgen-void-ptr (^Pointer opaque_handle))");
         bool wraps_callback = str_contains(generated, "(define (omni-bindgen-callback (^Pointer callback))");

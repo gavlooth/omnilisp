@@ -29,7 +29,7 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     p.rest_pos = REST_NONE;
     p.rest_binding = 0;
 
-    List{Pattern*} elems;
+    List{Pattern*} elems = {};
 
     if (self.lexer.current.type == T_DOTDOT) {
         self.lexer.advance();  // consume '..'
@@ -40,8 +40,14 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
         if (self.has_error) { elems.free(); return null; }
 
         p.elem_count = elems.len();
-        p.elements = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * elems.len(), "out of memory while allocating sequence pattern");
-        if (p.elements == null && elems.len() > 0) { elems.free(); return null; }
+        p.elements = null;
+        if (p.elem_count > 0) {
+            p.elements = (Pattern**)self.alloc_ast_bytes(
+                Pattern*.sizeof * p.elem_count,
+                "out of memory while allocating sequence pattern"
+            );
+            if (p.elements == null) { elems.free(); return null; }
+        }
         for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
         elems.free();
 
@@ -54,8 +60,14 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     }
 
     p.elem_count = elems.len();
-    p.elements = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * elems.len(), "out of memory while allocating sequence pattern");
-    if (p.elements == null && elems.len() > 0) { elems.free(); return null; }
+    p.elements = null;
+    if (p.elem_count > 0) {
+        p.elements = (Pattern**)self.alloc_ast_bytes(
+            Pattern*.sizeof * p.elem_count,
+            "out of memory while allocating sequence pattern"
+        );
+        if (p.elements == null) { elems.free(); return null; }
+    }
     for (usz i = 0; i < elems.len(); i++) { p.elements[i] = elems[i]; }
     elems.free();
 
@@ -85,7 +97,7 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     if (p == null) return null;
     p.tag = PAT_DICT;
 
-    List{SymbolId} keys;
+    List{SymbolId} keys = {};
     while (self.lexer.current.type == T_SYMBOL && !self.has_error) {
         keys.push(self.get_current_symbol());
         self.lexer.advance();
@@ -93,8 +105,14 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     if (self.has_error) { keys.free(); return null; }
 
     p.dict_key_count = keys.len();
-    p.dict_keys = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * keys.len(), "out of memory while allocating dict pattern keys");
-    if (p.dict_keys == null && keys.len() > 0) { keys.free(); return null; }
+    p.dict_keys = null;
+    if (p.dict_key_count > 0) {
+        p.dict_keys = (SymbolId*)self.alloc_ast_bytes(
+            SymbolId.sizeof * p.dict_key_count,
+            "out of memory while allocating dict pattern keys"
+        );
+        if (p.dict_keys == null) { keys.free(); return null; }
+    }
     for (usz i = 0; i < keys.len(); i++) { p.dict_keys[i] = keys[i]; }
     keys.free();
 

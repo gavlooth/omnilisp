@@ -130,6 +130,7 @@ Follow `docs/C3_STYLE.md`. Especially:
 
 - Keep edits small and locally coherent
 - Do not silently defer known work; record it in `docs/plans/` with concrete next steps
+- Any deferred or blocked work must also add/update a concrete item in `TODO.md` so the next agent TODO scan can pick it up immediately
 - If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
 
 ## Backlog Shaping and Closure (Required)

@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /* ============================================================
  * AddressSanitizer integration (fiber stack switching)
@@ -373,7 +374,8 @@ void stack_seed_context_nonx86(void* ctx) {
 void stack_context_switch_nonx86(void* old_ctx, void* new_ctx) {
     (void)old_ctx;
     (void)new_ctx;
-    abort("stack engine context switching backend is unsupported on this target");
+    fprintf(stderr, "stack engine context switching backend is unsupported on this target\n");
+    abort();
 }
 #endif
 

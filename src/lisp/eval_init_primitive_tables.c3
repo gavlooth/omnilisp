@@ -78,7 +78,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         // Introspection & metaprogramming
         { "macroexpand", &prim_macroexpand, 1 }, { "eval", &prim_eval, 1 },
         { "apply", &prim_apply, 2 }, { "bound?", &prim_bound, 1 },
-        { "error", &prim_error, 1 }, { "error-message", &prim_error_message, 1 },
+        { "error", &prim_error, 1 }, { "error?", &prim_is_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
         // Sets

@@ -22,6 +22,20 @@ fn bool deduce_relation_schema_is_materialized_stale(DeduceDb* db, DeduceRelatio
     return deduce_db_is_incremental_dirty_predicate(db, schema.name);
 }
 
+fn bool deduce_db_has_other_stale_materialized_relation(
+    DeduceDb* db,
+    SymbolId relation_name
+) {
+    if (db == null || db.relation_schemas == null) return false;
+    for (usz i = 0; i < db.relation_schema_count; i++) {
+        DeduceRelationSchema* schema = &db.relation_schemas[i];
+        if (schema == null || schema.name == relation_name || schema.dropped) continue;
+        if (!schema.materialized_view) continue;
+        if (deduce_relation_schema_is_materialized_stale(db, schema)) return true;
+    }
+    return false;
+}
+
 fn void deduce_relation_schema_note_materialized_stale(
     DeduceDb* db,
     DeduceRelationSchema* schema,

@@ -38,25 +38,25 @@
 
 ;; Upsert a quote: retract any existing row for the symbol, assert the new one.
 (define (cache/store-quote! (^Quote q))
-  (match (deduce 'query quotes (compose (= _ q.symbol) 'symbol))
-    ([row ..] (deduce 'retract! quotes ('symbol row) ('price row) ('ts row)))
+  (match (deduce 'query quotes (lambda (row) (= (ref row 'symbol) q.symbol)))
+    ([row ..] (deduce 'retract! quotes (ref row 'symbol) (ref row 'price) (ref row 'ts)))
     (_ nil))
   (deduce 'fact! quotes q.symbol q.price q.ts))
 
 ;; Upsert a news item by id.
 (define (cache/store-news! (^NewsItem n))
-  (match (deduce 'query news (compose (= _ n.id) 'id))
-    ([row ..] (deduce 'retract! news ('id row) ('title row) ('score row) ('ts row)))
+  (match (deduce 'query news (lambda (row) (= (ref row 'id) n.id)))
+    ([row ..] (deduce 'retract! news (ref row 'id) (ref row 'title) (ref row 'score) (ref row 'ts)))
     (_ nil))
   (deduce 'fact! news n.id n.title n.score n.ts))
 
 ;; ── Read ────────────────────────────────────────────────────────────────────
 
 (define (cache/row->quote row)
-  (Quote ('symbol row) (* 1.0 ('price row)) ('ts row)))
+  (Quote (ref row 'symbol) (* 1.0 (ref row 'price)) (ref row 'ts)))
 
 (define (cache/row->news row)
-  (NewsItem ('id row) ('title row) ('score row) ('ts row)))
+  (NewsItem (ref row 'id) (ref row 'title) (ref row 'score) (ref row 'ts)))
 
 ;; All quotes as a list of Quote structs.
 (define (cache/latest-quotes)
@@ -73,7 +73,7 @@
 ;; Look up a single quote by symbol string.
 ;; Returns (Ok quote) or (Err msg) — callers use match, never null?.
 (define (cache/quote-for sym)
-  (match (deduce 'query quotes (compose (= _ sym) 'symbol))
+  (match (deduce 'query quotes (lambda (row) (= (ref row 'symbol) sym)))
     ([row ..] (Ok (cache/row->quote row)))
     (_        (Err (format "no price for %s" sym)))))
 
@@ -87,12 +87,12 @@
 ;; ── Metadata ────────────────────────────────────────────────────────────────
 
 (define (cache/last-refresh)
-  (match (deduce 'query meta (compose (= _ "last-refresh") 'meta-key))
-    ([row ..] ('meta-value row))
+  (match (deduce 'query meta (lambda (row) (= (ref row 'meta-key) "last-refresh")))
+    ([row ..] (ref row 'meta-value))
     (_        0)))
 
 (define (cache/set-last-refresh! ts)
-  (match (deduce 'query meta (compose (= _ "last-refresh") 'meta-key))
-    ([row ..] (deduce 'retract! meta ('meta-key row) ('meta-value row)))
+  (match (deduce 'query meta (lambda (row) (= (ref row 'meta-key) "last-refresh")))
+    ([row ..] (deduce 'retract! meta (ref row 'meta-key) (ref row 'meta-value)))
     (_ nil))
   (deduce 'fact! meta "last-refresh" ts))

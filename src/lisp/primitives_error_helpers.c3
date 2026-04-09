@@ -23,25 +23,35 @@ fn Value* primitive_arg_type_raise(Interp* interp, char[] prim_name, usz arg_ind
     if (actual_text.len == 0) actual_text = "nil";
 
     char[256] msg_buf;
-    char[] msg = io::bprintf(
+    char[] msg;
+    if (try formatted = io::bprintf(
         &msg_buf,
         "%s: argument %d expected %s, got %s",
         (ZString)prim_name,
         (int)(arg_index + 1),
         (ZString)expected,
         (ZString)actual_text
-    )!!;
+    )) {
+        msg = formatted;
+    } else {
+        msg = "type/arg-mismatch";
+    }
     return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", msg, null);
 }
 
 fn Value* primitive_arity_raise(Interp* interp, char[] prim_name, char[] expected, usz got) {
     char[256] msg_buf;
-    char[] msg = io::bprintf(
+    char[] msg;
+    if (try formatted = io::bprintf(
         &msg_buf,
         "%s: expected %s, got %d",
         (ZString)prim_name,
         (ZString)expected,
         (int)got
-    )!!;
+    )) {
+        msg = formatted;
+    } else {
+        msg = "type/arity";
+    }
     return raise_error_with_payload_names(interp, "type", "type/arity", msg, null);
 }

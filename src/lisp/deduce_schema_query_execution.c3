@@ -78,45 +78,17 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
     defer if (term_bound.ptr != null) mem::free(term_bound.ptr);
     defer if (term_values.ptr != null) mem::free(term_values.ptr);
 
-    if (supports_head_demand && has_any_bound) {
-        if (selector_rule_index >= 0) {
-            Value* demand_result = deduce_query_execute_goal_directed_selector_ephemeral(
-                rel,
-                filter_fn,
-                selector_rule_index,
-                use_seminaive_recursive,
-                &head_demand,
-                &surface,
-                interp
-            );
-            if (demand_result != null) return demand_result;
-        } else {
-            bool used_plain_demand = false;
-            Value* plain_demand_result = deduce_query_execute_goal_directed_plain_ephemeral(
-                rel,
-                filter_fn,
-                use_seminaive_recursive,
-                &head_demand,
-                &used_plain_demand,
-                interp
-            );
-            if (plain_demand_result != null || used_plain_demand) return plain_demand_result;
-        }
-    }
-
     DeduceQueryHeadDemandCases disjunctive_head_demands = {};
     defer deduce_query_head_demand_cases_release(&disjunctive_head_demands);
     bool supports_disjunctive_head_demand = false;
-    if (!supports_head_demand || !has_any_bound) {
-        Value* disjunctive_err = deduce_query_try_build_head_demand_disjunction_from_filter(
-            rel,
-            filter_fn,
-            &disjunctive_head_demands,
-            &supports_disjunctive_head_demand,
-            interp
-        );
-        if (disjunctive_err != null) return disjunctive_err;
-    }
+    Value* disjunctive_err = deduce_query_try_build_head_demand_disjunction_from_filter(
+        rel,
+        filter_fn,
+        &disjunctive_head_demands,
+        &supports_disjunctive_head_demand,
+        interp
+    );
+    if (disjunctive_err != null) return disjunctive_err;
 
     if (supports_disjunctive_head_demand && disjunctive_head_demands.count > 0) {
         if (selector_rule_index >= 0) {
@@ -137,6 +109,30 @@ fn Value* prim_deduce_query(Value*[] args, Env* env, Interp* interp) {
                 filter_fn,
                 use_seminaive_recursive,
                 &disjunctive_head_demands,
+                &used_plain_demand,
+                interp
+            );
+            if (plain_demand_result != null || used_plain_demand) return plain_demand_result;
+        }
+    } else if (supports_head_demand && has_any_bound) {
+        if (selector_rule_index >= 0) {
+            Value* demand_result = deduce_query_execute_goal_directed_selector_ephemeral(
+                rel,
+                filter_fn,
+                selector_rule_index,
+                use_seminaive_recursive,
+                &head_demand,
+                &surface,
+                interp
+            );
+            if (demand_result != null) return demand_result;
+        } else {
+            bool used_plain_demand = false;
+            Value* plain_demand_result = deduce_query_execute_goal_directed_plain_ephemeral(
+                rel,
+                filter_fn,
+                use_seminaive_recursive,
+                &head_demand,
                 &used_plain_demand,
                 interp
             );

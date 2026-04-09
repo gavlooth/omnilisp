@@ -10,7 +10,7 @@ fn Value* schema_resolve_named_symbol(Value* schema, Interp* interp) @inline {
 }
 
 fn Value* explain_bool_value(Interp* interp, bool value) @inline {
-    return value ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return value ? make_symbol(interp, interp.sym_true) : make_symbol(interp, interp.sym_false);
 }
 
 fn void explain_dict_set(Value* dict, Interp* interp, char[] key, Value* value) @inline {

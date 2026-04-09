@@ -78,17 +78,23 @@
 (import math-utils 'all)
 (add 3 4)                    ;; => 7
 
+;; Dotted/path module target
+(import ui.nodes)
+(ui.nodes.text "ok")
+
 ;; File-based import
 (import "path/to/file.omni")
 
 ;; Re-export
 (export-from math-utils 'all)
 (export-from math-utils (add))
+(export-from ui.nodes (text))
 ```
 
 ### Features
 
 - Default import is **qualified-only**
+- Module targets for `module` / `import` / `export-from` can be symbol, dotted/path token, or string file path
 - Modules loaded only once (cached)
 - Circular import detection
 - Method extensions are always global (dispatch is cross-cutting)

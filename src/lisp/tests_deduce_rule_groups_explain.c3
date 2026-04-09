@@ -398,7 +398,7 @@ fn void run_deduce_rule_validation_tests_explain(Interp* interp, int* pass, int*
                      parallel_batch_size != null && parallel_batch_size.tag == INT &&
                      parallel_batch_size.int_val == 2 &&
                      parallel_runtime_mode != null && parallel_runtime_mode.tag == SYMBOL &&
-                     parallel_runtime_mode.sym_val == interp.symbols.intern("metadata-only") &&
+                     parallel_runtime_mode.sym_val == interp.symbols.intern("serial-runtime-parallel-topology-planned") &&
                      deduce_rule_test_list_contains_int(parallel_batch_components, component_id.int_val) &&
                      deduce_rule_test_list_length(parallel_batch_components) == 2 &&
                      parallel_batch_topology != null &&

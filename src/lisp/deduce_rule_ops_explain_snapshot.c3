@@ -84,8 +84,17 @@ fn Value* deduce_explain_build_snapshot(
         metadata.goal_directed_component_id >= 0 && (usz)metadata.goal_directed_component_id < parallel_batch_sizes.len
             ? make_int(interp, (long)parallel_batch_sizes[(usz)metadata.goal_directed_component_id])
             : make_nil(interp));
-    explain_dict_set_symbol(out, interp, "parallel-runtime-mode",
-        interp.symbols.intern("metadata-only"));
+    long selected_parallel_batch_size =
+        metadata.goal_directed_component_id >= 0 &&
+        (usz)metadata.goal_directed_component_id < parallel_batch_sizes.len
+            ? (long)parallel_batch_sizes[(usz)metadata.goal_directed_component_id]
+            : 0;
+    deduce_set_parallel_runtime_truth_fields(
+        out,
+        selected_parallel_batch_size > 1 ? 1 : 0,
+        selected_parallel_batch_size,
+        interp
+    );
     explain_dict_set(out, interp, "parallel-batch-components", metadata.parallel_batch_components);
     explain_dict_set(out, interp, "parallel-batch-topology",
         deduce_parallel_component_batch_topology_payload(

@@ -108,6 +108,13 @@ fn Value* prim_error(Value*[] args, Env* env, Interp* interp) {
     return raise_error(interp, args[0].str_chars[:args[0].str_len]);
 }
 
+fn Value* prim_is_error(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "error?: expected 1 argument");
+    return (args[0] != null && args[0].tag == ERROR)
+        ? make_symbol(interp, interp.sym_true)
+        : make_nil(interp);
+}
+
 fn Value* prim_error_message(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0].tag != ERROR) return raise_error(interp, "error-message: expected error value");
     return make_string(interp, args[0].str_chars[:args[0].str_len]);

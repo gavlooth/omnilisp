@@ -8,9 +8,15 @@ fn void deduce_stats_set_materialized_and_read_fields(
 ) {
     DeduceMaterializedStaleReason effective_stale_reason =
         deduce_relation_schema_effective_materialized_stale_reason(schema);
-    explain_dict_set(out, interp, "materialized-view", explain_bool_value(interp, schema.materialized_view));
+    bool materialized_ready = deduce_relation_schema_is_materialized_ready(rel.db, schema);
+    explain_dict_set(out, interp, "materialized-view",
+        schema.materialized_view ? make_symbol(interp, interp.sym_true) : make_nil(interp));
     explain_dict_set(out, interp, "materialized-derived-ready",
-        explain_bool_value(interp, deduce_relation_schema_is_materialized_ready(rel.db, schema)));
+        schema.materialized_view
+            ? (materialized_ready
+                ? make_symbol(interp, interp.sym_true)
+                : make_symbol(interp, interp.sym_false))
+            : make_nil(interp));
     explain_dict_set(out, interp, "materialized-refresh-policy",
         schema.materialized_refresh_policy != (SymbolId)0
             ? make_symbol(interp, schema.materialized_refresh_policy)
@@ -28,7 +34,7 @@ fn void deduce_stats_set_materialized_and_read_fields(
     explain_dict_set(out, interp, "materialized-last-stale-reason",
         deduce_materialized_stale_reason_value(effective_stale_reason, interp));
     explain_dict_set(out, interp, "materialized-stale",
-        explain_bool_value(interp, deduce_relation_schema_is_materialized_stale(rel.db, schema)));
+        deduce_materialized_stale_value(rel.db, schema, interp));
     explain_dict_set(out, interp, "last-goal-directed-read-execution-path",
         schema.last_goal_directed_read_execution_path != (SymbolId)0
             ? make_symbol(interp, schema.last_goal_directed_read_execution_path)

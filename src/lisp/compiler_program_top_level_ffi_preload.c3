@@ -1,0 +1,84 @@
+module lisp;
+
+import std::collections::list;
+import main;
+
+fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
+    if (expr == null) return false;
+    switch (expr.tag) {
+        case E_FFI_LIB:
+        case E_FFI_FN:
+            return true;
+        case E_MODULE:
+            if (expr.module_expr == null) return false;
+            for (usz i = 0; i < expr.module_expr.body_count; i++) {
+                if (self.has_ffi_preload_expr(expr.module_expr.body[i])) return true;
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
+fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool libs_phase) {
+    if (expr == null) return;
+    if (expr.tag == E_MODULE && expr.module_expr != null) {
+        for (usz i = 0; i < expr.module_expr.body_count; i++) {
+            self.emit_ffi_preload_expr_phase(expr.module_expr.body[i], libs_phase);
+        }
+        return;
+    }
+
+    if (libs_phase) {
+        if (expr.tag != E_FFI_LIB || expr.ffi_lib.path_expr == null
+            || expr.ffi_lib.path_expr.tag != E_LIT
+            || expr.ffi_lib.path_expr.lit.value.tag != STRING) {
+            return;
+        }
+        self.emit_indent();
+        self.emit_ffi_lib_call(expr, true);
+        self.emit(";\n");
+        return;
+    }
+
+    if (expr.tag != E_FFI_FN || expr.ffi_fn == null || expr.ffi_fn.is_variadic
+        || expr.ffi_fn.c_name == null || expr.ffi_fn.c_name_len == 0) {
+        return;
+    }
+
+    int* param_tags = null;
+    int return_tag = 0;
+    char[] lib_name = "";
+    char[] fn_name = "";
+    char[] c_symbol = "";
+    usz param_count = 0;
+    if (!self.prepare_ffi_fn_call(expr, &param_tags, &return_tag, &lib_name, &fn_name, &c_symbol, &param_count)) {
+        if (param_tags != null) mem::free(param_tags);
+        return;
+    }
+    self.emit_indent();
+    self.emit_ffi_fn_call_prepared(lib_name, fn_name, c_symbol, param_tags, param_count, expr.ffi_fn.has_return_type, return_tag, true);
+    self.emit(";\n");
+    if (param_tags != null) mem::free(param_tags);
+}
+
+fn void Compiler.emit_ffi_startup_preload(Compiler* self, List{Expr*}* exprs) {
+    if (exprs == null || exprs.len() == 0) return;
+    bool has_ffi = false;
+    foreach (expr : *exprs) {
+        if (self.has_ffi_preload_expr(expr)) {
+            has_ffi = true;
+            break;
+        }
+    }
+    if (!has_ffi) return;
+
+    self.emit_line("// Startup FFI preload");
+    for (usz i = 0; i < exprs.len(); i++) {
+        self.emit_ffi_preload_expr_phase((*exprs)[i], true);
+    }
+    for (usz i = 0; i < exprs.len(); i++) {
+        self.emit_ffi_preload_expr_phase((*exprs)[i], false);
+    }
+    self.emit_newline();
+}

@@ -13,6 +13,7 @@ struct ReplServerRequest {
     bool ok;
     bool has_id;
     bool has_op;
+    bool has_auth;
     bool has_session;
     bool has_target;
     bool has_code;
@@ -24,6 +25,7 @@ struct ReplServerRequest {
     bool program_mode;
     char[] id;
     char[] op;
+    char[] auth;
     char[] session;
     char[] target;
     char[] code;
@@ -77,6 +79,7 @@ fn void repl_server_request_free(ReplServerRequest* request) {
     if (request == null) return;
     if (request.has_id && request.id.ptr != null) mem::free(request.id.ptr);
     if (request.has_op && request.op.ptr != null) mem::free(request.op.ptr);
+    if (request.has_auth && request.auth.ptr != null) mem::free(request.auth.ptr);
     if (request.has_session && request.session.ptr != null) mem::free(request.session.ptr);
     if (request.has_target && request.target.ptr != null) mem::free(request.target.ptr);
     if (request.has_code && request.code.ptr != null) mem::free(request.code.ptr);

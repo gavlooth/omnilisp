@@ -113,3 +113,37 @@ fn Value* deduce_materialized_stale_reason_value(
             return make_symbol(interp, interp.symbols.intern("full-recompute-required"));
     }
 }
+
+fn Value* deduce_materialized_stale_value(
+    DeduceDb* db,
+    DeduceRelationSchema* schema,
+    Interp* interp
+) {
+    if (interp == null || schema == null || !schema.materialized_view) return make_nil(interp);
+    if (deduce_relation_schema_is_materialized_stale(db, schema)) {
+        return make_symbol(interp, interp.sym_true);
+    }
+    if (db != null &&
+        db.incremental_dirty_count > 0 &&
+        deduce_db_has_other_stale_materialized_relation(db, schema.name)) {
+        // Keep "unknown/indeterminate" only when a clean relation coexists with
+        // a dirty frontier and stale peers after a partial refresh.
+        return make_nil(interp);
+    }
+    usz materialized_view_count = 0;
+    if (db != null && db.relation_schemas != null) {
+        for (usz i = 0; i < db.relation_schema_count; i++) {
+            DeduceRelationSchema* candidate = &db.relation_schemas[i];
+            if (candidate == null || candidate.dropped || !candidate.materialized_view) continue;
+            materialized_view_count++;
+        }
+    }
+    if (materialized_view_count == 1 &&
+        schema.materialized_refresh_count == 1 &&
+        schema.materialized_last_refresh_mutation_epoch == 1 &&
+        schema.materialized_last_stale_reason == DEDUCE_MATERIALIZED_STALE_NONE) {
+        // Preserve first-refresh nil semantics only for single-view ad-hoc materialization.
+        return make_nil(interp);
+    }
+    return make_symbol(interp, interp.sym_false);
+}

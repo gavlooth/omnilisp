@@ -1,3 +1,33 @@
+## 2026-04-09 Report Docs Syntax Drift Audit
+- Objectives attempted
+  - Audit report/status documentation for syntax-surface drift after recent large refactor volume.
+  - Reconcile stale release/backlog status wording that no longer matches the live repository state.
+- Code/config changes made
+  - Updated `docs/RELEASE_STATUS.md`:
+    - moved status forward from the stale 2026-03-10 “feature complete / TODO closed” framing,
+    - clarified active stabilization/refactor posture,
+    - added a report-layer syntax-drift note for quoted marker conventions.
+  - Updated `docs/AS_PATTERN_STATUS.md`:
+    - replaced stale `report.md` reference with `docs/SESSION_REPORT.md`.
+  - Updated module syntax references for dot/path parity:
+    - `docs/LANGUAGE_SPEC.md` now explicitly documents dotted/path module targets in `module` / `import` / `export-from`.
+    - `docs/reference/05-macros-modules.md` now mirrors the same dotted/path module target contract and examples.
+- Experiment commands and key metrics
+  - `rg --files docs | rg -i 'report|status|changelog|syntax|guide'`
+  - `rg -n "Current actionable count|TODO.md now reports|active TODO backlog is empty" docs/SESSION_REPORT.md`
+  - `rg -n --pcre2 "(?<!:):(as|all)\\b" docs/SESSION_REPORT.md docs/RELEASE_STATUS.md docs/AS_PATTERN_STATUS.md docs/BOUNDARY_*_AUDIT*.md docs/BOUNDARY_SURFACE_AUDIT.md`
+  - `rg -n "T_PATH|parser_import_helpers_specs|parser_module_decl|parser_export_from|jit_jit_module_import" src/lisp/*.c3`
+  - Key metrics:
+    - report/status corpus located and reviewed,
+    - no `:as`/`:all` marker drift found in audited report/status docs,
+    - stale release/backlog wording corrected,
+    - dot/path notation docs aligned with shipped parser/import behavior.
+- Best current checkpoint/config recommendation
+  - Keep `docs/RELEASE_STATUS.md` synchronized with live queue reality (`TODO.md` + `memory/CHANGELOG.md`) instead of treating it as a static “complete” declaration.
+- Unresolved issues and next actions
+  - `docs/SESSION_REPORT.md` remains intentionally historical; older entries keep their original timestamped context and may mention past backlog states.
+- Signature: Codex (GPT-5)
+
 ## 2026-03-27 UI Reference Page Added
 - Objectives attempted
   - Turn the scattered UI plan/example notes into a single concise user-facing reference page.

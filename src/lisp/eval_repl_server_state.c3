@@ -58,10 +58,20 @@ struct ReplServerConnection {
     ReplServerSession* sessions;
     usz session_capacity;
     usz next_session_id;
+    bool auth_required;
+    char* auth_token_ptr;
+    usz auth_token_len;
     bool preload_project;
     char* preload_project_dir;
     ReplServerOutput output;
     ReplServerWorker worker;
+}
+
+fn usz repl_server_cstr_len(char* text) @inline {
+    if (text == null) return 0;
+    usz len = 0;
+    while (text[len] != 0) len++;
+    return len;
 }
 
 
@@ -133,10 +143,15 @@ fn void repl_server_connection_init(
     int write_fd,
     bool socket_write,
     bool preload_project = false,
-    char* preload_project_dir = null
+    char* preload_project_dir = null,
+    bool auth_required = false,
+    char* auth_token_ptr = null
 ) {
     *conn = {};
     conn.next_session_id = 1;
+    conn.auth_required = auth_required && auth_token_ptr != null && auth_token_ptr[0] != 0;
+    conn.auth_token_ptr = conn.auth_required ? auth_token_ptr : null;
+    conn.auth_token_len = conn.auth_required ? repl_server_cstr_len(auth_token_ptr) : 0;
     conn.preload_project = preload_project;
     conn.preload_project_dir = preload_project_dir;
     repl_server_output_init(&conn.output, write_fd, socket_write);

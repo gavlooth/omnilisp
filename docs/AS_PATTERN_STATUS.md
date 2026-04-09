@@ -37,4 +37,4 @@ Practical consequence:
 
 Scope note:
 - this is no longer an open feature gap
-- the earlier audit note in `report.md` is now superseded by the implementation
+- the earlier audit notes in `docs/SESSION_REPORT.md` are now superseded by the implementation

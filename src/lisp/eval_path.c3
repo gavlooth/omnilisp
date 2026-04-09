@@ -19,15 +19,25 @@ fn EvalResult eval_path_module_step(Value* current, SymbolId key, Interp* interp
     Module* mod = current.module_val;
     if (!module_exports_key(mod, key)) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "'%s' is not exported from module",
-            (ZString)interp.symbols.get_name(key))!!;
+        char[] msg;
+        if (try formatted = io::bprintf(&ebuf, "'%s' is not exported from module",
+            (ZString)interp.symbols.get_name(key))) {
+            msg = formatted;
+        } else {
+            msg = "symbol is not exported from module";
+        }
         return eval_error(msg);
     }
     Value* next = mod.env.lookup(key);
     if (next == null) {
         char[256] ebuf;
-        char[] msg = io::bprintf(&ebuf, "symbol '%s' not found in module",
-            (ZString)interp.symbols.get_name(key))!!;
+        char[] msg;
+        if (try formatted = io::bprintf(&ebuf, "symbol '%s' not found in module",
+            (ZString)interp.symbols.get_name(key))) {
+            msg = formatted;
+        } else {
+            msg = "symbol not found in module";
+        }
         return eval_error(msg);
     }
     return eval_ok(next);
@@ -46,8 +56,13 @@ fn EvalResult eval_path_instance_step(Value* current, SymbolId key, Interp* inte
     char[] type_n = "<unknown>";
     if (ti != null) type_n = interp.symbols.get_name(ti.name);
     char[] field_n = interp.symbols.get_name(key);
-    char[] msg = io::bprintf(&ebuf, "field '%s' not found in type '%s'",
-        (ZString)field_n, (ZString)type_n)!!;
+    char[] msg;
+    if (try formatted = io::bprintf(&ebuf, "field '%s' not found in type '%s'",
+        (ZString)field_n, (ZString)type_n)) {
+        msg = formatted;
+    } else {
+        msg = "field not found in type";
+    }
     return eval_error(msg);
 }
 
@@ -58,8 +73,13 @@ fn EvalResult eval_path_dict_step(Value* current, SymbolId key, Interp* interp) 
 
     char[256] ebuf;
     char[] seg_n = interp.symbols.get_name(key);
-    char[] msg = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
-        (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))!!;
+    char[] msg;
+    if (try formatted = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
+        (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))) {
+        msg = formatted;
+    } else {
+        msg = "invalid path access";
+    }
     return eval_error(msg);
 }
 
@@ -79,8 +99,13 @@ fn bool eval_path_cons_step(Value* current, SymbolId key, Interp* interp, Value*
 fn EvalResult eval_path_invalid_step(Value* current, SymbolId key, Interp* interp) {
     char[256] ebuf;
     char[] seg_n = interp.symbols.get_name(key);
-    char[] msg = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
-        (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))!!;
+    char[] msg;
+    if (try formatted = io::bprintf(&ebuf, "cannot access '.%s' on %s value",
+        (ZString)seg_n, (ZString)interp.symbols.get_name(value_type_name(current, interp)))) {
+        msg = formatted;
+    } else {
+        msg = "invalid path access";
+    }
     return eval_error(msg);
 }
 

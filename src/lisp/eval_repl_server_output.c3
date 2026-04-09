@@ -80,7 +80,7 @@ fn bool repl_server_send_complete_event(ReplServerOutput* output, char[] id, cha
     return repl_server_output_write_json_doc(output, doc);
 }
 
-fn bool repl_server_send_describe(ReplServerOutput* output, char[] id, char[] transport_name) {
+fn bool repl_server_send_describe(ReplServerOutput* output, char[] id, char[] transport_name, bool auth_required) {
     YyjsonMutDoc* doc = omni_yyjson_mut_doc_new();
     if (doc == null) return false;
     defer omni_yyjson_mut_doc_free(doc);
@@ -99,6 +99,13 @@ fn bool repl_server_send_describe(ReplServerOutput* output, char[] id, char[] tr
     YyjsonMutVal* transports = omni_yyjson_mut_arr(doc);
     omni_yyjson_mut_arr_append(transports, omni_yyjson_mut_strn(doc, transport_name.ptr, transport_name.len));
     repl_server_obj_add_val(doc, root, "transports", transports);
+
+    YyjsonMutVal* security = omni_yyjson_mut_obj(doc);
+    repl_server_obj_add_bool(doc, security, "auth-required", auth_required);
+    if (auth_required) {
+        repl_server_obj_add_string(doc, security, "auth-field", "auth");
+    }
+    repl_server_obj_add_val(doc, root, "security", security);
 
     YyjsonMutVal* ops = omni_yyjson_mut_obj(doc);
     repl_server_obj_add_val(doc, ops, "clone", omni_yyjson_mut_obj(doc));

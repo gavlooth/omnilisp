@@ -91,7 +91,68 @@ fn void run_async_repl_server_active_interrupt_test(Interp* interp, int* pass, i
     }
 }
 
+fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* fail) {
+    ReplServerConnection open_conn = {};
+    repl_server_connection_init(&open_conn, 1, false);
+    defer repl_server_connection_destroy(&open_conn);
+
+    ReplServerRequest open_eval = {
+        .has_op = true,
+        .op = "eval",
+    };
+    if (!repl_server_request_is_authorized(&open_conn, &open_eval)) {
+        io::printn("[FAIL] async repl-server auth policy (open transport)");
+        (*fail)++;
+        return;
+    }
+
+    char[7] token = {'s', 'e', 'c', 'r', 'e', 't', 0};
+    ReplServerConnection secured_conn = {};
+    repl_server_connection_init(&secured_conn, 1, false, false, null, true, &token[0]);
+    defer repl_server_connection_destroy(&secured_conn);
+
+    ReplServerRequest describe = {
+        .has_op = true,
+        .op = "describe",
+    };
+    ReplServerRequest missing_auth = {
+        .has_op = true,
+        .op = "eval",
+    };
+    ReplServerRequest wrong_auth = {
+        .has_op = true,
+        .op = "eval",
+        .has_auth = true,
+        .auth = "nope",
+    };
+    ReplServerRequest correct_auth = {
+        .has_op = true,
+        .op = "eval",
+        .has_auth = true,
+        .auth = "secret",
+    };
+
+    bool ok =
+        repl_server_request_is_authorized(&secured_conn, &describe) &&
+        !repl_server_request_is_authorized(&secured_conn, &missing_auth) &&
+        !repl_server_request_is_authorized(&secured_conn, &wrong_auth) &&
+        repl_server_request_is_authorized(&secured_conn, &correct_auth) &&
+        repl_server_tcp_host_is_loopback("127.0.0.1") &&
+        repl_server_tcp_host_is_loopback("localhost") &&
+        repl_server_tcp_host_is_loopback("::1") &&
+        !repl_server_tcp_host_is_loopback("0.0.0.0");
+
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server auth policy requires token on secured transports");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] async repl-server auth policy requires token on secured transports");
+        (*fail)++;
+    }
+}
+
 fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_pending_interrupt_window_test(interp, pass, fail);
     run_async_repl_server_active_interrupt_test(interp, pass, fail);
+    run_async_repl_server_auth_policy_test(interp, pass, fail);
 }

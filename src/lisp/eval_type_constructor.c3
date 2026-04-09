@@ -6,8 +6,13 @@ import main;
 fn Value* constructor_arity_error(TypeInfo* ti, usz got, Interp* interp) {
     char[256] ebuf;
     char[] type_n = interp.symbols.get_name(ti.name);
-    char[] msg = io::bprintf(&ebuf, "%s constructor expects %d argument(s), got %d",
-        (ZString)type_n, (int)ti.field_count, (int)got)!!;
+    char[] msg;
+    if (try formatted = io::bprintf(&ebuf, "%s constructor expects %d argument(s), got %d",
+        (ZString)type_n, (int)ti.field_count, (int)got)) {
+        msg = formatted;
+    } else {
+        msg = "type constructor arity mismatch";
+    }
     return raise_error(interp, msg);
 }
 
@@ -32,8 +37,13 @@ fn Value* validate_constructor_fields(Value*[] args, TypeInfo* ti, Interp* inter
             char[] expected_name = interp.symbols.get_name(ti.fields[i].annotation_sym);
             char[] field_name = interp.symbols.get_name(ti.fields[i].name);
             char[] actual_name = interp.symbols.get_name(value_type_name(args[i], interp));
-            char[] emsg = io::bprintf(&ebuf, "type error: field '%s' expects %s, got %s",
-                (ZString)field_name, (ZString)expected_name, (ZString)actual_name)!!;
+            char[] emsg;
+            if (try formatted = io::bprintf(&ebuf, "type error: field '%s' expects %s, got %s",
+                (ZString)field_name, (ZString)expected_name, (ZString)actual_name)) {
+                emsg = formatted;
+            } else {
+                emsg = "type error: constructor field type mismatch";
+            }
             return raise_error(interp, emsg);
         }
     }
@@ -71,8 +81,13 @@ fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* in
                         char[] param_name = interp.symbols.get_name(param);
                         char[] bound_name = interp.symbols.get_name(interp.types.types[(usz)bound].name);
                         char[] actual_name = interp.symbols.get_name(interp.types.types[(usz)inferred].name);
-                        char[] emsg = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
-                            (ZString)param_name, (ZString)bound_name, (ZString)actual_name)!!;
+                        char[] emsg;
+                        if (try formatted = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
+                            (ZString)param_name, (ZString)bound_name, (ZString)actual_name)) {
+                            emsg = formatted;
+                        } else {
+                            emsg = "type constraint violated";
+                        }
                         return raise_error(interp, emsg);
                     }
                 }

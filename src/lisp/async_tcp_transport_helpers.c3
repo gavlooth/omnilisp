@@ -104,22 +104,27 @@ fn void parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms) 
     }
 }
 
-fn Value* dns_result_to_ipv4_string(Interp* interp, void* result) {
+fn Value* dns_result_to_ip_string(Interp* interp, void* result) {
     // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
     int ai_family = *((int*)((char*)result + 4));
     void* ai_addr = *((void**)((char*)result + 24));
 
     char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
-    if (ai_family != AF_INET) {
-        // fault: lisp::DNS_FAILED
-        return io_raise(interp, "io/dns-resolve-ipv6-not-supported", "dns-resolve: IPv6 not yet supported");
+    char* rendered = null;
+    if (ai_family == AF_INET) {
+        // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
+        void* sin_addr = (char*)ai_addr + 4;
+        rendered = c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
+    } else if (ai_family == AF_INET6) {
+        // sockaddr_in6: sin6_addr is at offset 8 (family + port + flowinfo)
+        void* sin6_addr = (char*)ai_addr + 8;
+        rendered = c_inet_ntop(AF_INET6, sin6_addr, &ip_buf, 64);
+    } else {
+        return io_raise(interp, "io/dns-resolve-unsupported-family", "dns-resolve: unsupported address family");
     }
 
-    // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
-    void* sin_addr = (char*)ai_addr + 4;
-    char* rendered = c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
     if (rendered == null) {
-        return io_raise(interp, "io/dns-resolve-render-failed", "dns-resolve: failed to format IPv4 address");
+        return io_raise(interp, "io/dns-resolve-render-failed", "dns-resolve: failed to format resolved address");
     }
 
     usz ip_len = 0;

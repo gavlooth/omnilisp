@@ -53,23 +53,30 @@ fn char[] toml_timestamp_to_string(OmniTomlDatum* datum, int typ, char[] out_buf
 
     switch (typ) {
         case TOML_DATE:
-            return io::bprintf(out_buf, "%04d-%02d-%02d", year, month, day)!!;
+            if (try char[] rendered = io::bprintf(out_buf, "%04d-%02d-%02d", year, month, day)) return rendered;
+            return "";
         case TOML_TIME:
             if (usec > 0) {
-                return io::bprintf(out_buf, "%02d:%02d:%02d.%06d", hour, minute, second, usec)!!;
+                if (try char[] rendered = io::bprintf(out_buf, "%02d:%02d:%02d.%06d", hour, minute, second, usec)) return rendered;
+                return "";
             }
-            return io::bprintf(out_buf, "%02d:%02d:%02d", hour, minute, second)!!;
+            if (try char[] rendered = io::bprintf(out_buf, "%02d:%02d:%02d", hour, minute, second)) return rendered;
+            return "";
         case TOML_DATETIME:
             if (usec > 0) {
-                return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", year, month, day, hour, minute, second, usec)!!;
+                if (try char[] rendered = io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", year, month, day, hour, minute, second, usec)) return rendered;
+                return "";
             }
-            return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)!!;
+            if (try char[] rendered = io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)) return rendered;
+            return "";
         case TOML_DATETIMETZ: {
             if (tz == 0) {
                 if (usec > 0) {
-                    return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", year, month, day, hour, minute, second, usec)!!;
+                    if (try char[] rendered = io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", year, month, day, hour, minute, second, usec)) return rendered;
+                    return "";
                 }
-                return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)!!;
+                if (try char[] rendered = io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)) return rendered;
+                return "";
             }
 
             int tzm = tz < 0 ? -tz : tz;
@@ -77,11 +84,36 @@ fn char[] toml_timestamp_to_string(OmniTomlDatum* datum, int typ, char[] out_buf
             int tzm_only = tzm % 60;
             char sign = tz < 0 ? '-' : '+';
             if (usec > 0) {
-                return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06d%c%02d:%02d",
-                                   year, month, day, hour, minute, second, usec, sign, tzh, tzm_only)!!;
+                if (try char[] rendered = io::bprintf(
+                    out_buf,
+                    "%04d-%02d-%02dT%02d:%02d:%02d.%06d%c%02d:%02d",
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                    second,
+                    usec,
+                    sign,
+                    tzh,
+                    tzm_only
+                )) return rendered;
+                return "";
             }
-            return io::bprintf(out_buf, "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
-                               year, month, day, hour, minute, second, sign, tzh, tzm_only)!!;
+            if (try char[] rendered = io::bprintf(
+                out_buf,
+                "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                sign,
+                tzh,
+                tzm_only
+            )) return rendered;
+            return "";
         }
         default:
             return "";

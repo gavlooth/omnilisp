@@ -1,11 +1,11 @@
 # Active TODO
 
-Last condensed: 2026-04-08
+Last condensed: 2026-04-09
 
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 7
 
 Completed backlog snapshots:
 
@@ -18,9 +18,515 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- none
+- `REF-SPLIT-INFRA-002` continue runtime large-file decomposition (largest-first, ownership-preserving)
+  - audit evidence:
+    - largest non-test file is now `src/lisp/bindgen_facade_scaffold.c3` (`268`).
+    - next-largest non-test files now include:
+      - `src/lisp/eval_boundary_commit_escape.c3` (`266`)
+      - `src/lisp/jit_jit_apply_eval.c3` (`263`)
+      - `src/lisp/eval_ffi_bound_call.c3` (`262`)
+      - `src/lisp/async_runtime_base.c3` (`262`)
+  - shipped slice (2026-04-09, aot runtime bridge ffi split):
+    - split monolithic AOT FFI bridge surface by seam boundaries:
+      - `src/lisp/aot_runtime_bridge_ffi.c3` (`281 -> 168`) FFI function binding declaration path
+      - `src/lisp/aot_runtime_bridge_ffi_helpers.c3` (`51`) ABI tag/c-string/bound-free helpers
+      - `src/lisp/aot_runtime_bridge_ffi_lib.c3` (`78`) FFI library declaration/dlopen path
+    - preserved AOT FFI declaration/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+      - `OMNI_LISP_TEST_SLICE=advanced OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=1156 fail=0`
+  - shipped slice (2026-04-09, async uv timer callback split):
+    - split monolithic async UV timer callback surface by seam boundaries:
+      - `src/lisp/async_uv_timer_callback.c3` (`287 -> 126`) primitive entrypoints (`handle`, `unhandle`, `invoke`, `dispatch-count`)
+      - `src/lisp/async_uv_timer_callback_handle.c3` (`164`) callback-handle runtime ownership/shim/finalizer/trampoline helpers
+    - preserved async callback runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=advanced OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=1156 fail=0`
+  - shipped slice (2026-04-09, regex cache state/lifetime split):
+    - split monolithic regex cache state surface by seam boundaries:
+      - `src/pika/regex_cache_state.c3` (`289 -> 171`) cache/mutex/counters/error-state + lookup/grow helpers
+      - `src/pika/regex_cache_lifetime.c3` (`119`) regex grammar/rule teardown and char-class lifetime helpers
+    - preserved regex cache compile/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika primitive registration split):
+    - split monolithic primitive registration/parse-fold surface by seam boundaries:
+      - `src/pika/lisp_pika.c3` (`293 -> 25`) primitive registration coordinator
+      - `src/pika/lisp_pika_named_grammars.c3` (`81`) named-grammar state/capacity/lookup/store helpers
+      - `src/pika/lisp_pika_parse_fold.c3` (`130`) `pika/parse` + `pika/fold` parse-tree conversion/fold paths
+    - preserved parser/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika grammar construction split):
+    - split monolithic grammar construction surface by seam boundaries:
+      - `src/pika/grammar.c3` (`295 -> 7`) coordinator stub
+      - `src/pika/grammar_construction_helpers.c3` (`216`) topo/reindex/emptiable/seed helpers
+      - `src/pika/grammar_construction_make.c3` (`58`) `make_grammar` orchestration
+    - preserved grammar construction/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, bindgen facade wrapper split):
+    - split monolithic facade wrapper emission surface by seam boundaries:
+      - `src/lisp/bindgen_facade_wrappers.c3` (`301 -> 213`) wrapper assembly and scaffold emission
+      - `src/lisp/bindgen_facade_review_notes.c3` (`88`) REVIEW-note/issue/body-note emission helpers
+    - preserved bindgen facade-generation contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, pika memo split):
+    - split monolithic memo table runtime surface by seam boundaries:
+      - `src/pika/memo.c3` (`305 -> 5`) coordinator stub
+      - `src/pika/memo_submatches.c3` (`64`) submatch buffer allocation/record/rollback helpers
+      - `src/pika/memo_matches_tree.c3` (`219`) match storage and memo splay-tree insert/find helpers
+    - preserved parser memo/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika regex primitive split):
+    - split monolithic regex primitive runtime surface by seam boundaries:
+      - `src/pika/lisp_pika_regex_primitives.c3` (`317 -> 6`) coordinator stub
+      - `src/pika/lisp_pika_regex_common.c3` (`18`) shared regex/parser error helpers
+      - `src/pika/lisp_pika_regex_match_split.c3` (`142`) match/fullmatch/find-all/split primitives
+      - `src/pika/lisp_pika_regex_replace.c3` (`154`) replace buffer and `re-replace` runtime paths
+    - preserved regex primitive/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09):
+    - split monolithic bindgen generation/facade code top-down into ownership lanes:
+      - `src/lisp/bindgen.c3` (`1153 -> 534`)
+      - `src/lisp/bindgen_facade_scaffold.c3` (`268`)
+      - `src/lisp/bindgen_facade_wrappers.c3` (`301`)
+      - `src/lisp/bindgen_buffer_append.c3` (`55`)
+    - preserved existing bindgen contracts and generated-shape behavior by moving functions without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, bindgen second-pass split):
+    - split remaining `bindgen.c3` emit/metadata/facade-binding seams into dedicated lanes:
+      - `src/lisp/bindgen.c3` (`534 -> 73`) coordinator + entrypoints only
+      - `src/lisp/bindgen_emit.c3` (`114`) raw/facade module text emit
+      - `src/lisp/bindgen_metadata.c3` (`237`) metadata classification + emission helpers
+      - `src/lisp/bindgen_facade_bindings.c3` (`80`) facade argument/return binding helpers
+      - `src/lisp/bindgen_io.c3` (`33`) output file write/existence helpers
+    - preserved bindgen generation contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, fmt mode split):
+    - split monolithic formatter mode/runtime file by ownership lanes:
+      - `src/entry_fmt_mode.c3` (`485 -> 63`) mode runner only
+      - `src/entry_fmt_args.c3` (`21`) CLI argument discovery helpers
+      - `src/entry_fmt_lex.c3` (`131`) lexical/delimiter/string scan helpers
+      - `src/entry_fmt_stack.c3` (`171`) indentation stack/frame update logic
+      - `src/entry_fmt_format.c3` (`104`) format pipeline + result surface
+    - preserved formatter behavior by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+      - formatter CLI smoke:
+        - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --fmt /tmp/omni_fmt_smoke.omni --check` -> exit `1` on unformatted input
+        - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --fmt /tmp/omni_fmt_smoke.omni` -> prints expected normalized indentation
+  - shipped slice (2026-04-09, clauses split):
+    - split monolithic clause runtime surface by seam boundaries:
+      - `src/pika/clauses.c3` (`483 -> 1`) coordinator stub
+      - `src/pika/clauses_properties.c3` (`111`) clause property/seed/epsilon predicates
+      - `src/pika/clauses_terminal_match.c3` (`64`) terminal clause match primitives
+      - `src/pika/clauses_match.c3` (`170`) clause dispatch + epsilon matching
+      - `src/pika/clauses_user_view.c3` (`141`) user-view projection/flatten helpers
+    - preserved parser runtime semantics by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika regex cache split):
+    - split monolithic regex-cache API internals by seam boundaries:
+      - `src/pika/regex_cache_api.c3` (`578 -> 42`) public query wrappers only
+      - `src/pika/regex_cache_state.c3` (`288`) cache state/locking/error + release helpers
+      - `src/pika/regex_cache_compile.c3` (`256`) compile/cache-population/compiled-query execution
+    - preserved existing regex runtime contracts and fallback counters by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika regex core split):
+    - split monolithic regex compiler/runtime core by seam boundaries:
+      - `src/pika/regex.c3` (`559 -> 6`) coordinator stub
+      - `src/pika/regex_types.c3` (`39`) compiled/match result types and match builders
+      - `src/pika/regex_match_helpers.c3` (`153`) atom matching + scan helpers
+      - `src/pika/regex_compile_helpers.c3` (`347`) regex compiler state and recursive compile passes
+    - preserved compile/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika regex tokenizer split):
+    - split tokenizer surface by ownership/phase lanes:
+      - `src/pika/regex_tokenizer.c3` (`546 -> 6`) coordinator stub
+      - `src/pika/regex_tokenizer_types.c3` (`98`) token/charclass/tokenizer types + cursor primitives
+      - `src/pika/regex_tokenizer_charclass.c3` (`179`) char-class parsing/allocation helpers
+      - `src/pika/regex_tokenizer_tokens.c3` (`246`) bounded quantifier + token emission paths
+    - preserved tokenizer behavior and error contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika lisp primitive split):
+    - split monolithic parser/reader primitive surface by seam boundaries:
+      - `src/pika/lisp_pika.c3` (`543 -> 293`) named-grammar table + parse/fold registration surface
+      - `src/pika/lisp_pika_reader_primitives.c3` (`173`) Lisp reader bridge (`pika/parse-lisp`, `pika/grammar-rules`, `pika/match-span`, `pika/eval-lisp`)
+      - `src/pika/lisp_pika_regex_positions.c3` (`76`) regex position primitives (`re-match-pos`, `re-find-all-pos`)
+    - preserved parser/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika grammar compiler split):
+    - split grammar compiler by ownership lanes:
+      - `src/pika/lisp_pika_grammar_compiler.c3` (`539 -> 1`) coordinator stub
+      - `src/pika/lisp_pika_grammar_compiler_state.c3` (`101`) compiler state/rule table/error helpers
+      - `src/pika/lisp_pika_grammar_clause_compile.c3` (`321`) clause operator + scan-pattern compile paths
+      - `src/pika/lisp_pika_grammar_compiler_api.c3` (`125`) public `(pika/grammar ...)` pipeline and finalization
+    - preserved grammar compile contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika lisp grammar split):
+    - split monolithic grammar scanner/build/parser surface by seam boundaries:
+      - `src/pika/lisp_grammar.c3` (`434 -> 1`) coordinator stub
+      - `src/pika/lisp_grammar_scanners.c3` (`249`) scanner primitives
+      - `src/pika/lisp_grammar_build.c3` (`153`) grammar/rule build helpers
+      - `src/pika/lisp_grammar_parser.c3` (`36`) parser create/parse/find wrappers
+    - preserved grammar construction and parser runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika regex compile internals split):
+    - split monolithic regex compile internals into seam-focused lanes:
+      - `src/pika/regex_compile_helpers.c3` (`347 -> 7`) coordinator stub
+      - `src/pika/regex_compile_state.c3` (`99`) compiler state/name/error/shared vector push helpers
+      - `src/pika/regex_compile_atom.c3` (`63`) atom/group/lookahead compile paths
+      - `src/pika/regex_compile_quantified.c3` (`83`) quantifier and bounded-repeat compile paths
+      - `src/pika/regex_compile_sequence.c3` (`91`) concatenation and alternation compile paths
+    - preserved regex compile/runtime contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, compiler top-level helper split):
+    - split monolithic compiler top-level helper surface by ownership lanes:
+      - `src/lisp/compiler_program_top_level_helpers.c3` (`347 -> 6`) coordinator stub
+      - `src/lisp/compiler_program_top_level_globals.c3` (`96`) global collection and type-form sync helpers
+      - `src/lisp/compiler_program_top_level_ffi_preload.c3` (`84`) startup FFI preload detection/emission helpers
+      - `src/lisp/compiler_program_top_level_ffi_manifest.c3` (`174`) FFI contract manifest JSON emission helpers
+    - preserved top-level compiler/FFI contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, libclang bind visitor helper split):
+    - split monolithic libclang bind visitor helper surface by seam boundaries:
+      - `src/lisp/libclang_bind_visitor_helpers.c3` (`337 -> 6`) coordinator stub
+      - `src/lisp/libclang_bind_metadata.c3` (`151`) ownership/nullability/role metadata inference helpers
+      - `src/lisp/libclang_bind_type_map.c3` (`68`) canonical C type -> FFI/Omni mapping helpers
+      - `src/lisp/libclang_bind_visitor_params.c3` (`111`) visitor param-name/type/capacity wiring helpers
+    - preserved bindgen parse/visitor contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, entry build helper split):
+    - split monolithic build helper surface by operation lanes:
+      - `src/entry_build_helpers.c3` (`330 -> 12`) coordinator/extern constants only
+      - `src/entry_build_aot_temp.c3` (`91`) AOT temp path generation and unique temp write helpers
+      - `src/entry_build_repo_paths.c3` (`207`) repo-root/output-path resolution and validation helpers
+      - `src/entry_build_io_helpers.c3` (`26`) build source load and print-flag parse helpers
+    - preserved build mode contracts by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, entry compile mode split):
+    - split monolithic compile mode surface by manifest/runtime lanes:
+      - `src/entry_compile_mode.c3` (`321 -> 5`) coordinator stub
+      - `src/entry_compile_manifest.c3` (`212`) FFI manifest JSON emission/write helpers
+      - `src/entry_compile_runner.c3` (`107`) compile mode argument/runtime/write orchestration
+    - preserved compile mode behavior by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, pika grammar clause compile split):
+    - split monolithic grammar clause compile helper surface by seam boundaries:
+      - `src/pika/lisp_pika_grammar_clause_compile.c3` (`321 -> 38`) clause coordinator and top-level dispatch
+      - `src/pika/lisp_pika_grammar_clause_scan.c3` (`108`) scan/char-class/bounded-quantifier compile helpers
+      - `src/pika/lisp_pika_grammar_clause_nodes.c3` (`80`) clause node creation and named combinator helpers
+      - `src/pika/lisp_pika_grammar_clause_ops.c3` (`103`) unary/list operator routing and error surface
+    - preserved grammar clause compile behavior by moving logic without semantic rewrites.
+    - local verification:
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=75 fail=0`
+  - next step:
+    - continue largest-first decomposition on `src/lisp/bindgen_facade_scaffold.c3`, then `src/lisp/eval_boundary_commit_escape.c3`, splitting by existing ownership/API seam boundaries without changing runtime contracts.
+
+- `REF-SPLIT-TESTS-002` split oversized test files by existing feature/group seams
+  - audit evidence:
+    - oversized tests still include:
+      - `src/lisp/tests_deduce_query_admin_groups.c3` (`2038`)
+      - `src/lisp/tests_deduce_query_admin_surface_demand_tests.c3` (`1907`)
+      - `src/lisp/tests_deduce_rule_groups_more_tail.c3` (`1787`)
+      - `src/lisp/tests_deduce_query_bench_groups.c3` (`1684`)
+      - `src/lisp/tests_deduce_rule_groups_explain.c3` (`1471`)
+      - `src/lisp/tests_deduce_durability_groups.c3` (`1403`)
+  - next step:
+    - physically split largest files first along current filtered-lane boundaries, preserving test names/filters and behavior.
+
+- `ERR-MODEL-STRICT-001` reduce `!!` usage in non-test runtime/compiler paths per `docs/C3_STYLE.md`
+  - audit evidence:
+    - `rg -n "\\)!!|!!;|!!," src/lisp --glob '!**/tests*'` returns widespread hits across runtime/compiler modules.
+    - current style guide explicitly says avoid `!!` in production paths except intentional bootstrap/test abort points.
+  - shipped slice (2026-04-09):
+    - removed unchecked formatting unwraps from error-surface paths in:
+      - `src/lisp/eval_path.c3`
+      - `src/lisp/eval_ffi_bound_call.c3`
+      - `src/lisp/primitives_error_helpers.c3`
+      - `src/lisp/eval_type_constructor.c3`
+    - each site now uses checked `try io::bprintf(...)` with deterministic fallback error text when formatting fails.
+    - local verification:
+      - `rg -n "\\)!!|!!;|!!,"` on the four files above -> no matches
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler ... --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, follow-up):
+    - removed additional unchecked formatting unwraps from:
+      - `src/lisp/primitives_toml_bridge.c3`
+      - `src/lisp/prim_string_format_directives.c3`
+    - both files now use checked `try io::bprintf(...)` and deterministic fallback behavior where direct error propagation is not possible.
+    - local verification:
+      - `rg -n "\\)!!|!!;|!!," src/lisp/primitives_toml_bridge.c3 src/lisp/prim_string_format_directives.c3` -> no matches
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=advanced ... --test-suite lisp` -> `pass=1156 fail=0`
+      - `OMNI_LISP_TEST_SLICE=compiler ... --test-suite lisp` -> `pass=182 fail=0`
+  - shipped slice (2026-04-09, runtime error-surface follow-up):
+    - removed additional unchecked formatting unwraps from:
+      - `src/lisp/eval_ffi_eval.c3`
+      - `src/lisp/http_url_response.c3`
+      - `src/lisp/scheduler_io_fiber_core.c3`
+      - `src/lisp/prim_string_format_helpers.c3`
+    - each site now uses checked formatting with deterministic fallback behavior or explicit fault return paths.
+    - local verification:
+      - `rg -n "\\)!!|!!;|!!," src/lisp/eval_ffi_eval.c3 src/lisp/http_url_response.c3 src/lisp/scheduler_io_fiber_core.c3 src/lisp/prim_string_format_helpers.c3` -> no matches
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=compiler ... --test-suite lisp` -> `pass=182 fail=0`
+      - `OMNI_LISP_TEST_SLICE=async ... --test-suite lisp` -> `pass=59 fail=0`
+  - shipped slice (2026-04-09, pika cache mutex-init follow-up):
+    - removed unchecked mutex init unwrap from:
+      - `src/pika/regex_cache_state.c3`
+    - mutex init now uses checked optional flow with explicit fail-closed `unreachable` on init failure.
+    - local verification:
+      - `rg -n "\\)!!|!!;|!!," src/pika/regex_cache_state.c3 src/pika/regex_cache_compile.c3 src/pika/regex_cache_api.c3` -> no matches
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika ... --test-suite lisp` -> `pass=75 fail=0`
+  - shipped slice (2026-04-09, pika named-grammar mutex init follow-up):
+    - removed unchecked mutex init unwrap from:
+      - `src/pika/lisp_pika.c3`
+    - mutex init now uses checked optional flow with explicit fail-closed `unreachable` on init failure.
+    - local verification:
+      - `rg -n "\\)!!|!!;|!!," src/pika/lisp_pika*.c3 src/pika/lisp_pika_grammar_compiler*.c3` -> no matches
+      - `c3c build` -> pass
+      - `OMNI_LISP_TEST_SLICE=pika ... --test-suite lisp` -> `pass=75 fail=0`
+  - next step:
+    - prioritize boundary/error-surface files first, replacing `!!` with checked optional/fault flow and deterministic fallback messages where propagation is impossible.
+
+- `REPO-HYGIENE-LOCAL-ARTIFACTS-001` clean local transient artifacts from working tree and keep audit signal clean
+  - audit evidence:
+    - current status includes transient/untracked entries (`$TMPDB`, `$TMPDB-lock`, `tooling/omni-lsp/tests/__pycache__/...`, `.claude-flow/`, `.serena/`, `examples/.tmp_ui_runtime_probe.omni`, `tooling/tests/`).
+    - `jj` snapshot warnings are still triggered by oversized local artifact `test_aot` (`2385304` bytes), which remains outside the repo `snapshot.max-new-file-size` cap.
+  - shipped slice (2026-04-09):
+    - removed obvious generated/transient files:
+      - `$TMPDB`
+      - `$TMPDB-lock`
+      - `examples/.tmp_ui_runtime_probe.omni`
+      - `tooling/omni-lsp/tests/__pycache__/check_json_smoke.cpython-314.pyc`
+      - `tooling/tests/__pycache__/omni_fmt_smoke.cpython-314.pyc`
+    - left potentially user-owned local state directories intact for explicit review:
+      - `.claude-flow/`
+      - `.serena/`
+  - next step:
+    - classify each path as intended fixture vs transient residue, then either ignore in local-only config or remove generated artifacts to keep status/audit noise low.
+
+- `PIKA-EVAL-LISP-DEFERRED-001` close deferred `(pika/eval-lisp ...)` runtime gap without violating reader/eval ownership boundaries
+  - audit evidence:
+    - `src/pika/lisp_pika_reader_primitives.c3:170` still marks Pika-based `eval-lisp` as deferred.
+    - `src/pika/lisp_pika_reader_primitives.c3:172` hard-fails with `parser/eval-lisp-unavailable` and fallback guidance to `(eval (read-string s))`.
+  - next step:
+    - add the explicit AST adaptation lane from Pika parse output into current Lisp semantic forms (or explicitly freeze/retire the surface if owner wants it removed), then add dedicated parser/eval parity tests in the `pika` slice.
+
+- `DEDUCE-DEFERRED-AGGREGATES-001` resolve deferred aggregate surface and stale seminaive error path messaging
+  - audit evidence:
+    - `src/lisp/deduce_rule_ir_helpers.c3:160` still hard-fails `avg`/`distinct-count` as deferred-from-v1.5.
+    - `src/lisp/deduce_rule_eval_exec_seminaive_execution.c3:39` still emits `recursive aggregate rule execution is not implemented yet` for missing aggregate state wiring.
+  - next step:
+    - either ship bounded `avg`/`distinct-count` support with explicit seminaive execution semantics, or narrow and document the currently supported aggregate contract so runtime/analyze/explain messages stay truthful and non-contradictory.
+
+- `ENTRY-LANGREF-PAYLOAD-BLOB-001` reduce giant inline language-reference payload blast radius
+  - audit evidence:
+    - `src/entry_language_reference_payload.c3` is only 4 lines but `35049` bytes due one large inline gzip hex blob (`OMNI_LANGUAGE_REF_GZIP`), creating noisy source diffs and poor editability.
+  - next step:
+    - move the payload source-of-truth to a generated artifact/input file with deterministic build embedding so runtime behavior stays unchanged while source churn and merge pressure drop.
 
 ## Recently Closed
+
+- [x] `VCS-JJ-CHECKOUT-ACL-001` restore `jj` checkout-state readability and bookmark workflow
+  - closure evidence:
+    - recovered broken checkout metadata non-destructively by rebuilding `.jj/working_copy` from readable repository state and preserving backups:
+      - `.jj/working_copy.recover.bak.20260409-022334`
+      - `.jj/repo/op_heads/heads.recover.bak.20260409-022441`
+      - `.jj/repo/store/extra/heads.recover.bak.20260409-022625`
+      - `.jj/repo/index.recover.bak.20260409-022536`
+    - restored command health:
+      - `jj status` -> exit `0`
+      - `jj bookmark list` -> exit `0`
+    - corrected bookmark workflow for current `jj 0.39.0` surface:
+      - create/update by name: `jj bookmark set <name> -r <revset>`
+      - move existing bookmarks: `jj bookmark move <name> --to <revset>`
+      - advance closest bookmarks: `jj bookmark advance --to <revset>`
+    - note:
+      - `jj bookmark update` is not a valid subcommand in this CLI version.
+
+- [x] `AUDIT-DEDUCE-SLICE-RED-001` investigate and reduce current deduce-lane failures
+  - closure evidence:
+    - deduce lane is now green end-to-end:
+      - `OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=378 fail=0`
+    - repaired high-signal root-cause clusters in materialization metadata, selector disjunctive-demand fallback, and why-result payload shape alignment:
+      - `src/lisp/deduce_schema_query_metadata_schema_helpers.c3`
+      - `src/lisp/deduce_schema_query_execution_goal_directed_selector_disjunction_projected.c3`
+      - `src/lisp/deduce_why_result_payload.c3`
+      - `src/lisp/deduce_why_result_path_payload.c3`
+    - targeted admin-surface lane is also green after fixes:
+      - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=query OMNI_DEDUCE_QUERY_FILTER=admin-surface OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=184 fail=0`
+
+- [x] `AUDIT-ADVANCED-SLICE-RED-001` restore advanced-lane green without relaxing strict contracts
+  - closure evidence:
+    - fixed parser macro-pattern zero-length allocation bug that broke `syntax-match` empty-sequence clauses (`[]`) and silently prevented stdlib/test macro definitions:
+      - `src/lisp/parser_patterns_values.c3`
+      - avoided zero-byte AST arena allocations for empty pattern buffers in sequence/dict pattern parsing.
+    - stdlib macro/predicate lane restored:
+      - `stdlib/stdlib.lisp`
+      - `branch` macro now loads during bootstrap again.
+      - `boolean?` contract aligned to strict boolean values (`true`/`false`) while preserving existing truthiness semantics (`nil`/`false` falsy).
+    - strict higher-order arity lane restored:
+      - `src/lisp/primitives_meta_predicates.c3`
+      - `src/lisp/eval_init_primitive_tables.c3`
+      - `stdlib/stdlib.lisp`
+      - introduced primitive `error?` and used it in stdlib `map` to propagate callback runtime errors instead of returning lists of embedded `ERROR` values.
+    - validation:
+      - `OMNI_LISP_TEST_SLICE=advanced OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=1156 fail=0`
+      - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=182 fail=0`
+
+- [x] `META-STATS-001` remove duplicate SCC/parallel topology planner work from `deduce/stats`
+  - closure evidence:
+    - removed dead duplicate topology-planning wrapper that rebuilt SCC + batch metadata independently of the stats path:
+      - deleted `deduce_parallel_batch_topology_counts(...)` from `src/lisp/deduce_schema_query_metadata_parallel_topology.c3`
+    - the live stats path remains on a single metadata-build lane:
+      - `src/lisp/deduce_schema_query_metadata_stats_parallel_fields.c3`
+      - `src/lisp/deduce_schema_query_metadata_parallel_topology.c3`
+    - no residual callsites remain for the deleted duplicate planner wrapper:
+      - `rg -n "deduce_parallel_batch_topology_counts\\(" src/lisp` -> no matches
+    - integration safety:
+      - `c3c build` passes and links `build/main`
+  - validation note:
+    - the broader `OMNI_LISP_TEST_SLICE=deduce` lane is currently red in this workspace with multiple pre-existing failures unrelated to this single dead-code removal, so closure for this item is structural + build-backed.
+
+- [x] `REF-SPLIT-INFRA-REPL-001` split REPL server runtime surfaces by ownership lane
+  - closure evidence:
+    - split `src/lisp/eval_repl_server.c3` top-down into focused runtime surfaces without behavioral contract changes:
+      - request auth/dispatch lane extracted to `src/lisp/eval_repl_server_request.c3`
+      - unix/tcp listener lane extracted to `src/lisp/eval_repl_server_listeners.c3`
+      - stream/session orchestration retained in `src/lisp/eval_repl_server.c3`
+    - primary runtime file was reduced from `332` lines to `67` lines:
+      - `wc -l src/lisp/eval_repl_server.c3 src/lisp/eval_repl_server_request.c3 src/lisp/eval_repl_server_listeners.c3`
+    - integration + async REPL validation remain green after the split:
+      - `c3c build`
+      - `OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=59 fail=0`
+
+- [x] `AUDIT-BINDGEN-DEFERRED-001` resolve generated bindgen TODO ownership/teardown policy gaps
+  - closure evidence:
+    - bindgen wrappers now enforce concrete ownership/role/teardown guards and fail closed where policy is unresolved:
+      - `src/lisp/bindgen.c3`
+      - added explicit raise paths:
+        - `bindgen/opaque-arg-role-mismatch`
+        - `bindgen/opaque-arg-ownership-mismatch`
+        - `bindgen/opaque-arg-unsupported-teardown`
+        - `bindgen/opaque-arg-nil`
+        - `bindgen/string-return-unknown-ownership`
+        - `bindgen/opaque-return-manual-review`
+    - staged comment marker switched from `TODO(bindgen)` to `REVIEW(bindgen)`:
+      - `src/lisp/bindgen.c3`
+      - `src/lisp/tests_compiler_codegen_groups_tail.c3`
+    - compiler bindgen coverage remains green:
+      - `(OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp || true) | rg -n "bindgen|\\[FAIL\\] Compiler"`
+      - bindgen checks reported as `[PASS]`; only existing unrelated compiler failures remain:
+        - `AOT closure factory allocation failures fail closed`
+        - `compiler parser keeps prior exprs but drops malformed postfix partial expr`
+
+- [x] `AUDIT-DEDUCE-WHY-DERIVED-001` implement missing derived-subject why-result support
+  - closure evidence:
+    - removed explicit unsupported derived-subject error path from why-result lookup:
+      - `src/lisp/deduce_why_result_lookup_derived.c3`
+      - `rg -n "why-result-derived-subject-not-yet-supported|not-yet-supported" src/lisp/deduce_why_result_* src/lisp/deduce_*` returns no matches
+    - derived why-result now returns structured provenance payloads instead of a legacy unsupported error for supported read shapes:
+      - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(block ... (deduce/query reach (lambda (row) (= (ref row 'src) 8))) (deduce/why-result reach 8 10))"`
+      - observed payload includes:
+        - `kind why-result`
+        - `path-kind derived`
+        - `status partial`
+        - `paths` with structured support frames
+
+- [x] `AUDIT-BUILD-IMPORT-001` restore green build by fixing invalid allocator import paths
+  - closure evidence:
+    - updated allocator import/module references in:
+      - `src/lisp/scheduler_thread_tasks.c3`
+      - `src/lisp/eval_repl_server_worker.c3`
+    - `c3c build` now completes and links `build/main`.
+
+- [x] `AUDIT-REPL-SECURITY-001` lock down unauthenticated remote REPL execution surfaces
+  - closure evidence:
+    - TCP REPL now enforces loopback bind (`localhost`/`127.0.0.1`/`::1`) and requires `OMNI_REPL_TCP_AUTH_TOKEN` at startup:
+      - `src/lisp/eval_repl_server.c3`
+    - per-request authorization gate added for non-`describe` operations with `auth` token matching:
+      - `src/lisp/eval_repl_server.c3`
+      - `src/lisp/eval_repl_server_protocol.c3`
+      - `src/lisp/eval_repl_server_protocol_parse.c3`
+      - `src/lisp/eval_repl_server_state.c3`
+      - `src/lisp/eval_repl_server_output.c3`
+    - regression coverage added:
+      - `src/lisp/tests_runtime_async_repl_server_groups.c3`
+    - `OMNI_LISP_TEST_SLICE=async OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` -> `pass=59 fail=0`.
+
+- [x] `AUDIT-DEDUCE-PARALLEL-RUNTIME-001` replace metadata-only parallel mode with truthful runtime state
+  - closure evidence:
+    - added shared runtime-truth field helper with explicit serial runtime counters:
+      - `src/lisp/deduce_parallel_runtime_truth.c3`
+    - updated analyze/explain/stats payloads to emit truthful runtime mode/counters:
+      - `src/lisp/deduce_rule_eval_analyze_payload_fields.c3`
+      - `src/lisp/deduce_rule_ops_explain_snapshot.c3`
+      - `src/lisp/deduce_schema_query_metadata_stats_parallel_fields.c3`
+    - updated assertions:
+      - `src/lisp/tests_deduce_query_admin_surface_tail.c3`
+      - `src/lisp/tests_deduce_rule_groups_explain.c3`
+    - targeted eval checks for analyze/stats runtime mode now return `true`.
+
+- [x] `AUDIT-DEDUCE-NAIVE-FALLBACK-001` reduce recursive component fallback to naive execution
+  - closure evidence:
+    - seminaive recursive aggregate path is now selected directly when seminaive recursive mode is enabled:
+      - `src/lisp/deduce_rule_eval_fixpoint_component_eval_non_txn.c3`
+      - `src/lisp/deduce_rule_eval_fixpoint_component_eval.c3`
+    - analyze/explain runtime-truth payloads remain aligned with serial execution counters.
+
+- [x] `AUDIT-NET-IPv6-001` remove IPv4-only DNS resolution limitation
+  - closure evidence:
+    - DNS address rendering now supports both `AF_INET` and `AF_INET6` and reports unsupported families explicitly:
+      - `src/lisp/async_tcp_transport_helpers.c3`
+      - `src/lisp/async_runtime_base.c3`
+      - `src/lisp/async_process_signal_dns.c3`
+    - deterministic coverage added for IPv4 + IPv6 addrinfo rendering:
+      - `src/lisp/tests_runtime_async_io_tls_groups.c3`
+    - `OMNI_LISP_TEST_SLICE=async ... --test-suite lisp` remains green (`pass=59 fail=0`).
 
 - [x] `STACK-AARCH64-CONT-001` arm64 language-level continuation multi-shot parity
   - closure evidence:

@@ -1,7 +1,7 @@
 module lisp;
 
 import std::core::mem;
-import std::core::mem::allocators;
+import std::core::mem::allocator;
 import std::io;
 import main;
 
@@ -78,7 +78,7 @@ fn void repl_server_worker_thread_entry(void* ctx_ptr) {
     ReplServerWorker* worker = (ReplServerWorker*)ctx_ptr;
     if (worker == null) return;
 
-    @pool_init(&allocators::LIBC_ALLOCATOR, 65536)
+    @pool_init(&allocator::LIBC_ALLOCATOR, 65536)
     {
         main::thread_registry_init();
         defer main::thread_registry_shutdown();
