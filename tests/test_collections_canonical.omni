@@ -1,0 +1,72 @@
+;; Canonical collection operation coverage
+
+(println "")
+(println "=== Canonical Collections Tests ===")
+
+(define nums [1 2 3])
+(define book {'title "Omni" 'pages 100})
+(define pair (cons "left" "right"))
+
+(if (= (length nums) 3)
+    (println "PASS array length")
+    (println "FAIL array length" (length nums)))
+
+(if (= (ref nums 1) 2)
+    (println "PASS array ref")
+    (println "FAIL array ref" (ref nums 1)))
+
+(push! nums 4)
+(if (= (length nums) 4)
+    (println "PASS array push!")
+    (println "FAIL array push!" (length nums)))
+
+(if (= (ref nums 3) 4)
+    (println "PASS array append value")
+    (println "FAIL array append value" (ref nums 3)))
+
+(set! nums 0 9)
+(if (= (ref nums 0) 9)
+    (println "PASS array set!")
+    (println "FAIL array set!" (ref nums 0)))
+
+(if (= (length book) 2)
+    (println "PASS dict length")
+    (println "FAIL dict length" (length book)))
+
+(if (has? book 'title)
+    (println "PASS dict has?")
+    (println "FAIL dict has?"))
+
+(if (string=? (ref book 'title) "Omni")
+    (println "PASS dict ref")
+    (println "FAIL dict ref" (ref book 'title)))
+
+(if (= (length (keys book)) 2)
+    (println "PASS dict keys")
+    (println "FAIL dict keys" (length (keys book))))
+
+(if (= (length (values book)) 2)
+    (println "PASS dict values")
+    (println "FAIL dict values" (length (values book))))
+
+(set! book 'pages 101)
+(if (= (ref book 'pages) 101)
+    (println "PASS dict set!")
+    (println "FAIL dict set!" (ref book 'pages)))
+
+(remove! book 'title)
+(if (has? book 'title)
+    (println "FAIL dict remove!")
+    (println "PASS dict remove!"))
+
+(if (= (length book) 1)
+    (println "PASS dict post-remove length")
+    (println "FAIL dict post-remove length" (length book)))
+
+(if (string=? (car pair) "left")
+    (println "PASS cons car")
+    (println "FAIL cons car" (car pair)))
+
+(if (string=? (cdr pair) "right")
+    (println "PASS cons cdr")
+    (println "FAIL cons cdr" (cdr pair)))

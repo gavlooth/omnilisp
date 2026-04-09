@@ -1,6 +1,6 @@
 # Omni Lisp Syntax Specification
 
-**Updated:** 2026-02-23
+**Updated:** 2026-04-09
 
 ---
 
@@ -321,16 +321,17 @@ Typed defines create method tables. Best match wins:
 
 ## 5. Path and Index Notation
 
-Leading-dot accessor shorthand:
+Removed leading-dot accessor forms (hard-error):
 
 ```lisp
-.name             ;; lookup lambda using key expression 'name
-.3                ;; lookup lambda using key expression 3
-.'key             ;; lookup lambda using key expression 'key
+.name
+.3
+.'key
+.[expr]
+('name user)
 ```
 
-Any expression after leading `.` is the key expression, including bracketed
-forms like `.[expr]` or `. [expr]`.
+Use `expr.name`, `expr.[key]`, and `ref` instead.
 
 Postfix index syntax:
 

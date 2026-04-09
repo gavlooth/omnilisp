@@ -1,0 +1,39 @@
+;; Canonical path/index access coverage
+
+(println "")
+(println "=== Canonical Access Tests ===")
+
+(define person {'name "Alice" 'age 30 'address {'city "NYC" 'zip 10001}})
+(define arr [10 20 30])
+(define word "hello")
+(define pair (cons 1 2))
+
+(if (= person.name (ref person 'name))
+    (println "PASS path name parity")
+    (println "FAIL path name parity" person.name (ref person 'name)))
+
+(if (= person.address.city (ref (ref person 'address) 'city))
+    (println "PASS nested path parity")
+    (println "FAIL nested path parity" person.address.city (ref (ref person 'address) 'city)))
+
+(if (= arr.[1] (ref arr 1))
+    (println "PASS array index parity")
+    (println "FAIL array index parity" arr.[1] (ref arr 1)))
+
+(if (= word.[1] (ref word 1))
+    (println "PASS string index parity")
+    (println "FAIL string index parity" word.[1] (ref word 1)))
+
+(if (= person.['name] (ref person 'name))
+    (println "PASS dict key parity")
+    (println "FAIL dict key parity" person.['name] (ref person 'name)))
+
+(if (= pair.car (car pair))
+    (println "PASS cons car parity")
+    (println "FAIL cons car parity" pair.car (car pair)))
+
+(if (= pair.cdr (cdr pair))
+    (println "PASS cons cdr parity")
+    (println "FAIL cons cdr parity" pair.cdr (cdr pair)))
+
+(println "Removed leading-dot callable forms stay rejected by the parser.")

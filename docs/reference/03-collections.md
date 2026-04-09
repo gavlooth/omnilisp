@@ -92,9 +92,9 @@ These work across collection types:
 
 Omni keeps related but distinct access operations:
 
-- `(ref coll key)` is the canonical dynamic collection lookup operation.
-- `expr.name` is a distinct path-step operation (module/instance/dict-symbol/cons step semantics), not a full `ref` desugar.
+- `expr.name` is a distinct path-step operation (module/instance/dict-symbol/cons step semantics).
 - `expr.[key]` is postfix dynamic/index access syntax aligned with `ref` collection lookup semantics.
+- `(ref coll key)` is the canonical dynamic collection lookup operation.
 
 Examples:
 
@@ -120,8 +120,9 @@ Removed forms:
 ('name user)
 ```
 
-These removed forms now hard-error. Use `expr.name`, `expr.[key]`, `ref`, or
-an explicit lambda like `(lambda (x) (ref x 'name))` for higher-order code.
+These removed forms now hard-error. Use `expr.name`, `expr.[key]`, or `ref`.
+For higher-order code, write the lambda explicitly:
+`(lambda (x) (ref x 'name))`.
 
 ### Postfix Index Access
 

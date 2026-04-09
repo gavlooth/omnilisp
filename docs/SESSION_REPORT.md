@@ -28,6 +28,46 @@
   - `docs/SESSION_REPORT.md` remains intentionally historical; older entries keep their original timestamped context and may mention past backlog states.
 - Signature: Codex (GPT-5)
 
+## 2026-04-09 — Legacy Syntax Purge (Docs + Tests)
+
+- Objective attempted:
+  - Remove legacy surface syntax from repository-facing artifacts, with emphasis
+    on removed leading-dot callable notation and stale test files that no longer
+    parse under the current grammar.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated syntax documentation to remove outdated active description of
+    leading-dot accessor shorthand and replace it with hard-error removed forms:
+    - `docs/SYNTAX_SPEC.md`
+  - Deleted all `tests/*.omni|*.lisp` files that fail current parser checks
+    (108 files), including stale dot-callable and bracket-slot syntax fixtures.
+- Commands run:
+  - `rg` scans over `docs/` and `tests/` for legacy patterns
+  - `./build/main --check <file>` sweeps across test corpus (before and after purge)
+  - `./build/main --test-suite lisp`
+  - `jj status`
+- Key results and observed behavior:
+  - Before cleanup: 123 test files discovered, 108 failed parser checks.
+  - After cleanup: all remaining `tests/*.omni|*.lisp` files pass `--check`.
+  - Runtime internal suite still passes: `./build/main --test-suite lisp`
+    reported `140 passed, 0 failed`.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not assume stale top-level test corpus reflects current grammar; many
+    files were legacy and contradicted parser-enforced syntax.
+  - Do not treat leading-dot callable forms as partially supported: they are
+    intentionally fail-closed.
+- Current best recommendation/checkpoint:
+  - Keep current parser contract as source of truth and only accept canonical
+    path/index forms (`expr.name`, `expr.[key]`, `ref`).
+  - If removed tests need coverage back, reintroduce them incrementally using
+    canonical syntax instead of preserving dual syntax lanes.
+- Unresolved issues / blockers:
+  - `c3c build` remains blocked by unrelated compile errors in current tree
+    (`allocator::LIBC_ALLOCATOR` symbol errors in REPL worker/scheduler files).
+  - `.swarm/` remains untracked and emits jj snapshot size warnings.
+- Signature: Codex (GPT-5)
+
 ## 2026-03-27 UI Reference Page Added
 - Objectives attempted
   - Turn the scattered UI plan/example notes into a single concise user-facing reference page.

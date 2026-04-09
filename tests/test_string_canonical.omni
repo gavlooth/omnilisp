@@ -1,0 +1,43 @@
+;; Canonical string primitive coverage
+
+(println "")
+(println "=== Canonical String Tests ===")
+
+(define sample "hello world")
+(define padded "  omni  ")
+
+(if (string=? (string-append "hello" " " "world") sample)
+    (println "PASS string-append")
+    (println "FAIL string-append"))
+
+(if (= (string-length sample) 11)
+    (println "PASS string-length")
+    (println "FAIL string-length" (string-length sample)))
+
+(if (string=? (string-upcase "Omni") "OMNI")
+    (println "PASS string-upcase")
+    (println "FAIL string-upcase"))
+
+(if (string=? (string-downcase "OMNI") "omni")
+    (println "PASS string-downcase")
+    (println "FAIL string-downcase"))
+
+(if (string=? (substring sample 0 5) "hello")
+    (println "PASS substring")
+    (println "FAIL substring" (substring sample 0 5)))
+
+(if (string=? (string-repeat "ha" 3) "hahaha")
+    (println "PASS string-repeat")
+    (println "FAIL string-repeat"))
+
+(if (string-contains? sample "world")
+    (println "PASS string-contains?")
+    (println "FAIL string-contains?"))
+
+(if (= (string-index-of sample "world") 6)
+    (println "PASS string-index-of")
+    (println "FAIL string-index-of" (string-index-of sample "world")))
+
+(if (string=? (string-trim padded) "omni")
+    (println "PASS string-trim")
+    (println "FAIL string-trim" (string-trim padded)))
