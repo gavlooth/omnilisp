@@ -37,6 +37,7 @@ fn bool Compiler.parse_program_exprs(Compiler* self, char[] full, List{Expr*}* e
     }
 
     if (p.has_error) {
+        exprs.free();
         usz source_line = p.error_line;
         usz line_offset = compiler_source_line_offset();
         if (source_line > line_offset) {

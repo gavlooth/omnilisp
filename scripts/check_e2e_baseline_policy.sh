@@ -6,21 +6,77 @@ cd "$(dirname "$0")/.."
 runner="scripts/run_e2e.sh"
 manifest="scripts/baselines/e2e_expected_diff.txt"
 metadata="scripts/baselines/e2e_expected_diff.tsv"
+entry_backend="src/entry_build_backend_compile.c3"
+expected_stage3_sources=(
+  'src/main*.c3'
+  'src/scope_region*.c3'
+  'src/stack_engine*.c3'
+  'src/ffi_bindings.c3'
+  'src/lisp/*.c3'
+  'src/pika/*.c3'
+  'build/e2e_test.c3'
+)
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
+check_stage3_source_parity() {
+  mapfile -t actual_stage3_sources < <(
+    awk '
+      /^stage3_compile_sources=\(/ { in_block=1; next }
+      in_block && /^\)/ { exit }
+      in_block {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "");
+        if ($0 != "") print $0
+      }
+    ' "$runner"
+  )
+
+  [[ ${#actual_stage3_sources[@]} -eq ${#expected_stage3_sources[@]} ]] \
+    || fail "${runner} no longer declares the expected Stage 3 source list"
+  for i in "${!expected_stage3_sources[@]}"; do
+    [[ "${actual_stage3_sources[$i]}" == "${expected_stage3_sources[$i]}" ]] \
+      || fail "${runner} Stage 3 source list drifted at position $((i + 1))"
+  done
+
+  grep -q -F '${stage3_compile_sources[@]}' "$runner" \
+    || fail "${runner} no longer compiles Stage 3 from the guarded source array"
+
+  grep -q -F 'append_matching_sources(&sources, "src", "main", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes main sources to AOT compile parity"
+  grep -q -F 'append_matching_sources(&sources, "src", "scope_region", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes scope_region sources to AOT compile parity"
+  grep -q -F 'append_matching_sources(&sources, "src", "stack_engine", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes stack_engine sources to AOT compile parity"
+  grep -q -F 'append_matching_sources(&sources, "src/lisp", "", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes lisp sources to AOT compile parity"
+  grep -q -F 'append_matching_sources(&sources, "src/pika", "", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes pika sources to AOT compile parity"
+  grep -q -F 'sources.push("src/ffi_bindings.c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes ffi_bindings.c3 to AOT compile parity"
+  grep -q -F 'sources.push(((ZString)temp_c3_path).str_view())' "$entry_backend" \
+    || fail "${entry_backend} no longer appends the generated e2e test source"
+}
+
+if [[ "${1:-}" == "--stage3-source-parity" ]]; then
+  check_stage3_source_parity
+  echo "OK: Stage 3 e2e compile source parity checks passed."
+  exit 0
+fi
+
 for file in "$runner" "$manifest" "$metadata"; do
   [[ -f "$file" ]] || fail "missing required file: $file"
 done
 
-rg -q 'e2e_expected_diff_manifest="scripts/baselines/e2e_expected_diff.txt"' "$runner" \
+check_stage3_source_parity
+
+grep -q -F 'e2e_expected_diff_manifest="scripts/baselines/e2e_expected_diff.txt"' "$runner" \
   || fail "${runner} does not point at ${manifest}"
-rg -q 'e2e_expected_diff_metadata="scripts/baselines/e2e_expected_diff.tsv"' "$runner" \
+grep -q -F 'e2e_expected_diff_metadata="scripts/baselines/e2e_expected_diff.tsv"' "$runner" \
   || fail "${runner} does not point at ${metadata}"
-rg -q 'cmp -s build/e2e_diff.txt "\$\{e2e_expected_diff_manifest\}"' "$runner" \
+grep -q -F 'cmp -s build/e2e_diff.txt "${e2e_expected_diff_manifest}"' "$runner" \
   || fail "${runner} no longer matches diff output against the tracked manifest"
 
 metadata_header="$(head -n 1 "$metadata")"

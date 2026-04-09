@@ -3,8 +3,211 @@ module lisp;
 
 import std::io;
 
+
+fn void run_http_request_fiber_path_test(Interp* interp, int* pass, int* fail) {
+    test_truthy(interp, "http-request in fiber via libuv tcp path",
+        "(block "
+        "  (define hf (spawn (lambda () "
+        "    (define p (+ 36300 (% (time-ms) 20000))) "
+        "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
+        "    (define sf (spawn (lambda () "
+        "      (define c (tcp-accept listener)) "
+        "      (try (lambda (ignored) (tcp-read-timeout c 1000)) (lambda (e) \"\")) "
+        "      (tcp-write c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
+        "      (tcp-close c)))) "
+        "    (define cf (spawn (lambda () "
+        "      (http-request \"GET\" (string-append \"http://127.0.0.1:\" (number->string p) \"/q\") \"\" \"\")))) "
+        "    (define res (await cf)) "
+        "    (await sf) "
+        "    (tcp-close listener) "
+        "    (and (= res.status 201) (= res.body \"yes\"))))) "
+        "  (await hf))",
+        pass, fail);
+}
+
+fn void run_http_crud_duplicate_post_reject_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (load \"examples/deduce_crud_server.omni\") "
+        "  (define item-id (+ 31000 (% (time-ms) 100000))) "
+        "  (define r1 (pipeline/result->response (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id item-id 'name \"race\" 'qty 1}}))) "
+        "  (define r2 (pipeline/result->response (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id item-id 'name \"race-dup\" 'qty 2}}))) "
+        "  (define matches (deduce 'query items (lambda (row) (= (ref row 'id) item-id)))) "
+        "  {'count (length matches) "
+        "   'r1-status r1.status 'r1-error r1.error "
+        "   'r2-status r2.status 'r2-error r2.error})",
+        interp
+    );
+
+    if (!r.error.has_error && r.value != null && r.value.tag == HASHMAP && r.value.hashmap_val != null) {
+        Value* count_key = make_symbol(interp, interp.symbols.intern("count"));
+        Value* r1_status_key = make_symbol(interp, interp.symbols.intern("r1-status"));
+        Value* r1_error_key = make_symbol(interp, interp.symbols.intern("r1-error"));
+        Value* r2_status_key = make_symbol(interp, interp.symbols.intern("r2-status"));
+        Value* r2_error_key = make_symbol(interp, interp.symbols.intern("r2-error"));
+        Value* count_v = hashmap_get(r.value.hashmap_val, count_key);
+        Value* r1_status_v = hashmap_get(r.value.hashmap_val, r1_status_key);
+        Value* r1_error_v = hashmap_get(r.value.hashmap_val, r1_error_key);
+        Value* r2_status_v = hashmap_get(r.value.hashmap_val, r2_status_key);
+        Value* r2_error_v = hashmap_get(r.value.hashmap_val, r2_error_key);
+
+        bool ok = count_v != null && count_v.tag == INT && count_v.int_val == 1 &&
+            deduce_test_string_equals(r1_status_v, "ok") &&
+            deduce_test_string_equals(r2_error_v, "item already exists");
+        if (ok) {
+            emit_pass_literal("[PASS] crud pipeline duplicate-post rejects existing id");
+            (*pass)++;
+            return;
+        }
+
+        char[512] rendered = {};
+        usz len = print_value_to_buf(r.value, &interp.symbols, &rendered, rendered.len);
+        if (len > 0) {
+            io::printfn("[FAIL] crud pipeline duplicate-post rejects existing id (payload=%s)", (ZString)&rendered);
+        } else {
+            io::printfn("[FAIL] crud pipeline duplicate-post rejects existing id (payload=<empty>)");
+        }
+        (*fail)++;
+        return;
+    }
+
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] crud pipeline duplicate-post rejects existing id");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] crud pipeline duplicate-post rejects existing id (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printfn("[FAIL] crud pipeline duplicate-post rejects existing id (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+        }
+        (*fail)++;
+    }
+}
+
+fn void run_http_crud_concurrent_write_guard_test(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(block "
+        "  (load \"examples/deduce_crud_server.omni\") "
+        "  (await (spawn (lambda () "
+        "    (atomic-cas! crud-write-hold-ms 0 25) "
+        "    (define item-id (+ 41000 (% (time-ms) 100000))) "
+        "    (define slow (spawn (lambda () "
+        "      (pipeline/result->response (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id item-id 'name \"slow\" 'qty 1}}))))) "
+        "    (async-sleep 1) "
+        "    (define fast (spawn (lambda () "
+        "      (pipeline/result->response (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id item-id 'name \"fast\" 'qty 2}}))))) "
+        "    (define r1 (await slow)) "
+        "    (define r2 (await fast)) "
+        "    (atomic-cas! crud-write-hold-ms 25 0) "
+        "    (define matches (deduce 'query items (lambda (row) (= (ref row 'id) item-id)))) "
+        "    {'count (length matches) 'r1-status r1.status 'r1-error r1.error 'r2-status r2.status 'r2-error r2.error}))) )",
+        interp
+    );
+
+    if (!r.error.has_error && r.value != null && r.value.tag == HASHMAP && r.value.hashmap_val != null) {
+        Value* count_key = make_symbol(interp, interp.symbols.intern("count"));
+        Value* r1_status_key = make_symbol(interp, interp.symbols.intern("r1-status"));
+        Value* r1_error_key = make_symbol(interp, interp.symbols.intern("r1-error"));
+        Value* r2_status_key = make_symbol(interp, interp.symbols.intern("r2-status"));
+        Value* r2_error_key = make_symbol(interp, interp.symbols.intern("r2-error"));
+        Value* count_v = hashmap_get(r.value.hashmap_val, count_key);
+        Value* r1_status_v = hashmap_get(r.value.hashmap_val, r1_status_key);
+        Value* r1_error_v = hashmap_get(r.value.hashmap_val, r1_error_key);
+        Value* r2_status_v = hashmap_get(r.value.hashmap_val, r2_status_key);
+        Value* r2_error_v = hashmap_get(r.value.hashmap_val, r2_error_key);
+
+        bool r1_ok = deduce_test_string_equals(r1_status_v, "ok");
+        bool r2_ok = deduce_test_string_equals(r2_status_v, "ok");
+        bool r1_conflict = deduce_test_string_equals(r1_error_v, "crud write already in progress") ||
+                           deduce_test_string_equals(r1_error_v, "item already exists");
+        bool r2_conflict = deduce_test_string_equals(r2_error_v, "crud write already in progress") ||
+                           deduce_test_string_equals(r2_error_v, "item already exists");
+        bool one_ok_one_conflict =
+            count_v != null && count_v.tag == INT && count_v.int_val == 1 &&
+            ((r1_ok && r2_conflict) || (r2_ok && r1_conflict));
+
+        if (one_ok_one_conflict) {
+            emit_pass_literal("[PASS] crud pipeline concurrent write returns normalized conflict");
+            (*pass)++;
+            return;
+        }
+
+        char[512] rendered = {};
+        usz len = print_value_to_buf(r.value, &interp.symbols, &rendered, rendered.len);
+        if (len > 0) {
+            io::printfn("[FAIL] crud pipeline concurrent write returns normalized conflict (payload=%s)", (ZString)&rendered);
+        } else {
+            io::printfn("[FAIL] crud pipeline concurrent write returns normalized conflict (payload=<empty>)");
+        }
+        (*fail)++;
+        return;
+    }
+
+    if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+        emit_pass_literal("[PASS] crud pipeline concurrent write returns normalized conflict");
+        (*pass)++;
+    } else {
+        if (r.error.has_error) {
+            io::printfn("[FAIL] crud pipeline concurrent write returns normalized conflict (error: %s)", (ZString)r.error.message[:256]);
+        } else {
+            io::printfn("[FAIL] crud pipeline concurrent write returns normalized conflict (tag=%d)", r.value != null ? (int)r.value.tag : -1);
+        }
+        (*fail)++;
+    }
+}
+
 fn void run_http_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("HTTP Tests");
+
+    {
+        ParsedUrl parsed = {};
+        bool rejected_trailing_port_garbage = false;
+        bool rejected_empty_port = false;
+        if (catch err = parse_url("http://example.com:80oops", &parsed)) {
+            rejected_trailing_port_garbage = true;
+        }
+        if (catch err = parse_url("http://example.com:/path", &parsed)) {
+            rejected_empty_port = true;
+        }
+        if (rejected_trailing_port_garbage && rejected_empty_port) {
+            emit_pass_literal("[PASS] http url parser rejects malformed port suffixes");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] http url parser rejects malformed port suffixes");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* parsed = parse_response("HTTP/1.1 200 OK\r\nX-Test: yes\r\nConnection: close\r\n\r\nbody", interp);
+        Value* headers_key = make_symbol(interp, interp.symbols.intern("headers"));
+        Value* body_key = make_symbol(interp, interp.symbols.intern("body"));
+        Value* headers_v = parsed != null && parsed.tag == HASHMAP && parsed.hashmap_val != null
+            ? hashmap_get(parsed.hashmap_val, headers_key)
+            : null;
+        Value* body_v = parsed != null && parsed.tag == HASHMAP && parsed.hashmap_val != null
+            ? hashmap_get(parsed.hashmap_val, body_key)
+            : null;
+        bool ok = headers_v != null &&
+            is_string(headers_v) &&
+            headers_v.str_len == "X-Test: yes\r\nConnection: close".len &&
+            headers_v.str_chars[headers_v.str_len - 1] != '\r' &&
+            body_v != null &&
+            is_string(body_v) &&
+            body_v.str_chars[:body_v.str_len] == "body";
+        if (ok) {
+            emit_pass_literal("[PASS] http response parser trims header delimiter residue");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] http response parser trims header delimiter residue (headers_len=%d last=%d body_len=%d)",
+                headers_v != null && is_string(headers_v) ? (int)headers_v.str_len : -1,
+                headers_v != null && is_string(headers_v) && headers_v.str_len > 0 ? (int)headers_v.str_chars[headers_v.str_len - 1] : -1,
+                body_v != null && is_string(body_v) ? (int)body_v.str_len : -1
+            );
+            (*fail)++;
+        }
+    }
 
     // http-get is defined (bound in env)
     test_tag(interp, "http-get is bound",
@@ -88,24 +291,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "  (await hf))",
         pass, fail);
 
-    test_truthy(interp, "http-request in fiber via libuv tcp path",
-        "(block "
-        "  (define hf (spawn (lambda () "
-        "    (define p (+ 36300 (% (time-ms) 20000))) "
-        "    (define listener (tcp-listen \"127.0.0.1\" p 8)) "
-        "    (define sf (spawn (lambda () "
-        "      (define c (tcp-accept listener)) "
-        "      (try (lambda (ignored) (tcp-read-timeout c 1000)) (lambda (e) \"\")) "
-        "      (tcp-write c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
-        "      (tcp-close c)))) "
-        "    (define cf (spawn (lambda () "
-        "      (http-request \"GET\" (string-append \"http://127.0.0.1:\" (number->string p) \"/q\") \"\" \"\")))) "
-        "    (define res (await cf)) "
-        "    (await sf) "
-        "    (tcp-close listener) "
-        "    (and (= res.status 201) (= res.body \"yes\"))))) "
-        "  (await hf))",
-        pass, fail);
+    run_group_isolated(&run_http_request_fiber_path_test, pass, fail);
 
     // Finwatch normal poll tick should also complete inside a spawned fiber
     // when the fetchers are stubbed, guarding the real startup path without
@@ -377,42 +563,14 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         }
     }
 
-    // Example CRUD pipeline concurrency: duplicate POST race on same id.
-    {
-        EvalResult r = run(
-            "(block "
-            "  (load \"examples/deduce_crud_server.omni\") "
-            "  (define c1 "
-            "    (spawn (lambda () "
-            "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
-            "  (define c2 "
-            "    (spawn (lambda () "
-            "      (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id 31 'name \"race\" 'qty 1}})))) "
-            "  (define r1 (pipeline/result->response (await c1))) "
-            "  (define r2 (pipeline/result->response (await c2))) "
-            "  (define r1-ok (= r1.status \"ok\")) "
-            "  (define r1-dup (= r1.error \"item already exists\")) "
-            "  (define r2-ok (= r2.status \"ok\")) "
-            "  (define r2-dup (= r2.error \"item already exists\")) "
-            "  (define cnt (deduce 'count items)) "
-            "  (and (= cnt 1) "
-            "       (or (and r1-ok r2-dup) (and r2-ok r1-dup)))) )",
-            interp
-        );
-        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
-            emit_pass_literal("[PASS] crud pipeline duplicate-post race");
-            (*pass)++;
-        } else {
-            if (r.error.has_error) {
-                io::printfn("[FAIL] crud pipeline duplicate-post race (error: %s)", (ZString)r.error.message[:256]);
-            } else {
-                io::printfn("[FAIL] crud pipeline duplicate-post race (tag=%d)", r.value != null ? (int)r.value.tag : -1);
-            }
-            (*fail)++;
-        }
-    }
+    // Broad HTTP coverage keeps deterministic duplicate-id rejection here.
+    run_group_isolated(&run_http_crud_duplicate_post_reject_test, pass, fail);
 }
 
 fn void run_http_tests_isolated(int* pass, int* fail) {
     run_group_isolated(&run_http_tests, pass, fail);
+}
+
+fn void run_http_crud_concurrency_tests_isolated(int* pass, int* fail) {
+    run_group_isolated(&run_http_crud_concurrent_write_guard_test, pass, fail);
 }

@@ -25,6 +25,29 @@ fn void Compiler.emit_lambda_param_unpack(Compiler* self, LambdaDef* def, bool i
 
 fn void Compiler.emit_lambda_param_unpack_list(Compiler* self, LambdaDef* def) {
     self.emit_indent();
+    self.emit("usz _arg_count = 0;\n");
+    self.emit_indent();
+    self.emit("lisp::Value* _arg_count_error = aot::count_arg_list(_arg_list, &_arg_count);\n");
+    self.emit_indent();
+    self.emit("if (_arg_count_error != null) return _arg_count_error;\n");
+    if (def.has_rest) {
+        if (def.param_count > 0) {
+            self.emit_indent();
+            self.emit("if (_arg_count < ");
+            self.emit_usz(def.param_count);
+            self.emit(") return aot::make_variadic_min_arity_error(");
+            self.emit_usz(def.param_count);
+            self.emit(", _arg_count);\n");
+        }
+    } else {
+        self.emit_indent();
+        self.emit("if (_arg_count < ");
+        self.emit_usz(def.param_count);
+        self.emit(") return aot::make_arity_error(");
+        self.emit_usz(def.param_count);
+        self.emit(", _arg_count);\n");
+    }
+    self.emit_indent();
     self.emit("lisp::Value* _curr = _arg_list;\n");
     for (usz pi = 0; pi < def.param_count; pi++) {
         self.mark_declared(def.params[pi]);
@@ -69,6 +92,16 @@ fn void Compiler.emit_lambda_body_return(Compiler* self, LambdaDef* def) {
         return;
     }
     usz body_r = self.compile_to_temp_tail(def.body);
+    if (!def.has_rest && def.param_count > 1) {
+        self.emit_indent();
+        self.emit("if (_arg_count > ");
+        self.emit_usz(def.param_count);
+        self.emit(") return aot::apply_multi(");
+        self.emit_temp_ref(body_r);
+        self.emit(", _curr, (long)(_arg_count - ");
+        self.emit_usz(def.param_count);
+        self.emit("));\n");
+    }
     self.emit_indent();
     self.emit("return ");
     self.emit_temp_ref(body_r);

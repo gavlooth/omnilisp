@@ -3,14 +3,276 @@ module lisp;
 import std::core::mem;
 import main;
 
-fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp) {
+fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    Value* first_arg = copy_to_parent_with_fault(v.partial_val.first_arg, interp, fault_out);
+    if (v.partial_val.first_arg != null && (first_arg == null || is_error(first_arg))) {
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null
+            ? null
+            : (first_arg == null
+                ? raise_error(interp, "boundary: failed to copy partial primitive first arg")
+                : first_arg);
+    }
+
+    Value* second_arg = copy_to_parent_with_fault(v.partial_val.second_arg, interp, fault_out);
+    if (v.partial_val.second_arg != null && (second_arg == null || is_error(second_arg))) {
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null
+            ? null
+            : (second_arg == null
+                ? raise_error(interp, "boundary: failed to copy partial primitive second arg")
+                : second_arg);
+    }
+
     Value* result = interp.alloc_value();
+    if (result == null) {
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate partial primitive copy value");
+    }
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = v.partial_val.func;
     result.partial_val.remaining = v.partial_val.remaining;
-    result.partial_val.first_arg = copy_to_parent(v.partial_val.first_arg, interp);
-    result.partial_val.second_arg = copy_to_parent(v.partial_val.second_arg, interp);
+    result.partial_val.first_arg = first_arg;
+    result.partial_val.second_arg = second_arg;
     return result;
+}
+
+fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy value");
+    }
+    result.tag = ARRAY;
+    result.array_val = null;
+
+    Array* src_arr = v.array_val;
+    if (src_arr == null) {
+        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    Array* dst_arr = (Array*)mem::malloc(Array.sizeof);
+    if (dst_arr == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+    }
+
+    usz cap = src_arr.capacity;
+    if (cap < src_arr.length) cap = src_arr.length;
+    if (cap < 4) cap = 4;
+
+    dst_arr.capacity = cap;
+    dst_arr.length = src_arr.length;
+    dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
+    if (dst_arr.items == null) {
+        mem::free(dst_arr);
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+    }
+
+    for (usz i = 0; i < src_arr.length; i++) {
+        Value* copied = copy_to_parent_with_fault(src_arr.items[i], interp, fault_out);
+        if (src_arr.items[i] != null && (copied == null || is_error(copied))) {
+            mem::free(dst_arr.items);
+            mem::free(dst_arr);
+            if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            }
+            return fault_out != null
+                ? null
+                : (copied == null
+                    ? raise_error(interp, "boundary: failed to copy array item")
+                    : copied);
+        }
+        dst_arr.items[i] = copied;
+    }
+
+    result.array_val = dst_arr;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy value");
+    }
+    result.tag = v.tag;
+    result.hashmap_val = null;
+
+    HashMap* src_map = v.hashmap_val;
+    if (src_map == null) {
+        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    HashMap* dst_map = (HashMap*)mem::malloc(HashMap.sizeof);
+    if (dst_map == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+    }
+    dst_map.capacity = src_map.capacity;
+    dst_map.count = src_map.count;
+    dst_map.mask = src_map.mask;
+    dst_map.entries = null;
+
+    if (src_map.capacity > 0) {
+        dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
+        if (dst_map.entries == null) {
+            mem::free(dst_map);
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+        }
+
+        for (uint i = 0; i < src_map.capacity; i++) {
+            HashEntry* src_e = &src_map.entries[i];
+            HashEntry* dst_e = &dst_map.entries[i];
+            dst_e.key = null;
+            dst_e.value = null;
+            if (src_e.key != null) {
+                Value* copied_key = copy_to_parent_with_fault(src_e.key, interp, fault_out);
+                if (copied_key == null || is_error(copied_key)) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                        *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+                    }
+                    return fault_out != null
+                        ? null
+                        : (copied_key == null
+                            ? raise_error(interp, "boundary: failed to copy hashmap key")
+                            : copied_key);
+                }
+                Value* copied_value = copy_to_parent_with_fault(src_e.value, interp, fault_out);
+                if (src_e.value != null && (copied_value == null || is_error(copied_value))) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                        *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+                    }
+                    return fault_out != null
+                        ? null
+                        : (copied_value == null
+                            ? raise_error(interp, "boundary: failed to copy hashmap value")
+                            : copied_value);
+                }
+                dst_e.key = copied_key;
+                dst_e.value = copied_value;
+            }
+        }
+    }
+
+    result.hashmap_val = dst_map;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy value");
+    }
+    result.tag = METHOD_TABLE;
+    result.method_table_val = null;
+
+    MethodTable* src_mt = v.method_table_val;
+    if (src_mt == null) {
+        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    MethodTable* dst_mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+    if (dst_mt == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+    }
+    dst_mt.name = src_mt.name;
+    dst_mt.entry_count = src_mt.entry_count;
+    dst_mt.capacity = src_mt.capacity;
+    if (dst_mt.capacity < dst_mt.entry_count) dst_mt.capacity = dst_mt.entry_count;
+    dst_mt.entries = null;
+    dst_mt.fallback = null;
+
+    if (dst_mt.capacity > 0) {
+        dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
+        if (dst_mt.entries == null) {
+            mem::free(dst_mt);
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+        }
+    }
+
+    for (usz i = 0; i < dst_mt.entry_count; i++) {
+        method_signature_init_empty(&dst_mt.entries[i].sig);
+        if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
+            mem::free(dst_mt.entries);
+            mem::free(dst_mt);
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to copy method signature");
+        }
+        Value* copied_impl = copy_to_parent_with_fault(src_mt.entries[i].implementation, interp, fault_out);
+        if (src_mt.entries[i].implementation != null && (copied_impl == null || is_error(copied_impl))) {
+            mem::free(dst_mt.entries);
+            mem::free(dst_mt);
+            if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            }
+            return fault_out != null
+                ? null
+                : (copied_impl == null
+                    ? raise_error(interp, "boundary: failed to copy method implementation")
+                    : copied_impl);
+        }
+        dst_mt.entries[i].implementation = copied_impl;
+    }
+
+    Value* copied_fallback = copy_to_parent_with_fault(src_mt.fallback, interp, fault_out);
+    if (src_mt.fallback != null && (copied_fallback == null || is_error(copied_fallback))) {
+        mem::free(dst_mt.entries);
+        mem::free(dst_mt);
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null
+            ? null
+            : (copied_fallback == null
+                ? raise_error(interp, "boundary: failed to copy method fallback")
+                : copied_fallback);
+    }
+    dst_mt.fallback = copied_fallback;
+
+    result.method_table_val = dst_mt;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* copy_shared_wrapper_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    switch (v.tag) {
+        case HASHMAP:
+        case SET:
+            return copy_hashmap_backed_to_parent(v, interp, fault_out);
+        case ARRAY:
+            return copy_array_to_parent(v, interp, fault_out);
+        case METHOD_TABLE:
+            return copy_method_table_to_parent(v, interp, fault_out);
+        default:
+            return v;
+    }
 }
 
 fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
@@ -32,36 +294,69 @@ fn Value* copy_primitive_to_parent(
     BoundaryCopyFault* fault_out = null
 ) {
     if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
-    Value* result = interp.alloc_value();
-    result.tag = PRIMITIVE;
-    result.prim_val = null;
-    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
 
     Primitive* src_prim = v.prim_val;
-    if (src_prim == null) return result;
+    if (src_prim == null) {
+        Value* result = interp.alloc_value();
+        if (result == null) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy value");
+        }
+        result.tag = PRIMITIVE;
+        result.prim_val = null;
+        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
     if (primitive_has_opaque_user_data(v)) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
-        return null;
+        return fault_out != null ? null : raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
     }
 
     Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
     if (dst_prim == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return null;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy");
     }
     if (!primitive_clone_plain_header(dst_prim, src_prim)) {
         mem::free(dst_prim);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
-        return null;
+        return fault_out != null ? null : raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
     }
 
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        mem::free(dst_prim);
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy value");
+    }
+    result.tag = PRIMITIVE;
+    result.prim_val = null;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
     result.prim_val = dst_prim;
     return result;
 }
 
-fn Value* copy_iterator_to_parent(Value* v, Interp* interp) {
-    Value* promoted_thunk = copy_to_parent(v.iterator_val, interp);
+fn Value* copy_iterator_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
+    Value* promoted_thunk = copy_to_parent_with_fault(v.iterator_val, interp, fault_out);
+    if (v.iterator_val != null && (promoted_thunk == null || is_error(promoted_thunk))) {
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null
+            ? null
+            : (promoted_thunk == null
+                ? raise_error(interp, "boundary: failed to copy iterator thunk")
+                : promoted_thunk);
+    }
     Value* result = interp.alloc_value();
+    if (result == null) {
+        if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+            *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        }
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate iterator copy value");
+    }
     result.tag = ITERATOR;
     result.iterator_val = promoted_thunk;
     return result;

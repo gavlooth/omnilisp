@@ -125,36 +125,36 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* proc_handle_v = make_process_handle(interp, uv_process);
-    if (proc_handle_v == null) {
+    if (proc_handle_v == null || is_error(proc_handle_v)) {
         if (stdin_fd >= 0) c_close_fd(stdin_fd);
         if (stdout_fd >= 0) c_close_fd(stdout_fd);
         if (stderr_fd >= 0) c_close_fd(stderr_fd);
-        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        return proc_handle_v != null ? proc_handle_v : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
 
     Value* stdin_h = make_fs_handle(interp, stdin_fd);
-    if (stdin_h == null) {
+    if (stdin_h == null || is_error(stdin_h)) {
         ProcessHandle* ph = get_process_handle(proc_handle_v);
         close_process_handle(ph);
         if (stdout_fd >= 0) c_close_fd(stdout_fd);
         if (stderr_fd >= 0) c_close_fd(stderr_fd);
-        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        return stdin_h != null ? stdin_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
     Value* stdout_h = make_fs_handle(interp, stdout_fd);
-    if (stdout_h == null) {
+    if (stdout_h == null || is_error(stdout_h)) {
         close_fs_like_handle(stdin_h, interp);
         ProcessHandle* ph = get_process_handle(proc_handle_v);
         close_process_handle(ph);
         if (stderr_fd >= 0) c_close_fd(stderr_fd);
-        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        return stdout_h != null ? stdout_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
     Value* stderr_h = make_fs_handle(interp, stderr_fd);
-    if (stderr_h == null) {
+    if (stderr_h == null || is_error(stderr_h)) {
         close_fs_like_handle(stdin_h, interp);
         close_fs_like_handle(stdout_h, interp);
         ProcessHandle* ph = get_process_handle(proc_handle_v);
         close_process_handle(ph);
-        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        return stderr_h != null ? stderr_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
 
     ProcessHandle* ph = get_process_handle(proc_handle_v);

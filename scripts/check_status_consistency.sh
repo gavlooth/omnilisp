@@ -62,7 +62,7 @@ todo_count="$(extract_todo_count)"
 [[ -n "$todo_count" ]] || fail "could not parse Current actionable count from $todo_file"
 
 if [[ "$todo_count" == "0" ]]; then
-  if ! grep -Fq -- "- none currently;" "$todo_file"; then
+  if ! grep -Eiq -- '^[[:space:]]*-[[:space:]]*(none currently;|none\.)[[:space:]]*$' "$todo_file"; then
     fail "TODO.md reports 0 actionable items but does not explicitly declare that no live blocker queue is open"
   fi
 fi

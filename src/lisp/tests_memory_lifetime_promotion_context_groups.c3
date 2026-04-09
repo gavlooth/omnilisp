@@ -240,6 +240,92 @@ fn void run_memory_lifetime_promotion_abort_nested_releasing_copy_test(Interp* i
     }
 }
 
+fn void run_memory_lifetime_nested_escape_promotion_fail_closed_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: nested CONS/PARTIAL_PRIM/ITERATOR escape promotion fails closed
+    // when it encounters an opaque primitive payload transitively.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: nested escape promotion fail-closed");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = foreign;
+        Value* opaque = interp.alloc_value();
+        opaque.tag = PRIMITIVE;
+        main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        if (opaque_prim == null || opaque_payload == null) {
+            if (opaque_prim != null) mem::free(opaque_prim);
+            if (opaque_payload != null) mem::free(opaque_payload);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: nested escape promotion fail-closed (setup opaque)");
+            (*fail)++;
+            return;
+        }
+        *opaque_prim = {};
+        *opaque_payload = 801;
+        opaque_prim.name[0] = 'e';
+        opaque_prim.name[1] = 0;
+        opaque_prim.arity = 2;
+        opaque_prim.tag = 801;
+        opaque_prim.user_data = (void*)opaque_payload;
+        opaque.prim_val = opaque_prim;
+
+        Value* partial = interp.alloc_value();
+        partial.tag = PARTIAL_PRIM;
+        partial.partial_val.func = &prim_add;
+        partial.partial_val.remaining = 1;
+        partial.partial_val.first_arg = opaque;
+        partial.partial_val.second_arg = make_int(interp, 9);
+
+        Value* iter = make_iterator(interp, partial);
+        Value* cons = make_cons(interp, iter, make_nil(interp));
+
+        interp.current_scope = target;
+        PromotionContext ctx = {};
+        promotion_context_begin(interp, &ctx, 32);
+
+        Value* cons_promoted = promote_to_escape(cons, interp);
+        Value* partial_promoted = promote_to_escape(partial, interp);
+        Value* iter_promoted = promote_to_escape(iter, interp);
+
+        promotion_context_end(interp, &ctx);
+
+        bool cons_ok = cons_promoted != null &&
+                       cons_promoted.tag == ERROR;
+        bool partial_ok = partial_promoted != null &&
+                          partial_promoted.tag == ERROR;
+        bool iter_ok = iter_promoted != null &&
+                       iter_promoted.tag == ERROR;
+
+        main::scope_release(foreign);
+
+        interp.current_scope = saved;
+        main::scope_release(target);
+
+        bool ok = cons_ok && partial_ok && iter_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: nested escape promotion fail-closed");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: nested escape promotion fail-closed (cons_ok=%s partial_ok=%s iter_ok=%s)",
+                cons_ok ? "yes" : "no",
+                partial_ok ? "yes" : "no",
+                iter_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_nested_promotion_context_stack_test(Interp* interp, int* pass, int* fail) {
     // Invariant: nested promotion contexts preserve stack discipline and memo behavior.
     {
@@ -399,6 +485,7 @@ fn void run_memory_lifetime_promotion_context_tests(Interp* interp, int* pass, i
     run_memory_lifetime_scope_chain_cache_test(interp, pass, fail);
     run_memory_lifetime_promotion_abort_fallback_test(interp, pass, fail);
     run_memory_lifetime_promotion_abort_nested_releasing_copy_test(interp, pass, fail);
+    run_memory_lifetime_nested_escape_promotion_fail_closed_test(interp, pass, fail);
     run_memory_lifetime_nested_promotion_context_stack_test(interp, pass, fail);
     run_memory_lifetime_promotion_abort_copy_fallback_stress_test(interp, pass, fail);
 }

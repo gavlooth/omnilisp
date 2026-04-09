@@ -416,6 +416,7 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
     bool run_deduce = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "deduce");
     bool run_scheduler = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "scheduler");
     bool run_http = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "http");
+    bool run_http_crud = lisp_slice_matches(active_slice, "http-crud");
     bool run_atomic = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "atomic");
     bool run_compiler = lisp_slice_any(active_slice) || lisp_slice_matches(active_slice, "compiler");
     bool run_any_unified =
@@ -427,7 +428,7 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
         run_advanced || run_escape_scope || run_limit_busting || run_tco_recycling ||
         run_closure_lifecycle || run_pika || run_unicode || run_compression ||
         run_data_format || run_json || run_async || run_reader_dispatch ||
-        run_schema || run_deduce || run_scheduler || run_http || run_atomic;
+        run_schema || run_deduce || run_scheduler || run_http || run_http_crud || run_atomic;
 
     if (run_teardown_regression) {
         emit_pass_literal("[PASS] teardown regression loads stdlib and reaches deterministic interpreter teardown");
@@ -472,6 +473,7 @@ fn bool run_lisp_tests(int* out_pass, int* out_fail) {
         if (run_deduce) run_deduce_tests(interp, &pass, &fail);
         if (run_scheduler) run_scheduler_tests_isolated(&pass, &fail);
         if (run_http) run_http_tests_isolated(&pass, &fail);
+        if (run_http_crud) run_http_crud_concurrency_tests_isolated(&pass, &fail);
         if (run_atomic) run_atomic_tests_isolated(&pass, &fail);
     }
 

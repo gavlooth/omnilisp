@@ -27,8 +27,7 @@ fn Value* make_tls_handle_val(Interp* interp, TlsHandle* th, char[] oom_code, ch
 }
 
 fn TlsHandle* get_tls_handle(Value* v) {
-    if (v == null || v.tag != FFI_HANDLE) return null;
-    if (v.ffi_val == null) return null;
+    if (!ffi_handle_name_equals(v, "tls-handle")) return null;
     return (TlsHandle*)v.ffi_val.lib_handle;
 }
 

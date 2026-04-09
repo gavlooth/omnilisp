@@ -208,6 +208,41 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(fs-unlink p) "
         "(dict? st))",
         pass, fail);
+
+    {
+        Value* fs_handle_v = make_fs_handle(interp, 987654322);
+        Value* tcp_handle_v = make_tcp_stream_handle(interp, -1);
+        Value* udp_handle_v = make_udp_handle(interp, -1);
+        bool ok = fs_handle_v != null &&
+            fs_handle_v.tag != ERROR &&
+            get_tcp_handle(fs_handle_v) == null &&
+            get_udp_handle(fs_handle_v) == null &&
+            get_tls_handle(fs_handle_v) == null &&
+            get_fs_handle(tcp_handle_v) == null &&
+            get_fs_handle(udp_handle_v) == null;
+        FsHandle* fs_handle = get_fs_handle(fs_handle_v);
+        if (fs_handle != null) {
+            fs_handle.open = false;
+            fs_handle.fd = -1;
+        }
+        TcpHandle* tcp_handle = get_tcp_handle(tcp_handle_v);
+        if (tcp_handle != null) {
+            tcp_handle.connected = false;
+            tcp_handle.fd = -1;
+        }
+        UdpHandle* udp_handle = get_udp_handle(udp_handle_v);
+        if (udp_handle != null) {
+            udp_handle.open = false;
+            udp_handle.fd = -1;
+        }
+        if (ok) {
+            emit_pass_literal("[PASS] ffi handle getters reject mismatched handle names");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi handle getters reject mismatched handle names");
+            (*fail)++;
+        }
+    }
     {
         Value* fh_value = make_fs_handle(interp, 987654321);
         FsHandle* fh = get_fs_handle(fh_value);

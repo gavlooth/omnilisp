@@ -22,7 +22,7 @@ fn void fs_handle_finalizer(void* handle) {
 }
 
 fn FsHandle* get_fs_handle(Value* v) {
-    if (v == null || v.tag != FFI_HANDLE || v.ffi_val == null) return null;
+    if (!ffi_handle_name_equals(v, "fs-handle")) return null;
     return (FsHandle*)v.ffi_val.lib_handle;
 }
 

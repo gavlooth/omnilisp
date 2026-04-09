@@ -1,5 +1,173 @@
 ## 2026-04-09
 
+- Closed the shared-wrapper boundary hardening lane and the integration
+  blockers that surfaced while validating it:
+  - `src/lisp/eval_promotion_copy.c3`,
+    `src/lisp/eval_promotion_copy_route_helpers.c3`,
+    `src/lisp/eval_promotion_escape_leaf.c3`, and
+    `src/lisp/eval_promotion_escape_structured.c3` no longer return disjoint
+    `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE` wrappers by pointer identity
+    once fast reuse is declined; they now defensively clone those wrappers and
+    recurse through nested payload edges.
+  - `METHOD_TABLE` shared-wrapper clones now keep copied signatures on heap
+    storage so `scope_dtor_value(...)` remains compatible with the existing
+    destructor contract and does not attempt to free scope-owned signature
+    arrays.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now covers both
+    defensive shared-wrapper cloning and the nested fail-closed boundary-copy
+    path.
+  - `src/lisp/tests_memory_lifetime_finalize_groups.c3` no longer reads a
+    detached-scope env frame after `scope_release(detached)`, removing the
+    finalize-lane UAF that was blocking bounded smoke validation.
+  - Validation:
+    - `rm -rf build/obj/linux-x64 build/main && c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` ->
+      `pass=81 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` ->
+      `pass=81 fail=0`
+
+- Closed the validation integrity lane:
+  - `scripts/check_status_consistency.sh` now accepts the current zero-item
+    backlog wording.
+  - `scripts/run_validation_container.sh` now serializes bounded validation
+    runs with a repo-local lock.
+  - `scripts/run_validation_status_summary.sh` now treats missing required
+    `OMNI_TEST_SUMMARY` telemetry as a validation failure.
+  - `scripts/c3c_limits.sh` now preserves quoted extra Docker args.
+  - `scripts/run_e2e.sh` and `scripts/check_e2e_baseline_policy.sh` now guard
+    Stage 3 compile-source parity explicitly.
+  - Validation:
+    - `scripts/check_status_consistency.sh`
+    - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `bash -n scripts/check_status_consistency.sh scripts/run_validation_container.sh scripts/run_validation_status_summary.sh scripts/c3c_limits.sh scripts/run_e2e.sh scripts/check_e2e_baseline_policy.sh`
+
+- Closed the focused CRUD concurrency follow-up:
+  - `examples/deduce_crud_server.omni` now guards CRUD mutation entrypoints
+    with a shared atomic write gate, preventing spawned overlap from surfacing
+    raw runtime `ERROR` payloads.
+  - the shipped application contract is now explicit:
+    - one overlapping write succeeds,
+    - the other resolves as a normalized application conflict
+      (`crud write already in progress` or `item already exists`),
+    - and only one row persists for the shared id.
+  - `src/lisp/tests_runtime_feature_http_groups.c3`,
+    `src/lisp/tests_tests.c3`, and `src/lisp/tests_slice_policy.c3` now move
+    the spawned CRUD concurrency probe into the focused `http-crud` slice so
+    the broad `http` slice remains deterministic.
+  - Validation:
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=http ./build/main --test-suite lisp` ->
+      `pass=29 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=http-crud ./build/main --test-suite lisp` ->
+      `pass=1 fail=0`
+
+- Closed the compiler / JIT / AOT parity hardening lane for multi-arg apply,
+  parse fail-closed behavior, and generated closure-capture OOM handling:
+  - `src/lisp/jit_jit_apply_multi_prims.c3` and
+    `src/lisp/jit_jit_apply_multi_prims_tail.c3` now null-guard multi-arg
+    argument-buffer allocation for primitive and method-table dispatch, using
+    a focused test seam so low-memory paths return an explicit error instead
+    of dereferencing `null`.
+  - `src/lisp/parser_top_level_parse.c3` and
+    `src/lisp/compiler_program_pipeline_helpers.c3` now fail closed on parser
+    error instead of returning a silently truncated prefix program to caller
+    pipelines.
+  - `src/lisp/aot.c3` now provides shared arg-list counting plus exact/minimum
+    arity helpers, and `src/lisp/compiler_code_emission_lambda_defs.c3` now
+    emits those checks into generated multi-arg lambda entrypoints so
+    under-application rejects deterministically, malformed arg lists fail
+    closed, and over-application keeps JIT-style chaining via
+    `aot::apply_multi(...)`.
+  - `src/lisp/compiler_native_call_compilation_flat_style.c3` now guards
+    generated closure-capture allocation in flat expression lowering without
+    emitting invalid raw `return` statements into non-`Value*` contexts.
+  - focused regressions landed in:
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+    - `src/lisp/tests_compiler_core_groups_fail_closed.c3`
+    - `src/lisp/tests_compiler_core_groups.c3`
+  - Validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` ->
+      `pass=35 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->
+      `pass=193 fail=0`
+    - `scripts/run_e2e.sh` -> `ALL 404 e2e compiler tests passed!`
+
+- Hardened the async / REPL / FFI safety lane against partial-init and handle
+  confusion defects:
+  - `src/lisp/eval_repl_server_worker.c3` now refuses to start the REPL
+    worker thread unless both mutex and condition-variable initialization
+    succeeded, so partial-init paths fail closed before the worker can touch
+    uninitialized sync state.
+  - `src/lisp/async_socket_handle_runtime.c3`,
+    `src/lisp/tls_handle_lifecycle.c3`, and
+    `src/lisp/prim_io_fs_stream.c3` now validate exact FFI handle names before
+    casting TCP/UDP/TLS/FS payloads, preventing unrelated `FFI_HANDLE` boxes
+    from being reinterpreted as transport state.
+  - `src/lisp/async_process_spawn.c3` now treats constructor-returned error
+    values from `make_process_handle(...)` and `make_fs_handle(...)` as hard
+    failures instead of packaging them into a success-shaped spawn result.
+  - `src/lisp/http_url_response.c3` now rejects malformed `:port` suffixes
+    with trailing garbage or missing digits, and trims HTTP response header
+    slices so the exposed header string no longer retains delimiter residue.
+  - focused regressions landed in:
+    - `src/lisp/tests_runtime_async_repl_server_groups.c3`
+    - `src/lisp/tests_advanced_io_effect_ffi_groups.c3`
+    - `src/lisp/tests_runtime_feature_http_groups.c3`
+  - Validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp` ->
+      `pass=61 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system ./build/main --test-suite lisp` ->
+      `pass=42 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_VERBOSE=1 OMNI_LISP_TEST_SLICE=http ./build/main --test-suite lisp`
+      is now green after the HTTP/CRUD lane was made deterministic.
+- Closed the residual broad-HTTP CRUD lane and split the remaining concurrency
+  question into its own explicit backlog item:
+  - `examples/deduce_crud_server.omni` now treats keyed `deduce 'fact!` as the
+    atomic source of truth in `repo/create` and maps
+    `deduce/integrity-key-conflict` to `Err "item already exists"`, removing
+    the check-then-insert race between the pre-query and the keyed write.
+  - `src/lisp/tests_runtime_feature_http_groups.c3` now keeps deterministic
+    duplicate-id coverage in the broad `http` slice by issuing two POSTs with
+    the same id but different payloads, asserting first-write success plus
+    second-write conflict without depending on spawned concurrent mutation
+    ordering.
+  - The separate product/runtime question of whether spawned concurrent CRUD
+    writes over one in-memory Deduce DB are supported is now tracked in
+    `TODO.md` as `HTTP-CRUD-CONCURRENT-WRITES-001`.
+  - Validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=http ./build/main --test-suite lisp` -> `pass=29 fail=0`
+
+- Nested boundary copy and ESCAPE promotion now fail closed for opaque
+  primitive payloads instead of silently degrading structured wrappers:
+  - `src/lisp/eval_promotion_copy.c3`,
+    `src/lisp/eval_promotion_copy_route_helpers.c3`, and
+    `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now thread
+    `BoundaryCopyFault` through `CONS`, `PARTIAL_PRIM`, and `ITERATOR`
+    boundary-copy paths, so nested primitive-copy rejection propagates as
+    `BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD` rather than embedding
+    `null` payload edges into copied wrappers.
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` also delays primitive
+    wrapper allocation until after opaque-payload legality is known, so failed
+    primitive-copy attempts do not allocate unreachable target-scope wrapper
+    garbage before rejecting.
+  - `src/lisp/eval_promotion_escape_leaf.c3` and
+    `src/lisp/eval_promotion_escape_structured.c3` now propagate nested
+    promotion failures through `CONS`, `PARTIAL_PRIM`, and `ITERATOR` escape
+    promotion instead of returning partially rebuilt wrappers whose payloads
+    were replaced with boundary-error values.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` and
+    `src/lisp/tests_memory_lifetime_promotion_context_groups.c3` now cover the
+    nested fail-closed regressions for boundary-copy and escape-promotion
+    paths, and `src/lisp/tests_memory_lifetime_groups.c3` wires those focused
+    regressions into the smoke suite.
+  - Validation:
+    - `c3c build`
+    - `rm -rf build/obj/linux-x64 build/main && mkdir -p build/obj/linux-x64/tmp_c_compile && c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` ->
+      `pass=80 fail=0`
+
 - Aligned FFI parser and AOT helper payload ownership with the repo's existing
   arena/scope lifetime model:
   - `src/lisp/parser_ffi.c3` and `src/lisp/parser_ffi_helpers.c3` now allocate

@@ -28,24 +28,43 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
 
 fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
+    Value* first_arg = promote_to_escape(v.partial_val.first_arg, interp);
+    if (v.partial_val.first_arg != null && (first_arg == null || is_error(first_arg))) {
+        return first_arg == null
+            ? raise_error(interp, "boundary: failed to promote partial primitive first arg during escape promotion")
+            : first_arg;
+    }
+
+    Value* second_arg = promote_to_escape(v.partial_val.second_arg, interp);
+    if (v.partial_val.second_arg != null && (second_arg == null || is_error(second_arg))) {
+        return second_arg == null
+            ? raise_error(interp, "boundary: failed to promote partial primitive second arg during escape promotion")
+            : second_arg;
+    }
+
     Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate partial primitive escape copy");
+    }
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = v.partial_val.func;
     result.partial_val.remaining = v.partial_val.remaining;
-    result.partial_val.first_arg = promote_to_escape(v.partial_val.first_arg, interp);
-    result.partial_val.second_arg = promote_to_escape(v.partial_val.second_arg, interp);
+    result.partial_val.first_arg = first_arg;
+    result.partial_val.second_arg = second_arg;
     return result;
 }
 
 fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
     if (v.tag == PRIMITIVE) {
-        Value* result = interp.alloc_value_escape();
-        result.tag = PRIMITIVE;
-        result.prim_val = null;
-
         Primitive* src_prim = v.prim_val;
         if (src_prim == null) {
+            Value* result = interp.alloc_value_escape();
+            if (result == null) {
+                return raise_error(interp, "boundary: failed to allocate primitive escape copy");
+            }
+            result.tag = PRIMITIVE;
+            result.prim_val = null;
             main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
             return result;
         }
@@ -54,15 +73,33 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
         }
 
         Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        if (dst_prim == null) return null;
+        if (dst_prim == null) return raise_error(interp, "boundary: failed to allocate primitive escape copy");
         if (!primitive_clone_plain_header(dst_prim, src_prim)) {
             mem::free(dst_prim);
             return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
         }
 
+        Value* result = interp.alloc_value_escape();
+        if (result == null) {
+            mem::free(dst_prim);
+            return raise_error(interp, "boundary: failed to allocate primitive escape copy");
+        }
+        result.tag = PRIMITIVE;
+        result.prim_val = null;
         result.prim_val = dst_prim;
         main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
         return result;
+    }
+    switch (v.tag) {
+        case HASHMAP:
+        case SET:
+            return promote_escape_hashmap_backed_shared_wrapper(v, interp, ctx);
+        case ARRAY:
+            return promote_escape_array_shared_wrapper(v, interp, ctx);
+        case METHOD_TABLE:
+            return promote_escape_method_table_shared_wrapper(v, interp, ctx);
+        default:
+            break;
     }
     Value* result = interp.alloc_value_escape();
     *result = *v;
@@ -130,9 +167,18 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
 
 fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
+    Value* promoted_thunk = promote_to_escape(v.iterator_val, interp);
+    if (v.iterator_val != null && (promoted_thunk == null || is_error(promoted_thunk))) {
+        return promoted_thunk == null
+            ? raise_error(interp, "boundary: failed to promote iterator thunk during escape promotion")
+            : promoted_thunk;
+    }
     Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate iterator escape copy");
+    }
     result.tag = ITERATOR;
-    result.iterator_val = promote_to_escape(v.iterator_val, interp);
+    result.iterator_val = promoted_thunk;
     return result;
 }
 

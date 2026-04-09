@@ -103,7 +103,8 @@ fn Value* jit_apply_multi_args_tail_closure_multi(Interp* interp, Value* func, V
 }
 
 fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    Value** args = arg_count > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count) : null;
+    Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
+    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {

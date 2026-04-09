@@ -2,6 +2,20 @@ module lisp;
 
 import std::io;
 
+fn void run_async_repl_server_worker_start_requires_ready_primitives_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    ReplServerWorker worker = {};
+    bool started = repl_server_worker_start(&worker);
+    bool ok = !started && !worker.thread_started && worker.thread_handle == null;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server worker start requires ready sync primitives");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] async repl-server worker start requires ready sync primitives");
+        (*fail)++;
+    }
+}
+
 fn void run_async_repl_server_pending_interrupt_window_test(Interp* interp, int* pass, int* fail) {
     ReplServerConnection conn = {};
     repl_server_connection_init(&conn, 1, false);
@@ -180,6 +194,7 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
 }
 
 fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
+    run_async_repl_server_worker_start_requires_ready_primitives_test(interp, pass, fail);
     run_async_repl_server_pending_interrupt_window_test(interp, pass, fail);
     run_async_repl_server_active_interrupt_test(interp, pass, fail);
     run_async_repl_server_input_destroy_close_test(interp, pass, fail);

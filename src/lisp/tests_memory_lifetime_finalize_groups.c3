@@ -516,12 +516,13 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
                                    got.cons_val.car != null &&
                                    got.cons_val.car.tag == INT &&
                                    got.cons_val.car.int_val == 42;
-            uint detached_generation = detached.generation;
+            bool detached_env_scope_ok = detached_env != null &&
+                                         detached_env.scope_gen == detached.generation;
             main::scope_release(detached);
 
             bool ok = write_ok &&
                       detached_env != null &&
-                      detached_env.scope_gen == detached_generation &&
+                      detached_env_scope_ok &&
                       got != null &&
                       got != temp_pair &&
                       got_in_detached &&

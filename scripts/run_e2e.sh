@@ -76,10 +76,20 @@ echo "=== Stage 3: Building e2e test binary ==="
 # Mirroring the AOT build command from src/entry.c3
 omni_run_with_hard_cap ./scripts/build_omni_chelpers.sh
 
+stage3_compile_sources=(
+  src/main*.c3
+  src/scope_region*.c3
+  src/stack_engine*.c3
+  src/ffi_bindings.c3
+  src/lisp/*.c3
+  src/pika/*.c3
+  build/e2e_test.c3
+)
+
+omni_run_with_hard_cap ./scripts/check_e2e_baseline_policy.sh --stage3-source-parity
+
 omni_c3 compile \
-  src/main*.c3 src/scope_region*.c3 src/stack_engine*.c3 src/ffi_bindings.c3 \
-  src/lisp/*.c3 src/pika/*.c3 \
-  build/e2e_test.c3 \
+  ${stage3_compile_sources[@]} \
   -o build/e2e_test \
   -L build -L /usr/local/lib -L deps/lib \
   -l omni_chelpers -l lightning -l ffi -l dl -l m -l replxx -l stdc++ \

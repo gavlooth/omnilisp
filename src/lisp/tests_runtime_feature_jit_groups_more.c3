@@ -747,6 +747,65 @@ fn void run_jit_policy_multi_arg_binding_growth_failure_test(Interp* interp, int
     }
 }
 
+fn void run_jit_policy_multi_arg_primitive_buffer_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: multi-arg primitive buffer failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source = "(+ 1 2 3)";
+    g_jit_force_multi_arg_buffer_alloc_fail = true;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_jit_force_multi_arg_buffer_alloc_fail = false;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while preparing call arguments");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: multi-arg primitive buffer failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: multi-arg primitive buffer failure returns error");
+        print_jit_failure_debug(interp, "jit multi-arg primitive buffer failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_multi_arg_method_table_buffer_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: multi-arg method-table buffer failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source =
+        "(block "
+        "  (define (dispatch (^Integer a) (^Integer b)) (+ a b)) "
+        "  (dispatch 20 22))";
+    g_jit_force_multi_arg_buffer_alloc_fail = true;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_jit_force_multi_arg_buffer_alloc_fail = false;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while preparing call arguments");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: multi-arg method-table buffer failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: multi-arg method-table buffer failure returns error");
+        print_jit_failure_debug(interp, "jit multi-arg method-table buffer failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_match_guard_binding_growth_failure_test(Interp* interp, int* pass, int* fail) {
     if (!jit_checks_enabled()) {
         emit_pass_literal("[PASS] jit policy: match guard binding growth failure skipped when jit disabled");
@@ -804,6 +863,8 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("variadic-no-fallback", &run_jit_policy_variadic_no_fallback_test, interp, pass, fail);
         run_jit_policy_case("match-binding-growth-failure", &run_jit_policy_match_binding_growth_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-binding-growth-failure", &run_jit_policy_multi_arg_binding_growth_failure_test, interp, pass, fail);
+        run_jit_policy_case("multi-arg-primitive-buffer-failure", &run_jit_policy_multi_arg_primitive_buffer_failure_test, interp, pass, fail);
+        run_jit_policy_case("multi-arg-method-table-buffer-failure", &run_jit_policy_multi_arg_method_table_buffer_failure_test, interp, pass, fail);
         run_jit_policy_case("match-guard-binding-growth-failure", &run_jit_policy_match_guard_binding_growth_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-interp-lifetime", &run_jit_policy_multi_interp_lifetime_test, interp, pass, fail);
         run_jit_policy_case("continuation-teardown", &run_jit_policy_continuation_teardown_test, interp, pass, fail);

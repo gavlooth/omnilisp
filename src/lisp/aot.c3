@@ -1,5 +1,6 @@
 module lisp::aot;
 
+import std::io;
 import lisp;
 import main;
 
@@ -52,6 +53,33 @@ fn lisp::Value* aot_eval_result_value(lisp::EvalResult r) @inline {
 fn lisp::SymbolId aot_symbol_from_text(char[] text) @inline {
     if (text.len == 0) return (lisp::SymbolId)0;
     return g_aot_interp.symbols.intern(text);
+}
+
+fn lisp::Value* count_arg_list(lisp::Value* arg_list, usz* count_out) {
+    if (count_out == null) return make_error("aot lambda apply: missing arg count destination");
+    *count_out = 0;
+
+    lisp::Value* curr = arg_list;
+    while (curr != null && curr.tag == lisp::ValueTag.CONS) {
+        (*count_out)++;
+        curr = curr.cons_val.cdr;
+    }
+    if (curr == null || curr.tag == lisp::ValueTag.NIL) return null;
+    return make_error("aot lambda apply: malformed argument list");
+}
+
+fn lisp::Value* make_arity_error(usz expected, usz got) {
+    char[128] buf;
+    usz len = lisp::format_arity_error(&buf, expected, got);
+    return make_error(buf[:len]);
+}
+
+fn lisp::Value* make_variadic_min_arity_error(usz minimum, usz got) {
+    char[256] ebuf;
+    if (try char[] msg = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d", (int)minimum, (int)got)) {
+        return make_error(msg);
+    }
+    return make_error("variadic lambda arity mismatch");
 }
 
 

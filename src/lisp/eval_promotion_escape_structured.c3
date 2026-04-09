@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import main;
 
 fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
@@ -35,6 +36,189 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
     return true;
 }
 
+fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
+    if (!promote_escape_can_mutate(v, ctx)) return v;
+
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate array escape copy");
+    }
+    result.tag = ARRAY;
+    result.array_val = null;
+
+    Array* src_arr = v.array_val;
+    if (src_arr == null) {
+        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    Array* dst_arr = (Array*)mem::malloc(Array.sizeof);
+    if (dst_arr == null) {
+        return raise_error(interp, "boundary: failed to allocate array escape copy");
+    }
+
+    usz cap = src_arr.capacity;
+    if (cap < src_arr.length) cap = src_arr.length;
+    if (cap < 4) cap = 4;
+
+    dst_arr.capacity = cap;
+    dst_arr.length = src_arr.length;
+    dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
+    if (dst_arr.items == null) {
+        mem::free(dst_arr);
+        return raise_error(interp, "boundary: failed to allocate array escape copy");
+    }
+
+    for (usz i = 0; i < src_arr.length; i++) {
+        Value* promoted = promote_to_escape(src_arr.items[i], interp);
+        if (src_arr.items[i] != null && (promoted == null || is_error(promoted))) {
+            mem::free(dst_arr.items);
+            mem::free(dst_arr);
+            return promoted == null
+                ? raise_error(interp, "boundary: failed to promote array item during escape promotion")
+                : promoted;
+        }
+        dst_arr.items[i] = promoted;
+    }
+
+    result.array_val = dst_arr;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
+    if (!promote_escape_can_mutate(v, ctx)) return v;
+
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+    }
+    result.tag = v.tag;
+    result.hashmap_val = null;
+
+    HashMap* src_map = v.hashmap_val;
+    if (src_map == null) {
+        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    HashMap* dst_map = (HashMap*)mem::malloc(HashMap.sizeof);
+    if (dst_map == null) {
+        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+    }
+    dst_map.capacity = src_map.capacity;
+    dst_map.count = src_map.count;
+    dst_map.mask = src_map.mask;
+    dst_map.entries = null;
+
+    if (src_map.capacity > 0) {
+        dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
+        if (dst_map.entries == null) {
+            mem::free(dst_map);
+            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+        }
+
+        for (uint i = 0; i < src_map.capacity; i++) {
+            HashEntry* src_e = &src_map.entries[i];
+            HashEntry* dst_e = &dst_map.entries[i];
+            dst_e.key = null;
+            dst_e.value = null;
+            if (src_e.key != null) {
+                Value* promoted_key = promote_to_escape(src_e.key, interp);
+                if (promoted_key == null || is_error(promoted_key)) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    return promoted_key == null
+                        ? raise_error(interp, "boundary: failed to promote hashmap key during escape promotion")
+                        : promoted_key;
+                }
+                Value* promoted_value = promote_to_escape(src_e.value, interp);
+                if (src_e.value != null && (promoted_value == null || is_error(promoted_value))) {
+                    mem::free(dst_map.entries);
+                    mem::free(dst_map);
+                    return promoted_value == null
+                        ? raise_error(interp, "boundary: failed to promote hashmap value during escape promotion")
+                        : promoted_value;
+                }
+                dst_e.key = promoted_key;
+                dst_e.value = promoted_value;
+            }
+        }
+    }
+
+    result.hashmap_val = dst_map;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
+fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
+    if (!promote_escape_can_mutate(v, ctx)) return v;
+
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate method table escape copy");
+    }
+    result.tag = METHOD_TABLE;
+    result.method_table_val = null;
+
+    MethodTable* src_mt = v.method_table_val;
+    if (src_mt == null) {
+        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+        return result;
+    }
+
+    MethodTable* dst_mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+    if (dst_mt == null) {
+        return raise_error(interp, "boundary: failed to allocate method table escape copy");
+    }
+    dst_mt.name = src_mt.name;
+    dst_mt.entry_count = src_mt.entry_count;
+    dst_mt.capacity = src_mt.capacity;
+    if (dst_mt.capacity < dst_mt.entry_count) dst_mt.capacity = dst_mt.entry_count;
+    dst_mt.entries = null;
+    dst_mt.fallback = null;
+
+    if (dst_mt.capacity > 0) {
+        dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
+        if (dst_mt.entries == null) {
+            mem::free(dst_mt);
+            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+        }
+    }
+
+    for (usz i = 0; i < dst_mt.entry_count; i++) {
+        method_signature_init_empty(&dst_mt.entries[i].sig);
+        if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
+            mem::free(dst_mt.entries);
+            mem::free(dst_mt);
+            return raise_error(interp, "boundary: failed to copy method signature during escape promotion");
+        }
+        Value* promoted_impl = promote_to_escape(src_mt.entries[i].implementation, interp);
+        if (src_mt.entries[i].implementation != null && (promoted_impl == null || is_error(promoted_impl))) {
+            mem::free(dst_mt.entries);
+            mem::free(dst_mt);
+            return promoted_impl == null
+                ? raise_error(interp, "boundary: failed to promote method implementation during escape promotion")
+                : promoted_impl;
+        }
+        dst_mt.entries[i].implementation = promoted_impl;
+    }
+
+    Value* promoted_fallback = promote_to_escape(src_mt.fallback, interp);
+    if (src_mt.fallback != null && (promoted_fallback == null || is_error(promoted_fallback))) {
+        mem::free(dst_mt.entries);
+        mem::free(dst_mt);
+        return promoted_fallback == null
+            ? raise_error(interp, "boundary: failed to promote method fallback during escape promotion")
+            : promoted_fallback;
+    }
+    dst_mt.fallback = promoted_fallback;
+
+    result.method_table_val = dst_mt;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
 fn bool promote_escape_closure_env_needs_detach(Value* v, Interp* interp) @inline {
     if (v == null || interp == null || v.tag != CLOSURE || v.closure_val == null) return false;
     if (v.closure_val.env == null) return false;
@@ -57,24 +241,46 @@ fn bool promote_escape_should_iterate_cons_tail(Value* old_cdr, Interp* interp) 
 fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
     // Iterative spine copy to avoid recursion blowups on long lists.
-    Value* head = interp.alloc_value_escape();
-    head.tag = CONS;
-    Value* current_new = head;
+    Value* head = null;
+    Value* current_new = null;
     Value* current_old = v;
 
     while (true) {
-        current_new.cons_val.car = promote_to_escape(current_old.cons_val.car, interp);
+        Value* promoted_car = promote_to_escape(current_old.cons_val.car, interp);
+        if (current_old.cons_val.car != null && (promoted_car == null || is_error(promoted_car))) {
+            return promoted_car == null
+                ? raise_error(interp, "boundary: failed to promote cons car during escape promotion")
+                : promoted_car;
+        }
+        if (head == null) {
+            head = interp.alloc_value_escape();
+            if (head == null) {
+                return raise_error(interp, "boundary: failed to allocate cons escape copy");
+            }
+            head.tag = CONS;
+            current_new = head;
+        }
+        current_new.cons_val.car = promoted_car;
         if (ctx != null && ctx.aborted) return v;
         Value* old_cdr = current_old.cons_val.cdr;
         if (promote_escape_should_iterate_cons_tail(old_cdr, interp)) {
             if (!promote_escape_can_mutate(v, ctx)) return v;
             Value* next_new = interp.alloc_value_escape();
+            if (next_new == null) {
+                return raise_error(interp, "boundary: failed to allocate cons escape tail");
+            }
             next_new.tag = CONS;
             current_new.cons_val.cdr = next_new;
             current_new = next_new;
             current_old = old_cdr;
         } else {
-            current_new.cons_val.cdr = promote_to_escape(old_cdr, interp);
+            Value* promoted_cdr = promote_to_escape(old_cdr, interp);
+            if (old_cdr != null && (promoted_cdr == null || is_error(promoted_cdr))) {
+                return promoted_cdr == null
+                    ? raise_error(interp, "boundary: failed to promote cons cdr during escape promotion")
+                    : promoted_cdr;
+            }
+            current_new.cons_val.cdr = promoted_cdr;
             if (ctx != null && ctx.aborted) return v;
             break;
         }

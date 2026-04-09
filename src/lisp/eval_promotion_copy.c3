@@ -97,20 +97,22 @@ fn Value* copy_to_parent_by_route(
         case CP_ROUTE_SYMBOL:
             return make_symbol(interp, v.sym_val);
         case CP_ROUTE_CONS:
-            return copy_cons_to_parent(v, interp);
+            return copy_cons_to_parent(v, interp, fault_out);
         case CP_ROUTE_CLOSURE:
             return copy_closure_to_parent(v, interp, fault_out);
         case CP_ROUTE_PRIMITIVE:
             return copy_primitive_to_parent(v, interp, fault_out);
         case CP_ROUTE_PARTIAL_PRIM:
             // Deep copy: Value wrapper may be in child scope, and first_arg/second_arg may too.
-            return copy_partial_prim_to_parent(v, interp);
+            return copy_partial_prim_to_parent(v, interp, fault_out);
         case CP_ROUTE_CONTINUATION:
             // Shallow copy: Value wrapper may be in child scope, cont_val itself is interpreter-lifetime.
             return copy_continuation_to_parent(v, interp);
         case CP_ROUTE_SHARED_WRAPPER:
-            // Value allocated in root_scope; backing data is malloc'd with registered destructors.
-            return v;
+            // Shared wrappers must be cloned when they are not already reusable
+            // in the target chain. This prevents aliasing disjoint collection
+            // wrappers after reuse is declined.
+            return copy_shared_wrapper_to_parent(v, interp, fault_out);
         case CP_ROUTE_INSTANCE:
             return copy_instance_to_parent(v, interp);
         case CP_ROUTE_FFI_HANDLE:
@@ -120,7 +122,7 @@ fn Value* copy_to_parent_by_route(
             return v;
         case CP_ROUTE_ITERATOR:
             // Promote underlying closure thunk so iterator outlives child scope.
-            return copy_iterator_to_parent(v, interp);
+            return copy_iterator_to_parent(v, interp, fault_out);
         case CP_ROUTE_COROUTINE:
             // Transfer ownership into a single surviving wrapper.
             return copy_coroutine_to_parent(v, interp);

@@ -103,6 +103,27 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     }
 
     {
+        char[] code = compile_to_c3("(lambda (x y) (+ x y))", interp);
+        bool ok = compiler_code_contains_all(code, {
+            "lisp::Value* _arg_count_error = aot::count_arg_list(_arg_list, &_arg_count);",
+            "if (_arg_count < 2) return aot::make_arity_error(2, _arg_count);",
+            "if (_arg_count > 2) return aot::apply_multi("
+        });
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: multi-arg lambda emission guards arity and chains extras"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: multi-arg lambda emission guards arity and chains extras"); }
+    }
+
+    {
+        char[] code = compile_to_c3("(lambda (x .. xs) x)", interp);
+        bool ok = compiler_code_contains_all(code, {
+            "lisp::Value* _arg_count_error = aot::count_arg_list(_arg_list, &_arg_count);",
+            "if (_arg_count < 1) return aot::make_variadic_min_arity_error(1, _arg_count);"
+        });
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: variadic lambda emission guards minimum arity"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: variadic lambda emission guards minimum arity"); }
+    }
+
+    {
         bool ok = aot::aot_init();
         if (ok) {
             defer aot::aot_shutdown();
@@ -345,9 +366,9 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     {
         List{Expr*} exprs = parse_program("1 2.[", interp);
         defer exprs.free();
-        bool ok = exprs.len() == 1 && exprs[0] != null && exprs[0].tag == E_LIT;
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: parse_program drops malformed postfix partial expr"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: parse_program drops malformed postfix partial expr"); }
+        bool ok = exprs.len() == 0;
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parse_program fails closed on malformed postfix partial expr"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parse_program fails closed on malformed postfix partial expr"); }
     }
 
     {
@@ -366,12 +387,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         defer exprs.free();
         bool parsed = compiler.parse_program_exprs("(define x 1) 2.[", &exprs);
         bool ok = !parsed &&
-            exprs.len() == 1 &&
-            exprs[0] != null &&
-            exprs[0].tag == E_DEFINE &&
+            exprs.len() == 0 &&
             str_contains(compiler.error_message, "expected ']'");
-        if (ok) { (*pass)++; compiler_print_pass("Compiler: compiler parser keeps prior exprs but drops malformed postfix partial expr"); }
-        else    { (*fail)++; io::printn("[FAIL] Compiler: compiler parser keeps prior exprs but drops malformed postfix partial expr"); }
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: compiler parser clears prior exprs on malformed postfix partial expr"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: compiler parser clears prior exprs on malformed postfix partial expr"); }
     }
 
     {

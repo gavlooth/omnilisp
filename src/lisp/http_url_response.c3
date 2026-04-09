@@ -43,16 +43,21 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
         out.host[out.host_len++] = url[pos++];
     }
     out.host[out.host_len] = 0;
+    if (out.host_len == 0) return INVALID_SYNTAX~;
 
     // Optional port
     if (pos < url.len && url[pos] == ':') {
         pos++;  // skip :
         int port = 0;
+        usz port_digits = 0;
         while (pos < url.len && url[pos] >= '0' && url[pos] <= '9') {
             port = port * 10 + (int)(url[pos] - '0');
+            port_digits++;
             pos++;
         }
-        if (port > 0) out.port = port;
+        if (port_digits == 0 || port <= 0) return INVALID_SYNTAX~;
+        out.port = port;
+        if (pos < url.len && url[pos] != '/') return INVALID_SYNTAX~;
     }
 
     // Path (default /)
@@ -67,7 +72,7 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
     }
     out.path[out.path_len] = 0;
 
-    if (out.host_len == 0) return INVALID_SYNTAX~;
+    if (pos < url.len) return INVALID_SYNTAX~;
 }
 
 // Build HTTP/1.1 request string
@@ -160,7 +165,7 @@ fn Value* parse_response(char[] response, Interp* interp) {
         while (hdr_start < header_end && !(response[hdr_start] == '\n')) hdr_start++;
         if (hdr_start < header_end) hdr_start++;  // skip \n
         hashmap_set(result.hashmap_val, headers_key,
-            make_string(interp, response[hdr_start..header_end - 3]), interp);
+            make_string(interp, response[hdr_start..header_end - 5]), interp);
     }
 
     // Body

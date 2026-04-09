@@ -27,6 +27,7 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
 
     if (found_def != null && found_def.capture_count > 0) {
         // Closure with captures - allocate on heap
+        usz id = self.next_result();
         self.emit_indent();
         self.emit("Lambda_");
         self.emit_usz(lambda_id);
@@ -37,6 +38,21 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         self.emit("*)mem::malloc(Lambda_");
         self.emit_usz(lambda_id);
         self.emit(".sizeof);\n");
+        self.emit_indent();
+        self.emit_temp_decl(id);
+        self.emit(";\n");
+        self.emit_indent();
+        self.emit("if (_closure_data_");
+        self.emit_usz(lambda_id);
+        self.emit(" == null) {\n");
+        self.indent++;
+        self.emit_indent();
+        self.emit_temp_ref(id);
+        self.emit(" = aot::make_error(\"compiler: out of memory while allocating closure capture data\");\n");
+        self.indent--;
+        self.emit_indent();
+        self.emit("} else {\n");
+        self.indent++;
 
         // Set captured values
         for (usz i = 0; i < found_def.capture_count; i++) {
@@ -50,8 +66,8 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
             self.emit(";\n");
         }
 
-        usz id = self.next_result();
-        self.emit_temp_decl(id);
+        self.emit_indent();
+        self.emit_temp_ref(id);
         self.emit(" = aot::");
         self.emit_make_closure_call(lambda_id);
         self.emit("((void*)_closure_data_");
@@ -59,6 +75,9 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         self.emit(", &invoke_lambda_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
+        self.indent--;
+        self.emit_indent();
+        self.emit("}\n");
         return id;
     } else {
         // Simple closure without captures

@@ -35,8 +35,7 @@ fn Value* make_tcp_stream_handle(Interp* interp, int fd, TcpTransport transport 
 }
 
 fn TcpHandle* get_tcp_handle(Value* v) {
-    if (v == null || v.tag != FFI_HANDLE) return null;
-    if (v.ffi_val == null) return null;
+    if (!ffi_handle_name_equals(v, "tcp-handle")) return null;
     return (TcpHandle*)v.ffi_val.lib_handle;
 }
 
@@ -69,7 +68,6 @@ fn Value* make_udp_handle(Interp* interp, int fd) {
 }
 
 fn UdpHandle* get_udp_handle(Value* v) {
-    if (v == null || v.tag != FFI_HANDLE) return null;
-    if (v.ffi_val == null) return null;
+    if (!ffi_handle_name_equals(v, "udp-handle")) return null;
     return (UdpHandle*)v.ffi_val.lib_handle;
 }

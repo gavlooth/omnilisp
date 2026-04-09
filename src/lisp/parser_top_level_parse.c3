@@ -50,5 +50,10 @@ fn List{Expr*} parse_program(char[] source, Interp* interp) {
         }
     }
 
+    if (p.has_error) {
+        exprs.free();
+        List{Expr*} empty = {};
+        return empty;
+    }
     return exprs;
 }

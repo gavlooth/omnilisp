@@ -126,6 +126,7 @@ fn void repl_server_worker_thread_entry(void* ctx_ptr) {
 
 fn bool repl_server_worker_start(ReplServerWorker* worker) {
     if (worker == null) return false;
+    if (!worker.mu_ready || !worker.cv_ready) return false;
     void* thread_handle = omni_uv_thread_new();
     if (thread_handle == null) return false;
     if (omni_uv_thread_start(thread_handle, &repl_server_worker_thread_entry, worker) != 0) {

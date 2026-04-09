@@ -7,6 +7,13 @@ import main;
 // SECTION 3: JIT HELPER FUNCTIONS (apply-multi/tail + primitive shims)
 // =============================================================================
 const usz JIT_TYPED_PREFIX_INLINE_ARG_CAPACITY = 8;
+bool g_jit_force_multi_arg_buffer_alloc_fail = false;
+
+fn Value** jit_alloc_multi_arg_buffer(Interp* interp, usz arg_count) @inline {
+    if (arg_count == 0) return null;
+    if (g_jit_force_multi_arg_buffer_alloc_fail) return null;
+    return (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count);
+}
 
 fn Value* jit_cons(Interp* interp, Value* car, Value* cdr) {
     return make_cons(interp, car, cdr);
@@ -105,7 +112,8 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
 fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
     interp.constructor_type_id = func.prim_val.tag;
     interp.prim_user_data = func.prim_val.user_data;
-    Value** args = arg_count > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count) : null;
+    Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
+    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
@@ -161,7 +169,8 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
 }
 
 fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    Value** args = arg_count > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count) : null;
+    Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
+    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {

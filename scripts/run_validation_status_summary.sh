@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+source scripts/c3c_limits.sh
 
 out_json="${1:-build/validation_status_summary.json}"
 log_dir="${OMNI_VALIDATION_STATUS_LOG_DIR:-build/validation_status_logs}"
@@ -10,12 +11,13 @@ toolchain_root="${OMNI_VALIDATION_TOOLCHAIN_ROOT:-/usr/local}"
 mkdir -p "$(dirname "$out_json")"
 mkdir -p "$log_dir"
 
+manifest="$(mktemp)"
+trap 'rm -f "$manifest"; omni_validation_lock_release' EXIT
+omni_validation_lock_acquire
+
 if [[ -z "${OMNI_VALIDATION_EXTRA_ARGS:-}" && -e /usr/lib/libreplxx.so.0 ]]; then
   export OMNI_VALIDATION_EXTRA_ARGS="--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly"
 fi
-
-manifest="$(mktemp)"
-trap 'rm -f "$manifest"' EXIT
 
 run_case() {
   local name="$1"
@@ -201,5 +203,18 @@ from pathlib import Path
 
 data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if data.get("overall_status") != "pass":
+    sys.exit(1)
+
+missing_summary_telemetry = [
+    run["name"]
+    for run in data.get("runs", [])
+    if run.get("kind") == "bounded_slice" and not run.get("summaries")
+]
+if missing_summary_telemetry:
+    print(
+        "missing OMNI_TEST_SUMMARY telemetry for bounded slices: "
+        + ", ".join(missing_summary_telemetry),
+        file=sys.stderr,
+    )
     sys.exit(1)
 PY

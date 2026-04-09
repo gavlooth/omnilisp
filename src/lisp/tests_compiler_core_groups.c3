@@ -64,6 +64,25 @@ fn Value* compiler_aot_test_variadic_invoke(void* data, Value* arg_list) {
     return arg_list != null ? arg_list : aot::make_nil();
 }
 
+fn Value* compiler_aot_test_exact_pair_sum(void* data, Value* arg_list) {
+    usz arg_count = 0;
+    Value* count_error = aot::count_arg_list(arg_list, &arg_count);
+    if (count_error != null) return count_error;
+    if (arg_count < 2) return aot::make_arity_error(2, arg_count);
+
+    Value* curr = arg_list;
+    Value* x = aot::car(curr);
+    curr = aot::cdr(curr);
+    Value* y = aot::car(curr);
+    curr = aot::cdr(curr);
+
+    long x_val = x != null && x.tag == ValueTag.INT ? x.int_val : 0;
+    long y_val = y != null && y.tag == ValueTag.INT ? y.int_val : 0;
+    Value* result = aot::make_int(x_val + y_val);
+    if (arg_count > 2) return aot::apply_multi(result, curr, (long)(arg_count - 2));
+    return result;
+}
+
 struct CompilerAotSumData {
     Value* first;
 }
@@ -403,6 +422,31 @@ fn void run_compiler_group_aot_runtime_parity_tests(Interp* interp, usz* pass, u
             aot_result.int_val == 42;
         if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT multi-arg closure apply matches JIT"); }
         else           { (*fail)++; io::printn("[FAIL] Compiler: AOT multi-arg closure apply matches JIT"); }
+    }
+
+    {
+        EvalResult jit_result = run("((lambda (x y) (+ x y)) 20)", interp);
+        Value* closure = aot::make_variadic_closure(null, &compiler_aot_test_exact_pair_sum);
+        Value* aot_result = aot::invoke(closure, aot::make_int(20));
+        bool parity_ok =
+            jit_result.error.has_error &&
+            str_contains(jit_result.error.message[..], "arity mismatch: expected 2 argument(s), got 1") &&
+            compiler_error_value_contains(aot_result, "arity mismatch: expected 2 argument(s), got 1");
+        if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT fixed multi-arg under-application matches JIT"); }
+        else           { (*fail)++; io::printn("[FAIL] Compiler: AOT fixed multi-arg under-application matches JIT"); }
+    }
+
+    {
+        EvalResult jit_result = run("((lambda (x y) (+ x y)) 20 22 1)", interp);
+        Value* closure = aot::make_variadic_closure(null, &compiler_aot_test_exact_pair_sum);
+        Value* arg_list = aot::cons(aot::make_int(20), aot::cons(aot::make_int(22), aot::cons(aot::make_int(1), aot::make_nil())));
+        Value* aot_result = aot::apply_multi(closure, arg_list, 3);
+        bool parity_ok =
+            jit_result.error.has_error &&
+            str_contains(jit_result.error.message[..], "not a function") &&
+            compiler_error_value_contains(aot_result, "not a function");
+        if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT fixed multi-arg over-application matches JIT"); }
+        else           { (*fail)++; io::printn("[FAIL] Compiler: AOT fixed multi-arg over-application matches JIT"); }
     }
 
     {

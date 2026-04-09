@@ -211,6 +211,61 @@ omni_timeout_run() {
   "$@"
 }
 
+omni_shell_split_words() {
+  local input="${1:-}"
+  if [[ -z "$input" ]]; then
+    return 0
+  fi
+
+  python3 - "$input" <<'PY'
+import shlex
+import sys
+
+for token in shlex.split(sys.argv[1]):
+    print(token)
+PY
+}
+
+omni_validation_lock_path() {
+  printf "%s\n" "${OMNI_VALIDATION_BUILD_LOCK_PATH:-build/.validation-build.lock}"
+}
+
+omni_validation_lock_acquire() {
+  if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "omni_validation_lock_acquire: flock not found in PATH" >&2
+    return 127
+  fi
+
+  local lock_path
+  lock_path="$(omni_validation_lock_path)"
+  mkdir -p "$(dirname "$lock_path")"
+
+  local lock_fd
+  exec {lock_fd}>"$lock_path"
+  flock -x "$lock_fd"
+
+  OMNI_VALIDATION_BUILD_LOCK_HELD=1
+  OMNI_VALIDATION_BUILD_LOCK_FD="$lock_fd"
+  export OMNI_VALIDATION_BUILD_LOCK_HELD OMNI_VALIDATION_BUILD_LOCK_FD
+}
+
+omni_validation_lock_release() {
+  if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" != "1" ]]; then
+    return 0
+  fi
+
+  local lock_fd="${OMNI_VALIDATION_BUILD_LOCK_FD:-}"
+  if [[ -n "$lock_fd" ]]; then
+    eval "exec ${lock_fd}>&-"
+  fi
+
+  unset OMNI_VALIDATION_BUILD_LOCK_HELD OMNI_VALIDATION_BUILD_LOCK_FD
+}
+
 omni_run_with_docker_cap() {
   local cap_mb="$1"
   shift
@@ -286,9 +341,23 @@ omni_run_with_docker_cap() {
     docker_cmd+=(--user "$(id -u):$(id -g)")
   fi
 
+  if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" != "1" ]]; then
+    omni_validation_lock_acquire
+    local validation_lock_acquired=1
+  else
+    local validation_lock_acquired=0
+  fi
+
+  if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" == "1" ]]; then
+    docker_cmd+=(-e OMNI_VALIDATION_BUILD_LOCK_HELD=1)
+    if [[ -n "${OMNI_VALIDATION_BUILD_LOCK_FD:-}" ]]; then
+      docker_cmd+=(-e "OMNI_VALIDATION_BUILD_LOCK_FD=${OMNI_VALIDATION_BUILD_LOCK_FD}")
+    fi
+  fi
+
   if [[ -n "${OMNI_DOCKER_EXTRA_ARGS:-}" ]]; then
-    # shellcheck disable=SC2206
-    local -a extra_args=(${OMNI_DOCKER_EXTRA_ARGS})
+    local -a extra_args=()
+    mapfile -t extra_args < <(omni_shell_split_words "$OMNI_DOCKER_EXTRA_ARGS")
     docker_cmd+=("${extra_args[@]}")
   fi
 
@@ -313,6 +382,10 @@ omni_run_with_docker_cap() {
 
   if [[ -n "$monitor_pid" ]]; then
     wait "$monitor_pid" || true
+  fi
+
+  if [[ "${validation_lock_acquired:-0}" == "1" ]]; then
+    omni_validation_lock_release
   fi
 
   return "$run_rc"

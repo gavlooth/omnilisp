@@ -60,6 +60,7 @@ fn bool lisp_slice_known(char* active_slice) @inline {
         lisp_slice_matches(active_slice, "deduce") ||
         lisp_slice_matches(active_slice, "scheduler") ||
         lisp_slice_matches(active_slice, "http") ||
+        lisp_slice_matches(active_slice, "http-crud") ||
         lisp_slice_matches(active_slice, "atomic") ||
         lisp_slice_matches(active_slice, "compiler");
 }

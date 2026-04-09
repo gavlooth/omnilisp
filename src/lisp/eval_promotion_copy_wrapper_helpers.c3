@@ -2,15 +2,37 @@ module lisp;
 
 import main;
 
-fn Value* copy_cons_to_parent(Value* v, Interp* interp) {
+fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     // Iterative copy to prevent C stack overflow on long lists.
-    Value* head = interp.alloc_value();
-    head.tag = CONS;
-    Value* current_new = head;
+    Value* head = null;
+    Value* current_new = null;
     Value* current_old = v;
 
     while (true) {
-        current_new.cons_val.car = copy_to_parent(current_old.cons_val.car, interp);
+        Value* copied_car = copy_to_parent_with_fault(current_old.cons_val.car, interp, fault_out);
+        if (current_old.cons_val.car != null && (copied_car == null || is_error(copied_car))) {
+            if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            }
+            return fault_out != null
+                ? null
+                : (copied_car == null
+                    ? raise_error(interp, "boundary: failed to copy cons car")
+                    : copied_car);
+        }
+
+        if (head == null) {
+            head = interp.alloc_value();
+            if (head == null) {
+                if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                    *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+                }
+                return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate cons copy");
+            }
+            head.tag = CONS;
+            current_new = head;
+        }
+        current_new.cons_val.car = copied_car;
         Value* old_cdr = current_old.cons_val.cdr;
         if (old_cdr != null && old_cdr.tag == CONS) {
             if (boundary_can_reuse_value(old_cdr, interp)) {
@@ -20,12 +42,29 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp) {
             }
             // Deep-copy tail iteratively to avoid recursive overflow on long lists.
             Value* next_new = interp.alloc_value();
+            if (next_new == null) {
+                if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                    *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+                }
+                return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate cons tail copy");
+            }
             next_new.tag = CONS;
             current_new.cons_val.cdr = next_new;
             current_new = next_new;
             current_old = old_cdr;
         } else {
-            current_new.cons_val.cdr = copy_to_parent(old_cdr, interp);
+            Value* copied_cdr = copy_to_parent_with_fault(old_cdr, interp, fault_out);
+            if (old_cdr != null && (copied_cdr == null || is_error(copied_cdr))) {
+                if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
+                    *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+                }
+                return fault_out != null
+                    ? null
+                    : (copied_cdr == null
+                        ? raise_error(interp, "boundary: failed to copy cons cdr")
+                        : copied_cdr);
+            }
+            current_new.cons_val.cdr = copied_cdr;
             break;
         }
     }

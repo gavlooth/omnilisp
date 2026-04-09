@@ -65,9 +65,13 @@ fi
 
 mkdir -p "$(dirname "$OMNI_VALIDATION_MONITOR_LOG")"
 container_name="${OMNI_VALIDATION_CONTAINER_NAME:-omni-validation-${USER:-user}-$$-$RANDOM}"
+validation_lock_acquired=0
 
 cleanup() {
   docker rm -f "$container_name" >/dev/null 2>&1 || true
+  if [[ "$validation_lock_acquired" == "1" ]]; then
+    omni_validation_lock_release
+  fi
 }
 trap cleanup EXIT
 
@@ -138,9 +142,20 @@ if [[ -n "$validation_extra" ]]; then
   # Trim leading whitespace from concatenation flow above.
   # shellcheck disable=SC2001
   validation_extra="$(echo "$validation_extra" | sed 's/^ *//')"
-  # shellcheck disable=SC2206
-  extra_args=(${validation_extra})
+  mapfile -t extra_args < <(omni_shell_split_words "$validation_extra")
   run_cmd+=("${extra_args[@]}")
+fi
+
+if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" != "1" ]]; then
+  omni_validation_lock_acquire
+  validation_lock_acquired=1
+fi
+
+if [[ "${OMNI_VALIDATION_BUILD_LOCK_HELD:-0}" == "1" ]]; then
+  run_cmd+=(-e OMNI_VALIDATION_BUILD_LOCK_HELD=1)
+  if [[ -n "${OMNI_VALIDATION_BUILD_LOCK_FD:-}" ]]; then
+    run_cmd+=(-e "OMNI_VALIDATION_BUILD_LOCK_FD=${OMNI_VALIDATION_BUILD_LOCK_FD}")
+  fi
 fi
 
 run_cmd+=("$OMNI_VALIDATION_IMAGE" "$@")
