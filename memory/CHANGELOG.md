@@ -1,3 +1,31 @@
+## 2026-04-09
+
+- Aligned FFI parser and AOT helper payload ownership with the repo's existing
+  arena/scope lifetime model:
+  - `src/lisp/parser_ffi.c3` and `src/lisp/parser_ffi_helpers.c3` now allocate
+    successful `[ffi λ ...]` AST payloads (`ExprFfiFn`, copied C symbol names,
+    and parameter tables) from the AST arena instead of raw `malloc`, so
+    parser-owned FFI metadata is reclaimed by `ast_arena_destroy(...)` with the
+    rest of the AST.
+  - `src/lisp/aot_runtime_bridge_closure.c3`,
+    `src/lisp/aot_runtime_bridge_ffi.c3`, and
+    `src/lisp/aot_runtime_bridge_ffi_helpers.c3` now allocate AOT primitive
+    payloads from `interp.root_scope` instead of raw heap ownership, keeping
+    closure payloads and bound-FFI metadata on the same deterministic lifetime
+    as the primitive values that reference them.
+  - This closes the post-e2e AddressSanitizer leak paths that were still
+    reachable from:
+    - successful compiler-slice parsing of `[ffi λ ...]` forms,
+    - `aot::make_closure(...)` / `aot::make_variadic_closure(...)`,
+    - `aot::ffi_declare_fn(...)`.
+  - Validation:
+    - `c3c build --sanitize=address`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->
+      `pass=189 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` ->
+      `pass=22 fail=0`
+    - `scripts/run_e2e.sh` -> `ALL 404 e2e compiler tests passed!`
+
 ## 2026-04-08
 
 - Closed arm64 language-level continuation multi-shot parity (`STACK-AARCH64-CONT-001`) after backend landing:
