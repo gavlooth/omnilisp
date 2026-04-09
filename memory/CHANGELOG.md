@@ -27,10 +27,22 @@
     - This closes the same ownership mismatch for non-AOT declarative FFI
       bindings, so interpreter-created FFI primitives no longer depend on an
       unowned heap payload surviving past primitive teardown.
+  - Root-boundary primitive promotion now fails closed for opaque primitive
+    payloads:
+    - `src/lisp/eval_promotion_root_clone_basic.c3` no longer raw-copies
+      `Primitive.user_data` when promoting a child-owned primitive wrapper into
+      root storage. If a primitive carries opaque payload state, root-store
+      promotion now returns an explicit error instead of aliasing foreign
+      lifetime-owned payload through a shallow struct copy.
+    - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` now covers both
+      the allowed plain primitive clone path and the fail-closed rejection path
+      for child-owned primitives with non-null `user_data`.
   - Validation:
     - `c3c build --sanitize=address`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->
       `pass=189 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` ->
+      `pass=75 fail=0`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` ->
       `pass=22 fail=0`
     - `scripts/run_e2e.sh` -> `ALL 404 e2e compiler tests passed!`

@@ -228,7 +228,8 @@ fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp
 
 fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, int* pass, int* fail) {
     // Invariant: child-owned PRIMITIVE wrapper crossing root-store boundary is
-    // cloned (wrapper + Primitive payload) to avoid shared-ownership aliasing.
+    // cloned only when its payload is plain data; opaque user_data must fail
+    // closed instead of aliasing through a raw struct copy.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* child = main::scope_create(saved);
@@ -293,6 +294,85 @@ fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, i
             (*pass)++;
         } else {
             io::printfn("[FAIL] lifetime: root-boundary PRIMITIVE clone path (site_delta=%d pre_ok=%s post_ok=%s)",
+                (long)site_delta,
+                pre_ok ? "yes" : "no",
+                post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary PRIMITIVE opaque payload reject (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = PRIMITIVE;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+        local.prim_val = null;
+
+        Primitive* prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        if (prim == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary PRIMITIVE opaque payload reject (setup primitive)");
+            (*fail)++;
+            return;
+        }
+        *prim = {};
+        prim.name[0] = 'q';
+        prim.name[1] = 0;
+        prim.arity = 1;
+        prim.tag = 321;
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        if (opaque_payload == null) {
+            mem::free(prim);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary PRIMITIVE opaque payload reject (setup payload)");
+            (*fail)++;
+            return;
+        }
+        *opaque_payload = 77;
+        prim.user_data = (void*)opaque_payload;
+        local.prim_val = prim;
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET);
+        Value* promoted = promote_to_root_site(local, interp, COPY_SITE_JIT_EVAL_SET);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_EVAL_SET) - base_site;
+
+        bool pre_ok = promoted != null &&
+                      promoted.tag == ERROR &&
+                      promoted.str_chars != null &&
+                      str_contains(
+                          promoted.str_chars[:promoted.str_len],
+                          "root-store: refusing primitive clone with opaque user_data"
+                      ) &&
+                      site_delta == 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool post_ok = promoted != null &&
+                       promoted.tag == ERROR &&
+                       promoted.str_chars != null &&
+                       str_contains(
+                           promoted.str_chars[:promoted.str_len],
+                           "root-store: refusing primitive clone with opaque user_data"
+                       );
+
+        bool ok = pre_ok && post_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary PRIMITIVE opaque payload reject");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: root-boundary PRIMITIVE opaque payload reject (site_delta=%d pre_ok=%s post_ok=%s)",
                 (long)site_delta,
                 pre_ok ? "yes" : "no",
                 post_ok ? "yes" : "no");
