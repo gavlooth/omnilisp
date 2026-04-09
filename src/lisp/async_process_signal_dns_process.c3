@@ -23,6 +23,10 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     if (!scheduler_is_running_fiber_context() || !g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
         return io_raise(interp, "io/process-wait-fiber-required", "process-wait: requires running fiber context");
     }
+    if (!process_handle_try_begin_use(ph)) {
+        return process_handle_busy_error(interp);
+    }
+    defer process_handle_end_use(ph);
 
     int pid = omni_uv_process_pid(ph.uv_process);
 
@@ -81,6 +85,10 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     if (ph == null || !ph.open || ph.uv_process == null) {
         return io_raise(interp, "io/process-kill-invalid-handle", "process-kill: invalid or closed process handle");
     }
+    if (!process_handle_try_begin_use(ph)) {
+        return process_handle_busy_error(interp);
+    }
+    defer process_handle_end_use(ph);
 
     int sig = (int)sig_v.int_val;
     if (sig <= 0) sig = SIGKILL_VAL;

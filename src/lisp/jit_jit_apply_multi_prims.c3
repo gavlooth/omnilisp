@@ -88,7 +88,14 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
     }
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
-        return raise_error(interp, "variadic lambda arity mismatch");
+        char[256] ebuf;
+        char[] msg;
+        if (try char[] formatted = io::bprintf(&ebuf, "variadic lambda requires at least %d argument(s), got %d", (int)pc, (int)arg_count)) {
+            msg = formatted;
+        } else {
+            msg = "variadic lambda arity mismatch";
+        }
+        return raise_error(interp, msg);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
@@ -141,7 +148,9 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
     }
     usz pc = func.closure_val.param_count;
     if (arg_count < pc) {
-        return raise_error(interp, "arity mismatch");
+        char[128] buf;
+        usz len = format_arity_error(&buf, pc, arg_count);
+        return raise_error(interp, buf[:len]);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;

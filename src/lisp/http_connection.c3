@@ -39,8 +39,9 @@ fn Value* http_write_connection(Value* conn, bool is_https, Value* req_str, Inte
     return prim_tcp_write(write_args[..], null, interp);
 }
 
-fn usz http_read_connection(Value* conn, bool is_https, char* resp_buf, usz max_len, Interp* interp) {
+fn Value* http_read_connection(Value* conn, bool is_https, char* resp_buf, usz max_len, usz* out_len, Interp* interp) {
     usz resp_len = 0;
+    if (out_len != null) *out_len = 0;
     while (resp_len < max_len) {
         Value*[1] read_args;
         read_args[0] = conn;
@@ -50,14 +51,16 @@ fn usz http_read_connection(Value* conn, bool is_https, char* resp_buf, usz max_
         } else {
             chunk = prim_tcp_read(read_args[..], null, interp);
         }
-        if (chunk == null || chunk.tag == ERROR) break;
+        if (chunk == null) break;
+        if (chunk.tag == ERROR) return chunk;
         if (!is_string(chunk) || chunk.str_len == 0) break;
 
         usz copy_len = chunk.str_len;
         if (resp_len + copy_len > max_len) copy_len = max_len - resp_len;
         for (usz i = 0; i < copy_len; i++) resp_buf[resp_len++] = chunk.str_chars[i];
     }
-    return resp_len;
+    if (out_len != null) *out_len = resp_len;
+    return null;
 }
 
 fn void http_close_connection(Value* conn, Value* tcp, bool is_https, Interp* interp) {

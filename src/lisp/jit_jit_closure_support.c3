@@ -2,6 +2,9 @@ module lisp;
 
 import main;
 
+usz g_method_signature_heap_copy_call_count = 0;
+usz g_method_signature_force_heap_copy_fail_on_call = 0;
+
 fn void method_signature_init_empty(MethodSignature* sig) {
     sig.param_types = null;
     sig.param_type_vars = null;
@@ -61,6 +64,12 @@ fn void method_signature_destroy_heap(MethodSignature* sig) {
 }
 
 fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src) {
+    g_method_signature_heap_copy_call_count++;
+    if (g_method_signature_force_heap_copy_fail_on_call != 0 &&
+        g_method_signature_heap_copy_call_count == g_method_signature_force_heap_copy_fail_on_call) {
+        method_signature_init_empty(dst);
+        return false;
+    }
     method_signature_init_empty(dst);
     dst.param_count = src.param_count;
     dst.constraint_count = src.constraint_count;

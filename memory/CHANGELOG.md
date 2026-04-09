@@ -1,5 +1,73 @@
 ## 2026-04-09
 
+- Closed the process-handle concurrency lane for `process-wait` / `process-kill` reuse:
+  - `src/lisp/async_process_signal_runtime.c3` now gives each process handle a shared in-flight guard, and `src/lisp/async_process_lifecycle.c3` preserves the closed state while the handle is in use so concurrent reuse fails closed instead of racing on the same live `uv_process`.
+  - `src/lisp/async_process_signal_dns_process.c3` now returns a normalized `io/process-handle-busy` error when a concurrent `process-wait` or `process-kill` attempts to reuse the same live process handle.
+  - `src/lisp/tests_advanced_io_effect_ffi_scheduler_boundary.c3` and `src/lisp/tests_advanced_io_effect_ffi_groups.c3` now cover the concurrent reuse contract directly.
+  - validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp` -> pass
+
+- Closed the residual env-copy shared-wrapper hole that remained after the
+  earlier return-boundary and ESCAPE-lane hardening:
+  - `src/lisp/eval_env_copy_values.c3` no longer returns `ARRAY` /
+    `HASHMAP` / `SET` / `METHOD_TABLE` bindings by raw pointer identity during
+    env-copy. Those wrappers now route through the same boundary-copy policy
+    already used by other promotion paths, so source-scope shared wrappers are
+    cloned when env-copy crosses into a different target scope.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups.c3` now covers the shared
+    wrapper env-copy contract directly, proving disjoint collection and method
+    table wrappers are cloned and remain valid after source-scope teardown.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` wires that
+    focused regression into the memory-lifetime env-copy smoke lane.
+
+- Closed a post-wave fail-closed cleanup and transport follow-up:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` and
+    `src/lisp/eval_promotion_escape_structured.c3` now reuse the shared
+    `method_table_free_partial_heap(...)` helper so method-table abort paths
+    destroy already-copied heap signatures before freeing the table shell.
+  - `src/lisp/aot_runtime_bridge_trampoline.c3` now rejects negative arg
+    counts in `aot::apply_multi(...)`, `aot::apply_multi_tail(...)`, and the
+    shared multi-arg fast path before any signed-to-unsigned conversion or
+    malformed AOT closure application can proceed.
+  - `src/lisp/compiler_native_call_compilation_flat_style.c3` now frees
+    `_closure_data_*` when AOT closure construction returns `ERROR`, matching
+    the existing safe closure-emission path.
+  - `src/lisp/http.c3`, `src/lisp/http_connection.c3`, and
+    `src/lisp/http_url_response.c3` now:
+    - close HTTP/TCP/TLS connections on all post-connect early-return paths,
+    - propagate transport read errors instead of parsing partial error output
+      as a synthetic success response,
+    - reject out-of-range URL ports at parse time.
+
+- Closed the validation live-e2e evidence lane:
+  - `scripts/run_validation_status_summary.sh` now runs `scripts/run_e2e.sh`
+    as part of the summary bundle and refuses to report green unless the
+    current run proves Stage 4 live e2e execution and a passing Stage 5 result
+    in the generated logs.
+  - `TODO.md` no longer tracks `AUDIT-VALIDATION-E2E-LIVE-003`; the remaining
+    live items are the process concurrency, compiler diagnostic parity, and
+    method-table abort-cleanup coverage lanes.
+
+- Closed the remaining compiler diagnostic parity and method-table abort
+  coverage lanes:
+  - `src/lisp/jit_jit_apply_multi_prims.c3` now formats non-tail fixed-arity
+    and variadic multi-arg under-application with the same canonical messages
+    already used by the tail and AOT helpers.
+  - `src/lisp/tests_compiler_core_groups_fail_closed.c3` now asserts that
+    compiler syntax failures report user-source coordinates after the stdlib
+    prelude line offset is stripped from diagnostics.
+  - `src/lisp/eval_promotion_root_clones.c3` now exposes narrow
+    method-table-abort cleanup telemetry, and
+    `src/lisp/jit_jit_closure_support.c3` now exposes a targeted
+    heap-signature copy failure seam.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves both
+    copy-to-parent and escape-promotion method-table abort paths reclaim
+    already-copied heap signatures, and
+    `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` includes that
+    regression in the bounded smoke lane.
+  - `TODO.md` is back to zero live backlog items for this audit pass.
+
 - Closed the shared-wrapper boundary hardening lane and the integration
   blockers that surfaced while validating it:
   - `src/lisp/eval_promotion_copy.c3`,

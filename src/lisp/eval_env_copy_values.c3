@@ -71,14 +71,18 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             return make_string(interp, v.str_chars[:v.str_len]);
         case ERROR:
             return make_error(interp, v.str_chars[:v.str_len]);
-        case HASHMAP:
-        case SET:
-        case ARRAY:
-        case METHOD_TABLE:
         case TYPE_INFO:
         case MODULE:
             // Root-lifetime or external-lifetime objects can be shared.
             return v;
+        case HASHMAP:
+        case SET:
+        case ARRAY:
+        case METHOD_TABLE: {
+            BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
+            if (!boundary_copy_result_ok(copied)) return null;
+            return copied.value;
+        }
         case PRIMITIVE: {
             if (copy_env_should_reuse_value(v, interp)) return v;
             BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);

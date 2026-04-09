@@ -3,8 +3,26 @@ module lisp;
 import std::core::mem;
 import main;
 
-fn void root_store_free_method_table_partial(MethodTable* mt, usz copied_entries) {
+usz g_method_table_partial_cleanup_call_count = 0;
+usz g_method_table_partial_cleanup_entry_total = 0;
+
+fn void method_table_partial_cleanup_reset() {
+    g_method_table_partial_cleanup_call_count = 0;
+    g_method_table_partial_cleanup_entry_total = 0;
+}
+
+fn usz method_table_partial_cleanup_calls() @inline {
+    return g_method_table_partial_cleanup_call_count;
+}
+
+fn usz method_table_partial_cleanup_entries() @inline {
+    return g_method_table_partial_cleanup_entry_total;
+}
+
+fn void method_table_free_partial_heap(MethodTable* mt, usz copied_entries) {
     if (mt == null) return;
+    g_method_table_partial_cleanup_call_count++;
+    g_method_table_partial_cleanup_entry_total += copied_entries;
     if (mt.entries != null) {
         usz limit = copied_entries;
         if (limit > mt.entry_count) limit = mt.entry_count;
@@ -64,7 +82,7 @@ fn Value* root_store_clone_method_table_to_scope(
     for (usz i = 0; i < dst_mt.entry_count; i++) {
         method_signature_init_empty(&dst_mt.entries[i].sig);
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            root_store_free_method_table_partial(dst_mt, copied_entries);
+            method_table_free_partial_heap(dst_mt, copied_entries);
             return null;
         }
         Value* copied_impl = boundary_copy_to_parent_site_ctx(
@@ -74,7 +92,7 @@ fn Value* root_store_clone_method_table_to_scope(
             &copy_ctx
         );
         if (copied_impl != null && copied_impl.tag == ERROR) {
-            root_store_free_method_table_partial(dst_mt, copied_entries + 1);
+            method_table_free_partial_heap(dst_mt, copied_entries + 1);
             return copied_impl;
         }
         dst_mt.entries[i].implementation = copied_impl;
@@ -88,7 +106,7 @@ fn Value* root_store_clone_method_table_to_scope(
         &copy_ctx
     );
     if (copied_fallback != null && copied_fallback.tag == ERROR) {
-        root_store_free_method_table_partial(dst_mt, copied_entries);
+        method_table_free_partial_heap(dst_mt, copied_entries);
         return copied_fallback;
     }
     dst_mt.fallback = copied_fallback;

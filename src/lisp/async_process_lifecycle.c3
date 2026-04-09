@@ -11,10 +11,12 @@ struct ProcessWaitOffloadCtx {
 }
 
 fn void close_process_handle(ProcessHandle* ph) {
-    if (ph == null || !ph.open || ph.uv_process == null) return;
+    if (ph == null) return;
+    ph.open = false;
+    ph.lifecycle_state = PROCESS_HANDLE_STATE_CLOSED;
+    if (ph.uv_process == null) return;
     omni_uv_process_close(ph.uv_process);
     ph.uv_process = null;
-    ph.open = false;
 }
 
 fn OffloadCompletion* process_wait_offload_callback(OffloadWork work) {

@@ -88,6 +88,13 @@ run_case \
   scripts/check_status_consistency.sh
 
 run_case \
+  "e2e_live" \
+  "integration" \
+  "e2e" \
+  "live e2e compiler execution" \
+  scripts/run_e2e.sh
+
+run_case \
   "e2e_baseline_policy" \
   "types-dispatch" \
   "policy" \
@@ -214,6 +221,39 @@ if missing_summary_telemetry:
     print(
         "missing OMNI_TEST_SUMMARY telemetry for bounded slices: "
         + ", ".join(missing_summary_telemetry),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+live_e2e_runs = [
+    run for run in data.get("runs", [])
+    if run.get("kind") == "e2e"
+]
+if len(live_e2e_runs) != 1:
+    print(
+        "missing live e2e execution evidence in validation summary",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+live_e2e_run = live_e2e_runs[0]
+if live_e2e_run.get("status") != "pass":
+    print(
+        f"live e2e execution failed: {live_e2e_run.get('name')}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+log_text = Path(live_e2e_run["log_path"]).read_text(encoding="utf-8", errors="replace")
+if "=== Stage 4: Running e2e tests ===" not in log_text:
+    print(
+        "live e2e execution did not reach Stage 4",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+if "ALL " not in log_text and "E2E baseline matched expected diff manifest." not in log_text:
+    print(
+        "live e2e execution did not emit a passing Stage 5 result",
         file=sys.stderr,
     )
     sys.exit(1)

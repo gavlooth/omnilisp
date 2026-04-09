@@ -785,6 +785,145 @@ fn void run_memory_lifetime_nested_wrapper_boundary_copy_fail_closed_test(Interp
     }
 }
 
+fn void run_memory_lifetime_method_table_abort_cleanup_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: method-table copy/escape abort paths reclaim already-copied
+    // heap signatures when a later signature copy fails.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* releasing = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || releasing == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (releasing != null) main::scope_release(releasing);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: method table abort cleanup telemetry");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = foreign;
+        Value* mt_src = interp.alloc_value();
+        mt_src.tag = METHOD_TABLE;
+        main::scope_register_dtor(foreign, (void*)mt_src, &scope_dtor_value);
+
+        MethodTable* mt_payload = (MethodTable*)mem::malloc(MethodTable.sizeof);
+        if (mt_payload == null) {
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: method table abort cleanup telemetry (setup table)");
+            (*fail)++;
+            return;
+        }
+        mt_payload.name = interp.symbols.intern("__mt_abort_cleanup");
+        mt_payload.capacity = 2;
+        mt_payload.entry_count = 2;
+        mt_payload.fallback = null;
+        mt_payload.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * mt_payload.capacity);
+        if (mt_payload.entries == null) {
+            mem::free(mt_payload);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: method table abort cleanup telemetry (setup entries)");
+            (*fail)++;
+            return;
+        }
+
+        bool setup_ok = true;
+        for (usz i = 0; i < mt_payload.entry_count; i++) {
+            method_signature_init_empty(&mt_payload.entries[i].sig);
+            MethodSignature sig_src;
+            method_signature_init_empty(&sig_src);
+            if (!method_signature_alloc_arrays_in_scope(&sig_src, foreign, 1, 0)) {
+                setup_ok = false;
+                break;
+            }
+            sig_src.param_types[0] = interp.tid_Integer;
+            sig_src.param_type_vars[0] = (SymbolId)0;
+            sig_src.has_val_literal[0] = false;
+            if (!method_signature_copy_to_heap(&mt_payload.entries[i].sig, &sig_src)) {
+                setup_ok = false;
+                break;
+            }
+            mt_payload.entries[i].implementation = make_int(interp, (long)(900 + i));
+        }
+
+        if (!setup_ok) {
+            method_table_free_partial_heap(mt_payload, mt_payload.entry_count);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: method table abort cleanup telemetry (setup signature)");
+            (*fail)++;
+            return;
+        }
+        mt_src.method_table_val = mt_payload;
+
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+
+        method_table_partial_cleanup_reset();
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 2;
+        BoundaryCopyResult copy_result = boundary_copy_to_parent_site_ctx_checked(
+            mt_src,
+            interp,
+            COPY_SITE_GENERIC,
+            null
+        );
+        usz copy_cleanup_calls = method_table_partial_cleanup_calls();
+        usz copy_cleanup_entries = method_table_partial_cleanup_entries();
+
+        method_table_partial_cleanup_reset();
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 2;
+        Value* escape_result = promote_to_escape(mt_src, interp);
+        usz escape_cleanup_calls = method_table_partial_cleanup_calls();
+        usz escape_cleanup_entries = method_table_partial_cleanup_entries();
+        g_method_signature_force_heap_copy_fail_on_call = 0;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(releasing);
+        main::scope_release(target);
+
+        bool copy_ok = !boundary_copy_result_ok(copy_result) &&
+            copy_result.value == null &&
+            copy_result.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT &&
+            copy_cleanup_calls == 1 &&
+            copy_cleanup_entries == 1;
+        bool escape_ok = escape_result != null &&
+            escape_result.tag == ERROR &&
+            escape_cleanup_calls == 1 &&
+            escape_cleanup_entries == 1;
+
+        bool ok = copy_ok && escape_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: method table abort cleanup telemetry");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: method table abort cleanup telemetry (copy_ok=%s escape_ok=%s copy_fault=%s copy_calls=%d copy_entries=%d escape_tag=%d escape_calls=%d escape_entries=%d)",
+                copy_ok ? "yes" : "no",
+                escape_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(copy_result.fault_code),
+                (long)copy_cleanup_calls,
+                (long)copy_cleanup_entries,
+                escape_result != null ? (int)escape_result.tag : -1,
+                (long)escape_cleanup_calls,
+                (long)escape_cleanup_entries
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp, int* pass, int* fail) {
     // Invariant: splice fast-path rejects sibling/foreign/retained-child transfers with explicit reasons.
     {

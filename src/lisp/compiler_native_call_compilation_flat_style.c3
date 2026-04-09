@@ -56,10 +56,10 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
 
         // Set captured values
         for (usz i = 0; i < found_def.capture_count; i++) {
-            self.emit_indent();
-            self.emit("_closure_data_");
-            self.emit_usz(lambda_id);
-            self.emit(".captured_");
+        self.emit_indent();
+        self.emit("_closure_data_");
+        self.emit_usz(lambda_id);
+        self.emit(".captured_");
             self.emit_symbol_name(found_def.captures[i]);
             self.emit(" = ");
             self.emit_symbol_name(found_def.captures[i]);
@@ -73,6 +73,14 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         self.emit("((void*)_closure_data_");
         self.emit_usz(lambda_id);
         self.emit(", &invoke_lambda_");
+        self.emit_usz(lambda_id);
+        self.emit(");\n");
+        self.emit_indent();
+        self.emit("if (");
+        self.emit_temp_ref(id);
+        self.emit(" != null && ");
+        self.emit_temp_ref(id);
+        self.emit(".tag == lisp::ValueTag.ERROR) mem::free(_closure_data_");
         self.emit_usz(lambda_id);
         self.emit(");\n");
         self.indent--;

@@ -189,14 +189,12 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     for (usz i = 0; i < dst_mt.entry_count; i++) {
         method_signature_init_empty(&dst_mt.entries[i].sig);
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            mem::free(dst_mt.entries);
-            mem::free(dst_mt);
+            method_table_free_partial_heap(dst_mt, i);
             return raise_error(interp, "boundary: failed to copy method signature during escape promotion");
         }
         Value* promoted_impl = promote_to_escape(src_mt.entries[i].implementation, interp);
         if (src_mt.entries[i].implementation != null && (promoted_impl == null || is_error(promoted_impl))) {
-            mem::free(dst_mt.entries);
-            mem::free(dst_mt);
+            method_table_free_partial_heap(dst_mt, i + 1);
             return promoted_impl == null
                 ? raise_error(interp, "boundary: failed to promote method implementation during escape promotion")
                 : promoted_impl;
@@ -206,8 +204,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 
     Value* promoted_fallback = promote_to_escape(src_mt.fallback, interp);
     if (src_mt.fallback != null && (promoted_fallback == null || is_error(promoted_fallback))) {
-        mem::free(dst_mt.entries);
-        mem::free(dst_mt);
+        method_table_free_partial_heap(dst_mt, dst_mt.entry_count);
         return promoted_fallback == null
             ? raise_error(interp, "boundary: failed to promote method fallback during escape promotion")
             : promoted_fallback;

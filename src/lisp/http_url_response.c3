@@ -51,11 +51,12 @@ fn void? parse_url(char[] url, ParsedUrl* out) {
         int port = 0;
         usz port_digits = 0;
         while (pos < url.len && url[pos] >= '0' && url[pos] <= '9') {
+            if (port > 6553 || (port == 6553 && (int)(url[pos] - '0') > 5)) return INVALID_SYNTAX~;
             port = port * 10 + (int)(url[pos] - '0');
             port_digits++;
             pos++;
         }
-        if (port_digits == 0 || port <= 0) return INVALID_SYNTAX~;
+        if (port_digits == 0 || port <= 0 || port > 65535) return INVALID_SYNTAX~;
         out.port = port;
         if (pos < url.len && url[pos] != '/') return INVALID_SYNTAX~;
     }

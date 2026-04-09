@@ -220,15 +220,13 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     for (usz i = 0; i < dst_mt.entry_count; i++) {
         method_signature_init_empty(&dst_mt.entries[i].sig);
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            mem::free(dst_mt.entries);
-            mem::free(dst_mt);
+            method_table_free_partial_heap(dst_mt, i);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             return fault_out != null ? null : raise_error(interp, "boundary: failed to copy method signature");
         }
         Value* copied_impl = copy_to_parent_with_fault(src_mt.entries[i].implementation, interp, fault_out);
         if (src_mt.entries[i].implementation != null && (copied_impl == null || is_error(copied_impl))) {
-            mem::free(dst_mt.entries);
-            mem::free(dst_mt);
+            method_table_free_partial_heap(dst_mt, i + 1);
             if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                 *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             }
@@ -243,8 +241,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
 
     Value* copied_fallback = copy_to_parent_with_fault(src_mt.fallback, interp, fault_out);
     if (src_mt.fallback != null && (copied_fallback == null || is_error(copied_fallback))) {
-        mem::free(dst_mt.entries);
-        mem::free(dst_mt);
+        method_table_free_partial_heap(dst_mt, dst_mt.entry_count);
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }

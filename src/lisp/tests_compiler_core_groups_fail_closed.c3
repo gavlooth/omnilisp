@@ -160,8 +160,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value* variadic_apply_arg_list_alloc_fail = null;
             Value* invoke_dispatch_interp_unavailable = null;
             Value* apply_multi_dispatch_interp_unavailable = null;
+            Value* apply_multi_negative_argc = null;
             Value* invoke_tail_dispatch_interp_unavailable = null;
             Value* apply_multi_tail_dispatch_interp_unavailable = null;
+            Value* apply_multi_tail_negative_argc = null;
             Value* lookup_prim_bridge_interp_unavailable = null;
             Value* lookup_var_bridge_interp_unavailable = null;
             Value* import_bridge_interp_unavailable = null;
@@ -202,6 +204,8 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 invoke_tail_dispatch_interp_unavailable = aot::invoke_tail(invoke_variadic, aot::make_int(12));
                 apply_multi_tail_dispatch_interp_unavailable = aot::apply_multi_tail(invoke_variadic, multi_list, 1);
                 aot::g_aot_force_dispatch_interp_unavailable = false;
+                apply_multi_negative_argc = aot::apply_multi(invoke_variadic, multi_list, -1);
+                apply_multi_tail_negative_argc = aot::apply_multi_tail(invoke_variadic, multi_list, -1);
             }
 
             aot::g_aot_force_bridge_interp_unavailable = true;
@@ -264,8 +268,10 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && variadic_apply_arg_list_alloc_fail != null && variadic_apply_arg_list_alloc_fail.tag == ValueTag.ERROR
                 && invoke_dispatch_interp_unavailable != null && invoke_dispatch_interp_unavailable.tag == ValueTag.ERROR
                 && apply_multi_dispatch_interp_unavailable != null && apply_multi_dispatch_interp_unavailable.tag == ValueTag.ERROR
+                && apply_multi_negative_argc != null && apply_multi_negative_argc.tag == ValueTag.ERROR
                 && invoke_tail_dispatch_interp_unavailable != null && invoke_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
-                && apply_multi_tail_dispatch_interp_unavailable != null && apply_multi_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR;
+                && apply_multi_tail_dispatch_interp_unavailable != null && apply_multi_tail_dispatch_interp_unavailable.tag == ValueTag.ERROR
+                && apply_multi_tail_negative_argc != null && apply_multi_tail_negative_argc.tag == ValueTag.ERROR;
 
             bool bridge_interp_errors_ok =
                 lookup_prim_bridge_interp_unavailable != null && lookup_prim_bridge_interp_unavailable.tag == ValueTag.ERROR
@@ -391,6 +397,16 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             str_contains(compiler.error_message, "expected ']'");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: compiler parser clears prior exprs on malformed postfix partial expr"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: compiler parser clears prior exprs on malformed postfix partial expr"); }
+    }
+
+    {
+        char[] err = "";
+        char[] code = compile_to_c3("(define x 1)\n2.[", interp, &err);
+        bool ok = code.len == 0 &&
+            str_contains(err, "compiler syntax error at line 2, column") &&
+            str_contains(err, "expected ']'");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: prelude-stripped parser coordinates report user line numbers"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: prelude-stripped parser coordinates report user line numbers"); }
     }
 
     {

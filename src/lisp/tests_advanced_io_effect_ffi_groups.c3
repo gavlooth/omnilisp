@@ -45,6 +45,10 @@ fn void run_advanced_process_wait_event_driven_test(Interp* interp, int* pass, i
     run_advanced_process_wait_event_driven_test_impl(interp, pass, fail);
 }
 
+fn void run_advanced_process_handle_concurrent_reuse_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_process_handle_concurrent_reuse_test_impl(interp, pass, fail);
+}
+
 fn void run_advanced_signal_burst_delivery_test(Interp* interp, int* pass, int* fail) {
     run_advanced_signal_burst_delivery_test_impl(interp, pass, fail);
 }
@@ -342,6 +346,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(and (= (ref st 'exit-code) 0) (string-contains? msg \"requires running fiber context\")))",
         pass, fail);
     run_advanced_process_wait_event_driven_test(interp, pass, fail);
+    run_advanced_process_handle_concurrent_reuse_test(interp, pass, fail);
 
     test_truthy_interp(interp, "process kill terminates child",
         "(block "

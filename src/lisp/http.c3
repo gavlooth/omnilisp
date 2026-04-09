@@ -51,6 +51,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     Value* tcp = null;
     Value* conn = http_connect_for_request(&parsed, host_val, &tcp, interp);
     if (conn == null || conn.tag == ERROR) return conn;
+    defer http_close_connection(conn, tcp, parsed.is_https, interp);
 
     char[4096] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
     usz? req_len = build_request("GET", &parsed, "", "", &req_buf, 4096);
@@ -66,8 +67,9 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     char* resp_buf = (char*)mem::malloc(65536);
     if (resp_buf == null) return raise_error(interp, "http-get: out of memory for response buffer");
     defer mem::free(resp_buf);
-    usz resp_len = http_read_connection(conn, parsed.is_https, resp_buf, 65000, interp);
-    http_close_connection(conn, tcp, parsed.is_https, interp);
+    usz resp_len = 0;
+    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, 65000, &resp_len, interp);
+    if (read_result != null && read_result.tag == ERROR) return read_result;
 
     return parse_response(resp_buf[:resp_len], interp);
 }
@@ -133,6 +135,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     Value* tcp = null;
     Value* conn = http_connect_for_request(&parsed, host_val, &tcp, interp);
     if (conn == null || conn.tag == ERROR) return conn;
+    defer http_close_connection(conn, tcp, parsed.is_https, interp);
 
     // Send request
     char[8192] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
@@ -142,17 +145,15 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     }
     Value* req_str = make_string(interp, req_buf[:req_len]);
     Value* write_result = http_write_connection(conn, parsed.is_https, req_str, interp);
-    if (write_result != null && write_result.tag == ERROR) {
-        http_close_connection(conn, tcp, parsed.is_https, interp);
-        return write_result;
-    }
+    if (write_result != null && write_result.tag == ERROR) return write_result;
 
     // Read response — heap-allocate to avoid StackCtx stack overflow.
     char* resp_buf = (char*)mem::malloc(65536);
     if (resp_buf == null) return raise_error(interp, "http-request: out of memory for response buffer");
     defer mem::free(resp_buf);
-    usz resp_len = http_read_connection(conn, parsed.is_https, resp_buf, 65000, interp);
-    http_close_connection(conn, tcp, parsed.is_https, interp);
+    usz resp_len = 0;
+    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, 65000, &resp_len, interp);
+    if (read_result != null && read_result.tag == ERROR) return read_result;
 
     return parse_response(resp_buf[:resp_len], interp);
 }

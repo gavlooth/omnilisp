@@ -163,13 +163,17 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         ParsedUrl parsed = {};
         bool rejected_trailing_port_garbage = false;
         bool rejected_empty_port = false;
+        bool rejected_oversize_port = false;
         if (catch err = parse_url("http://example.com:80oops", &parsed)) {
             rejected_trailing_port_garbage = true;
         }
         if (catch err = parse_url("http://example.com:/path", &parsed)) {
             rejected_empty_port = true;
         }
-        if (rejected_trailing_port_garbage && rejected_empty_port) {
+        if (catch err = parse_url("http://example.com:65536/path", &parsed)) {
+            rejected_oversize_port = true;
+        }
+        if (rejected_trailing_port_garbage && rejected_empty_port && rejected_oversize_port) {
             emit_pass_literal("[PASS] http url parser rejects malformed port suffixes");
             (*pass)++;
         } else {

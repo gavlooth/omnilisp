@@ -77,6 +77,9 @@ fn lisp::Value* apply_multi_once(lisp::Value* func, lisp::Value* arg_list, long 
     if (active_interp == null) {
         return aot_make_error_best_effort(null, "aot apply-multi: runtime interpreter unavailable");
     }
+    if (argc < 0) {
+        return aot_make_error_best_effort(active_interp, "aot apply-multi: negative arg count");
+    }
 
     // Fast path: AOT closure -> call directly, skipping JIT apply_multi indirection
     if (func != null && func.tag == lisp::ValueTag.PRIMITIVE && func.prim_val != null) {
@@ -141,6 +144,13 @@ fn lisp::Value* invoke(lisp::Value* func, lisp::Value* arg) {
  * apply_multi — Call a function with multiple args, with trampoline for TCO.
  */
 fn lisp::Value* apply_multi(lisp::Value* func, lisp::Value* arg_list, long argc) {
+    lisp::Interp* active_interp = aot_dispatch_interp();
+    if (active_interp == null) {
+        return aot_make_error_best_effort(null, "aot apply-multi: runtime interpreter unavailable");
+    }
+    if (argc < 0) {
+        return aot_make_error_best_effort(active_interp, "aot apply-multi: negative arg count");
+    }
     TailStateSnapshot saved;
     tail_state_capture(&saved);
     g_tail_pending = false;
@@ -186,6 +196,9 @@ fn lisp::Value* apply_multi_tail(lisp::Value* func, lisp::Value* arg_list, long 
     lisp::Interp* active_interp = aot_dispatch_interp();
     if (active_interp == null) {
         return aot_make_error_best_effort(null, "aot apply-multi-tail: runtime interpreter unavailable");
+    }
+    if (argc < 0) {
+        return aot_make_error_best_effort(active_interp, "aot apply-multi-tail: negative arg count");
     }
     g_tail_func = func;
     g_tail_arg = arg_list;

@@ -39,6 +39,54 @@ fn void run_advanced_process_wait_event_driven_test_impl(Interp* interp, int* pa
     }
 }
 
+fn void run_advanced_process_handle_concurrent_reuse_test_impl(Interp* interp, int* pass, int* fail) {
+    EvalResult setup = run(
+        "(define p (process-spawn \"/bin/sh\" [\"-c\" \"sleep 0.2\"] nil))",
+        interp
+    );
+    bool ok = !setup.error.has_error;
+    Value* proc_v = null;
+    ProcessHandle* ph = null;
+    if (ok) {
+        proc_v = interp.global_env.lookup(interp.symbols.intern("p"));
+        Value* handle_v = proc_v != null && proc_v.tag == HASHMAP && proc_v.hashmap_val != null
+            ? hashmap_get(proc_v.hashmap_val, make_symbol(interp, interp.symbols.intern("handle")))
+            : null;
+        ph = get_process_handle(handle_v);
+        ok = ph != null && ph.open && ph.uv_process != null && process_handle_try_begin_use(ph);
+    }
+
+    if (ok) {
+        EvalResult wait_busy = run(
+            "(await (spawn (lambda () (process-wait (ref p 'handle)))))",
+            interp
+        );
+        EvalResult kill_busy = run("(process-kill (ref p 'handle) 15)", interp);
+        ok = wait_busy.error.has_error &&
+            kill_busy.error.has_error &&
+            str_contains(wait_busy.error.message[:256], "process-handle already in use") &&
+            str_contains(kill_busy.error.message[:256], "process-handle already in use");
+        process_handle_end_use(ph);
+        EvalResult cleanup_wait = run("(await (spawn (lambda () (process-wait (ref p 'handle)))))", interp);
+        ok = ok &&
+            !cleanup_wait.error.has_error &&
+            cleanup_wait.value != null &&
+            cleanup_wait.value.tag != ERROR &&
+            cleanup_wait.value.tag != NIL;
+    }
+
+    if (ok) {
+        emit_pass("process handle concurrent reuse fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] process handle concurrent reuse fails closed (setup_err=%s)",
+            setup.error.has_error ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_advanced_signal_burst_delivery_test_impl(Interp* interp, int* pass, int* fail) {
     EvalResult setup_hits = run("(define signal-burst-hits {'n 0})", interp);
     EvalResult setup_handle = run(

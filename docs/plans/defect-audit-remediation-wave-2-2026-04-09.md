@@ -2,6 +2,42 @@
 
 Status: completed execution note
 
+Post-wave follow-up (2026-04-09, late pass):
+
+- Additional follow-up fixes landed after the main wave closure:
+  - env-copy now routes disjoint `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE`
+    bindings through boundary policy instead of returning source wrappers by
+    identity;
+  - method-table copy/escape abort paths now destroy already-copied heap
+    signatures before freeing partial tables;
+  - AOT multi-arg trampolines now reject negative arg counts fail-closed;
+  - flat-style closure lowering now frees capture payload on closure-constructor
+    `ERROR` returns;
+  - HTTP client paths now close connections on all post-connect early returns,
+    propagate transport read errors, and reject out-of-range URL ports.
+- Process-handle concurrency lane is now closed:
+  - `src/lisp/async_process_signal_runtime.c3` and
+    `src/lisp/async_process_lifecycle.c3` now share a fail-closed in-flight
+    guard for process handles, so concurrent `process-wait` / `process-kill`
+    reuse returns a deterministic `io/process-handle-busy` error instead of
+    racing on the same live handle.
+  - `src/lisp/tests_advanced_io_effect_ffi_scheduler_boundary.c3` and
+    `src/lisp/tests_advanced_io_effect_ffi_groups.c3` now cover the concurrent
+    reuse contract directly.
+  - `TODO.md` no longer tracks `AUDIT-ASYNC-PROCESS-CONCURRENCY-003`.
+- Remaining follow-up lanes are now also closed:
+  - `src/lisp/jit_jit_apply_multi_prims.c3` now uses the canonical
+    under-arity format for non-tail fixed/variadic multi-arg closure apply,
+    and `src/lisp/tests_compiler_core_groups_fail_closed.c3` now asserts
+    prelude-stripped parser coordinates through the compiler pipeline.
+  - `src/lisp/eval_promotion_root_clones.c3` and
+    `src/lisp/jit_jit_closure_support.c3` now expose a narrow
+    method-table-abort cleanup seam, and
+    `src/lisp/tests_memory_lifetime_boundary_groups.c3` proves both
+    copy-to-parent and escape-promotion partial-cleanup paths reclaim copied
+    heap signatures on abort.
+  - `TODO.md` is back to zero live items for this audit wave.
+
 ## Objective
 
 Address the concrete defects found in the 2026-04-09 multi-lane audit without

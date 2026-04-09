@@ -6,7 +6,12 @@ import main;
 struct ProcessHandle {
     void* uv_process;
     bool open;
+    long lifecycle_state;
 }
+
+const long PROCESS_HANDLE_STATE_OPEN = 0;
+const long PROCESS_HANDLE_STATE_BUSY = 1;
+const long PROCESS_HANDLE_STATE_CLOSED = 2;
 
 struct SignalHandle {
     void* uv_signal_watch;
@@ -22,11 +27,30 @@ struct SignalHandle {
 fn void process_handle_finalizer(void* handle) {
     ProcessHandle* ph = (ProcessHandle*)handle;
     if (ph == null) return;
-    if (ph.open && ph.uv_process != null) {
-        omni_uv_process_close(ph.uv_process);
-        ph.uv_process = null;
+    close_process_handle(ph);
+}
+
+fn bool process_handle_try_begin_use(ProcessHandle* ph) {
+    if (ph == null) return false;
+    long previous = mem::compare_exchange(&ph.lifecycle_state, PROCESS_HANDLE_STATE_OPEN, PROCESS_HANDLE_STATE_BUSY);
+    if (previous != PROCESS_HANDLE_STATE_OPEN) return false;
+    if (!ph.open || ph.uv_process == null) {
+        if (ph.uv_process != null) omni_uv_process_close(ph.uv_process);
         ph.open = false;
+        ph.uv_process = null;
+        ph.lifecycle_state = PROCESS_HANDLE_STATE_CLOSED;
+        return false;
     }
+    return true;
+}
+
+fn void process_handle_end_use(ProcessHandle* ph) {
+    if (ph == null) return;
+    (void)mem::compare_exchange(&ph.lifecycle_state, PROCESS_HANDLE_STATE_BUSY, PROCESS_HANDLE_STATE_OPEN);
+}
+
+fn Value* process_handle_busy_error(Interp* interp) {
+    return io_raise(interp, "io/process-handle-busy", "process-handle already in use");
 }
 
 fn bool signal_callback_callable(Value* v) @inline {
@@ -135,6 +159,7 @@ fn Value* make_process_handle(Interp* interp, void* uv_process) {
     }
     ph.uv_process = uv_process;
     ph.open = true;
+    ph.lifecycle_state = PROCESS_HANDLE_STATE_OPEN;
     Value* v = make_ffi_handle_ex(interp, (void*)ph, "process-handle",
         &process_handle_finalizer, true, false);
     if (v == null) {
