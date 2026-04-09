@@ -54,6 +54,7 @@ fn Value* scheduler_thread_join_fiber_impl(
             Value* y = prim_yield(yargs[..], null, interp);
             if (y != null && y.tag == ERROR) {
                 scheduler_clear_os_thread_waiter(thread_id, generation, waiter_id);
+                scheduler_restore_blocked_fiber_ready(waiter_id);
                 return scheduler_wrap_join_wait_error(
                     y,
                     "scheduler/thread-join-wait-failed",
@@ -127,6 +128,7 @@ fn Value* scheduler_thread_join_fiber_impl(
         Value* y = prim_yield(yargs[..], null, interp);
         if (y != null && y.tag == ERROR) {
             scheduler_clear_os_thread_waiter(thread_id, generation, waiter_id);
+            scheduler_restore_blocked_fiber_ready(waiter_id);
             return scheduler_wrap_join_wait_error(
                 y,
                 "scheduler/thread-join-wait-failed",

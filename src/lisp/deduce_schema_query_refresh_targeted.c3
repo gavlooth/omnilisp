@@ -53,6 +53,21 @@ fn Value* deduce_refresh_materialized_relation_targeted(
             "deduce/refresh!: failed to select refresh dependency closure");
     }
 
+    bool[] stale_before = mem::new_array(bool, db.relation_schema_count);
+    if (stale_before.ptr == null && db.relation_schema_count > 0) {
+        return deduce_raise(interp, "deduce/refresh-out-of-memory", "deduce/refresh!: out of memory");
+    }
+    defer if (stale_before.ptr != null) mem::free(stale_before.ptr);
+
+    for (usz i = 0; i < db.relation_schema_count; i++) {
+        DeduceRelationSchema* schema = &db.relation_schemas[i];
+        stale_before[i] =
+            schema.materialized_view &&
+            deduce_relation_schema_is_materialized_ready(db, schema) &&
+            deduce_refresh_predicate_in_selected_components(&scc_plan, selected_components, schema.name) &&
+            deduce_relation_schema_is_materialized_stale(db, schema);
+    }
+
     bool used_incremental = false;
     Value* incremental_err = deduce_refresh_try_incremental_extensional_copy_relation(
         db,
@@ -82,11 +97,6 @@ fn Value* deduce_refresh_materialized_relation_targeted(
         }
     }
 
-    long refreshed_stale_count =
-        deduce_refresh_count_selected_stale_materialized_views(db, &scc_plan, selected_components);
-    Value* refreshed_relations =
-        deduce_refresh_selected_stale_materialized_relations(db, &scc_plan, selected_components, interp);
-    if (refreshed_relations != null && refreshed_relations.tag == ERROR) return refreshed_relations;
     Value* cleared_dirty_predicates =
         deduce_refresh_selected_dirty_predicates_payload(db, &scc_plan, selected_components, interp);
     if (cleared_dirty_predicates != null && cleared_dirty_predicates.tag == ERROR) return cleared_dirty_predicates;
@@ -99,6 +109,18 @@ fn Value* deduce_refresh_materialized_relation_targeted(
         interp
     );
     if (persist_err != null) return persist_err;
+
+    long refreshed_stale_count = 0;
+    Value* refreshed_rev = make_nil(interp);
+    for (usz i = 0; i < db.relation_schema_count; i++) {
+        DeduceRelationSchema* schema = &db.relation_schemas[i];
+        if (stale_before.ptr == null || !stale_before[i]) continue;
+        if (deduce_relation_schema_is_materialized_stale(db, schema)) continue;
+        refreshed_stale_count++;
+        refreshed_rev = make_cons(interp, make_symbol(interp, schema.name), refreshed_rev);
+    }
+    Value* refreshed_relations = deduce_explain_reverse_list(refreshed_rev, interp);
+
     if (refreshed_stale_count_out != null) *refreshed_stale_count_out = refreshed_stale_count;
     if (refreshed_relations_out != null) *refreshed_relations_out = refreshed_relations;
     if (cleared_dirty_predicates_out != null) *cleared_dirty_predicates_out = cleared_dirty_predicates;

@@ -196,14 +196,13 @@ fn void test_pika_primitive_parse_lisp(lisp::Interp* interp) {
 
 fn void test_pika_primitive_eval_lisp(lisp::Interp* interp) {
     lisp::Value*[1] args;
-    // Simple literal works (variadic primitives do not with curried AST yet).
-    args[0] = lisp::make_string(interp, "42");
+    args[0] = lisp::make_string(interp, "(+ 1 2)");
     lisp::Value* result = prim_pika_eval_lisp(args[..], null, interp);
 
-    if (result.tag == lisp::ValueTag.INT && result.int_val == 42) {
-        pika_emit_pass("[PASS] pika/eval-lisp: 42 evaluates to 42");
+    if (result.tag == lisp::ValueTag.INT && result.int_val == 3) {
+        pika_emit_pass("[PASS] pika/eval-lisp: (+ 1 2) evaluates to 3");
     } else if (result.tag == lisp::ValueTag.INT) {
-        io::printfn("[FAIL] pika/eval-lisp: expected 42, got %d", (int)result.int_val);
+        io::printfn("[FAIL] pika/eval-lisp: expected 3, got %d", (int)result.int_val);
     } else {
         io::printfn("[FAIL] pika/eval-lisp: expected INT, got tag %d", (int)result.tag);
     }

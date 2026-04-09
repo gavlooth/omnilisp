@@ -23,8 +23,11 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
         info.parent = interp.types.lookup(da.parent, &interp.symbols);
         if (info.parent == INVALID_TYPE_ID) {
             char[256] ebuf;
-            char[] msg = io::bprintf(&ebuf, "unknown parent type '%s'",
-                (ZString)interp.symbols.get_name(da.parent))!!;
+            char[] msg = "unknown parent type";
+            if (try char[] formatted = io::bprintf(&ebuf, "unknown parent type '%s'",
+                (ZString)interp.symbols.get_name(da.parent))) {
+                msg = formatted;
+            }
             return eval_error(msg);
         }
     } else {
@@ -84,8 +87,11 @@ fn EvalResult eval_defunion_bind_variant(UnionVariant* variant, TypeId var_id, I
         Value* inst = make_instance_root(interp, var_id, null, 0);
         if (inst == null) {
             char[256] ebuf;
-            char[] msg = io::bprintf(&ebuf, "failed to allocate union variant '%s'",
-                (ZString)interp.symbols.get_name(variant.name))!!;
+            char[] msg = "failed to allocate union variant";
+            if (try char[] formatted = io::bprintf(&ebuf, "failed to allocate union variant '%s'",
+                (ZString)interp.symbols.get_name(variant.name))) {
+                msg = formatted;
+            }
             return eval_error(msg);
         }
         if (!env_define_with_barrier_checked(interp.global_env, variant.name, inst, interp)) {

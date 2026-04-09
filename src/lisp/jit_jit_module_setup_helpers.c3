@@ -87,6 +87,32 @@ fn usz resolve_import_path(char[] rel_path, Interp* interp, char* buf, usz buf_c
     return pos;
 }
 
+fn bool resolve_import_path_checked(char[] rel_path, Interp* interp, char* buf, usz buf_cap, usz* out_len) {
+    if (buf == null || out_len == null || buf_cap == 0) return false;
+
+    usz pos = 0;
+    if (interp.source_dir_count > 0) {
+        char* dir = interp.source_dirs[interp.source_dir_count - 1];
+        usz di = 0;
+        while (dir[di] != 0) {
+            if (pos >= buf_cap - 1) return false;
+            buf[pos] = dir[di];
+            pos++;
+            di++;
+        }
+    }
+
+    for (usz i = 0; i < rel_path.len; i++) {
+        if (pos >= buf_cap - 1) return false;
+        buf[pos] = rel_path[i];
+        pos++;
+    }
+
+    buf[pos] = 0;
+    *out_len = pos;
+    return true;
+}
+
 fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
     if (needed <= interp.source_dir_capacity) return true;
     usz new_cap = interp.source_dir_capacity > 0 ? interp.source_dir_capacity : 8;

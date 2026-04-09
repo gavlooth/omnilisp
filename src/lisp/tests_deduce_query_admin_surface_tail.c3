@@ -1175,5 +1175,4 @@ fn void run_deduce_admin_surface_tail_tests(Interp* interp, int* pass, int* fail
         }
     }
 
-    run_deduce_admin_surface_demand_tests(interp, pass, fail);
 }

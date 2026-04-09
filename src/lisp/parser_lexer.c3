@@ -86,6 +86,7 @@ fn bool Lexer.scan_literal_or_symbol(Lexer* self, char c) {
 
 fn void Lexer.advance(Lexer* self) {
     self.skip_whitespace();
+    if (self.current.type == T_ERROR) return;
 
     // Capture token start position
     self.current.line = self.line;

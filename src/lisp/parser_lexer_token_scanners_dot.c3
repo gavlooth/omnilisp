@@ -5,6 +5,11 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
 
     // Rest pattern: .. (must check before .[ and symbol tokens)
     if (self.pos + 1 < self.len && self.source[self.pos + 1] == '.') {
+        if (self.pos + 2 < self.len && self.source[self.pos + 2] == '.') {
+            self.set_error_text("unexpected '...'");
+            return true;
+        }
+
         // Make sure it's not ... or longer
         if (self.pos + 2 >= self.len || self.source[self.pos + 2] != '.') {
             if (!self.ensure_text_capacity(3)) {

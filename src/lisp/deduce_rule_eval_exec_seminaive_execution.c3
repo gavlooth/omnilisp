@@ -35,8 +35,11 @@ fn Value* deduce_seminaive_evaluate_rule_with_groups(
         return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid evaluator state");
     }
     if (deduce_rule_signature_has_aggregates(sig) && aggregate_groups == null) {
-        return deduce_raise(interp, "deduce/unsupported-aggregate",
-            "deduce/analyze: recursive aggregate rule execution is not implemented yet");
+        return deduce_raise(
+            interp,
+            "deduce/analyze-invalid-state",
+            "deduce/analyze: recursive aggregate evaluation requires aggregate group state"
+        );
     }
     if (sig.body_count == 0 || sig.body_predicates == null) {
         return null;

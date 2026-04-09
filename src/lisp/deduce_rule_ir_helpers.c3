@@ -157,7 +157,11 @@ fn Value* deduce_rule_parse_atom(
             }
 
             if (deferred_aggregate) {
-                return deduce_raise(interp, "deduce/unsupported-aggregate", "deduce-rule!: aggregate function is deferred from the v1.5 surface");
+                return deduce_raise(
+                    interp,
+                    "deduce/unsupported-aggregate",
+                    "deduce-rule!: aggregate function is outside the current supported surface; supported aggregate functions are count, sum, min, max"
+                );
             }
 
             Value* agg_input = car(agg_args);

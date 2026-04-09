@@ -475,4 +475,37 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         if (ok) { (*pass)++; compiler_print_pass("Compiler: export-from lowers as static no-op"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: export-from lowers as static no-op"); }
     }
+
+    // Strict handles must thread the strict bit through the AOT bridge.
+    {
+        char[] code = compile_to_c3(
+            "(handle ^strict (signal my-eff 42) (other-eff v v))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::compiled_handle(")
+            && str_contains(code, ", true);")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: strict handle lowering preserves strict mode in AOT bridge"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: strict handle lowering preserves strict mode in AOT bridge"); }
+    }
+
+    // Handle lowering must emit every clause, not just the first eight.
+    {
+        char[] code = compile_to_c3(
+            "(handle (signal eff0 0) "
+            "(eff0 x x) (eff1 x x) (eff2 x x) (eff3 x x) (eff4 x x) "
+            "(eff5 x x) (eff6 x x) (eff7 x x) (eff8 x x))",
+            interp
+        );
+        bool ok = str_contains(code, "aot::make_symbol(\"eff8\")")
+            && str_contains(code, "[9] _eff_tags_")
+            && str_contains(code, "[9] _eff_hdlrs_")
+            && str_contains(code, "] = _r")
+            && str_contains(code, ", 9, ")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: AOT handle lowering emits every clause beyond eight"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: AOT handle lowering emits every clause beyond eight"); }
+    }
 }

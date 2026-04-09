@@ -370,6 +370,7 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_duplicate_offload_ready_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_offload_boundary_tests(interp, pass, fail);
     run_scheduler_consume_pending_tcp_read_boundary_tests(interp, pass, fail);
+    run_scheduler_pending_close_rollback_boundary_tests(interp, pass, fail);
     run_scheduler_thread_task_completion_boundary_tests(interp, pass, fail);
     run_scheduler_thread_task_null_completion_fail_closed_boundary_tests(interp, pass, fail);
     run_scheduler_waiter_take_does_not_strand_blocked_fiber_boundary_tests(interp, pass, fail);

@@ -346,6 +346,79 @@ fn void run_scheduler_wakeup_ready_barrier_boundary_tests(Interp* interp, int* p
     }
 }
 
+fn void run_scheduler_pending_close_rollback_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: pending-close helpers fully unwind partial async state and
+    // restore the blocked fiber to READY.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+
+    void* saved_async = null;
+    scheduler_test_prepare_single_fiber_no_async(&saved_async, FIBER_BLOCKED);
+
+    bool ok = true;
+    char* read_buf = (char*)mem::malloc(8);
+    char* write_buf = (char*)mem::malloc(4);
+    if (read_buf == null || write_buf == null) {
+        if (read_buf != null) mem::free(read_buf);
+        if (write_buf != null) mem::free(write_buf);
+        scheduler_test_cleanup_single_fiber_no_async(saved_async);
+        io::printn("[FAIL] scheduler pending close rollback boundary restore (alloc)");
+        (*fail)++;
+        return;
+    }
+
+    g_scheduler.pending_reads[0] = {};
+    g_scheduler.pending_reads[0].active = true;
+    g_scheduler.pending_reads[0].buffer = read_buf;
+    g_scheduler.pending_reads[0].write_buffer = write_buf;
+    scheduler_close_pending_tcp_read(0);
+    bool tcp_read_ok = !g_scheduler.pending_reads[0].active &&
+                       !g_scheduler.pending_reads[0].completed &&
+                       g_scheduler.pending_reads[0].buffer == null &&
+                       g_scheduler.pending_reads[0].write_buffer == null &&
+                       g_scheduler.fibers[0].state == FIBER_READY;
+
+    g_scheduler.fibers[0].state = FIBER_BLOCKED;
+    g_scheduler.pending_sleeps[0] = {};
+    g_scheduler.pending_sleeps[0].active = true;
+    scheduler_close_pending_sleep(0);
+    bool sleep_ok = !g_scheduler.pending_sleeps[0].active &&
+                    !g_scheduler.pending_sleeps[0].completed &&
+                    g_scheduler.pending_sleeps[0].timer_handle == null &&
+                    g_scheduler.fibers[0].state == FIBER_READY;
+
+    OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
+    if (completion == null) {
+        ok = false;
+    } else {
+        *completion = {};
+        completion.kind = OFFLOAD_RES_INT;
+        completion.int_result = 7;
+        g_scheduler.fibers[0].state = FIBER_BLOCKED;
+        g_scheduler.pending_offloads[0] = {};
+        g_scheduler.pending_offloads[0].active = true;
+        g_scheduler.pending_offloads[0].completion = completion;
+        scheduler_close_pending_offload(0);
+    }
+    bool offload_ok = completion != null &&
+                      !g_scheduler.pending_offloads[0].active &&
+                      !g_scheduler.pending_offloads[0].completed &&
+                      g_scheduler.pending_offloads[0].completion == null &&
+                      g_scheduler.fibers[0].state == FIBER_READY;
+
+    bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+    ok = ok && tcp_read_ok && sleep_ok && offload_ok && state_ok;
+
+    scheduler_test_cleanup_single_fiber_no_async(saved_async);
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler pending close rollback boundary restore");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] scheduler pending close rollback boundary restore");
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_wakeup_offload_error_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: wakeup queue drains + async offload expected-error paths
     // preserve interpreter boundary/runtime state.

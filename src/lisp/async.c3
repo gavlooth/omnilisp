@@ -77,6 +77,9 @@ fn Value* prim_async_sleep(Value*[] args, Env* env, Interp* interp) {
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
     Value* y = prim_yield(yargs[..], null, interp);
-    if (y != null && y.tag == ERROR) return y;
+    if (y != null && y.tag == ERROR) {
+        scheduler_close_pending_sleep(fiber_id);
+        return y;
+    }
     return scheduler_consume_pending_sleep(fiber_id, interp);
 }

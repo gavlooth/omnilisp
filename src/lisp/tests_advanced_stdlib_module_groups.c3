@@ -368,6 +368,65 @@ fn void run_advanced_parser_module_edge_tests(Interp* interp, int* pass, int* fa
     }
 }
 
+fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, int* fail) {
+    {
+        // Regression: checked import path resolution must fail closed on truncation.
+        char[8] short_buf;
+        usz short_len = 0;
+        bool ok = !resolve_import_path_checked("long/path", interp, &short_buf, short_buf.len, &short_len);
+        if (ok) {
+            emit_pass_literal("[PASS] runtime import path checked resolver fails closed on overflow");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime import path checked resolver fails closed on overflow");
+            (*fail)++;
+        }
+    }
+
+    {
+        // Regression: string-path import cache must key by resolved file path, not raw import symbol.
+        SymbolId cached_name = interp.symbols.intern("lib/util.omni");
+        Module* cached = jit_create_file_module(cached_name, "/tmp/omni-cached-module-path.omni", interp);
+        if (cached != null) cached.loaded = true;
+
+        Expr* ast = parse_for_jit("(import \"lib/util.omni\")", interp);
+        bool pushed = push_source_dir("/__omni_missing_source__/main.omni", interp);
+        EvalResult load_result = eval_error("test bootstrap failed");
+        if (pushed && ast != null) {
+            Module* mod_out = null;
+            load_result = load_import_target_module(ast, ast.import_expr.name, interp, &mod_out);
+        }
+        if (pushed) pop_source_dir(interp);
+
+        bool ok = cached != null && ast != null && load_result.error.has_error;
+        if (ok) {
+            emit_pass_literal("[PASS] runtime import path cache ignores mismatched symbol-only cache entries");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime import path cache ignores mismatched symbol-only cache entries");
+            (*fail)++;
+        }
+    }
+
+    {
+        // Regression: post-load module resolution falls back to resolved file path.
+        SymbolId requested_name = interp.symbols.intern("runtime-import-requested");
+        SymbolId loaded_name = interp.symbols.intern("runtime-import-loaded");
+        Module* loaded = jit_create_file_module(loaded_name, "/tmp/omni-runtime-path-resolution.omni", interp);
+        if (loaded != null) loaded.loaded = true;
+        Module* resolved = resolve_loaded_module(requested_name, "/tmp/omni-runtime-path-resolution.omni", interp);
+
+        bool ok = loaded != null && resolved == loaded;
+        if (ok) {
+            emit_pass_literal("[PASS] runtime import resolves module by path when names differ");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime import resolves module by path when names differ");
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     // === MODULE SYSTEM TESTS ===
     run_advanced_module_qualified_cached_tests(interp, pass, fail);
@@ -377,6 +436,7 @@ fn void run_advanced_module_system_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_parser_import_edge_tests(interp, pass, fail);
     run_advanced_parser_export_from_edge_tests(interp, pass, fail);
     run_advanced_parser_module_edge_tests(interp, pass, fail);
+    run_advanced_runtime_import_path_edge_tests(interp, pass, fail);
 }
 
 fn void run_advanced_collections_module_tests(Interp* interp, int* pass, int* fail) {

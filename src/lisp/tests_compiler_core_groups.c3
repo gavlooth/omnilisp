@@ -2,6 +2,7 @@ module lisp;
 
 
 import std::collections::list;
+import std::core::mem;
 import std::io;
 import main;
 import lisp::aot;
@@ -61,6 +62,45 @@ fn Value* compiler_aot_test_unary_invoke(void* data, Value* arg) {
 
 fn Value* compiler_aot_test_variadic_invoke(void* data, Value* arg_list) {
     return arg_list != null ? arg_list : aot::make_nil();
+}
+
+struct CompilerAotSumData {
+    Value* first;
+}
+
+fn bool compiler_error_value_contains(Value* v, char[] needle) {
+    return v != null && v.tag == ValueTag.ERROR && str_contains(v.str_chars[:v.str_len], needle);
+}
+
+fn Value* compiler_aot_test_sum_second(void* data, Value* arg) {
+    CompilerAotSumData* sum_data = (CompilerAotSumData*)data;
+    long first = 0;
+    if (sum_data != null && sum_data.first != null && sum_data.first.tag == ValueTag.INT) {
+        first = sum_data.first.int_val;
+    }
+    long second = arg != null && arg.tag == ValueTag.INT ? arg.int_val : 0;
+    if (sum_data != null) mem::free(sum_data);
+    return aot::make_int(first + second);
+}
+
+fn Value* compiler_aot_test_capture_first(void* data, Value* arg) {
+    CompilerAotSumData* sum_data = (CompilerAotSumData*)mem::malloc(CompilerAotSumData.sizeof);
+    if (sum_data == null) return aot::make_error("compiler test: failed to allocate sum payload");
+    sum_data.first = arg;
+    return aot::make_closure(sum_data, &compiler_aot_test_sum_second);
+}
+
+fn Value* compiler_aot_test_signal_my_eff(void* data, Value* arg) {
+    return aot::compiled_signal(aot::make_symbol("my-eff"), aot::make_int(42));
+}
+
+fn Value* compiler_aot_test_other_eff_handler(void* data, Value* pair) {
+    if (pair != null && pair.tag == ValueTag.CONS) return pair.cons_val.cdr;
+    return aot::make_nil();
+}
+
+fn Value* compiler_aot_test_constant_zero(void* data, Value* arg) {
+    return aot::make_int(0);
 }
 
 fn void run_compiler_group_syntax_begin_zero_tests(Interp* interp, usz* pass, usz* fail) {
@@ -339,6 +379,85 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
     }
 }
 
+fn void run_compiler_group_aot_runtime_parity_tests(Interp* interp, usz* pass, usz* fail) {
+    bool ok = aot::aot_init();
+    if (!ok) {
+        (*fail)++;
+        io::printn("[FAIL] Compiler: AOT runtime parity test bootstrap");
+        return;
+    }
+    defer aot::aot_shutdown();
+
+    {
+        EvalResult jit_result = run("((lambda (x y) (+ x y)) 20 22)", interp);
+        Value* closure = aot::make_closure(null, &compiler_aot_test_capture_first);
+        Value* arg_list = aot::cons(aot::make_int(20), aot::cons(aot::make_int(22), aot::make_nil()));
+        Value* aot_result = aot::apply_multi(closure, arg_list, 2);
+        bool parity_ok =
+            !jit_result.error.has_error &&
+            jit_result.value != null &&
+            jit_result.value.tag == ValueTag.INT &&
+            jit_result.value.int_val == 42 &&
+            aot_result != null &&
+            aot_result.tag == ValueTag.INT &&
+            aot_result.int_val == 42;
+        if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT multi-arg closure apply matches JIT"); }
+        else           { (*fail)++; io::printn("[FAIL] Compiler: AOT multi-arg closure apply matches JIT"); }
+    }
+
+    {
+        EvalResult jit_result = run("(block (define cfg (Dictionary 'tag 42)) (signal cfg.tag 1))", interp);
+        Value* aot_result = aot::compiled_signal(aot::make_int(42), aot::make_int(1));
+        bool parity_ok =
+            jit_result.error.has_error &&
+            str_contains(jit_result.error.message[..], "effect tag must resolve to symbol") &&
+            compiler_error_value_contains(aot_result, "effect tag must resolve to symbol");
+        if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT signal invalid-tag path matches JIT"); }
+        else           { (*fail)++; io::printn("[FAIL] Compiler: AOT signal invalid-tag path matches JIT"); }
+    }
+
+    {
+        EvalResult jit_result = run("(handle ^strict (signal my-eff 42) (other-eff v v))", interp);
+        Value* strict_tag = aot::make_symbol("other-eff");
+        Value* strict_handler = aot::make_closure(null, &compiler_aot_test_other_eff_handler);
+        Value* strict_body = aot::make_closure(null, &compiler_aot_test_signal_my_eff);
+        Value*[1] tags = { strict_tag };
+        Value*[1] handlers = { strict_handler };
+        Value* aot_result = aot::compiled_handle(&tags[0], &handlers[0], 1, strict_body, true);
+        bool parity_ok =
+            jit_result.error.has_error &&
+            str_contains(jit_result.error.message[..], "strict handler") &&
+            compiler_error_value_contains(aot_result, "strict handler");
+        if (parity_ok) {
+            (*pass)++;
+            compiler_print_pass("Compiler: AOT strict handle boundary matches JIT");
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] Compiler: AOT strict handle boundary matches JIT");
+            if (jit_result.error.has_error) io::printfn("  JIT error: %s", (ZString)jit_result.error.message[..]);
+            if (aot_result != null && aot_result.tag == ValueTag.ERROR) {
+                io::printfn("  AOT error: %s", (ZString)aot_result.str_chars[:aot_result.str_len]);
+            } else if (aot_result != null) {
+                io::printfn("  AOT result tag: %d", (int)aot_result.tag);
+            } else {
+                io::printn("  AOT result: nil");
+            }
+        }
+    }
+
+    {
+        Value* invalid_tag = aot::make_int(7);
+        Value* handler = aot::make_closure(null, &compiler_aot_test_other_eff_handler);
+        Value* body = aot::make_closure(null, &compiler_aot_test_constant_zero);
+        Value*[1] tags = { invalid_tag };
+        Value*[1] handlers = { handler };
+        Value* aot_result = aot::compiled_handle(&tags[0], &handlers[0], 1, body, false);
+        bool ok_invalid_tag = compiler_error_value_contains(aot_result, "effect tag must resolve to symbol");
+        if (ok_invalid_tag) { (*pass)++; compiler_print_pass("Compiler: AOT handle invalid tag fails closed"); }
+        else                { (*fail)++; io::printn("[FAIL] Compiler: AOT handle invalid tag fails closed"); }
+    }
+}
+
 
 fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass, usz* fail) {
     {
@@ -421,6 +540,7 @@ fn void run_compiler_group_stdlib_existing(Interp* interp, usz* pass_out, usz* f
     run_compiler_group_allocation_failure_seam_tests(interp, &pass, &fail);
     run_compiler_group_stdlib_availability_tests(interp, &pass, &fail);
     run_compiler_group_existing_feature_tests(interp, &pass, &fail);
+    run_compiler_group_aot_runtime_parity_tests(interp, &pass, &fail);
     run_compiler_group_type_dispatch_bridge_tests(interp, &pass, &fail);
     run_compiler_group_serializer_roundtrip_tests(interp, &pass, &fail);
     *pass_out += pass;

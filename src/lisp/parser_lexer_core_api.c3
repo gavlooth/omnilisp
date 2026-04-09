@@ -59,6 +59,9 @@ fn void Lexer.init(Lexer* self, char[] source) {
     self.len = source.len;
     self.line = 1;
     self.column = 1;
+    self.current.type = T_EOF;
+    self.current.line = 1;
+    self.current.column = 1;
     self.current.text = g_lexer_force_text_alloc_fail
         ? null
         : (char*)mem::malloc(LEXER_TEXT_INITIAL_CAP);

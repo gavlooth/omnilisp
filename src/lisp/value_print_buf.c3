@@ -107,9 +107,13 @@ fn void print_array_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 fn void print_instance_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     if (v.instance_val != null) {
         char[48] ibuf;
-        char[] id = io::bprintf(&ibuf, "%d", v.instance_val.type_id)!!;
-        pb.append_str("(instance:");
-        pb.append_str(id);
+        if (try rendered_id = io::bprintf(&ibuf, "%d", v.instance_val.type_id)) {
+            pb.append_str("(instance:");
+            pb.append_str(rendered_id);
+        } else {
+            pb.append_str("(instance:");
+            pb.append_str("0");
+        }
         for (usz fi = 0; fi < v.instance_val.field_count; fi++) {
             pb.append_char(' ');
             print_value_buf(&v.instance_val.fields[fi], syms, pb);
@@ -145,9 +149,13 @@ fn void print_method_table_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) 
     pb.append_str(syms.get_name(v.method_table_val.name));
     if (v.method_table_val.entry_count > 0) {
         char[48] cbuf;
-        char[] count = io::bprintf(&cbuf, "%d", (int)v.method_table_val.entry_count)!!;
-        pb.append_char(' ');
-        pb.append_str(count);
+        if (try rendered_count = io::bprintf(&cbuf, "%d", (int)v.method_table_val.entry_count)) {
+            pb.append_char(' ');
+            pb.append_str(rendered_count);
+        } else {
+            pb.append_char(' ');
+            pb.append_str("0");
+        }
         pb.append_str(v.method_table_val.entry_count == 1 ? " method" : " methods");
     }
     if (v.method_table_val.fallback != null) {
@@ -175,8 +183,11 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     switch (v.tag) {
         case INT:
             char[32] ibuf;
-            char[] is = io::bprintf(&ibuf, "%d", v.int_val)!!;
-            pb.append_str(is);
+            if (try rendered_int = io::bprintf(&ibuf, "%d", v.int_val)) {
+                pb.append_str(rendered_int);
+            } else {
+                pb.append_str("0");
+            }
         case DOUBLE:
             char[64] dbuf2;
             char[] dstr2 = double_to_string(v.double_val, &dbuf2);

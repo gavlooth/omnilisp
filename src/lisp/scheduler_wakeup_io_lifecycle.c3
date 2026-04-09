@@ -9,6 +9,12 @@ fn void scheduler_free_handle_cb(void* handle) {
     if (handle != null) mem::free(handle);
 }
 
+fn void scheduler_restore_blocked_fiber_ready(usz fiber_id) {
+    if (fiber_id >= g_scheduler.fiber_count) return;
+    FiberEntry* f = &g_scheduler.fibers[fiber_id];
+    if (f.state == FIBER_BLOCKED) f.state = FIBER_READY;
+}
+
 fn void scheduler_close_pending_tcp_read(usz fiber_id) {
     if (fiber_id >= g_scheduler.fiber_count) return;
 
@@ -35,6 +41,7 @@ fn void scheduler_close_pending_tcp_read(usz fiber_id) {
         op.write_buffer = null;
     }
 
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_reads[fiber_id] = {};
 }
 
@@ -47,6 +54,7 @@ fn void scheduler_close_pending_offload(usz fiber_id) {
         scheduler_free_offload_completion(off.completion);
         off.completion = null;
     }
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_offloads[fiber_id] = {};
 }
 
@@ -60,6 +68,7 @@ fn void scheduler_close_pending_sleep(usz fiber_id) {
         uv_close(sleep.timer_handle, &scheduler_free_handle_cb);
         sleep.timer_handle = null;
     }
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_sleeps[fiber_id] = {};
 }
 
@@ -78,6 +87,7 @@ fn void scheduler_close_pending_dns(usz fiber_id) {
         dns.status = 0;
         dns.addrinfo_result = null;
         dns.host_copy = null;
+        scheduler_restore_blocked_fiber_ready(fiber_id);
         return;
     }
 
@@ -92,6 +102,7 @@ fn void scheduler_close_pending_dns(usz fiber_id) {
         mem::free(dns.host_copy);
     }
     scheduler_free_dns_callback_ctx(ctx);
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_dns[fiber_id] = {};
 }
 
@@ -108,6 +119,7 @@ fn void scheduler_close_pending_tcp_connect(usz fiber_id) {
         pending.active = false;
         pending.completed = false;
         pending.status = 0;
+        scheduler_restore_blocked_fiber_ready(fiber_id);
         return;
     }
 
@@ -122,6 +134,7 @@ fn void scheduler_close_pending_tcp_connect(usz fiber_id) {
         omni_uv_tcp_close_and_free(ctx.tcp_handle);
     }
     scheduler_free_connect_callback_ctx(ctx);
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_connects[fiber_id] = {};
 }
 
@@ -145,6 +158,7 @@ fn void scheduler_close_pending_tcp_accept(usz fiber_id) {
     if (pending.has_accepted_fd && pending.accepted_fd >= 0) {
         c_close_fd(pending.accepted_fd);
     }
+    scheduler_restore_blocked_fiber_ready(fiber_id);
     g_scheduler.pending_accepts[fiber_id] = {};
 }
 

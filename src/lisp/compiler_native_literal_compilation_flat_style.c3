@@ -21,8 +21,11 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
         case DOUBLE:
             self.emit("aot::make_double(");
             char[64] dbuf;
-            char[] dslice = io::bprintf(&dbuf, "%.17g", v.double_val)!!;
-            self.emit(dslice);
+            if (try rendered_double = io::bprintf(&dbuf, "%.17g", v.double_val)) {
+                self.emit(rendered_double);
+            } else {
+                self.emit("0.0");
+            }
             self.emit(")");
 
         case STRING:

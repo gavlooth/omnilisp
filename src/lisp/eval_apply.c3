@@ -4,7 +4,7 @@ fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
     int arity = prim.prim_val.arity;
 
     // For unary or variadic primitives, apply immediately
-    if (arity <= 1 || arity == -1) {
+    if (arity == 1 || arity == -1) {
         Value*[8] args;
         args[0] = arg;
         interp.constructor_type_id = prim.prim_val.tag;

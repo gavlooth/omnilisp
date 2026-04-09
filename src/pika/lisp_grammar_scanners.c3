@@ -188,6 +188,16 @@ fn int scan_symbol(char[] view) {
     int i = 0;
     bool has_dot = false;
     while (i < (int)view.len && is_sym_char(view[i])) {
+        if (view[i] == '.' &&
+            i + 1 < (int)view.len &&
+            view[i + 1] == '[') {
+            break;
+        }
+        if (view[i] == '.' &&
+            i + 1 < (int)view.len &&
+            view[i + 1] == '.') {
+            break;
+        }
         if (view[i] == '.') has_dot = true;
         i++;
     }
@@ -217,6 +227,16 @@ fn int scan_path(char[] view) {
     int last_dot = -1;
 
     while (i < (int)view.len && is_sym_char(view[i])) {
+        if (view[i] == '.' &&
+            i + 1 < (int)view.len &&
+            view[i + 1] == '[') {
+            break;
+        }
+        if (view[i] == '.' &&
+            i + 1 < (int)view.len &&
+            view[i + 1] == '.') {
+            break;
+        }
         if (view[i] == '.') {
             has_internal_dot = true;
             last_dot = i;

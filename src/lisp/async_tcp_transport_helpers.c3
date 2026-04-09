@@ -36,12 +36,15 @@ fn bool resolve_host_and_port(char[] host, int port, void** out_result) {
     char[256] host_buf;  // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
     char[8] port_buf;    // buffer: C-interop (keep) — null-terminated for c_getaddrinfo
     copy_to_c_buffer(&host_buf, host_buf.len, host);
-    int plen = io::bprintf(&port_buf, "%d", port)!!.len;
-    if (plen < 0) return false;
-    if ((usz)plen >= port_buf.len) {
-        port_buf[port_buf.len - 1] = 0;
+    if (try char[] rendered_port = io::bprintf(&port_buf, "%d", port)) {
+        int plen = rendered_port.len;
+        if ((usz)plen >= port_buf.len) {
+            port_buf[port_buf.len - 1] = 0;
+        } else {
+            port_buf[(usz)plen] = 0;
+        }
     } else {
-        port_buf[(usz)plen] = 0;
+        return false;
     }
     return c_getaddrinfo(&host_buf, &port_buf, null, out_result) == 0 && *out_result != null;
 }

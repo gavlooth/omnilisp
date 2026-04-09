@@ -1,5 +1,7 @@
 module lisp;
 
+import std::io;
+
 alias AdvancedFfiSystemGroupFn = fn void(Interp* interp, int* pass, int* fail);
 
 fn bool advanced_group_filter_matches_selected_exact(char[] name) {
@@ -206,6 +208,25 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(fs-unlink p) "
         "(dict? st))",
         pass, fail);
+    {
+        Value* fh_value = make_fs_handle(interp, 987654321);
+        FsHandle* fh = get_fs_handle(fh_value);
+        Value*[1] close_args = { fh_value };
+        Value* close_result = prim_fs_close(close_args[..], null, interp);
+        bool close_failed = close_result != null && close_result.tag == ERROR;
+        bool handle_preserved = fh != null && fh.open && fh.fd == 987654321;
+        if (fh != null) {
+            fh.open = false;
+            fh.fd = -1;
+        }
+        if (close_failed && handle_preserved) {
+            emit_pass_literal("[PASS] fs-close failure preserves live handle state");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] fs-close failure preserves live handle state");
+            (*fail)++;
+        }
+    }
 
     test_tag_interp(interp, "udp socket create/close",
         "(block "

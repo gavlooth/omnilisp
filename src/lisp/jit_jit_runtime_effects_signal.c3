@@ -102,15 +102,68 @@ fn Value* jit_signal_try_fast_path_dispatch(Interp* interp, SymbolId tag_sym, Va
     return null;
 }
 
+fn bool jit_signal_try_resume_handler_or_strict_boundary(
+    Interp* interp,
+    main::StackCtx* current,
+    SymbolId tag_sym,
+    Value* arg,
+    Value** out_result
+) {
+    if (current == null) return false;
+    for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
+        EffectHandler* h = &interp.handler_stack[(usz)i];
+        if (effect_handler_has_tag(h, tag_sym)) {
+            if (h.effect_state != null) {
+                HandleEffectState* hstate = (HandleEffectState*)h.effect_state;
+                hstate.signaled = true;
+                hstate.signal_tag = tag_sym;
+                hstate.signal_arg = arg;
+                SavedInterpState saved;
+                save_interp_state(interp, &saved);
+                if (!suspend_with_scope_guard(current, interp.current_scope)) {
+                    restore_interp_state_preserve_raise(interp, &saved);
+                    *out_result = raise_error_with_payload_names(
+                        interp,
+                        "runtime",
+                        "runtime/suspend-scope-guard",
+                        "stack engine: failed to register suspend scope guard"
+                    );
+                    return true;
+                }
+                restore_interp_state_preserve_raise(interp, &saved);
+                *out_result = interp_consume_resume_value_or_nil(interp);
+                return true;
+            }
+        }
+        if (h.strict_mode) {
+            *out_result = raise_error_with_payload_names(
+                interp,
+                "runtime",
+                "runtime/strict-unhandled-effect",
+                "strict handler: unhandled effect"
+            );
+            return true;
+        }
+    }
+    return false;
+}
+
 fn Value* jit_signal_value(Interp* interp, Value* tag, Value* arg) {
+    if (tag == null || tag.tag != SYMBOL) {
+        return runtime_effect_invalid_tag(tag, interp, "signal");
+    }
+    SymbolId tag_sym = (SymbolId)tag.sym_val;
+    Value* type_err = jit_signal_type_check(tag_sym, arg, interp);
+    if (type_err != null) return type_err;
+
     Value* resumed = null;
     main::StackCtx* current = main::g_current_stack_ctx;
-    if (jit_signal_try_resume_handler(interp, current, (SymbolId)tag.sym_val, arg, &resumed)) {
+    if (jit_signal_try_resume_handler_or_strict_boundary(interp, current, tag_sym, arg, &resumed)) {
         return resumed;
     }
 
     bool handled = false;
-    Value* fast_result = jit_signal_try_fast_path_dispatch(interp, (SymbolId)tag.sym_val, arg, &handled);
+    Value* fast_result = jit_signal_try_fast_path_dispatch(interp, tag_sym, arg, &handled);
     if (handled) return fast_result;
-    return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", "unhandled effect");
+    return jit_unhandled_effect_error(tag_sym, arg, interp);
 }

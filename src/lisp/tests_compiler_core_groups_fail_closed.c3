@@ -197,7 +197,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             dict_from_args_bridge_interp_unavailable = aot::dict_from_args(aot::make_nil());
             index_bridge_interp_unavailable = aot::index(aot::make_nil(), aot::make_int(0));
             compiled_signal_bridge_interp_unavailable = aot::compiled_signal(aot::make_symbol("ask"), aot::make_nil());
-            compiled_handle_bridge_interp_unavailable = aot::compiled_handle(null, null, 0, aot::make_nil());
+            compiled_handle_bridge_interp_unavailable = aot::compiled_handle(null, null, 0, aot::make_nil(), false);
             compiled_reset_bridge_interp_unavailable = aot::compiled_reset(aot::make_nil());
             compiled_shift_bridge_interp_unavailable = aot::compiled_shift(aot::make_nil());
             compiled_resolve_bridge_interp_unavailable = aot::compiled_resolve(aot::make_nil(), aot::make_nil());
@@ -348,6 +348,13 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         bool ok = exprs.len() == 1 && exprs[0] != null && exprs[0].tag == E_LIT;
         if (ok) { (*pass)++; compiler_print_pass("Compiler: parse_program drops malformed postfix partial expr"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: parse_program drops malformed postfix partial expr"); }
+    }
+
+    {
+        Expr* expr = parse("1 2", interp);
+        bool ok = expr == null;
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parse rejects trailing tokens in single-expression mode"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parse rejects trailing tokens in single-expression mode"); }
     }
 
     {

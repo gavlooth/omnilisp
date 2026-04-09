@@ -57,210 +57,38 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
 
     switch (classification.provenance) {
         case BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN:
-            committed.value = result;
-            committed.outcome = BOUNDARY_COMMIT_REUSED_IN_TARGET_CHAIN;
-            committed.reused_in_target_chain = true;
-            boundary_txn_commit(&txn);
-            commit_succeeded = true;
+            boundary_commit_escape_commit_reused_in_target_chain(
+                &txn,
+                &committed,
+                result,
+                &commit_succeeded
+            );
             return committed;
         case BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP:
         case BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE:
+            boundary_commit_escape_handle_releasing_scope(
+                &committed,
+                &result,
+                interp,
+                target_scope,
+                releasing_scope,
+                ctx,
+                allow_scope_splice,
+                &txn,
+                &commit_succeeded,
+                &classification
+            );
+            return committed;
         case BOUNDARY_RETURN_MIXED_UNCERTAIN:
-            break;
+            boundary_commit_escape_handle_mixed_destination(
+                &committed,
+                result,
+                interp,
+                target_scope,
+                ctx,
+                &txn,
+                &commit_succeeded
+            );
+            return committed;
     }
-
-    if (classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP ||
-        classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-        PromotionContext local_ctx = {};
-        PromotionContext* active_ctx = ctx;
-        bool owns_ctx = false;
-        if (active_ctx == null) {
-            boundary_promotion_context_begin(interp, &local_ctx);
-            active_ctx = &local_ctx;
-            owns_ctx = true;
-        } else if (active_ctx.aborted) {
-            boundary_promotion_context_begin(interp, &local_ctx, PROMOTION_CTX_BUDGET_RETURN);
-            active_ctx = &local_ctx;
-            owns_ctx = true;
-        }
-        defer {
-            if (owns_ctx) boundary_promotion_context_end(interp, active_ctx);
-        }
-
-        bool splice_rejected_for_commit = false;
-        BoundaryScopeTransferReason splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_OK;
-        BoundaryCommitFault fallback_fault = BOUNDARY_COMMIT_FAULT_NONE;
-        bool requires_escape_promotion =
-            classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_TEMP;
-
-        if (requires_escape_promotion) {
-            BoundaryCommitDestinationPromotion destination_promotion =
-                boundary_commit_try_destination_promotion(
-                    result,
-                    interp,
-                    target_scope,
-                    releasing_scope,
-                    active_ctx,
-                    true
-                );
-            if (destination_promotion.committed) {
-                committed.value = destination_promotion.value;
-                committed.outcome = destination_promotion.outcome;
-                boundary_txn_commit(&txn);
-                commit_succeeded = true;
-                return committed;
-            }
-            if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
-                fallback_fault = destination_promotion.fault_code;
-            }
-        }
-
-        if (releasing_scope.refcount == 1) {
-            bool pre_aborted_ctx = active_ctx.aborted;
-            if (requires_escape_promotion) {
-                boundary_note_promotion_attempt();
-                BoundaryScopeSwap promote_scope = boundary_scope_swap_begin(interp, releasing_scope);
-                defer boundary_scope_swap_end(interp, &promote_scope);
-                result = boundary_promote_to_escape(result, interp);
-                classification = boundary_classify_return_value(result, interp, target_scope, releasing_scope);
-            }
-
-            if (active_ctx.aborted) {
-                if (allow_scope_splice &&
-                    classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-                    if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
-                        BoundaryScopeTransferResult splice_result =
-                            boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
-                        if (splice_result.allowed) {
-                            committed.value = result;
-                            committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
-                            committed.releasing_scope_spliced = true;
-                            boundary_txn_commit(&txn);
-                            commit_succeeded = true;
-                            return committed;
-                        }
-                        splice_rejected_for_commit = true;
-                        splice_reject_reason = splice_result.reason;
-                    } else {
-                        splice_rejected_for_commit = true;
-                        splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
-                    }
-                }
-                BoundaryPromotionAbortReason abort_reason =
-                    BOUNDARY_PROMOTION_ABORT_BUDGET_EXHAUSTED;
-                if (pre_aborted_ctx || active_ctx.abort_reason != PROMOTION_ABORT_BUDGET_EXHAUSTED) {
-                    abort_reason = BOUNDARY_PROMOTION_ABORT_PRE_ABORTED_CTX;
-                }
-                boundary_note_promotion_abort(abort_reason);
-                committed.fault_code = BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED;
-                committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
-                committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
-                boundary_txn_abort(&txn);
-                return committed;
-            }
-
-            if (allow_scope_splice &&
-                classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE &&
-                boundary_should_promote(result, active_ctx, releasing_scope)) {
-                if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
-                    BoundaryScopeTransferResult splice_result =
-                        boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
-                    if (splice_result.allowed) {
-                        committed.value = result;
-                        committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
-                        committed.releasing_scope_spliced = true;
-                        boundary_txn_commit(&txn);
-                        commit_succeeded = true;
-                        return committed;
-                    }
-                    splice_rejected_for_commit = true;
-                    splice_reject_reason = splice_result.reason;
-                } else {
-                    splice_rejected_for_commit = true;
-                    splice_reject_reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
-                }
-            }
-        }
-
-        if (releasing_scope.refcount != 1 &&
-            boundary_nonunique_destination_retry_allowed(result)) {
-            Value* destination_direct = boundary_promote_to_escape(result, interp);
-            if (!active_ctx.aborted &&
-                destination_direct != null &&
-                destination_direct != result &&
-                destination_direct.scope_gen == target_scope.escape_generation) {
-                committed.value = destination_direct;
-                committed.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
-                boundary_txn_commit(&txn);
-                commit_succeeded = true;
-                return committed;
-            }
-        }
-
-        if (classification.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
-            BoundaryCommitDestinationPromotion destination_promotion =
-                boundary_commit_try_destination_promotion(
-                    result,
-                    interp,
-                    target_scope,
-                    releasing_scope,
-                    active_ctx,
-                    false
-                );
-            if (destination_promotion.committed) {
-                committed.value = destination_promotion.value;
-                committed.outcome = destination_promotion.outcome;
-                boundary_txn_commit(&txn);
-                commit_succeeded = true;
-                return committed;
-            }
-            if (destination_promotion.fault_code != BOUNDARY_COMMIT_FAULT_NONE) {
-                fallback_fault = destination_promotion.fault_code;
-            }
-        }
-
-        (void)splice_rejected_for_commit;
-        (void)splice_reject_reason;
-        if (fallback_fault == BOUNDARY_COMMIT_FAULT_NONE && splice_rejected_for_commit) {
-            fallback_fault = BOUNDARY_COMMIT_FAULT_SPLICE_REJECTED;
-        }
-        if (fallback_fault == BOUNDARY_COMMIT_FAULT_NONE) {
-            fallback_fault = BOUNDARY_COMMIT_FAULT_FALLBACK_DISALLOWED;
-        }
-        committed.fault_code = fallback_fault;
-        committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
-        committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
-        boundary_txn_abort(&txn);
-        return committed;
-    }
-
-    PromotionContext mixed_local_ctx = {};
-    PromotionContext* mixed_ctx = ctx;
-    bool owns_mixed_ctx = false;
-    if (mixed_ctx == null) {
-        boundary_promotion_context_begin(interp, &mixed_local_ctx);
-        mixed_ctx = &mixed_local_ctx;
-        owns_mixed_ctx = true;
-    }
-    defer {
-        if (owns_mixed_ctx) boundary_promotion_context_end(interp, mixed_ctx);
-    }
-
-    Value* mixed_destination = boundary_promote_to_escape(result, interp);
-    if (!mixed_ctx.aborted &&
-        mixed_destination != null &&
-        mixed_destination != result &&
-        mixed_destination.scope_gen == target_scope.escape_generation) {
-        committed.value = mixed_destination;
-        committed.outcome = BOUNDARY_COMMIT_MIXED_DESTINATION_PROMOTED;
-        boundary_txn_commit(&txn);
-        commit_succeeded = true;
-        return committed;
-    }
-
-    committed.fault_code = BOUNDARY_COMMIT_FAULT_MIXED_DESTINATION_PROMOTION;
-    committed.value = boundary_fallback_disallowed_error(interp, committed.fault_code);
-    committed.outcome = BOUNDARY_COMMIT_FALLBACK_DISALLOWED;
-    boundary_txn_abort(&txn);
-    return committed;
 }

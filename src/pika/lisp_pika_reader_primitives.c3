@@ -16,6 +16,27 @@ fn void init_lisp_parser_once() {
 fn void ensure_pika_parser() {
     g_lisp_parser_once.call(&init_lisp_parser_once);
 }
+
+fn bool pika_parse_lisp_source(char[] input, lisp::Interp* interp, ParserState* st, int* top_match) {
+    ensure_pika_parser();
+    *st = pika_parse_lisp(&g_lisp_parser, input);
+    *top_match = pika_find_top_match(&g_lisp_parser, st);
+    if (*top_match >= 0) return true;
+    return lisp::parse(input, interp) == null;
+}
+
+fn lisp::Value* pika_eval_lisp_type_error(lisp::Interp* interp, char[] code, char[] message) @inline {
+    return parser_raise(interp, code, message);
+}
+
+fn lisp::Value* pika_eval_lisp_grammar_drift(lisp::Interp* interp) @inline {
+    return parser_raise(
+        interp,
+        "parser/eval-lisp-grammar-drift",
+        "pika/eval-lisp: built-in grammar is ahead of Pika reader grammar"
+    );
+}
+
 fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
     if (args.len < 1) {
         return parser_raise(interp, "parser/parse-lisp-expected-input", "pika/parse-lisp: expected input string");
@@ -27,21 +48,20 @@ fn lisp::Value* prim_pika_parse_lisp(lisp::Value*[] args, lisp::Env* env, lisp::
 
     char[] input = args[0].str_chars[:args[0].str_len];
 
-    // Use the global Lisp parser
-    ensure_pika_parser();
-    ParserState st = pika_parse_lisp(&g_lisp_parser, input);
-    int top_match = pika_find_top_match(&g_lisp_parser, &st);
+    ParserState st;
+    int top_match = -1;
 
-    if (top_match < 0) {
-        if (lisp::parse(input, interp) != null) {
+    if (!pika_parse_lisp_source(input, interp, &st, &top_match)) {
+        if (top_match < 0) {
             return parser_raise(
                 interp,
                 "parser/parse-lisp-grammar-drift",
                 "pika/parse-lisp: built-in grammar is behind reader syntax"
             );
         }
-        return lisp::make_nil(interp);
     }
+
+    if (top_match < 0) return lisp::make_nil(interp);
 
     // Convert parse tree to Lisp value representation
     return parse_tree_to_lisp_value(&st, &g_lisp_parser.grammar, top_match, input, interp);
@@ -165,9 +185,36 @@ fn lisp::Value* prim_pika_match_span(lisp::Value*[] args, lisp::Env* env, lisp::
 }
 
 // (pika/eval-lisp input) -> evaluated result
-// Parse and evaluate Lisp code (using Pika parser)
+// Parse with the Pika reader first, then evaluate the original source through
+// the core runtime pipeline once grammar parity is confirmed.
 fn lisp::Value* prim_pika_eval_lisp(lisp::Value*[] args, lisp::Env* env, lisp::Interp* interp) {
-    // Pika-based eval-lisp is deferred — lisp_semantics.c3 needs AST adaptation.
-    // Use (eval (read-string s)) instead.
-    return parser_raise(interp, "parser/eval-lisp-unavailable", "pika/eval-lisp not yet available — use (eval (read-string s)) instead");
+    if (args.len < 1) {
+        return pika_eval_lisp_type_error(interp, "parser/eval-lisp-expected-input", "pika/eval-lisp: expected input string");
+    }
+
+    if (!lisp::is_string(args[0])) {
+        return pika_eval_lisp_type_error(interp, "parser/eval-lisp-input-not-string", "pika/eval-lisp: argument must be string");
+    }
+
+    char[] input = args[0].str_chars[:args[0].str_len];
+    ParserState st;
+    int top_match = -1;
+    if (!pika_parse_lisp_source(input, interp, &st, &top_match)) {
+        return pika_eval_lisp_grammar_drift(interp);
+    }
+
+    if (top_match < 0) {
+        return parser_raise(interp, "parser/eval-lisp-invalid-input", "pika/eval-lisp: source did not parse");
+    }
+
+    lisp::EvalResult r = lisp::run(input, interp);
+    if (r.error.has_error) {
+        return parser_raise(
+            interp,
+            "parser/eval-lisp-failed",
+            "pika/eval-lisp: parse/eval error"
+        );
+    }
+
+    return r.value;
 }

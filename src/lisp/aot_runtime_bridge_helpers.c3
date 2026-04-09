@@ -108,7 +108,7 @@ fn void set_var(char[] name, lisp::Value* val) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return;
     lisp::SymbolId sid = interp.symbols.intern(name);
-    lisp::env_set_with_barrier(interp.global_env, sid, val, interp)!!;
+    if (!lisp::env_set_with_barrier_checked(interp.global_env, sid, val, interp)) return;
 }
 
 fn lisp::Value* explain_dispatch(char[] source, lisp::Value* callee, lisp::Value* arg_list, long argc) {

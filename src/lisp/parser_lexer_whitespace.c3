@@ -1,7 +1,9 @@
 module lisp;
 
-fn void Lexer.skip_nested_block_comment(Lexer* self) @inline {
+fn bool Lexer.skip_nested_block_comment(Lexer* self) @inline {
     // Block comment: #| ... |# (nestable)
+    usz start_line = self.line;
+    usz start_col = self.column;
     self.next_char();  // consume #
     self.next_char();  // consume |
     int depth = 1;
@@ -20,6 +22,13 @@ fn void Lexer.skip_nested_block_comment(Lexer* self) @inline {
         }
         self.next_char();
     }
+
+    if (depth == 0) return true;
+
+    self.set_error_text("unterminated block comment");
+    self.current.line = start_line;
+    self.current.column = start_col;
+    return false;
 }
 
 fn void Lexer.skip_whitespace(Lexer* self) {
@@ -37,7 +46,7 @@ fn void Lexer.skip_whitespace(Lexer* self) {
             continue;
         }
         if (c == '#' && self.pos + 1 < self.len && self.source[self.pos + 1] == '|') {
-            self.skip_nested_block_comment();
+            if (!self.skip_nested_block_comment()) return;
             continue;
         }
         break;

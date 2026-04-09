@@ -32,6 +32,7 @@ tmp_tests/
 # Python scripts (not part of codebase)
 *.py
 !scripts/__init__.py
+!scripts/generate_language_reference_payload.py
 !scripts/dialectic_mcp/
 !scripts/dialectic_mcp/*.py
 !scripts/tests/
@@ -49,3 +50,7 @@ test.omni
 
 # Report output
 report/
+
+# Generated language reference payload artifacts
+src/entry_language_reference_payload.gz
+src/entry_language_reference_payload_source.md

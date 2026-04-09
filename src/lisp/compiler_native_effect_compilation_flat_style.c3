@@ -54,19 +54,6 @@ fn usz Compiler.compile_perform_flat(Compiler* self, Expr* expr) {
 fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     usz clause_count = expr.handle.clause_count;
 
-    // Compile all handler closures and tags
-    usz[8] handler_rs;
-    usz[8] tag_rs;
-    for (usz i = 0; i < clause_count && i < 8; i++) {
-        tag_rs[i] = self.compile_handle_effect_tag(
-            expr.handle.clauses[i].effect_tag,
-            expr.handle.clauses[i].effect_tag_expr,
-            expr.handle.clauses[i].has_effect_tag_expr
-        );
-        // Handler closure (synthetic lambda from prescan)
-        handler_rs[i] = self.compile_to_temp(expr.handle.clauses[i].handler_body);
-    }
-
     // Compile body closure (synthetic lambda from prescan)
     usz body_r = self.compile_to_temp(expr.handle.body);
 
@@ -75,9 +62,16 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     usz hdlrs_arr = 0;
     self.emit_handle_arrays(clause_count, &tags_arr, &hdlrs_arr);
 
-    for (usz i = 0; i < clause_count && i < 8; i++) {
-        self.emit_handle_array_slot("_eff_tags_", tags_arr, i, tag_rs[i]);
-        self.emit_handle_array_slot("_eff_hdlrs_", hdlrs_arr, i, handler_rs[i]);
+    for (usz i = 0; i < clause_count; i++) {
+        usz tag_r = self.compile_handle_effect_tag(
+            expr.handle.clauses[i].effect_tag,
+            expr.handle.clauses[i].effect_tag_expr,
+            expr.handle.clauses[i].has_effect_tag_expr
+        );
+        // Handler closure (synthetic lambda from prescan)
+        usz handler_r = self.compile_to_temp(expr.handle.clauses[i].handler_body);
+        self.emit_handle_array_slot("_eff_tags_", tags_arr, i, tag_r);
+        self.emit_handle_array_slot("_eff_hdlrs_", hdlrs_arr, i, handler_r);
     }
 
     usz id = self.next_result();
@@ -90,6 +84,8 @@ fn usz Compiler.compile_handle_flat(Compiler* self, Expr* expr) {
     self.emit_usz(clause_count);
     self.emit(", ");
     self.emit_temp_ref(body_r);
+    self.emit(", ");
+    self.emit(expr.handle.strict_mode ? "true" : "false");
     self.emit(");\n");
     return id;
 }

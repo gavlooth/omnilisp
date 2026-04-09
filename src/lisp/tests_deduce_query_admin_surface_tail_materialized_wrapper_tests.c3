@@ -673,4 +673,57 @@ fn void run_deduce_admin_surface_tail_materialized_wrapper_tests(Interp* interp,
             (*fail)++;
         }
     }
+
+    {
+        EvalResult r = run(
+            "(block "
+            "  (define db-admin-materialized-rec-agg (deduce 'open 'memory)) "
+            "  (define [relation db-admin-materialized-rec-agg] rec-unit (node) (n)) "
+            "  (define [relation db-admin-materialized-rec-agg] rec-edge (src) (dst)) "
+            "  (define [relation db-admin-materialized-rec-agg materialized] rec-score (node) (total)) "
+            "  (define [relation db-admin-materialized-rec-agg materialized] rec-chosen (node) (total)) "
+            "  (deduce/rule! db-admin-materialized-rec-agg '(rec-chosen ?x ?n) '(rec-score ?x ?n)) "
+            "  (deduce/rule! db-admin-materialized-rec-agg '(rec-score ?x (sum ?n)) '(rec-unit ?x ?n)) "
+            "  (deduce/rule! db-admin-materialized-rec-agg '(rec-score ?x (sum ?n)) '(rec-edge ?x ?y) '(rec-chosen ?y ?n)) "
+            "  (deduce/fact! rec-unit 0 1) "
+            "  (deduce/fact! rec-edge 0 1) "
+            "  (deduce/fact! rec-unit 1 1) "
+            "  (deduce/fact! rec-edge 1 2) "
+            "  (deduce/fact! rec-unit 2 1) "
+            "  (deduce/fact! rec-edge 2 3) "
+            "  (deduce/fact! rec-unit 3 1) "
+            "  (define analyze0 (deduce/analyze db-admin-materialized-rec-agg)) "
+            "  (define refreshed (deduce/refresh! rec-score)) "
+            "  (define score-schema (deduce/schema rec-score)) "
+            "  (define chosen-schema (deduce/schema rec-chosen)) "
+            "  (define analyze1 (deduce/analyze db-admin-materialized-rec-agg)) "
+            "  (and "
+            "    (= (ref analyze0 'stale-materialized-view-count) 2) "
+            "    (= (ref refreshed 'refresh-scope) 'relation) "
+            "    (= (ref refreshed 'refresh-execution-path) 'targeted) "
+            "    (= (ref refreshed 'refresh-fallback-reason) nil) "
+            "    (= (ref refreshed 'requested-refresh-relation) 'rec-score) "
+            "    (= (ref refreshed 'refreshed-materialized-view-count) 2) "
+            "    (= (car (ref refreshed 'refreshed-materialized-relations)) 'rec-score) "
+            "    (= (car (cdr (ref refreshed 'refreshed-materialized-relations))) 'rec-chosen) "
+            "    (= (ref refreshed 'remaining-stale-materialized-relations) nil) "
+            "    (= (deduce 'count rec-score) 4) "
+            "    (= (deduce 'count rec-chosen) 4) "
+            "    (= (ref score-schema 'materialized-stale) false) "
+            "    (= (ref chosen-schema 'materialized-stale) false) "
+            "    (= (ref analyze1 'stale-materialized-view-count) 0)))",
+            interp
+        );
+        if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {
+            emit_pass_literal("[PASS] deduce relation-scoped refresh preserves recursive aggregate materialized SCC accounting");
+            (*pass)++;
+        } else {
+            if (r.error.has_error) {
+                io::printfn("[FAIL] deduce relation-scoped refresh preserves recursive aggregate materialized SCC accounting (error: %s)", (ZString)r.error.message[:256]);
+            } else {
+                io::printn("[FAIL] deduce relation-scoped refresh preserves recursive aggregate materialized SCC accounting");
+            }
+            (*fail)++;
+        }
+    }
 }

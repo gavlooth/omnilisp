@@ -12,10 +12,14 @@ fn bool compiler_ffi_type_to_tag_int(Compiler* self, SymbolId base_type, Expr* e
 
     char[256] detail_buf;
     char[] type_name = self.interp.symbols.get_name(base_type);
-    char[] detail = io::bprintf(&detail_buf,
+    if (try detail_text = io::bprintf(&detail_buf,
         "[ffi λ] unsupported %s type annotation '^%s' in AOT lowering",
-        (ZString)role, (ZString)type_name)!!;
-    self.set_compile_error_formatted("compiler", expr.loc_line, expr.loc_column, detail);
+        (ZString)role, (ZString)type_name)) {
+        self.set_compile_error_formatted("compiler", expr.loc_line, expr.loc_column, detail_text);
+    } else {
+        self.set_compile_error_formatted("compiler", expr.loc_line, expr.loc_column,
+            "[ffi λ] unsupported type annotation in AOT lowering");
+    }
     return false;
 }
 
@@ -100,7 +104,7 @@ fn void Compiler.emit_ffi_fn_call_prepared(
 ) {
     usz tags_id = self.next_result();
     char[64] tags_name_buf;
-    char[] tags_name = io::bprintf(&tags_name_buf, "_ffi_param_tags_%d", (int)tags_id)!!;
+    char[] tags_name = compiler_format_generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
 
     if (param_count > 0) {
         self.emit_indent();

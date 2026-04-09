@@ -214,8 +214,8 @@ fn void run_deduce_check_integrity_fact_tests(Interp* interp, int* pass, int* fa
         "                   (and (dict? data) "
         "                        (and (= (ref data 'relation) 'rel-check-fail) "
         "                             (and (= (ref data 'predicate) 'int?) "
-        "                                  (and (= (ref data 'key-value) \"oops\") "
-        "                                       (= (ref data 'violation-kind) 'check-failed)))))))))))",
+            "                                  (and (= (ref data 'key-value) \"oops\") "
+            "                                       (= (ref data 'violation-kind) 'check-failed))))))))))",
         "[PASS] deduce check fact! exposes machine-checkable failure payload",
         "[FAIL] deduce check fact! exposes machine-checkable failure payload",
         pass,

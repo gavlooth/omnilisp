@@ -8,22 +8,32 @@ import std::collections::list;
 // =============================================================================
 
 fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* interp, Module** mod_out) {
+    if (expr.import_expr.has_path) {
+        char[] rel_path = expr.import_expr.path[:expr.import_expr.path_len];
+        char[512] resolved;
+        usz rlen = 0;
+        if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
+            return eval_error("module path too long");
+        }
+        char[] path = resolved[:rlen];
+
+        Module* path_mod = find_module_by_path_any(path, interp);
+        if (path_mod != null) {
+            if (!path_mod.loaded) return eval_error("circular import detected");
+            *mod_out = path_mod;
+            return eval_ok(make_void(interp));
+        }
+
+        EvalResult load_result = jit_load_module_from_file(path, name, interp);
+        if (load_result.error.has_error) return load_result;
+        *mod_out = resolve_loaded_module(name, path, interp);
+        return eval_ok(make_void(interp));
+    }
+
     Module* mod = find_module(name, interp);
     if (mod != null) {
         if (!mod.loaded) return eval_error("circular import detected");
         *mod_out = mod;
-        return eval_ok(make_void(interp));
-    }
-
-    if (expr.import_expr.has_path) {
-        char[] rel_path = expr.import_expr.path[:expr.import_expr.path_len];
-        char[512] resolved;
-        usz rlen = resolve_import_path(rel_path, interp, &resolved, 512);
-        char[] path = resolved[:rlen];
-        usz mod_count_before = interp.module_count;
-        EvalResult load_result = jit_load_module_from_file(path, name, interp);
-        if (load_result.error.has_error) return load_result;
-        *mod_out = resolve_loaded_module(name, path, mod_count_before, interp);
         return eval_ok(make_void(interp));
     }
 
@@ -33,11 +43,14 @@ fn EvalResult load_import_target_module(Expr* expr, SymbolId name, Interp* inter
         return eval_error("module path too long");
     }
     char[512] resolved;
-    usz rlen = resolve_import_path(rel_buf[:rel_len], interp, &resolved, 512);
+    usz rlen = 0;
+    if (!resolve_import_path_checked(rel_buf[:rel_len], interp, &resolved, 512, &rlen)) {
+        return eval_error("module path too long");
+    }
     char[] path = resolved[:rlen];
     EvalResult load_result = jit_load_module_from_file(path, name, interp);
     if (load_result.error.has_error) return load_result;
-    *mod_out = find_module(name, interp);
+    *mod_out = resolve_loaded_module(name, path, interp);
     return eval_ok(make_void(interp));
 }
 

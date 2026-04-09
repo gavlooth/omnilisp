@@ -8,9 +8,12 @@ fn Value* prim_meta_type_symbol_not_callable(Value*[] args, Env* env, Interp* in
     }
 
     char[160] buf;
-    char[] msg = io::bprintf(&buf,
-        "%s: not a callable constructor/coercion surface",
-        (ZString)interp.symbols.get_name(interp.last_call_name))!!;
+    char[] msg = "type symbol is not a callable constructor/coercion surface";
+    if (try char[] formatted = io::bprintf(&buf,
+            "%s: not a callable constructor/coercion surface",
+            (ZString)interp.symbols.get_name(interp.last_call_name))) {
+        msg = formatted;
+    }
     return raise_error(interp, msg);
 }
 

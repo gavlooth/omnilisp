@@ -150,10 +150,10 @@ fn Value* prim_fs_close(Value*[] args, Env* env, Interp* interp) {
     if (!fh.open || fh.fd < 0) return make_void(interp);
 
     int status = fs_uv_close(fh.fd);
-    fh.fd = -1;
-    fh.open = false;
     if (status < 0) {
         return io_fs_raise(interp, "io/fs-close-failed", "fs-close: close failed");
     }
+    fh.fd = -1;
+    fh.open = false;
     return make_void(interp);
 }

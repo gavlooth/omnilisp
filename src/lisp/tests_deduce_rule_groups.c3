@@ -236,13 +236,26 @@ fn void run_deduce_rule_validation_tests(Interp* interp, int* pass, int* fail) {
 
     test_error_contains(
         interp,
-        "[PASS] deduce rule! rejects deferred aggregate functions",
+        "[PASS] deduce rule! rejects avg outside the supported aggregate surface",
         "(block "
         "  (define db-rule-agg-deferred (deduce/open 'memory)) "
         "  (define [relation db-rule-agg-deferred] parent (child) (ancestor)) "
         "  (define [relation db-rule-agg-deferred] agg_out (child) (total)) "
         "  (deduce/rule! db-rule-agg-deferred '(agg_out ?x (avg ?y)) '(parent ?x ?y)))",
-        "aggregate function is deferred",
+        "supported aggregate functions are count, sum, min, max",
+        pass,
+        fail
+    );
+
+    test_error_contains(
+        interp,
+        "[PASS] deduce rule! rejects distinct-count outside the supported aggregate surface",
+        "(block "
+        "  (define db-rule-agg-distinct-deferred (deduce/open 'memory)) "
+        "  (define [relation db-rule-agg-distinct-deferred] parent (child) (ancestor)) "
+        "  (define [relation db-rule-agg-distinct-deferred] agg_out (child) (total)) "
+        "  (deduce/rule! db-rule-agg-distinct-deferred '(agg_out ?x (distinct-count ?y)) '(parent ?x ?y)))",
+        "supported aggregate functions are count, sum, min, max",
         pass,
         fail
     );
@@ -312,13 +325,13 @@ fn void run_deduce_rule_validation_tests(Interp* interp, int* pass, int* fail) {
 
     test_error_contains(
         interp,
-        "[PASS] deduce rule! rejects recursive avg aggregate rules",
+        "[PASS] deduce rule! rejects recursive avg aggregate rules outside the supported surface",
         "(block "
         "  (define db-rule-agg-rec-avg (deduce/open 'memory)) "
         "  (define [relation db-rule-agg-rec-avg] edge (from) (to)) "
         "  (define [relation db-rule-agg-rec-avg] path-avg (from) (total)) "
         "  (deduce/rule! db-rule-agg-rec-avg '(path-avg ?x (avg ?n)) '(edge ?x ?y) '(path-avg ?y ?n)))",
-        "aggregate function is deferred",
+        "supported aggregate functions are count, sum, min, max",
         pass,
         fail
     );

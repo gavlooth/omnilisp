@@ -10,12 +10,12 @@ fn usz Compiler.compile_defunion_direct(Compiler* self, Expr* expr) {
     ExprDefUnion* du = expr.defunion;
     usz variants_id = self.next_result();
     char[64] variants_name_buf;
-    char[] variants_name = io::bprintf(&variants_name_buf, "_aot_union_variants_%d", (int)variants_id)!!;
+    char[] variants_name = compiler_format_generated_name_id(variants_name_buf[..], "_aot_union_variants_", (long)variants_id);
 
     if (du.type_param_count > 0) {
         usz params_id = self.next_result();
         char[64] params_name_buf;
-        char[] params_name = io::bprintf(&params_name_buf, "_aot_union_params_%d", (int)params_id)!!;
+        char[] params_name = compiler_format_generated_name_id(params_name_buf[..], "_aot_union_params_", (long)params_id);
         self.emit_indent();
         self.emit("char[][");
         self.emit_usz(du.type_param_count);

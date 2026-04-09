@@ -1,12 +1,16 @@
 module lisp;
 
+import std::core::mem;
+
 fn Value* deduce_refresh_apply_incremental_copy_pending_insertions(
     DeduceDb* db,
     Relation* rel,
     DeduceRelationSchema* target_schema,
     SymbolId* source_predicate,
+    bool* applied_incremental_out,
     Interp* interp
 ) {
+    if (applied_incremental_out != null) *applied_incremental_out = false;
     if (!deduce_relation_schema_incremental_extensional_copy_source(db, target_schema, source_predicate) ||
         *source_predicate == (SymbolId)0) {
         *source_predicate = (SymbolId)0;
@@ -34,6 +38,13 @@ fn Value* deduce_refresh_apply_incremental_copy_pending_insertions(
             "deduce/refresh!: materialized relation storage is unavailable for incremental refresh");
     }
 
+    bool[] inserted_mask = mem::new_array(bool, target_schema.maintained_pending_insertions.count);
+    if (inserted_mask.ptr == null && target_schema.maintained_pending_insertions.count > 0) {
+        return deduce_raise(interp, "deduce/refresh-out-of-memory", "deduce/refresh!: out of memory");
+    }
+    defer if (inserted_mask.ptr != null) mem::free(inserted_mask.ptr);
+
+    ulong inserted_count = 0;
     for (usz i = 0; i < target_schema.maintained_pending_insertions.count; i++) {
         DeduceEncodedTuple* tuple = &target_schema.maintained_pending_insertions.tuples[i];
         if (tuple == null || (tuple.key_bytes == null && tuple.key_len > 0)) {
@@ -70,13 +81,8 @@ fn Value* deduce_refresh_apply_incremental_copy_pending_insertions(
             return deduce_raise(interp, "deduce/refresh-put-failed",
                 "deduce/refresh!: failed to insert incrementally maintained tuple");
         }
-
-        if (head_schema.cardinality_estimate < ulong.max) {
-            head_schema.cardinality_estimate++;
-            if (head_schema.distinct_estimate < head_schema.cardinality_estimate) {
-                head_schema.distinct_estimate = head_schema.cardinality_estimate;
-            }
-        }
+        inserted_mask[i] = true;
+        if (inserted_count < ulong.max) inserted_count++;
     }
 
     rc = mdb_txn_commit(txn);
@@ -85,9 +91,21 @@ fn Value* deduce_refresh_apply_incremental_copy_pending_insertions(
     }
     txn = null;
 
+    if (inserted_count > 0 && head_schema.cardinality_estimate < ulong.max) {
+        ulong new_cardinality = head_schema.cardinality_estimate;
+        ulong available = ulong.max - new_cardinality;
+        ulong delta = inserted_count < available ? inserted_count : available;
+        new_cardinality += delta;
+        head_schema.cardinality_estimate = new_cardinality;
+        if (head_schema.distinct_estimate < new_cardinality) {
+            head_schema.distinct_estimate = new_cardinality;
+        }
+    }
+
     bool queued_downstream = true;
-    if (target_schema.maintained_pending_insertions.count > 0) {
+    if (inserted_count > 0) {
         for (usz i = 0; i < target_schema.maintained_pending_insertions.count; i++) {
+            if (inserted_mask.ptr != null && !inserted_mask[i]) continue;
             DeduceEncodedTuple* tuple = &target_schema.maintained_pending_insertions.tuples[i];
             if (tuple == null) continue;
             if (!deduce_db_queue_supported_incremental_insert_from_materialized_source(
@@ -101,6 +119,7 @@ fn Value* deduce_refresh_apply_incremental_copy_pending_insertions(
             }
         }
     }
+    if (applied_incremental_out != null) *applied_incremental_out = inserted_count > 0;
     deduce_relation_schema_clear_pending_incremental_insertions(target_schema);
     if (!queued_downstream) {
         deduce_db_escalate_incremental_tracking_to_full_recompute(

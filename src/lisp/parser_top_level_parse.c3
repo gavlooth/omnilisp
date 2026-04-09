@@ -10,6 +10,16 @@ import std::collections::list;
 /**
  * Parse a string into an expression.
  */
+fn Expr* parse_single_expr(Parser* p) {
+    Expr* expr = p.parse_expr();
+    if (p.has_error || expr == null) return null;
+    if (p.lexer.current.type != T_EOF) {
+        p.set_error("unexpected trailing tokens after expression");
+        return null;
+    }
+    return expr;
+}
+
 fn Expr* parse(char[] source, Interp* interp) {
     Lexer lex;
     lex.init(source);
@@ -18,7 +28,7 @@ fn Expr* parse(char[] source, Interp* interp) {
     Parser p;
     p.init(&lex, interp);
 
-    return p.parse_expr();
+    return parse_single_expr(&p);
 }
 
 /**

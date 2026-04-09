@@ -55,8 +55,8 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit(";\n");
 
                 char[24] elem_name;
-                usz elem_len = io::bprintf(&elem_name, "_r%d", (int)elem_r)!!.len;
-                self.compile_pattern_bindings(pat.elements[i], elem_name[:elem_len]);
+                char[] elem_name_s = compiler_format_generated_name_id(elem_name[..], "_r", (long)elem_r);
+                self.compile_pattern_bindings(pat.elements[i], elem_name_s);
             }
 
             if (pat.rest_pos == REST_MIDDLE) {
@@ -77,8 +77,8 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             self.emit(val_name);
             self.emit(");\n");
             char[24] car_name;
-            usz car_len = io::bprintf(&car_name, "_r%d", (int)car_r)!!.len;
-            self.compile_pattern_bindings(pat.car_pat, car_name[:car_len]);
+            char[] car_name_s = compiler_format_generated_name_id(car_name[..], "_r", (long)car_r);
+            self.compile_pattern_bindings(pat.car_pat, car_name_s);
 
             usz cdr_r = self.next_result();
             self.emit_temp_decl(cdr_r);
@@ -86,8 +86,8 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
             self.emit(val_name);
             self.emit(");\n");
             char[24] cdr_name;
-            usz cdr_len = io::bprintf(&cdr_name, "_r%d", (int)cdr_r)!!.len;
-            self.compile_pattern_bindings(pat.cdr_pat, cdr_name[:cdr_len]);
+            char[] cdr_name_s = compiler_format_generated_name_id(cdr_name[..], "_r", (long)cdr_r);
+            self.compile_pattern_bindings(pat.cdr_pat, cdr_name_s);
 
         case PAT_CONSTRUCTOR:
             for (usz i = 0; i < pat.ctor_sub_count; i++) {
@@ -100,8 +100,8 @@ fn void Compiler.compile_pattern_bindings(Compiler* self, Pattern* pat, char[] v
                 self.emit(");\n");
 
                 char[24] field_name;
-                usz field_len = io::bprintf(&field_name, "_r%d", (int)field_r)!!.len;
-                self.compile_pattern_bindings(pat.ctor_sub_patterns[i], field_name[:field_len]);
+                char[] field_name_s = compiler_format_generated_name_id(field_name[..], "_r", (long)field_r);
+                self.compile_pattern_bindings(pat.ctor_sub_patterns[i], field_name_s);
             }
 
         case PAT_AS:

@@ -168,7 +168,7 @@ fn Value* jit_apply_value_primitive(Value* func, Value* arg, Interp* interp) {
     // IMPORTANT: keep primitive apply on Value* return path.
     // Avoid EvalResult struct-return here because this call site can cross
     // suspend/resume cloned stack boundaries (AOT closure primitive path).
-    if (arity <= 1 || arity == -1) {
+    if (arity == 1 || arity == -1) {
         Value*[8] args;
         args[0] = arg;
         interp.constructor_type_id = func.prim_val.tag;

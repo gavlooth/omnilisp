@@ -179,7 +179,7 @@
                                                                                                             (effect_node 'post_event
                                                                                                                          (ui-evaluate (car args))
                                                                                                                          (ui-evaluate-children (cdr args)))
-                                                                                                            (assert! false (cons 'unknown-ui-static-tag tag))))))))))))))))))))))))))))
+                                                                                                            (assert! false (cons 'unknown-ui-static-tag tag))))))))))))))))))))))))))))))
 
 (define (ui-evaluate form)
   (if (array? form)

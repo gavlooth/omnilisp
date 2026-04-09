@@ -53,10 +53,22 @@ fn void io_input_state_destroy(InterpInputState* state) {
         state.mu.lock();
         state.closed = true;
         if (state.cv_ready) (void)state.cv.broadcast();
+        if (state.buf != null) {
+            mem::free(state.buf);
+            state.buf = null;
+        }
+        state.len = 0;
+        state.cap = 0;
         state.mu.unlock();
+        return;
     }
-    if (state.buf != null) mem::free(state.buf);
-    *state = {};
+    if (state.buf != null) {
+        mem::free(state.buf);
+        state.buf = null;
+    }
+    state.len = 0;
+    state.cap = 0;
+    state.closed = true;
 }
 
 fn void io_input_state_wake(InterpInputState* state) {

@@ -180,7 +180,12 @@ fn Value* scheduler_await_in_fiber_context(usz target, Interp* interp) {
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
     Value* y = prim_yield(yargs[..], null, interp);
-    if (y != null && y.tag == ERROR) return y;
+    if (y != null && y.tag == ERROR) {
+        waiter.awaiting_fiber = false;
+        waiter.await_target = NO_FIBER;
+        scheduler_restore_blocked_fiber_ready(waiter_id);
+        return y;
+    }
 
     if (g_scheduler.fibers[target].state != FIBER_DONE) {
         return scheduler_raise(

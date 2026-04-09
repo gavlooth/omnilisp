@@ -77,14 +77,17 @@ fn Value* ui_ftxui_raise_status(
     ZString detail_text = detail != null ? (ZString)detail : "";
     ZString separator = detail != null && detail[0] != 0 ? ": " : "";
     char[512] msg_buf;
-    char[] msg = io::bprintf(
+    char[] msg = "ui-ftxui operation failed";
+    if (try char[] formatted = io::bprintf(
         &msg_buf,
         "ui-ftxui %s failed (%s)%s%s",
         (ZString)op_name,
         status_text,
         separator,
         detail_text
-    )!!;
+    )) {
+        msg = formatted;
+    }
     return raise_error(interp, msg);
 }
 

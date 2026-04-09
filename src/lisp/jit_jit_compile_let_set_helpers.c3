@@ -111,7 +111,7 @@ fn void jit_store_immutable_let_local(void* s, int offset) {
 fn void? jit_push_let_local_and_compile_body(void* s, Expr* expr, Interp* interp, JitLocals* locals, int offset, bool is_mutable, bool is_tail) {
     JitLocal local = { .name = expr.let_expr.name, .stack_offset = offset, .is_mutable = is_mutable };
     locals.locals.push(local);
-    defer locals.locals.pop()!!;
+    defer (void)locals.locals.pop();
     jit_compile_expr(s, expr.let_expr.body, interp, locals, is_tail)!;
 }
 

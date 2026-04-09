@@ -11,7 +11,7 @@ fn usz Compiler.compile_typed_define_direct(Compiler* self, Expr* define_expr) {
     ExprLambda* lambda = define_expr.define.value.lambda;
     usz params_id = self.next_result();
     char[64] params_name_buf;
-    char[] params_name = io::bprintf(&params_name_buf, "_aot_typed_params_%d", (int)params_id)!!;
+    char[] params_name = compiler_format_generated_name_id(params_name_buf[..], "_aot_typed_params_", (long)params_id);
 
     if (lambda.param_count > 0) {
         self.emit_indent();
@@ -22,7 +22,7 @@ fn usz Compiler.compile_typed_define_direct(Compiler* self, Expr* define_expr) {
         self.emit(";\n");
         for (usz i = 0; i < lambda.param_count; i++) {
             char[96] target_buf;
-            char[] target = io::bprintf(&target_buf, "%s[%d]", (ZString)params_name, (int)i)!!;
+            char[] target = compiler_format_generated_name_index(target_buf[..], params_name, (long)i);
             self.emit_aot_type_annotation_spec_init(target, &lambda.param_annotations[i]);
         }
     }

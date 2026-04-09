@@ -77,8 +77,11 @@ fn void Compiler.serialize_int_value_to_buf(Compiler* self, long n, List{char}* 
 
 fn void Compiler.serialize_double_value_to_buf(Compiler* self, double n, List{char}* buf) {
     char[64] dbuf;
-    char[] dslice = io::bprintf(&dbuf, "%.15g", n)!!;
-    self.buf_append(buf, dslice);
+    if (try rendered_double = io::bprintf(&dbuf, "%.15g", n)) {
+        self.buf_append(buf, rendered_double);
+    } else {
+        self.buf_append(buf, "0.0");
+    }
 }
 
 fn void Compiler.serialize_string_value_to_buf(Compiler* self, Value* v, List{char}* buf) {

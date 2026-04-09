@@ -467,6 +467,94 @@ fn void run_memory_lifetime_env_copy_transactional_binding_rollback_test(Interp*
     }
 }
 
+fn void run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: rollback must not destruct a shared iterator payload closure
+    // that was merely aliased into the copied iterator wrapper.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy rollback preserves shared iterator payload");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__copy_env_shared_iterator_payload");
+        SymbolId iter_sym = interp.symbols.intern("__copy_env_shared_iterator");
+        SymbolId fail_sym = interp.symbols.intern("__copy_env_shared_iterator_fail");
+
+        interp.current_scope = target;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 654), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        }
+
+        interp.current_scope = source;
+        Value* iter_wrapper = shared_closure != null ? make_iterator(interp, shared_closure) : null;
+        Env* bad_capture = make_env(interp, interp.global_env);
+        Value* bad_closure = bad_capture != null ? make_closure_no_param(interp, null, bad_capture) : null;
+
+        Env* frame = make_env(interp, interp.global_env);
+        bool setup_ok = frame != null &&
+                        shared_closure != null &&
+                        shared_closure.tag == CLOSURE &&
+                        shared_closure.closure_val != null &&
+                        shared_closure.closure_val.env_scope == closure_env_scope &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        iter_wrapper != null &&
+                        bad_closure != null &&
+                        bad_closure.tag == CLOSURE &&
+                        bad_closure.closure_val != null &&
+                        bad_closure.closure_val.env_scope == null;
+
+        if (setup_ok) {
+            env_define_with_barrier(frame, iter_sym, iter_wrapper, interp);
+            env_define_with_barrier(frame, fail_sym, bad_closure, interp);
+        }
+
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+
+        int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool fault_ok = copied.env == null &&
+                        copied.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                        copied.depth == 0;
+        bool shared_ok = shared_closure != null &&
+                         shared_closure.tag == CLOSURE &&
+                         shared_closure.closure_val != null &&
+                         shared_closure.closure_val.env_scope == closure_env_scope &&
+                         closure_env_lookup_int(shared_closure, payload_sym, 654) &&
+                         rc_after_fail == 1;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        bool ok = setup_ok && fault_ok && shared_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy rollback preserves shared iterator payload");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy rollback preserves shared iterator payload (setup_ok=%s fault=%s rc_after_fail=%d shared_ok=%s)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                rc_after_fail,
+                shared_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
@@ -481,4 +569,5 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_rejects_undelimited_closure_alias_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rejects_cross_scope_undelimited_alias_test(interp, pass, fail);
     run_memory_lifetime_env_copy_transactional_binding_rollback_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(interp, pass, fail);
 }

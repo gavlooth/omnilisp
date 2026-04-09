@@ -166,7 +166,10 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
     Value* y = prim_yield(yargs[..], null, interp);
-    if (y != null && y.tag == ERROR) return y;
+    if (y != null && y.tag == ERROR) {
+        scheduler_close_pending_dns(fiber_id);
+        return y;
+    }
 
     if (!dns.active || !dns.completed || dns.req_handle == null || dns.request_token == 0) {
         return io_raise(

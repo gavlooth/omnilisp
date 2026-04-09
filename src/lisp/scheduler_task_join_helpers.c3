@@ -130,6 +130,7 @@ fn Value* scheduler_task_join_fiber_until_complete(
         Value* y = prim_yield(yargs[..], null, interp);
         if (y != null && y.tag == ERROR) {
             scheduler_clear_thread_task_waiter(task_id, generation, waiter_id);
+            scheduler_restore_blocked_fiber_ready(waiter_id);
             return scheduler_wrap_join_wait_error(
                 y,
                 "scheduler/task-join-wait-failed",

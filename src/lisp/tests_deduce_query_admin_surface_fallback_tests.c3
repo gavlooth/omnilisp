@@ -949,7 +949,7 @@ fn void run_deduce_admin_surface_fallback_tests(Interp* interp, int* pass, int* 
             "                                                                                            (and (= (ref analyze 'reference-integrity-violation-count) 1) "
             "                                                                                                 (and (= (ref analyze 'check-integrity-violation-count) 0) "
             "                                                                                                 (and (= (ref analyze 'last-integrity-violation-code) 'deduce/integrity-reference-missing) "
-            "                                                                                                      (= (ref analyze 'last-integrity-violation-relation) 'admin-audit-violations))))))))))))))))))))))))))))",
+            "                                                                                                      (= (ref analyze 'last-integrity-violation-relation) 'admin-audit-violations)))))))))))))))))))))))))))",
             interp
         );
         if (!r.error.has_error && is_symbol(r.value) && r.value.sym_val == interp.sym_true) {

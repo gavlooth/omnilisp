@@ -13,20 +13,41 @@ fn void jit_handle_warm_closures(Interp* interp, Value** closures, usz count, Va
     }
 }
 
-fn bool jit_handle_init_clauses(EffectHandler* h, Value** tags, Value** closures, usz count) {
+fn Value* jit_handle_init_clauses(Interp* interp, EffectHandler* h, Value** tags, Value** closures, usz count) {
+    if (count == 0) {
+        h.tags = null;
+        h.closures = null;
+        h.clauses = null;
+        return null;
+    }
+
     h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
     h.closures = (Value**)mem::malloc(Value*.sizeof * count);
     if (h.tags == null || h.closures == null) {
         if (h.tags != null) mem::free(h.tags);
         if (h.closures != null) mem::free(h.closures);
-        return false;
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
     }
     for (usz i = 0; i < count; i++) {
+        if (tags[i] != null && tags[i].tag == ERROR) {
+            mem::free(h.tags);
+            mem::free(h.closures);
+            h.tags = null;
+            h.closures = null;
+            return tags[i];
+        }
+        if (tags[i] == null || tags[i].tag != SYMBOL) {
+            mem::free(h.tags);
+            mem::free(h.closures);
+            h.tags = null;
+            h.closures = null;
+            return runtime_effect_invalid_tag(tags[i], interp, "handle");
+        }
         h.tags[i] = tags[i].sym_val;
         h.closures[i] = closures[i];
     }
     h.clauses = null;
-    return true;
+    return null;
 }
 
 fn Value* jit_handle_find_closure(HandleEffectState* state) {
@@ -98,16 +119,16 @@ fn bool jit_handle_alloc_state(Interp* interp, Value* body_closure, HandleEffect
     return true;
 }
 
-fn void jit_handle_fill_handler(EffectHandler* h, usz count, HandleEffectState* state) {
+fn void jit_handle_fill_handler(EffectHandler* h, usz count, HandleEffectState* state, bool strict_mode) {
     h.clause_count = count;
     h.handler_env = null;
     h.body_expr = null;
     h.body_env = null;
-    h.strict_mode = false;
+    h.strict_mode = strict_mode;
     h.effect_state = state;
 }
 
-fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz count, Value* body_closure) {
+fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz count, Value* body_closure, bool strict_mode) {
     jit_handle_warm_closures(interp, closures, count, body_closure);
 
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
@@ -138,15 +159,14 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
     if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
     usz my_idx = interp.handler_count;
     EffectHandler* h = &interp.handler_stack[my_idx];
-    jit_handle_fill_handler(h, count, state);
+    jit_handle_fill_handler(h, count, state, strict_mode);
 
-    if (!jit_handle_init_clauses(h, tags, closures, count)) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
-    }
+    Value* clause_err = jit_handle_init_clauses(interp, h, tags, closures, count);
+    if (clause_err != null) return clause_err;
     SymbolId* owned_tags = h.tags;
     Value** owned_closures = h.closures;
-    defer mem::free(owned_tags);
-    defer mem::free(owned_closures);
+    defer if (owned_tags != null) mem::free(owned_tags);
+    defer if (owned_closures != null) mem::free(owned_closures);
 
     interp.handler_count = my_idx + 1;
     defer interp.handler_count = my_idx;

@@ -1,5 +1,7 @@
 module lisp;
 
+import std::core::mem;
+
 fn Value* deduce_refresh_db_wide(
     DeduceRefreshRequest* refresh,
     Env* env,
@@ -14,12 +16,21 @@ fn Value* deduce_refresh_db_wide(
     Relation* rel = refresh.rel;
     DeduceRelationSchema* target_schema = refresh.target_schema;
     bool relation_scope = refresh.relation_scope;
-    long refreshable_stale_materialized_view_count = refresh.refreshable_stale_materialized_view_count;
+    bool[] stale_before = mem::new_array(bool, db != null ? db.relation_schema_count : 0);
+    if (stale_before.ptr == null && db != null && db.relation_schema_count > 0) {
+        return deduce_raise(interp, "deduce/refresh-out-of-memory",
+            "deduce/refresh!: out of memory");
+    }
+    defer if (stale_before.ptr != null) mem::free(stale_before.ptr);
+    if (db != null) {
+        for (usz i = 0; i < db.relation_schema_count; i++) {
+            stale_before[i] = deduce_relation_schema_is_materialized_ready(db, &db.relation_schemas[i]) &&
+                deduce_relation_schema_is_materialized_stale(db, &db.relation_schemas[i]);
+        }
+    }
 
     Value* cleared_dirty_predicates = deduce_dirty_predicates_payload(db, interp);
     if (cleared_dirty_predicates != null && cleared_dirty_predicates.tag == ERROR) return cleared_dirty_predicates;
-    Value* refreshed_relations = deduce_refresh_stale_materialized_relations(db, true, interp);
-    if (refreshed_relations != null && refreshed_relations.tag == ERROR) return refreshed_relations;
 
     Value* analyze_handle = refresh.handle;
     if (relation_scope) {
@@ -64,6 +75,16 @@ fn Value* deduce_refresh_db_wide(
     Value* remaining_dirty_predicates = deduce_dirty_predicates_payload(db, interp);
     if (remaining_dirty_predicates != null && remaining_dirty_predicates.tag == ERROR) return remaining_dirty_predicates;
 
+    long refreshed_materialized_view_count = 0;
+    Value* refreshed_rev = make_nil(interp);
+    for (usz i = 0; i < db.relation_schema_count; i++) {
+        if (stale_before.ptr == null || !stale_before[i]) continue;
+        if (deduce_relation_schema_is_materialized_stale(db, &db.relation_schemas[i])) continue;
+        refreshed_materialized_view_count++;
+        refreshed_rev = make_cons(interp, make_symbol(interp, db.relation_schemas[i].name), refreshed_rev);
+    }
+    Value* refreshed_relations = deduce_explain_reverse_list(refreshed_rev, interp);
+
     if (!relation_scope) {
         if (result.tag == HASHMAP && result.hashmap_val != null) {
             explain_dict_set_symbol(result, interp, "kind", interp.symbols.intern("deduce-refresh"));
@@ -72,7 +93,7 @@ fn Value* deduce_refresh_db_wide(
             explain_dict_set_symbol(result, interp, "refresh-execution-path", interp.symbols.intern("db-wide"));
             explain_dict_set(result, interp, "refresh-fallback-reason", make_nil(interp));
             explain_dict_set(result, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count));
-            explain_dict_set(result, interp, "refreshed-materialized-view-count", make_int(interp, refreshable_stale_materialized_view_count));
+            explain_dict_set(result, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count));
             explain_dict_set(result, interp, "refreshed-materialized-relations", refreshed_relations);
             explain_dict_set(result, interp, "cleared-dirty-predicates", cleared_dirty_predicates);
             explain_dict_set(result, interp, "remaining-dirty-predicates", remaining_dirty_predicates);
@@ -95,7 +116,7 @@ fn Value* deduce_refresh_db_wide(
     explain_dict_set_symbol(out, interp, "refresh-fallback-reason", interp.symbols.intern("full-recompute-required"));
     explain_dict_set(out, interp, "requested-refresh-relation", make_symbol(interp, rel.name));
     explain_dict_set(out, interp, "refreshed-relation", make_symbol(interp, rel.name));
-    explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshable_stale_materialized_view_count));
+    explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count));
     explain_dict_set(out, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count));
     explain_dict_set(out, interp, "refreshed-materialized-relations", refreshed_relations);
     explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates);

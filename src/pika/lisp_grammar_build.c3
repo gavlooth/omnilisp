@@ -15,6 +15,7 @@ struct LispRuleIndices {
     int symbol;
     int path;
     int dotdot;
+    int dot;
     int lparen;
     int rparen;
     int lbracket;
@@ -47,6 +48,7 @@ fn void lisp_grammar_add_terminals(RuleBuilder* rb, LispRuleIndices* idx) {
     idx.symbol = rb.add("symbol", mk_scan(&scan_symbol));
     idx.path = rb.add("path", mk_scan(&scan_path));
     idx.dotdot = rb.add("dotdot", mk_scan(&scan_dotdot));
+    idx.dot = rb.add("dot", mk_token('.'));
 
     idx.lparen = rb.add("lparen", mk_token('('));
     idx.rparen = rb.add("rparen", mk_token(')'));
@@ -88,8 +90,8 @@ fn int lisp_grammar_add_recursive_rules(RuleBuilder* rb, LispRuleIndices* idx,
         idx.lparen, idx.ws, expr_list_placeholder, idx.ws, idx.rparen
     )));
 
-    idx.postfix_index = rb.add("postfix_index", mk_seq(make_children_5(
-        idx.lbracket, idx.ws, expr_placeholder, idx.ws, idx.rbracket
+    idx.postfix_index = rb.add("postfix_index", mk_seq(make_children_6(
+        idx.dot, idx.lbracket, idx.ws, expr_placeholder, idx.ws, idx.rbracket
     )));
     int indexed_suffix = rb.add("indexed_suffix", mk_many(idx.postfix_index));
 

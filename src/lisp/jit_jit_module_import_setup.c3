@@ -53,8 +53,9 @@ fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Exp
     return eval_ok(make_void(interp));
 }
 
-fn bool module_path_matches(Module* mod, char[] path) {
-    if (mod.path_len != path.len || !mod.loaded) return false;
+fn bool module_path_matches(Module* mod, char[] path, bool require_loaded) {
+    if (mod.path_len != path.len) return false;
+    if (require_loaded && !mod.loaded) return false;
     if (mod.path == null) return false;
     for (usz i = 0; i < path.len; i++) {
         if (mod.path[i] != path[i]) return false;
@@ -62,19 +63,24 @@ fn bool module_path_matches(Module* mod, char[] path) {
     return true;
 }
 
-fn Module* find_loaded_module_by_path(char[] path, Interp* interp) {
+fn Module* find_module_by_path(char[] path, bool require_loaded, Interp* interp) {
     for (usz i = 0; i < interp.module_count; i++) {
         Module* m = &interp.modules[i];
-        if (module_path_matches(m, path)) return m;
+        if (module_path_matches(m, path, require_loaded)) return m;
     }
     return null;
 }
 
-fn Module* resolve_loaded_module(SymbolId name, char[] path, usz mod_count_before, Interp* interp) {
+fn Module* find_module_by_path_any(char[] path, Interp* interp) {
+    return find_module_by_path(path, false, interp);
+}
+
+fn Module* find_loaded_module_by_path(char[] path, Interp* interp) {
+    return find_module_by_path(path, true, interp);
+}
+
+fn Module* resolve_loaded_module(SymbolId name, char[] path, Interp* interp) {
     Module* mod = find_module(name, interp);
-    if (mod == null && interp.module_count > mod_count_before) {
-        mod = &interp.modules[mod_count_before];
-    }
     if (mod == null) {
         mod = find_loaded_module_by_path(path, interp);
     }

@@ -137,6 +137,15 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
     // Nested block comment
     test_eq(interp, "nested block comment",
         "(+ 1 #| outer #| inner |# still |# 2)", 3, pass, fail);
+    test_error_contains(interp, "unterminated nested block comment errors",
+        "(+ 1 #| outer #| inner |# 2", "unterminated block comment", pass, fail);
+
+    // `run` is intentionally multi-form; strict trailing-token rejection is covered
+    // by compiler fail-closed tests through the single-expression parser entrypoint.
+    test_eq_interp(interp, "run evaluates trailing top-level form",
+        "(+ 1 2) 3", 3, pass, fail);
+    test_error_contains(interp, "ellipsis token fails closed",
+        "...", "unexpected '...'", pass, fail);
 
     // Unknown hash dispatch should be rejected deterministically.
     test_error_contains(interp, "unknown # dispatch rejected",

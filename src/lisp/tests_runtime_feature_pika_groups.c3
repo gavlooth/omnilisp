@@ -236,6 +236,30 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_str_val(interp, "pika/parse-lisp grammar drift fails closed",
         "(handle (pika/parse-lisp \"#_(+ 1 2) 3\") (raise msg (symbol->string (ref msg 'code))))",
         "parser/parse-lisp-grammar-drift", pass, fail);
+    test_tag(interp, "pika/parse-lisp canonical postfix index accepted",
+        "(pika/parse-lisp \"a.[0]\")",
+        CONS, pass, fail);
+    test_tag(interp, "pika/parse-lisp bare postfix index rejected",
+        "(pika/parse-lisp \"a[0]\")",
+        NIL, pass, fail);
+    test_str_val(interp, "pika/parse-lisp utf8 symbol drift fails closed",
+        "(handle (pika/parse-lisp \"\xce\xbb\") (raise msg (symbol->string (ref msg 'code))))",
+        "parser/parse-lisp-grammar-drift", pass, fail);
+    test_eq(interp, "pika/eval-lisp literal",
+        "(pika/eval-lisp \"42\")",
+        42, pass, fail);
+    test_eq(interp, "pika/eval-lisp expression",
+        "(pika/eval-lisp \"(+ 1 2)\")",
+        3, pass, fail);
+    test_str_val(interp, "pika/eval-lisp grammar drift fails closed",
+        "(handle (pika/eval-lisp \"#_(+ 1 2) 3\") (raise msg (symbol->string (ref msg 'code))))",
+        "parser/eval-lisp-grammar-drift", pass, fail);
+    test_str_val(interp, "pika/eval-lisp invalid input raises",
+        "(handle (pika/eval-lisp \"(\") (raise msg (symbol->string (ref msg 'code))))",
+        "parser/eval-lisp-invalid-input", pass, fail);
+    test_str_val(interp, "pika/eval-lisp type mismatch raises",
+        "(handle (pika/eval-lisp 42) (raise msg (symbol->string (ref msg 'code))))",
+        "parser/eval-lisp-input-not-string", pass, fail);
     {
         pika::RuleBuilder rb = pika::rb_new();
         int[] seq_children = mem::new_array(int, 40);

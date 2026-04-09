@@ -30,31 +30,43 @@ fn char[] int_to_string(long val, char[] buffer) {
     return buffer[:len];
 }
 
+fn usz append_padded_int(char[] dst, long value, usz width) {
+    char[32] num_buf;
+    char[] num = int_to_string(value, &num_buf);
+    usz pos = 0;
+    usz pad = width > num.len ? width - num.len : 0;
+    for (usz i = 0; i < pad; i++) dst[pos++] = '0';
+    for (usz i = 0; i < num.len; i++) dst[pos++] = num[i];
+    return pos;
+}
+
 /**
  * Format a TimePoint into caller-provided buffer. Returns slice of written chars.
  */
 fn char[] time_point_to_string(TimePoint tp, char[] buffer) {
     if (buffer.len == 0) return buffer[:0];
 
+    usz pos = 0;
     if (tp.kind == TIME_POINT_DATE) {
-        if (tp.microsecond != 0) {
-            return io::bprintf(buffer, "%04d-%02d-%02d", tp.year, tp.month, tp.day)!!;
-        }
-        return io::bprintf(buffer, "%04d-%02d-%02d", tp.year, tp.month, tp.day)!!;
+        pos += append_padded_int(buffer[pos..], tp.year, 4);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.month, 2);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.day, 2);
+        return buffer[:pos];
     }
 
     if (tp.kind == TIME_POINT_TIME) {
+        pos += append_padded_int(buffer[pos..], tp.hour, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.minute, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.second, 2);
         if (tp.microsecond > 0) {
-            return io::bprintf(
-                buffer,
-                "%02d:%02d:%02d.%06d",
-                tp.hour,
-                tp.minute,
-                tp.second,
-                tp.microsecond
-            )!!;
+            buffer[pos++] = '.';
+            pos += append_padded_int(buffer[pos..], tp.microsecond, 6);
         }
-        return io::bprintf(buffer, "%02d:%02d:%02d", tp.hour, tp.minute, tp.second)!!;
+        return buffer[:pos];
     }
 
     if (tp.kind == TIME_POINT_DATETIMETZ && tp.tz_offset != 0) {
@@ -62,35 +74,56 @@ fn char[] time_point_to_string(TimePoint tp, char[] buffer) {
         int tzh = tza / 60;
         int tzm = tza % 60;
         char sign = tp.tz_offset < 0 ? '-' : '+';
+        pos += append_padded_int(buffer[pos..], tp.year, 4);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.month, 2);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.day, 2);
+        buffer[pos++] = 'T';
+        pos += append_padded_int(buffer[pos..], tp.hour, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.minute, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.second, 2);
         if (tp.microsecond > 0) {
-            return io::bprintf(
-                buffer,
-                "%04d-%02d-%02dT%02d:%02d:%02d.%06d%c%02d:%02d",
-                tp.year, tp.month, tp.day,
-                tp.hour, tp.minute, tp.second,
-                tp.microsecond,
-                sign, tzh, tzm
-            )!!;
+            buffer[pos++] = '.';
+            pos += append_padded_int(buffer[pos..], tp.microsecond, 6);
         }
-        return io::bprintf(
-            buffer,
-            "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
-            tp.year, tp.month, tp.day,
-            tp.hour, tp.minute, tp.second,
-            sign, tzh, tzm
-        )!!;
+        buffer[pos++] = sign;
+        pos += append_padded_int(buffer[pos..], tzh, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tzm, 2);
+        return buffer[:pos];
     }
 
     if (tp.microsecond > 0) {
-        return io::bprintf(
-            buffer,
-            "%04d-%02d-%02dT%02d:%02d:%02d.%06d",
-            tp.year, tp.month, tp.day,
-            tp.hour, tp.minute, tp.second,
-            tp.microsecond
-        )!!;
+        pos += append_padded_int(buffer[pos..], tp.year, 4);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.month, 2);
+        buffer[pos++] = '-';
+        pos += append_padded_int(buffer[pos..], tp.day, 2);
+        buffer[pos++] = 'T';
+        pos += append_padded_int(buffer[pos..], tp.hour, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.minute, 2);
+        buffer[pos++] = ':';
+        pos += append_padded_int(buffer[pos..], tp.second, 2);
+        buffer[pos++] = '.';
+        pos += append_padded_int(buffer[pos..], tp.microsecond, 6);
+        return buffer[:pos];
     }
-    return io::bprintf(buffer, "%04d-%02d-%02dT%02d:%02d:%02d", tp.year, tp.month, tp.day, tp.hour, tp.minute, tp.second)!!;
+    pos += append_padded_int(buffer[pos..], tp.year, 4);
+    buffer[pos++] = '-';
+    pos += append_padded_int(buffer[pos..], tp.month, 2);
+    buffer[pos++] = '-';
+    pos += append_padded_int(buffer[pos..], tp.day, 2);
+    buffer[pos++] = 'T';
+    pos += append_padded_int(buffer[pos..], tp.hour, 2);
+    buffer[pos++] = ':';
+    pos += append_padded_int(buffer[pos..], tp.minute, 2);
+    buffer[pos++] = ':';
+    pos += append_padded_int(buffer[pos..], tp.second, 2);
+    return buffer[:pos];
 }
 
 /**
@@ -114,9 +147,15 @@ fn char[] double_to_string(double val, char[] buffer) {
         return buffer[:ninf.len];
     }
     char[64] fmt_buf;
-    char[] s = io::bprintf(&fmt_buf, "%.15g", val)!!;
-    for (usz i = 0; i < s.len; i++) buffer[i] = s[i];
-    usz len = s.len;
+    usz len = 0;
+    if (try rendered_double = io::bprintf(&fmt_buf, "%.15g", val)) {
+        for (usz i = 0; i < rendered_double.len; i++) buffer[i] = rendered_double[i];
+        len = rendered_double.len;
+    } else {
+        char[] fallback = "0.0";
+        for (usz i = 0; i < fallback.len; i++) buffer[i] = fallback[i];
+        len = fallback.len;
+    }
     bool has_dot = false;
     for (usz i = 0; i < len; i++) {
         if (buffer[i] == '.' || buffer[i] == 'e' || buffer[i] == 'E') { has_dot = true; break; }

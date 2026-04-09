@@ -91,17 +91,18 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         mem::free(tmp);
     }
 
-    // Invariant: boundary copy to parent transfers coroutine-wrapper ownership.
+    // Invariant: boundary copy to parent clones coroutine wrappers without
+    // mutating the source wrapper in place, even for repeated copies.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
         if (tmp == null) {
-            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (bootstrap alloc)");
+            io::printn("[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (bootstrap alloc)");
             (*fail)++;
             return false;
         }
         tmp.init();
         if (!register_primitives(tmp)) {
-            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (bootstrap)");
+            io::printn("[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (bootstrap)");
             (*fail)++;
             tmp.destroy();
             mem::free(tmp);
@@ -110,7 +111,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
 
         EvalResult r_thunk = run("(lambda () 42)", tmp);
         if (r_thunk.error.has_error || r_thunk.value == null) {
-            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to build thunk)");
+            io::printn("[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (failed to build thunk)");
             (*fail)++;
             tmp.destroy();
             mem::free(tmp);
@@ -121,7 +122,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         coro_args[0] = r_thunk.value;
         Value* base = prim_coroutine(coro_args[..], null, tmp);
         if (base == null || base.tag != COROUTINE || base.coroutine_val == null) {
-            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to build coroutine)");
+            io::printn("[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (failed to build coroutine)");
             (*fail)++;
             tmp.destroy();
             mem::free(tmp);
@@ -134,7 +135,7 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         main::ScopeRegion* saved = tmp.current_scope;
         main::ScopeRegion* child = main::scope_create(saved);
         if (child == null) {
-            io::printn("[FAIL] lifetime: coroutine wrapper transfer on promote_to_root (failed to allocate child scope)");
+            io::printn("[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (failed to allocate child scope)");
             (*fail)++;
             tmp.destroy();
             mem::free(tmp);
@@ -146,37 +147,76 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         local_owner.tag = COROUTINE;
         local_owner.coroutine_val = owned_ctx;
 
-        Value* promoted = promote_to_root(local_owner, tmp);
-        bool transfer_ok = promoted != null &&
-                           promoted.tag == COROUTINE &&
-                           promoted.coroutine_val == owned_ctx &&
-                           local_owner.coroutine_val == null;
+        Value* promoted_a = promote_to_root(local_owner, tmp);
+        Value* promoted_b = promote_to_root(local_owner, tmp);
+        bool clone_ok = promoted_a != null &&
+                        promoted_b != null &&
+                        promoted_a.tag == COROUTINE &&
+                        promoted_b.tag == COROUTINE &&
+                        promoted_a != local_owner &&
+                        promoted_b != local_owner &&
+                        promoted_a.coroutine_val != null &&
+                        promoted_b.coroutine_val != null &&
+                        promoted_a.coroutine_val != owned_ctx &&
+                        promoted_b.coroutine_val != owned_ctx &&
+                        promoted_a.coroutine_val != promoted_b.coroutine_val &&
+                        local_owner.coroutine_val == owned_ctx;
 
+        usz before_release = tmp.stack_ctx_pool.pool_size;
         tmp.current_scope = saved;
         main::scope_release(child);
+        usz after_release = tmp.stack_ctx_pool.pool_size;
 
-        usz before = tmp.stack_ctx_pool.pool_size;
-        Value* resume_result = null;
-        if (promoted != null && promoted.tag == COROUTINE) {
+        bool source_release_ok = lifetime_stack_ctx_release_ok(before_release, after_release);
+
+        Value* resume_a = null;
+        usz after_resume_a = after_release;
+        if (promoted_a != null && promoted_a.tag == COROUTINE) {
             Value*[1] resume_args;
-            resume_args[0] = promoted;
-            resume_result = prim_resume(resume_args[..], null, tmp);
+            resume_args[0] = promoted_a;
+            resume_a = prim_resume(resume_args[..], null, tmp);
+            after_resume_a = tmp.stack_ctx_pool.pool_size;
         }
-        usz after = tmp.stack_ctx_pool.pool_size;
 
-        bool ok = transfer_ok &&
-                  resume_result != null &&
-                  resume_result.tag == INT &&
-                  resume_result.int_val == 42 &&
-                  promoted != null &&
-                  promoted.coroutine_val == null &&
-                  lifetime_stack_ctx_release_ok(before, after);
+        Value* resume_b = null;
+        usz after_resume_b = after_resume_a;
+        if (promoted_b != null && promoted_b.tag == COROUTINE) {
+            Value*[1] resume_args;
+            resume_args[0] = promoted_b;
+            resume_b = prim_resume(resume_args[..], null, tmp);
+            after_resume_b = tmp.stack_ctx_pool.pool_size;
+        }
+
+        bool resume_a_ok = resume_a != null &&
+                           resume_a.tag == INT &&
+                           resume_a.int_val == 42 &&
+                           promoted_a != null &&
+                           promoted_a.coroutine_val == null &&
+                           lifetime_stack_ctx_release_ok(after_release, after_resume_a);
+        bool resume_b_ok = resume_b != null &&
+                           resume_b.tag == INT &&
+                           resume_b.int_val == 42 &&
+                           promoted_b != null &&
+                           promoted_b.coroutine_val == null &&
+                           lifetime_stack_ctx_release_ok(after_resume_a, after_resume_b);
+
+        bool ok = clone_ok && source_release_ok && resume_a_ok && resume_b_ok;
 
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: promote_to_root transfers coroutine wrapper ownership");
+            emit_pass_literal("[PASS] lifetime: promote_to_root clones coroutine wrappers without source mutation");
             (*pass)++;
         } else {
-            io::printn("[FAIL] lifetime: promote_to_root transfers coroutine wrapper ownership");
+            io::printfn(
+                "[FAIL] lifetime: promote_to_root clones coroutine wrappers without source mutation (clone_ok=%s source_release_ok=%s resume_a_ok=%s resume_b_ok=%s release=%d->%d resume_a=%d resume_b=%d)",
+                clone_ok ? "yes" : "no",
+                source_release_ok ? "yes" : "no",
+                resume_a_ok ? "yes" : "no",
+                resume_b_ok ? "yes" : "no",
+                (int)before_release,
+                (int)after_release,
+                (int)after_resume_a,
+                (int)after_resume_b
+            );
             (*fail)++;
         }
 

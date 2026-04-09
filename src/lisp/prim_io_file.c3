@@ -51,7 +51,10 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     OffloadWork work = {};
     work.op = OFFLOAD_WRITE_FILE;
     work.shared = scheduler_domain_publish_shared_owned(scheduler_current_domain(), payload, payload_len);
-    if (work.shared == null) return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
+    if (work.shared == null) {
+        mem::free(payload);
+        return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
+    }
 
     Value* out = io_run_fiber_offload(&work, interp);
     if (out != null && out.tag == ERROR) {
@@ -155,7 +158,10 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
 
     char[] rel_path = args[0].str_chars[:args[0].str_len];
     char[512] resolved;
-    usz rlen = resolve_import_path(rel_path, interp, &resolved, 512);
+    usz rlen = 0;
+    if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
+        return raise_error(interp, "load: path too long");
+    }
     char[] path = resolved[:rlen];
 
     if (try content = io::file::load_temp((String)path)) {
@@ -182,9 +188,16 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         }
         return r.value;
     }
-    char[256] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "load: file not found '%s'", (ZString)path.ptr)) {
+    main::EntryFileReadKind read_kind;
+    (void)main::classify_file_read_path(path, &read_kind);
+    char[384] ebuf;
+    if (try char[] msg = io::bprintf(
+        &ebuf,
+        "load: cannot read '%s': %s",
+        (ZString)path.ptr,
+        (ZString)main::file_read_kind_reason(read_kind)
+    )) {
         return raise_error(interp, msg);
     }
-    return raise_error(interp, "load: file not found");
+    return raise_error(interp, "load: cannot read file");
 }

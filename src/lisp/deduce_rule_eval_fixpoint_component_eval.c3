@@ -60,11 +60,12 @@ fn Value* deduce_naive_evaluate_component_in_txn(
     if (use_seminaive_recursive && has_recursive_aggregates &&
         deduce_component_can_use_seminaive_aggregates(db, plan, component_id) &&
         deduce_component_has_full_recursive_aggregate_seminaive_support(db, plan, component_id)) {
-        return deduce_seminaive_evaluate_recursive_aggregate_component(
+        return deduce_seminaive_evaluate_recursive_aggregate_component_in_txn(
             db,
             plan,
             component_id,
             iteration_limit,
+            txn,
             iterations_out,
             derived_out,
             observed_rules,

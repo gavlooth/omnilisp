@@ -27,8 +27,11 @@ fn Value* prim_ctor_type_apply(Value*[] args, Env* env, Interp* interp) {
         Value* actual_args = make_nil(interp);
         Value* data = ctor_mismatch_data(interp, expected.ctor, expected_args, actual_args, false, 0, null);
         char[256] buf;
-        char[] msg = io::bprintf(&buf, "^: expected instance of %s",
-            (ZString)interp.symbols.get_name(expected.ctor))!!;
+        char[] msg = "^: expected instance";
+        if (try char[] formatted = io::bprintf(&buf, "^: expected instance of %s",
+            (ZString)interp.symbols.get_name(expected.ctor))) {
+            msg = formatted;
+        }
         return ctor_type_raise(interp, "type/ctor-type-arg-mismatch", msg, data);
     }
 
@@ -47,19 +50,25 @@ fn Value* prim_ctor_type_apply(Value*[] args, Env* env, Interp* interp) {
     if ((uint)actual_ti.name != (uint)expected.ctor) {
         Value* data = ctor_mismatch_data(interp, expected.ctor, expected_args, actual_args, false, 0, null);
         char[256] buf;
-        char[] msg = io::bprintf(&buf, "^: constructor mismatch, expected %s got %s",
+        char[] msg = "^: constructor mismatch";
+        if (try char[] formatted = io::bprintf(&buf, "^: constructor mismatch, expected %s got %s",
             (ZString)interp.symbols.get_name(expected.ctor),
-            (ZString)interp.symbols.get_name(actual_ti.name))!!;
+            (ZString)interp.symbols.get_name(actual_ti.name))) {
+            msg = formatted;
+        }
         return ctor_type_raise(interp, "type/ctor-type-arg-mismatch", msg, data);
     }
 
     if (expected.arg_count != inst.type_arg_count) {
         Value* data = ctor_mismatch_data(interp, expected.ctor, expected_args, actual_args, false, 0, null);
         char[256] buf;
-        char[] msg = io::bprintf(&buf, "^: %s expected %d type arg(s), got %d",
+        char[] msg = "^: arity mismatch";
+        if (try char[] formatted = io::bprintf(&buf, "^: %s expected %d type arg(s), got %d",
             (ZString)interp.symbols.get_name(expected.ctor),
             (int)expected.arg_count,
-            (int)inst.type_arg_count)!!;
+            (int)inst.type_arg_count)) {
+            msg = formatted;
+        }
         return ctor_type_raise(interp, "type/ctor-arity-mismatch", msg, data);
     }
 
@@ -71,8 +80,11 @@ fn Value* prim_ctor_type_apply(Value*[] args, Env* env, Interp* interp) {
             usz arg_index = mismatch.len > 0 ? mismatch.items[0] : i;
             Value* data = ctor_mismatch_data(interp, expected.ctor, expected_args, actual_args, true, arg_index, &mismatch);
             char[256] buf;
-            char[] msg = io::bprintf(&buf, "^: %s type arg mismatch at index %d",
-                (ZString)interp.symbols.get_name(expected.ctor), (int)arg_index)!!;
+            char[] msg = "^: type arg mismatch";
+            if (try char[] formatted = io::bprintf(&buf, "^: %s type arg mismatch at index %d",
+                (ZString)interp.symbols.get_name(expected.ctor), (int)arg_index)) {
+                msg = formatted;
+            }
             return ctor_type_raise(interp, "type/ctor-type-arg-mismatch", msg, data);
         }
     }

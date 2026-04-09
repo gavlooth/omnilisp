@@ -169,7 +169,9 @@ fn bool handle_effect_state_capture_handler_copy(HandleEffectState* state, Effec
             Value* closure = src.closures[i];
             if (closure != null && state.interp != null) {
                 Value* promoted = boundary_promote_to_root(closure, state.interp);
-                if (promoted == null || promoted.tag == ERROR || promoted.tag != CLOSURE) {
+                bool promoted_callable = promoted != null
+                    && (promoted.tag == CLOSURE || promoted.tag == PRIMITIVE || promoted.tag == PARTIAL_PRIM);
+                if (promoted == null || promoted.tag == ERROR || !promoted_callable) {
                     mem::free(copied_closures);
                     if (copied_clauses != null) mem::free(copied_clauses);
                     if (copied_tags != null) mem::free(copied_tags);

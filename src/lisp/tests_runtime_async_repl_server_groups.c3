@@ -91,6 +91,34 @@ fn void run_async_repl_server_active_interrupt_test(Interp* interp, int* pass, i
     }
 }
 
+fn void run_async_repl_server_input_destroy_close_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    InterpInputState state = {};
+    io_input_state_init(&state);
+    defer io_input_state_destroy(&state);
+
+    bool init_ok = state.mu_ready && state.cv_ready;
+    bool append_ok = io_input_state_append(&state, "abc");
+    io_input_state_destroy(&state);
+
+    char[8] line_buf = {};
+    IoInputReadResult read = io_input_state_read_line(&state, line_buf[0..7], null);
+    bool post_destroy_ok = state.closed &&
+                           state.buf == null &&
+                           state.len == 0 &&
+                           state.cap == 0 &&
+                           read.status == IO_INPUT_READ_EOF &&
+                           read.len == 0;
+
+    if (init_ok && append_ok && post_destroy_ok) {
+        emit_pass_literal("[PASS] async repl-server input destroy closes state");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] async repl-server input destroy closes state");
+        (*fail)++;
+    }
+}
+
 fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* fail) {
     ReplServerConnection open_conn = {};
     repl_server_connection_init(&open_conn, 1, false);
@@ -154,5 +182,6 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
 fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_pending_interrupt_window_test(interp, pass, fail);
     run_async_repl_server_active_interrupt_test(interp, pass, fail);
+    run_async_repl_server_input_destroy_close_test(interp, pass, fail);
     run_async_repl_server_auth_policy_test(interp, pass, fail);
 }

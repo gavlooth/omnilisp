@@ -74,10 +74,10 @@ fn lisp::Value* index(lisp::Value* collection, lisp::Value* idx) {
 /**
  * AOT handle wrapper.
  */
-fn lisp::Value* compiled_handle(lisp::Value** tags, lisp::Value** handlers, usz count, lisp::Value* body) {
+fn lisp::Value* compiled_handle(lisp::Value** tags, lisp::Value** handlers, usz count, lisp::Value* body, bool strict_mode) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot compiled-handle: runtime interpreter unavailable");
-    return lisp::jit_handle_value(interp, tags, handlers, count, body);
+    return lisp::jit_handle_value(interp, tags, handlers, count, body, strict_mode);
 }
 /**
  * AOT signal wrapper.

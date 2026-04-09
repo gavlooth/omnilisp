@@ -74,7 +74,10 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
     Value* y = prim_yield(yargs[..], null, interp);
-    if (y != null && y.tag == ERROR) return y;
+    if (y != null && y.tag == ERROR) {
+        scheduler_close_pending_tcp_connect(fiber_id);
+        return y;
+    }
 
     if (!pending.active ||
         !pending.completed ||

@@ -6,7 +6,10 @@ import main;
 fn usz Compiler.compile_defalias_direct(Compiler* self, Expr* expr) {
     usz ann_id = self.next_result();
     char[64] ann_name_buf;
-    char[] ann_name = io::bprintf(&ann_name_buf, "_aot_alias_target_%d", (int)ann_id)!!;
+    char[] ann_name = "_aot_alias_target";
+    if (try char[] formatted = io::bprintf(&ann_name_buf, "_aot_alias_target_%d", (int)ann_id)) {
+        ann_name = formatted;
+    }
     self.emit_indent();
     self.emit("lisp::aot::AotTypeAnnotationSpec ");
     self.emit(ann_name);
@@ -29,7 +32,10 @@ fn usz Compiler.compile_defeffect_direct(Compiler* self, Expr* expr) {
     char[] arg_name = "";
     if (expr.defeffect.has_arg_type) {
         usz ann_id = self.next_result();
-        arg_name = io::bprintf(&arg_name_buf, "_aot_effect_arg_%d", (int)ann_id)!!;
+        arg_name = "_aot_effect_arg";
+        if (try char[] formatted = io::bprintf(&arg_name_buf, "_aot_effect_arg_%d", (int)ann_id)) {
+            arg_name = formatted;
+        }
         self.emit_indent();
         self.emit("lisp::aot::AotTypeAnnotationSpec ");
         self.emit(arg_name);
