@@ -92,7 +92,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Build FfiBoundFn — dlsym is deferred to first call (lazy resolution)
-    FfiBoundFn* bound = (FfiBoundFn*)mem::malloc(FfiBoundFn.sizeof);
+    FfiBoundFn* bound = (FfiBoundFn*)interp.root_scope.alloc(FfiBoundFn.sizeof);
     if (bound == null) {
         return raise_error(interp, "ffi λ: out of memory for bound function");
     }
@@ -103,12 +103,10 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.is_unavailable = false;
     if (lib_val.ffi_val.name_len > 0) {
         if (lib_val.ffi_val.name_len == usz.max) {
-            mem::free(bound);
             return raise_error(interp, "ffi λ: library name is too long");
         }
-        bound.lib_name = (char*)mem::malloc(lib_val.ffi_val.name_len + 1);
+        bound.lib_name = (char*)interp.root_scope.alloc(lib_val.ffi_val.name_len + 1);
         if (bound.lib_name == null) {
-            mem::free(bound);
             return raise_error(interp, "ffi λ: out of memory for library name");
         }
         for (usz i = 0; i < lib_val.ffi_val.name_len; i++) {
@@ -121,19 +119,13 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         bound.lib_name_len = 0;
     }
     if (ff.c_name == null) {
-        if (bound.lib_name != null) mem::free(bound.lib_name);
-        mem::free(bound);
         return raise_error(interp, "ffi λ: missing C symbol name");
     }
     if (ff.c_name_len == usz.max) {
-        if (bound.lib_name != null) mem::free(bound.lib_name);
-        mem::free(bound);
         return raise_error(interp, "ffi λ: C symbol name is too long");
     }
-    bound.c_name = (char*)mem::malloc(ff.c_name_len + 1);
+    bound.c_name = (char*)interp.root_scope.alloc(ff.c_name_len + 1);
     if (bound.c_name == null) {
-        if (bound.lib_name != null) mem::free(bound.lib_name);
-        mem::free(bound);
         return raise_error(interp, "ffi λ: out of memory for symbol name");
     }
     for (usz i = 0; i < ff.c_name_len; i++) {
@@ -146,19 +138,12 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.is_variadic = ff.is_variadic;
 
     if (ff.param_count > 0) {
-        bound.param_types = (FfiTypeTag*)mem::malloc(FfiTypeTag.sizeof * ff.param_count);
+        bound.param_types = (FfiTypeTag*)interp.root_scope.alloc(FfiTypeTag.sizeof * ff.param_count);
         if (bound.param_types == null) {
-            if (bound.lib_name != null) mem::free(bound.lib_name);
-            mem::free(bound.c_name);
-            mem::free(bound);
             return raise_error(interp, "ffi λ: out of memory for parameter metadata");
         }
         for (usz i = 0; i < ff.param_count; i++) {
             if (!type_ann_to_ffi_tag(ff.param_types[i].base_type, interp, &bound.param_types[i])) {
-                mem::free(bound.param_types);
-                if (bound.lib_name != null) mem::free(bound.lib_name);
-                mem::free(bound.c_name);
-                mem::free(bound);
                 return ffi_unsupported_type_annotation_error(interp, "parameter", ff.param_types[i].base_type);
             }
         }
@@ -166,10 +151,6 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
 
     if (ff.has_return_type) {
         if (!type_ann_to_ffi_tag(ff.return_type.base_type, interp, &bound.return_type)) {
-            if (bound.param_types != null) mem::free(bound.param_types);
-            if (bound.lib_name != null) mem::free(bound.lib_name);
-            mem::free(bound.c_name);
-            mem::free(bound);
             return ffi_unsupported_type_annotation_error(interp, "return", ff.return_type.base_type);
         }
         bound.has_return = true;
@@ -184,18 +165,12 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
         &prim_ffi_bound_call,
         (int)ff.param_count);
     if (prim == null) {
-        if (bound.param_types != null) mem::free(bound.param_types);
-        mem::free(bound.c_name);
-        mem::free(bound);
         return raise_error(interp, "ffi λ: out of memory for bound function primitive");
     }
     prim.prim_val.user_data = (void*)bound;
 
     // Bind in global env
     if (!env_define_with_barrier_checked(interp.global_env, ff.fn_name, prim, interp)) {
-        if (bound.param_types != null) mem::free(bound.param_types);
-        mem::free(bound.c_name);
-        mem::free(bound);
         return raise_error(interp, "ffi λ: out of memory while registering bound function");
     }
     return prim;

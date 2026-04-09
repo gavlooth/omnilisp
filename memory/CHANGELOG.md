@@ -18,6 +18,15 @@
     - successful compiler-slice parsing of `[ffi λ ...]` forms,
     - `aot::make_closure(...)` / `aot::make_variadic_closure(...)`,
     - `aot::ffi_declare_fn(...)`.
+  - Follow-up interpreter parity hardening:
+    - `src/lisp/eval_ffi_eval.c3` now allocates interpreter-side declarative
+      `ffi λ` bound-function payloads (`FfiBoundFn`, copied library name,
+      copied symbol name, and ABI tag table) from `interp.root_scope` instead
+      of raw heap ownership, matching the root-lifetime primitive values that
+      retain them through `prim_val.user_data`.
+    - This closes the same ownership mismatch for non-AOT declarative FFI
+      bindings, so interpreter-created FFI primitives no longer depend on an
+      unowned heap payload surviving past primitive teardown.
   - Validation:
     - `c3c build --sanitize=address`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` ->
@@ -25,6 +34,8 @@
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` ->
       `pass=22 fail=0`
     - `scripts/run_e2e.sh` -> `ALL 404 e2e compiler tests passed!`
+    - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(block (define [ffi lib] libc "libc.so.6") (define [ffi lambda libc] (strlen (^String s)) ^Integer) 0)'` ->
+      `0`
 
 ## 2026-04-08
 
