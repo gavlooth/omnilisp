@@ -4,7 +4,18 @@ import std::io;
 import main;
 
 fn void setup(Interp* interp, char[] code) {
-    run(code, interp);
+    EvalResult result = run(code, interp);
+    if (!result.error.has_error) return;
+
+    io::printfn(
+        "[FAIL] test setup failed: %s at %d:%d",
+        (ZString)&result.error.message,
+        (int)result.error.line,
+        (int)result.error.column
+    );
+    if (code.len > 0) {
+        io::printfn("[FAIL] test setup source (%d bytes): %s", (int)code.len, (ZString)&code[0]);
+    }
 }
 
 fn bool jit_checks_enabled() @inline {

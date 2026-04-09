@@ -18,16 +18,14 @@ fn void Interp.grow_macro_table(Interp* self) {
     assert(new_hash != null, "grow_macro_table: macro hash alloc failed");
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
 
-    usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.macro_count; i++) {
-        char[] name_str = self.symbols.get_name(new_table[i].name);
-        usz h = hash_symbol(name_str);
+        usz slot = (usz)new_table[i].name % new_hash_cap;
         for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
             if (new_hash[slot] == usz.max) {
                 new_hash[slot] = i;
                 break;
             }
+            slot = (slot + 1) % new_hash_cap;
         }
     }
 
@@ -53,16 +51,14 @@ fn void Interp.grow_module_table(Interp* self) {
     assert(new_hash != null, "grow_module_table: module hash alloc failed");
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = usz.max;
 
-    usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.module_count; i++) {
-        char[] name_str = self.symbols.get_name(new_mods[i].name);
-        usz h = hash_symbol(name_str);
+        usz slot = (usz)new_mods[i].name % new_hash_cap;
         for (usz probe = 0; probe < new_hash_cap; probe++) {
-            usz slot = (h + probe) & mask;
             if (new_hash[slot] == usz.max) {
                 new_hash[slot] = i;
                 break;
             }
+            slot = (slot + 1) % new_hash_cap;
         }
     }
 

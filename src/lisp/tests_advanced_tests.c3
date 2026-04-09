@@ -27,6 +27,11 @@ fn usz advanced_test_cstr_len(char* buf) {
     return len;
 }
 
+fn char[] advanced_test_cstr_slice(char* buf) {
+    usz len = advanced_test_cstr_len(buf);
+    return buf[:len];
+}
+
 fn bool advanced_build_wide_type_define(char* buf, usz cap, usz field_count) {
     usz len = 0;
     if (!advanced_test_append(buf, cap, &len, "(define [type] WideRecord")) return false;

@@ -123,10 +123,10 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
             io::printn("[FAIL] wide macro regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_clauses_buf[..advanced_test_cstr_len(&define_clauses_buf)]);
+            setup(interp, advanced_test_cstr_slice(&define_clauses_buf));
             test_eq(interp, "macro preserves >32 clauses", "(choose-wide 39)", 39, pass, fail);
-            setup(interp, define_vars_buf[..advanced_test_cstr_len(&define_vars_buf)]);
-            test_eq(interp, "macro preserves >64 pattern vars", call_vars_buf[..advanced_test_cstr_len(&call_vars_buf)], (long)(VAR_COUNT - 1), pass, fail);
+            setup(interp, advanced_test_cstr_slice(&define_vars_buf));
+            test_eq(interp, "macro preserves >64 pattern vars", advanced_test_cstr_slice(&call_vars_buf), (long)(VAR_COUNT - 1), pass, fail);
         }
     }
 }
@@ -152,7 +152,7 @@ fn void run_advanced_macro_hygiene_gensym_tests(Interp* interp, int* pass, int* 
             io::printn("[FAIL] wide auto-gensym regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            setup(interp, advanced_test_cstr_slice(&define_buf));
             test_eq(interp, "macro preserves >64 auto-gensyms", "(gensym-wide)", (long)(GENSYM_COUNT - 1), pass, fail);
         }
     }
@@ -203,8 +203,8 @@ fn void run_advanced_macro_hygiene_capture_tests(Interp* interp, int* pass, int*
             io::printn("[FAIL] wide captured bindings regression builder");
             (*fail)++;
         } else {
-            setup(interp, setup_buf[..advanced_test_cstr_len(&setup_buf)]);
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            setup(interp, advanced_test_cstr_slice(&setup_buf));
+            setup(interp, advanced_test_cstr_slice(&define_buf));
             setup(interp, "(define cap69 9999)");
             test_eq(interp, "macro preserves >64 captured bindings", "(capture-wide)", 69, pass, fail);
         }

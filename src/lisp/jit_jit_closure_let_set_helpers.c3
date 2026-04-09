@@ -31,18 +31,21 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
     return jit_eval(expr.let_expr.body, dest_env, interp);
 }
 
-fn void jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value, SymbolId name) {
+fn Value* jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value, SymbolId name) {
     main::ScopeRegion* env_scope = actual_value.closure_val.env_scope;
 
     Value* self_ref = boundary_alloc_value_in_scope(interp, env_scope);
+    if (self_ref == null) return null;
     self_ref.tag = CLOSURE;
 
     Closure* copied_closure = (Closure*)env_scope.alloc(Closure.sizeof);
+    if (copied_closure == null) return null;
     *copied_closure = *actual_value.closure_val;
     copied_closure.scope_gen = env_scope.generation;
 
     if (copied_closure.param_count > 0) {
         copied_closure.params = (SymbolId*)env_scope.alloc(SymbolId.sizeof * copied_closure.param_count);
+        if (copied_closure.params == null) return null;
         for (usz i = 0; i < copied_closure.param_count; i++) {
             copied_closure.params[i] = actual_value.closure_val.params[i];
         }
@@ -67,15 +70,16 @@ fn void jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value, 
             break;
         }
     }
+    return self_ref;
 }
 
-fn void jit_patch_rec_closure(Value* actual_value, Env* rec_env, SymbolId name, Interp* interp) {
-    if (!is_closure(actual_value)) return;
+fn Value* jit_patch_rec_closure(Value* actual_value, Env* rec_env, SymbolId name, Interp* interp) {
+    if (!is_closure(actual_value)) return actual_value;
     if (actual_value.closure_val.env_scope != null) {
-        jit_patch_rec_closure_in_env_scope(interp, actual_value, name);
-    } else {
-        actual_value.closure_val.env = rec_env;
+        return jit_patch_rec_closure_in_env_scope(interp, actual_value, name);
     }
+    actual_value.closure_val.env = rec_env;
+    return actual_value;
 }
 
 fn void jit_patch_rec_binding(Env* rec_env, SymbolId name, Value* actual_value) {
@@ -101,10 +105,13 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     Value* actual_value = jit_eval(expr.let_expr.init, rec_env, interp);
     if (actual_value != null && actual_value.tag == ERROR) return actual_value;
 
-    jit_patch_rec_closure(actual_value, rec_env, expr.let_expr.name, interp);
-    jit_patch_rec_binding(rec_env, expr.let_expr.name, actual_value);
+    Value* published_value = jit_patch_rec_closure(actual_value, rec_env, expr.let_expr.name, interp);
+    if (actual_value != null && actual_value.tag == CLOSURE && published_value == null) {
+        return raise_error(interp, "let: out of memory while patching recursive closure");
+    }
+    jit_patch_rec_binding(rec_env, expr.let_expr.name, published_value);
 
-    bool body_has_shift = jit_letrec_body_has_shift(actual_value, expr.let_expr.init);
+    bool body_has_shift = jit_letrec_body_has_shift(published_value, expr.let_expr.init);
     Value* result = jit_eval_in_call_scope(expr.let_expr.body, rec_env, interp, !body_has_shift);
     return result;
 }

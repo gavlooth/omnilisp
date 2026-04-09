@@ -1,5 +1,35 @@
 ## 2026-04-09
 
+- Closed the advanced recursive-closure and generated-source regression slice:
+  - `src/lisp/jit_jit_compile_let_set_helpers.c3` now treats closure-local
+    mutation through collection-surface calls (`push!`, `remove!`, `set!`) as
+    a mutable capture, so `let ^rec` closures box captured locals before
+    recursive execution instead of silently dropping array updates.
+  - `src/lisp/jit_jit_compile_let_set.c3` now threads `Interp*` into that
+    mutability check, and `src/lisp/jit_jit_closure_let_set_helpers.c3` now
+    publishes the patched recursive closure value explicitly and fails closed
+    if the env-scope self-reference clone cannot be allocated.
+  - `src/lisp/value_interp_lifecycle.c3` now rehashes macro/module tables with
+    the same symbol-id slotting policy already used by runtime lookup, fixing
+    table growth drift that could surface in wide advanced test setup.
+  - `src/lisp/tests_advanced_tests.c3` now returns the full generated source
+    slice from `advanced_test_cstr_slice(...)`, and the wide advanced builder
+    callsites in `src/lisp/tests_advanced_core_semantics_groups.c3`,
+    `src/lisp/tests_advanced_macro_hygiene_groups.c3`,
+    `src/lisp/tests_advanced_type_dispatch_groups.c3`, and
+    `src/lisp/tests_advanced_type_parametric_groups.c3` now use that helper
+    consistently instead of truncating generated forms before parse.
+  - `src/lisp/tests_advanced_core_semantics_groups.c3` now includes direct
+    `let ^rec` regressions proving a recursively-invoked closure preserves
+    captured array mutation state across `push!` updates.
+  - `src/lisp/tests_harness_helpers.c3` now prints setup failure coordinates
+    and the generated source text when a test fixture parse/eval step fails,
+    which keeps wide generated-source regressions local to the failing setup.
+  - validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics ./build/main --test-suite lisp` -> `pass=68 fail=0`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp` -> `pass=1164 fail=0`
+
 - Closed the process-handle concurrency lane for `process-wait` / `process-kill` reuse:
   - `src/lisp/async_process_signal_runtime.c3` now gives each process handle a shared in-flight guard, and `src/lisp/async_process_lifecycle.c3` preserves the closed state while the handle is in use so concurrent reuse fails closed instead of racing on the same live `uv_process`.
   - `src/lisp/async_process_signal_dns_process.c3` now returns a normalized `io/process-handle-busy` error when a concurrent `process-wait` or `process-kill` attempts to reuse the same live process handle.

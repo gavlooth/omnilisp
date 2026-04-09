@@ -149,10 +149,10 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
             io::printn("[FAIL] wide dispatch signature regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_int_buf[..advanced_test_cstr_len(&define_int_buf)]);
-            setup(interp, define_string_buf[..advanced_test_cstr_len(&define_string_buf)]);
-            test_eq_interp(interp, "dispatch 40th arg int", call_int_buf[..advanced_test_cstr_len(&call_int_buf)], 111, pass, fail);
-            test_eq_interp(interp, "dispatch 40th arg string", call_string_buf[..advanced_test_cstr_len(&call_string_buf)], 222, pass, fail);
+            setup(interp, advanced_test_cstr_slice(&define_int_buf));
+            setup(interp, advanced_test_cstr_slice(&define_string_buf));
+            test_eq_interp(interp, "dispatch 40th arg int", advanced_test_cstr_slice(&call_int_buf), 111, pass, fail);
+            test_eq_interp(interp, "dispatch 40th arg string", advanced_test_cstr_slice(&call_string_buf), 222, pass, fail);
         }
     }
 }
@@ -186,7 +186,7 @@ fn void run_advanced_dispatch_constructor_constraint_tests(Interp* interp, int* 
             io::printn("[FAIL] wide dispatch constraint regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_constraint_buf[..advanced_test_cstr_len(&define_constraint_buf)]);
+            setup(interp, advanced_test_cstr_slice(&define_constraint_buf));
             setup(interp, "(define (constraint-wide x) 222)");
             test_eq_interp(interp, "dispatch preserves >32 constraints", "(constraint-wide 1)", 222, pass, fail);
         }

@@ -2,6 +2,57 @@ module lisp;
 
 import main;
 
+fn bool call_mutates_named_local(Expr* expr, SymbolId name, Interp* interp) {
+    if (expr == null || expr.tag != E_CALL || expr.call.func == null || expr.call.arg_count == 0) return false;
+    if (expr.call.func.tag != E_VAR) return false;
+    if (expr.call.args[0] == null || expr.call.args[0].tag != E_VAR) return false;
+    if (expr.call.args[0].var_expr.name != name) return false;
+
+    SymbolId func_name = expr.call.func.var_expr.name;
+    return (uint)func_name == (uint)interp.symbols.intern("push!") ||
+        (uint)func_name == (uint)interp.symbols.intern("remove!") ||
+        (uint)func_name == (uint)interp.symbols.intern("set!");
+}
+
+fn bool has_mutating_call_on_name(Expr* expr, SymbolId name, Interp* interp) {
+    if (expr == null) return false;
+    switch (expr.tag) {
+        case E_LET:
+            if (expr.let_expr.name == name) return false;
+            return has_mutating_call_on_name(expr.let_expr.init, name, interp) ||
+                has_mutating_call_on_name(expr.let_expr.body, name, interp);
+        case E_IF:
+            return has_mutating_call_on_name(expr.if_expr.test, name, interp) ||
+                has_mutating_call_on_name(expr.if_expr.then_branch, name, interp) ||
+                has_mutating_call_on_name(expr.if_expr.else_branch, name, interp);
+        case E_LAMBDA:
+            return has_mutating_call_on_name(expr.lambda.body, name, interp);
+        case E_BLOCK:
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (has_mutating_call_on_name(expr.block.exprs[i], name, interp)) return true;
+            }
+            return false;
+        case E_APP:
+            return has_mutating_call_on_name(expr.app.func, name, interp) ||
+                has_mutating_call_on_name(expr.app.arg, name, interp);
+        case E_CALL:
+            if (call_mutates_named_local(expr, name, interp)) return true;
+            if (has_mutating_call_on_name(expr.call.func, name, interp)) return true;
+            for (usz i = 0; i < expr.call.arg_count; i++) {
+                if (has_mutating_call_on_name(expr.call.args[i], name, interp)) return true;
+            }
+            return false;
+        case E_AND:
+            return has_mutating_call_on_name(expr.and_expr.left, name, interp) ||
+                has_mutating_call_on_name(expr.and_expr.right, name, interp);
+        case E_OR:
+            return has_mutating_call_on_name(expr.or_expr.left, name, interp) ||
+                has_mutating_call_on_name(expr.or_expr.right, name, interp);
+        default:
+            return false;
+    }
+}
+
 fn bool has_set_on_name(Expr* expr, SymbolId name) {
     if (expr == null) return false;
     switch (expr.tag) {
@@ -43,39 +94,41 @@ fn bool has_set_on_name(Expr* expr, SymbolId name) {
 }
 
 // Check if a lambda in the expression captures and mutates the named variable
-fn bool has_closure_set_on_local(Expr* body, SymbolId name) {
+fn bool has_closure_set_on_local(Expr* body, SymbolId name, Interp* interp) {
     if (body == null) return false;
     switch (body.tag) {
         case E_LAMBDA:
-            return has_set_on_name(body.lambda.body, name);
+            return has_set_on_name(body.lambda.body, name) ||
+                has_mutating_call_on_name(body.lambda.body, name, interp);
         case E_LET:
             if (body.let_expr.name == name) return false;  // shadowed
-            return has_closure_set_on_local(body.let_expr.init, name) ||
-                   has_closure_set_on_local(body.let_expr.body, name);
+            return has_closure_set_on_local(body.let_expr.init, name, interp) ||
+                   has_closure_set_on_local(body.let_expr.body, name, interp);
         case E_IF:
-            return has_closure_set_on_local(body.if_expr.test, name) ||
-                   has_closure_set_on_local(body.if_expr.then_branch, name) ||
-                   has_closure_set_on_local(body.if_expr.else_branch, name);
+            return has_closure_set_on_local(body.if_expr.test, name, interp) ||
+                   has_closure_set_on_local(body.if_expr.then_branch, name, interp) ||
+                   has_closure_set_on_local(body.if_expr.else_branch, name, interp);
         case E_BLOCK:
             for (usz i = 0; i < body.block.expr_count; i++) {
-                if (has_closure_set_on_local(body.block.exprs[i], name)) return true;
+                if (has_closure_set_on_local(body.block.exprs[i], name, interp)) return true;
             }
             return false;
         case E_APP:
-            return has_closure_set_on_local(body.app.func, name) ||
-                   has_closure_set_on_local(body.app.arg, name);
+            return has_closure_set_on_local(body.app.func, name, interp) ||
+                   has_closure_set_on_local(body.app.arg, name, interp);
         case E_CALL:
-            if (has_closure_set_on_local(body.call.func, name)) return true;
+            if (call_mutates_named_local(body, name, interp)) return true;
+            if (has_closure_set_on_local(body.call.func, name, interp)) return true;
             for (usz i = 0; i < body.call.arg_count; i++) {
-                if (has_closure_set_on_local(body.call.args[i], name)) return true;
+                if (has_closure_set_on_local(body.call.args[i], name, interp)) return true;
             }
             return false;
         case E_AND:
-            return has_closure_set_on_local(body.and_expr.left, name) ||
-                   has_closure_set_on_local(body.and_expr.right, name);
+            return has_closure_set_on_local(body.and_expr.left, name, interp) ||
+                   has_closure_set_on_local(body.and_expr.right, name, interp);
         case E_OR:
-            return has_closure_set_on_local(body.or_expr.left, name) ||
-                   has_closure_set_on_local(body.or_expr.right, name);
+            return has_closure_set_on_local(body.or_expr.left, name, interp) ||
+                   has_closure_set_on_local(body.or_expr.right, name, interp);
         default: return false;
     }
 }

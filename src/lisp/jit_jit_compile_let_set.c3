@@ -16,7 +16,7 @@ fn void? jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals,
         return;
     }
 
-    bool is_mutable = has_closure_set_on_local(expr.let_expr.body, expr.let_expr.name);
+    bool is_mutable = has_closure_set_on_local(expr.let_expr.body, expr.let_expr.name, interp);
 
     // Compile init expression -> result in R0 (init is not in tail position)
     jit_compile_expr(s, expr.let_expr.init, interp, locals)!;

@@ -69,8 +69,8 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
             io::printn("[FAIL] wide type field regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
-            test_eq_interp(interp, "wide type preserves >64 fields", access_buf[..advanced_test_cstr_len(&access_buf)], (long)(FIELD_COUNT - 1), pass, fail);
+            setup(interp, advanced_test_cstr_slice(&define_buf));
+            test_eq_interp(interp, "wide type preserves >64 fields", advanced_test_cstr_slice(&access_buf), (long)(FIELD_COUNT - 1), pass, fail);
         }
     }
 
@@ -83,8 +83,8 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
             io::printn("[FAIL] wide union regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
-            test_eq_interp(interp, "wide union preserves >16 variants", match_buf[..advanced_test_cstr_len(&match_buf)], (long)(VARIANT_COUNT - 1), pass, fail);
+            setup(interp, advanced_test_cstr_slice(&define_buf));
+            test_eq_interp(interp, "wide union preserves >16 variants", advanced_test_cstr_slice(&match_buf), (long)(VARIANT_COUNT - 1), pass, fail);
         }
     }
 
@@ -123,7 +123,7 @@ fn void run_advanced_type_parametric_type_args_tests(Interp* interp, int* pass, 
             io::printn("[FAIL] wide type param regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            setup(interp, advanced_test_cstr_slice(&define_buf));
             test_eq_interp(interp, "deftype preserves >32 type params", "(let (p (ParamTower 42)) p.tail)", 42, pass, fail);
         }
     }
@@ -135,7 +135,7 @@ fn void run_advanced_type_parametric_type_args_tests(Interp* interp, int* pass, 
             io::printn("[FAIL] wide metadata regression builder");
             (*fail)++;
         } else {
-            setup(interp, define_buf[..advanced_test_cstr_len(&define_buf)]);
+            setup(interp, advanced_test_cstr_slice(&define_buf));
             test_eq_interp(interp, "type annotation preserves >16 metadata entries", "(let (m (MetaTower 42)) m.value)", 42, pass, fail);
         }
     }

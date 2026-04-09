@@ -51,7 +51,7 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
             (*fail)++;
         } else {
             test_eq(interp, "match [.. last] long list >64",
-                match_buf[..advanced_test_cstr_len(&match_buf)],
+                advanced_test_cstr_slice(&match_buf),
                 (long)(LONG_LIST_COUNT - 1), pass, fail);
         }
     }
@@ -97,6 +97,15 @@ fn void run_advanced_core_semantics_effect_cond_tests(Interp* interp, int* pass,
     test_eq(interp, "if '(1) => 1 (truthy)", "(if (quote (1)) 1 2)", 1, pass, fail);
     test_eq(interp, "nested if", "(if true (if false 1 2) 3)", 2, pass, fail);
     test_eq(interp, "if with branches", "(if (= 1 1) (+ 10 20) (+ 30 40))", 30, pass, fail);
+}
+
+fn void run_advanced_core_semantics_letrec_tests(Interp* interp, int* pass, int* fail) {
+    test_eq(interp, "let ^rec closure mutation preserves captured array state",
+        "(block (define collect-indices (lambda (arr) (let (result []) (let ^rec (loop (lambda (i) (if (= i (length arr)) result (block (push! result i) (loop (+ i 1)))))) (loop 0))))) (length (collect-indices [10 20 30])))",
+        3, pass, fail);
+    test_eq(interp, "let ^rec closure mutation preserves appended values",
+        "(block (define collect-indices (lambda (arr) (let (result []) (let ^rec (loop (lambda (i) (if (= i (length arr)) result (block (push! result i) (loop (+ i 1)))))) (loop 0))))) (ref (collect-indices [10 20 30]) 2))",
+        2, pass, fail);
 }
 
 fn void run_advanced_core_semantics_error_tests(Interp* interp, int* pass, int* fail) {
@@ -171,6 +180,7 @@ fn void run_advanced_core_semantics_tests(Interp* interp, int* pass, int* fail) 
     run_advanced_core_semantics_match_tests(interp, pass, fail);
     run_advanced_core_semantics_continuation_tests(interp, pass, fail);
     run_advanced_core_semantics_effect_cond_tests(interp, pass, fail);
+    run_advanced_core_semantics_letrec_tests(interp, pass, fail);
     run_advanced_core_semantics_error_tests(interp, pass, fail);
     run_advanced_core_semantics_try_raise_tests(interp, pass, fail);
 }
