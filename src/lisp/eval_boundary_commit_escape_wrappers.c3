@@ -125,7 +125,8 @@ fn Value* boundary_build_destination_partial_escape(
         "boundary destination-partial: second arg must not point into target TEMP lane"
     );
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) return partial;
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = partial.partial_val.func;
     result.partial_val.remaining = partial.partial_val.remaining;
@@ -209,7 +210,8 @@ fn Value* boundary_build_destination_iterator_escape(
         "boundary destination-iterator: iterator payload must not point into target TEMP lane"
     );
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) return iterator;
     result.tag = ITERATOR;
     result.iterator_val = escaped_inner;
     boundary_destination_build_scope_commit(&build_scope, target_scope);

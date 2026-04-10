@@ -645,3 +645,14 @@ for future concurrency ownership evolution.
   cached relation column-key symbol materialization rejects root wrapper
   allocation failure explicitly instead of dereferencing a null root wrapper
   during lazy key-cache creation.
+- Destination ESCAPE builders now apply the same wrapper-allocation rule:
+  `boundary_build_destination_error_escape(...)`,
+  `boundary_build_destination_cons_escape(...)`,
+  `boundary_build_destination_partial_escape(...)`, and
+  `boundary_build_destination_iterator_escape(...)`
+  now fail closed when ESCAPE wrapper publication in the temporary build scope
+  cannot allocate the destination wrapper.
+- Generic ESCAPE promotion now rejects or fails closed on wrapper allocation
+  for string/error publication, scalar wrappers, instance / FFI handle /
+  time-point wrappers, and closure publication instead of dereferencing a null
+  ESCAPE wrapper.

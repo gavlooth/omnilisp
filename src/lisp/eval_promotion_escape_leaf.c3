@@ -16,9 +16,12 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
         : (char*)mem::malloc(cap);
     if (chars == null) return v;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        mem::free(chars);
+        return v;
+    }
     result.tag = v.tag;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     result.str_chars = chars;
     result.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
@@ -26,6 +29,7 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     }
     result.str_chars[len] = 0;
     result.str_len = len;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;
 }
 
@@ -83,7 +87,7 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
     if (v.tag == PRIMITIVE) {
         Primitive* src_prim = v.prim_val;
         if (src_prim == null) {
-            Value* result = interp.alloc_value_escape();
+            Value* result = boundary_alloc_value_in_current_escape(interp);
             if (result == null) {
                 return raise_error(interp, "boundary: failed to allocate primitive escape copy");
             }
@@ -103,7 +107,7 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
             return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
         }
 
-        Value* result = interp.alloc_value_escape();
+        Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
             mem::free(dst_prim);
             return raise_error(interp, "boundary: failed to allocate primitive escape copy");
@@ -125,7 +129,10 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
         default:
             break;
     }
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate shared wrapper escape copy");
+    }
     *result = *v;
     result.scope_gen = interp.current_scope.escape_generation;
     return result;
@@ -133,7 +140,10 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
 
 fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate instance escape copy");
+    }
     result.tag = INSTANCE;
     result.scope_gen = interp.current_scope.escape_generation;
     result.instance_val = v.instance_val;
@@ -144,7 +154,10 @@ fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ct
 
 fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate ffi handle escape copy");
+    }
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
     ffi_handle_retain(result.ffi_val);
@@ -154,7 +167,10 @@ fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* 
 
 fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate scalar escape copy");
+    }
     switch (v.tag) {
         case NIL:
             result.tag = NIL;
@@ -210,7 +226,7 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
             ? raise_error(interp, "boundary: failed to promote iterator thunk during escape promotion")
             : promoted_thunk;
     }
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         return raise_error(interp, "boundary: failed to allocate iterator escape copy");
     }
@@ -240,7 +256,10 @@ fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* c
 
 fn Value* promote_escape_time_point(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate time point escape copy");
+    }
     result.tag = TIME_POINT;
     result.time_point_val = v.time_point_val;
     return result;

@@ -33,8 +33,11 @@ fn Value* boundary_build_destination_cons_escape(
     defer boundary_destination_build_scope_abort(&build_scope);
     if (ctx != null && ctx.aborted) return list;
 
-    Value* head = interp.alloc_value_escape();
+    Value* head = boundary_alloc_value_in_current_escape(interp);
+    if (head == null) return list;
     head.tag = CONS;
+    head.cons_val.car = null;
+    head.cons_val.cdr = null;
     Value* current_new = head;
     Value* current_old = list;
 
@@ -75,8 +78,11 @@ fn Value* boundary_build_destination_cons_escape(
             boundary_ptr_in_scope((void*)old_cdr, releasing_scope);
         if (extend_spine) {
             if (ctx != null && ctx.aborted) return list;
-            Value* next_new = interp.alloc_value_escape();
+            Value* next_new = boundary_alloc_value_in_current_escape(interp);
+            if (next_new == null) return list;
             next_new.tag = CONS;
+            next_new.cons_val.car = null;
+            next_new.cons_val.cdr = null;
             current_new.cons_val.cdr = next_new;
             current_new = next_new;
             current_old = old_cdr;

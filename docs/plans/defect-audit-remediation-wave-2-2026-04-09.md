@@ -1110,3 +1110,23 @@ Progress update (2026-04-09):
   - bounded `deduce`: green (`pass=329 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed destination/escape wrapper allocation drift:
+  - `src/lisp/eval_boundary_scope_env.c3`
+  - `src/lisp/eval_boundary_commit_escape_builders.c3`
+  - `src/lisp/eval_boundary_commit_escape_cons.c3`
+  - `src/lisp/eval_boundary_commit_escape_wrappers.c3`
+  - `src/lisp/eval_promotion_escape_leaf.c3`
+  - `src/lisp/eval_promotion_escape_structured.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`
+  - `src/lisp/tests_memory_lifetime_finalize_groups.c3`
+- shipped behavior:
+  - destination ESCAPE builders now fail closed when wrapper publication in the
+    temporary build scope cannot allocate the destination wrapper
+  - generic ESCAPE promotion now rejects or fails closed on wrapper allocation
+    for string/error publication and other leaf/structured wrapper
+    materializers, including closures
+- validation status:
+  - `c3c build`: green
+  - bounded `memory-lifetime-smoke`: green (`pass=176 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

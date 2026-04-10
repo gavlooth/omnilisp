@@ -91,6 +91,89 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         mem::free(tmp);
     }
 
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
+        tmp.init();
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        SymbolId payload_sym = tmp.symbols.intern("__closure_escape_wrapper_alloc_payload");
+        Env* captured_env = make_env(tmp, tmp.global_env);
+        if (captured_env == null) {
+            io::printn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (env setup)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+        env_define_with_barrier(captured_env, payload_sym, make_int(tmp, 313), tmp);
+
+        main::ScopeRegion* detached_env_scope = null;
+        Value* closure = make_env_scope_closure_for_test(tmp, captured_env, &detached_env_scope);
+        if (closure == null || closure.tag != CLOSURE || detached_env_scope == null || closure.closure_val == null) {
+            io::printn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (closure setup)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        Closure* owned_closure = closure.closure_val;
+        closure.closure_val = null;
+
+        main::ScopeRegion* saved = tmp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (failed to allocate child scope)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        tmp.current_scope = child;
+        Value* local_owner = boundary_alloc_value_in_scope(tmp, child, true);
+        local_owner.tag = CLOSURE;
+        local_owner.closure_val = owned_closure;
+        int saved_force = g_boundary_force_alloc_escape_value_fail_nth;
+        g_boundary_force_alloc_escape_value_fail_nth = 1;
+        Value* escaped = promote_to_escape(local_owner, tmp);
+        g_boundary_force_alloc_escape_value_fail_nth = saved_force;
+
+        bool fail_closed = escaped != null &&
+                           escaped.tag == ERROR &&
+                           local_owner.closure_val == owned_closure &&
+                           local_owner.closure_val.env_scope == detached_env_scope &&
+                           closure_env_lookup_int(local_owner, payload_sym, 313);
+
+        tmp.current_scope = saved;
+        main::scope_release(child);
+        bool ok = fail_closed;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: closure wrapper escape alloc failure keeps source ownership");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: closure wrapper escape alloc failure keeps source ownership (fail_closed=%s refcount=%d local_has=%s)",
+                fail_closed ? "yes" : "no",
+                (int)detached_env_scope.refcount,
+                local_owner.closure_val == owned_closure ? "yes" : "no");
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
     // Invariant: boundary copy to parent clones coroutine wrappers without
     // mutating the source wrapper in place, even for repeated copies.
     {

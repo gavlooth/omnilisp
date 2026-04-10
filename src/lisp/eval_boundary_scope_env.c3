@@ -7,11 +7,18 @@ import main;
 // =============================================================================
 
 int g_boundary_force_alloc_value_fail_nth = 0;
+int g_boundary_force_alloc_escape_value_fail_nth = 0;
 
 fn bool boundary_should_force_alloc_value_fail() @inline {
     if (g_boundary_force_alloc_value_fail_nth <= 0) return false;
     g_boundary_force_alloc_value_fail_nth--;
     return g_boundary_force_alloc_value_fail_nth == 0;
+}
+
+fn bool boundary_should_force_alloc_escape_value_fail() @inline {
+    if (g_boundary_force_alloc_escape_value_fail_nth <= 0) return false;
+    g_boundary_force_alloc_escape_value_fail_nth--;
+    return g_boundary_force_alloc_escape_value_fail_nth == 0;
 }
 
 <*
@@ -93,6 +100,45 @@ fn Value* boundary_alloc_value_in_scope(Interp* interp, main::ScopeRegion* targe
 *>
 fn Value* boundary_alloc_value_in_root(Interp* interp, bool register_dtor = false) @inline {
     return boundary_alloc_value_in_scope(interp, interp.root_scope, register_dtor);
+}
+
+<*
+@require interp != null : "boundary_alloc_value_in_current_escape: null interp"
+@require interp.current_scope != null : "boundary_alloc_value_in_current_escape: null current scope"
+*>
+fn Value* boundary_alloc_value_in_current_escape(Interp* interp, bool register_dtor = false) @inline {
+    Value* v = boundary_should_force_alloc_escape_value_fail() ? null : interp.alloc_value_escape();
+    if (register_dtor && v != null) {
+        main::scope_register_dtor_escape(interp.current_scope, (void*)v, &scope_dtor_value);
+    }
+    return v;
+}
+
+<*
+@require interp != null : "boundary_alloc_value_in_escape_scope: null interp"
+@require target_scope != null : "boundary_alloc_value_in_escape_scope: null target scope"
+*>
+fn Value* boundary_alloc_value_in_escape_scope_impl(
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    bool register_dtor = false
+) @noinline {
+    BoundarySession session = boundary_session_begin(interp);
+    defer boundary_session_end(interp, &session);
+    interp.current_scope = target_scope;
+    return boundary_alloc_value_in_current_escape(interp, register_dtor);
+}
+
+<*
+@require interp != null : "boundary_alloc_value_in_escape_scope: null interp"
+@require target_scope != null : "boundary_alloc_value_in_escape_scope: null target scope"
+*>
+fn Value* boundary_alloc_value_in_escape_scope(
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    bool register_dtor = false
+) @inline {
+    return boundary_alloc_value_in_escape_scope_impl(interp, target_scope, register_dtor);
 }
 
 <*

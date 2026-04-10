@@ -11563,6 +11563,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `deduce`: `pass=329 fail=0`
+- 2026-04-10 (destination and escape wrapper allocation fail-closed follow-up):
+  - destination ESCAPE builders for `ERROR`, `CONS`, `PARTIAL_PRIM`, and
+    `ITERATOR` now fail closed when ESCAPE wrapper publication cannot allocate
+    the destination wrapper in the temporary build scope.
+  - generic ESCAPE promotion now rejects or fails closed on wrapper allocation
+    failure for strings/errors, shared-wrapper leaf copies, instances, FFI
+    handles, scalars, time points, and closures instead of dereferencing a
+    null ESCAPE wrapper.
+  - closure ESCAPE promotion now rejects closure-wrapper and closure-payload
+    allocation failure before publishing a partially built closure.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=176 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

@@ -39,7 +39,7 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
 fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         return raise_error(interp, "boundary: failed to allocate array escape copy");
     }
@@ -88,7 +88,7 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
 fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
     }
@@ -151,7 +151,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
 fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         return raise_error(interp, "boundary: failed to allocate method table escape copy");
     }
@@ -249,7 +249,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
                 : promoted_car;
         }
         if (head == null) {
-            head = interp.alloc_value_escape();
+            head = boundary_alloc_value_in_current_escape(interp);
             if (head == null) {
                 boundary_cleanup_materialized_value(
                     current_old.cons_val.car,
@@ -269,7 +269,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
         Value* old_cdr = current_old.cons_val.cdr;
         if (promote_escape_should_iterate_cons_tail(old_cdr, interp)) {
             if (!promote_escape_can_mutate(v, ctx)) return v;
-            Value* next_new = interp.alloc_value_escape();
+            Value* next_new = boundary_alloc_value_in_current_escape(interp);
             if (next_new == null) {
                 boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
                 return raise_error(interp, "boundary: failed to allocate cons escape tail");
@@ -298,32 +298,48 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
 
 fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = interp.alloc_value_escape();
-    result.tag = CLOSURE;
-    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
-    result.closure_val = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
-    *result.closure_val = *v.closure_val;
-    result.closure_val.scope_gen = interp.current_scope.escape_generation;
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate closure escape copy");
+    }
+    Closure* cloned = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
+    if (cloned == null) {
+        if (ctx != null) {
+            ctx.aborted = true;
+            ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        }
+        return raise_error(interp, "boundary: failed to allocate closure escape copy");
+    }
+    *cloned = *v.closure_val;
+    cloned.scope_gen = interp.current_scope.escape_generation;
+    cloned.params = null;
+    cloned.type_sig = null;
 
     if (v.closure_val.param_count > 0) {
-        result.closure_val.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
-        for (usz i = 0; i < v.closure_val.param_count; i++) {
-            result.closure_val.params[i] = v.closure_val.params[i];
+        cloned.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
+        if (cloned.params == null) {
+            if (ctx != null) {
+                ctx.aborted = true;
+                ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+            }
+            return raise_error(interp, "boundary: failed to allocate closure params during escape promotion");
         }
-    } else {
-        result.closure_val.params = null;
+        for (usz i = 0; i < v.closure_val.param_count; i++) {
+            cloned.params[i] = v.closure_val.params[i];
+        }
     }
 
     if (v.closure_val.type_sig != null) {
-        result.closure_val.type_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
-        if (result.closure_val.type_sig == null ||
-            !method_signature_copy_to_escape(result.closure_val.type_sig, v.closure_val.type_sig, interp.current_scope)) {
+        MethodSignature* cloned_sig = (MethodSignature*)interp.current_scope.alloc_escape(MethodSignature.sizeof);
+        if (cloned_sig == null ||
+            !method_signature_copy_to_escape(cloned_sig, v.closure_val.type_sig, interp.current_scope)) {
             if (ctx != null) {
                 ctx.aborted = true;
                 ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
             }
             return raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_CLOSURE_TYPE_SIG_COPY));
         }
+        cloned.type_sig = cloned_sig;
     }
 
     if (promote_escape_closure_env_needs_detach(v, interp)) {
@@ -346,12 +362,15 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
             main::scope_release(env_scope);
             return raise_error(interp, "boundary: failed to detach closure env during escape promotion");
         }
-        result.closure_val.env = copied.env;
-        result.closure_val.env_scope = env_scope;
-    } else if (closure_env_scope_is_root_owned(result, interp)) {
-        result.closure_val.env_scope = null;
-    } else if (result.closure_val.env_scope != null) {
-        main::scope_retain(result.closure_val.env_scope);
+        cloned.env = copied.env;
+        cloned.env_scope = env_scope;
+    } else if (closure_env_scope_is_root_owned(v, interp)) {
+        cloned.env_scope = null;
+    } else if (cloned.env_scope != null) {
+        main::scope_retain(cloned.env_scope);
     }
+    result.tag = CLOSURE;
+    result.closure_val = cloned;
+    main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }

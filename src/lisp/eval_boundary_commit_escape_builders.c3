@@ -28,9 +28,9 @@ fn Value* boundary_build_destination_error_escape(
     defer boundary_destination_build_scope_abort(&build_scope);
     if (ctx != null && ctx.aborted) return error_value;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) return error_value;
     result.tag = ERROR;
-    main::scope_register_dtor_escape(build_scope, (void*)result, &scope_dtor_value);
 
     usz len = error_value.str_len;
     usz cap = len + 1;
@@ -45,6 +45,7 @@ fn Value* boundary_build_destination_error_escape(
     }
     result.str_chars[len] = 0;
     result.str_len = len;
+    main::scope_register_dtor_escape(build_scope, (void*)result, &scope_dtor_value);
     boundary_destination_build_scope_commit(&build_scope, target_scope);
     if (result != null && result.scope_gen != target_scope.escape_generation) {
         result.scope_gen = target_scope.escape_generation;
