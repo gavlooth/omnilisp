@@ -1,5 +1,21 @@
 ## 2026-04-10
 
+- Closed an env-copy rollback follow-up for nested copied bindings:
+  - `src/lisp/eval_env_copy_frame_helpers.c3` now recursively unwinds copied
+    nested `CONS`, `ARRAY`, `HASHMAP` / `SET`, and `METHOD_TABLE` children
+    during mid-frame env-copy rollback instead of only cleaning top-level
+    wrappers plus iterator/partial shells.
+  - failed env-copy now releases nested copied closure retains immediately at
+    rollback time, rather than leaving them live until the abandoned target
+    scope is eventually torn down.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now includes
+    focused regressions proving nested `CONS` and `ARRAY` bindings unwind their
+    copied closure-env retains immediately on rollback and remain stable across
+    later target-scope teardown.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the destination-builder memo contract follow-up:
   - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3`,
     `src/lisp/eval_boundary_commit_escape_cons.c3`, and

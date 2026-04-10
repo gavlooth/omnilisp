@@ -42,6 +42,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   when the payload was materialized as a copied `PARTIAL_PRIM`, so wrapper
   construction failure does not leave nested closure retains live in the target
   scope.
+- Env-copy mid-frame rollback now descends into copied `CONS`, `ARRAY`,
+  `HASHMAP` / `SET`, and `METHOD_TABLE` bindings as well, so nested copied
+  closure/env retains are unwound immediately when one later binding fails
+  instead of surviving until the abandoned target scope is released.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
