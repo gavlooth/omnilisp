@@ -22,6 +22,31 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-STRING-PAYLOAD-MATERIALIZERS-017` make string-backed runtime
+  payload/list helpers fail closed on string wrapper allocation failure
+  - closure evidence:
+    - `src/lisp/prim_system.c3`
+      now makes `(shell cmd true)` propagate stdout string construction
+      failure directly instead of returning a success-shaped `(ERROR
+      exit-code)` list.
+    - `src/lisp/prim_io_fs_handles.c3`
+      now makes `fs-readdir` propagate entry-name string construction failure
+      directly instead of storing `ERROR` values as directory entries in a
+      successful array.
+    - `src/lisp/http.c3`
+      now makes `http-get` / `http-request` propagate host/request string
+      materialization failure directly before transport setup/write.
+    - `src/lisp/schema_validation.c3`
+      now makes `schema-explain` propagate failure of its singleton message
+      string instead of returning a one-element list containing `ERROR` as
+      ordinary data.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins `shell`, `fs-readdir`, and `schema-explain` under forced
+      `make_string(...)` allocation failure.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-STRING-LIST-MATERIALIZERS-016` make pure string/list helper
   surfaces fail closed on per-element string wrapper allocation failure
   - closure evidence:

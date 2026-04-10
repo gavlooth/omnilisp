@@ -149,6 +149,14 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `string->list`, `string-split`, `string-graphemes`, and `read-lines`
     now propagate per-element string-construction failure directly instead of
     returning successful lists that embed `ERROR` values as ordinary items.
+- Top-level string-backed runtime payload/list helpers now follow the same
+  fail-closed rule:
+  - `(shell cmd true)` no longer returns `(ERROR exit-code)`,
+  - `fs-readdir` no longer stores `ERROR` directory entries,
+  - `http-get` / `http-request` no longer pass string-constructor `ERROR`
+    values into transport setup/write,
+  - `schema-explain` no longer returns a singleton explanation list whose
+    only element is an `ERROR`.
 - The staged internal collection-constructor OOM migration is now closed
   across the live runtime-facing families:
   - shared constructor substrate,

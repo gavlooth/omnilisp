@@ -58,5 +58,6 @@ fn Value* prim_schema_explain(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* msg = make_string(interp, "validation failed");
+    if (msg == null || msg.tag == ERROR) return msg;
     return make_cons(interp, msg, make_nil(interp));
 }

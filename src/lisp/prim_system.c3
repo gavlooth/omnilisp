@@ -39,6 +39,7 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
     if (total > 0 && buf[total - 1] == '\n') total--;
 
     Value* output = make_string(interp, buf[:total]);
+    if (output == null || output.tag == ERROR) return output;
 
     // If second arg is truthy, return (output exit-code)
     if (args.len >= 2 && !is_falsy(args[1], interp)) {

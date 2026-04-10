@@ -85,6 +85,7 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
             usz line_len = i - start;
             if (line_len > 0) {
                 Value* name_v = make_string(interp, joined[start:line_len]);
+                if (name_v == null || name_v.tag == ERROR) return name_v;
                 if (!fs_array_push(out, name_v, interp)) {
                     return io_fs_raise(interp, "io/fs-readdir-out-of-memory", "fs-readdir: out of memory");
                 }

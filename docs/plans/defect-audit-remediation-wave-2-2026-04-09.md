@@ -62,6 +62,27 @@ Post-wave follow-up (2026-04-10):
     - bounded memory smoke:
       - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
 
+- The string-backed payload/list materializer follow-up is now also closed:
+  - `src/lisp/prim_system.c3`
+    now makes `(shell cmd true)` return string-constructor failure directly
+    instead of returning a success-shaped `(ERROR exit-code)` list.
+  - `src/lisp/prim_io_fs_handles.c3`
+    now makes `fs-readdir` return entry-name string construction failure
+    directly instead of storing `ERROR` values as directory entries.
+  - `src/lisp/http.c3`
+    now makes `http-get` / `http-request` return host/request string
+    materialization failure directly before transport setup/write.
+  - `src/lisp/schema_validation.c3`
+    now makes `schema-explain` return message-string construction failure
+    directly instead of wrapping it in a singleton explanation list.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins `shell`, `fs-readdir`, and `schema-explain` under forced
+    `make_string(...)` allocation failure.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The schema-explain list-builder follow-up is now also closed:
   - `src/lisp/schema_explain_payload_helpers.c3`
     now routes list accumulation and reversal through a checked

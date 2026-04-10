@@ -1,5 +1,25 @@
 ## 2026-04-10
 
+- Closed the string-backed runtime payload/list fail-open lane:
+  - `src/lisp/prim_system.c3`
+    now makes `(shell cmd true)` return the string-constructor `ERROR`
+    directly instead of returning `(ERROR exit-code)`.
+  - `src/lisp/prim_io_fs_handles.c3`
+    now makes `fs-readdir` return entry-name string construction failure
+    directly instead of storing `ERROR` entries in the returned array.
+  - `src/lisp/http.c3`
+    now makes `http-get` / `http-request` return host/request string
+    materialization failure directly before transport setup/write.
+  - `src/lisp/schema_validation.c3`
+    now makes `schema-explain` return message-string construction failure
+    directly instead of wrapping it inside a singleton explanation list.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins `shell`, `fs-readdir`, and `schema-explain` under forced
+    string-wrapper allocation failure.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the string/list materializer fail-open lane:
   - `src/lisp/prim_string_transform.c3`
     now makes `string-upcase` and `string-downcase` return string-constructor

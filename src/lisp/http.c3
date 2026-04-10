@@ -48,6 +48,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* host_val = make_string(interp, parsed.host[:parsed.host_len]);
+    if (host_val == null || host_val.tag == ERROR) return host_val;
     Value* tcp = null;
     Value* conn = http_connect_for_request(&parsed, host_val, &tcp, interp);
     if (conn == null || conn.tag == ERROR) return conn;
@@ -59,6 +60,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "http-get: request too large for buffer");
     }
     Value* req_str = make_string(interp, req_buf[:req_len]);
+    if (req_str == null || req_str.tag == ERROR) return req_str;
 
     Value* write_result = http_write_connection(conn, parsed.is_https, req_str, interp);
     if (write_result != null && write_result.tag == ERROR) return write_result;
@@ -132,6 +134,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     if (catch err = parse_url(url, &parsed)) return raise_error(interp, "http-request: invalid URL");
 
     Value* host_val = make_string(interp, parsed.host[:parsed.host_len]);
+    if (host_val == null || host_val.tag == ERROR) return host_val;
     Value* tcp = null;
     Value* conn = http_connect_for_request(&parsed, host_val, &tcp, interp);
     if (conn == null || conn.tag == ERROR) return conn;
@@ -144,6 +147,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
         return raise_error(interp, "http-request: request too large for buffer");
     }
     Value* req_str = make_string(interp, req_buf[:req_len]);
+    if (req_str == null || req_str.tag == ERROR) return req_str;
     Value* write_result = http_write_connection(conn, parsed.is_https, req_str, interp);
     if (write_result != null && write_result.tag == ERROR) return write_result;
 

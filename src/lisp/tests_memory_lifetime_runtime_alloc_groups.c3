@@ -833,6 +833,43 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[2] shell_args = { make_string(interp, "printf ok"), make_symbol(interp, interp.sym_true) };
+        Value*[1] readdir_args = { make_string(interp, "/") };
+        Value*[2] schema_explain_args = { make_symbol(interp, interp.symbols.intern("int")), make_string(interp, "nope") };
+
+        bool setup_ok =
+            shell_args[0] != null && shell_args[0].tag == STRING &&
+            shell_args[1] != null &&
+            readdir_args[0] != null && readdir_args[0].tag == STRING &&
+            schema_explain_args[0] != null &&
+            schema_explain_args[1] != null && schema_explain_args[1].tag == STRING;
+
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* readdir_fail = setup_ok ? prim_fs_readdir(readdir_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* schema_explain_fail = setup_ok ? prim_schema_explain(schema_explain_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        g_value_force_make_string_alloc_fail = saved_force;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(shell_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(readdir_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(schema_explain_fail, "out of memory while allocating string");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: string-backed payload materializers fail closed on string wrapper alloc");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: string-backed payload materializers fail closed on string wrapper alloc (setup_ok=%s shell=%s readdir=%s schema=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(shell_fail),
+                runtime_alloc_error_text(readdir_fail),
+                runtime_alloc_error_text(schema_explain_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool first_ok = false;
         bool second_ok = false;
         bool third_ok = false;
