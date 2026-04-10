@@ -660,3 +660,11 @@ for future concurrency ownership evolution.
   primitive/array/hashmap/set/method-table root-store clone helpers now route
   final ESCAPE wrapper publication through the shared checked wrapper allocator
   instead of raw `alloc_value_escape()` publication.
+- Structured ESCAPE publication now applies the same rule too:
+  string/error ESCAPE promotion no longer fails open by returning the original
+  TEMP-lane value when chars or wrapper publication cannot allocate, and
+  shared ARRAY / HASHMAP / SET / METHOD_TABLE ESCAPE promotion now delays
+  final wrapper publication until payload promotion succeeds.
+- Repeated shared ARRAY child-promotion faults now show only stable
+  PromotionContext memo overhead across attempts, with no accumulating ESCAPE
+  wrapper-slot growth.

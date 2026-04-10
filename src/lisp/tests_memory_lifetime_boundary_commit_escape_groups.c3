@@ -849,8 +849,8 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
         }
     }
 
-    // Invariant: generic STRING escape promotion fails closed when ESCAPE
-    // allocation fails (no destination builder involved).
+    // Invariant: generic STRING escape promotion returns a deterministic
+    // boundary error when escape-side allocation fails.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* releasing_scope = main::scope_create(saved_scope);
@@ -868,10 +868,13 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
             g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
             boundary_promotion_context_end(interp, &ctx);
 
-            bool ok = promoted == src &&
-                      promoted != null &&
-                      promoted.tag == STRING &&
+            bool ok = promoted != null &&
+                      promoted.tag == ERROR &&
                       promoted.str_chars != null &&
+                      str_starts_with(
+                          promoted.str_chars[:promoted.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
                       interp.current_scope == releasing_scope;
 
             interp.current_scope = saved_scope;
@@ -881,8 +884,7 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 emit_pass_literal("[PASS] lifetime: generic STRING escape promotion OOM fails closed");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: generic STRING escape promotion OOM fails closed (same=%s tag=%d chars=%s scope_ok=%s)",
-                    promoted == src ? "yes" : "no",
+                io::printfn("[FAIL] lifetime: generic STRING escape promotion OOM fails closed (tag=%d chars=%s scope_ok=%s)",
                     promoted != null ? (int)promoted.tag : -1,
                     promoted != null && promoted.str_chars != null ? "yes" : "no",
                     interp.current_scope == saved_scope ? "yes" : "no");
@@ -891,8 +893,8 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
         }
     }
 
-    // Invariant: generic ERROR escape promotion fails closed when ESCAPE
-    // allocation fails (no destination builder involved).
+    // Invariant: generic ERROR escape promotion returns a deterministic
+    // boundary error when escape-side allocation fails.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* releasing_scope = main::scope_create(saved_scope);
@@ -910,10 +912,13 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
             g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
             boundary_promotion_context_end(interp, &ctx);
 
-            bool ok = promoted == src &&
-                      promoted != null &&
+            bool ok = promoted != null &&
                       promoted.tag == ERROR &&
                       promoted.str_chars != null &&
+                      str_starts_with(
+                          promoted.str_chars[:promoted.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
                       interp.current_scope == releasing_scope;
 
             interp.current_scope = saved_scope;
@@ -923,8 +928,7 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 emit_pass_literal("[PASS] lifetime: generic ERROR escape promotion OOM fails closed");
                 (*pass)++;
             } else {
-                io::printfn("[FAIL] lifetime: generic ERROR escape promotion OOM fails closed (same=%s tag=%d chars=%s scope_ok=%s)",
-                    promoted == src ? "yes" : "no",
+                io::printfn("[FAIL] lifetime: generic ERROR escape promotion OOM fails closed (tag=%d chars=%s scope_ok=%s)",
                     promoted != null ? (int)promoted.tag : -1,
                     promoted != null && promoted.str_chars != null ? "yes" : "no",
                     interp.current_scope == saved_scope ? "yes" : "no");
@@ -933,8 +937,8 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
         }
     }
 
-    // Invariant: generic STRING and ERROR escape promotion fail closed when
-    // ESCAPE wrapper allocation itself fails after payload allocation.
+    // Invariant: generic STRING and ERROR escape promotion return deterministic
+    // boundary errors when wrapper allocation fails after payload allocation.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* releasing_scope = main::scope_create(saved_scope);
@@ -960,14 +964,20 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
             boundary_promotion_context_end(interp, &ctx_error);
             g_boundary_force_alloc_escape_value_fail_nth = saved_force;
 
-            bool ok = promoted_string == src_string &&
-                      promoted_error == src_error &&
-                      promoted_string != null &&
+            bool ok = promoted_string != null &&
                       promoted_error != null &&
-                      promoted_string.tag == STRING &&
+                      promoted_string.tag == ERROR &&
                       promoted_error.tag == ERROR &&
                       promoted_string.str_chars != null &&
                       promoted_error.str_chars != null &&
+                      str_starts_with(
+                          promoted_string.str_chars[:promoted_string.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
+                      str_starts_with(
+                          promoted_error.str_chars[:promoted_error.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
                       interp.current_scope == releasing_scope;
 
             interp.current_scope = saved_scope;
@@ -978,9 +988,182 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 (*pass)++;
             } else {
                 io::printfn(
-                    "[FAIL] lifetime: generic STRING/ERROR wrapper escape OOM fails closed (string_same=%s error_same=%s scope_ok=%s)",
-                    promoted_string == src_string ? "yes" : "no",
-                    promoted_error == src_error ? "yes" : "no",
+                    "[FAIL] lifetime: generic STRING/ERROR wrapper escape OOM fails closed (string_tag=%d error_tag=%d scope_ok=%s)",
+                    promoted_string != null ? (int)promoted_string.tag : -1,
+                    promoted_error != null ? (int)promoted_error.tag : -1,
+                    interp.current_scope == saved_scope ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: structured escape promotion must not republish a TEMP-lane
+    // string alias when child string/error promotion runs out of memory.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* releasing_scope = main::scope_create(saved_scope);
+        if (releasing_scope == null) {
+            io::printn("[FAIL] lifetime: shared ARRAY escape promotion surfaces string alloc fault");
+            (*fail)++;
+        } else {
+            interp.current_scope = releasing_scope;
+            Value* src_string = make_string(interp, "array string promotion oom");
+            Value* src_array = interp.alloc_value();
+            Array* src_payload = (Array*)mem::malloc(Array.sizeof);
+            bool setup_ok = src_string != null &&
+                            src_string.tag == STRING &&
+                            src_array != null &&
+                            src_payload != null;
+            if (setup_ok) {
+                src_array.tag = ARRAY;
+                src_array.array_val = null;
+                main::scope_register_dtor(releasing_scope, (void*)src_array, &scope_dtor_value);
+                src_payload.capacity = 4;
+                src_payload.length = 1;
+                src_payload.items = (Value**)mem::malloc(Value*.sizeof * src_payload.capacity);
+                setup_ok = src_payload.items != null;
+                if (setup_ok) {
+                    src_payload.items[0] = src_string;
+                    src_array.array_val = src_payload;
+                }
+            }
+
+            PromotionContext ctx = {};
+            boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+            g_boundary_force_escape_string_or_error_promotion_alloc_fail = true;
+            Value* promoted = setup_ok ? promote_to_escape(src_array, interp) : null;
+            g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
+            boundary_promotion_context_end(interp, &ctx);
+
+            bool ok = setup_ok &&
+                      promoted != null &&
+                      promoted.tag == ERROR &&
+                      promoted.str_chars != null &&
+                      str_starts_with(
+                          promoted.str_chars[:promoted.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
+                      src_array.array_val.items[0] == src_string &&
+                      src_string.str_chars != null &&
+                      interp.current_scope == releasing_scope;
+
+            interp.current_scope = saved_scope;
+            main::scope_release(releasing_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: shared ARRAY escape promotion surfaces string alloc fault");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: shared ARRAY escape promotion surfaces string alloc fault (setup_ok=%s tag=%d scope_ok=%s)",
+                    setup_ok ? "yes" : "no",
+                    promoted != null ? (int)promoted.tag : -1,
+                    interp.current_scope == saved_scope ? "yes" : "no"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: structured ARRAY escape promotion must not leak ESCAPE wrapper
+    // slots when child promotion fails before publication commits.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* releasing_scope = main::scope_create(saved_scope);
+        if (releasing_scope == null) {
+            io::printn("[FAIL] lifetime: shared ARRAY escape child fault does not leak wrapper slots");
+            (*fail)++;
+        } else {
+            interp.current_scope = releasing_scope;
+            Value* src_string = make_string(interp, "array wrapper slot leak");
+            Value* src_array = interp.alloc_value();
+            Array* src_payload = (Array*)mem::malloc(Array.sizeof);
+            bool setup_ok = src_string != null &&
+                            src_string.tag == STRING &&
+                            src_array != null &&
+                            src_payload != null;
+            if (setup_ok) {
+                src_array.tag = ARRAY;
+                src_array.array_val = null;
+                main::scope_register_dtor(releasing_scope, (void*)src_array, &scope_dtor_value);
+                src_payload.capacity = 4;
+                src_payload.length = 1;
+                src_payload.items = (Value**)mem::malloc(Value*.sizeof * src_payload.capacity);
+                setup_ok = src_payload.items != null;
+                if (setup_ok) {
+                    src_payload.items[0] = src_string;
+                    src_array.array_val = src_payload;
+                }
+            }
+
+            usz alloc_before = releasing_scope.alloc_count;
+            g_boundary_force_escape_string_or_error_promotion_alloc_fail = true;
+
+            PromotionContext baseline_ctx = {};
+            boundary_promotion_context_begin(interp, &baseline_ctx, PROMOTION_CTX_BUDGET_RETURN);
+            Value* baseline_error = setup_ok ? promote_to_escape(src_string, interp) : null;
+            boundary_promotion_context_end(interp, &baseline_ctx);
+            usz alloc_after_baseline = releasing_scope.alloc_count;
+
+            PromotionContext first_ctx = {};
+            boundary_promotion_context_begin(interp, &first_ctx, PROMOTION_CTX_BUDGET_RETURN);
+            Value* first_promoted = setup_ok ? promote_to_escape(src_array, interp) : null;
+            boundary_promotion_context_end(interp, &first_ctx);
+            usz alloc_after_first = releasing_scope.alloc_count;
+
+            PromotionContext second_ctx = {};
+            boundary_promotion_context_begin(interp, &second_ctx, PROMOTION_CTX_BUDGET_RETURN);
+            Value* second_promoted = setup_ok ? promote_to_escape(src_array, interp) : null;
+            boundary_promotion_context_end(interp, &second_ctx);
+            usz alloc_after_second = releasing_scope.alloc_count;
+
+            g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
+
+            usz baseline_delta = alloc_after_baseline - alloc_before;
+            usz first_delta = alloc_after_first - alloc_after_baseline;
+            usz second_delta = alloc_after_second - alloc_after_first;
+            // The array path necessarily touches one extra source wrapper root
+            // compared with direct string promotion, so one additional
+            // PromotionContext memo node is expected per attempt. The invariant
+            // here is that the delta stays stable across repeated failures,
+            // proving no extra ESCAPE wrapper/payload slot is accumulating.
+            bool ok = setup_ok &&
+                      baseline_error != null &&
+                      baseline_error.tag == ERROR &&
+                      first_promoted != null &&
+                      second_promoted != null &&
+                      first_promoted.tag == ERROR &&
+                      second_promoted.tag == ERROR &&
+                      baseline_delta > 0 &&
+                      str_starts_with(
+                          first_promoted.str_chars[:first_promoted.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
+                      str_starts_with(
+                          second_promoted.str_chars[:second_promoted.str_len],
+                          "boundary: failed to allocate string/error escape copy"
+                      ) &&
+                      first_delta == baseline_delta + 1 &&
+                      second_delta == baseline_delta + 1 &&
+                      interp.current_scope == releasing_scope;
+
+            interp.current_scope = saved_scope;
+            main::scope_release(releasing_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: shared ARRAY escape child fault does not leak wrapper slots");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: shared ARRAY escape child fault does not leak wrapper slots (setup_ok=%s baseline_tag=%d first_tag=%d second_tag=%d baseline_delta=%d first_delta=%d second_delta=%d scope_ok=%s)",
+                    setup_ok ? "yes" : "no",
+                    baseline_error != null ? (int)baseline_error.tag : -1,
+                    first_promoted != null ? (int)first_promoted.tag : -1,
+                    second_promoted != null ? (int)second_promoted.tag : -1,
+                    (long)baseline_delta,
+                    (long)first_delta,
+                    (long)second_delta,
                     interp.current_scope == saved_scope ? "yes" : "no"
                 );
                 (*fail)++;

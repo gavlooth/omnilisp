@@ -39,15 +39,14 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
 fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = boundary_alloc_value_in_current_escape(interp);
-    if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate array escape copy");
-    }
-    result.tag = ARRAY;
-    result.array_val = null;
-
     Array* src_arr = v.array_val;
     if (src_arr == null) {
+        Value* result = boundary_alloc_value_in_current_escape(interp);
+        if (result == null) {
+            return raise_error(interp, "boundary: failed to allocate array escape copy");
+        }
+        result.tag = ARRAY;
+        result.array_val = null;
         main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -80,6 +79,12 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
         dst_arr.items[i] = promoted;
     }
 
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, interp.current_scope, true);
+        return raise_error(interp, "boundary: failed to allocate array escape copy");
+    }
+    result.tag = ARRAY;
     result.array_val = dst_arr;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;
@@ -88,15 +93,14 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
 fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = boundary_alloc_value_in_current_escape(interp);
-    if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
-    }
-    result.tag = v.tag;
-    result.hashmap_val = null;
-
     HashMap* src_map = v.hashmap_val;
     if (src_map == null) {
+        Value* result = boundary_alloc_value_in_current_escape(interp);
+        if (result == null) {
+            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+        }
+        result.tag = v.tag;
+        result.hashmap_val = null;
         main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -143,6 +147,12 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
         }
     }
 
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, interp.current_scope, true);
+        return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+    }
+    result.tag = v.tag;
     result.hashmap_val = dst_map;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;
@@ -151,15 +161,14 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
 fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
 
-    Value* result = boundary_alloc_value_in_current_escape(interp);
-    if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate method table escape copy");
-    }
-    result.tag = METHOD_TABLE;
-    result.method_table_val = null;
-
     MethodTable* src_mt = v.method_table_val;
     if (src_mt == null) {
+        Value* result = boundary_alloc_value_in_current_escape(interp);
+        if (result == null) {
+            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+        }
+        result.tag = METHOD_TABLE;
+        result.method_table_val = null;
         main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -209,6 +218,19 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     }
     dst_mt.fallback = promoted_fallback;
 
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        boundary_cleanup_partial_method_table_copy(
+            src_mt,
+            dst_mt,
+            dst_mt.entry_count,
+            true,
+            interp.current_scope,
+            true
+        );
+        return raise_error(interp, "boundary: failed to allocate method table escape copy");
+    }
+    result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;

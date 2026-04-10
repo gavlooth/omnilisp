@@ -11586,6 +11586,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=177 fail=0`
+- 2026-04-10 (escape structured publication fail-closed follow-up):
+  - string/error ESCAPE promotion now returns a boundary error when chars or
+    wrapper publication cannot allocate, instead of failing open by reusing the
+    original TEMP-lane value.
+  - shared ARRAY / HASHMAP / SET / METHOD_TABLE ESCAPE promotion now delays
+    final wrapper publication until payload promotion succeeds, and wrapper
+    allocation failure cleans up the materialized payload before returning a
+    boundary error.
+  - repeated shared ARRAY child-promotion failures now prove stable
+    PromotionContext memo overhead without accumulating extra ESCAPE wrapper
+    slots across attempts.
+  - validation:
+    - bounded `memory-lifetime-smoke`: `pass=179 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

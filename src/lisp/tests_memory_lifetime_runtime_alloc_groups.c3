@@ -1370,7 +1370,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         }
 
         bool ok = setup_ok &&
-            runtime_alloc_error_matches(pair, "cons: failed to promote car to escape");
+            runtime_alloc_error_matches(pair, "boundary: failed to allocate string/error escape copy");
         if (ok) {
             emit_pass_literal("[PASS] lifetime: make_cons escape promotion faults fail closed");
             (*pass)++;

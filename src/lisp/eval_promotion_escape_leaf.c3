@@ -14,12 +14,14 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     char* chars = g_boundary_force_escape_string_or_error_promotion_alloc_fail
         ? null
         : (char*)mem::malloc(cap);
-    if (chars == null) return v;
+    if (chars == null) {
+        return raise_error(interp, "boundary: failed to allocate string/error escape copy");
+    }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         mem::free(chars);
-        return v;
+        return raise_error(interp, "boundary: failed to allocate string/error escape copy");
     }
     result.tag = v.tag;
     result.str_chars = chars;

@@ -1146,3 +1146,22 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=177 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed structured ESCAPE publication fail-open drift:
+  - `src/lisp/eval_promotion_escape_leaf.c3`
+  - `src/lisp/eval_promotion_escape_structured.c3`
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - string/error ESCAPE promotion now returns a boundary error if chars or the
+    ESCAPE wrapper cannot allocate, instead of reusing the original TEMP-lane
+    value
+  - shared ARRAY / HASHMAP / SET / METHOD_TABLE ESCAPE promotion now delays
+    final wrapper publication until payload promotion succeeds, and wrapper
+    allocation failure cleans up the materialized payload before returning a
+    boundary error
+  - repeated ARRAY child-promotion failure now proves stable PromotionContext
+    memo overhead without accumulating extra ESCAPE wrapper slots
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=179 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
