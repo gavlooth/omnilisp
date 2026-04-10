@@ -1656,6 +1656,55 @@ fn void run_jit_policy_multi_arg_malformed_list_fails_closed_test(Interp* interp
     }
 }
 
+fn void run_jit_policy_quasiquote_cons_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    Expr* nested_expr = null;
+    Expr* list_expr = null;
+    Value* nested_result = null;
+    Value* list_result = null;
+    if (ok) {
+        nested_expr = parse("``x", other);
+        list_expr = parse("`(a b c)", other);
+        ok = nested_expr != null && nested_expr.tag == E_QUASIQUOTE &&
+            list_expr != null && list_expr.tag == E_QUASIQUOTE;
+    }
+    if (ok) {
+        int saved_force = g_jit_qq_force_cons_alloc_fail_nth;
+        g_jit_qq_force_cons_alloc_fail_nth = 1;
+        nested_result = jit_eval_quasiquote(other, nested_expr, other.global_env);
+        g_jit_qq_force_cons_alloc_fail_nth = 1;
+        list_result = jit_eval_quasiquote(other, list_expr, other.global_env);
+        g_jit_qq_force_cons_alloc_fail_nth = saved_force;
+        ok = nested_result != null &&
+            nested_result.tag == ERROR &&
+            jit_policy_str_contains(nested_result.str_chars[:nested_result.str_len], "quasiquote: failed to allocate pair") &&
+            list_result != null &&
+            list_result.tag == ERROR &&
+            jit_policy_str_contains(list_result.str_chars[:list_result.str_len], "quasiquote: failed to allocate pair");
+    }
+
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: quasiquote cons allocation failures fail closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: quasiquote cons allocation failures fail closed (nested_tag=%d list_tag=%d)",
+            nested_result != null ? (int)nested_result.tag : -1,
+            list_result != null ? (int)list_result.tag : -1
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1707,6 +1756,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
+        run_jit_policy_case("quasiquote-cons-alloc-failure", &run_jit_policy_quasiquote_cons_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);

@@ -362,6 +362,17 @@ for future concurrency ownership evolution.
   sequencing while further shared-object consolidation proceeds.
 ## 2026-04-10 follow-up
 
+- JIT quasiquote expansion now fails closed on pair-construction faults:
+  - `src/lisp/jit_jit_quasiquote_macros.c3`
+    routes internal quasiquote pair construction through one checked helper
+    instead of letting `make_cons(...)` faults leak through `eval_ok(...)` as
+    successful quasiquote values.
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+    pins both nested and list quasiquote allocation-failure paths in the
+    bounded `jit-policy` slice.
+- Latest bounded evidence for that lane:
+  - focused `jit-policy` (`quasiquote-cons-alloc-failure`): `pass=1 fail=0`
+
 - Iterator thunks no longer hide tail constructor errors behind normal-looking
   `(item . next)` pairs:
   - `primitives_iter_state.c3` now routes shared pair construction through one

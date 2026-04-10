@@ -4,6 +4,22 @@ import std::io;
 import std::collections::list;
 import main;
 
+int g_jit_qq_force_cons_alloc_fail_nth = 0;
+
+fn bool jit_qq_should_force_cons_alloc_fail() @inline {
+    if (g_jit_qq_force_cons_alloc_fail_nth <= 0) return false;
+    g_jit_qq_force_cons_alloc_fail_nth--;
+    return g_jit_qq_force_cons_alloc_fail_nth == 0;
+}
+
+fn EvalResult jit_qq_make_cons_result(Value* car, Value* cdr, Interp* interp, char[] message) {
+    if (jit_qq_should_force_cons_alloc_fail()) return eval_error(message);
+    Value* out = make_cons(interp, car, cdr);
+    if (out == null) return eval_error(message);
+    if (out.tag == ERROR) return eval_error(out.str_chars[:out.str_len]);
+    return eval_ok(out);
+}
+
 fn Value* jit_eval_quasiquote(Interp* interp, Expr* expr, Env* env) {
     EvalResult r = jit_qq_impl(expr.quasiquote.body, env, interp, 0);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
@@ -22,8 +38,9 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
             EvalResult inner = jit_qq_impl(tmpl.unquote.body, env, interp, depth - 1);
             if (inner.error.has_error) return inner;
             Value* sym = make_symbol(interp, interp.sym_unquote);
-            Value* rest = make_cons(interp, inner.value, make_nil(interp));
-            return eval_ok(make_cons(interp, sym, rest));
+            EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
+            if (rest.error.has_error) return rest;
+            return jit_qq_make_cons_result(sym, rest.value, interp, "quasiquote: failed to allocate pair");
         }
         case E_UNQUOTE_SPLICING: {
             if (depth == 0) {
@@ -32,15 +49,17 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
             EvalResult inner = jit_qq_impl(tmpl.unquote_splicing.body, env, interp, depth - 1);
             if (inner.error.has_error) return inner;
             Value* sym = make_symbol(interp, interp.sym_unquote_splicing);
-            Value* rest = make_cons(interp, inner.value, make_nil(interp));
-            return eval_ok(make_cons(interp, sym, rest));
+            EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
+            if (rest.error.has_error) return rest;
+            return jit_qq_make_cons_result(sym, rest.value, interp, "quasiquote: failed to allocate pair");
         }
         case E_QUASIQUOTE: {
             EvalResult inner = jit_qq_impl(tmpl.quasiquote.body, env, interp, depth + 1);
             if (inner.error.has_error) return inner;
             Value* sym = make_symbol(interp, interp.sym_quasiquote);
-            Value* rest = make_cons(interp, inner.value, make_nil(interp));
-            return eval_ok(make_cons(interp, sym, rest));
+            EvalResult rest = jit_qq_make_cons_result(inner.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
+            if (rest.error.has_error) return rest;
+            return jit_qq_make_cons_result(sym, rest.value, interp, "quasiquote: failed to allocate pair");
         }
         case E_LIT:
             return eval_ok(tmpl.lit.value);
@@ -53,8 +72,9 @@ fn EvalResult jit_qq_impl(Expr* tmpl, Env* env, Interp* interp, usz depth) {
             if (f.error.has_error) return f;
             EvalResult a = jit_qq_impl(tmpl.app.arg, env, interp, depth);
             if (a.error.has_error) return a;
-            Value* rest = make_cons(interp, a.value, make_nil(interp));
-            return eval_ok(make_cons(interp, f.value, rest));
+            EvalResult rest = jit_qq_make_cons_result(a.value, make_nil(interp), interp, "quasiquote: failed to allocate pair");
+            if (rest.error.has_error) return rest;
+            return jit_qq_make_cons_result(f.value, rest.value, interp, "quasiquote: failed to allocate pair");
         }
         case E_QUOTE:
             return eval_ok(tmpl.quote.datum);
@@ -86,7 +106,9 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
                     return eval_error("quasiquote splice: too many items (max 64)");
                 }
                 for (usz j = item_count; j > 0; j--) {
-                    result = make_cons(interp, items[j - 1], result);
+                    EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
+                    if (next.error.has_error) return next;
+                    result = next.value;
                 }
             } else {
                 return eval_error(",@ value is not a list");
@@ -94,7 +116,9 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
         } else {
             EvalResult expanded = jit_qq_impl(elem, env, interp, depth);
             if (expanded.error.has_error) return expanded;
-            result = make_cons(interp, expanded.value, result);
+            EvalResult next = jit_qq_make_cons_result(expanded.value, result, interp, "quasiquote: failed to allocate pair");
+            if (next.error.has_error) return next;
+            result = next.value;
         }
     }
     return eval_ok(result);
@@ -129,7 +153,9 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
                     return eval_error("quasiquote splice: too many items (max 64)");
                 }
                 for (usz j = item_count; j > 0; j--) {
-                    result = make_cons(interp, items[j - 1], result);
+                    EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
+                    if (next.error.has_error) return next;
+                    result = next.value;
                 }
             } else {
                 return eval_error(",@ value is not a list");
@@ -137,7 +163,9 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
         } else {
             EvalResult expanded = jit_qq_impl(elem, env, interp, depth);
             if (expanded.error.has_error) return expanded;
-            result = make_cons(interp, expanded.value, result);
+            EvalResult next = jit_qq_make_cons_result(expanded.value, result, interp, "quasiquote: failed to allocate pair");
+            if (next.error.has_error) return next;
+            result = next.value;
         }
     }
     return eval_ok(result);

@@ -1,5 +1,18 @@
 ## 2026-04-10
 
+- Closed the JIT quasiquote pair-construction fail-closed lane:
+  - `src/lisp/jit_jit_quasiquote_macros.c3`
+    now routes all internal quasiquote pair construction through one checked
+    helper with a narrow nth-failure seam and returns
+    `"quasiquote: failed to allocate pair"` instead of wrapping cons
+    constructor faults as successful quasiquote values.
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+    now directly pins both nested quasiquote and list quasiquote pair
+    construction failure in the `jit-policy` slice.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=quasiquote-cons-alloc-failure ./build/main --test-suite lisp'`
+
 - Closed the JIT multi-arg list fail-closed lane:
   - `src/lisp/jit_jit_apply_runtime.c3`
     now rejects `make_cons(...)` failure while constructing continuation-safe

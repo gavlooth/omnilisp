@@ -626,6 +626,23 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed the JIT quasiquote pair-construction fail-closed follow-up:
+  - `src/lisp/jit_jit_quasiquote_macros.c3`
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- shipped behavior:
+  - internal JIT quasiquote pair construction now goes through one checked
+    helper with a narrow nth-failure seam.
+  - nested quasiquote and list quasiquote expansion now return
+    `"quasiquote: failed to allocate pair"` instead of wrapping cons
+    constructor faults as successful quasiquote values.
+  - direct regression landed in:
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- validation status:
+  - focused `jit-policy`: green (`quasiquote-cons-alloc-failure`)
+- backlog shaping after this slice:
+  - close `AUDIT-JIT-QUASIQUOTE-CONS-FAILCLOSED-033`
+  - actionable backlog remains `0`
+
 - landed the iterator tail propagation fix on top of the `StringVal` batch:
   - `src/lisp/primitives_iter_state.c3` now centralizes iterator pair
     construction through `iterator_make_pair_or_propagate(...)`

@@ -22,6 +22,22 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-JIT-QUASIQUOTE-CONS-FAILCLOSED-033` make JIT quasiquote pair
+  construction fail closed instead of wrapping cons-constructor faults as
+  successful quasiquote values
+  - closure evidence:
+    - `src/lisp/jit_jit_quasiquote_macros.c3`
+      now routes all internal quasiquote pair construction through one checked
+      helper with a narrow nth-failure seam, and returns
+      `"quasiquote: failed to allocate pair"` on allocation failure instead of
+      passing raw cons-constructor faults through `eval_ok(...)`.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now directly pins both nested quasiquote and list quasiquote pair
+      materialization failure in the `jit-policy` slice.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=quasiquote-cons-alloc-failure ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-JIT-MULTI-ARG-LIST-FAILCLOSED-032` make JIT multi-arg call
   construction and iterative apply fail closed on malformed arg-list state
   instead of degrading to partial success
