@@ -22,6 +22,22 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-ITERATOR-CONS-CONSTRUCTOR-FAILCLOSED-029` make iterator
+  coroutine cons construction fail closed instead of publishing constructor
+  failures as data or remapping them to misleading apply errors
+  - closure evidence:
+    - `src/lisp/primitives_iter_coroutine.c3`
+      now routes `zip` item-pair and `foldl` arg-list construction through a
+      checked iterator-local cons helper with a narrow nth-failure seam.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now proves forced constructor failure makes `zip` return
+      `"__iterator-zip: failed to allocate item pair"` and `foldl` return
+      `"__iterator-foldl: failed to allocate call args"` instead of embedding
+      `ERROR` values into iterator data or degrading to `"arg list too short"`.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-PENDING-RAISE-PAYLOAD-FAILCLOSED-028` make pending raise
   payload/message materialization fail closed instead of binding constructor
   failures as ordinary handler data

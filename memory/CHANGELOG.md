@@ -11362,3 +11362,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `c3c build`
     - targeted `jit-policy`: `pass=1 fail=0`
     - bounded `memory-lifetime-smoke`: `pass=157 fail=0`
+- 2026-04-10 (iterator coroutine cons-construction fail-closed follow-up):
+  - iterator coroutine helpers now route internal pair/list construction
+    through a checked iterator-local cons helper.
+  - `zip` now rejects item-pair construction failure directly instead of
+    publishing the constructor-failed value as an iterator item.
+  - `foldl` now rejects arg-list construction failure directly instead of
+    remapping the same fault into a later malformed-args apply error.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=159 fail=0`

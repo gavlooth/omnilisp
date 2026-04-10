@@ -85,6 +85,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `map`, `filter`, `take`, `zip`, and `foldl` now reject malformed iterator
     tails directly instead of truncating or deferring broken iterator state as
     a later partial success.
+- Iterator coroutine helpers now also fail closed on internal cons
+  construction:
+  - `zip` no longer publishes constructor-failed item pairs as iterator data.
+  - `foldl` no longer degrades arg-list constructor failure into later
+    malformed-apply errors.
 - Scheduler OS-thread completion now fails closed on double-allocation failure:
   - if both the original completion and the alloc-failure completion are
     unavailable, `scheduler_complete_os_thread(...)` now drops the OS-thread

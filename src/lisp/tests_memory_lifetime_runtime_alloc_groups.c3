@@ -1328,6 +1328,67 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* left_list = make_cons(interp, make_int(interp, 1), make_nil(interp));
+        Value* right_list = make_cons(interp, make_int(interp, 2), make_nil(interp));
+        Value* left_iterator = iterator_from_list_value(left_list, interp);
+        Value* right_iterator = iterator_from_list_value(right_list, interp);
+        Value*[2] zip_args = { left_iterator, right_iterator };
+
+        int saved_force = g_iterator_force_cons_alloc_fail_nth;
+        g_iterator_force_cons_alloc_fail_nth = 1;
+        Value* zip_fail = prim_iterator_zip_thunk(zip_args[0:2], null, interp);
+        g_iterator_force_cons_alloc_fail_nth = saved_force;
+
+        bool setup_ok = left_iterator != null && left_iterator.tag == ITERATOR &&
+            right_iterator != null && right_iterator.tag == ITERATOR;
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(zip_fail, "__iterator-zip: failed to allocate item pair");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: iterator zip item pair allocation failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: iterator zip item pair allocation failures fail closed (setup_ok=%s msg=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(zip_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult func_run = run("(lambda (a x) (+ a x))", interp);
+        Value* list = make_cons(interp, make_int(interp, 1), make_nil(interp));
+        Value* iterator = iterator_from_list_value(list, interp);
+        Value*[3] fold_args = {
+            func_run.error.has_error ? null : func_run.value,
+            make_int(interp, 0),
+            iterator
+        };
+
+        int saved_force = g_iterator_force_cons_alloc_fail_nth;
+        g_iterator_force_cons_alloc_fail_nth = 1;
+        Value* fold_fail =
+            !func_run.error.has_error && iterator != null && iterator.tag == ITERATOR
+            ? prim_iterator_foldl(fold_args[0:3], null, interp)
+            : raise_error(interp, "setup failed");
+        g_iterator_force_cons_alloc_fail_nth = saved_force;
+
+        bool setup_ok = !func_run.error.has_error && iterator != null && iterator.tag == ITERATOR;
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(fold_fail, "__iterator-foldl: failed to allocate call args");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: iterator foldl arg list allocation failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: iterator foldl arg list allocation failures fail closed (setup_ok=%s msg=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(fold_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_force = g_string_force_result_wrapper_alloc_fail;
         g_string_force_result_wrapper_alloc_fail = true;
         StringVal* builder = strval_new_from_slice("hello");

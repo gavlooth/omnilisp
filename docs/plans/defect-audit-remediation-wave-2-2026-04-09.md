@@ -40,6 +40,19 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The iterator coroutine cons-construction lane is now also closed:
+  - `src/lisp/primitives_iter_coroutine.c3`
+    now routes internal `zip` item-pair and `foldl` arg-list cons building
+    through a checked iterator-local helper with a narrow nth-failure seam.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins both failure modes and proves `zip` / `foldl` return direct
+    typed errors instead of embedding constructor-failed values into iterator
+    data or remapping them to later apply-shape faults.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The pending-raise payload/materialization lane is now also closed:
   - `src/lisp/value_constructors.c3`
     now rejects null/error `boundary_promote_to_root(...)` results before

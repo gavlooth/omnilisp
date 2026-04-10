@@ -3,9 +3,28 @@ module lisp;
 import main;
 
 const usz ITER_BUFFER_MAX = 4096;
+int g_iterator_force_cons_alloc_fail_nth = 0;
 
 fn Value* iterator_ctor_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
+fn bool iterator_should_force_cons_alloc_fail() @inline {
+    if (g_iterator_force_cons_alloc_fail_nth <= 0) return false;
+    g_iterator_force_cons_alloc_fail_nth--;
+    return g_iterator_force_cons_alloc_fail_nth == 0;
+}
+
+fn Value* iterator_make_cons_or_error(Value* car_value, Value* cdr_value, char[] message, Interp* interp) @inline {
+    if (iterator_should_force_cons_alloc_fail()) {
+        return iterator_ctor_raise(interp, "runtime/out-of-memory", message);
+    }
+    Value* pair = make_cons(interp, car_value, cdr_value);
+    if (pair == null) {
+        return iterator_ctor_raise(interp, "runtime/out-of-memory", message);
+    }
+    if (pair.tag == ERROR) return pair;
+    return pair;
 }
 
 fn Value* prim_iterator_map(Value*[] args, Env* env, Interp* interp) {
@@ -127,7 +146,13 @@ fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
     Value* right_tail_err = iterator_tail_or_error(right_pair, "__iterator-zip: expected iterator tail", &right_rest, interp);
     if (right_tail_err != null) return right_tail_err;
 
-    Value* item_pair = make_cons(interp, car(left_pair), car(right_pair));
+    Value* item_pair = iterator_make_cons_or_error(
+        car(left_pair),
+        car(right_pair),
+        "__iterator-zip: failed to allocate item pair",
+        interp
+    );
+    if (item_pair != null && item_pair.tag == ERROR) return item_pair;
     return iterator_make_pair_or_propagate(item_pair, iterator_zip_value(left_rest, right_rest, interp), interp);
 }
 
@@ -152,7 +177,20 @@ fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
         Value* tail_err = iterator_tail_or_error(pair, "__iterator-foldl: expected iterator tail", &rest, interp);
         if (tail_err != null) return tail_err;
 
-        Value* call_args = make_cons(interp, acc, make_cons(interp, car(pair), make_nil(interp)));
+        Value* item_arg = iterator_make_cons_or_error(
+            car(pair),
+            make_nil(interp),
+            "__iterator-foldl: failed to allocate call args",
+            interp
+        );
+        if (item_arg != null && item_arg.tag == ERROR) return item_arg;
+        Value* call_args = iterator_make_cons_or_error(
+            acc,
+            item_arg,
+            "__iterator-foldl: failed to allocate call args",
+            interp
+        );
+        if (call_args != null && call_args.tag == ERROR) return call_args;
         acc = jit_apply_multi_args(interp, func, call_args, 2);
         if (acc != null && acc.tag == ERROR) return acc;
         current = rest;
