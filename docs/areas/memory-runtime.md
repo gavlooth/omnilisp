@@ -59,6 +59,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   before manually unwinding a materialized value, so failed env-copy no longer
   consumes a copied closure/env retain during rollback and then replays the
   same destructor again when the abandoned target scope is later released.
+- Copied/promoted `CONTINUATION` wrappers now carry an explicit
+  boundary-owned marker when they were the wrapper that first retained
+  handle-state for boundary escape, and env-copy/partial-cleanup rollback uses
+  that marker to release the retained handle-state immediately when the copied
+  wrapper is abandoned.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested

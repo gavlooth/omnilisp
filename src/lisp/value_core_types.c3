@@ -179,6 +179,7 @@ struct MethodTable {
 struct Value {
     ValueTag tag;
     uint scope_gen;  // Scope generation stamp — set at allocation, used for O(1) scope checks
+    bool continuation_boundary_owned; // True when this wrapper introduced boundary handle retention
 
     union {
         long          int_val;

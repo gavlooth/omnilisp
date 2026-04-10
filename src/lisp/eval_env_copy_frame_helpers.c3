@@ -212,6 +212,7 @@ fn void copy_env_cancel_materialized_target_dtor(
     main::ScopeRegion* target_scope
 ) @inline {
     if (copied == null || target_scope == null) return;
+    if (copied.tag == CONTINUATION && copied.continuation_boundary_owned) return;
     if (copied.tag == CLOSURE) {
         main::scope_cancel_dtor(target_scope, (void*)copied, &scope_dtor_closure);
         return;
@@ -278,6 +279,15 @@ fn void copy_env_rollback_materialized_value(
         copy_env_rollback_materialized_method_table(src, copied, target_scope);
         copy_env_cancel_materialized_target_dtor(copied, target_scope);
         scope_dtor_value((void*)copied);
+        return;
+    }
+    if (src != null &&
+        copied != null &&
+        src.tag == CONTINUATION &&
+        copied.tag == CONTINUATION &&
+        copied.continuation_boundary_owned) {
+        continuation_release_handle_state_for_boundary(copied.cont_val);
+        copied.continuation_boundary_owned = false;
         return;
     }
     if (copied.tag == CLOSURE) {

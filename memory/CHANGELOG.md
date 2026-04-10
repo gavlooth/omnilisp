@@ -1,5 +1,26 @@
 ## 2026-04-10
 
+- Closed a continuation rollback symmetry gap in boundary/env-copy cleanup:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` and
+    `src/lisp/eval_promotion_escape_leaf.c3` now mark copied/promoted
+    `CONTINUATION` wrappers when that specific wrapper introduced boundary
+    handle-state retention.
+  - `src/lisp/eval_env_copy_frame_helpers.c3` and
+    `src/lisp/eval_promotion_root_clones.c3` now unwind that retention when a
+    copied continuation wrapper is abandoned during env-copy rollback or
+    partial boundary cleanup, instead of leaving the shared continuation
+    handle-state refcount artificially elevated after failure.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now proves a
+    later env-copy binding fault releases a first copied continuation retain.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves shared-
+    wrapper partial cleanup releases the same continuation retain when a later
+    opaque child aborts the copy.
+  - validation:
+    - `c3c build`
+    - `c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
 - Closed a nested `CONS` alias blind spot in shared provenance and env-copy:
   - `src/lisp/eval_boundary_provenance.c3` now routes `CONS` reuse checks
     through an iterative cons-specific helper that validates each nested cons

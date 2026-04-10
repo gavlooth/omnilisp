@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::core::mem;
 import main;
 
 fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp, int* pass, int* fail) {
@@ -2276,6 +2277,123 @@ fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp
                 boundary_scope_transfer_reason_name(foreign_result.reason),
                 boundary_scope_transfer_reason_name(owner_result.reason),
                 boundary_scope_transfer_reason_name(retained_result.reason)
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_continuation_boundary_partial_cleanup_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: boundary partial cleanup releases continuation handle retention
+    // when a later opaque child aborts a copied shared wrapper.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        main::ScopeRegion* target = main::scope_create(saved);
+        if (foreign == null || target == null) {
+            if (target != null) main::scope_release(target);
+            if (foreign != null) main::scope_release(foreign);
+            io::printn("[FAIL] lifetime: continuation boundary partial cleanup");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = foreign;
+        Continuation* k = interp.alloc_lisp_continuation();
+        HandleEffectState* shared_state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
+        Value* cont_wrapper = interp.alloc_value();
+        Value* opaque = interp.alloc_value();
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        Value* src_array = interp.alloc_value();
+        Array* src_array_payload = (Array*)mem::malloc(Array.sizeof);
+        Value* copied_value = null;
+        bool setup_ok = k != null &&
+                        shared_state != null &&
+                        cont_wrapper != null &&
+                        opaque != null &&
+                        opaque_prim != null &&
+                        opaque_payload != null &&
+                        src_array != null &&
+                        src_array_payload != null;
+
+        if (setup_ok) {
+            handle_effect_state_init(shared_state, interp);
+            cont_wrapper.tag = CONTINUATION;
+            cont_wrapper.cont_val = k;
+            k.handle_state = shared_state;
+            k.handle_retained = false;
+
+            *opaque_prim = {};
+            *opaque_payload = 913;
+            opaque.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            opaque_prim.name[0] = 'x';
+            opaque_prim.name[1] = 0;
+            opaque_prim.arity = 1;
+            opaque_prim.tag = 913;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.prim_val = opaque_prim;
+
+            src_array.tag = ARRAY;
+            main::scope_register_dtor(foreign, (void*)src_array, &scope_dtor_value);
+            src_array_payload.capacity = 4;
+            src_array_payload.length = 2;
+            src_array_payload.items = (Value**)mem::malloc(Value*.sizeof * src_array_payload.capacity);
+            setup_ok = src_array_payload.items != null;
+            if (setup_ok) {
+                for (usz i = 0; i < src_array_payload.capacity; i++) {
+                    src_array_payload.items[i] = null;
+                }
+                src_array_payload.items[0] = cont_wrapper;
+                src_array_payload.items[1] = opaque;
+                src_array.array_val = src_array_payload;
+            }
+        }
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+        BoundaryCopyResult copied =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(src_array, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        copied_value = copied.value;
+        int refcount_after_fail = shared_state != null ? (int)shared_state.continuation_refcount : -1;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+
+        bool fault_ok = !boundary_copy_result_ok(copied) &&
+                        copied_value == null &&
+                        copied.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+        bool rollback_ok = k != null &&
+                           !k.handle_retained &&
+                           refcount_after_fail == 0;
+
+        if (shared_state != null) {
+            shared_state.frame_active = false;
+            if (shared_state.continuation_refcount == 0) {
+                handle_effect_state_release(shared_state);
+            }
+            if (k != null) {
+                k.handle_state = null;
+                k.handle_retained = false;
+            }
+        }
+
+        main::scope_release(target);
+        main::scope_release(foreign);
+
+        bool ok = setup_ok && fault_ok && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: continuation boundary partial cleanup");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: continuation boundary partial cleanup (setup_ok=%s fault=%s retained=%s refcount=%d)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(copied.fault_code),
+                k != null && k.handle_retained ? "yes" : "no",
+                refcount_after_fail
             );
             (*fail)++;
         }

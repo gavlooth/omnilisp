@@ -924,6 +924,94 @@ fn void run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(Inte
     }
 }
 
+fn void run_memory_lifetime_env_copy_continuation_rollback_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy rollback releases continuation handle retention when
+    // the first copied continuation wrapper is abandoned by a later binding fault.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy continuation rollback");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId cont_sym = interp.symbols.intern("__copy_env_continuation");
+        SymbolId fail_sym = interp.symbols.intern("__copy_env_continuation_fail");
+
+        interp.current_scope = source;
+        Continuation* k = interp.alloc_lisp_continuation();
+        HandleEffectState* shared_state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
+        Value* cont_wrapper = interp.alloc_value();
+        Env* bad_capture = make_env(interp, interp.global_env);
+        Value* bad_closure = bad_capture != null ? make_closure_no_param(interp, null, bad_capture) : null;
+        Env* frame = make_env(interp, interp.global_env);
+
+        bool setup_ok = k != null &&
+                        shared_state != null &&
+                        cont_wrapper != null &&
+                        frame != null &&
+                        bad_closure != null &&
+                        bad_closure.tag == CLOSURE &&
+                        bad_closure.closure_val != null &&
+                        bad_closure.closure_val.env_scope == null;
+        if (setup_ok) {
+            handle_effect_state_init(shared_state, interp);
+            cont_wrapper.tag = CONTINUATION;
+            cont_wrapper.cont_val = k;
+            k.handle_state = shared_state;
+            k.handle_retained = false;
+            env_define_with_barrier(frame, cont_sym, cont_wrapper, interp);
+            env_define_with_barrier(frame, fail_sym, bad_closure, interp);
+        }
+
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+
+        int refcount_after_fail = shared_state != null ? (int)shared_state.continuation_refcount : -1;
+        bool fault_ok = copied.env == null &&
+                        copied.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                        copied.depth == 0;
+        bool rollback_ok = k != null &&
+                           !k.handle_retained &&
+                           refcount_after_fail == 0;
+
+        if (shared_state != null) {
+            shared_state.frame_active = false;
+            if (shared_state.continuation_refcount == 0) {
+                handle_effect_state_release(shared_state);
+            }
+            if (k != null) {
+                k.handle_state = null;
+                k.handle_retained = false;
+            }
+        }
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        bool ok = setup_ok && fault_ok && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy continuation rollback");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy continuation rollback (setup_ok=%s fault=%s retained=%s refcount=%d)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                k != null && k.handle_retained ? "yes" : "no",
+                refcount_after_fail
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_nested_cons_rollback_test(Interp* interp, int* pass, int* fail) {
     // Invariant: env-copy rollback unwinds nested copied cons children immediately,
     // not only when the abandoned target scope is later released.
@@ -1240,6 +1328,7 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_failure_invalidates_promotion_ctx_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(interp, pass, fail);
     run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_continuation_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_cons_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_array_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_cons_wrapper_alias_test(interp, pass, fail);

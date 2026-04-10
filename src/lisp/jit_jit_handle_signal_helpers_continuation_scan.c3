@@ -1,10 +1,23 @@
 module lisp;
 
-fn void continuation_retain_handle_state_for_boundary(Continuation* k) {
-    if (k == null || k.handle_state == null || k.handle_retained) return;
+fn bool continuation_retain_handle_state_for_boundary(Continuation* k) {
+    if (k == null || k.handle_state == null || k.handle_retained) return false;
     HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
     hstate.continuation_refcount++;
     k.handle_retained = true;
+    return true;
+}
+
+fn void continuation_release_handle_state_for_boundary(Continuation* k) {
+    if (k == null || k.handle_state == null || !k.handle_retained) return;
+    HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
+    if (hstate.continuation_refcount > 0) {
+        hstate.continuation_refcount--;
+    }
+    k.handle_retained = false;
+    if (!hstate.frame_active && hstate.continuation_refcount == 0) {
+        handle_effect_state_release(hstate);
+    }
 }
 
 const usz CONTINUATION_SCAN_MAX_VALUES = 1024;

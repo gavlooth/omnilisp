@@ -7,6 +7,7 @@ fn Value* Interp.alloc_value(Interp* self) @inline {
     assert(v != null, "alloc_value: scope allocation failed");
     v.tag = NIL;  // Safe default
     v.scope_gen = self.current_scope.generation;  // Stamp for O(1) scope checks
+    v.continuation_boundary_owned = false;
     // Dtor registration moved to heap-backed constructors (make_string, make_closure, etc.)
     // Flat types (NIL, INT, DOUBLE, SYMBOL, CONS, BOOL) skip dtor — no heap backing.
     return v;
@@ -19,6 +20,7 @@ fn Value* Interp.alloc_value_escape(Interp* self) @inline {
     assert(v != null, "alloc_value_escape: scope allocation failed");
     v.tag = NIL;  // Safe default
     v.scope_gen = self.current_scope.escape_generation;
+    v.continuation_boundary_owned = false;
     return v;
 }
 
@@ -30,6 +32,7 @@ fn Value* Interp.alloc_value_root(Interp* self) @inline {
     assert(v != null, "alloc_value_root: scope allocation failed");
     v.tag = NIL;
     v.scope_gen = self.root_scope.generation;  // Stamp for O(1) scope checks
+    v.continuation_boundary_owned = false;
     main::scope_register_dtor(self.root_scope, (void*)v, &scope_dtor_value);
     return v;
 }

@@ -313,15 +313,17 @@ fn Value* copy_shared_wrapper_to_parent(Value* v, Interp* interp, BoundaryCopyFa
 }
 
 fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
+    bool retained_now = false;
     if (v.cont_val != null) {
         if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
             return raise_error(interp, "boundary: refusing continuation alias across interpreters");
         }
-        continuation_retain_handle_state_for_boundary(v.cont_val);
+        retained_now = continuation_retain_handle_state_for_boundary(v.cont_val);
     }
     Value* result = interp.alloc_value();
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
+    result.continuation_boundary_owned = retained_now;
     return result;
 }
 
