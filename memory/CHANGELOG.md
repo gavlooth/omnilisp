@@ -11256,3 +11256,15 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=153 fail=0`
+- 2026-04-10 (data-format array promotion fail-closed follow-up):
+  - JSON and TOML array assembly now reject promoted boundary `ERROR` values
+    instead of storing them as successful array elements.
+  - shipped consequence:
+    - nested data-format array conversion under non-root scopes now preserves
+      the boundary failure surface when element promotion fails.
+    - TOML array element promotion is now covered through the existing
+      `TIME_POINT` wrapper-copy allocation seam, so the fail-closed contract
+      is pinned in bounded runtime-allocation coverage.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=154 fail=0`

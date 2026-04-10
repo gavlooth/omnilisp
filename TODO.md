@@ -22,6 +22,24 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-DATA-FORMAT-ARRAY-PROMOTION-FAILCLOSED-022` make JSON/TOML
+  array assembly reject promoted boundary `ERROR` values instead of storing
+  them as ordinary array elements
+  - closure evidence:
+    - `src/lisp/json.c3`
+      now rejects `boundary_promote_to_root(...)` results that come back as
+      `ERROR` values during JSON array assembly instead of publishing them
+      into successful arrays.
+    - `src/lisp/primitives_toml_bridge.c3`
+      now applies the same fail-closed rule for TOML array element promotion.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins a TOML array-element promotion fault through the existing
+      `TIME_POINT` wrapper-copy allocation seam under a non-root scope and
+      proves the array conversion returns the boundary error directly.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-COROUTINE-THUNK-PROMOTION-FAILCLOSED-021` make coroutine thunk
   publication fail closed when root promotion returns an `ERROR` or invalid
   callable state instead of allocating coroutine stack context around a bad

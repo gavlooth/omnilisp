@@ -743,3 +743,19 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-COROUTINE-THUNK-PROMOTION-FAILCLOSED-021`
   - actionable backlog remains `0`
+
+- landed the data-format array promotion follow-up:
+  - `src/lisp/json.c3`
+  - `src/lisp/primitives_toml_bridge.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - JSON and TOML array assembly now fail closed if
+    `boundary_promote_to_root(...)` returns an `ERROR` for an element.
+  - promoted boundary failures are no longer published as ordinary array data.
+  - direct regression landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=154 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-DATA-FORMAT-ARRAY-PROMOTION-FAILCLOSED-022`
+  - actionable backlog remains `0`

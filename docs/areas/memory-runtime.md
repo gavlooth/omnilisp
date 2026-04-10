@@ -461,3 +461,13 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=153 fail=0`
+
+- Data-format array assembly is now fail-closed on promoted boundary faults:
+  - `json_val_to_omni(...)` and `toml_datum_to_omni(...)` now reject promoted
+    `ERROR` values from `boundary_promote_to_root(...)` instead of storing
+    them as array elements.
+  - the runtime alloc lane now pins TOML array-element promotion failure under
+    a non-root scope through the existing `TIME_POINT` copy-wrapper seam.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=154 fail=0`

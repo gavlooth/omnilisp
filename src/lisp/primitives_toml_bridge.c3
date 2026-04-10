@@ -156,6 +156,7 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
                 if (v != null && v.tag == ERROR) return v;
                 Value* promoted = boundary_promote_to_root(v, interp);
                 if (promoted == null) return raise_error(interp, "toml-parse: out of memory");
+                if (promoted.tag == ERROR) return promoted;
                 arr.array_val.items[i] = promoted;
                 arr.array_val.length++;
             }
