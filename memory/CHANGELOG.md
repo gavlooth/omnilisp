@@ -11209,3 +11209,20 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
       - `tco-foreign-partial-shared-wrapper-edge-copy`
       - `tco-foreign-shared-wrapper-copy`
     - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+- 2026-04-10 (apply/promotion helper fail-closed follow-up):
+  - `apply_partial(...)` now rejects impossible `PARTIAL_PRIM` execution state
+    before any function-pointer call-through:
+    - null/non-partial wrapper
+    - null `func`
+    - `remaining <= 0`
+    - `remaining > 2`
+    - `remaining == 2` with a prefilled `second_arg`
+  - checked hashmap insertion now rejects promoted `ERROR` values from
+    `boundary_promote_to_root(...)` instead of storing them as ordinary
+    key/value data.
+  - `fs_array_push(...)` and `csv_array_push(...)` now apply the same contract,
+    so helper-level array append surfaces no longer embed promoted `ERROR`
+    values into successful arrays.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=152 fail=0`

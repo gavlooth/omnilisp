@@ -22,7 +22,22 @@ fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
 }
 
 fn EvalResult apply_partial(Value* partial, Value* arg, Interp* interp) {
+    if (partial == null || partial.tag != PARTIAL_PRIM) {
+        return eval_error("invalid partial application state");
+    }
+    if (partial.partial_val.func == null) {
+        return eval_error("invalid partial application state");
+    }
+    if (partial.partial_val.remaining <= 0) {
+        return eval_error("invalid partial application state");
+    }
+    if (partial.partial_val.remaining > 2) {
+        return eval_error("partial application state exceeds supported captured-arg width");
+    }
     if (partial.partial_val.remaining > 1) {
+        if (partial.partial_val.second_arg != null) {
+            return eval_error("invalid partial application state");
+        }
         // Still need more args — chain another partial
         Value* next = g_eval_force_partial_alloc_fail ? null : interp.alloc_value();
         if (next == null) {

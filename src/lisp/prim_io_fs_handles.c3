@@ -29,7 +29,9 @@ fn bool fs_array_push(Value* arr_v, Value* val, Interp* interp) {
         arr.items = new_items;
         arr.capacity = new_cap;
     }
-    arr.items[arr.length++] = boundary_promote_to_root(val, interp);
+    Value* promoted = boundary_promote_to_root(val, interp);
+    if (promoted == null || promoted.tag == ERROR) return false;
+    arr.items[arr.length++] = promoted;
     return true;
 }
 

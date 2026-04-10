@@ -426,3 +426,16 @@ for future concurrency ownership evolution.
     construction and checked insertion through one explicit OOM contract.
 - The only remaining unchecked collection-constructor migration lane is now the
   runtime/status payload-builder family.
+
+- Adjacent apply/promotion helper surfaces are now fail-closed too:
+  - `apply_partial(...)` rejects malformed `PARTIAL_PRIM` state before
+    function-pointer dispatch, including impossible `remaining` values and null
+    function pointers.
+  - checked hashmap insertion rejects promoted `ERROR` values from
+    `boundary_promote_to_root(...)` instead of storing them as keys or values.
+  - `fs_array_push(...)` and `csv_array_push(...)` apply the same contract, so
+    helper-level array materializers no longer append promoted `ERROR` values
+    as ordinary data.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=152 fail=0`

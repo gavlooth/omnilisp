@@ -22,6 +22,33 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-APPLY-PROMOTION-FAILCLOSED-019` make partial-application state
+  and root-promotion array/hashmap helper surfaces fail closed instead of
+  executing impossible state or storing promoted `ERROR` values as ordinary
+  data
+  - closure evidence:
+    - `src/lisp/eval_apply.c3`
+      now rejects invalid `PARTIAL_PRIM` state before call-through:
+      null/non-partial input, null function pointer, `remaining <= 0`,
+      `remaining > 2`, and the inconsistent `remaining == 2` with a prefilled
+      `second_arg`.
+    - `src/lisp/prim_collection_hashmap.c3`
+      now makes `hashmap_set_symbol_checked(...)` and
+      `hashmap_set_checked(...)` reject `boundary_promote_to_root(...)`
+      results that come back as `ERROR` values instead of inserting them.
+    - `src/lisp/prim_io_fs_handles.c3` and
+      `src/lisp/primitives_data_formats_csv_parse.c3`
+      now make `fs_array_push(...)` and `csv_array_push(...)` reject promoted
+      `ERROR` values instead of appending them into successful arrays.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins:
+      - invalid partial-application state,
+      - checked hashmap insertion under opaque primitive promotion failure,
+      - and `fs` / CSV array helper pushes under the same promoted-error seam.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-COLLECTION-ARRAY-FAILCLOSED-018` make collection/apply array
   write helpers fail closed on boundary promotion faults, grow failures, and
   comparator runtime errors

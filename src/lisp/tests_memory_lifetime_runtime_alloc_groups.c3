@@ -411,6 +411,105 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* partial = interp.alloc_value();
+        Value* arg = make_int(interp, 42);
+        bool setup_ok = partial != null && arg != null && arg.tag == INT;
+        if (setup_ok) {
+            partial.tag = PARTIAL_PRIM;
+            partial.partial_val.func = &prim_add;
+            partial.partial_val.first_arg = make_int(interp, 1);
+            partial.partial_val.second_arg = make_int(interp, 2);
+            partial.partial_val.remaining = 3;
+        }
+
+        EvalResult result = setup_ok
+            ? apply_partial(partial, arg, interp)
+            : eval_error("setup failed");
+
+        bool ok = setup_ok &&
+            result.error.has_error &&
+            str_starts_with(result.error.message[:256], "partial application state exceeds supported captured-arg width");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: apply_partial oversized state fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: apply_partial oversized state fails closed (setup_ok=%s error=%s)",
+                setup_ok ? "yes" : "no",
+                result.error.has_error ? (ZString)result.error.message[:256] : (ZString)"<none>");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* arg = make_int(interp, 42);
+        Value* negative_partial = interp.alloc_value();
+        Value* null_func_partial = interp.alloc_value();
+        Value* inconsistent_partial = interp.alloc_value();
+        bool setup_ok = arg != null && arg.tag == INT &&
+            negative_partial != null &&
+            null_func_partial != null &&
+            inconsistent_partial != null;
+        if (setup_ok) {
+            *negative_partial = {};
+            negative_partial.tag = PARTIAL_PRIM;
+            negative_partial.partial_val.func = &prim_add;
+            negative_partial.partial_val.first_arg = make_int(interp, 1);
+            negative_partial.partial_val.second_arg = null;
+            negative_partial.partial_val.remaining = -1;
+
+            *null_func_partial = {};
+            null_func_partial.tag = PARTIAL_PRIM;
+            null_func_partial.partial_val.func = null;
+            null_func_partial.partial_val.first_arg = make_int(interp, 1);
+            null_func_partial.partial_val.second_arg = null;
+            null_func_partial.partial_val.remaining = 1;
+
+            *inconsistent_partial = {};
+            inconsistent_partial.tag = PARTIAL_PRIM;
+            inconsistent_partial.partial_val.func = &prim_add;
+            inconsistent_partial.partial_val.first_arg = make_int(interp, 1);
+            inconsistent_partial.partial_val.second_arg = make_int(interp, 2);
+            inconsistent_partial.partial_val.remaining = 2;
+
+            setup_ok = negative_partial.partial_val.first_arg != null &&
+                null_func_partial.partial_val.first_arg != null &&
+                inconsistent_partial.partial_val.first_arg != null &&
+                inconsistent_partial.partial_val.second_arg != null;
+        }
+
+        EvalResult negative_result = setup_ok
+            ? apply_partial(negative_partial, arg, interp)
+            : eval_error("setup failed");
+        EvalResult null_func_result = setup_ok
+            ? apply_partial(null_func_partial, arg, interp)
+            : eval_error("setup failed");
+        EvalResult inconsistent_result = setup_ok
+            ? apply_partial(inconsistent_partial, arg, interp)
+            : eval_error("setup failed");
+
+        bool ok = setup_ok &&
+            negative_result.error.has_error &&
+            null_func_result.error.has_error &&
+            inconsistent_result.error.has_error &&
+            str_starts_with(negative_result.error.message[:256], "invalid partial application state") &&
+            str_starts_with(null_func_result.error.message[:256], "invalid partial application state") &&
+            str_starts_with(inconsistent_result.error.message[:256], "invalid partial application state");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: apply_partial invalid states fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: apply_partial invalid states fail closed (setup_ok=%s neg=%s null_fn=%s inconsistent=%s)",
+                setup_ok ? "yes" : "no",
+                negative_result.error.has_error ? (ZString)negative_result.error.message[:256] : (ZString)"<none>",
+                null_func_result.error.has_error ? (ZString)null_func_result.error.message[:256] : (ZString)"<none>",
+                inconsistent_result.error.has_error ? (ZString)inconsistent_result.error.message[:256] : (ZString)"<none>");
+            (*fail)++;
+        }
+    }
+
+    {
         Value* list = make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp)));
         Value* iterator = iterator_from_list_value(list, interp);
         Value*[1] to_array_args = { iterator };
@@ -659,6 +758,174 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(set_fail));
             (*fail)++;
         }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        Value* checked_map = make_hashmap_checked(interp, 4, "hashmap test: ctor oom");
+        Value* set_map = make_set_checked(interp, 4, "set test: ctor oom");
+        bool setup_ok = foreign != null &&
+            checked_map != null && checked_map.tag == HASHMAP &&
+            set_map != null && set_map.tag == SET;
+
+        Value* opaque_value = null;
+        Value* opaque_key = null;
+        Primitive* opaque_value_prim = null;
+        Primitive* opaque_key_prim = null;
+        int* opaque_value_payload = null;
+        int* opaque_key_payload = null;
+
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            opaque_value = interp.alloc_value();
+            opaque_key = interp.alloc_value();
+            opaque_value_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            opaque_key_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            opaque_value_payload = (int*)mem::malloc(int.sizeof);
+            opaque_key_payload = (int*)mem::malloc(int.sizeof);
+            if (opaque_value != null) {
+                opaque_value.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque_value, &scope_dtor_value);
+            }
+            if (opaque_key != null) {
+                opaque_key.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque_key, &scope_dtor_value);
+            }
+            setup_ok = opaque_value != null &&
+                opaque_key != null &&
+                opaque_value_prim != null &&
+                opaque_key_prim != null &&
+                opaque_value_payload != null &&
+                opaque_key_payload != null;
+        }
+
+        if (setup_ok) {
+            *opaque_value_prim = {};
+            *opaque_key_prim = {};
+            *opaque_value_payload = 911;
+            *opaque_key_payload = 912;
+            opaque_value_prim.name[0] = 'v';
+            opaque_value_prim.name[1] = 0;
+            opaque_value_prim.func = &prim_add;
+            opaque_value_prim.arity = 2;
+            opaque_value_prim.tag = 911;
+            opaque_value_prim.user_data = (void*)opaque_value_payload;
+            opaque_key_prim.name[0] = 'k';
+            opaque_key_prim.name[1] = 0;
+            opaque_key_prim.func = &prim_add;
+            opaque_key_prim.arity = 2;
+            opaque_key_prim.tag = 912;
+            opaque_key_prim.user_data = (void*)opaque_key_payload;
+            opaque_value.prim_val = opaque_value_prim;
+            opaque_key.prim_val = opaque_key_prim;
+        }
+
+        bool symbol_insert_ok = false;
+        bool value_insert_ok = false;
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            symbol_insert_ok = hashmap_set_symbol_checked(set_map.hashmap_val, interp.symbols.intern("bad"), opaque_value, interp);
+            value_insert_ok = hashmap_set_checked(checked_map.hashmap_val, opaque_key, make_int(interp, 1), interp);
+            interp.current_scope = saved;
+        }
+
+        Value* symbol_lookup = setup_ok
+            ? hashmap_get(set_map.hashmap_val, make_symbol(interp, interp.symbols.intern("bad")))
+            : null;
+        Value* value_lookup = setup_ok ? hashmap_get(checked_map.hashmap_val, opaque_key) : null;
+
+        bool ok = setup_ok &&
+            !symbol_insert_ok &&
+            !value_insert_ok &&
+            set_map.hashmap_val.count == 0 &&
+            checked_map.hashmap_val.count == 0 &&
+            symbol_lookup == null &&
+            value_lookup == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: checked hashmap insertion rejects promoted error state");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: checked hashmap insertion rejects promoted error state (setup_ok=%s symbol_ok=%s value_ok=%s set_count=%d dict_count=%d symbol_missing=%s value_missing=%s)",
+                setup_ok ? "yes" : "no",
+                symbol_insert_ok ? "yes" : "no",
+                value_insert_ok ? "yes" : "no",
+                setup_ok ? (int)set_map.hashmap_val.count : -1,
+                setup_ok ? (int)checked_map.hashmap_val.count : -1,
+                symbol_lookup == null ? "yes" : "no",
+                value_lookup == null ? "yes" : "no");
+            (*fail)++;
+        }
+
+        if (foreign != null) main::scope_release(foreign);
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        Value* fs_array = make_array_checked(interp, 4, "fs-array test: ctor oom");
+        Value* csv_array = make_array_checked(interp, 4, "csv-array test: ctor oom");
+        Value* opaque_value = null;
+        Primitive* opaque_prim = null;
+        int* opaque_payload = null;
+        bool setup_ok = foreign != null &&
+            fs_array != null && fs_array.tag == ARRAY &&
+            csv_array != null && csv_array.tag == ARRAY;
+
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            opaque_value = interp.alloc_value();
+            opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            opaque_payload = (int*)mem::malloc(int.sizeof);
+            if (opaque_value != null) {
+                opaque_value.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque_value, &scope_dtor_value);
+            }
+            setup_ok = opaque_value != null && opaque_prim != null && opaque_payload != null;
+        }
+
+        if (setup_ok) {
+            *opaque_prim = {};
+            *opaque_payload = 913;
+            opaque_prim.name[0] = 'p';
+            opaque_prim.name[1] = 0;
+            opaque_prim.func = &prim_add;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 913;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque_value.prim_val = opaque_prim;
+        }
+
+        bool fs_push_ok = false;
+        bool csv_push_ok = false;
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            fs_push_ok = fs_array_push(fs_array, opaque_value, interp);
+            csv_push_ok = csv_array_push(csv_array, opaque_value, interp);
+            interp.current_scope = saved;
+        }
+
+        bool ok = setup_ok &&
+            !fs_push_ok &&
+            !csv_push_ok &&
+            fs_array.array_val.length == 0 &&
+            csv_array.array_val.length == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: array helper pushes reject promoted error state");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: array helper pushes reject promoted error state (setup_ok=%s fs_ok=%s csv_ok=%s fs_len=%d csv_len=%d)",
+                setup_ok ? "yes" : "no",
+                fs_push_ok ? "yes" : "no",
+                csv_push_ok ? "yes" : "no",
+                setup_ok ? (int)fs_array.array_val.length : -1,
+                setup_ok ? (int)csv_array.array_val.length : -1);
+            (*fail)++;
+        }
+
+        if (foreign != null) main::scope_release(foreign);
     }
 
     {

@@ -686,3 +686,22 @@ Progress update (2026-04-09):
   - close `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010`
   - leave only:
     - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`
+
+- landed the adjacent apply/promotion helper fail-closed slice:
+  - `src/lisp/eval_apply.c3`
+  - `src/lisp/prim_collection_hashmap.c3`
+  - `src/lisp/prim_io_fs_handles.c3`
+  - `src/lisp/primitives_data_formats_csv_parse.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - `apply_partial(...)` now rejects malformed `PARTIAL_PRIM` execution state
+    before call-through.
+  - checked hashmap insertion now rejects promoted `ERROR` values from
+    `boundary_promote_to_root(...)` instead of storing them.
+  - `fs_array_push(...)` and `csv_array_push(...)` now reject promoted
+    `ERROR` values instead of appending them into successful arrays.
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=152 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-APPLY-PROMOTION-FAILCLOSED-019`
+  - actionable backlog returns to `0`

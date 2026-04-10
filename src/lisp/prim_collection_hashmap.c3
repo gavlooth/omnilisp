@@ -107,6 +107,9 @@ fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Int
     Value* key_value = make_symbol(interp, key);
     key_value = boundary_promote_to_root(key_value, interp);
     value = boundary_promote_to_root(value, interp);
+    if (key_value == null || key_value.tag == ERROR || value == null || value.tag == ERROR) {
+        return false;
+    }
 
     uint h = murmur_finalizer((uint)key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
@@ -177,6 +180,9 @@ fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* inte
     // so its entries must survive child scope release
     key = boundary_promote_to_root(key, interp);
     value = boundary_promote_to_root(value, interp);
+    if (key == null || key.tag == ERROR || value == null || value.tag == ERROR) {
+        return false;
+    }
 
     uint h = hash_value(key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
