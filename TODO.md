@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -18,7 +18,27 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- None.
+- [ ] `AUDIT-STRING-BUILDER-OOM-007` harden shared `StringVal` builder creation and growth to fail closed
+  - problem:
+    - this batch closed result-wrapper/key-wrapper allocation failures in
+      `eval_apply`, iterator thunk/wrapper helpers, string formatting/string
+      replacement result materialization, and HTTP response field-key creation.
+    - the broader shared builder contract is still fail-open in
+      `src/lisp/prim_string_format_helpers.c3`:
+      - `strval_new(...)` dereferences `sv` and `sv.chars` without null checks
+        after `mem::malloc(...)`
+      - `strval_ensure(...)` dereferences `new_chars` without null checks after
+        `mem::malloc(...)`
+    - because `StringVal` is a shared helper, this is wider than one primitive
+      family and needs one coherent hardening pass across current callsites.
+  - required closure:
+    - make `StringVal` builder creation/growth return failure instead of
+      crashing on OOM
+    - thread that fail-closed contract through current formatting/string
+      helper callsites
+    - add deterministic regression seams for initial builder-allocation failure
+      and mid-growth failure
+    - validate with bounded `memory-lifetime-smoke` and ASAN
 
 ## Recently Closed
 

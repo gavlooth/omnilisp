@@ -3,6 +3,8 @@ module lisp;
 import std::io;
 import main;
 
+bool g_string_force_result_wrapper_alloc_fail = false;
+
 fn StringVal* strval_new(usz initial_cap) {
     if (initial_cap < 32) initial_cap = 32;
     // Reserve one extra byte for trailing NUL; many callers materialize
@@ -45,6 +47,23 @@ fn void strval_into_value(StringVal* sv, Value* v) {
     v.str_chars = sv.chars;
     v.str_len = sv.len;
     mem::free(sv);  // free struct only, chars owned by Value
+}
+
+fn void strval_dispose(StringVal* sv) {
+    if (sv == null) return;
+    if (sv.chars != null) mem::free(sv.chars);
+    mem::free(sv);
+}
+
+fn Value* strval_materialize_result(StringVal* sv, Interp* interp, char[] message) {
+    Value* result = g_string_force_result_wrapper_alloc_fail ? null : interp.alloc_value();
+    if (result == null) {
+        strval_dispose(sv);
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", message);
+    }
+    result.tag = STRING;
+    strval_into_value(sv, result);
+    return result;
 }
 
 // Helper: append a char[] slice to a StringVal

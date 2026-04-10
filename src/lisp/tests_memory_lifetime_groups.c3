@@ -323,13 +323,13 @@ fn void run_memory_lifetime_escape_partial_transactional_cleanup_test(Interp* in
 
         interp.current_scope = target;
         Value* promoted = setup_ok ? promote_to_escape(partial, interp) : null;
+        bool fault_ok = promoted != null && promoted.tag == ERROR;
         int closure_rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
 
         interp.current_scope = saved;
         main::scope_release(foreign);
         main::scope_release(target);
 
-        bool fault_ok = promoted != null && promoted.tag == ERROR;
         bool rollback_ok = closure_rc_after_fail == 1;
         bool ok = setup_ok && fault_ok && rollback_ok;
         if (ok) {
@@ -400,13 +400,13 @@ fn void run_memory_lifetime_escape_cons_transactional_cleanup_test(Interp* inter
 
         interp.current_scope = target;
         Value* promoted = setup_ok ? promote_to_escape(cons, interp) : null;
+        bool fault_ok = promoted != null && promoted.tag == ERROR;
         int closure_rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
 
         interp.current_scope = saved;
         main::scope_release(foreign);
         main::scope_release(target);
 
-        bool fault_ok = promoted != null && promoted.tag == ERROR;
         bool rollback_ok = closure_rc_after_fail == 1;
         bool ok = setup_ok && fault_ok && rollback_ok;
         if (ok) {

@@ -330,6 +330,27 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed adjacent runtime-helper fail-closed hardening after the boundary/JIT
+  ownership wave:
+  - `src/lisp/eval_apply.c3` now fails closed on chained partial wrapper
+    allocation failure.
+  - `src/lisp/primitives_iter_state.c3` and
+    `src/lisp/value_predicates_accessors_basic.c3` now fail closed for iterator
+    thunk/wrapper allocation failure.
+  - `src/lisp/prim_string_ops.c3`, `src/lisp/prim_string_format.c3`, and
+    `src/lisp/prim_string_format_helpers.c3` now centralize final string result
+    wrapper allocation through one checked materialization helper.
+  - `src/lisp/http_url_response.c3` now centralizes response field-key
+    allocation through one checked helper.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` adds direct smoke
+    regressions for all of the above.
+- validation status:
+  - `c3c build`: green
+  - bounded `memory-lifetime-smoke`: green (`pass=126 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=126 fail=0`)
+- residual adjacent runtime-helper audit item is explicit again:
+  - `AUDIT-STRING-BUILDER-OOM-007`
+
 - landed focused JIT/boundary alias-safety hardening on top of the closed wave:
   - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` now treats target-chain
     `CONS` bindings with releasing-scope scalar edges as copy-required in the

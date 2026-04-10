@@ -1,5 +1,39 @@
 ## 2026-04-10
 
+- Closed adjacent runtime-helper allocation fail-open paths and tightened stale
+  lifetime regressions exposed by ASAN:
+  - `src/lisp/eval_apply.c3` now fails closed if chained partial application
+    cannot allocate its next `PARTIAL_PRIM` wrapper, returning an eval error
+    instead of dereferencing a null `interp.alloc_value()` result.
+  - `src/lisp/primitives_iter_state.c3` and
+    `src/lisp/value_predicates_accessors_basic.c3` now fail closed when
+    iterator thunk or iterator wrapper allocation fails, surfacing runtime OOM
+    errors instead of writing through null wrapper pointers.
+  - `src/lisp/prim_string_ops.c3`, `src/lisp/prim_string_format.c3`, and
+    `src/lisp/prim_string_format_helpers.c3` now route final string result
+    materialization through one checked helper so forced wrapper-allocation
+    failure disposes the transient `StringVal` builder and returns a typed
+    runtime error.
+  - `src/lisp/http_url_response.c3` now routes `status` / `headers` / `body`
+    key materialization through one checked helper, so response parsing no
+    longer dereferences null field-key allocations.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` adds direct smoke
+    regressions for:
+    - chained partial allocation failure,
+    - iterator thunk and wrapper allocation failure,
+    - string result-wrapper allocation failure in replace/repeat/format paths,
+    - HTTP response field-key allocation failure for all three emitted keys.
+  - ASAN exposed stale test-only post-release reads in:
+    - `src/lisp/tests_memory_lifetime_groups.c3`
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3`
+    - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`
+    Those assertions now snapshot expected error/copy state before releasing
+    the relevant target scope.
+  - validation:
+    - `rm -rf build/obj/linux-x64 build/main && c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=126 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=126 fail=0`
+
 - Closed remaining boundary leaf-wrapper allocation fail-open paths for
   `INSTANCE`, `FFI_HANDLE`, and `TIME_POINT` copies:
   - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now fails closed before

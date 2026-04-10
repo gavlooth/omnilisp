@@ -4,6 +4,8 @@ import std::collections::list;
 import std::io;
 import main;
 
+bool g_value_force_make_iterator_alloc_fail = false;
+
 // =============================================================================
 // SECTION 3/4: VALUE PREDICATES + ACCESSORS + formatting helpers
 // =============================================================================
@@ -156,7 +158,15 @@ fn Value* make_set(Interp* interp, uint capacity) {
 }
 
 fn Value* make_iterator(Interp* interp, Value* thunk) {
-    Value* v = interp.alloc_value();
+    if (thunk == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "iterator: failed to allocate thunk");
+    }
+    if (is_error(thunk)) return thunk;
+
+    Value* v = g_value_force_make_iterator_alloc_fail ? null : interp.alloc_value();
+    if (v == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "iterator: failed to allocate iterator value");
+    }
     v.tag = ITERATOR;
     v.iterator_val = thunk;
     return v;

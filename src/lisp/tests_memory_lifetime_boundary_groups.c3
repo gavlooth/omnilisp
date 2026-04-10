@@ -2110,6 +2110,10 @@ fn void run_memory_lifetime_method_table_abort_cleanup_test(Interp* interp, int*
         usz escape_cleanup_calls = method_table_partial_cleanup_calls();
         usz escape_cleanup_entries = method_table_partial_cleanup_entries();
         g_method_signature_force_heap_copy_fail_on_call = 0;
+        bool escape_ok = escape_result != null &&
+            escape_result.tag == ERROR &&
+            escape_cleanup_calls == 1 &&
+            escape_cleanup_entries == 1;
 
         interp.releasing_scope = null;
         interp.current_scope = saved;
@@ -2122,10 +2126,6 @@ fn void run_memory_lifetime_method_table_abort_cleanup_test(Interp* interp, int*
             copy_result.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT &&
             copy_cleanup_calls == 1 &&
             copy_cleanup_entries == 1;
-        bool escape_ok = escape_result != null &&
-            escape_result.tag == ERROR &&
-            escape_cleanup_calls == 1 &&
-            escape_cleanup_entries == 1;
 
         bool ok = copy_ok && escape_ok;
         if (ok) {

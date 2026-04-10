@@ -2,8 +2,13 @@ module lisp;
 
 import main;
 
+bool g_iterator_force_partial_alloc_fail = false;
+
 fn Value* iterator_make_thunk1(PrimitiveFn func, Value* first_arg, Interp* interp) {
-    Value* partial = interp.alloc_value();
+    Value* partial = g_iterator_force_partial_alloc_fail ? null : interp.alloc_value();
+    if (partial == null) {
+        return iterator_ctor_raise(interp, "runtime/out-of-memory", "iterator: failed to allocate thunk");
+    }
     partial.tag = PARTIAL_PRIM;
     partial.partial_val.func = func;
     partial.partial_val.first_arg = first_arg;
@@ -13,7 +18,10 @@ fn Value* iterator_make_thunk1(PrimitiveFn func, Value* first_arg, Interp* inter
 }
 
 fn Value* iterator_make_thunk2(PrimitiveFn func, Value* first_arg, Value* second_arg, Interp* interp) {
-    Value* partial = interp.alloc_value();
+    Value* partial = g_iterator_force_partial_alloc_fail ? null : interp.alloc_value();
+    if (partial == null) {
+        return iterator_ctor_raise(interp, "runtime/out-of-memory", "iterator: failed to allocate thunk");
+    }
     partial.tag = PARTIAL_PRIM;
     partial.partial_val.func = func;
     partial.partial_val.first_arg = first_arg;

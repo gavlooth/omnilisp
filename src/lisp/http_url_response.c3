@@ -4,6 +4,8 @@ import std::core::mem;
 import std::io;
 import main;
 
+int g_http_force_parse_response_key_alloc_fail_nth = 0;
+
 // ============================================================
 // HTTP URL parsing and response parsing
 // ============================================================
@@ -127,6 +129,23 @@ fn usz? build_request(char[] method, ParsedUrl* url, char[] headers, char[] body
     return pos;
 }
 
+fn Value* parse_response_make_symbol_key(Interp* interp, char[] name) {
+    if (g_http_force_parse_response_key_alloc_fail_nth > 0) {
+        g_http_force_parse_response_key_alloc_fail_nth--;
+        if (g_http_force_parse_response_key_alloc_fail_nth == 0) {
+            return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response field key");
+        }
+    }
+
+    Value* key = interp.alloc_value();
+    if (key == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response field key");
+    }
+    key.tag = SYMBOL;
+    key.sym_val = interp.symbols.intern(name);
+    return key;
+}
+
 // Parse HTTP response: extract status code, headers, body
 fn Value* parse_response(char[] response, Interp* interp) {
     Value* result = make_hashmap(interp, 8);
@@ -144,8 +163,8 @@ fn Value* parse_response(char[] response, Interp* interp) {
         pos++;
     }
 
-    Value* status_key = interp.alloc_value(); status_key.tag = SYMBOL;
-    status_key.sym_val = interp.symbols.intern("status");
+    Value* status_key = parse_response_make_symbol_key(interp, "status");
+    if (status_key == null || is_error(status_key)) return status_key;
     hashmap_set(result.hashmap_val, status_key, make_int(interp, (long)status), interp);
 
     // Find end of headers: \r\n\r\n
@@ -159,8 +178,8 @@ fn Value* parse_response(char[] response, Interp* interp) {
 
     // Headers as string
     if (header_end > 0) {
-        Value* headers_key = interp.alloc_value(); headers_key.tag = SYMBOL;
-        headers_key.sym_val = interp.symbols.intern("headers");
+        Value* headers_key = parse_response_make_symbol_key(interp, "headers");
+        if (headers_key == null || is_error(headers_key)) return headers_key;
         // Skip first line (status line)
         usz hdr_start = 0;
         while (hdr_start < header_end && !(response[hdr_start] == '\n')) hdr_start++;
@@ -171,8 +190,8 @@ fn Value* parse_response(char[] response, Interp* interp) {
 
     // Body
     if (header_end > 0 && header_end < response.len) {
-        Value* body_key = interp.alloc_value(); body_key.tag = SYMBOL;
-        body_key.sym_val = interp.symbols.intern("body");
+        Value* body_key = parse_response_make_symbol_key(interp, "body");
+        if (body_key == null || is_error(body_key)) return body_key;
         hashmap_set(result.hashmap_val, body_key,
             make_string(interp, response[header_end..]), interp);
     }

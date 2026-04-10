@@ -23,10 +23,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
         }
     }
     builder.chars[builder.len] = 0;
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    strval_into_value(builder, result);
-    return result;
+    return strval_materialize_result(builder, interp, "format: failed to allocate result value");
 }
 
 fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
@@ -43,9 +40,6 @@ fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
         }
     }
     builder.chars[builder.len] = 0;
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    strval_into_value(builder, result);
-    return result;
+    return strval_materialize_result(builder, interp, "cl-format: failed to allocate result value");
 }
 

@@ -267,6 +267,26 @@ for future concurrency ownership evolution.
   sequencing while further shared-object consolidation proceeds.
 ## 2026-04-10 follow-up
 
+- Runtime helper allocation failures now fail closed in adjacent non-boundary
+  helpers:
+  - `apply_partial(...)` no longer dereferences a null wrapper allocation while
+    chaining partials,
+  - iterator thunk/wrapper construction now returns runtime OOM errors instead
+    of writing through null `PARTIAL_PRIM` / `ITERATOR` wrappers,
+  - string replace/repeat/format result materialization now disposes transient
+    `StringVal` builders if the final `STRING` wrapper allocation fails, and
+  - HTTP response parsing now fails closed if `status` / `headers` / `body`
+    field-key allocation fails.
+- Bounded memory-lifetime smoke and bounded ASAN smoke are green for this lane:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=126 fail=0`
+  - `scripts/run_validation_container.sh ... c3c build --sanitize=address ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=126 fail=0`
+- Residual adjacent audit lane:
+  - the shared `StringVal` builder contract itself is still fail-open in
+    `strval_new(...)` / `strval_ensure(...)`; current hardening only closed
+    final wrapper materialization at the current callsites.
+
 - Env-copy and return-boundary closure wrapper allocation now fail closed:
   - closure wrapper cloning no longer dereferences a null `interp.alloc_value()`
     result in the shared closure-copy helper path,

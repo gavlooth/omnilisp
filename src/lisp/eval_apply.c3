@@ -1,5 +1,7 @@
 module lisp;
 
+bool g_eval_force_partial_alloc_fail = false;
+
 fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
     int arity = prim.prim_val.arity;
 
@@ -22,7 +24,10 @@ fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
 fn EvalResult apply_partial(Value* partial, Value* arg, Interp* interp) {
     if (partial.partial_val.remaining > 1) {
         // Still need more args — chain another partial
-        Value* next = interp.alloc_value();
+        Value* next = g_eval_force_partial_alloc_fail ? null : interp.alloc_value();
+        if (next == null) {
+            return eval_error("out of memory while allocating partial application");
+        }
         next.tag = PARTIAL_PRIM;
         next.partial_val.func = partial.partial_val.func;
         next.partial_val.first_arg = partial.partial_val.first_arg;

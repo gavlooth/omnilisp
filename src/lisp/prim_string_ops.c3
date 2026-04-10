@@ -69,10 +69,7 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
         i++;
     }
     builder.chars[builder.len] = 0;
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    strval_into_value(builder, result);
-    return result;
+    return strval_materialize_result(builder, interp, "string-replace: failed to allocate result value");
 }
 
 fn Value* prim_char_at(Value*[] args, Env* env, Interp* interp) {
@@ -101,10 +98,7 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
         }
     }
     builder.chars[builder.len] = 0;
-    Value* result = interp.alloc_value();
-    result.tag = STRING;
-    strval_into_value(builder, result);
-    return result;
+    return strval_materialize_result(builder, interp, "string-repeat: failed to allocate result value");
 }
 
 /**

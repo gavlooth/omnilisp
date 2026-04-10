@@ -430,10 +430,6 @@ fn void run_memory_lifetime_env_copy_clones_global_iterator_closure_test(Interp*
         Value* copied_inner_after_release = copied_after_release != null && copied_after_release.tag == ITERATOR
             ? copied_after_release.iterator_val
             : null;
-
-        interp.current_scope = saved_scope;
-        main::scope_release(target);
-
         bool post_release_ok = copied_after_release != null &&
                                copied_after_release.tag == ITERATOR &&
                                copied_inner_after_release != null &&
@@ -441,6 +437,10 @@ fn void run_memory_lifetime_env_copy_clones_global_iterator_closure_test(Interp*
                                copied_inner_after_release.closure_val != null &&
                                copied_inner_after_release.closure_val.env == interp.global_env &&
                                copied_inner_after_release.closure_val.env_scope == null;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+
         bool ok = setup_ok && copied_ok && post_release_ok;
 
         if (ok) {
@@ -530,15 +530,15 @@ fn void run_memory_lifetime_env_copy_memoizes_iterator_closure_payload_clone_tes
             copied_iter_after_release != null && copied_iter_after_release.tag == ITERATOR
             ? copied_iter_after_release.iterator_val
             : null;
-
-        interp.current_scope = saved_scope;
-        main::scope_release(target);
-
         bool post_release_ok = copied_closure_after_release != null &&
                                copied_closure_after_release.tag == CLOSURE &&
                                copied_iter_after_release != null &&
                                copied_iter_after_release.tag == ITERATOR &&
                                copied_inner_after_release == copied_closure_after_release;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+
         bool ok = setup_ok && copied_ok && post_release_ok;
 
         if (ok) {
