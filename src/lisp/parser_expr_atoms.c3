@@ -33,13 +33,11 @@ fn Expr* Parser.parse_string_literal_expr(Parser* self) {
     e.lit.value = self.interp.alloc_value_root();
     e.lit.value.tag = STRING;
 
-    usz len = self.lexer.current.text_len;
-    StringVal* builder = strval_new(len + 1);
-    for (usz i = 0; i < len; i++) {
-        builder.chars[i] = self.lexer.current.text[i];
+    StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);
+    if (builder == null) {
+        self.set_error("out of memory while parsing string literal");
+        return null;
     }
-    builder.chars[len] = 0;
-    builder.len = len;
     strval_into_value(builder, e.lit.value);
     self.lexer.advance();
     return self.parse_postfix_index(e);

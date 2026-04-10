@@ -94,6 +94,7 @@ struct StringVal {
     char* chars;    // heap-allocated, null-terminated
     usz len;
     usz capacity;   // allocated size
+    bool failed;
 }
 
 /**

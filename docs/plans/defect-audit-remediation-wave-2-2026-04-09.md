@@ -330,6 +330,32 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed the broader shared `StringVal` builder hardening slice after the
+  runtime-helper wrapper pass:
+  - `src/lisp/prim_string_format_helpers.c3` now makes builder creation/growth
+    fail closed and exposes deterministic initial-alloc / grow-fail seams.
+  - runtime string helpers in:
+    - `src/lisp/prim_string_ops.c3`
+    - `src/lisp/prim_string_format.c3`
+    - `src/lisp/prim_string_format_directives.c3`
+    now propagate builder OOM instead of continuing with invalid builder state.
+  - parser string literal construction in:
+    - `src/lisp/parser_datum_helpers.c3`
+    - `src/lisp/parser_expr_atoms.c3`
+    - `src/lisp/parser_patterns_values.c3`
+    - `src/lisp/parser_quasiquote_datum_helpers.c3`
+    now shares the checked builder path and fails closed with parser errors.
+  - `src/lisp/primitives_meta_types.c3` no longer uses unchecked `StringVal`
+    allocation in the `unsafe-free` error path.
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=127 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=127 fail=0`)
+  - bounded `compiler`: green (`pass=191 fail=0`)
+- closing this lane exposed the next adjacent runtime findings instead of
+  leaving the queue artificially empty:
+  - `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008`
+  - `AUDIT-ITERATOR-TAIL-ERROR-PROPAGATION-008`
+
 - landed adjacent runtime-helper fail-closed hardening after the boundary/JIT
   ownership wave:
   - `src/lisp/eval_apply.c3` now fails closed on chained partial wrapper

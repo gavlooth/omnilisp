@@ -1,5 +1,39 @@
 ## 2026-04-10
 
+- Closed the broader shared `StringVal` builder OOM lane so builder creation
+  and growth now fail closed instead of crashing before result materialization:
+  - `src/lisp/prim_string_format_helpers.c3` now:
+    - returns `null` from `strval_new(...)` on builder allocation failure,
+    - gives `strval_ensure(...)` an explicit `bool` failure contract with size
+      overflow guards,
+    - stops `strval_push(...)` / `strval_append(...)` / padding helpers from
+      writing after a failed growth attempt,
+    - and exposes deterministic seams for initial builder allocation and
+      builder growth failure.
+  - `src/lisp/prim_string_ops.c3`,
+    `src/lisp/prim_string_format.c3`, and
+    `src/lisp/prim_string_format_directives.c3`
+    now propagate those builder failures as typed runtime OOM errors instead of
+    continuing with invalid builder state.
+  - parser string literal construction in:
+    - `src/lisp/parser_datum_helpers.c3`
+    - `src/lisp/parser_expr_atoms.c3`
+    - `src/lisp/parser_patterns_values.c3`
+    - `src/lisp/parser_quasiquote_datum_helpers.c3`
+    now uses the same checked builder path and fails closed with parser errors.
+  - `src/lisp/primitives_meta_types.c3` no longer uses unchecked `StringVal`
+    allocation in the `unsafe-free` error path.
+  - new regressions:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now covers
+      direct result-wrapper failure plus builder allocation/growth failure for
+      runtime string helpers.
+    - `src/lisp/tests_compiler_core_groups_fail_closed.c3` now covers parser
+      string-literal builder allocation failure.
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=127 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=127 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp'` -> `pass=191 fail=0`
+
 - Closed adjacent runtime-helper allocation fail-open paths and tightened stale
   lifetime regressions exposed by ASAN:
   - `src/lisp/eval_apply.c3` now fails closed if chained partial application

@@ -267,6 +267,28 @@ for future concurrency ownership evolution.
   sequencing while further shared-object consolidation proceeds.
 ## 2026-04-10 follow-up
 
+- The shared `StringVal` builder contract is now fail-closed:
+  - builder creation returns `null` on OOM,
+  - growth returns failure instead of writing through null grow buffers,
+  - and the append/padding helpers stop mutating builder state after a failed
+    grow attempt.
+- Runtime string helpers and parser string literal construction now share that
+  checked builder path:
+  - `prim_string_ops.c3`, `prim_string_format.c3`,
+    and `prim_string_format_directives.c3` surface runtime OOM instead of
+    continuing with invalid builders,
+  - parser string literal builders now set parser errors instead of
+    dereferencing failed builder allocation.
+- Latest bounded evidence for this lane:
+  - bounded `memory-lifetime-smoke`: `pass=127 fail=0`
+  - bounded ASAN `memory-lifetime-smoke`: `pass=127 fail=0`
+  - bounded `compiler`: `pass=191 fail=0`
+- Residual adjacent runtime lanes are no longer in `StringVal` itself:
+  - unchecked shared error/collection constructors (`make_error`,
+    `make_array`, `hashmap_new` / `make_hashmap`)
+  - iterator tail error propagation that can still degrade faults into
+    truncation semantics
+
 - Runtime helper allocation failures now fail closed in adjacent non-boundary
   helpers:
   - `apply_partial(...)` no longer dereferences a null wrapper allocation while

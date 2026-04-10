@@ -132,12 +132,12 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     // Mark as error so use-after-free is caught instead of silently becoming nil
     v.tag = ERROR;
     char[] msg = "use after unsafe-free!";
-    StringVal* err_builder = strval_new(msg.len + 1);
-    for (usz i = 0; i < msg.len; i++) {
-        err_builder.chars[i] = msg[i];
+    StringVal* err_builder = strval_new_from_slice(msg);
+    if (err_builder == null) {
+        v.str_chars = null;
+        v.str_len = 0;
+        return make_void(interp);
     }
-    err_builder.chars[msg.len] = 0;
-    err_builder.len = msg.len;
     strval_into_value(err_builder, v);
     return make_void(interp);
 }

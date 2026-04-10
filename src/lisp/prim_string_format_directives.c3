@@ -44,13 +44,19 @@ fn FormatSpec parse_format_spec(char[] fmt, usz* i_ptr) {
 
 fn Value* format_display_directive(StringVal* builder, Value* a, FormatSpec spec, Interp* interp) {
     StringVal* stmp = strval_new(32);
-    defer {
-        mem::free(stmp.chars);
-        mem::free(stmp);
+    if (stmp == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to allocate temporary builder");
     }
-    format_append_display(stmp, a, interp);
+    defer {
+        strval_dispose(stmp);
+    }
+    if (!format_append_display(stmp, a, interp) || strval_failed(stmp)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow temporary builder");
+    }
     char[] sval = stmp.chars[:stmp.len];
-    strval_append_padded(builder, sval, spec.width, spec.precision, spec.left_align, spec.has_precision);
+    if (!strval_append_padded(builder, sval, spec.width, spec.precision, spec.left_align, spec.has_precision)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+    }
     return null;
 }
 
@@ -93,7 +99,9 @@ fn Value* format_int_directive(StringVal* builder, Value* a, FormatSpec spec, ch
             }
         default: return raise_error(interp, "format: unknown integer directive");
     }
-    strval_append_num_padded(builder, val, spec.width, spec.left_align);
+    if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+    }
     return null;
 }
 
@@ -115,7 +123,9 @@ fn Value* format_float_directive(StringVal* builder, Value* a, FormatSpec spec, 
             return raise_error(interp, "format: internal float formatting failure");
         }
     }
-    strval_append_num_padded(builder, val, spec.width, spec.left_align);
+    if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+    }
     return null;
 }
 
@@ -138,7 +148,9 @@ fn Value* format_scientific_directive(StringVal* builder, Value* a, FormatSpec s
             return raise_error(interp, "format: internal scientific formatting failure");
         }
     }
-    strval_append_num_padded(builder, val, spec.width, spec.left_align);
+    if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+    }
     return null;
 }
 
@@ -165,7 +177,9 @@ fn Value* format_binary_directive(StringVal* builder, Value* a, FormatSpec spec,
             out[out_len++] = rev[rev_len - 1 - k];
         }
     }
-    strval_append_num_padded(builder, out[:out_len], spec.width, spec.left_align);
+    if (!strval_append_num_padded(builder, out[:out_len], spec.width, spec.left_align)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+    }
     return null;
 }
 
@@ -175,7 +189,9 @@ fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] 
 
     if (i >= fmt.len) {
         // Trailing '%' with no directive — just emit '%'
-        strval_push(builder, '%');
+        if (!strval_push(builder, '%')) {
+            return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+        }
         *i_ptr = i;
         return SPECIAL_BREAK;
     }
@@ -185,7 +201,9 @@ fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] 
 
     if (directive == '%') {
         // %% → literal %
-        strval_push(builder, '%');
+        if (!strval_push(builder, '%')) {
+            return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+        }
         return SPECIAL_CONTINUE;
     }
 
@@ -207,52 +225,77 @@ fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] 
 
         default:
             // Unknown directive — emit as literal
-            strval_push(builder, '%');
-            strval_push(builder, directive);
+            if (!strval_push(builder, '%') || !strval_push(builder, directive)) {
+                return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
+            }
             return null;
     }
 }
 
 // Handle one ~ directive in cl-format string.
 // Dispatches on directive char, appends to builder, advances *arg_idx.
-fn void cl_format_directive(StringVal* builder, char directive, Value*[] args, usz* arg_idx, Interp* interp) {
+fn Value* cl_format_directive(StringVal* builder, char directive, Value*[] args, usz* arg_idx, Interp* interp) {
     if (directive == 'a' || directive == 's') {
         if (*arg_idx < args.len) {
             Value* a = args[(*arg_idx)++];
             if (a == null || is_nil(a)) {
-                strval_append(builder, "nil");
+                if (!strval_append(builder, "nil")) {
+                    return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                }
             } else if (is_int(a)) {
                 char[32] nbuf;
                 if (try char[] nslice = io::bprintf(&nbuf, "%d", a.int_val)) {
-                    strval_append(builder, nslice);
+                    if (!strval_append(builder, nslice)) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 } else {
-                    strval_append(builder, "#<fmt-error>");
+                    if (!strval_append(builder, "#<fmt-error>")) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 }
             } else if (is_double(a)) {
                 char[64] nbuf;
                 if (try char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)) {
-                    strval_append(builder, nslice);
+                    if (!strval_append(builder, nslice)) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 } else {
-                    strval_append(builder, "#<fmt-error>");
+                    if (!strval_append(builder, "#<fmt-error>")) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 }
             } else if (a.tag == STRING) {
                 if (directive == 's') {
-                    strval_push(builder, '"');
+                    if (!strval_push(builder, '"')) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 }
-                strval_append(builder, a.str_chars[:a.str_len]);
+                if (!strval_append(builder, a.str_chars[:a.str_len])) {
+                    return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                }
                 if (directive == 's') {
-                    strval_push(builder, '"');
+                    if (!strval_push(builder, '"')) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
                 }
             } else if (is_symbol(a)) {
-                strval_append(builder, interp.symbols.get_name(a.sym_val));
+                if (!strval_append(builder, interp.symbols.get_name(a.sym_val))) {
+                    return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                }
             } else {
-                strval_append(builder, "#<obj>");
+                if (!strval_append(builder, "#<obj>")) {
+                    return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                }
             }
         }
     } else if (directive == '~') {
-        strval_push(builder, '~');
+        if (!strval_push(builder, '~')) {
+            return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+        }
     } else {
-        strval_push(builder, '~');
-        strval_push(builder, directive);
+        if (!strval_push(builder, '~') || !strval_push(builder, directive)) {
+            return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+        }
     }
+    return null;
 }

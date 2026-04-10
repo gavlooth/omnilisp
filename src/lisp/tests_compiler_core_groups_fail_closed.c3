@@ -370,6 +370,16 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     }
 
     {
+        g_string_force_builder_alloc_fail_nth = 1;
+        char[] err = "";
+        char[] code = compile_to_c3("\"abc\"", interp, &err);
+        g_string_force_builder_alloc_fail_nth = 0;
+        bool ok = code.len == 0 && str_contains(err, "out of memory while parsing string literal");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parser string literal builder allocation failure fails closed"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parser string literal builder allocation failure fails closed"); }
+    }
+
+    {
         List{Expr*} exprs = parse_program("1 2.[", interp);
         defer exprs.free();
         bool ok = exprs.len() == 0;

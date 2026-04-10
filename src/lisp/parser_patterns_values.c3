@@ -8,13 +8,11 @@ fn Pattern* Parser.parse_string_pattern_literal(Parser* self) {
     p.tag = PAT_LIT;
     p.lit_value = self.interp.alloc_value_root();
     p.lit_value.tag = STRING;
-    usz len = self.lexer.current.text_len;
-    StringVal* builder = strval_new(len + 1);
-    for (usz i = 0; i < len; i++) {
-        builder.chars[i] = self.lexer.current.text[i];
+    StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);
+    if (builder == null) {
+        self.set_error("out of memory while parsing string literal");
+        return null;
     }
-    builder.chars[len] = 0;
-    builder.len = len;
     strval_into_value(builder, p.lit_value);
     self.lexer.advance();
     return p;

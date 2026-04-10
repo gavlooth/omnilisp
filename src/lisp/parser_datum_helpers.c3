@@ -23,16 +23,14 @@ fn Value* parser_make_symbol_datum(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
-fn Value* parser_make_string_datum(Interp* interp, Lexer* lex) {
-    Value* v = interp.alloc_value_root();
+fn Value* parser_make_string_datum(Parser* self) {
+    Value* v = self.interp.alloc_value_root();
     v.tag = STRING;
-    usz len = lex.current.text_len;
-    StringVal* builder = strval_new(len + 1);
-    for (usz i = 0; i < len; i++) {
-        builder.chars[i] = lex.current.text[i];
+    StringVal* builder = strval_new_from_slice(self.lexer.current.text[:self.lexer.current.text_len]);
+    if (builder == null) {
+        self.set_error("out of memory while parsing string literal");
+        return null;
     }
-    builder.chars[len] = 0;
-    builder.len = len;
     strval_into_value(builder, v);
     return v;
 }

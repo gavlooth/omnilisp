@@ -49,6 +49,9 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
     char[] new_str = args[2].str_chars[:args[2].str_len];
     if (old.len == 0) return args[0]; // nothing to replace
     StringVal* builder = strval_new(str.len);
+    if (builder == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "string-replace: failed to allocate builder");
+    }
     usz i = 0;
     while (i < str.len) {
         if (i + old.len <= str.len) {
@@ -57,18 +60,18 @@ fn Value* prim_string_replace(Value*[] args, Env* env, Interp* interp) {
                 if (str[i + j] != old[j]) { match = false; break; }
             }
             if (match) {
-                strval_ensure(builder, new_str.len);
-                for (usz j = 0; j < new_str.len; j++) {
-                    builder.chars[builder.len++] = new_str[j];
+                if (!strval_append(builder, new_str)) {
+                    return strval_raise_oom(builder, interp, "string-replace: failed to grow builder");
                 }
                 i += old.len;
                 continue;
             }
         }
-        strval_push(builder, str[i]);
+        if (!strval_push(builder, str[i])) {
+            return strval_raise_oom(builder, interp, "string-replace: failed to grow builder");
+        }
         i++;
     }
-    builder.chars[builder.len] = 0;
     return strval_materialize_result(builder, interp, "string-replace: failed to allocate result value");
 }
 
@@ -91,13 +94,14 @@ fn Value* prim_string_repeat(Value*[] args, Env* env, Interp* interp) {
     long n = args[1].int_val;
     if (n <= 0) return make_string(interp, "");
     StringVal* builder = strval_new(args[0].str_len * (usz)n);
+    if (builder == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "string-repeat: failed to allocate builder");
+    }
     for (long i = 0; i < n; i++) {
-        strval_ensure(builder, args[0].str_len);
-        for (usz j = 0; j < args[0].str_len; j++) {
-            builder.chars[builder.len++] = args[0].str_chars[j];
+        if (!strval_append(builder, args[0].str_chars[:args[0].str_len])) {
+            return strval_raise_oom(builder, interp, "string-repeat: failed to grow builder");
         }
     }
-    builder.chars[builder.len] = 0;
     return strval_materialize_result(builder, interp, "string-repeat: failed to allocate result value");
 }
 

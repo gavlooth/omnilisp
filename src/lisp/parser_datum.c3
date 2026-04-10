@@ -30,7 +30,8 @@ fn Value* Parser.parse_datum_template_only(
 }
 
 fn Value* Parser.parse_datum_string(Parser* self) {
-    Value* v = parser_make_string_datum(self.interp, self.lexer);
+    Value* v = parser_make_string_datum(self);
+    if (v == null) return null;
     self.lexer.advance();
     return v;
 }

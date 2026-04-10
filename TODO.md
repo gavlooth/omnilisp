@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 2
 
 Completed backlog snapshots:
 
@@ -18,29 +18,69 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-STRING-BUILDER-OOM-007` harden shared `StringVal` builder creation and growth to fail closed
+- [ ] `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008` harden shared error/collection constructors that still fail open on OOM
   - problem:
-    - this batch closed result-wrapper/key-wrapper allocation failures in
-      `eval_apply`, iterator thunk/wrapper helpers, string formatting/string
-      replacement result materialization, and HTTP response field-key creation.
-    - the broader shared builder contract is still fail-open in
-      `src/lisp/prim_string_format_helpers.c3`:
-      - `strval_new(...)` dereferences `sv` and `sv.chars` without null checks
-        after `mem::malloc(...)`
-      - `strval_ensure(...)` dereferences `new_chars` without null checks after
-        `mem::malloc(...)`
-    - because `StringVal` is a shared helper, this is wider than one primitive
-      family and needs one coherent hardening pass across current callsites.
+    - the new iterator/string helper guards now surface runtime OOM paths more
+      often, but several shared constructors they depend on still dereference
+      unchecked allocations:
+      - `src/lisp/value_constructors.c3`: `make_error(...)`
+      - `src/lisp/value_predicates_accessors_basic.c3`: `make_array(...)`
+      - `src/lisp/prim_collection_hashmap.c3`: `hashmap_new(...)` /
+        `make_hashmap(...)`
+    - this means guarded helper paths can still crash inside shared fallback
+      error or collection construction instead of failing closed end-to-end.
   - required closure:
-    - make `StringVal` builder creation/growth return failure instead of
-      crashing on OOM
-    - thread that fail-closed contract through current formatting/string
-      helper callsites
-    - add deterministic regression seams for initial builder-allocation failure
-      and mid-growth failure
+    - make those constructors fail closed with one explicit contract
+    - add deterministic regressions for iterator/error paths that depend on
+      them
     - validate with bounded `memory-lifetime-smoke` and ASAN
 
+- [ ] `AUDIT-ITERATOR-TAIL-ERROR-PROPAGATION-008` stop iterator tail-construction faults from degrading into silent truncation
+  - problem:
+    - several iterator thunk builders still compose `(item . next)` pairs
+      without checking whether the tail constructor returned `ERROR`
+    - when the tail is not an actual iterator, downstream logic treats it as
+      termination, so allocation faults can look like a shortened iteration
+      instead of a runtime error
+  - required closure:
+    - propagate tail construction `ERROR` values explicitly through iterator
+      thunk/coroutine helpers
+    - add focused regressions that prove iterator OOM does not degrade into
+      normal completion
+    - validate targeted iterator slices plus bounded smoke
+
 ## Recently Closed
+
+- [x] `AUDIT-STRING-BUILDER-OOM-007` harden shared `StringVal` builder creation and growth to fail closed
+  - closure evidence:
+    - `src/lisp/prim_string_format_helpers.c3` now gives `StringVal` an
+      explicit fail-closed contract:
+      - `strval_new(...)` returns `null` instead of dereferencing failed
+        allocations,
+      - `strval_ensure(...)` returns `bool`, guards size overflow, and marks
+        builder failure on grow failure,
+      - `strval_push(...)` / `strval_append(...)` / padding helpers now stop
+        writing after a failed growth attempt,
+      - deterministic seams were added for initial builder allocation and
+        builder growth failure.
+    - parser string literal construction paths in
+      `src/lisp/parser_datum_helpers.c3`,
+      `src/lisp/parser_expr_atoms.c3`,
+      `src/lisp/parser_patterns_values.c3`, and
+      `src/lisp/parser_quasiquote_datum_helpers.c3`
+      now share the checked builder path and set parser errors instead of
+      dereferencing a failed builder allocation.
+    - runtime string helpers in
+      `src/lisp/prim_string_ops.c3`,
+      `src/lisp/prim_string_format.c3`, and
+      `src/lisp/prim_string_format_directives.c3`
+      now fail closed on builder creation/growth failure instead of writing
+      through invalid builder buffers.
+    - `src/lisp/primitives_meta_types.c3` no longer uses unchecked `StringVal`
+      allocation in the `unsafe-free` error path.
+    - validation:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=127 fail=0`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp'` -> `pass=191 fail=0`
 
 - [x] `AUDIT-JIT-POLICY-FULL-SLICE-006` isolate and close the remaining non-continuation `jit-policy` slice crash
   - closure evidence:
