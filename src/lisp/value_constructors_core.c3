@@ -3,6 +3,16 @@ module lisp;
 import main;
 
 bool g_value_force_make_string_alloc_fail = false;
+int g_value_force_closure_scope_alloc_fail_nth = 0;
+
+fn void* value_alloc_closure_payload(main::ScopeRegion* scope, usz size) @inline {
+    if (scope == null) return null;
+    if (g_value_force_closure_scope_alloc_fail_nth > 0) {
+        g_value_force_closure_scope_alloc_fail_nth--;
+        if (g_value_force_closure_scope_alloc_fail_nth == 0) return null;
+    }
+    return scope.alloc(size);
+}
 
 // =============================================================================
 // SECTION 2: VALUE CONSTRUCTORS (Core Surface)
@@ -152,7 +162,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
             }
         }
 
-        Value* v = interp.alloc_value_escape();
+        Value* v = boundary_alloc_value_in_current_escape(interp);
         if (v == null) {
             boundary_cleanup_materialized_value(
                 car,
@@ -185,15 +195,24 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
 }
 
 fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
+    Closure* closure = (Closure*)value_alloc_closure_payload(interp.current_scope, Closure.sizeof);
+    if (closure == null) {
+        return raise_error(interp, "closure: out of memory");
+    }
+    SymbolId* params = (SymbolId*)value_alloc_closure_payload(interp.current_scope, SymbolId.sizeof * 1);
+    if (params == null) {
+        return raise_error(interp, "closure: out of memory");
+    }
+    params[0] = param;
+
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
-    v.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+    v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
     v.closure_val.param = param;
-    v.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * 1);
-    v.closure_val.params[0] = param;
+    v.closure_val.params = params;
     v.closure_val.param_count = 1;
     v.closure_val.has_rest = false;
     v.closure_val.rest_param = 0;
@@ -206,10 +225,15 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
 }
 
 fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
+    Closure* closure = (Closure*)value_alloc_closure_payload(interp.current_scope, Closure.sizeof);
+    if (closure == null) {
+        return raise_error(interp, "closure: out of memory");
+    }
+
     Value* v = interp.alloc_value();
     v.tag = CLOSURE;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_closure);
-    v.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
+    v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
     v.closure_val.param = 0;

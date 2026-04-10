@@ -11599,6 +11599,16 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     slots across attempts.
   - validation:
     - bounded `memory-lifetime-smoke`: `pass=179 fail=0`
+- 2026-04-10 (core constructor publication fail-closed follow-up):
+  - `make_cons(...)` ESCAPE publication now routes wrapper allocation through
+    the checked boundary allocator instead of the assert-only
+    `alloc_value_escape()` path.
+  - `make_closure(...)` and `make_closure_no_param(...)` now allocate closure
+    payload storage before publishing/registering the wrapper, so closure
+    payload OOM returns `closure: out of memory` instead of publishing a
+    half-built closure or dereferencing null payload storage.
+  - validation:
+    - bounded `memory-lifetime-smoke`: `pass=182 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

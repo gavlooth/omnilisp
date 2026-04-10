@@ -1386,6 +1386,81 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* pair = null;
+        if (setup_ok) {
+            interp.current_scope = child;
+            Value* escape_car = interp.alloc_value_escape();
+            Value* escape_nil = interp.alloc_value_escape();
+            if (escape_car == null || escape_nil == null) {
+                setup_ok = false;
+            } else {
+                escape_car.tag = INT;
+                escape_car.int_val = 7;
+                escape_nil.tag = NIL;
+                int saved_force = g_boundary_force_alloc_escape_value_fail_nth;
+                g_boundary_force_alloc_escape_value_fail_nth = 1;
+                pair = make_cons(interp, escape_car, escape_nil);
+                g_boundary_force_alloc_escape_value_fail_nth = saved_force;
+            }
+            interp.current_scope = saved;
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(pair, "cons: failed to allocate escape pair");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: make_cons escape wrapper alloc faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: make_cons escape wrapper alloc faults fail closed (setup_ok=%s pair=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(pair));
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
+    }
+
+    {
+        int saved_force = g_value_force_closure_scope_alloc_fail_nth;
+        g_value_force_closure_scope_alloc_fail_nth = 1;
+        Value* closure_fail = make_closure_no_param(interp, null, interp.global_env);
+        g_value_force_closure_scope_alloc_fail_nth = saved_force;
+
+        bool ok = runtime_alloc_error_matches(closure_fail, "closure: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: closure payload alloc faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: closure payload alloc faults fail closed (msg=%s)",
+                runtime_alloc_error_text(closure_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        int saved_force = g_value_force_closure_scope_alloc_fail_nth;
+        g_value_force_closure_scope_alloc_fail_nth = 2;
+        Value* closure_fail = make_closure(interp, interp.symbols.intern("__closure_param_oom"), null, interp.global_env);
+        g_value_force_closure_scope_alloc_fail_nth = saved_force;
+
+        bool ok = runtime_alloc_error_matches(closure_fail, "closure: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: closure param alloc faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: closure param alloc faults fail closed (msg=%s)",
+                runtime_alloc_error_text(closure_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
 

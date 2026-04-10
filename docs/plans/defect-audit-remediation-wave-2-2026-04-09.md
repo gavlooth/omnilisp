@@ -1165,3 +1165,16 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=179 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed core constructor publication drift:
+  - `src/lisp/value_constructors_core.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - `make_cons(...)` ESCAPE publication now uses the checked boundary allocator
+    instead of the assert-only `alloc_value_escape()` path
+  - `make_closure(...)` and `make_closure_no_param(...)` now allocate closure
+    payload storage before publishing/registering the wrapper, so payload OOM
+    fails closed with a runtime error instead of publishing partial state
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=182 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

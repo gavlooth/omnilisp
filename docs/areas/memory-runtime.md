@@ -668,3 +668,7 @@ for future concurrency ownership evolution.
 - Repeated shared ARRAY child-promotion faults now show only stable
   PromotionContext memo overhead across attempts, with no accumulating ESCAPE
   wrapper-slot growth.
+- Core constructor publication now applies the same rule too:
+  `make_cons(...)` ESCAPE publication uses the checked boundary allocator, and
+  `make_closure(...)` / `make_closure_no_param(...)` allocate closure payload
+  storage before publishing/registering the wrapper.
