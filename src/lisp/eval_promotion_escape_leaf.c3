@@ -4,6 +4,7 @@ import main;
 
 bool g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
 bool g_boundary_force_escape_continuation_wrapper_alloc_fail = false;
+bool g_boundary_force_escape_coroutine_wrapper_alloc_fail = false;
 
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
@@ -224,7 +225,12 @@ fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* c
         v.scope_gen != interp.current_scope.generation) {
         return raise_error(interp, "boundary: refusing coroutine wrapper alias during escape promotion");
     }
-    Value* result = interp.alloc_value_escape();
+    Value* result = g_boundary_force_escape_coroutine_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value_escape();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate coroutine escape copy");
+    }
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);

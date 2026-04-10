@@ -636,3 +636,8 @@ for future concurrency ownership evolution.
 - Coroutine publication now cleans up the newly created `StackCtx` when
   wrapper allocation fails after context creation, so the failure returns as a
   runtime error instead of stranding pool state.
+- Coroutine boundary copy/escape lanes now apply the same rule:
+  coroutine copy-to-parent destroys cloned context state when destination
+  wrapper allocation fails, and coroutine escape promotion now rejects
+  escape-wrapper allocation failure explicitly before mutating source
+  ownership.

@@ -224,6 +224,87 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
         mem::free(tmp);
     }
 
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
+        tmp.init();
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        EvalResult r_thunk = run("(lambda () 19)", tmp);
+        if (r_thunk.error.has_error || r_thunk.value == null) {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership (failed to build thunk)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        Value*[1] coro_args;
+        coro_args[0] = r_thunk.value;
+        Value* base = prim_coroutine(coro_args[..], null, tmp);
+        if (base == null || base.tag != COROUTINE || base.coroutine_val == null) {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership (failed to build coroutine)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        main::StackCtx* owned_ctx = base.coroutine_val;
+        base.coroutine_val = null;
+
+        main::ScopeRegion* saved = tmp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership (failed to allocate child scope)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        tmp.current_scope = child;
+        Value* local_owner = boundary_alloc_value_in_scope(tmp, child, true);
+        local_owner.tag = COROUTINE;
+        local_owner.coroutine_val = owned_ctx;
+
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* promoted = promote_to_root(local_owner, tmp);
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+
+        usz before_release = tmp.stack_ctx_pool.pool_size;
+        bool fail_closed = promoted != null &&
+            promoted.tag == ERROR &&
+            local_owner.coroutine_val == owned_ctx;
+
+        tmp.current_scope = saved;
+        main::scope_release(child);
+        usz after_release = tmp.stack_ctx_pool.pool_size;
+
+        bool ok = fail_closed && lifetime_stack_ctx_release_ok(before_release, after_release);
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: promote_to_root coroutine wrapper alloc failure keeps source ownership");
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
     // Invariant: promote_to_escape transfers coroutine-wrapper ownership into ESCAPE lane.
     {
         Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
@@ -297,6 +378,87 @@ fn bool run_memory_lifetime_result_and_coroutine_tests(Interp* interp, int* pass
             (*pass)++;
         } else {
             io::printn("[FAIL] lifetime: promote_to_escape transfers coroutine wrapper ownership");
+            (*fail)++;
+        }
+
+        tmp.destroy();
+        mem::free(tmp);
+    }
+
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        if (tmp == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership (bootstrap alloc)");
+            (*fail)++;
+            return false;
+        }
+        tmp.init();
+        if (!register_primitives(tmp)) {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership (bootstrap)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        EvalResult r_thunk = run("(lambda () 23)", tmp);
+        if (r_thunk.error.has_error || r_thunk.value == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership (failed to build thunk)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        Value*[1] coro_args;
+        coro_args[0] = r_thunk.value;
+        Value* base = prim_coroutine(coro_args[..], null, tmp);
+        if (base == null || base.tag != COROUTINE || base.coroutine_val == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership (failed to build coroutine)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        main::StackCtx* owned_ctx = base.coroutine_val;
+        base.coroutine_val = null;
+
+        main::ScopeRegion* saved = tmp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership (failed to allocate child scope)");
+            (*fail)++;
+            tmp.destroy();
+            mem::free(tmp);
+            return false;
+        }
+
+        tmp.current_scope = child;
+        Value* local_owner = boundary_alloc_value_in_scope(tmp, child, true);
+        local_owner.tag = COROUTINE;
+        local_owner.coroutine_val = owned_ctx;
+
+        bool saved_force = g_boundary_force_escape_coroutine_wrapper_alloc_fail;
+        g_boundary_force_escape_coroutine_wrapper_alloc_fail = true;
+        usz before_release = tmp.stack_ctx_pool.pool_size;
+        Value* escaped = promote_to_escape(local_owner, tmp);
+        g_boundary_force_escape_coroutine_wrapper_alloc_fail = saved_force;
+
+        bool fail_closed = escaped != null &&
+            escaped.tag == ERROR &&
+            local_owner.coroutine_val == owned_ctx;
+
+        tmp.current_scope = saved;
+        main::scope_release(child);
+        usz after_release = tmp.stack_ctx_pool.pool_size;
+
+        bool ok = fail_closed && lifetime_stack_ctx_release_ok(before_release, after_release);
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: coroutine wrapper escape alloc failure keeps source ownership");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: coroutine wrapper escape alloc failure keeps source ownership");
             (*fail)++;
         }
 

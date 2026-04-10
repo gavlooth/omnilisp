@@ -1086,3 +1086,17 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=171 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed coroutine boundary wrapper allocation drift:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3`
+  - `src/lisp/eval_promotion_escape_leaf.c3`
+  - `src/lisp/tests_memory_lifetime_finalize_groups.c3`
+- shipped behavior:
+  - coroutine copy-to-parent now destroys cloned context state if destination
+    wrapper allocation fails instead of leaking the clone and dereferencing the
+    missing wrapper
+  - coroutine escape promotion now rejects escape-wrapper allocation failure
+    before mutating source ownership
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=173 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

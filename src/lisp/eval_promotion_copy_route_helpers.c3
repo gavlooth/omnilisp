@@ -472,6 +472,14 @@ fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
         return raise_error(interp, "boundary: refusing coroutine wrapper copy without clonable context state");
     }
     Value* result = boundary_alloc_value_in_scope(interp, interp.current_scope, true);
+    if (result == null) {
+        if (cloned_ctx.user_data != null) {
+            mem::free(cloned_ctx.user_data);
+            cloned_ctx.user_data = null;
+        }
+        main::stack_ctx_destroy(cloned_ctx, &interp.stack_ctx_pool);
+        return raise_error(interp, "boundary: failed to allocate coroutine copy value");
+    }
     result.tag = COROUTINE;
     result.coroutine_val = cloned_ctx;
     return result;

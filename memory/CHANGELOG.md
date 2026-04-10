@@ -11548,6 +11548,14 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=171 fail=0`
+- 2026-04-10 (coroutine boundary wrapper allocation fail-closed follow-up):
+  - coroutine copy-to-parent now destroys the cloned `StackCtx` and returns a
+    boundary error if the destination wrapper cannot be allocated.
+  - coroutine escape promotion now rejects escape-wrapper allocation failure
+    explicitly instead of dereferencing a null escape wrapper.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=173 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`
