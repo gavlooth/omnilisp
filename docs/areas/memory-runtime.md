@@ -550,3 +550,12 @@ for future concurrency ownership evolution.
     -> `pass=1 fail=0`
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=160 fail=0`
+
+- JIT multi-arg call construction now fails closed too:
+  - continuation-safe multi-arg call-list assembly now rejects `make_cons(...)`
+    failure while building the arg list.
+  - `jit_apply_multi_args_iterative(...)` now rejects malformed/truncated arg
+    lists instead of returning a partial multi-arg apply result as success.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-arg-malformed-list-fails-closed ...`
+    -> `pass=1 fail=0`

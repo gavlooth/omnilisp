@@ -1614,6 +1614,48 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
     }
 }
 
+fn void run_jit_policy_multi_arg_malformed_list_fails_closed_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    Value* fn_value = null;
+    Value* arg_list = null;
+    Value* result = null;
+    if (ok) {
+        EvalResult closure_r = run("(lambda (a) (lambda (b) (+ a b)))", other);
+        ok = !closure_r.error.has_error && closure_r.value != null && closure_r.value.tag == CLOSURE;
+        if (ok) fn_value = closure_r.value;
+    }
+    if (ok) {
+        arg_list = make_cons(other, make_int(other, 7), make_nil(other));
+        ok = arg_list != null && arg_list.tag == CONS;
+    }
+    if (ok) {
+        result = jit_apply_multi_args(other, fn_value, arg_list, 2);
+        ok = result != null &&
+            result.tag == ERROR &&
+            jit_policy_str_contains(result.str_chars[:result.str_len], "arg list too short");
+    }
+
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: malformed multi-arg list fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: malformed multi-arg list fails closed (result_tag=%d)",
+            result != null ? (int)result.tag : -1
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1664,6 +1706,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);

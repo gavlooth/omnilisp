@@ -48,7 +48,12 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
 
     Value* arg_list = make_nil(interp);
     for (usz i = argc; i > 0; i--) {
-        arg_list = make_cons(interp, argv[i - 1], arg_list);
+        Value* next = make_cons(interp, argv[i - 1], arg_list);
+        if (next == null) {
+            return raise_error(interp, "jit: failed to construct call arg list");
+        }
+        if (next.tag == ERROR) return next;
+        arg_list = next;
     }
     if (is_tail) {
         return jit_apply_multi_args_tail(interp, func, arg_list, argc);

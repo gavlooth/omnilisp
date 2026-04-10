@@ -1,5 +1,20 @@
 ## 2026-04-10
 
+- Closed the JIT multi-arg list fail-closed lane:
+  - `src/lisp/jit_jit_apply_runtime.c3`
+    now rejects `make_cons(...)` failure while constructing continuation-safe
+    multi-arg call lists.
+  - `src/lisp/jit_jit_apply_multi_prims.c3`
+    now makes `jit_apply_multi_args_iterative(...)` return
+    `"arg list too short"` when the arg list breaks before all required args
+    are consumed, instead of returning a partial apply result as success.
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+    now pins the malformed multi-arg list case directly in the `jit-policy`
+    slice.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-arg-malformed-list-fails-closed ./build/main --test-suite lisp'`
+
 - Closed the shared two-arg list materialization fail-closed lane:
   - `src/lisp/value_constructors.c3`
     now exposes one checked `make_list2_or_error(...)` helper with a narrow

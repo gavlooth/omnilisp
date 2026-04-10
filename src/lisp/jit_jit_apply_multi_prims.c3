@@ -201,7 +201,7 @@ fn Value* jit_apply_multi_args_iterative(Value* func, Value* arg_list, usz arg_c
     Value* result = func;
     Value* curr = arg_list;
     for (usz i = 0; i < arg_count; i++) {
-        if (curr == null || curr.tag != CONS) break;
+        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
         Value* arg = curr.cons_val.car;
         curr = curr.cons_val.cdr;
         result = jit_apply_value(result, arg, interp);

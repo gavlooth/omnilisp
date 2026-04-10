@@ -926,3 +926,20 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-TWO-ARG-LIST-MATERIALIZATION-FAILCLOSED-031`
   - actionable backlog remains `0`
+
+- landed the JIT multi-arg list fail-closed follow-up:
+  - `src/lisp/jit_jit_apply_runtime.c3`
+  - `src/lisp/jit_jit_apply_multi_prims.c3`
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- shipped behavior:
+  - continuation-safe multi-arg call-list assembly now rejects
+    `make_cons(...)` failure while building the arg list.
+  - `jit_apply_multi_args_iterative(...)` now rejects malformed/truncated arg
+    lists instead of returning partial success when the arg list breaks early.
+  - direct regression landed in:
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- validation status:
+  - focused `jit-policy`: green (`multi-arg-malformed-list-fails-closed`)
+- backlog shaping after this slice:
+  - close `AUDIT-JIT-MULTI-ARG-LIST-FAILCLOSED-032`
+  - actionable backlog remains `0`

@@ -22,6 +22,24 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-JIT-MULTI-ARG-LIST-FAILCLOSED-032` make JIT multi-arg call
+  construction and iterative apply fail closed on malformed arg-list state
+  instead of degrading to partial success
+  - closure evidence:
+    - `src/lisp/jit_jit_apply_runtime.c3`
+      now rejects `make_cons(...)` failure while constructing continuation-safe
+      multi-arg call lists instead of passing malformed arg lists downstream.
+    - `src/lisp/jit_jit_apply_multi_prims.c3`
+      now makes `jit_apply_multi_args_iterative(...)` return
+      `"arg list too short"` when the arg list breaks before all required args
+      are consumed, instead of breaking and returning the partial result.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now directly pins the malformed multi-arg list case in `jit-policy`
+      using a two-arg curried closure and a one-element arg list.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-arg-malformed-list-fails-closed ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-TWO-ARG-LIST-MATERIALIZATION-FAILCLOSED-031` make shared
   two-value list/arg materialization fail closed instead of publishing cons
   constructor failures as ordinary runtime data
