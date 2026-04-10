@@ -402,8 +402,15 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
             env_define_with_barrier(captured_env, payload_sym, make_int(interp, 911), interp);
         }
         main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
         Value* shared_closure =
             captured_env != null ? make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope) : null;
+        if (closure_env_scope != null) {
+            main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            });
+        }
         Value* shared_cons =
             shared_closure != null ? make_cons(interp, shared_closure, make_nil(interp)) : null;
 
@@ -514,9 +521,11 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
         int rc_after_array = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
         Value* hashmap_promoted = setup_ok ? promote_to_root_site(hashmap_src, interp, COPY_SITE_JIT_EVAL_SET) : null;
         int rc_after_hashmap = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        int destroy_count_before_child_release = closure_env_destroy_count;
 
         interp.current_scope = saved;
         main::scope_release(child);
+        int destroy_count_after_child_release = closure_env_destroy_count;
 
         bool array_ok = array_promoted != null &&
                         array_promoted.tag == ERROR &&
@@ -529,24 +538,28 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
         bool hashmap_ok = hashmap_promoted != null &&
                           hashmap_promoted.tag == ERROR &&
                           hashmap_promoted.str_chars != null &&
-                          str_contains(
-                              hashmap_promoted.str_chars[:hashmap_promoted.str_len],
-                              "boundary: refusing primitive copy with opaque user_data"
+                        str_contains(
+                            hashmap_promoted.str_chars[:hashmap_promoted.str_len],
+                            "boundary: refusing primitive copy with opaque user_data"
                           ) &&
                           rc_after_hashmap == 1;
-        bool ok = setup_ok && array_ok && hashmap_ok;
+        bool teardown_ok = destroy_count_before_child_release == 0 &&
+                           destroy_count_after_child_release == 1;
+        bool ok = setup_ok && array_ok && hashmap_ok && teardown_ok;
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: root-boundary shared-wrapper partial cleanup");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: root-boundary shared-wrapper partial cleanup (setup_ok=%s array_ok=%s hashmap_ok=%s rc_array=%d rc_hashmap=%d)",
+                "[FAIL] lifetime: root-boundary shared-wrapper partial cleanup (setup_ok=%s array_ok=%s hashmap_ok=%s rc_array=%d rc_hashmap=%d destroy_before_child_release=%d destroy_after_child_release=%d)",
                 setup_ok ? "yes" : "no",
                 array_ok ? "yes" : "no",
                 hashmap_ok ? "yes" : "no",
                 rc_after_array,
-                rc_after_hashmap
+                rc_after_hashmap,
+                destroy_count_before_child_release,
+                destroy_count_after_child_release
             );
             (*fail)++;
         }
