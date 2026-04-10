@@ -1130,3 +1130,19 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=176 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed root-store clone wrapper allocation drift:
+  - `src/lisp/eval_promotion_root_clone_basic.c3`
+  - `src/lisp/eval_promotion_root_clones.c3`
+  - `src/lisp/eval_promotion_escape_leaf.c3`
+  - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3`
+  - `src/lisp/tests_memory_lifetime_groups.c3`
+- shipped behavior:
+  - root-store clone helpers now route final ESCAPE wrapper publication through
+    the shared checked wrapper allocator instead of raw `alloc_value_escape()`
+  - failed root-store ARRAY wrapper publication now unwinds copied nested
+    closure retains immediately instead of pinning them into root lifetime
+- validation status:
+  - `c3c build`: green
+  - bounded `memory-lifetime-smoke`: green (`pass=177 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

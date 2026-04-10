@@ -634,6 +634,7 @@ fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* 
     run_memory_lifetime_root_boundary_hashmap_clone_test(interp, pass, fail);
     run_memory_lifetime_root_boundary_method_table_clone_test(interp, pass, fail);
     run_memory_lifetime_root_boundary_method_table_abort_no_wrapper_slot_leak_test(interp, pass, fail);
+    run_memory_lifetime_root_boundary_array_wrapper_alloc_fail_test(interp, pass, fail);
     run_memory_lifetime_root_boundary_primitive_clone_test(interp, pass, fail);
     run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(interp, pass, fail);
     run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(interp, pass, fail);

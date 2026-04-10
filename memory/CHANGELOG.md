@@ -11576,6 +11576,16 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=176 fail=0`
+- 2026-04-10 (root-store clone wrapper allocation fail-closed follow-up):
+  - root-store clone helpers for primitives, arrays, hashmaps/sets, and method
+    tables now use the shared checked ESCAPE wrapper allocator instead of raw
+    `alloc_value_escape()` publication.
+  - failed root-store ARRAY wrapper publication now proves copied nested
+    closure retains are unwound immediately instead of being pinned into root
+    lifetime until owner release.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=177 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

@@ -370,7 +370,7 @@ fn Value* root_store_clone_method_table_to_scope(
 
     MethodTable* src_mt = src.method_table_val;
     if (src_mt == null) {
-        Value* result = interp.alloc_value_escape();
+        Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) return null;
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
@@ -429,7 +429,7 @@ fn Value* root_store_clone_method_table_to_scope(
     }
     dst_mt.fallback = copied_fallback;
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         boundary_cleanup_partial_method_table_copy(
             src_mt,

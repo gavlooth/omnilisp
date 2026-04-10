@@ -328,6 +328,102 @@ fn void run_memory_lifetime_root_boundary_method_table_abort_no_wrapper_slot_lea
     }
 }
 
+fn void run_memory_lifetime_root_boundary_array_wrapper_alloc_fail_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: failed root-store ARRAY wrapper publication unwinds copied
+    // nested closure retains immediately instead of pinning them into root
+    // lifetime until owner release.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary array wrapper alloc fail rollback (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+        SymbolId payload_sym = interp.symbols.intern("__root_boundary_array_wrapper_alloc_payload");
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 881), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+            if (closure_env_scope != null) {
+                main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                    int* counter = (int*)ptr;
+                    if (counter != null) (*counter)++;
+                });
+            }
+        }
+
+        Value* local = interp.alloc_value();
+        if (local != null) {
+            local.tag = ARRAY;
+            main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+            local.array_val = null;
+        }
+
+        Array* arr = (Array*)mem::malloc(Array.sizeof);
+        if (arr != null) {
+            arr.capacity = 4;
+            arr.length = 1;
+            arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
+            if (arr.items != null) {
+                arr.items[0] = shared_closure;
+                for (usz i = 1; i < arr.capacity; i++) arr.items[i] = null;
+                local.array_val = arr;
+            } else {
+                mem::free(arr);
+                arr = null;
+            }
+        }
+
+        bool setup_ok = local != null &&
+                        local.tag == ARRAY &&
+                        local.array_val != null &&
+                        shared_closure != null &&
+                        shared_closure.tag == CLOSURE &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1;
+
+        int saved_force = g_boundary_force_alloc_escape_value_fail_nth;
+        g_boundary_force_alloc_escape_value_fail_nth = 1;
+        Value* promoted = setup_ok
+            ? root_store_clone_array_to_scope(local, interp, interp.root_scope, child)
+            : null;
+        g_boundary_force_alloc_escape_value_fail_nth = saved_force;
+
+        int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool rollback_ok = rc_after_fail == 1 &&
+                           closure_env_lookup_int(shared_closure, payload_sym, 881);
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+        bool owner_release_ok = closure_env_destroy_count == 1;
+
+        bool ok = setup_ok &&
+                  promoted == null &&
+                  rollback_ok &&
+                  owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary array wrapper alloc fail rollback");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: root-boundary array wrapper alloc fail rollback (setup_ok=%s promoted_null=%s rc_after_fail=%d destroy_count=%d rollback_ok=%s)",
+                setup_ok ? "yes" : "no",
+                promoted == null ? "yes" : "no",
+                rc_after_fail,
+                closure_env_destroy_count,
+                rollback_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, int* pass, int* fail) {
     // Invariant: child-owned PRIMITIVE wrapper crossing root-store boundary is
     // cloned only when its payload is plain data; opaque user_data must fail

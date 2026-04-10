@@ -202,7 +202,7 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
     }
     Value* result = g_boundary_force_escape_continuation_wrapper_alloc_fail
         ? null
-        : interp.alloc_value_escape();
+        : boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         if (retained_now) {
             continuation_release_handle_state_for_boundary(v.cont_val);
@@ -243,7 +243,7 @@ fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* c
     }
     Value* result = g_boundary_force_escape_coroutine_wrapper_alloc_fail
         ? null
-        : interp.alloc_value_escape();
+        : boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         return raise_error(interp, "boundary: failed to allocate coroutine escape copy");
     }

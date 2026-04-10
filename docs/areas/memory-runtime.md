@@ -656,3 +656,7 @@ for future concurrency ownership evolution.
   for string/error publication, scalar wrappers, instance / FFI handle /
   time-point wrappers, and closure publication instead of dereferencing a null
   ESCAPE wrapper.
+- Root-store clone publication now applies the same rule:
+  primitive/array/hashmap/set/method-table root-store clone helpers now route
+  final ESCAPE wrapper publication through the shared checked wrapper allocator
+  instead of raw `alloc_value_escape()` publication.

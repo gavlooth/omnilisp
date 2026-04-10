@@ -18,7 +18,7 @@ fn Value* root_store_clone_primitive_to_scope(
 
     Primitive* src_prim = src.prim_val;
     if (src_prim == null) {
-        Value* result = interp.alloc_value_escape();
+        Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) return null;
         result.tag = PRIMITIVE;
         result.prim_val = null;
@@ -36,7 +36,7 @@ fn Value* root_store_clone_primitive_to_scope(
         return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
     }
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         mem::free(dst_prim);
         return null;
@@ -65,7 +65,7 @@ fn Value* root_store_clone_array_to_scope(
 
     Array* src_arr = src.array_val;
     if (src_arr == null) {
-        Value* result = interp.alloc_value_escape();
+        Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) return null;
         result.tag = ARRAY;
         result.array_val = null;
@@ -102,7 +102,7 @@ fn Value* root_store_clone_array_to_scope(
         dst_arr.items[i] = copied;
     }
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, target_scope, true);
         return null;
@@ -131,7 +131,7 @@ fn Value* root_store_clone_hashmap_to_scope(
 
     HashMap* src_map = src.hashmap_val;
     if (src_map == null) {
-        Value* result = interp.alloc_value_escape();
+        Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) return null;
         result.tag = src.tag;
         result.hashmap_val = null;
@@ -185,7 +185,7 @@ fn Value* root_store_clone_hashmap_to_scope(
         }
     }
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, target_scope, true);
         return null;
