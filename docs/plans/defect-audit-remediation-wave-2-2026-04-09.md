@@ -40,6 +40,28 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The malformed iterator-tail fail-open lane is now also closed:
+  - `src/lisp/primitives_iter_state.c3`
+    now exposes `iterator_tail_or_error(...)` so iterator tail validation is
+    shared across terminal and coroutine helpers.
+  - `src/lisp/primitives_iter_terminal.c3`
+    now makes `collect` / `to-array` reject malformed iterator pairs and
+    malformed iterator tails instead of silently truncating the result.
+  - `src/lisp/primitives_iter_coroutine.c3`
+    now makes `map`, `filter`, `take`, `zip`, and `foldl` reject malformed
+    iterator tails instead of truncating or deferring broken state as normal
+    completion.
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+    now pins malformed-tail rejection through the surface `List`, `Array`,
+    `map`, `filter`, `take`, `zip`, and `foldl` iterator pipelines.
+  - validation:
+    - `c3c build`
+    - bounded direct evals:
+      - `scripts/run_validation_container.sh bash -lc "rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --eval \"(handle (List (Iterator (lambda () (cons 1 2)))) (raise msg (ref msg 'message)))\""`
+      - `scripts/run_validation_container.sh bash -lc "rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --eval \"(handle (foldl (lambda (a x) (+ a x)) 0 (Iterator (lambda () (cons 1 9)))) (raise msg (ref msg 'message)))\""`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The scheduler wakeup publish-fallback lane is now also closed:
   - `src/lisp/scheduler_wakeup_callbacks.c3`
     now makes timer, sleep, and poll-error callbacks fall back to direct

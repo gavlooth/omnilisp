@@ -216,6 +216,25 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     // foldr should exist for finite collections
     test_eq(interp, "foldr list minus", "(foldr - 0 (quote (1 2 3)))", 2, pass, fail);
     test_eq(interp, "foldr array minus", "(foldr - 0 [1 2 3])", 2, pass, fail);
+    test_error_contains(interp, "List ctor malformed iterator tail rejected",
+        "(List (Iterator (lambda () (cons 1 2))))", "iterator tail", pass, fail);
+    test_error_contains(interp, "Array ctor malformed iterator tail rejected",
+        "(Array (Iterator (lambda () (cons 1 2))))", "iterator tail", pass, fail);
+    test_error_contains(interp, "map malformed iterator tail rejected",
+        "(List (map (lambda (x) x) (Iterator (lambda () (cons 1 2)))))",
+        "__iterator-map: expected iterator tail", pass, fail);
+    test_error_contains(interp, "filter malformed iterator tail rejected",
+        "(List (filter odd? (Iterator (lambda () (cons 2 9)))))",
+        "__iterator-filter: expected iterator tail", pass, fail);
+    test_error_contains(interp, "take malformed iterator tail rejected",
+        "(List (take 1 (Iterator (lambda () (cons 1 2)))))",
+        "__iterator-take: expected iterator tail", pass, fail);
+    test_error_contains(interp, "zip malformed iterator tail rejected",
+        "(List (zip (Iterator (lambda () (cons 1 2))) (Iterator [4 5])))",
+        "__iterator-zip: expected iterator tail", pass, fail);
+    test_error_contains(interp, "foldl malformed iterator tail rejected",
+        "(foldl (lambda (a x) (+ a x)) 0 (Iterator (lambda () (cons 1 9))))",
+        "__iterator-foldl: expected iterator tail", pass, fail);
 }
 
 fn void run_advanced_unicode_iterator_tests(Interp* interp, int* pass, int* fail) {

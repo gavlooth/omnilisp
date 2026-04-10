@@ -54,11 +54,14 @@ fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out,
         Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
         if (pair == null || pair.tag == NIL) break;
         if (pair.tag == ERROR) return pair;
-        if (!is_cons(pair)) break;
+        if (!is_cons(pair)) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator pair");
+        }
 
         items[count++] = car(pair);
-        Value* rest = cdr(pair);
-        if (rest == null || rest.tag != ITERATOR) break;
+        Value* rest = null;
+        Value* tail_err = iterator_tail_or_error(pair, "iterator: expected iterator tail", &rest, interp);
+        if (tail_err != null) return tail_err;
         it = rest;
     }
 

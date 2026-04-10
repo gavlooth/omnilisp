@@ -9,6 +9,15 @@ fn Value* iterator_make_pair_or_propagate(Value* item, Value* next, Interp* inte
     return make_cons(interp, item, next);
 }
 
+fn Value* iterator_tail_or_error(Value* pair, char[] message, Value** tail_out, Interp* interp) @inline {
+    Value* tail = cdr(pair);
+    if (tail == null || tail.tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", message);
+    }
+    *tail_out = tail;
+    return null;
+}
+
 fn Value* iterator_make_thunk1(PrimitiveFn func, Value* first_arg, Interp* interp) {
     Value* partial = g_iterator_force_partial_alloc_fail ? null : interp.alloc_value();
     if (partial == null) {

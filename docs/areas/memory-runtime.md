@@ -78,6 +78,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - `make_array(...)` is now just the checked array constructor contract, so raw
   array creation no longer bypasses allocator failure handling and return a
   partially initialized wrapper.
+- Iterator terminal and coroutine helper paths now reject malformed iterator
+  tails consistently:
+  - `collect` / `to-array` no longer silently truncate malformed iterator
+    state as normal completion.
+  - `map`, `filter`, `take`, `zip`, and `foldl` now reject malformed iterator
+    tails directly instead of truncating or deferring broken iterator state as
+    a later partial success.
 - `deduce 'match` result dictionary materialization now uses checked hashmap
   construction and checked insertion, so match-result building no longer
   dereferences a raw hashmap shell or embed builder `ERROR`s into a successful

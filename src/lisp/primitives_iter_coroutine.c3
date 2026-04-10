@@ -25,10 +25,13 @@ fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
     if (!is_cons(pair)) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator pair");
     }
+    Value* rest = null;
+    Value* tail_err = iterator_tail_or_error(pair, "__iterator-map: expected iterator tail", &rest, interp);
+    if (tail_err != null) return tail_err;
 
     Value* mapped = jit_apply_value(func, car(pair), interp);
     if (mapped != null && mapped.tag == ERROR) return mapped;
-    return iterator_make_pair_or_propagate(mapped, iterator_map_value(func, cdr(pair), interp), interp);
+    return iterator_make_pair_or_propagate(mapped, iterator_map_value(func, rest, interp), interp);
 }
 
 fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
@@ -50,13 +53,16 @@ fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator pair");
         }
+        Value* rest = null;
+        Value* tail_err = iterator_tail_or_error(pair, "__iterator-filter: expected iterator tail", &rest, interp);
+        if (tail_err != null) return tail_err;
 
         Value* keep = jit_apply_value(pred, car(pair), interp);
         if (keep != null && keep.tag == ERROR) return keep;
         if (iterator_predicate_truthy(keep)) {
-            return iterator_make_pair_or_propagate(car(pair), iterator_filter_value(pred, cdr(pair), interp), interp);
+            return iterator_make_pair_or_propagate(car(pair), iterator_filter_value(pred, rest, interp), interp);
         }
-        iterator = cdr(pair);
+        iterator = rest;
     }
     return make_nil(interp);
 }
@@ -84,10 +90,13 @@ fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
     if (!is_cons(pair)) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator pair");
     }
+    Value* rest = null;
+    Value* tail_err = iterator_tail_or_error(pair, "__iterator-take: expected iterator tail", &rest, interp);
+    if (tail_err != null) return tail_err;
 
     return iterator_make_pair_or_propagate(
         car(pair),
-        iterator_take_value(make_int(interp, n_value.int_val - 1), cdr(pair), interp),
+        iterator_take_value(make_int(interp, n_value.int_val - 1), rest, interp),
         interp
     );
 }
@@ -111,9 +120,15 @@ fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
     if (!is_cons(left_pair) || !is_cons(right_pair)) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-zip: expected iterator pairs");
     }
+    Value* left_rest = null;
+    Value* left_tail_err = iterator_tail_or_error(left_pair, "__iterator-zip: expected iterator tail", &left_rest, interp);
+    if (left_tail_err != null) return left_tail_err;
+    Value* right_rest = null;
+    Value* right_tail_err = iterator_tail_or_error(right_pair, "__iterator-zip: expected iterator tail", &right_rest, interp);
+    if (right_tail_err != null) return right_tail_err;
 
     Value* item_pair = make_cons(interp, car(left_pair), car(right_pair));
-    return iterator_make_pair_or_propagate(item_pair, iterator_zip_value(cdr(left_pair), cdr(right_pair), interp), interp);
+    return iterator_make_pair_or_propagate(item_pair, iterator_zip_value(left_rest, right_rest, interp), interp);
 }
 
 fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
@@ -133,11 +148,14 @@ fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-foldl: expected iterator pair");
         }
+        Value* rest = null;
+        Value* tail_err = iterator_tail_or_error(pair, "__iterator-foldl: expected iterator tail", &rest, interp);
+        if (tail_err != null) return tail_err;
 
         Value* call_args = make_cons(interp, acc, make_cons(interp, car(pair), make_nil(interp)));
         acc = jit_apply_multi_args(interp, func, call_args, 2);
         if (acc != null && acc.tag == ERROR) return acc;
-        current = cdr(pair);
+        current = rest;
     }
 
     return acc;

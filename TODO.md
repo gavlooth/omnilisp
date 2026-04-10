@@ -22,6 +22,29 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-ITERATOR-MALFORMED-TAIL-FAILCLOSED-026` make iterator
+  terminal and coroutine helpers reject malformed pair tails instead of
+  truncating pipelines as successful completion
+  - closure evidence:
+    - `src/lisp/primitives_iter_state.c3`
+      now exposes one shared `iterator_tail_or_error(...)` helper for
+      fail-closed iterator tail validation.
+    - `src/lisp/primitives_iter_terminal.c3`
+      now makes `collect` / `to-array` reject malformed iterator pairs and
+      malformed iterator tails instead of silently truncating the result.
+    - `src/lisp/primitives_iter_coroutine.c3`
+      now makes `map`, `filter`, `take`, `zip`, and `foldl` reject malformed
+      iterator tails instead of truncating or deferring broken state as normal
+      completion.
+    - `src/lisp/tests_advanced_core_unicode_groups.c3`
+      now pins malformed-tail rejection through the surface `List`, `Array`,
+      `map`, `filter`, `take`, `zip`, and `foldl` iterator pipelines.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc "rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --eval \"(handle (List (Iterator (lambda () (cons 1 2)))) (raise msg (ref msg 'message)))\""`
+      - `scripts/run_validation_container.sh bash -lc "rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib ./build/main --eval \"(handle (foldl (lambda (a x) (+ a x)) 0 (Iterator (lambda () (cons 1 9)))) (raise msg (ref msg 'message)))\""`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-SCHEDULER-WAKEUP-PUBLISH-FALLBACK-025` make scheduler timer,
   sleep, poll-error, and non-task offload wakeups fail closed when reliable
   wakeup enqueue fails instead of dropping the blocked-fiber completion
