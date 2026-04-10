@@ -165,6 +165,7 @@ fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
     if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
         return boundary_graph_alias_unsafe_for_reuse(v, interp, depth);
     }
+    if (jit_value_is_graph_carrying(v)) return true;
     if (copy_to_parent_payload_in_releasing_scope(v, interp)) return true;
 
     switch (v.tag) {

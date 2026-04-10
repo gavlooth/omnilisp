@@ -75,6 +75,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `PARTIAL_PRIM` wrappers as well, so JIT TCO copy cannot bypass nested
   releasing-scope payload checks merely because the wrapper itself sits in a
   sibling/foreign scope.
+- JIT TCO env-frame copy now also treats any disjoint graph-carrying wrapper
+  as copy-required, aligning the JIT lane with the normal boundary/env-copy
+  rule that disjoint `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE` / similar
+  wrappers are not reused by identity.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or

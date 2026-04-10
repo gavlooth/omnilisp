@@ -899,6 +899,106 @@ fn void run_jit_policy_tco_foreign_partial_shared_wrapper_edge_copy_test(Interp*
     }
 }
 
+fn void run_jit_policy_tco_foreign_shared_wrapper_copy_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: TCO env-copy must not reuse a foreign shared wrapper by
+    // identity; disjoint graph-carrying bindings must be copied into target.
+    main::ScopeRegion* saved = interp.current_scope;
+    main::ScopeRegion* source = main::scope_create(saved);
+    main::ScopeRegion* target = main::scope_create(saved);
+    main::ScopeRegion* foreign = main::scope_create(saved);
+    if (source == null || target == null || foreign == null) {
+        if (foreign != null) main::scope_release(foreign);
+        if (source != null) main::scope_release(source);
+        if (target != null) main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco foreign shared wrapper copies by value");
+        (*fail)++;
+        return;
+    }
+
+    SymbolId array_sym = interp.symbols.intern("__jit_policy_tco_foreign_array");
+
+    interp.current_scope = foreign;
+    Value* array_value = interp.alloc_value();
+    array_value.tag = ARRAY;
+    main::scope_register_dtor(foreign, (void*)array_value, &scope_dtor_value);
+    Array* array_payload = (Array*)mem::malloc(Array.sizeof);
+    if (array_payload == null) {
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(source);
+        main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco foreign shared wrapper copies by value (setup array)");
+        (*fail)++;
+        return;
+    }
+    array_payload.capacity = 4;
+    array_payload.length = 1;
+    array_payload.items = (Value**)mem::malloc(Value*.sizeof * array_payload.capacity);
+    if (array_payload.items == null) {
+        mem::free(array_payload);
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(source);
+        main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco foreign shared wrapper copies by value (setup array items)");
+        (*fail)++;
+        return;
+    }
+    for (usz i = 0; i < array_payload.capacity; i++) array_payload.items[i] = null;
+    array_payload.items[0] = make_int(interp, 314);
+    array_value.array_val = array_payload;
+
+    interp.current_scope = source;
+    Env* source_env = make_env(interp, interp.global_env);
+    if (source_env != null) {
+        env_define_with_barrier(source_env, array_sym, array_value, interp);
+    }
+
+    interp.current_scope = target;
+    Env* copied_env = source_env != null
+        ? jit_copy_tco_env_chain_for_recycle(source_env, interp, source)
+        : null;
+
+    Value* copied_array = copied_env != null ? copied_env.lookup(array_sym) : null;
+    bool copy_ok = copied_array != null &&
+        copied_array.tag == ARRAY &&
+        copied_array != array_value &&
+        copied_array.array_val != null &&
+        copied_array.array_val != array_payload &&
+        copied_array.array_val.items != null &&
+        copied_array.array_val.items[0] != null &&
+        copied_array.array_val.items[0].tag == INT &&
+        copied_array.array_val.items[0].int_val == 314;
+
+    main::scope_release(foreign);
+
+    bool post_release_ok = copy_ok &&
+        copied_array != null &&
+        copied_array.array_val != null &&
+        copied_array.array_val.items != null &&
+        copied_array.array_val.items[0] != null &&
+        copied_array.array_val.items[0].tag == INT &&
+        copied_array.array_val.items[0].int_val == 314;
+
+    interp.current_scope = saved;
+    main::scope_release(source);
+    main::scope_release(target);
+
+    bool ok = source_env != null && copy_ok && post_release_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: tco foreign shared wrapper copies by value");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: tco foreign shared wrapper copies by value (source_env=%s copy_ok=%s post_release_ok=%s)",
+            source_env != null ? "yes" : "no",
+            copy_ok ? "yes" : "no",
+            post_release_ok ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_closure_method_iterator_boundary_test(Interp* interp, int* pass, int* fail) {
     // Invariant: typed method wrappers that return iterators must detach a thunk
     // payload from the callee TEMP lane before handing the iterator back.
@@ -1243,6 +1343,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-partial-shared-wrapper-edge-copy", &run_jit_policy_tco_partial_shared_wrapper_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-foreign-partial-shared-wrapper-edge-copy", &run_jit_policy_tco_foreign_partial_shared_wrapper_edge_copy_test, interp, pass, fail);
+        run_jit_policy_case("tco-foreign-shared-wrapper-copy", &run_jit_policy_tco_foreign_shared_wrapper_copy_test, interp, pass, fail);
         run_jit_policy_case("closure-method-iterator-boundary", &run_jit_policy_closure_method_iterator_boundary_test, interp, pass, fail);
         run_jit_policy_case("rec-closure-type-sig-copy-failure", &run_jit_policy_rec_closure_type_sig_copy_failure_test, interp, pass, fail);
         run_jit_policy_case("stdlib-teardown-redefinition", &run_jit_policy_stdlib_teardown_redefinition_test, interp, pass, fail);

@@ -12,14 +12,21 @@
     `PARTIAL_PRIM` bindings with releasing-scope nested payloads no longer
     bypass TCO copy just because the wrapper itself lives outside the
     releasing scope.
+  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` now also copies disjoint
+    graph-carrying wrappers during TCO env-frame transfer instead of reusing
+    them by identity merely because they are outside the releasing scope.
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3` now proves that TCO
     env-copy clones both target-chain and foreign partial/iterator wrappers
     instead of reusing them by identity when their nested array payload still
     points into the releasing scope.
+  - the same focused JIT policy file now also proves that a foreign `ARRAY`
+    binding is copied by value and remains valid after the foreign owner scope
+    is released.
   - validation:
     - `c3c build`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tco-partial-shared-wrapper-edge-copy ./build/main --test-suite lisp`
     - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tco-foreign-partial-shared-wrapper-edge-copy ./build/main --test-suite lisp`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tco-foreign-shared-wrapper-copy ./build/main --test-suite lisp`
     - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
 
 - Closed an env-copy rollback destructor-symmetry bug:
