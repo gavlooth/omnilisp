@@ -1,5 +1,21 @@
 ## 2026-04-10
 
+- Closed a JIT TCO nested-alias reuse hole for partial wrappers:
+  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer treats
+    “wrapper already in the target chain” as sufficient to skip copying during
+    TCO env-frame transfer.
+  - target-chain bindings now still consult nested alias safety, so
+    `PARTIAL_PRIM` / `ITERATOR` wrappers are copied when a shared-wrapper arg
+    still contains a child from the releasing scope.
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3` now proves that TCO
+    env-copy clones target-chain partial/iterator wrappers instead of reusing
+    them by identity when their nested array payload still points into the
+    releasing scope.
+  - validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=tco-partial-shared-wrapper-edge-copy ./build/main --test-suite lisp`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed an env-copy rollback destructor-symmetry bug:
   - `src/scope_region_chunk_helpers.c3` now exposes
     `scope_cancel_dtor(...)` and `scope_cancel_dtor_escape(...)`, which

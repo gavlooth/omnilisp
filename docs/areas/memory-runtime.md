@@ -67,6 +67,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `first_arg` / `second_arg`, so target-chain partial wrappers no longer alias
   a shared-wrapper argument whose nested child still belongs to the
   releasing/source scope.
+- JIT TCO env-frame transfer now applies that same nested alias-safety rule
+  before keeping a target-chain binding by identity, so target-chain
+  partial/iterator bindings no longer bypass copying when their shared-wrapper
+  args still point into the releasing scope.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or

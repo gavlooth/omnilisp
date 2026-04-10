@@ -631,6 +631,159 @@ fn void run_jit_policy_tco_cons_iterator_edge_copy_test(Interp* interp, int* pas
     }
 }
 
+fn void run_jit_policy_tco_partial_shared_wrapper_edge_copy_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: TCO env-copy must not reuse a surviving PARTIAL_PRIM / ITERATOR
+    // wrapper whose shared-wrapper arg still points at a child in the releasing scope.
+    main::ScopeRegion* saved = interp.current_scope;
+    main::ScopeRegion* source = main::scope_create(saved);
+    main::ScopeRegion* target = main::scope_create(saved);
+    if (source == null || target == null) {
+        if (source != null) main::scope_release(source);
+        if (target != null) main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco partial wrapper copies nested shared wrapper edge");
+        (*fail)++;
+        return;
+    }
+
+    SymbolId partial_sym = interp.symbols.intern("__jit_policy_tco_partial_with_array");
+    SymbolId iter_sym = interp.symbols.intern("__jit_policy_tco_iter_with_partial_array");
+
+    interp.current_scope = target;
+    Value* array_value = interp.alloc_value();
+    array_value.tag = ARRAY;
+    main::scope_register_dtor(target, (void*)array_value, &scope_dtor_value);
+    Array* array_payload = (Array*)mem::malloc(Array.sizeof);
+    if (array_payload == null) {
+        interp.current_scope = saved;
+        main::scope_release(source);
+        main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco partial wrapper copies nested shared wrapper edge (setup array)");
+        (*fail)++;
+        return;
+    }
+    array_payload.capacity = 4;
+    array_payload.length = 1;
+    array_payload.items = (Value**)mem::malloc(Value*.sizeof * array_payload.capacity);
+    if (array_payload.items == null) {
+        mem::free(array_payload);
+        interp.current_scope = saved;
+        main::scope_release(source);
+        main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco partial wrapper copies nested shared wrapper edge (setup array items)");
+        (*fail)++;
+        return;
+    }
+    for (usz i = 0; i < array_payload.capacity; i++) array_payload.items[i] = null;
+    array_value.array_val = array_payload;
+
+    Value* partial_value = interp.alloc_value();
+    partial_value.tag = PARTIAL_PRIM;
+    partial_value.partial_val.func = &prim_add;
+    partial_value.partial_val.remaining = 1;
+    partial_value.partial_val.first_arg = array_value;
+    partial_value.partial_val.second_arg = make_int(interp, 44);
+
+    Value* iter_value = make_iterator(interp, partial_value);
+    if (iter_value == null) {
+        interp.current_scope = saved;
+        main::scope_release(source);
+        main::scope_release(target);
+        io::printn("[FAIL] jit policy: tco partial wrapper copies nested shared wrapper edge (setup iterator)");
+        (*fail)++;
+        return;
+    }
+
+    interp.current_scope = source;
+    Value* source_child = make_int(interp, 1701);
+    array_payload.items[0] = source_child;
+    Env* source_env = make_env(interp, interp.global_env);
+    if (source_env != null) {
+        env_define_with_barrier(source_env, partial_sym, partial_value, interp);
+        env_define_with_barrier(source_env, iter_sym, iter_value, interp);
+    }
+
+    interp.current_scope = target;
+    Env* copied_env = source_env != null
+        ? jit_copy_tco_env_chain_for_recycle(source_env, interp, source)
+        : null;
+
+    Value* copied_partial = copied_env != null ? copied_env.lookup(partial_sym) : null;
+    Value* copied_iter = copied_env != null ? copied_env.lookup(iter_sym) : null;
+    Value* copied_partial_first = copied_partial != null && copied_partial.tag == PARTIAL_PRIM
+        ? copied_partial.partial_val.first_arg
+        : null;
+    Value* copied_iter_partial = copied_iter != null && copied_iter.tag == ITERATOR
+        ? copied_iter.iterator_val
+        : null;
+    Value* copied_iter_first = copied_iter_partial != null && copied_iter_partial.tag == PARTIAL_PRIM
+        ? copied_iter_partial.partial_val.first_arg
+        : null;
+
+    bool partial_copy_ok = copied_partial != null &&
+        copied_partial != partial_value &&
+        copied_partial.tag == PARTIAL_PRIM &&
+        copied_partial_first != null &&
+        copied_partial_first != array_value &&
+        copied_partial_first.tag == ARRAY &&
+        copied_partial_first.array_val != null &&
+        copied_partial_first.array_val.items != null &&
+        copied_partial_first.array_val.items[0] != null &&
+        copied_partial_first.array_val.items[0] != source_child &&
+        copied_partial_first.array_val.items[0].tag == INT &&
+        copied_partial_first.array_val.items[0].int_val == 1701;
+
+    bool iter_copy_ok = copied_iter != null &&
+        copied_iter != iter_value &&
+        copied_iter.tag == ITERATOR &&
+        copied_iter_partial != null &&
+        copied_iter_partial.tag == PARTIAL_PRIM &&
+        copied_iter_partial != partial_value &&
+        copied_iter_first != null &&
+        copied_iter_first != array_value &&
+        copied_iter_first.tag == ARRAY &&
+        copied_iter_first.array_val != null &&
+        copied_iter_first.array_val.items != null &&
+        copied_iter_first.array_val.items[0] != null &&
+        copied_iter_first.array_val.items[0] != source_child &&
+        copied_iter_first.array_val.items[0].tag == INT &&
+        copied_iter_first.array_val.items[0].int_val == 1701;
+
+    main::scope_release(source);
+
+    bool post_release_ok = partial_copy_ok &&
+        iter_copy_ok &&
+        copied_partial_first != null &&
+        copied_partial_first.array_val != null &&
+        copied_partial_first.array_val.items != null &&
+        copied_partial_first.array_val.items[0] != null &&
+        copied_partial_first.array_val.items[0].tag == INT &&
+        copied_partial_first.array_val.items[0].int_val == 1701 &&
+        copied_iter_first != null &&
+        copied_iter_first.array_val != null &&
+        copied_iter_first.array_val.items != null &&
+        copied_iter_first.array_val.items[0] != null &&
+        copied_iter_first.array_val.items[0].tag == INT &&
+        copied_iter_first.array_val.items[0].int_val == 1701;
+
+    interp.current_scope = saved;
+    main::scope_release(target);
+
+    bool ok = source_env != null && partial_copy_ok && iter_copy_ok && post_release_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: tco partial wrapper copies nested shared wrapper edge");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: tco partial wrapper copies nested shared wrapper edge (source_env=%s partial_copy_ok=%s iter_copy_ok=%s post_release_ok=%s)",
+            source_env != null ? "yes" : "no",
+            partial_copy_ok ? "yes" : "no",
+            iter_copy_ok ? "yes" : "no",
+            post_release_ok ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_closure_method_iterator_boundary_test(Interp* interp, int* pass, int* fail) {
     // Invariant: typed method wrappers that return iterators must detach a thunk
     // payload from the callee TEMP lane before handing the iterator back.
@@ -973,6 +1126,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
+        run_jit_policy_case("tco-partial-shared-wrapper-edge-copy", &run_jit_policy_tco_partial_shared_wrapper_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("closure-method-iterator-boundary", &run_jit_policy_closure_method_iterator_boundary_test, interp, pass, fail);
         run_jit_policy_case("rec-closure-type-sig-copy-failure", &run_jit_policy_rec_closure_type_sig_copy_failure_test, interp, pass, fail);
         run_jit_policy_case("stdlib-teardown-redefinition", &run_jit_policy_stdlib_teardown_redefinition_test, interp, pass, fail);

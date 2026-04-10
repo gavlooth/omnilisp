@@ -162,7 +162,9 @@ fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
     if (v == null || interp == null || interp.releasing_scope == null) return false;
     if (depth >= 128) return true;
     if (boundary_ptr_in_scope((void*)v, interp.releasing_scope)) return true;
-    if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) return false;
+    if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
+        return boundary_graph_alias_unsafe_for_reuse(v, interp, depth);
+    }
     if (copy_to_parent_payload_in_releasing_scope(v, interp)) return true;
 
     switch (v.tag) {
