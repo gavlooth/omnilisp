@@ -40,6 +40,20 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The raw-array constructor and AOT dict payload slice is now also closed:
+  - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`
+    through the checked array constructor path.
+  - `src/lisp/prim_collection_sort_array.c3` now propagates raw array
+    constructor `ERROR`s through `array(...)` and `list->array(...)`.
+  - `src/lisp/aot_runtime_bridge.c3` now routes `dict_from_args(...)` through
+    checked hashmap construction and checked insertion under the active bridge
+    interpreter.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` and
+    `src/lisp/tests_compiler_core_groups_fail_closed.c3`
+    now pin those OOM seams directly.
+  - the residual internal collection-constructor lane is now narrower again:
+    - `AUDIT-COLLECTION-CONSTRUCTOR-RAW-HASHMAP-CALLERS-012`
+
 - The staged collection-constructor migration is now fully closed:
   - `src/lisp/async_process_signal_dns_process.c3`,
     `src/lisp/async_process_spawn.c3`, and

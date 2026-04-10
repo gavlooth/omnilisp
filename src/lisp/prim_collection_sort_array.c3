@@ -110,6 +110,7 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
         Value* cur = args[0];
         while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
         Value* v = make_array(interp, count);
+        if (v == null || v.tag != ARRAY || v.array_val == null) return v;
         cur = args[0];
         for (usz i = 0; i < count; i++) {
             v.array_val.items[i] = boundary_promote_to_root(cur.cons_val.car, interp);
@@ -120,6 +121,7 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* v = make_array(interp, args.len < 4 ? 4 : args.len);
+    if (v == null || v.tag != ARRAY || v.array_val == null) return v;
     for (usz i = 0; i < args.len; i++) {
         v.array_val.items[i] = boundary_promote_to_root(args[i], interp);
     }
@@ -159,6 +161,7 @@ fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* cur = args[0];
     while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
     Value* v = make_array(interp, count);
+    if (v == null || v.tag != ARRAY || v.array_val == null) return v;
     cur = args[0];
     for (usz i = 0; i < count; i++) {
         v.array_val.items[i] = boundary_promote_to_root(cur.cons_val.car, interp);

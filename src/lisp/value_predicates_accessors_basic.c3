@@ -162,16 +162,7 @@ fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
 }
 
 fn Value* make_array(Interp* interp, usz capacity) {
-    // Allocate Value in root_scope so it persists across scope releases.
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    v.tag = ARRAY;
-    Array* arr = (Array*)mem::malloc(Array.sizeof);
-    arr.capacity = capacity < 4 ? 4 : capacity;
-    arr.length = 0;
-    arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
-    v.array_val = arr;
-
-    return v;
+    return make_array_checked(interp, capacity, "array: out of memory");
 }
 
 fn Value* make_module(Interp* interp, Module* mod) {

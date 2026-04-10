@@ -175,6 +175,8 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             Value* seq_rest_bridge_interp_unavailable = null;
             Value* list_rest_bridge_interp_unavailable = null;
             Value* dict_from_args_bridge_interp_unavailable = null;
+            Value* dict_from_args_alloc_fail = null;
+            Value* dict_from_args_grow_fail = null;
             Value* index_bridge_interp_unavailable = null;
             Value* compiled_signal_bridge_interp_unavailable = null;
             Value* compiled_handle_bridge_interp_unavailable = null;
@@ -229,6 +231,25 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             explain_effect_signal_bridge_interp_unavailable = aot::explain_effect_signal("aot-test", "ask", aot::make_nil());
             explain_effect_resolve_bridge_interp_unavailable = aot::explain_effect_resolve("aot-test", aot::make_nil());
             aot::g_aot_force_bridge_interp_unavailable = false;
+
+            bool saved_hashmap_struct_fail = g_hashmap_force_struct_alloc_fail;
+            g_hashmap_force_struct_alloc_fail = true;
+            dict_from_args_alloc_fail =
+                aot::dict_from_args(
+                    aot::cons(
+                        aot::make_symbol("k"),
+                        aot::cons(aot::make_int(1), aot::make_nil())));
+            g_hashmap_force_struct_alloc_fail = saved_hashmap_struct_fail;
+
+            Value* grow_arg_list = aot::make_nil();
+            for (usz i = 13; i > 0; i--) {
+                grow_arg_list = aot::cons(aot::make_int((long)i), grow_arg_list);
+                grow_arg_list = aot::cons(aot::make_int((long)(100 + i)), grow_arg_list);
+            }
+            bool saved_hashmap_grow_fail = g_hashmap_force_grow_entries_alloc_fail;
+            g_hashmap_force_grow_entries_alloc_fail = true;
+            dict_from_args_grow_fail = aot::dict_from_args(grow_arg_list);
+            g_hashmap_force_grow_entries_alloc_fail = saved_hashmap_grow_fail;
 
             aot_interp.prim_user_data = saved_prim_user_data;
 
@@ -285,6 +306,8 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
                 && seq_rest_bridge_interp_unavailable != null && seq_rest_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && list_rest_bridge_interp_unavailable != null && list_rest_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && dict_from_args_bridge_interp_unavailable != null && dict_from_args_bridge_interp_unavailable.tag == ValueTag.ERROR
+                && dict_from_args_alloc_fail != null && dict_from_args_alloc_fail.tag == ValueTag.ERROR
+                && dict_from_args_grow_fail != null && dict_from_args_grow_fail.tag == ValueTag.ERROR
                 && index_bridge_interp_unavailable != null && index_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && compiled_signal_bridge_interp_unavailable != null && compiled_signal_bridge_interp_unavailable.tag == ValueTag.ERROR
                 && compiled_handle_bridge_interp_unavailable != null && compiled_handle_bridge_interp_unavailable.tag == ValueTag.ERROR

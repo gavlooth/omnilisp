@@ -75,6 +75,9 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   refcount only when the resolved continuation actually owned the retained
   slot, so shared handle-state continuations no longer consume each other’s
   retains during `resolve`.
+- `make_array(...)` is now just the checked array constructor contract, so raw
+  array creation no longer bypasses allocator failure handling and return a
+  partially initialized wrapper.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested

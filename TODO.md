@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -18,9 +18,37 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- none currently;
+- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-HASHMAP-CALLERS-012` migrate the remaining direct `make_hashmap(...)` caller family onto checked constructor or explicit fail-closed contracts
+  - scope:
+    - deduce payload/result builders
+    - deduce runtime helper state maps
+    - unify/deduce row materialization helpers
+  - why this remains open:
+    - `make_hashmap(...)` still has a broad direct-caller family
+    - many callsites already guard `tag` / `hashmap_val`, but the family has
+      not been fully normalized onto `make_hashmap_checked(...)` or a shared
+      helper contract yet
+    - this is now separate from the closed runtime/status payload and AOT
+      bridge slices
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-ARRAY-AOT-011A` close raw array constructor and AOT dict payload fail-closed gaps
+  - closure evidence:
+    - `src/lisp/value_predicates_accessors_basic.c3` now routes
+      `make_array(...)` through the checked array constructor path instead of
+      raw unchecked allocation.
+    - `src/lisp/prim_collection_sort_array.c3` now propagates array
+      constructor `ERROR`s from `array(...)` and `list->array(...)` instead of
+      dereferencing a partially initialized wrapper.
+    - `src/lisp/aot_runtime_bridge.c3` now routes `dict_from_args(...)`
+      through checked hashmap construction and checked insertion, so bridge
+      payload creation fails closed under allocation pressure.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now pins raw
+      array-constructor OOM behavior directly.
+    - `src/lisp/tests_compiler_core_groups_fail_closed.c3` now pins active
+      bridge-interpreter `dict_from_args(...)` hashmap-constructor OOM
+      behavior directly.
 
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011` migrate remaining runtime/status payload builders off unchecked collection constructors
   - closure evidence:

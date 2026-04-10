@@ -1,5 +1,30 @@
 ## 2026-04-10
 
+- Closed the raw-array constructor and AOT dict payload slice of the internal
+  collection-constructor hardening pass:
+  - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`
+    through the checked constructor contract instead of raw `mem::malloc(...)`
+    with no null checks.
+  - `src/lisp/prim_collection_sort_array.c3` now treats raw array-constructor
+    failure as a first-class `ERROR` return in `array(...)` and
+    `list->array(...)` instead of dereferencing a partially initialized wrapper.
+  - `src/lisp/aot_runtime_bridge.c3` now routes `dict_from_args(...)` through
+    checked hashmap construction and checked insertion, so AOT bridge payload
+    building fails closed on allocator pressure instead of constructing a
+    `HASHMAP` wrapper with a null payload.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves raw
+    array-constructor failures propagate cleanly through `make_array(...)`,
+    `array(...)`, and `list->array(...)`.
+  - `src/lisp/tests_compiler_core_groups_fail_closed.c3` now proves
+    `aot::dict_from_args(...)` returns `ERROR` when bridge-side hashmap
+    construction fails under an active bridge interpreter.
+  - residual constructor hardening is now narrower again:
+    - remaining direct `make_hashmap(...)` caller families that still depend on
+      per-callsite tag/null guards instead of the checked constructor path
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the remaining runtime/status payload-builder slice of the internal
   collection-constructor migration:
   - `src/lisp/async_process_signal_dns_process.c3`,

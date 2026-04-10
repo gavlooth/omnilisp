@@ -26,7 +26,10 @@ fn lisp::Value* dict_from_args(lisp::Value* arg_list) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot dict-from-args: runtime interpreter unavailable");
 
-    lisp::Value* dict = lisp::make_hashmap(interp, 16);
+    lisp::Value* dict = lisp::make_hashmap_checked(interp, 16, "aot dict-from-args: out of memory");
+    if (dict == null || dict.tag != lisp::ValueTag.HASHMAP || dict.hashmap_val == null) {
+        return dict == null ? aot_make_error_best_effort(interp, "aot dict-from-args: out of memory") : dict;
+    }
     lisp::HashMap* map = dict.hashmap_val;
     lisp::Value* curr = arg_list;
     while (curr != null && curr.tag == lisp::ValueTag.CONS) {
@@ -39,7 +42,9 @@ fn lisp::Value* dict_from_args(lisp::Value* arg_list) {
             lisp::Value* val = (val_pair != null && val_pair.tag == lisp::ValueTag.CONS)
                 ? val_pair.cons_val.car
                 : lisp::make_nil(interp);
-            lisp::hashmap_set(map, key, val, interp);
+            if (!lisp::hashmap_set_checked(map, key, val, interp)) {
+                return aot_make_error_best_effort(interp, "aot dict-from-args: out of memory");
+            }
             curr = curr.cons_val.cdr;
             continue;
         }
@@ -52,7 +57,9 @@ fn lisp::Value* dict_from_args(lisp::Value* arg_list) {
             val = curr.cons_val.car;
             curr = curr.cons_val.cdr;
         }
-        lisp::hashmap_set(map, key, val, interp);
+        if (!lisp::hashmap_set_checked(map, key, val, interp)) {
+            return aot_make_error_best_effort(interp, "aot dict-from-args: out of memory");
+        }
     }
     return dict;
 }

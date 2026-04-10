@@ -260,6 +260,45 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* list = make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp)));
+        Value* direct_fail = null;
+        Value* prim_array_fail = null;
+        Value* list_to_array_fail = null;
+
+        bool saved_struct_fail = g_value_force_make_array_struct_alloc_fail;
+        bool saved_items_fail = g_value_force_make_array_items_alloc_fail;
+
+        g_value_force_make_array_struct_alloc_fail = true;
+        direct_fail = make_array(interp, 2);
+        g_value_force_make_array_struct_alloc_fail = false;
+        g_value_force_make_array_items_alloc_fail = true;
+
+        Value*[2] prim_array_args = { make_int(interp, 1), make_int(interp, 2) };
+        prim_array_fail = prim_array(prim_array_args[0:2], null, interp);
+        Value*[1] list_to_array_args = { list };
+        list_to_array_fail = prim_list_to_array(list_to_array_args[0:1], null, interp);
+
+        g_value_force_make_array_items_alloc_fail = saved_items_fail;
+        g_value_force_make_array_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(direct_fail, "array: out of memory") &&
+            runtime_alloc_error_matches(prim_array_fail, "array: out of memory") &&
+            runtime_alloc_error_matches(list_to_array_fail, "array: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: raw array constructor alloc failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: raw array constructor alloc failures fail closed (direct=%s prim=%s list=%s)",
+                runtime_alloc_error_text(direct_fail),
+                runtime_alloc_error_text(prim_array_fail),
+                runtime_alloc_error_text(list_to_array_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[2] dict_args = { make_symbol(interp, interp.symbols.intern("k")), make_int(interp, 1) };
         Value*[2] set_args = { make_int(interp, 1), make_int(interp, 2) };
 
