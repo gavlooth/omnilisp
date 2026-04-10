@@ -22,6 +22,42 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-CAPACITY-REALLOC-BYTE-OVERFLOW-039` guard deduce/JIT
+  capacity growth before `sizeof * new_cap` arithmetic can wrap and
+  under-allocate
+  - closure evidence:
+    - deduce relation, aggregate, delta, query-demand, transaction,
+      dirty-predicate, rule-signature, relation-schema, and persisted-rule
+      catalog growth helpers now fail closed before allocation byte counts
+      overflow.
+    - `src/lisp/jit_jit_module_setup_helpers.c3`
+      now rejects oversized source-dir vector growth and path length
+      increments before allocation-size arithmetic can wrap.
+    - `src/lisp/tests_deduce_groups_parallel.c3`
+      now pins the oversized-capacity fail-closed regression.
+    - validation:
+      - `c3c build`
+      - bounded deduce parallel group: `pass=6 fail=0`
+      - bounded scheduler slice: `pass=111 fail=0`
+      - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
+- [x] `AUDIT-SCHEDULER-OFFLOAD-MISSING-COMPLETION-038` make non-task
+  offload worker double-allocation failure wake and fail closed instead of
+  stranding a blocked waiter
+  - closure evidence:
+    - `src/lisp/scheduler_offload_worker.c3`
+      now publishes or directly handles readiness even when both worker
+      completion and fallback alloc-failure completion are null.
+    - `src/lisp/scheduler_wakeup_io.c3`
+      now consumes active completed-null offload slots as
+      `"offload: missing completion"` and clears the pending slot.
+    - `src/lisp/tests_scheduler_boundary_offload_payload_groups.c3`
+      now pins the completed-null wakeup/consume path.
+    - validation:
+      - `c3c build`
+      - bounded scheduler slice: `pass=111 fail=0`
+      - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
 - [x] `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` fix `%s`
   formatting display path so plain `(format "%s" value)` does not fail with
   `"format: failed to grow temporary builder"` for ordinary values

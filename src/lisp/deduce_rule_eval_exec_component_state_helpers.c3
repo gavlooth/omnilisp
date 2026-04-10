@@ -36,8 +36,17 @@ fn Value* deduce_delta_set_insert(DeduceDeltaTupleSet* set, void* key_data, usz 
     }
 
     if (set.count >= set.capacity) {
+        if (set.count == usz.max) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (set.capacity > usz.max / 2) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
         usz new_cap = set.capacity > 0 ? set.capacity * 2 : 4;
         if (new_cap < set.count + 1) new_cap = set.count + 1;
+        if (new_cap > usz.max / DeduceEncodedTuple.sizeof) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
         DeduceEncodedTuple* next = (DeduceEncodedTuple*)mem::realloc(
             set.tuples,
             DeduceEncodedTuple.sizeof * new_cap

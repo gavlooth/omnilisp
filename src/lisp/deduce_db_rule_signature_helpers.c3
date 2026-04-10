@@ -14,6 +14,7 @@ fn bool deduce_db_ensure_rule_signature_capacity(DeduceDb* db, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceRuleSignature.sizeof) return false;
 
     DeduceRuleSignature* next =
         (DeduceRuleSignature*)mem::realloc(db.rule_signatures, DeduceRuleSignature.sizeof * new_cap);

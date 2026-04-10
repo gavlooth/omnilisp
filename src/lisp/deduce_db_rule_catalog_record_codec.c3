@@ -72,6 +72,7 @@ fn bool deduce_db_ensure_persisted_rule_catalog_capacity(DeduceDb* db, usz neede
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeducePersistedRuleCatalogEntry.sizeof) return false;
 
     DeducePersistedRuleCatalogEntry* next =
         (DeducePersistedRuleCatalogEntry*)mem::realloc(
@@ -91,6 +92,7 @@ fn bool deduce_db_append_persisted_rule_catalog_entry(
     bool[] body_negated
 ) {
     if (db == null || body_predicates.len != body_negated.len) return false;
+    if (db.persisted_rule_catalog_count == usz.max) return false;
     usz needed = db.persisted_rule_catalog_count + 1;
     if (!deduce_db_ensure_persisted_rule_catalog_capacity(db, needed)) return false;
 

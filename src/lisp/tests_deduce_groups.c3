@@ -579,6 +579,7 @@ fn void run_deduce_command_surface_block(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_deduce_parallel_block(Interp* interp, int* pass, int* fail) {
+    run_deduce_capacity_growth_overflow_guard_test(interp, pass, fail);
     run_deduce_parallel_component_delta_payload_roundtrip_test(interp, pass, fail);
     run_deduce_parallel_component_scratch_pass_test(interp, pass, fail);
     run_deduce_parallel_component_scratch_closure_test(interp, pass, fail);

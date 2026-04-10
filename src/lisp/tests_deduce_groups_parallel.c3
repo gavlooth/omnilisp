@@ -13,6 +13,76 @@ fn bool deduce_test_component_delta_tuple_matches(DeduceDeltaTupleSet* set, usz 
     );
 }
 
+fn void run_deduce_capacity_growth_overflow_guard_test(Interp* interp, int* pass, int* fail) {
+    Relation rel = {};
+    DeduceDb db = {};
+    DeduceAggregateGroups aggregate_groups = {};
+    DeduceDeltaTupleSet delta_set = {};
+    DeduceDeltaTupleSet state_set = {};
+    Interp source_dir_interp = {};
+
+    bool relation_ok =
+        !deduce_relation_ensure_column_capacity(&rel, usz.max) &&
+        !deduce_relation_ensure_unique_column_capacity(&rel, usz.max) &&
+        !deduce_relation_ensure_reference_constraint_capacity(&rel, usz.max) &&
+        !deduce_relation_ensure_check_constraint_capacity(&rel, usz.max) &&
+        rel.columns == null &&
+        rel.unique_cols == null &&
+        rel.reference_constraints == null &&
+        rel.check_constraints == null;
+
+    bool db_ok =
+        !deduce_db_ensure_incremental_dirty_capacity(&db, usz.max) &&
+        !deduce_db_ensure_rule_signature_capacity(&db, usz.max) &&
+        !deduce_db_ensure_relation_schema_capacity(&db, usz.max) &&
+        !deduce_db_ensure_persisted_rule_catalog_capacity(&db, usz.max) &&
+        db.incremental_dirty_predicates == null &&
+        db.rule_signatures == null &&
+        db.relation_schemas == null &&
+        db.persisted_rule_catalog == null;
+
+    Value* aggregate_err = deduce_aggregate_groups_ensure_capacity(&aggregate_groups, usz.max, interp);
+    bool aggregate_ok = aggregate_err != null &&
+                        aggregate_err.tag == ERROR &&
+                        aggregate_groups.entries == null &&
+                        aggregate_groups.capacity == 0;
+
+    delta_set.count = usz.max;
+    bool delta_ok = !deduce_delta_set_append_encoded_tuple(&delta_set, "x".ptr, "x".len) &&
+                    delta_set.tuples == null &&
+                    delta_set.capacity == 0;
+
+    state_set.count = usz.max;
+    Value* state_err = deduce_delta_set_insert(&state_set, "x".ptr, "x".len, interp);
+    bool state_ok = state_err != null &&
+                    state_err.tag == ERROR &&
+                    state_set.tuples == null &&
+                    state_set.capacity == 0;
+
+    bool source_dir_ok = !ensure_source_dir_capacity(&source_dir_interp, usz.max) &&
+                         source_dir_interp.source_dirs == null &&
+                         source_dir_interp.source_dir_capacity == 0;
+
+    bool ok = relation_ok &&
+              db_ok &&
+              aggregate_ok &&
+              delta_ok &&
+              state_ok &&
+              source_dir_ok;
+
+    deduce_aggregate_groups_release(&aggregate_groups);
+    deduce_delta_set_release(&delta_set);
+    deduce_delta_set_release(&state_set);
+
+    if (ok) {
+        emit_pass_literal("[PASS] deduce capacity growth overflow guards fail closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] deduce capacity growth overflow guards fail closed");
+        (*fail)++;
+    }
+}
+
 fn void run_deduce_parallel_component_delta_payload_roundtrip_test(Interp* interp, int* pass, int* fail) {
     SymbolId[3] predicates = {
         interp.symbols.intern("parallel-component-a"),

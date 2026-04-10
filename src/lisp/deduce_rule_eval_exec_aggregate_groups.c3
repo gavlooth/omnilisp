@@ -52,6 +52,9 @@ fn Value* deduce_aggregate_groups_ensure_capacity(
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceAggregateGroup.sizeof) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
 
     DeduceAggregateGroup* next =
         (DeduceAggregateGroup*)mem::realloc(groups.entries, DeduceAggregateGroup.sizeof * new_cap);

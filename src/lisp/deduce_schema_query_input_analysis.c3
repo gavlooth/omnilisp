@@ -54,7 +54,13 @@ fn Value* deduce_query_head_demand_cases_append_take(
     }
 
     if (cases.count == cases.capacity) {
+        if (cases.capacity > usz.max / 2) {
+            return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+        }
         usz new_cap = cases.capacity > 0 ? cases.capacity * 2 : 4;
+        if (new_cap > usz.max / DeduceRuleHeadDemand.sizeof) {
+            return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+        }
         DeduceRuleHeadDemand* next =
             (DeduceRuleHeadDemand*)mem::realloc(cases.entries, DeduceRuleHeadDemand.sizeof * new_cap);
         if (next == null) {

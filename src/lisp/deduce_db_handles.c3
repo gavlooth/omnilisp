@@ -73,6 +73,7 @@ fn bool deduce_db_ensure_relation_schema_capacity(DeduceDb* db, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceRelationSchema.sizeof) return false;
 
     DeduceRelationSchema* next =
         (DeduceRelationSchema*)mem::realloc(db.relation_schemas, DeduceRelationSchema.sizeof * new_cap);

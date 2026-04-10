@@ -22,6 +22,7 @@ fn bool deduce_db_ensure_incremental_dirty_capacity(DeduceDb* db, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / SymbolId.sizeof) return false;
 
     SymbolId* next = (SymbolId*)mem::realloc(db.incremental_dirty_predicates, SymbolId.sizeof * new_cap);
     if (next == null) return false;
@@ -37,6 +38,7 @@ fn bool deduce_db_mark_incremental_dirty_predicate(DeduceDb* db, SymbolId predic
             return true;
         }
     }
+    if (db.incremental_dirty_count == usz.max) return false;
     usz needed = db.incremental_dirty_count + 1;
     if (!deduce_db_ensure_incremental_dirty_capacity(db, needed)) return false;
     db.incremental_dirty_predicates[db.incremental_dirty_count] = predicate;

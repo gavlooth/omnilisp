@@ -331,7 +331,8 @@ fn void run_scheduler_duplicate_offload_ready_boundary_tests(Interp* interp, int
 
 fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: direct consume paths for pending offload (pre-completion error,
-    // completed success/error, and post-consume repeat error) preserve boundary/runtime state.
+    // missing-completion error, completed success/error, and post-consume repeat error)
+    // preserve boundary/runtime state.
     SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
 
     bool ok = true;
@@ -348,8 +349,43 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
         bool state_ok_pre = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
         if (!pre_ok || !state_ok_pre) {
             ok = false;
-            failed_step = i * 3;
+            failed_step = i * 4;
             failed_phase = "pre";
+        }
+
+        if (ok) {
+            g_scheduler.fibers[0].state = FIBER_BLOCKED;
+            g_scheduler.pending_offloads[0] = {};
+            g_scheduler.pending_offloads[0].active = true;
+            scheduler_handle_wakeup_offload_ready(0, null, 0);
+            bool missing_ready = g_scheduler.pending_offloads[0].active &&
+                                 g_scheduler.pending_offloads[0].completed &&
+                                 g_scheduler.pending_offloads[0].completion == null &&
+                                 g_scheduler.fibers[0].state == FIBER_READY;
+            Value* missing_completion = missing_ready ? scheduler_consume_pending_offload(0, interp) : null;
+            bool missing_ok = missing_completion != null &&
+                              missing_completion.tag == ERROR &&
+                              scheduler_test_str_contains(
+                                  missing_completion.str_chars[:missing_completion.str_len],
+                                  "missing completion"
+                              );
+            bool missing_slot_reset = !g_scheduler.pending_offloads[0].active &&
+                                      !g_scheduler.pending_offloads[0].completed &&
+                                      g_scheduler.pending_offloads[0].completion == null;
+            bool state_ok_missing = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+            if (!missing_ready || !missing_ok || !missing_slot_reset || !state_ok_missing) {
+                ok = false;
+                failed_step = i * 4 + 1;
+                if (!missing_ready) {
+                    failed_phase = "missing-ready";
+                } else if (!missing_ok) {
+                    failed_phase = "missing-error";
+                } else if (!missing_slot_reset) {
+                    failed_phase = "missing-reset";
+                } else {
+                    failed_phase = "missing-boundary";
+                }
+            }
         }
 
         OffloadCompletion* completion = null;
@@ -382,7 +418,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
         }
         if (ok && completion == null) {
             ok = false;
-            failed_step = i * 3 + 1;
+            failed_step = i * 4 + 2;
             failed_phase = "alloc";
         }
 
@@ -406,7 +442,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
             bool state_ok_consume = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!consume_ok || !slot_reset || !state_ok_consume) {
                 ok = false;
-                failed_step = i * 3 + 1;
+                failed_step = i * 4 + 2;
                 if (!consume_ok) {
                     failed_phase = "consume-value";
                 } else if (!slot_reset) {
@@ -423,7 +459,7 @@ fn void run_scheduler_consume_pending_offload_boundary_tests(Interp* interp, int
             bool state_ok_post = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
             if (!post_ok || !state_ok_post) {
                 ok = false;
-                failed_step = i * 3 + 2;
+                failed_step = i * 4 + 3;
                 failed_phase = "post";
             }
         }

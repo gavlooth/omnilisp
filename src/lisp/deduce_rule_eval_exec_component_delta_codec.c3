@@ -32,6 +32,7 @@ fn bool deduce_delta_set_append_encoded_tuple(
 ) {
     if (set == null || (key_data == null && key_len > 0)) return false;
 
+    if (set.count == usz.max) return false;
     usz needed = set.count + 1;
     if (needed > set.capacity) {
         usz new_cap = set.capacity > 0 ? set.capacity : 4;
@@ -42,6 +43,7 @@ fn bool deduce_delta_set_append_encoded_tuple(
             }
             new_cap *= 2;
         }
+        if (new_cap > usz.max / DeduceEncodedTuple.sizeof) return false;
         DeduceEncodedTuple* next =
             (DeduceEncodedTuple*)mem::realloc(set.tuples, DeduceEncodedTuple.sizeof * new_cap);
         if (next == null) return false;

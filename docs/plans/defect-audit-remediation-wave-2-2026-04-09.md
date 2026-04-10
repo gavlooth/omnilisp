@@ -156,6 +156,36 @@ Post-wave follow-up (2026-04-10):
     - bounded memory smoke:
       - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
 
+- The scheduler offload missing-completion lane is now also closed:
+  - `src/lisp/scheduler_offload_worker.c3`
+    now still publishes or directly handles non-task offload readiness when
+    both the callback completion and fallback alloc-failure completion are
+    unavailable.
+  - `src/lisp/scheduler_wakeup_io.c3`
+    now consumes active completed-null offload slots as a typed
+    `"offload: missing completion"` error and clears the pending slot.
+  - `src/lisp/tests_scheduler_boundary_offload_payload_groups.c3`
+    now pins the completed-null wakeup path and slot cleanup.
+  - validation:
+    - `c3c build`
+    - bounded scheduler slice: `pass=111 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
+- The deduce/JIT capacity-growth byte-overflow lane is now also closed:
+  - deduce relation, aggregate, delta, query-demand, transaction,
+    dirty-predicate, rule-signature, relation-schema, and persisted-rule
+    catalog growth helpers now guard allocation byte counts before
+    `sizeof * new_cap` arithmetic can wrap.
+  - JIT module source-dir vector growth now rejects oversized capacities and
+    source path length increments before allocation-size arithmetic can wrap.
+  - `src/lisp/tests_deduce_groups_parallel.c3` now pins the oversized-capacity
+    fail-closed path under the deduce parallel group.
+  - validation:
+    - `c3c build`
+    - bounded deduce parallel group: `pass=6 fail=0`
+    - bounded scheduler slice: `pass=111 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
 - The pure string/list materializer follow-up is now also closed:
   - `src/lisp/prim_string_transform.c3`
     now makes `string-upcase` / `string-downcase` return string-constructor

@@ -205,6 +205,20 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     the waiter on the same enqueue-failure seam,
   - those paths now fall back to the same direct wakeup handlers used by the
     drained queue path.
+- Scheduler non-task offload completion now also handles the double-allocation
+  failure case explicitly:
+  - if both the worker callback and fallback alloc-failure completion return
+    `null`, the waiter is still woken with a completed-null slot,
+  - consuming that slot returns `"offload: missing completion"` and clears the
+    pending offload state instead of leaving an active completed slot behind.
+- Deduce/JIT capacity growth now fails closed before byte-size arithmetic can
+  wrap:
+  - relation schema vectors, aggregate groups, delta tuple sets, query-demand
+    case storage, transaction mutation logs, incremental dirty predicates,
+    rule signatures, relation-schema tables, and persisted-rule-catalog tables
+    now guard `sizeof * new_cap` before `malloc` / `realloc`,
+  - source-dir vector growth in module setup rejects oversized capacities and
+    length increments before allocation-size arithmetic can wrap.
 - Collection/apply array helpers now fail closed on both constructor and
   boundary-promotion faults:
   - `array`, `list->array`, `set!` on arrays, `push!`, `collect`, and

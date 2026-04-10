@@ -101,7 +101,7 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
 
 fn Value* scheduler_consume_pending_offload(usz fiber_id, Interp* interp) {
     PendingOffload* off = &g_scheduler.pending_offloads[fiber_id];
-    if (!off.active || !off.completed || off.completion == null) {
+    if (!off.active || !off.completed) {
         return scheduler_raise(
             interp,
             "scheduler/offload-resumed-before-completion",
@@ -112,7 +112,7 @@ fn Value* scheduler_consume_pending_offload(usz fiber_id, Interp* interp) {
     OffloadCompletion* completion = (OffloadCompletion*)off.completion;
     Value* out = scheduler_value_from_offload_completion(completion, interp);
 
-    scheduler_free_offload_completion(off.completion);
+    if (completion != null) scheduler_free_offload_completion(completion);
     g_scheduler.pending_offloads[fiber_id] = {};
     return out;
 }

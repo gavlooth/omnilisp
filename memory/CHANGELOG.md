@@ -1,5 +1,49 @@
 ## 2026-04-10
 
+- Closed the scheduler offload missing-completion fail-closed lane:
+  - `src/lisp/scheduler_offload_worker.c3`
+    now publishes or directly handles non-task offload readiness even when both
+    worker completion materialization and fallback alloc-failure completion
+    materialization return `null`, so a blocked waiter is not stranded.
+  - `src/lisp/scheduler_wakeup_io.c3`
+    now treats an active completed offload slot with a null completion as a
+    deterministic `"offload: missing completion"` error and clears the pending
+    slot after consumption.
+  - `src/lisp/tests_scheduler_boundary_offload_payload_groups.c3`
+    now pins the completed-null wakeup path, verifies the blocked fiber becomes
+    ready, and verifies consumption clears the pending offload slot.
+  - validation:
+    - `c3c build`
+    - bounded scheduler slice: `pass=111 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
+- Closed the deduce/JIT capacity-growth byte-overflow lane:
+  - `src/lisp/deduce_schema_query_relation_alloc.c3`,
+    `src/lisp/deduce_rule_eval_exec_aggregate_groups.c3`,
+    `src/lisp/deduce_rule_eval_exec_component_delta_codec.c3`,
+    `src/lisp/deduce_rule_eval_exec_component_state_helpers.c3`,
+    `src/lisp/deduce_schema_query_input_analysis.c3`,
+    `src/lisp/deduce_db_handles_mutation_txn.c3`,
+    `src/lisp/deduce_db_handles_incremental_tracking.c3`,
+    `src/lisp/deduce_db_rule_signature_helpers.c3`,
+    `src/lisp/deduce_db_handles.c3`, and
+    `src/lisp/deduce_db_rule_catalog_record_codec.c3`
+    now fail closed before `sizeof * new_cap` can overflow during relation,
+    delta, aggregate, query-demand, transaction, dirty-predicate, signature,
+    relation-schema, and persisted-rule-catalog growth.
+  - `src/lisp/jit_jit_module_setup_helpers.c3`
+    now rejects oversized source-dir vector growth and path/string length
+    increments before allocation-size arithmetic can wrap.
+  - `src/lisp/tests_deduce_groups_parallel.c3` and
+    `src/lisp/tests_deduce_groups.c3`
+    now pin the oversized-capacity fail-closed path in the bounded deduce
+    parallel group.
+  - validation:
+    - `c3c build`
+    - bounded deduce parallel group: `pass=6 fail=0`
+    - bounded scheduler slice: `pass=111 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
 - Closed the iterator/coroutine malformed-state normalization lane:
   - `src/lisp/primitives_iter_state.c3`
     now rejects missing internal list/array iterator thunk state directly, and

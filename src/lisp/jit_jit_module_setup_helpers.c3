@@ -123,6 +123,7 @@ fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / uptr.sizeof) return false;
     char** new_dirs = (char**)mem::realloc(interp.source_dirs, uptr.sizeof * new_cap);
     if (new_dirs == null) return false;
     interp.source_dirs = new_dirs;
@@ -133,7 +134,9 @@ fn bool ensure_source_dir_capacity(Interp* interp, usz needed) {
 fn bool push_source_dir(char[] file_path, Interp* interp) {
     usz dlen = path_dir_len(file_path);
     if (dlen == 0) return true;
+    if (interp.source_dir_count == usz.max) return false;
     if (!ensure_source_dir_capacity(interp, interp.source_dir_count + 1)) return false;
+    if (dlen == usz.max) return false;
     char* dir = (char*)mem::malloc(dlen + 1);
     if (dir == null) return false;
     usz slot = interp.source_dir_count;
@@ -160,6 +163,10 @@ fn bool module_copy_path(Module* mod, char[] path) {
     if (mod.path != null) {
         mem::free(mod.path);
         mod.path = null;
+    }
+    if (path.len == usz.max) {
+        mod.path_len = 0;
+        return false;
     }
     char* stored = (char*)mem::malloc(path.len + 1);
     if (stored == null) {

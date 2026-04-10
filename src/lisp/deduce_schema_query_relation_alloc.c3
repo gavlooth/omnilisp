@@ -45,6 +45,7 @@ fn bool deduce_relation_ensure_column_capacity(Relation* rel, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / SymbolId.sizeof) return false;
 
     SymbolId* new_columns = (SymbolId*)mem::realloc(rel.columns, SymbolId.sizeof * new_cap);
     if (new_columns == null) return false;
@@ -64,6 +65,7 @@ fn bool deduce_relation_ensure_unique_column_capacity(Relation* rel, usz needed)
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / SymbolId.sizeof) return false;
 
     SymbolId* new_columns = (SymbolId*)mem::realloc(rel.unique_cols, SymbolId.sizeof * new_cap);
     if (new_columns == null) return false;
@@ -83,6 +85,7 @@ fn bool deduce_relation_ensure_reference_constraint_capacity(Relation* rel, usz 
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceReferenceConstraint.sizeof) return false;
 
     DeduceReferenceConstraint* next =
         (DeduceReferenceConstraint*)mem::realloc(rel.reference_constraints, DeduceReferenceConstraint.sizeof * new_cap);
@@ -103,6 +106,7 @@ fn bool deduce_relation_ensure_check_constraint_capacity(Relation* rel, usz need
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceCheckConstraint.sizeof) return false;
 
     DeduceCheckConstraint* next =
         (DeduceCheckConstraint*)mem::realloc(rel.check_constraints, DeduceCheckConstraint.sizeof * new_cap);

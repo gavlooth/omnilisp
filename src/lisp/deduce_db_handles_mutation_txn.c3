@@ -37,6 +37,7 @@ fn bool deduce_txn_ensure_mutation_capacity(DeduceTxn* txn, usz needed) {
         }
         new_cap *= 2;
     }
+    if (new_cap > usz.max / DeduceTxnMutationEntry.sizeof) return false;
 
     DeduceTxnMutationEntry* next =
         (DeduceTxnMutationEntry*)mem::realloc(txn.mutation_entries, DeduceTxnMutationEntry.sizeof * new_cap);
@@ -53,6 +54,7 @@ fn DeduceTxnMutationEntry* deduce_txn_lookup_or_add_mutation_entry(DeduceTxn* tx
         if (entry.relation == rel) return entry;
     }
 
+    if (txn.mutation_entry_count == usz.max) return null;
     usz needed = txn.mutation_entry_count + 1;
     if (!deduce_txn_ensure_mutation_capacity(txn, needed)) return null;
 
