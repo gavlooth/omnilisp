@@ -133,6 +133,115 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
         }
     }
 
+    // Invariant: destination-builder memo entries are builder-local and do not
+    // survive after the temporary build scope returns.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        if (target_scope == null || releasing_scope == null) {
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape destination builder memo is local");
+            (*fail)++;
+        } else {
+            interp.current_scope = releasing_scope;
+            Value* nested = make_cons(
+                interp,
+                make_int(interp, 1501),
+                make_cons(interp, make_int(interp, 1502), make_nil(interp))
+            );
+            Value* src = interp.alloc_value();
+            bool setup_ok = nested != null && src != null;
+            if (setup_ok) {
+                src.tag = PARTIAL_PRIM;
+                src.partial_val.func = &prim_add;
+                src.partial_val.remaining = 1;
+                src.partial_val.first_arg = nested;
+                src.partial_val.second_arg = make_int(interp, 1503);
+                setup_ok = src.partial_val.second_arg != null;
+            }
+
+            PromotionContext ctx = {};
+            Value* built_first = null;
+            Value* built_second = null;
+            bool memo_empty_before = false;
+            bool memo_empty_after_first = false;
+            bool memo_empty_after_second = false;
+            bool child_cache_empty_after_first = false;
+            bool child_cache_empty_after_second = false;
+            if (setup_ok) {
+                boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+                memo_empty_before = ctx.memo_head == null;
+                built_first = boundary_build_destination_partial_escape(
+                    src,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                memo_empty_after_first = ctx.memo_head == null;
+                child_cache_empty_after_first = promotion_context_lookup(&ctx, nested) == null;
+                built_second = boundary_build_destination_partial_escape(
+                    src,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                memo_empty_after_second = ctx.memo_head == null;
+                child_cache_empty_after_second = promotion_context_lookup(&ctx, nested) == null;
+                boundary_promotion_context_end(interp, &ctx);
+            }
+
+            bool first_ok = setup_ok &&
+                built_first != null &&
+                built_first.tag == PARTIAL_PRIM &&
+                built_first != src &&
+                built_first.scope_gen == target_scope.escape_generation &&
+                built_first.partial_val.first_arg != null &&
+                built_first.partial_val.first_arg.tag == CONS &&
+                built_first.partial_val.first_arg != nested &&
+                main::is_in_scope((void*)built_first, target_scope);
+            bool second_ok = setup_ok &&
+                built_second != null &&
+                built_second.tag == PARTIAL_PRIM &&
+                built_second != built_first &&
+                built_second.scope_gen == target_scope.escape_generation &&
+                built_second.partial_val.first_arg != null &&
+                built_second.partial_val.first_arg.tag == CONS &&
+                built_second.partial_val.first_arg != built_first.partial_val.first_arg &&
+                main::is_in_scope((void*)built_second, target_scope);
+            bool memo_ok = memo_empty_before &&
+                memo_empty_after_first &&
+                memo_empty_after_second &&
+                child_cache_empty_after_first &&
+                child_cache_empty_after_second;
+
+            interp.current_scope = root_scope;
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+
+            if (first_ok && second_ok && memo_ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape destination builder memo is local");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary_commit_escape destination builder memo is local (setup_ok=%s first_ok=%s second_ok=%s memo_ok=%s memo_after_first=%s memo_after_second=%s child_cached_first=%s child_cached_second=%s)",
+                    setup_ok ? "yes" : "no",
+                    first_ok ? "yes" : "no",
+                    second_ok ? "yes" : "no",
+                    memo_ok ? "yes" : "no",
+                    memo_empty_after_first ? "empty" : "live",
+                    memo_empty_after_second ? "empty" : "live",
+                    child_cache_empty_after_first ? "no" : "yes",
+                    child_cache_empty_after_second ? "no" : "yes"
+                );
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: mixed/uncertain provenance can commit through destination ESCAPE
     // promotion before falling back to deep boundary copy.
     {

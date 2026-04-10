@@ -5,6 +5,20 @@ import main;
 
 bool g_boundary_force_destination_error_escape_alloc_fail = false;
 
+fn PromotionMemoEntry* boundary_destination_builder_memo_scope_begin(PromotionContext* ctx) @inline {
+    return ctx != null ? ctx.memo_head : null;
+}
+
+fn void boundary_destination_builder_memo_scope_end(
+    PromotionContext* ctx,
+    PromotionMemoEntry* saved_memo_head
+) @inline {
+    // Destination builders allocate through a temporary build scope. Any memo
+    // entries remembered while routing nested children are builder-local and
+    // must not survive after the builder returns or aborts.
+    if (ctx != null) ctx.memo_head = saved_memo_head;
+}
+
 fn Value* boundary_fallback_disallowed_error(Interp* interp, BoundaryCommitFault fault_code) @noinline {
     char[192] msg_buf;
     if (try msg = io::bprintf(

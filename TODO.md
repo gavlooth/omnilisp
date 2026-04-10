@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 2
+Current actionable count: 0
 
 Completed backlog snapshots:
 
@@ -18,25 +18,47 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-BOUNDARY-DESTINATION-MEMO-004` define correct promotion-context memo semantics for destination builders
-  - problem:
-    - destination ESCAPE builders currently save/restore `ctx.memo_head` to avoid leaving memo nodes allocated in temporary build-scope TEMP memory reachable after abort.
-    - that also means builder-local memoization is intentionally discarded after the builder returns, and the exact intended same-epoch aliasing contract for destination-builder work is still not explicit or regression-pinned.
-  - required closure:
-    - decide whether nested destination-builder memo entries must survive for later same-epoch reuse,
-    - if yes, preserve them without pointing `ctx.memo_head` at TEMP-only build-scope allocations,
-    - add a focused regression that proves the chosen aliasing contract.
-
-- [ ] `AUDIT-BOUNDARY-PROVENANCE-WRAPPER-004` re-audit target-chain wrapper reuse for nested child-owned payloads
-  - problem:
-    - the focused boundary audit found that the fast reuse classifier still does not walk `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE` payload graphs before treating an already-target-chain wrapper as reusable.
-    - the post-commit graph audit can detect those violations after the fact, but the reuse classifier itself may still admit aliasing paths that should fail closed or force copy.
-  - required closure:
-    - make the provenance/reuse classifier agree with the existing graph-audit ownership model for shared wrappers,
-    - add focused regressions for a target-chain wrapper whose nested payload still points into the releasing scope.
+- None.
 
 
 ## Recently Closed
+
+- [x] `AUDIT-BOUNDARY-DESTINATION-MEMO-004` define correct promotion-context memo semantics for destination builders
+  - closure evidence:
+    - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` now makes the
+      shipped contract explicit: memo entries remembered while routing nested
+      children inside temporary destination build scopes are builder-local and
+      are discarded when the builder returns or aborts.
+    - `src/lisp/eval_boundary_commit_escape_cons.c3` and
+      `src/lisp/eval_boundary_commit_escape_wrappers.c3` now route that
+      save/restore policy through shared helpers instead of leaving it as an
+      implicit per-builder pattern.
+    - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now
+      proves repeated destination-builder calls in one promotion epoch do not
+      retain child memo entries after return and therefore materialize fresh
+      destination graphs instead of reusing transient builder-local memo state.
+    - validation:
+      - `c3c build` -> pass
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=90 fail=0`
+
+- [x] `AUDIT-BOUNDARY-PROVENANCE-WRAPPER-004` re-audit target-chain wrapper reuse for nested child-owned payloads
+  - closure evidence:
+    - `src/lisp/eval_boundary_provenance.c3` now walks nested `ARRAY`,
+      `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before admitting
+      target-chain fast reuse, so the reuse classifier now agrees with the
+      existing graph-audit ownership model instead of checking only the wrapper
+      shell.
+    - target-chain shared wrappers now fall back into the existing copy /
+      ESCAPE builders whenever any nested child still lives in the releasing
+      scope or outside the surviving target chain.
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now pins the exact
+      target-chain-wrapper regression for `ARRAY`, `HASHMAP`, `SET`, and
+      `METHOD_TABLE`, and
+      `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` keeps it in the
+      bounded smoke lane.
+    - validation:
+      - `c3c build` -> pass
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=89 fail=0`
 
 - [x] `AUDIT-COMPILER-DIAGNOSTIC-PARITY-003` unify remaining JIT/AOT diagnostic drift and cover prelude-remapped parser coordinates
   - closure evidence:

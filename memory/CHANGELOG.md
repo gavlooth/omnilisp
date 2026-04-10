@@ -1,5 +1,42 @@
 ## 2026-04-10
 
+- Closed the destination-builder memo contract follow-up:
+  - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3`,
+    `src/lisp/eval_boundary_commit_escape_cons.c3`, and
+    `src/lisp/eval_boundary_commit_escape_wrappers.c3` now make the shipped
+    contract explicit: memo entries created while routing nested children
+    inside temporary destination build scopes are builder-local and are
+    discarded when the builder returns or aborts.
+  - same-epoch alias reuse is therefore not guaranteed across repeated
+    destination-builder invocations; the correctness contract is scoped to the
+    committed ESCAPE result, not to transient builder memo nodes.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now pins
+    that behavior with a focused regression proving nested builder memo state
+    does not survive after return and repeated builder invocations materialize
+    fresh destination graphs instead of reusing transient memoized children.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=90 fail=0`
+
+- Closed the target-chain shared-wrapper provenance follow-up:
+  - `src/lisp/eval_boundary_provenance.c3` now walks nested `ARRAY`,
+    `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before admitting
+    fast reuse for an already-target-chain wrapper, so reuse now agrees with
+    the existing graph-audit ownership model instead of only checking the
+    wrapper shell.
+  - target-chain wrapper reuse now fails closed back into the existing deep
+    copy / ESCAPE promotion builders when any nested child still lives in the
+    releasing scope or outside the surviving target chain.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now includes a focused
+    regression proving target-chain `ARRAY`, `HASHMAP`, `SET`, and
+    `METHOD_TABLE` wrappers clone instead of reusing pointer identity when one
+    nested child is still releasing-scope owned, and
+    `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` wires that probe
+    into the bounded smoke lane.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=89 fail=0`
+
 - Closed a promotion-context/env-copy follow-up in the boundary hardening lane:
   - `src/lisp/eval_promotion_context.c3` now treats memo-entry allocation
     failure as a fail-closed promotion-context abort instead of dereferencing a

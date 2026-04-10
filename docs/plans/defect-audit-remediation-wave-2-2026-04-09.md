@@ -49,10 +49,21 @@ Post-wave follow-up (2026-04-10):
     iterator payloads backed by copied `PARTIAL_PRIM` values.
   - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now covers the
     iterator-wrapper failure rollback lane directly.
-- New focused audit findings remain open and were promoted back into live
-  backlog items:
-  - `AUDIT-BOUNDARY-DESTINATION-MEMO-004`
-  - `AUDIT-BOUNDARY-PROVENANCE-WRAPPER-004`
+- Additional provenance hardening also landed:
+  - `src/lisp/eval_boundary_provenance.c3` now walks nested `ARRAY`,
+    `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before admitting
+    target-chain fast reuse, so provenance/reuse classification now matches
+    the graph-audit ownership model for shared wrappers.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now includes the exact
+    missing target-chain-wrapper regression and the bounded smoke lane covers it.
+- The destination-builder memo follow-up is also now closed:
+  - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` now makes the
+    current contract explicit: memo entries created while routing nested
+    children inside temporary destination build scopes are builder-local and do
+    not survive after the builder returns or aborts.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now pins
+    that contract directly.
+- No live backlog items remain from this audit wave.
 
 ## Objective
 

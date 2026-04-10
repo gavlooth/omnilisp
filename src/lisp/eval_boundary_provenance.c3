@@ -10,6 +10,50 @@ fn bool boundary_value_in_releasing_scope(Value* v, Interp* interp) @inline {
     return boundary_ptr_in_scope((void*)v, interp.releasing_scope);
 }
 
+fn bool boundary_graph_child_alias_unsafe_for_reuse(Value* child, Interp* interp, usz depth) @inline {
+    if (child == null || interp == null) return false;
+    if (boundary_value_in_releasing_scope(child, interp)) return true;
+    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)child, interp, child.scope_gen)) return true;
+    return boundary_graph_alias_unsafe_for_reuse(child, interp, depth + 1);
+}
+
+fn bool boundary_array_payload_alias_unsafe_for_reuse(Value* array_v, Interp* interp, usz depth) {
+    if (array_v == null || array_v.tag != ARRAY || array_v.array_val == null) return false;
+    Array* arr = array_v.array_val;
+    for (usz i = 0; i < arr.length; i++) {
+        if (boundary_graph_child_alias_unsafe_for_reuse(arr.items[i], interp, depth)) return true;
+    }
+    return false;
+}
+
+fn bool boundary_hashmap_payload_alias_unsafe_for_reuse(Value* map_v, Interp* interp, usz depth) {
+    if (map_v == null || (map_v.tag != HASHMAP && map_v.tag != SET) || map_v.hashmap_val == null) return false;
+    HashMap* map = map_v.hashmap_val;
+    if (map.entries == null) return false;
+
+    for (uint i = 0; i < map.capacity; i++) {
+        Value* key = map.entries[i].key;
+        if (key == null) continue;
+        if (boundary_graph_child_alias_unsafe_for_reuse(key, interp, depth)) return true;
+        if (map_v.tag == HASHMAP &&
+            boundary_graph_child_alias_unsafe_for_reuse(map.entries[i].value, interp, depth)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp* interp, usz depth) {
+    if (mt_v == null || mt_v.tag != METHOD_TABLE || mt_v.method_table_val == null) return false;
+    MethodTable* mt = mt_v.method_table_val;
+    for (usz i = 0; i < mt.entry_count; i++) {
+        if (boundary_graph_child_alias_unsafe_for_reuse(mt.entries[i].implementation, interp, depth)) {
+            return true;
+        }
+    }
+    return boundary_graph_child_alias_unsafe_for_reuse(mt.fallback, interp, depth);
+}
+
 fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) {
     if (v == null || interp == null) return false;
     if (depth >= 128) return true;
@@ -24,6 +68,13 @@ fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz dept
         case CONS:
             return boundary_graph_alias_unsafe_for_reuse(v.cons_val.car, interp, depth + 1) ||
                 boundary_graph_alias_unsafe_for_reuse(v.cons_val.cdr, interp, depth + 1);
+        case ARRAY:
+            return boundary_array_payload_alias_unsafe_for_reuse(v, interp, depth);
+        case HASHMAP:
+        case SET:
+            return boundary_hashmap_payload_alias_unsafe_for_reuse(v, interp, depth);
+        case METHOD_TABLE:
+            return boundary_method_table_payload_alias_unsafe_for_reuse(v, interp, depth);
         default:
             return false;
     }

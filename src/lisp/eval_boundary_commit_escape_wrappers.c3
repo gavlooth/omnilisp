@@ -18,8 +18,8 @@ fn Value* boundary_build_destination_partial_escape(
 ) {
     if (partial.tag != PARTIAL_PRIM) return partial;
     if (ctx != null && ctx.aborted) return partial;
-    PromotionMemoEntry* saved_memo_head = ctx != null ? ctx.memo_head : null;
-    defer if (ctx != null) ctx.memo_head = saved_memo_head;
+    PromotionMemoEntry* saved_memo_head = boundary_destination_builder_memo_scope_begin(ctx);
+    defer boundary_destination_builder_memo_scope_end(ctx, saved_memo_head);
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -153,8 +153,8 @@ fn Value* boundary_build_destination_iterator_escape(
 ) {
     if (iterator.tag != ITERATOR) return iterator;
     if (ctx != null && ctx.aborted) return iterator;
-    PromotionMemoEntry* saved_memo_head = ctx != null ? ctx.memo_head : null;
-    defer if (ctx != null) ctx.memo_head = saved_memo_head;
+    PromotionMemoEntry* saved_memo_head = boundary_destination_builder_memo_scope_begin(ctx);
+    defer boundary_destination_builder_memo_scope_end(ctx, saved_memo_head);
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
