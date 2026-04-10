@@ -207,6 +207,18 @@ fn void copy_env_rollback_materialized_method_table(
     }
 }
 
+fn void copy_env_cancel_materialized_target_dtor(
+    Value* copied,
+    main::ScopeRegion* target_scope
+) @inline {
+    if (copied == null || target_scope == null) return;
+    if (copied.tag == CLOSURE) {
+        main::scope_cancel_dtor(target_scope, (void*)copied, &scope_dtor_closure);
+        return;
+    }
+    main::scope_cancel_dtor(target_scope, (void*)copied, &scope_dtor_value);
+}
+
 fn void copy_env_rollback_materialized_value(
     Value* src,
     Value* copied,
@@ -246,6 +258,7 @@ fn void copy_env_rollback_materialized_value(
         src.tag == ARRAY &&
         copied.tag == ARRAY) {
         copy_env_rollback_materialized_array(src, copied, target_scope);
+        copy_env_cancel_materialized_target_dtor(copied, target_scope);
         scope_dtor_value((void*)copied);
         return;
     }
@@ -254,6 +267,7 @@ fn void copy_env_rollback_materialized_value(
         (src.tag == HASHMAP || src.tag == SET) &&
         copied.tag == src.tag) {
         copy_env_rollback_materialized_hashmap(src, copied, target_scope);
+        copy_env_cancel_materialized_target_dtor(copied, target_scope);
         scope_dtor_value((void*)copied);
         return;
     }
@@ -262,13 +276,16 @@ fn void copy_env_rollback_materialized_value(
         src.tag == METHOD_TABLE &&
         copied.tag == METHOD_TABLE) {
         copy_env_rollback_materialized_method_table(src, copied, target_scope);
+        copy_env_cancel_materialized_target_dtor(copied, target_scope);
         scope_dtor_value((void*)copied);
         return;
     }
     if (copied.tag == CLOSURE) {
+        copy_env_cancel_materialized_target_dtor(copied, target_scope);
         scope_dtor_closure((void*)copied);
         return;
     }
+    copy_env_cancel_materialized_target_dtor(copied, target_scope);
     scope_dtor_value((void*)copied);
 }
 

@@ -83,6 +83,30 @@ fn void scope_register_dtor_escape(ScopeRegion* scope, void* ptr, ScopeDestructo
     scope_assert_escape_tail_consistency(scope);
 }
 
+fn void scope_noop_dtor(void* ptr) @inline {
+    (void)ptr;
+}
+
+/**
+ * Tombstone the newest matching TEMP-lane destructor without mutating dtor
+ * list topology. This is used by rollback paths that must manually unwind an
+ * already-materialized object before normal scope teardown.
+ */
+fn bool scope_cancel_dtor(ScopeRegion* scope, void* ptr, ScopeDestructorFn func) {
+    if (scope == null || ptr == null || func == null) return false;
+    scope_guard_owner(scope, "scope_cancel_dtor");
+    ScopeDtor* d = scope.dtors;
+    while (d != null) {
+        if (d.ptr == ptr && d.func == func) {
+            d.ptr = null;
+            d.func = &scope_noop_dtor;
+            return true;
+        }
+        d = d.next;
+    }
+    return false;
+}
+
 /**
  * Check if a pointer points to memory allocated within this scope's chunks.
  * O(N) where N is the number of chunks in this scope (usually 1 or 2).

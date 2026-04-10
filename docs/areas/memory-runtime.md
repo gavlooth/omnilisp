@@ -50,6 +50,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `HASHMAP` / `SET`, and `METHOD_TABLE` bindings as well, so nested copied
   closure/env retains are unwound immediately when one later binding fails
   instead of surviving until the abandoned target scope is released.
+- Env-copy rollback now also tombstones the copied target-scope dtor entry
+  before manually unwinding a materialized value, so failed env-copy no longer
+  consumes a copied closure/env retain during rollback and then replays the
+  same destructor again when the abandoned target scope is later released.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
@@ -69,12 +73,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/check_jit_env_scope_guards.sh`
 - Verification status for the already-closed hardening profile remains current:
   - `c3c build` passed.
-  - bounded `memory-lifetime-smoke` passed at `pass=90 fail=0`.
+  - bounded `memory-lifetime-smoke` passed at `pass=92 fail=0`.
   - `rm -rf build/obj/linux-x64 build/main && mkdir -p build/obj/linux-x64/tmp_c_compile && c3c build --sanitize=address` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 90/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 92/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator

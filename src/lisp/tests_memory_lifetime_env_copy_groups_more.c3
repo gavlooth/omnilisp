@@ -843,10 +843,17 @@ fn void run_memory_lifetime_env_copy_nested_array_rollback_test(Interp* interp, 
         interp.current_scope = owner;
         Env* captured_env = make_env(interp, interp.global_env);
         main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
         Value* shared_closure = null;
         if (captured_env != null) {
             env_define_with_barrier(captured_env, payload_sym, make_int(interp, 902), interp);
             shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+            if (closure_env_scope != null) {
+                main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                    int* counter = (int*)ptr;
+                    if (counter != null) (*counter)++;
+                });
+            }
         }
 
         interp.current_scope = source;
@@ -911,20 +918,26 @@ fn void run_memory_lifetime_env_copy_nested_array_rollback_test(Interp* interp, 
         main::scope_release(source);
         main::scope_release(target);
         int rc_after_target_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
-        bool teardown_ok = rc_after_target_release == 1;
+        int destroy_count_after_target_release = closure_env_destroy_count;
+        bool teardown_ok = rc_after_target_release == 1 &&
+                           destroy_count_after_target_release == 0;
         main::scope_release(owner);
+        int destroy_count_after_owner_release = closure_env_destroy_count;
+        bool owner_release_ok = destroy_count_after_owner_release == 1;
 
-        bool ok = setup_ok && fault_ok && rollback_ok && teardown_ok;
+        bool ok = setup_ok && fault_ok && rollback_ok && teardown_ok && owner_release_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: env-copy nested array rollback");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: env-copy nested array rollback (setup_ok=%s fault=%s rc_after_fail=%d rc_after_target_release=%d rollback_ok=%s)",
+                "[FAIL] lifetime: env-copy nested array rollback (setup_ok=%s fault=%s rc_after_fail=%d rc_after_target_release=%d destroy_count_after_target_release=%d destroy_count_after_owner_release=%d rollback_ok=%s)",
                 setup_ok ? "yes" : "no",
                 (ZString)boundary_env_copy_fault_name(copied.fault_code),
                 rc_after_fail,
                 rc_after_target_release,
+                destroy_count_after_target_release,
+                destroy_count_after_owner_release,
                 rollback_ok ? "yes" : "no"
             );
             (*fail)++;
