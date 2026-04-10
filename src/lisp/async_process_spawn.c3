@@ -160,16 +160,29 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
     ProcessHandle* ph = get_process_handle(proc_handle_v);
     int pid = (ph != null && ph.open && ph.uv_process != null) ? omni_uv_process_pid(ph.uv_process) : -1;
 
-    Value* out = make_hashmap(interp, 16);
+    Value* out = make_hashmap_checked(interp, 16, "process-spawn: out of memory");
+    if (out == null || out.tag != HASHMAP) {
+        close_fs_like_handle(stdin_h, interp);
+        close_fs_like_handle(stdout_h, interp);
+        close_fs_like_handle(stderr_h, interp);
+        if (ph != null) close_process_handle(ph);
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
     Value* handle_key = make_symbol(interp, interp.symbols.intern("handle"));
     Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
     Value* stdin_key = make_symbol(interp, interp.symbols.intern("stdin"));
     Value* stdout_key = make_symbol(interp, interp.symbols.intern("stdout"));
     Value* stderr_key = make_symbol(interp, interp.symbols.intern("stderr"));
-    hashmap_set(out.hashmap_val, handle_key, proc_handle_v, interp);
-    hashmap_set(out.hashmap_val, pid_key, make_int(interp, pid), interp);
-    hashmap_set(out.hashmap_val, stdin_key, stdin_h, interp);
-    hashmap_set(out.hashmap_val, stdout_key, stdout_h, interp);
-    hashmap_set(out.hashmap_val, stderr_key, stderr_h, interp);
+    if (!hashmap_set_checked(out.hashmap_val, handle_key, proc_handle_v, interp) ||
+        !hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
+        !hashmap_set_checked(out.hashmap_val, stdin_key, stdin_h, interp) ||
+        !hashmap_set_checked(out.hashmap_val, stdout_key, stdout_h, interp) ||
+        !hashmap_set_checked(out.hashmap_val, stderr_key, stderr_h, interp)) {
+        close_fs_like_handle(stdin_h, interp);
+        close_fs_like_handle(stdout_h, interp);
+        close_fs_like_handle(stderr_h, interp);
+        if (ph != null) close_process_handle(ph);
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
     return out;
 }

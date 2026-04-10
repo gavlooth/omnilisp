@@ -146,9 +146,14 @@ fn Value* parse_response_make_symbol_key(Interp* interp, char[] name) {
     return key;
 }
 
+fn Value* parse_response_oom(Interp* interp) @inline {
+    return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response payload");
+}
+
 // Parse HTTP response: extract status code, headers, body
 fn Value* parse_response(char[] response, Interp* interp) {
-    Value* result = make_hashmap(interp, 8);
+    Value* result = make_hashmap_checked(interp, 8, "http: failed to allocate response payload");
+    if (result == null || result.tag != HASHMAP) return parse_response_oom(interp);
 
     // Find status code: "HTTP/1.1 200 OK\r\n"
     usz pos = 0;
@@ -165,7 +170,9 @@ fn Value* parse_response(char[] response, Interp* interp) {
 
     Value* status_key = parse_response_make_symbol_key(interp, "status");
     if (status_key == null || is_error(status_key)) return status_key;
-    hashmap_set(result.hashmap_val, status_key, make_int(interp, (long)status), interp);
+    if (!hashmap_set_checked(result.hashmap_val, status_key, make_int(interp, (long)status), interp)) {
+        return parse_response_oom(interp);
+    }
 
     // Find end of headers: \r\n\r\n
     usz header_end = 0;
@@ -184,16 +191,22 @@ fn Value* parse_response(char[] response, Interp* interp) {
         usz hdr_start = 0;
         while (hdr_start < header_end && !(response[hdr_start] == '\n')) hdr_start++;
         if (hdr_start < header_end) hdr_start++;  // skip \n
-        hashmap_set(result.hashmap_val, headers_key,
-            make_string(interp, response[hdr_start..header_end - 5]), interp);
+        Value* headers_value = make_string(interp, response[hdr_start..header_end - 5]);
+        if (headers_value == null || is_error(headers_value)) return headers_value;
+        if (!hashmap_set_checked(result.hashmap_val, headers_key, headers_value, interp)) {
+            return parse_response_oom(interp);
+        }
     }
 
     // Body
     if (header_end > 0 && header_end < response.len) {
         Value* body_key = parse_response_make_symbol_key(interp, "body");
         if (body_key == null || is_error(body_key)) return body_key;
-        hashmap_set(result.hashmap_val, body_key,
-            make_string(interp, response[header_end..]), interp);
+        Value* body_value = make_string(interp, response[header_end..]);
+        if (body_value == null || is_error(body_value)) return body_value;
+        if (!hashmap_set_checked(result.hashmap_val, body_key, body_value, interp)) {
+            return parse_response_oom(interp);
+        }
     }
 
     return result;

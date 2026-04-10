@@ -1,5 +1,33 @@
 ## 2026-04-10
 
+- Closed the remaining runtime/status payload-builder slice of the internal
+  collection-constructor migration:
+  - `src/lisp/async_process_signal_dns_process.c3`,
+    `src/lisp/async_process_spawn.c3`, and
+    `src/lisp/prim_io_fs_handles.c3`
+    now route process/fs status payload construction through checked
+    `HASHMAP` / `ARRAY` helpers plus checked insertion instead of mutating
+    unchecked constructor results.
+  - `src/lisp/http_url_response.c3` now routes parsed HTTP response payload
+    construction through the same checked map contract.
+  - `process-spawn` now also closes its live process/fs handles if final
+    success-payload construction fails, so constructor OOM no longer strands a
+    half-built success result with open resources.
+  - `src/lisp/eval_dispatch_error_payloads.c3` now treats dispatch payload
+    dictionaries as optional under OOM, so the primary lambda/ambiguous
+    typed error still returns even if payload-map construction or insertion
+    fails.
+  - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now applies
+    that same optional-payload contract to unhandled-effect error payloads.
+  - `src/lisp/primitives_meta_types_ctor_helpers.c3` now makes
+    `ctor_mismatch_data(...)` fail closed by returning `null` instead of
+    dereferencing unchecked hashmap payloads.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves fs,
+    process-spawn, process-wait, HTTP response payload, dispatch/runtime-effect
+    payload, and ctor-mismatch constructor OOM paths fail closed.
+  - this closes the staged internal collection-constructor migration lane; no
+    runtime/status residual remains in `TODO.md`.
+
 - Closed the schema-explain payload-builder slice of the internal collection
   constructor migration:
   - `src/lisp/schema_explain_payload_helpers.c3` now centralizes checked map

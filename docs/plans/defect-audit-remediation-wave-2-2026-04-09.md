@@ -40,6 +40,23 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The staged collection-constructor migration is now fully closed:
+  - `src/lisp/async_process_signal_dns_process.c3`,
+    `src/lisp/async_process_spawn.c3`, and
+    `src/lisp/prim_io_fs_handles.c3`
+    now use checked `HASHMAP` / `ARRAY` constructors plus checked insertion
+    for runtime status payloads.
+  - `src/lisp/http_url_response.c3`,
+    `src/lisp/eval_dispatch_error_payloads.c3`,
+    `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`, and
+    `src/lisp/primitives_meta_types_ctor_helpers.c3`
+    now fail closed when auxiliary payload-map construction fails instead of
+    dereferencing unchecked hashmap payloads.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now pins the fs,
+    process-spawn, process-wait, HTTP response payload, dispatch/runtime-effect
+    payload, and ctor-mismatch OOM seams directly.
+  - `TODO.md` no longer tracks `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`.
+
 - Additional boundary/env-copy hardening landed:
   - `src/lisp/eval_promotion_context.c3` now fails closed if memo-entry
     allocation itself fails, instead of dereferencing a null `PromotionMemoEntry`.

@@ -109,6 +109,15 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   allocates one heap-backed scan state object, closing the full-slice
   `jit-policy` crash where the previous four `4096`-entry local pointer arrays
   could overflow a smaller runtime stack before the scan body even ran.
+- The staged internal collection-constructor OOM migration is now closed
+  across the live runtime-facing families:
+  - shared constructor substrate,
+  - data-format bridges,
+  - schema-explain payload builders,
+  - runtime/status payload builders.
+- Process/fs status payloads, dispatch auxiliary payload builders, and ctor
+  mismatch payload helpers now fail closed under collection-constructor OOM
+  instead of mutating unchecked `HASHMAP` / `ARRAY` results.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or

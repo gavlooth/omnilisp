@@ -72,12 +72,16 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
         umsg = "unhandled effect";
     }
 
-    Value* data = make_hashmap(interp, 8);
+    Value* data = make_hashmap_checked(interp, 8, "runtime effect payload: out of memory");
     if (data != null && data.tag == HASHMAP) {
         SymbolId key_tag = interp.symbols.intern("tag");
         SymbolId key_arg_type = interp.symbols.intern("arg-type");
-        hashmap_set(data.hashmap_val, make_symbol(interp, key_tag), make_symbol(interp, tag), interp);
-        hashmap_set(data.hashmap_val, make_symbol(interp, key_arg_type), make_symbol(interp, value_type_name(arg_v, interp)), interp);
+        if (!hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_tag), make_symbol(interp, tag), interp) ||
+            !hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_arg_type), make_symbol(interp, value_type_name(arg_v, interp)), interp)) {
+            data = null;
+        }
+    } else {
+        data = null;
     }
     return raise_error_with_payload_names(interp, "runtime", "runtime/unhandled-effect", umsg, data);
 }

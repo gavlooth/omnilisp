@@ -46,11 +46,16 @@ fn Value* prim_fs_stat(Value*[] args, Env* env, Interp* interp) {
         return io_fs_raise(interp, "io/fs-stat-failed", "fs-stat: stat failed");
     }
 
-    Value* out = make_hashmap(interp, 8);
+    Value* out = make_hashmap_checked(interp, 8, "fs-stat: out of memory");
+    if (out == null || out.tag != HASHMAP) {
+        return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: out of memory");
+    }
     Value* size_key = make_symbol(interp, interp.symbols.intern("size"));
     Value* mode_key = make_symbol(interp, interp.symbols.intern("mode"));
-    hashmap_set(out.hashmap_val, size_key, make_int(interp, (long)size_out), interp);
-    hashmap_set(out.hashmap_val, mode_key, make_int(interp, (long)mode_out), interp);
+    if (!hashmap_set_checked(out.hashmap_val, size_key, make_int(interp, (long)size_out), interp) ||
+        !hashmap_set_checked(out.hashmap_val, mode_key, make_int(interp, (long)mode_out), interp)) {
+        return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: out of memory");
+    }
     return out;
 }
 
@@ -68,7 +73,10 @@ fn Value* prim_fs_readdir(Value*[] args, Env* env, Interp* interp) {
     }
     defer if (joined != null) fs_uv_free(joined);
 
-    Value* out = make_array(interp, 8);
+    Value* out = make_array_checked(interp, 8, "fs-readdir: out of memory");
+    if (out == null || out.tag != ARRAY) {
+        return io_fs_raise(interp, "io/fs-readdir-out-of-memory", "fs-readdir: out of memory");
+    }
     if (joined == null || joined_len == 0) return out;
 
     usz start = 0;

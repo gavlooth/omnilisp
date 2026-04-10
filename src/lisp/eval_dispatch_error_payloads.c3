@@ -2,6 +2,17 @@ module lisp;
 
 import std::io;
 
+fn Value* dispatch_make_payload_data(Interp* interp, uint capacity) @inline {
+    Value* data = make_hashmap_checked(interp, capacity, "dispatch payload: out of memory");
+    return data != null && data.tag == HASHMAP ? data : null;
+}
+
+fn bool dispatch_payload_set(Value* data, SymbolId key, Value* value, Interp* interp) @inline {
+    return data != null &&
+        data.tag == HASHMAP &&
+        hashmap_set_checked(data.hashmap_val, make_symbol(interp, key), value, interp);
+}
+
 fn SymbolId dispatch_failure_reason_symbol(DispatchMatchFailureReason reason, Interp* interp) @inline {
     switch (reason) {
         case DISPATCH_MATCH_FAIL_ARITY:
@@ -67,8 +78,8 @@ fn Value* lambda_call_type_error(
     DispatchMatchBreakdown* breakdown,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 8);
-    if (data != null && data.tag == HASHMAP) {
+    Value* data = dispatch_make_payload_data(interp, 8);
+    if (data != null) {
         SymbolId key_failure = interp.symbols.intern("failure");
         SymbolId key_param_index = interp.symbols.intern("param-index");
         SymbolId key_expected = interp.symbols.intern("expected");
@@ -76,17 +87,17 @@ fn Value* lambda_call_type_error(
         SymbolId key_expected_arity = interp.symbols.intern("expected-arity");
         SymbolId key_actual_arity = interp.symbols.intern("actual-arity");
 
-        hashmap_set(data.hashmap_val, make_symbol(interp, key_failure),
-            make_symbol(interp, dispatch_failure_reason_symbol(breakdown.failure_reason, interp)), interp);
-        hashmap_set(data.hashmap_val, make_symbol(interp, key_expected_arity),
-            make_int(interp, (long)sig.param_count), interp);
-        hashmap_set(data.hashmap_val, make_symbol(interp, key_actual_arity),
-            make_int(interp, (long)provided_arg_count), interp);
+        bool payload_ok =
+            dispatch_payload_set(data, key_failure,
+                make_symbol(interp, dispatch_failure_reason_symbol(breakdown.failure_reason, interp)), interp) &&
+            dispatch_payload_set(data, key_expected_arity, make_int(interp, (long)sig.param_count), interp) &&
+            dispatch_payload_set(data, key_actual_arity, make_int(interp, (long)provided_arg_count), interp);
 
-        if (breakdown.failure_arg_index != usz.max && breakdown.failure_arg_index < args.len) {
+        if (payload_ok && breakdown.failure_arg_index != usz.max && breakdown.failure_arg_index < args.len) {
             usz idx = breakdown.failure_arg_index;
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_param_index), make_int(interp, (long)idx), interp);
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_expected), lambda_expected_value(sig, idx, interp), interp);
+            payload_ok =
+                dispatch_payload_set(data, key_param_index, make_int(interp, (long)idx), interp) &&
+                dispatch_payload_set(data, key_expected, lambda_expected_value(sig, idx, interp), interp);
 
             Value* actual = make_nil(interp);
             if (idx < arg_types.len) {
@@ -101,11 +112,16 @@ fn Value* lambda_call_type_error(
             if (actual == null || actual.tag == NIL) {
                 actual = make_symbol(interp, value_type_name(args[idx], interp));
             }
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_actual), actual, interp);
-        } else {
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_param_index), make_nil(interp), interp);
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_expected), make_nil(interp), interp);
-            hashmap_set(data.hashmap_val, make_symbol(interp, key_actual), make_nil(interp), interp);
+            payload_ok = payload_ok && dispatch_payload_set(data, key_actual, actual, interp);
+        } else if (payload_ok) {
+            payload_ok =
+                dispatch_payload_set(data, key_param_index, make_nil(interp), interp) &&
+                dispatch_payload_set(data, key_expected, make_nil(interp), interp) &&
+                dispatch_payload_set(data, key_actual, make_nil(interp), interp);
+        }
+
+        if (!payload_ok) {
+            data = null;
         }
     }
 
@@ -180,7 +196,7 @@ fn Value* dispatch_ambiguous_error(
         return raise_error(interp, "ambiguous method call: multiple methods match with equal specificity");
     }
 
-    Value* data = make_hashmap(interp, 16);
+    Value* data = dispatch_make_payload_data(interp, 16);
     SymbolId key_reason = interp.symbols.intern("reason");
     SymbolId key_method = interp.symbols.intern("method");
     SymbolId key_arg_count = interp.symbols.intern("arg-count");
@@ -196,34 +212,20 @@ fn Value* dispatch_ambiguous_error(
     }
     Value* arg_types = dispatch_reverse_list(arg_types_rev, interp);
 
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_reason),
-        make_symbol(interp, interp.symbols.intern("ambiguous-equal-specificity")),
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_method),
-        make_symbol(interp, mt.name),
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_arg_count),
-        make_int(interp, (long)args.len),
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_arg_types),
-        arg_types,
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_best_score),
-        make_int(interp, best_score),
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_tie_count),
-        make_int(interp, (long)tie_count),
-        interp);
-    hashmap_set(data.hashmap_val,
-        make_symbol(interp, key_candidate_indices),
-        dispatch_reverse_list(tie_indices, interp),
-        interp);
+    if (data != null) {
+        bool payload_ok =
+            dispatch_payload_set(data, key_reason,
+                make_symbol(interp, interp.symbols.intern("ambiguous-equal-specificity")), interp) &&
+            dispatch_payload_set(data, key_method, make_symbol(interp, mt.name), interp) &&
+            dispatch_payload_set(data, key_arg_count, make_int(interp, (long)args.len), interp) &&
+            dispatch_payload_set(data, key_arg_types, arg_types, interp) &&
+            dispatch_payload_set(data, key_best_score, make_int(interp, best_score), interp) &&
+            dispatch_payload_set(data, key_tie_count, make_int(interp, (long)tie_count), interp) &&
+            dispatch_payload_set(data, key_candidate_indices, dispatch_reverse_list(tie_indices, interp), interp);
+        if (!payload_ok) {
+            data = null;
+        }
+    }
 
     return raise_error_with_payload_names(
         interp,

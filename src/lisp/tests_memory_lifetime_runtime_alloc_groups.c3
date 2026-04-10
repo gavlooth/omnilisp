@@ -36,6 +36,154 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[1] fs_stat_args = { make_string(interp, "/tmp") };
+        Value*[1] fs_readdir_args = { make_string(interp, "/tmp") };
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        bool saved_array_items_fail = g_value_force_make_array_items_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* fs_stat_fail = prim_fs_stat(fs_stat_args[0:1], null, interp);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        g_value_force_make_array_items_alloc_fail = true;
+        Value* fs_readdir_fail = prim_fs_readdir(fs_readdir_args[0:1], null, interp);
+        g_value_force_make_array_items_alloc_fail = saved_array_items_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(fs_stat_fail, "fs-stat: out of memory") &&
+            runtime_alloc_error_matches(fs_readdir_fail, "fs-readdir: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: fs status payload constructors fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: fs status payload constructors fail closed (stat=%s readdir=%s)",
+                runtime_alloc_error_text(fs_stat_fail),
+                runtime_alloc_error_text(fs_readdir_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* proc_argv =
+            make_cons(interp,
+                make_string(interp, "-c"),
+                make_cons(interp, make_string(interp, "exit 0"), make_nil(interp)));
+        Value*[3] spawn_args = {
+            make_string(interp, "/bin/sh"),
+            proc_argv,
+            make_nil(interp)
+        };
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* spawn_fail = prim_process_spawn(spawn_args[0:3], null, interp);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = runtime_alloc_error_matches(spawn_fail, "process-spawn: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: process spawn status payload constructor fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: process spawn status payload constructor fails closed (msg=%s)",
+                runtime_alloc_error_text(spawn_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* wait_fail = make_process_wait_result(interp, 42, 0, 0);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = runtime_alloc_error_matches(wait_fail, "process-wait: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: process wait status payload constructor fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: process wait status payload constructor fails closed (msg=%s)",
+                runtime_alloc_error_text(wait_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        MethodSignature sig = { .param_count = 1 };
+        MethodTable ambiguous_mt = { .name = interp.symbols.intern("ambiguous-test") };
+        DispatchMatchBreakdown breakdown = {
+            .failure_reason = DISPATCH_MATCH_FAIL_ARITY,
+            .failure_arg_index = usz.max
+        };
+        Value*[] no_args = {};
+        TypeId[] no_types = {};
+        Value*[1] ambiguous_args = { make_int(interp, 1) };
+        Value* tie_indices =
+            make_cons(interp, make_int(interp, 0), make_cons(interp, make_int(interp, 1), make_nil(interp)));
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* lambda_fail = lambda_call_type_error(null, &sig, no_args, 0, no_types, &breakdown, interp);
+        Value* ambiguous_fail = dispatch_ambiguous_error(
+            &ambiguous_mt,
+            ambiguous_args[0:1],
+            10,
+            2,
+            tie_indices,
+            interp);
+        Value* ctor_data = ctor_mismatch_data(
+            interp,
+            interp.symbols.intern("Box"),
+            make_cons(interp, make_symbol(interp, interp.sym_Integer), make_nil(interp)),
+            make_nil(interp),
+            false,
+            0,
+            null);
+        Value* runtime_effect_fail =
+            jit_unhandled_effect_error(interp.symbols.intern("sample"), make_int(interp, 1), interp);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(lambda_fail, "lambda: expected 1 argument(s), got 0") &&
+            runtime_alloc_error_matches(runtime_effect_fail, "unhandled effect 'sample' with arg type Integer") &&
+            runtime_alloc_error_matches(ambiguous_fail, "ambiguous method call: multiple methods match with equal specificity") &&
+            ctor_data == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: dispatch and ctor payload constructors fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: dispatch and ctor payload constructors fail closed (lambda=%s runtime=%s ambiguous=%s ctor_null=%s)",
+                runtime_alloc_error_text(lambda_fail),
+                runtime_alloc_error_text(runtime_effect_fail),
+                runtime_alloc_error_text(ambiguous_fail),
+                ctor_data == null ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        char[] response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* response_fail = parse_response(response, interp);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = runtime_alloc_error_matches(response_fail, "http: failed to allocate response payload");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: http response payload constructor fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: http response payload constructor fails closed (msg=%s)",
+                runtime_alloc_error_text(response_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
         Value* iter_raise = iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");

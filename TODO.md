@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 0
 
 Completed backlog snapshots:
 
@@ -18,26 +18,37 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011` migrate remaining runtime/status payload builders off unchecked collection constructors
-  - problem:
-    - after the data-format slice, there are still runtime-executed payload
-      builders that call unchecked `make_array(...)` / `make_hashmap(...)`
-      directly and then dereference or mutate the payload immediately.
-    - representative remaining users include:
-      - `src/lisp/async_process_signal_dns_process.c3`
-      - `src/lisp/prim_io_fs_handles.c3`
-      - `src/lisp/eval_dispatch_error_payloads.c3`
-      - `src/lisp/primitives_meta_types_ctor_helpers.c3`
-      - `src/lisp/async_process_spawn.c3`
-    - these are no longer mixed together with data-format parsing, so they need
-      their own staged migration lane.
-  - required closure:
-    - split the remaining runtime payload/status helpers into coherent
-      subfamilies if needed
-    - migrate each family onto checked constructors with explicit OOM behavior
-    - add focused regressions instead of relying only on the broad smoke slice
+- none currently;
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011` migrate remaining runtime/status payload builders off unchecked collection constructors
+  - closure evidence:
+    - `src/lisp/async_process_signal_dns_process.c3`,
+      `src/lisp/async_process_spawn.c3`, and
+      `src/lisp/prim_io_fs_handles.c3`
+      now route runtime status payload builders through checked `HASHMAP` /
+      `ARRAY` constructors and checked hashmap insertion instead of mutating
+      unchecked constructor results.
+    - `src/lisp/http_url_response.c3` now constructs parsed HTTP response
+      payload maps through the same checked contract.
+    - `process-spawn` now also closes its live process/fs handles if final
+      success-payload map construction fails, so constructor OOM cannot strand
+      a half-built success-shaped result with open resources.
+    - `src/lisp/eval_dispatch_error_payloads.c3` now treats lambda and
+      ambiguous-dispatch payload dictionaries as optional under OOM: the
+      primary typed error still returns even if payload-map construction or
+      insertion fails.
+    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now applies
+      the same optional-payload contract to unhandled-effect error payloads.
+    - `src/lisp/primitives_meta_types_ctor_helpers.c3` now makes
+      `ctor_mismatch_data(...)` fail closed by returning `null` instead of
+      dereferencing unchecked hashmap payloads.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now pins fs,
+      process-spawn, process-wait, HTTP response payload, dispatch-payload,
+      runtime-effect payload, and ctor-mismatch constructor OOM paths directly.
+    - no same-lane residual callsites remain from the staged runtime/status
+      payload-builder family.
 
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010` migrate schema explain payload builders onto checked collection-constructor OOM contracts
   - closure evidence:

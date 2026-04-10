@@ -4,6 +4,22 @@ import std::core::mem;
 import std::io;
 import main;
 
+fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int term_signal) {
+    Value* out = make_hashmap_checked(interp, 8, "process-wait: out of memory");
+    if (out == null || out.tag != HASHMAP) {
+        return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: out of memory");
+    }
+    Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
+    Value* exit_key = make_symbol(interp, interp.symbols.intern("exit-code"));
+    Value* sig_key = make_symbol(interp, interp.symbols.intern("term-signal"));
+    if (!hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
+        !hashmap_set_checked(out.hashmap_val, exit_key, make_int(interp, exit_code), interp) ||
+        !hashmap_set_checked(out.hashmap_val, sig_key, make_int(interp, term_signal), interp)) {
+        return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: out of memory");
+    }
+    return out;
+}
+
 // (process-wait process-handle|process-dict) -> dict {'pid n 'exit-code n 'term-signal n}
 fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
     Value* target_v = null;
@@ -47,14 +63,7 @@ fn Value* prim_process_wait(Value*[] args, Env* env, Interp* interp) {
 
     close_process_handle(ph);
 
-    Value* out = make_hashmap(interp, 8);
-    Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
-    Value* exit_key = make_symbol(interp, interp.symbols.intern("exit-code"));
-    Value* sig_key = make_symbol(interp, interp.symbols.intern("term-signal"));
-    hashmap_set(out.hashmap_val, pid_key, make_int(interp, pid), interp);
-    hashmap_set(out.hashmap_val, exit_key, make_int(interp, wait_ctx.exit_code), interp);
-    hashmap_set(out.hashmap_val, sig_key, make_int(interp, wait_ctx.term_signal), interp);
-    return out;
+    return make_process_wait_result(interp, pid, wait_ctx.exit_code, wait_ctx.term_signal);
 }
 
 // (process-kill process-handle|process-dict sig) -> void
