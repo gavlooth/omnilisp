@@ -1,5 +1,24 @@
 ## 2026-04-10
 
+- Closed the checked collection-mutator silent-failure lane:
+  - `src/lisp/prim_collection_hashmap.c3`
+    now makes `hashmap_set_symbol(...)`, `hashmap_grow(...)`, and
+    `hashmap_set(...)` return checked `bool` results instead of discarding the
+    underlying grow/insert outcome.
+  - `src/lisp/prim_collection_hashmap.c3`
+    now makes `set!` on dictionary targets fail closed with
+    `runtime/out-of-memory` when backing-storage growth fails instead of
+    returning `Void` after silently dropping the write.
+  - `src/lisp/prim_collection_generic_set.c3`
+    now makes `set-add` fail closed on the same backing-storage grow failure
+    instead of reporting success after a no-op mutation.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins both mutator seams directly and proves the failed write does not
+    materialize in the collection after the error.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the deduce explain/analyze/why-result checked-insertion follow-up:
   - the checked-constructor follow-up is now complete for the remaining deduce
     payload-map family, not just raw `make_hashmap(...)` callsites.

@@ -126,8 +126,8 @@ fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Int
     return false;
 }
 
-fn void hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* interp) {
-    hashmap_set_symbol_checked(map, key, value, interp);
+fn bool hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* interp) {
+    return hashmap_set_symbol_checked(map, key, value, interp);
 }
 
 fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
@@ -163,8 +163,8 @@ fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
     return true;
 }
 
-fn void hashmap_grow(HashMap* map, Interp* interp) {
-    hashmap_grow_checked(map, interp);
+fn bool hashmap_grow(HashMap* map, Interp* interp) {
+    return hashmap_grow_checked(map, interp);
 }
 
 fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* interp) {
@@ -196,8 +196,8 @@ fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* inte
     return false;
 }
 
-fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
-    hashmap_set_checked(map, key, value, interp);
+fn bool hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
+    return hashmap_set_checked(map, key, value, interp);
 }
 
 fn bool hashmap_remove(HashMap* map, Value* key) {
@@ -279,7 +279,13 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
     if (args[0].tag != HASHMAP) return raise_error(interp, "set!: generic form expects array or dict target");
-    hashmap_set(args[0].hashmap_val, args[1], args[2], interp);
+    if (!hashmap_set(args[0].hashmap_val, args[1], args[2], interp)) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/out-of-memory",
+            "set!: dict backing storage out of memory");
+    }
     return make_void(interp);
 }
 

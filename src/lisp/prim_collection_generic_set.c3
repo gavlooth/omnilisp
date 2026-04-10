@@ -167,7 +167,13 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_set_add(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || args[0].tag != SET) return raise_error(interp, "set-add: expected set and value");
     Value* true_val = make_symbol(interp, interp.sym_true);
-    hashmap_set(args[0].hashmap_val, args[1], true_val, interp);
+    if (!hashmap_set(args[0].hashmap_val, args[1], true_val, interp)) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/out-of-memory",
+            "set-add: set backing storage out of memory");
+    }
     return make_void(interp);
 }
 

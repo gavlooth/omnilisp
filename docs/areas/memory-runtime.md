@@ -130,6 +130,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   allocates one heap-backed scan state object, closing the full-slice
   `jit-policy` crash where the previous four `4096`-entry local pointer arrays
   could overflow a smaller runtime stack before the scan body even ran.
+- Checked collection mutators now fail closed on grow pressure too:
+  - `hashmap_set(...)` / `hashmap_set_symbol(...)` no longer discard their
+    checked insertion result,
+  - `set!` on dictionary targets and `set-add` on sets now raise
+    `runtime/out-of-memory` instead of returning `Void` after silently
+    dropping the write.
 - The staged internal collection-constructor OOM migration is now closed
   across the live runtime-facing families:
   - shared constructor substrate,

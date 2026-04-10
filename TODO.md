@@ -22,6 +22,26 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-COLLECTION-MUTATOR-CHECKED-RETURNS-014` make dictionary/set
+  mutation fail closed on backing-storage grow failure instead of silently
+  dropping writes behind void mutator wrappers
+  - closure evidence:
+    - `src/lisp/prim_collection_hashmap.c3` now makes
+      `hashmap_set_symbol(...)`, `hashmap_grow(...)`, and `hashmap_set(...)`
+      return checked `bool` results instead of discarding insertion/grow
+      failure.
+    - `src/lisp/prim_collection_hashmap.c3` now makes `set!` on dictionary
+      targets return `runtime/out-of-memory` when backing-storage growth
+      fails, instead of returning `Void` after a dropped write.
+    - `src/lisp/prim_collection_generic_set.c3` now makes `set-add` follow
+      the same checked mutator contract for `SET`.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves
+      both mutators fail with typed errors and leave the failed key absent
+      from the target collection after grow failure.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-DEDUCE-EXPLAIN-INSERT-FAILCLOSED-013` make deduce explain,
   analyze, schema, stats, and why-result payload builders propagate checked
   `explain_dict_set*` failures instead of returning partially populated maps

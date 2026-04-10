@@ -40,6 +40,24 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The checked collection-mutator silent-failure lane is now also closed:
+  - `src/lisp/prim_collection_hashmap.c3`
+    now exposes checked-return `hashmap_set_symbol(...)`,
+    `hashmap_grow(...)`, and `hashmap_set(...)` helpers instead of void
+    wrappers that discarded grow/insert failure.
+  - `src/lisp/prim_collection_hashmap.c3`
+    now makes `set!` on dictionary targets fail closed with
+    `runtime/out-of-memory` when backing-storage growth fails.
+  - `src/lisp/prim_collection_generic_set.c3`
+    now makes `set-add` fail closed on the same grow-failure seam.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now proves both mutators return typed errors and leave the failed key
+    absent from the collection.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The direct-crash raw-hashmap caller slice is now also closed:
   - `src/lisp/unify_match_helpers.c3` now routes `build_result_dict(...)`
     through checked hashmap construction and checked insertion, and raises

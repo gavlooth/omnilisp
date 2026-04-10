@@ -411,6 +411,55 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* dict_value = make_hashmap_checked(interp, 4, "dict mutator test: ctor oom");
+        Value* set_value = make_set_checked(interp, 4, "set mutator test: ctor oom");
+        bool setup_ok = dict_value != null &&
+            dict_value.tag == HASHMAP &&
+            set_value != null &&
+            set_value.tag == SET;
+
+        if (setup_ok) {
+            setup_ok =
+                hashmap_set_checked(dict_value.hashmap_val, make_int(interp, 1), make_int(interp, 11), interp) &&
+                hashmap_set_checked(dict_value.hashmap_val, make_int(interp, 2), make_int(interp, 22), interp) &&
+                hashmap_set_checked(dict_value.hashmap_val, make_int(interp, 3), make_int(interp, 33), interp) &&
+                hashmap_set_checked(set_value.hashmap_val, make_int(interp, 1), make_symbol(interp, interp.sym_true), interp) &&
+                hashmap_set_checked(set_value.hashmap_val, make_int(interp, 2), make_symbol(interp, interp.sym_true), interp) &&
+                hashmap_set_checked(set_value.hashmap_val, make_int(interp, 3), make_symbol(interp, interp.sym_true), interp);
+        }
+
+        Value*[3] dict_set_args = { dict_value, make_int(interp, 4), make_int(interp, 44) };
+        Value*[2] set_add_args = { set_value, make_int(interp, 4) };
+
+        bool saved_grow_fail = g_hashmap_force_grow_entries_alloc_fail;
+        g_hashmap_force_grow_entries_alloc_fail = true;
+        Value* dict_set_fail = setup_ok ? prim_dict_set(dict_set_args[0:3], null, interp) : raise_error(interp, "setup failed");
+        Value* set_add_fail = setup_ok ? prim_set_add(set_add_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        g_hashmap_force_grow_entries_alloc_fail = saved_grow_fail;
+
+        Value* dict_lookup = setup_ok ? hashmap_get(dict_value.hashmap_val, make_int(interp, 4)) : null;
+        Value* set_lookup = setup_ok ? hashmap_get(set_value.hashmap_val, make_int(interp, 4)) : null;
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(dict_set_fail, "set!: dict backing storage out of memory") &&
+            runtime_alloc_error_matches(set_add_fail, "set-add: set backing storage out of memory") &&
+            dict_lookup == null &&
+            set_lookup == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: checked collection mutators fail closed on grow");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: checked collection mutators fail closed on grow (setup_ok=%s dict=%s set=%s dict_missing=%s set_missing=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(dict_set_fail),
+                runtime_alloc_error_text(set_add_fail),
+                dict_lookup == null ? "yes" : "no",
+                set_lookup == null ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[1] json_obj_args = { make_string(interp, "{\"a\":1}") };
         Value*[1] json_nested_args = { make_string(interp, "{\"a\":[1]}") };
         Value*[1] toml_table_args = { make_string(interp, "a = 1\n") };
