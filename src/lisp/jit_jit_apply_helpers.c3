@@ -164,6 +164,9 @@ fn Value* jit_apply_value_method_table(Value* func, Value* arg, Interp* interp) 
 }
 
 fn Value* jit_apply_value_primitive(Value* func, Value* arg, Interp* interp) {
+    if (func == null || func.tag != PRIMITIVE || func.prim_val == null || func.prim_val.func == null) {
+        return raise_error(interp, "invalid primitive application state");
+    }
     int arity = func.prim_val.arity;
     // IMPORTANT: keep primitive apply on Value* return path.
     // Avoid EvalResult struct-return here because this call site can cross

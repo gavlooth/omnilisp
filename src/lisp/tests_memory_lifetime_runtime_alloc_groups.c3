@@ -446,10 +446,14 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         Value* negative_partial = interp.alloc_value();
         Value* null_func_partial = interp.alloc_value();
         Value* inconsistent_partial = interp.alloc_value();
+        Value* null_first_arg_partial = interp.alloc_value();
+        Value* invalid_prim = interp.alloc_value();
         bool setup_ok = arg != null && arg.tag == INT &&
             negative_partial != null &&
             null_func_partial != null &&
-            inconsistent_partial != null;
+            inconsistent_partial != null &&
+            null_first_arg_partial != null &&
+            invalid_prim != null;
         if (setup_ok) {
             *negative_partial = {};
             negative_partial.tag = PARTIAL_PRIM;
@@ -472,6 +476,17 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             inconsistent_partial.partial_val.second_arg = make_int(interp, 2);
             inconsistent_partial.partial_val.remaining = 2;
 
+            *null_first_arg_partial = {};
+            null_first_arg_partial.tag = PARTIAL_PRIM;
+            null_first_arg_partial.partial_val.func = &prim_add;
+            null_first_arg_partial.partial_val.first_arg = null;
+            null_first_arg_partial.partial_val.second_arg = null;
+            null_first_arg_partial.partial_val.remaining = 1;
+
+            *invalid_prim = {};
+            invalid_prim.tag = PRIMITIVE;
+            invalid_prim.prim_val = null;
+
             setup_ok = negative_partial.partial_val.first_arg != null &&
                 null_func_partial.partial_val.first_arg != null &&
                 inconsistent_partial.partial_val.first_arg != null &&
@@ -487,24 +502,36 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         EvalResult inconsistent_result = setup_ok
             ? apply_partial(inconsistent_partial, arg, interp)
             : eval_error("setup failed");
+        EvalResult null_first_arg_result = setup_ok
+            ? apply_partial(null_first_arg_partial, arg, interp)
+            : eval_error("setup failed");
+        EvalResult invalid_prim_result = setup_ok
+            ? apply_primitive(invalid_prim, arg, interp)
+            : eval_error("setup failed");
 
         bool ok = setup_ok &&
             negative_result.error.has_error &&
             null_func_result.error.has_error &&
             inconsistent_result.error.has_error &&
+            null_first_arg_result.error.has_error &&
+            invalid_prim_result.error.has_error &&
             str_starts_with(negative_result.error.message[:256], "invalid partial application state") &&
             str_starts_with(null_func_result.error.message[:256], "invalid partial application state") &&
-            str_starts_with(inconsistent_result.error.message[:256], "invalid partial application state");
+            str_starts_with(inconsistent_result.error.message[:256], "invalid partial application state") &&
+            str_starts_with(null_first_arg_result.error.message[:256], "invalid partial application state") &&
+            str_starts_with(invalid_prim_result.error.message[:256], "invalid primitive application state");
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: apply_partial invalid states fail closed");
+            emit_pass_literal("[PASS] lifetime: apply helpers invalid states fail closed");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: apply_partial invalid states fail closed (setup_ok=%s neg=%s null_fn=%s inconsistent=%s)",
+                "[FAIL] lifetime: apply helpers invalid states fail closed (setup_ok=%s neg=%s null_fn=%s inconsistent=%s null_first=%s invalid_prim=%s)",
                 setup_ok ? "yes" : "no",
                 negative_result.error.has_error ? (ZString)negative_result.error.message[:256] : (ZString)"<none>",
                 null_func_result.error.has_error ? (ZString)null_func_result.error.message[:256] : (ZString)"<none>",
-                inconsistent_result.error.has_error ? (ZString)inconsistent_result.error.message[:256] : (ZString)"<none>");
+                inconsistent_result.error.has_error ? (ZString)inconsistent_result.error.message[:256] : (ZString)"<none>",
+                null_first_arg_result.error.has_error ? (ZString)null_first_arg_result.error.message[:256] : (ZString)"<none>",
+                invalid_prim_result.error.has_error ? (ZString)invalid_prim_result.error.message[:256] : (ZString)"<none>");
             (*fail)++;
         }
     }

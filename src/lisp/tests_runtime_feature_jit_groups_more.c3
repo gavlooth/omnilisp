@@ -1481,6 +1481,35 @@ fn void run_jit_policy_match_guard_binding_growth_failure_test(Interp* interp, i
     }
 }
 
+fn void run_jit_policy_invalid_primitive_state_fails_closed_test(Interp* interp, int* pass, int* fail) {
+    Value* arg = make_int(interp, 9);
+    Value* invalid = interp.alloc_value();
+    bool setup_ok = arg != null && invalid != null;
+    if (setup_ok) {
+        *invalid = {};
+        invalid.tag = PRIMITIVE;
+        invalid.prim_val = null;
+    }
+
+    Value* result = setup_ok ? jit_apply_value_primitive(invalid, arg, interp) : raise_error(interp, "setup failed");
+    bool ok = setup_ok &&
+        result != null &&
+        result.tag == ERROR &&
+        jit_policy_str_contains(result.str_chars[:result.str_len], "invalid primitive application state");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: invalid primitive state fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: invalid primitive state fails closed (setup_ok=%s tag=%d)",
+            setup_ok ? "yes" : "no",
+            result != null ? (int)result.tag : -1
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1528,6 +1557,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("root-box-extend-copies-cross-scope-closure-value", &run_jit_policy_root_box_extend_copies_cross_scope_closure_value_test, interp, pass, fail);
         run_jit_policy_case("closure-persistent-env-copy-scope-contract", &run_jit_policy_closure_persistent_env_copy_scope_contract_test, interp, pass, fail);
         run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
+        run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);

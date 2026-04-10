@@ -439,3 +439,14 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=152 fail=0`
+
+- The malformed primitive-call dispatch lane is now fail-closed:
+  - `apply_primitive(...)` rejects null/wrongly-tagged primitive wrappers and
+    missing primitive function pointers before call-through.
+  - `apply_partial(...)` also rejects missing `first_arg` so impossible
+    partially-captured state does not flow into primitive dispatch.
+  - `jit_apply_value_primitive(...)` now applies the same malformed primitive
+    guard on the JIT helper path.
+- Focused validation after this slice:
+  - `OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=invalid-primitive-state-fails-closed`
+    -> `pass=1 fail=0`

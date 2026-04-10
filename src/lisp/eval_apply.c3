@@ -3,6 +3,9 @@ module lisp;
 bool g_eval_force_partial_alloc_fail = false;
 
 fn EvalResult apply_primitive(Value* prim, Value* arg, Interp* interp) {
+    if (prim == null || prim.tag != PRIMITIVE || prim.prim_val == null || prim.prim_val.func == null) {
+        return eval_error("invalid primitive application state");
+    }
     int arity = prim.prim_val.arity;
 
     // For unary or variadic primitives, apply immediately
@@ -26,6 +29,9 @@ fn EvalResult apply_partial(Value* partial, Value* arg, Interp* interp) {
         return eval_error("invalid partial application state");
     }
     if (partial.partial_val.func == null) {
+        return eval_error("invalid partial application state");
+    }
+    if (partial.partial_val.first_arg == null) {
         return eval_error("invalid partial application state");
     }
     if (partial.partial_val.remaining <= 0) {

@@ -11226,3 +11226,18 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=152 fail=0`
+- 2026-04-10 (apply dispatch malformed-state fail-closed follow-up):
+  - `apply_primitive(...)` now rejects malformed primitive wrappers before any
+    primitive call-through:
+    - null/non-primitive wrapper
+    - null `prim_val`
+    - null `prim_val.func`
+  - `apply_partial(...)` now also rejects missing `first_arg` instead of
+    forwarding an impossible captured-argument state into primitive dispatch.
+  - `jit_apply_value_primitive(...)` now applies the same malformed primitive
+    guard on the JIT helper path.
+  - validation:
+    - `c3c build`
+    - focused `jit-policy`:
+      - `invalid-primitive-state-fails-closed`
+    - bounded `memory-lifetime-smoke`: `pass=152 fail=0`

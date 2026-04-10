@@ -705,3 +705,22 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-APPLY-PROMOTION-FAILCLOSED-019`
   - actionable backlog returns to `0`
+
+- landed the malformed apply/JIT primitive dispatch follow-up:
+  - `src/lisp/eval_apply.c3`
+  - `src/lisp/jit_jit_apply_helpers.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- shipped behavior:
+  - `apply_primitive(...)` now rejects malformed primitive wrappers before
+    function-pointer call-through.
+  - `apply_partial(...)` now rejects missing `first_arg` so impossible
+    partially-captured state does not flow into primitive execution.
+  - `jit_apply_value_primitive(...)` now applies the same malformed primitive
+    guard on the JIT helper path.
+- validation status:
+  - focused `jit-policy`: green (`invalid-primitive-state-fails-closed`)
+  - bounded `memory-lifetime-smoke`: green (`pass=152 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-APPLY-DISPATCH-FAILCLOSED-020`
+  - actionable backlog remains `0`

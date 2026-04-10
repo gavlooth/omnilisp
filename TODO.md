@@ -22,6 +22,28 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-APPLY-DISPATCH-FAILCLOSED-020` make malformed primitive and
+  partial-application helper paths fail closed instead of dereferencing null
+  call targets or silently consuming invalid state
+  - closure evidence:
+    - `src/lisp/eval_apply.c3`
+      now rejects invalid primitive application state when the primitive
+      wrapper is null, wrongly tagged, missing `prim_val`, or missing
+      `prim_val.func`, and rejects partial-application state when
+      `first_arg == null`.
+    - `src/lisp/jit_jit_apply_helpers.c3`
+      now makes `jit_apply_value_primitive(...)` reject malformed primitive
+      wrappers before any function-pointer call-through.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins invalid partial state and invalid primitive-wrapper execution in
+      the direct runtime helper lane.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now pins malformed primitive wrapper rejection in the JIT helper lane.
+    - validation:
+      - `c3c build`
+      - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=invalid-primitive-state-fails-closed ./build/main --test-suite lisp`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-APPLY-PROMOTION-FAILCLOSED-019` make partial-application state
   and root-promotion array/hashmap helper surfaces fail closed instead of
   executing impossible state or storing promoted `ERROR` values as ordinary
