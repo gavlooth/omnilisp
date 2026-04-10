@@ -31,6 +31,7 @@ fn CoroutineThunkState* coroutine_alloc_thunk_state(Value* thunk, Interp* interp
 }
 
 fn Value* prim_coroutine_p(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return make_nil(interp);
     if (args[0].tag == COROUTINE) return make_symbol(interp, interp.sym_true);
     return make_nil(interp);
 }

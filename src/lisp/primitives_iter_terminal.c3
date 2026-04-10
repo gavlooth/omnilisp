@@ -9,6 +9,21 @@ fn Value* iterator_promote_item_or_error(Value* value, Interp* interp) @inline {
     return promoted;
 }
 
+fn bool iterator_wrapper_has_callable_thunk(Value* value) @inline {
+    if (value == null || value.tag != ITERATOR || value.iterator_val == null) return false;
+    Value* thunk = value.iterator_val;
+    switch (thunk.tag) {
+        case CLOSURE:
+            return thunk.closure_val != null;
+        case PRIMITIVE:
+            return thunk.prim_val != null && thunk.prim_val.func != null;
+        case PARTIAL_PRIM:
+            return thunk.partial_val.func != null;
+        default:
+            return false;
+    }
+}
+
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
     if (args[0].tag == ITERATOR) return make_symbol(interp, interp.sym_true);
@@ -23,7 +38,12 @@ fn Value* prim_make_iterator(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "Iterator: expected 1 argument");
-    if (args[0].tag == ITERATOR) return args[0];
+    if (args[0].tag == ITERATOR) {
+        if (!iterator_wrapper_has_callable_thunk(args[0])) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "Iterator: expected valid iterator");
+        }
+        return args[0];
+    }
     if (is_closure(args[0])) return make_iterator(interp, args[0]);
     if (is_cons(args[0]) || is_nil(args[0])) return iterator_from_list_value(args[0], interp);
     if (is_array(args[0])) return iterator_from_array_value(args[0], 0, interp);
@@ -39,7 +59,7 @@ fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* iterator_require_arg(Value*[] args, char[] expected_msg, Value** iterator_out, Interp* interp) {
-    if (args.len < 1 || args[0].tag != ITERATOR) {
+    if (args.len < 1 || !iterator_wrapper_has_callable_thunk(args[0])) {
         return raise_error(interp, expected_msg);
     }
     *iterator_out = args[0];

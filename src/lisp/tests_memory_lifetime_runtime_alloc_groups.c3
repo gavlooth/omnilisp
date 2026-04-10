@@ -149,6 +149,67 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[1] string_args = { make_string(interp, "ab") };
+        Value*[2] variadic_args = { make_int(interp, 1), make_int(interp, 2) };
+        Value* arr = make_array_checked(interp, 2, "test: failed to allocate array");
+        bool setup_ok = arr != null && arr.tag == ARRAY && arr.array_val.items != null;
+        if (setup_ok) {
+            arr.array_val.items[0] = make_int(interp, 1);
+            arr.array_val.items[1] = make_int(interp, 2);
+            arr.array_val.length = 2;
+        }
+        Value*[1] array_args = { arr };
+
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        Value* string_fail = prim_string_to_list(string_args[0:1], null, interp);
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        Value* variadic_fail = prim_list(variadic_args[0:2], null, interp);
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        Value* array_fail = setup_ok ? prim_list(array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(string_fail, "string->list: failed to allocate result list") &&
+            runtime_alloc_error_matches(variadic_fail, "list: failed to allocate result list") &&
+            runtime_alloc_error_matches(array_fail, "list: failed to allocate result list");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: list builders fail closed on cons allocation failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: list builders fail closed on cons allocation failure (setup_ok=%s string=%s variadic=%s array=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(string_fail),
+                runtime_alloc_error_text(variadic_fail),
+                runtime_alloc_error_text(array_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* map = make_hashmap_checked(interp, 4, "test: failed to allocate hashmap");
+        bool setup_ok = map != null && map.tag == HASHMAP && map.hashmap_val != null;
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        Value* lookup_fail = setup_ok ? json_pointer_lookup(map, "missing", interp) : raise_error(interp, "setup failed");
+        g_value_force_make_string_alloc_fail = saved_force;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(lookup_fail, "out of memory while allocating string");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: json pointer string key allocation fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: json pointer string key allocation fails closed (setup_ok=%s msg=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(lookup_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[2] split_args = {
             make_string(interp, "a,b"),
             make_string(interp, ",")
@@ -546,6 +607,54 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 "[FAIL] lifetime: iterator ctor raise survives payload hashmap alloc failure (ok=%s msg=%s)",
                 ok ? "yes" : "no",
                 runtime_alloc_error_text(iter_raise));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* invalid_iter = interp.alloc_value();
+        bool setup_ok = invalid_iter != null;
+        if (setup_ok) {
+            invalid_iter.tag = ITERATOR;
+            invalid_iter.iterator_val = make_nil(interp);
+        }
+        Value*[1] args = { invalid_iter };
+        Value* ctor_err = setup_ok ? prim_ctor_iterator(args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* next_err = setup_ok ? prim_next(args[0:1], null, interp) : raise_error(interp, "setup failed");
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(ctor_err, "Iterator: expected valid iterator") &&
+            runtime_alloc_error_matches(next_err, "next: expected iterator");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: malformed iterator wrapper fails constructor and terminal gates");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: malformed iterator wrapper fails constructor and terminal gates (setup_ok=%s ctor=%s next=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(ctor_err),
+                runtime_alloc_error_text(next_err));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value*[1] no_args = { null };
+        Value* pred = prim_coroutine_p(no_args[0:0], null, interp);
+        Value* null_ctx = make_coroutine(interp, null);
+
+        bool ok =
+            pred != null &&
+            pred.tag == NIL &&
+            runtime_alloc_error_matches(null_ctx, "coroutine: missing context");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: coroutine predicate and constructor reject malformed inputs");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: coroutine predicate and constructor reject malformed inputs (pred_tag=%d msg=%s)",
+                pred != null ? (int)pred.tag : -1,
+                runtime_alloc_error_text(null_ctx));
             (*fail)++;
         }
     }

@@ -199,6 +199,10 @@ fn Value* make_iterator(Interp* interp, Value* thunk) {
 }
 
 fn Value* make_coroutine(Interp* interp, main::StackCtx* ctx) {
+    if (ctx == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "coroutine: missing context");
+    }
+
     // Allocate coroutine wrapper in root_scope so abandonment still runs a dtor.
     Value* v = boundary_alloc_value_in_root(interp, true);
     if (v == null) {

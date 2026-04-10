@@ -94,14 +94,16 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
         Array* arr = args[0].array_val;
         Value* result = make_nil(interp);
         for (isz i = (isz)arr.length - 1; i >= 0; i--) {
-            result = make_cons(interp, arr.items[(usz)i], result);
+            result = make_cons_or_error(interp, arr.items[(usz)i], result, "list: failed to allocate result list");
+            if (result == null || result.tag == ERROR) return result;
         }
         return result;
     }
 
     Value* result = make_nil(interp);
     for (isz i = (isz)args.len - 1; i >= 0; i--) {
-        result = make_cons(interp, args[(usz)i], result);
+        result = make_cons_or_error(interp, args[(usz)i], result, "list: failed to allocate result list");
+        if (result == null || result.tag == ERROR) return result;
     }
     return result;
 }

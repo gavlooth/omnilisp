@@ -85,6 +85,9 @@ fn Value* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp,
         if (append_err != null) return append_err;
         curr = cdr(curr);
     }
+    if (!is_nil(curr)) {
+        return raise_error(interp, "json-emit: expected proper list");
+    }
     *out_json = arr;
     return null;
 }

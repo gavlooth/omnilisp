@@ -91,10 +91,14 @@ fn void run_json_tests(Interp* interp, int* pass, int* fail) {
         "(json-emit 1 '((precision 99)))", "precision must be an integer between 0 and 15", pass, fail);
     test_error_contains(interp, "json-emit validates pretty-two-spaces option type",
         "(json-emit 1 '((pretty-two-spaces 1)))", "must be a boolean", pass, fail);
+    test_error_contains(interp, "json-emit rejects improper option list tail",
+        "(json-emit 1 (cons (list 'pretty true) 2))", "options list must be a proper list", pass, fail);
     test_error_contains(interp, "json-emit rejects unsupported root value type",
         "(json-emit (lambda (x) x))", "json-emit: unsupported value type", pass, fail);
     test_error_contains(interp, "json-emit rejects unsupported dictionary key type",
         "(json-emit (Dictionary 1 2))", "json-emit: unsupported dictionary key type", pass, fail);
+    test_error_contains(interp, "json-emit rejects improper list tail",
+        "(json-emit (cons 1 2))", "json-emit: expected proper list", pass, fail);
 
     // Round-trip: emit then parse
     test_eq(interp, "json round-trip integer",

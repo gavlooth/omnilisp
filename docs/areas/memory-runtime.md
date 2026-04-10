@@ -679,3 +679,11 @@ for future concurrency ownership evolution.
 - Runtime helper allocation diagnostics now keep temporary-interpreter values
   alive until after failure reporting, and coroutine stack-pool cleanup tests
   distinguish normal reuse from ASAN's direct-free pool mode.
+- Iterator/coroutine constructor guards now reject malformed wrappers before
+  publication/terminal use: iterator terminal paths validate callable thunks,
+  `coroutine?` handles empty argument lists, and `make_coroutine(...)` rejects
+  null stack contexts.
+- Generic list materializers touched in the runtime audit now use checked cons
+  construction for `string->list` and `list`, and JSON pointer lookup now
+  propagates key string materialization failure instead of falling through to a
+  different lookup mode.

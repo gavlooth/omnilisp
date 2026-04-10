@@ -1197,3 +1197,43 @@ Progress update (2026-04-09):
   - bounded ASAN `memory-lifetime-smoke`: green (`pass=185 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed iterator/coroutine and list/json fail-closed drift:
+  - `src/lisp/primitives_iter_terminal.c3`
+  - `src/lisp/primitives_coroutine.c3`
+  - `src/lisp/value_predicates_accessors_basic.c3`
+  - `src/lisp/prim_string_ops.c3`
+  - `src/lisp/primitives_core.c3`
+  - `src/lisp/json_pointer_option_helpers.c3`
+  - `src/lisp/json_pointer_options.c3`
+  - `src/lisp/json_emit.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+  - `src/lisp/tests_runtime_data_unicode_groups.c3`
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+- shipped behavior:
+  - iterator constructor and terminal gates now reject malformed `ITERATOR`
+    wrappers whose thunk payload is null, `ERROR`, or otherwise not callable
+  - `coroutine?` now returns `nil` for zero-argument calls instead of reading
+    `args[0]`, and `make_coroutine(...)` now rejects null stack contexts
+  - `string->list` and `list` now fail closed on checked cons-constructor
+    failure instead of publishing malformed result lists
+  - JSON pointer string-key lookup now returns the string-materialization error
+    instead of falling through to symbol lookup
+  - JSON emit and `list->string` now reject improper list tails instead of
+    silently truncating them
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+  - bounded `json`: green (`pass=39 fail=0`)
+  - direct eval:
+    - `(list->string (cons "a" 2))` returns
+      `"list->string: expected a proper list"`
+    - `(json-emit (cons 1 2))` returns
+      `"json-emit: expected proper list"`
+    - `(json-emit 1 (cons (list 'pretty true) 2))` returns
+      `"json-emit: options list must be a proper list"`
+- residual split-out item:
+  - `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` is now a separate TODO
+    for the unrelated `%s` display formatter failure surfaced by the advanced
+    unicode iterator validation group.
+- backlog shaping after this slice:
+  - actionable backlog is `1`

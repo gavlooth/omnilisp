@@ -24,6 +24,8 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_str_val(interp, "utf8 substring", "(substring \"caf\xc3\xa9\" 0 3)", "caf", pass, fail);
     test_str_val(interp, "utf8 substring mid", "(substring \"h\xc3\xa9llo\" 1 3)", "\xc3\xa9l", pass, fail);
     test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
+    test_error_contains(interp, "list->string rejects improper list tail",
+        "(list->string (cons \"a\" 2))", "list->string: expected a proper list", pass, fail);
 }
 
 fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int* pass, int* fail) {

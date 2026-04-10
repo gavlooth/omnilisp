@@ -11622,6 +11622,31 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - bounded `memory-lifetime-smoke`: `pass=185 fail=0`
     - bounded ASAN `memory-lifetime-smoke`: `pass=185 fail=0`
+- 2026-04-10 (iterator/coroutine and list/json fail-closed follow-up):
+  - `Iterator` constructor and terminal gates now validate that existing
+    iterator wrappers contain a callable thunk, instead of accepting malformed
+    `ITERATOR` wrappers by tag alone.
+  - `coroutine?` now handles zero-argument calls without an out-of-bounds read,
+    and `make_coroutine(...)` rejects null stack contexts before publishing a
+    malformed wrapper.
+  - `string->list` and `list` now route internal result-list construction
+    through the checked cons helper, so forced cons allocation failure returns a
+    runtime error instead of embedding constructor failures as ordinary list
+    data.
+  - JSON pointer string-key lookup now propagates key materialization failure
+    instead of falling through to symbol lookup, and JSON emit/list conversion
+    now rejects improper list tails instead of silently truncating them.
+  - validation:
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+    - bounded ASAN `memory-lifetime-smoke`: `pass=189 fail=0`
+    - bounded `json`: `pass=39 fail=0`
+    - direct eval regressions for `(list->string (cons "a" 2))`,
+      `(json-emit (cons 1 2))`, and
+      `(json-emit 1 (cons (list 'pretty true) 2))`
+  - residual:
+    - `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` tracks the unrelated
+      `%s` display formatter failure surfaced by the advanced unicode iterator
+      validation group.
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

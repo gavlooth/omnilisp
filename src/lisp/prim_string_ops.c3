@@ -168,7 +168,8 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
         usz clen = cp_lens[(usz)i];
         Value* char_str = make_string(interp, bytes[off:clen]);
         if (char_str != null && char_str.tag == ERROR) return char_str;
-        result = make_cons(interp, char_str, result);
+        result = make_cons_or_error(interp, char_str, result, "string->list: failed to allocate result list");
+        if (result == null || result.tag == ERROR) return result;
     }
     return result;
 }
@@ -203,6 +204,9 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
         if (is_string(elem) && elem.str_len > 0) {
             ds.append_char(elem.str_chars[0]);
         }
+    }
+    if (!is_nil(list)) {
+        return raise_error(interp, "list->string: expected a proper list");
     }
 
     return make_string(interp, ds.str_view());

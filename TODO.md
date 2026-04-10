@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -18,7 +18,18 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- None.
+- [ ] `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` fix `%s`
+  formatting display path so plain `(format "%s" value)` does not fail with
+  `"format: failed to grow temporary builder"` for ordinary values.
+  - observed during validation while running
+    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`
+  - reproducer:
+    - `(format "%s" nil)`
+    - `(format "%s" (Void))`
+  - expected:
+    - returns `"nil"` and `"#<void>"` respectively
+  - validation target:
+    - bounded `advanced` slice with `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`
 
 ## Recently Closed
 

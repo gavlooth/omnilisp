@@ -168,6 +168,10 @@ fn Value* parse_json_emit_options(Value* options, JsonEmitOptions* opts, Interp*
 
         cur = next;
     }
+    if (!is_nil(cur)) {
+        return raise_error(interp,
+            "json-emit: options list must be a proper list");
+    }
 
     return null;
 }

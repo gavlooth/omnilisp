@@ -107,7 +107,10 @@ fn Value* json_pointer_lookup(Value* value, char[] token, Interp* interp) {
 
     if (value.tag == HASHMAP) {
         HashMap* map = value.hashmap_val;
-        Value* by_string = hashmap_get(map, make_string(interp, token));
+        Value* key_v = make_string(interp, token);
+        if (key_v == null) return raise_error(interp, "json-get: failed to allocate pointer token");
+        if (key_v.tag == ERROR) return key_v;
+        Value* by_string = hashmap_get(map, key_v);
         if (by_string != null) return by_string;
 
         Value* by_symbol = make_symbol(interp, interp.symbols.intern(token));
