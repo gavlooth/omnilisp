@@ -242,6 +242,9 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
 
 fn Value* make_hashmap_checked(Interp* interp, uint capacity, char[] oom_message) {
     Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        return dict_ctor_runtime_raise(interp, oom_message);
+    }
     v.tag = HASHMAP;
     v.hashmap_val = hashmap_new_checked(capacity, interp);
     if (v.hashmap_val == null) {
@@ -252,11 +255,7 @@ fn Value* make_hashmap_checked(Interp* interp, uint capacity, char[] oom_message
 }
 
 fn Value* make_hashmap(Interp* interp, uint capacity) {
-    // Allocate value in root_scope so it persists.
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    v.tag = HASHMAP;
-    v.hashmap_val = hashmap_new(capacity, interp);
-    return v;
+    return make_hashmap_checked(interp, capacity, "Dictionary: out of memory");
 }
 
 fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {

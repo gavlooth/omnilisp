@@ -94,7 +94,17 @@ fn Value* prim_coroutine(Value*[] args, Env* env, Interp* interp) {
     Value* ctx_err = prim_coroutine_create_ctx(thunk, &ctx, interp);
     if (ctx_err != null) return ctx_err;
 
-    return make_coroutine(interp, ctx);
+    Value* coroutine = make_coroutine(interp, ctx);
+    if (coroutine == null || coroutine.tag == ERROR) {
+        if (ctx.user_data != null) {
+            mem::free(ctx.user_data);
+            ctx.user_data = null;
+        }
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        if (coroutine != null && coroutine.tag == ERROR) return coroutine;
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "coroutine: failed to allocate coroutine value");
+    }
+    return coroutine;
 }
 
 fn bool coroutine_ctx_matches_interp(main::StackCtx* ctx, Interp* interp) @inline {

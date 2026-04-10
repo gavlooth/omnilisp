@@ -116,6 +116,7 @@ fn bool register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, 
     if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
+    if (mt_val == null) return false;
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
 

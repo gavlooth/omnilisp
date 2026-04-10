@@ -11537,6 +11537,17 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=169 fail=0`
+- 2026-04-10 (boundary wrapper allocation fail-closed follow-up):
+  - boundary value allocation now fails without registering a destructor on a
+    null wrapper target.
+  - root/scope wrapper constructors now reject wrapper-allocation failure
+    explicitly for arrays, dictionaries, modules, coroutines, primitives, and
+    FFI handle wrappers instead of dereferencing the missing wrapper.
+  - coroutine publication now cleans up the freshly created `StackCtx` if
+    wrapper allocation fails after context creation.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=171 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

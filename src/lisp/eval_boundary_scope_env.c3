@@ -6,6 +6,14 @@ import main;
 // Boundary scope/env facade
 // =============================================================================
 
+int g_boundary_force_alloc_value_fail_nth = 0;
+
+fn bool boundary_should_force_alloc_value_fail() @inline {
+    if (g_boundary_force_alloc_value_fail_nth <= 0) return false;
+    g_boundary_force_alloc_value_fail_nth--;
+    return g_boundary_force_alloc_value_fail_nth == 0;
+}
+
 <*
 @require interp != null : "boundary_enter_scope: null interp"
 @require target_scope != null : "boundary_enter_scope: null target_scope"
@@ -65,8 +73,8 @@ fn Value* boundary_alloc_value_in_scope_impl(Interp* interp, main::ScopeRegion* 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
     interp.current_scope = target_scope;
-    Value* v = interp.alloc_value();
-    if (register_dtor) {
+    Value* v = boundary_should_force_alloc_value_fail() ? null : interp.alloc_value();
+    if (register_dtor && v != null) {
         main::scope_register_dtor(target_scope, (void*)v, &scope_dtor_value);
     }
     return v;

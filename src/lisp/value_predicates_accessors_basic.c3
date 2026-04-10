@@ -134,6 +134,9 @@ fn bool is_hashmap_backed(Value* v) @inline {
 
 fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
     Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        return raise_error(interp, oom_message);
+    }
     v.tag = ARRAY;
 
     Array* arr = g_value_force_make_array_struct_alloc_fail
@@ -168,6 +171,9 @@ fn Value* make_array(Interp* interp, usz capacity) {
 fn Value* make_module(Interp* interp, Module* mod) {
     // Allocate Value in root_scope so it persists across scope releases.
     Value* v = boundary_alloc_value_in_root(interp);
+    if (v == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "module: failed to allocate module value");
+    }
     v.tag = MODULE;
     v.module_val = mod;
     return v;
@@ -195,6 +201,9 @@ fn Value* make_iterator(Interp* interp, Value* thunk) {
 fn Value* make_coroutine(Interp* interp, main::StackCtx* ctx) {
     // Allocate coroutine wrapper in root_scope so abandonment still runs a dtor.
     Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "coroutine: failed to allocate coroutine value");
+    }
 
     v.tag = COROUTINE;
     v.coroutine_val = ctx;

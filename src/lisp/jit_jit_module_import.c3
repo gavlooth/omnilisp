@@ -63,6 +63,9 @@ fn bool module_exports_symbol(Module* mod, SymbolId name) {
 
 fn EvalResult bind_import_symbols(Expr* expr, Env* env, Module* mod, Interp* interp) {
     Value* mod_val = make_module(interp, mod);
+    if (mod_val == null || mod_val.tag == ERROR) {
+        return eval_error("import: out of memory while binding module");
+    }
     if (env_define_with_barrier_result(env, expr.import_expr.name, mod_val, interp) != null) {
         return eval_error("import: out of memory while binding module");
     }

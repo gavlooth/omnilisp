@@ -45,6 +45,7 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
     if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
+    if (mt_val == null) return false;
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
     return env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp);

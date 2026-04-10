@@ -628,3 +628,11 @@ for future concurrency ownership evolution.
 - `__iterator-cycle` now validates both active and reset iterator tails before
   re-publication, and `__iterator-foldl` now rejects `null` next-results as
   malformed iterator pairs instead of treating them as normal completion.
+- Boundary wrapper allocation is now fail-closed too:
+  boundary alloc helpers no longer register destructors on null wrappers, and
+  array/dictionary/module/coroutine/primitive/FFI wrapper constructors now
+  reject wrapper-allocation failure explicitly instead of dereferencing the
+  missing wrapper.
+- Coroutine publication now cleans up the newly created `StackCtx` when
+  wrapper allocation fails after context creation, so the failure returns as a
+  runtime error instead of stranding pool state.

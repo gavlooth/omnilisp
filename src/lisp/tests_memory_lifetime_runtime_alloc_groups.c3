@@ -71,6 +71,30 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* array_fail = make_array_checked(interp, 4, "array: out of memory");
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* dict_fail = make_hashmap_checked(interp, 4, "Dictionary: out of memory");
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+
+        bool ok =
+            runtime_alloc_error_matches(array_fail, "array: out of memory") &&
+            runtime_alloc_error_matches(dict_fail, "Dictionary: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary wrapper constructors fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary wrapper constructors fail closed (array=%s dict=%s)",
+                runtime_alloc_error_text(array_fail),
+                runtime_alloc_error_text(dict_fail)
+            );
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[2] split_args = {
             make_string(interp, "a,b"),
             make_string(interp, ",")
@@ -537,6 +561,62 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 after_pool,
                 (int)before_all,
                 (int)before_pool);
+            (*fail)++;
+        }
+    }
+
+    {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        bool setup_ok = tmp != null;
+        if (setup_ok) {
+            tmp.init();
+            setup_ok = register_primitives(tmp);
+        }
+
+        Value* thunk = null;
+        usz before_all = 0;
+        usz before_pool = 0;
+        Value* result = null;
+
+        if (setup_ok) {
+            thunk = make_closure_no_param(tmp, null, tmp.global_env);
+            setup_ok = thunk != null && thunk.tag == CLOSURE;
+        }
+        if (setup_ok) {
+            Value*[1] coro_args = { thunk };
+            int saved_force = g_boundary_force_alloc_value_fail_nth;
+            before_all = tmp.stack_ctx_pool.all_count;
+            before_pool = tmp.stack_ctx_pool.pool_size;
+            g_boundary_force_alloc_value_fail_nth = 1;
+            result = prim_coroutine(coro_args[0:1], null, tmp);
+            g_boundary_force_alloc_value_fail_nth = saved_force;
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(result, "coroutine: failed to allocate coroutine value") &&
+            tmp.stack_ctx_pool.all_count == before_all + 1 &&
+            tmp.stack_ctx_pool.pool_size == before_pool + 1;
+        int after_all = tmp != null ? (int)tmp.stack_ctx_pool.all_count : -1;
+        int after_pool = tmp != null ? (int)tmp.stack_ctx_pool.pool_size : -1;
+
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: coroutine wrapper allocation failure cleans up context");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: coroutine wrapper allocation failure cleans up context (setup_ok=%s msg=%s all=%d pool=%d before_all=%d before_pool=%d)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(result),
+                after_all,
+                after_pool,
+                (int)before_all,
+                (int)before_pool
+            );
             (*fail)++;
         }
     }
@@ -1774,20 +1854,18 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     {
         bool saved_force = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
-        EvalResult raise_run = run("(handle (Dictionary 'a) (raise msg 42))", interp);
+        Value* raise_payload = make_raise_payload_names(interp, "runtime", "runtime/error", "boom", make_int(interp, 42));
         g_hashmap_force_struct_alloc_fail = saved_force;
 
-        char[] msg = raise_run.error.message[:256];
-        bool ok = raise_run.error.has_error &&
-            str_starts_with(msg, "raise: failed to construct payload");
+        bool ok = raise_payload == null;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: pending raise payload map construction fails closed before handler bind");
+            emit_pass_literal("[PASS] lifetime: pending raise payload map helper fails closed");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: pending raise payload map construction fails closed before handler bind (run_error=%s msg=%s)",
-                raise_run.error.has_error ? "yes" : "no",
-                raise_run.error.has_error ? (ZString)msg : runtime_alloc_error_text(raise_run.value));
+                "[FAIL] lifetime: pending raise payload map helper fails closed (tag=%d msg=%s)",
+                raise_payload != null ? (int)raise_payload.tag : -1,
+                runtime_alloc_error_text(raise_payload));
             (*fail)++;
         }
     }

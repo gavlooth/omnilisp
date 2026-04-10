@@ -1065,3 +1065,24 @@ Progress update (2026-04-09):
     `Void print surface` failure
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed boundary wrapper allocation drift:
+  - `src/lisp/eval_boundary_scope_env.c3`
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/value_predicates_accessors_basic.c3`
+  - `src/lisp/prim_collection_hashmap.c3`
+  - `src/lisp/primitives_coroutine.c3`
+  - `src/lisp/eval_init_primitives.c3`
+  - `src/lisp/eval_dispatch_types.c3`
+  - `src/lisp/jit_jit_module_import.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - boundary alloc helpers no longer register dtors on null wrapper targets
+  - wrapper constructors for arrays, dictionaries, modules, coroutines,
+    primitives, and FFI handles now fail closed on wrapper allocation instead
+    of dereferencing a missing root/scope wrapper
+  - coroutine publication now returns its freshly created `StackCtx` to the
+    pool if wrapper allocation fails after context creation
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=171 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
