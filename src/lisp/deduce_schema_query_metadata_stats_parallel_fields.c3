@@ -38,26 +38,17 @@ fn Value* deduce_stats_set_parallel_topology_fields(
         &parallel_max_batch_size
     );
 
-    explain_dict_set(out, interp, "parallel-recursive-component-count",
-        make_int(interp, parallel_recursive_component_count));
-    explain_dict_set(out, interp, "parallel-batched-component-count",
-        make_int(interp, parallel_batched_component_count));
-    explain_dict_set(out, interp, "parallel-batch-count",
-        make_int(interp, parallel_batch_count));
-    explain_dict_set(out, interp, "parallel-max-batch-size",
-        make_int(interp, parallel_max_batch_size));
-    deduce_set_parallel_runtime_truth_fields(
+    if (Value* err = explain_dict_set(out, interp, "parallel-recursive-component-count", make_int(interp, parallel_recursive_component_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batched-component-count", make_int(interp, parallel_batched_component_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batch-count", make_int(interp, parallel_batch_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-max-batch-size", make_int(interp, parallel_max_batch_size))) return err;
+    Value* parallel_truth_err = deduce_set_parallel_runtime_truth_fields(
         out,
         parallel_batched_component_count,
         parallel_max_batch_size,
         interp
     );
-    explain_dict_set(out, interp, "parallel-batch-topology",
-        deduce_parallel_component_batch_topology_payload(
-            &scc_plan,
-            parallel_wave_ids[..],
-            parallel_batch_sizes[..],
-            interp
-        ));
+    if (parallel_truth_err != null) return parallel_truth_err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batch-topology", deduce_parallel_component_batch_topology_payload( &scc_plan, parallel_wave_ids[..], parallel_batch_sizes[..], interp ))) return err;
     return null;
 }

@@ -106,13 +106,13 @@ fn Value* deduce_explain_parallel_batch_components(
     return deduce_explain_reverse_list(rev, interp);
 }
 
-fn void deduce_explain_set_last_goal_directed_read_fields(
+fn Value* deduce_explain_set_last_goal_directed_read_fields(
     Value* out,
     DeduceDb* db,
     DeduceRuleSignature* sig,
     Interp* interp
 ) {
-    if (out == null || out.tag != HASHMAP || out.hashmap_val == null || interp == null) return;
+    if (out == null || out.tag != HASHMAP || out.hashmap_val == null || interp == null) return null;
 
     DeduceRelationSchema* schema = null;
     if (db != null && sig != null) {
@@ -120,56 +120,15 @@ fn void deduce_explain_set_last_goal_directed_read_fields(
     }
 
     SymbolId execution_path = schema != null ? schema.last_goal_directed_read_execution_path : (SymbolId)0;
-    explain_dict_set(out, interp, "last-goal-directed-read-execution-path",
-        execution_path != (SymbolId)0
-            ? make_symbol(interp, execution_path)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-surface",
-        schema != null && schema.last_goal_directed_read_surface != (SymbolId)0
-            ? make_symbol(interp, schema.last_goal_directed_read_surface)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-fallback-reason",
-        schema != null && schema.last_goal_directed_read_fallback_reason != (SymbolId)0
-            ? make_symbol(interp, schema.last_goal_directed_read_fallback_reason)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-selector-rule-index",
-        schema != null && schema.last_goal_directed_read_selector_rule_index >= 0
-            ? make_int(interp, schema.last_goal_directed_read_selector_rule_index)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-mutation-epoch",
-        execution_path != (SymbolId)0
-            ? make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-count",
-        execution_path != (SymbolId)0
-            ? make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-positions",
-        execution_path != (SymbolId)0
-            ? deduce_bound_positions_payload(
-                schema.last_goal_directed_read_requested_bound_positions,
-                schema.last_goal_directed_read_requested_bound_count,
-                interp
-            )
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-count",
-        execution_path != (SymbolId)0
-            ? make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-positions",
-        execution_path != (SymbolId)0
-            ? deduce_bound_positions_payload(
-                schema.last_goal_directed_read_applied_bound_positions,
-                schema.last_goal_directed_read_applied_bound_count,
-                interp
-            )
-            : make_nil(interp));
-    explain_dict_set(out, interp, "last-goal-directed-read-step-counters",
-        execution_path != (SymbolId)0 && schema != null && schema.last_goal_directed_read_step_count > 0
-            ? deduce_explain_observed_step_counter_payload(
-                schema.last_goal_directed_read_step_counters,
-                schema.last_goal_directed_read_step_count,
-                interp
-            )
-            : make_nil(interp));
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-execution-path", execution_path != (SymbolId)0 ? make_symbol(interp, execution_path) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-surface", schema != null && schema.last_goal_directed_read_surface != (SymbolId)0 ? make_symbol(interp, schema.last_goal_directed_read_surface) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-fallback-reason", schema != null && schema.last_goal_directed_read_fallback_reason != (SymbolId)0 ? make_symbol(interp, schema.last_goal_directed_read_fallback_reason) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-selector-rule-index", schema != null && schema.last_goal_directed_read_selector_rule_index >= 0 ? make_int(interp, schema.last_goal_directed_read_selector_rule_index) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-mutation-epoch", execution_path != (SymbolId)0 ? make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-count", execution_path != (SymbolId)0 ? make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-requested-bound-positions", execution_path != (SymbolId)0 ? deduce_bound_positions_payload( schema.last_goal_directed_read_requested_bound_positions, schema.last_goal_directed_read_requested_bound_count, interp ) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-count", execution_path != (SymbolId)0 ? make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-applied-bound-positions", execution_path != (SymbolId)0 ? deduce_bound_positions_payload( schema.last_goal_directed_read_applied_bound_positions, schema.last_goal_directed_read_applied_bound_count, interp ) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "last-goal-directed-read-step-counters", execution_path != (SymbolId)0 && schema != null && schema.last_goal_directed_read_step_count > 0 ? deduce_explain_observed_step_counter_payload( schema.last_goal_directed_read_step_counters, schema.last_goal_directed_read_step_count, interp ) : make_nil(interp))) return err;
+    return null;
 }

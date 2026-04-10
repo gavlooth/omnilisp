@@ -29,13 +29,13 @@ fn Value* deduce_why_result_build_seed_payload(
         return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
     }
     if (path.tag == ERROR) return path;
-    deduce_why_result_maybe_attach_path_goal_directed_read_context(
+    if (Value* err = deduce_why_result_maybe_attach_path_goal_directed_read_context(
         path,
         rel,
         subject_key,
         subject_key_len,
         interp
-    );
+    )) return err;
     Value* paths = make_cons(interp, path, make_nil(interp));
     return deduce_why_result_build_payload(
         rel,

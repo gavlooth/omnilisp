@@ -40,23 +40,23 @@ fn Value* deduce_why_result_build_derived_payload(
             return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
         }
         if (path.tag == ERROR) return path;
-        deduce_why_result_maybe_attach_path_goal_directed_read_context(
+        if (Value* err = deduce_why_result_maybe_attach_path_goal_directed_read_context(
             path,
             rel,
             subject_key,
             subject_key_len,
             interp
-        );
-        deduce_why_result_maybe_attach_common_support_goal_directed_read_context(
+        )) return err;
+        if (Value* err = deduce_why_result_maybe_attach_common_support_goal_directed_read_context(
             path,
             first_support,
             interp
-        );
-        deduce_why_result_maybe_attach_support_goal_directed_read_contexts(
+        )) return err;
+        if (Value* err = deduce_why_result_maybe_attach_support_goal_directed_read_contexts(
             path,
             first_support,
             interp
-        );
+        )) return err;
         Value* paths = make_cons(interp, path, make_nil(interp));
         return deduce_why_result_build_payload(
             rel,
@@ -90,13 +90,13 @@ fn Value* deduce_why_result_build_derived_payload(
         return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
     }
     if (fallback_path.tag == ERROR) return fallback_path;
-    deduce_why_result_maybe_attach_path_goal_directed_read_context(
+    if (Value* err = deduce_why_result_maybe_attach_path_goal_directed_read_context(
         fallback_path,
         rel,
         subject_key,
         subject_key_len,
         interp
-    );
+    )) return err;
     if (fallback_path == null || fallback_path.tag != HASHMAP || fallback_path.hashmap_val == null) {
         return deduce_why_result_build_payload(
             rel,

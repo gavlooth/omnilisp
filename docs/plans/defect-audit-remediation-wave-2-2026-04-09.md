@@ -82,6 +82,40 @@ Post-wave follow-up (2026-04-10):
       - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
   - `TODO.md` no longer tracks `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B`.
 
+- The checked-insertion follow-up for deduce payload builders is now also
+  closed:
+  - `src/lisp/deduce_why_result_payload.c3`,
+    `src/lisp/deduce_why_result_path_payload.c3`,
+    `src/lisp/deduce_why_result_lookup.c3`, and
+    `src/lisp/deduce_why_result_lookup_derived.c3`
+    now propagate checked `explain_dict_set*` insertion failure instead of
+    returning partial why-result payloads after constructor success.
+  - `src/lisp/deduce_rule_eval_analyze_payload_fields.c3`,
+    `src/lisp/deduce_rule_eval_analyze_payload_tail.c3`, and
+    `src/lisp/deduce_rule_eval_analyze_payload_result.c3`
+    now treat insertion failure as a first-class `deduce/analyze` result
+    error.
+  - the remaining deduce explain/schema/stats helper family now follows the
+    same contract:
+    - `src/lisp/deduce_parallel_runtime_truth.c3`
+    - `src/lisp/deduce_rule_ops_explain_goal_directed.c3`
+    - `src/lisp/deduce_rule_ops_explain_goal_directed_components.c3`
+    - `src/lisp/deduce_rule_ops_explain_plan_payload.c3`
+    - `src/lisp/deduce_rule_ops_explain_plan_steps.c3`
+    - `src/lisp/deduce_rule_ops_explain_projection.c3`
+    - `src/lisp/deduce_rule_ops_explain_snapshot.c3`
+    - `src/lisp/deduce_rule_ops_explain_step_counters.c3`
+    - `src/lisp/deduce_schema_query_metadata_schema_helpers.c3`
+    - `src/lisp/deduce_schema_query_metadata_schema_payloads.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_parallel_fields.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_payload.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_tail.c3`
+  - validation:
+    - `c3c build`
+    - bounded deduce slice:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
+  - `TODO.md` remains at zero live items.
+
 - The raw-array constructor and AOT dict payload slice is now also closed:
   - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`
     through the checked array constructor path.

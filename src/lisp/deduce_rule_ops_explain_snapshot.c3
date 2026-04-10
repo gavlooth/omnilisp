@@ -45,67 +45,45 @@ fn Value* deduce_explain_build_snapshot(
     if (demand_bound_head_positions != null && demand_bound_head_positions.tag == ERROR) {
         return demand_bound_head_positions;
     }
-    explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-plan"));
-    explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-    explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("planner-snapshot"));
-    explain_dict_set_symbol(out, interp, "execution-engine", metadata.execution_engine_sym);
-    explain_dict_set_symbol(out, interp, "requested-execution-engine", request.requested_execution_engine_sym);
-    explain_dict_set(out, interp, "recursive-aggregate-naive-fallback",
-        metadata.aggregate_recursive_fallback ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-    explain_dict_set(out, interp, "naive-recursive-aggregate-mixed-routed-to-seminaive",
-        metadata.naive_recursive_mixed_aggregate_routed ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-    explain_dict_set(out, interp, "goal-directed-component-id",
-        metadata.goal_directed_component_id >= 0
-            ? make_int(interp, (long)metadata.goal_directed_component_id)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "goal-directed-eligible",
-        metadata.goal_directed_eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-    explain_dict_set(out, interp, "goal-directed-shape",
-        metadata.goal_directed_eligible
-            ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure"))
-            : make_nil(interp));
-    explain_dict_set(out, interp, "goal-directed-blockers", metadata.goal_directed_blockers);
-    explain_dict_set(out, interp, "goal-directed-execution-path",
-        metadata.goal_directed_eligible
-            ? make_symbol(interp, interp.symbols.intern("selected-component-closure"))
-            : make_nil(interp));
-    explain_dict_set(out, interp, "goal-directed-selected-components", metadata.goal_directed_selected_components);
-    explain_dict_set(out, interp, "goal-directed-selected-predicates", metadata.goal_directed_selected_predicates);
-    explain_dict_set(out, interp, "goal-directed-demand-bound-head-positions", demand_bound_head_positions);
-    deduce_explain_set_last_goal_directed_read_fields(out, db, sig, interp);
-    explain_dict_set(out, interp, "parallel-wave",
-        metadata.goal_directed_component_id >= 0 && (usz)metadata.goal_directed_component_id < parallel_wave_ids.len
-            ? make_int(interp, (long)parallel_wave_ids[(usz)metadata.goal_directed_component_id])
-            : make_nil(interp));
-    explain_dict_set(out, interp, "parallel-batch-size",
-        metadata.goal_directed_component_id >= 0 && (usz)metadata.goal_directed_component_id < parallel_batch_sizes.len
-            ? make_int(interp, (long)parallel_batch_sizes[(usz)metadata.goal_directed_component_id])
-            : make_nil(interp));
+    if (Value* err = explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-plan"))) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("planner-snapshot"))) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "execution-engine", metadata.execution_engine_sym)) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "requested-execution-engine", request.requested_execution_engine_sym)) return err;
+    if (Value* err = explain_dict_set(out, interp, "recursive-aggregate-naive-fallback", metadata.aggregate_recursive_fallback ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "naive-recursive-aggregate-mixed-routed-to-seminaive", metadata.naive_recursive_mixed_aggregate_routed ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-component-id", metadata.goal_directed_component_id >= 0 ? make_int(interp, (long)metadata.goal_directed_component_id) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-eligible", metadata.goal_directed_eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-shape", metadata.goal_directed_eligible ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure")) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-blockers", metadata.goal_directed_blockers)) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-execution-path", metadata.goal_directed_eligible ? make_symbol(interp, interp.symbols.intern("selected-component-closure")) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-selected-components", metadata.goal_directed_selected_components)) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-selected-predicates", metadata.goal_directed_selected_predicates)) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-demand-bound-head-positions", demand_bound_head_positions)) return err;
+    Value* last_read_err = deduce_explain_set_last_goal_directed_read_fields(out, db, sig, interp);
+    if (last_read_err != null) return last_read_err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-wave", metadata.goal_directed_component_id >= 0 && (usz)metadata.goal_directed_component_id < parallel_wave_ids.len ? make_int(interp, (long)parallel_wave_ids[(usz)metadata.goal_directed_component_id]) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batch-size", metadata.goal_directed_component_id >= 0 && (usz)metadata.goal_directed_component_id < parallel_batch_sizes.len ? make_int(interp, (long)parallel_batch_sizes[(usz)metadata.goal_directed_component_id]) : make_nil(interp))) return err;
     long selected_parallel_batch_size =
         metadata.goal_directed_component_id >= 0 &&
         (usz)metadata.goal_directed_component_id < parallel_batch_sizes.len
             ? (long)parallel_batch_sizes[(usz)metadata.goal_directed_component_id]
             : 0;
-    deduce_set_parallel_runtime_truth_fields(
+    Value* parallel_truth_err = deduce_set_parallel_runtime_truth_fields(
         out,
         selected_parallel_batch_size > 1 ? 1 : 0,
         selected_parallel_batch_size,
         interp
     );
-    explain_dict_set(out, interp, "parallel-batch-components", metadata.parallel_batch_components);
-    explain_dict_set(out, interp, "parallel-batch-topology",
-        deduce_parallel_component_batch_topology_payload(
-            scc_plan,
-            parallel_wave_ids[..],
-            parallel_batch_sizes[..],
-            interp
-        ));
-    explain_dict_set(out, interp, "rule-index", make_int(interp, (long)request.selected_rule_index));
-    explain_dict_set(out, interp, "rule-count", make_int(interp, (long)db.rule_signature_count));
-    explain_dict_set(out, interp, "head-predicate", make_symbol(interp, sig.head_predicate));
-    explain_dict_set(out, interp, "join-order", deduce_explain_build_join_order(sig, interp));
-    explain_dict_set(out, interp, "aggregate-projection-count", make_int(interp, (long)sig.aggregate_projection_count));
-    explain_dict_set(out, interp, "head-projections", head_projections);
-    explain_dict_set(out, interp, "steps", steps);
+    if (parallel_truth_err != null) return parallel_truth_err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batch-components", metadata.parallel_batch_components)) return err;
+    if (Value* err = explain_dict_set(out, interp, "parallel-batch-topology", deduce_parallel_component_batch_topology_payload( scc_plan, parallel_wave_ids[..], parallel_batch_sizes[..], interp ))) return err;
+    if (Value* err = explain_dict_set(out, interp, "rule-index", make_int(interp, (long)request.selected_rule_index))) return err;
+    if (Value* err = explain_dict_set(out, interp, "rule-count", make_int(interp, (long)db.rule_signature_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "head-predicate", make_symbol(interp, sig.head_predicate))) return err;
+    if (Value* err = explain_dict_set(out, interp, "join-order", deduce_explain_build_join_order(sig, interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "aggregate-projection-count", make_int(interp, (long)sig.aggregate_projection_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "head-projections", head_projections)) return err;
+    if (Value* err = explain_dict_set(out, interp, "steps", steps)) return err;
     return out;
 }

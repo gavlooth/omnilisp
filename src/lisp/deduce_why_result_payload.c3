@@ -41,43 +41,43 @@ fn Value* deduce_why_result_build_goal_directed_read_context(
 
     Value* out = make_hashmap_checked(interp, 16, "deduce/why-result: out of memory");
     if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
-    explain_dict_set(out, interp, "relation", make_symbol(interp, rel.name));
-    explain_dict_set(out, interp, "execution-path", make_symbol(interp, schema.last_goal_directed_read_execution_path));
-    explain_dict_set(out, interp, "surface",
+    if (Value* err = explain_dict_set(out, interp, "relation", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(out, interp, "execution-path", make_symbol(interp, schema.last_goal_directed_read_execution_path))) return err;
+    if (Value* err = explain_dict_set(out, interp, "surface",
         schema.last_goal_directed_read_surface != (SymbolId)0
             ? make_symbol(interp, schema.last_goal_directed_read_surface)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "fallback-reason",
+            : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "fallback-reason",
         schema.last_goal_directed_read_fallback_reason != (SymbolId)0
             ? make_symbol(interp, schema.last_goal_directed_read_fallback_reason)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "selector-rule-index",
+            : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "selector-rule-index",
         schema.last_goal_directed_read_selector_rule_index >= 0
             ? make_int(interp, schema.last_goal_directed_read_selector_rule_index)
-            : make_nil(interp));
-    explain_dict_set(out, interp, "mutation-epoch", make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch));
-    explain_dict_set(out, interp, "requested-bound-count", make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count));
-    explain_dict_set(out, interp, "requested-bound-positions",
+            : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "mutation-epoch", make_int(interp, (long)schema.last_goal_directed_read_mutation_epoch))) return err;
+    if (Value* err = explain_dict_set(out, interp, "requested-bound-count", make_int(interp, (long)schema.last_goal_directed_read_requested_bound_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "requested-bound-positions",
         deduce_bound_positions_payload(
             schema.last_goal_directed_read_requested_bound_positions,
             schema.last_goal_directed_read_requested_bound_count,
             interp
-        ));
-    explain_dict_set(out, interp, "applied-bound-count", make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count));
-    explain_dict_set(out, interp, "applied-bound-positions",
+        ))) return err;
+    if (Value* err = explain_dict_set(out, interp, "applied-bound-count", make_int(interp, (long)schema.last_goal_directed_read_applied_bound_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "applied-bound-positions",
         deduce_bound_positions_payload(
             schema.last_goal_directed_read_applied_bound_positions,
             schema.last_goal_directed_read_applied_bound_count,
             interp
-        ));
-    explain_dict_set(out, interp, "step-counters",
+        ))) return err;
+    if (Value* err = explain_dict_set(out, interp, "step-counters",
         schema.last_goal_directed_read_step_count > 0
             ? deduce_explain_observed_step_counter_payload(
                 schema.last_goal_directed_read_step_counters,
                 schema.last_goal_directed_read_step_count,
                 interp
             )
-            : make_nil(interp));
+            : make_nil(interp))) return err;
     return out;
 }
 
@@ -120,21 +120,22 @@ fn Value* deduce_why_result_build_path_goal_directed_read_context(
     return make_nil(interp);
 }
 
-fn void deduce_why_result_maybe_attach_path_goal_directed_read_context(
+fn Value* deduce_why_result_maybe_attach_path_goal_directed_read_context(
     Value* path,
     Relation* rel,
     char* subject_key,
     usz subject_key_len,
     Interp* interp
 ) {
-    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return;
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return null;
     Value* context = deduce_why_result_build_path_goal_directed_read_context(rel, subject_key, subject_key_len, interp);
     if (context != null && context.tag == HASHMAP && context.hashmap_val != null) {
-        explain_dict_set(path, interp, "goal-directed-read-context", context);
+        return explain_dict_set(path, interp, "goal-directed-read-context", context);
     }
+    return null;
 }
 
-fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
+fn Value* deduce_why_result_maybe_attach_subject_goal_directed_read_context(
     Value* node,
     Relation* rel,
     Value*[] tuple,
@@ -142,7 +143,7 @@ fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
 ) {
     if (node == null || node.tag != HASHMAP || node.hashmap_val == null ||
         rel == null || tuple.len != rel.col_count || interp == null) {
-        return;
+        return null;
     }
 
     char[4096] key_buf;
@@ -150,7 +151,7 @@ fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
     usz? key_len = encode_tuple(tuple, key_buf[..], key_buf.len);
     if (catch err = key_len) {
         (void)err;
-        return;
+        return null;
     }
     subject_key_len = key_len;
 
@@ -161,8 +162,9 @@ fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
         interp
     );
     if (context != null && context.tag == HASHMAP && context.hashmap_val != null) {
-        explain_dict_set(node, interp, "goal-directed-read-context", context);
+        return explain_dict_set(node, interp, "goal-directed-read-context", context);
     }
+    return null;
 }
 
 fn Value* deduce_why_result_build_payload(
@@ -178,26 +180,27 @@ fn Value* deduce_why_result_build_payload(
 ) {
     Value* out = make_hashmap_checked(interp, 16, "deduce/why-result: out of memory");
     if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
-    explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("why-result"));
-    explain_dict_set_symbol(out, interp, "status", status);
-    explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("provenance-snapshot"));
-    explain_dict_set_symbol(out, interp, "subject-kind", interp.symbols.intern("row"));
+    if (Value* err = explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("why-result"))) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "status", status)) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("provenance-snapshot"))) return err;
+    if (Value* err = explain_dict_set_symbol(out, interp, "subject-kind", interp.symbols.intern("row"))) return err;
     Value* subject = deduce_why_result_build_row_subject(rel, tuple, interp);
     if (subject != null && subject.tag == ERROR) return subject;
-    explain_dict_set(out, interp, "subject", subject);
-    explain_dict_set(out, interp, "path-count", make_int(interp, path_count));
-    explain_dict_set(out, interp, "max-depth", make_int(interp, max_depth));
-    explain_dict_set(out, interp, "truncated",
-        deduce_why_result_truncated_value(rel, truncated, interp));
-    explain_dict_set(out, interp, "paths", paths);
+    if (Value* err = explain_dict_set(out, interp, "subject", subject)) return err;
+    if (Value* err = explain_dict_set(out, interp, "path-count", make_int(interp, path_count))) return err;
+    if (Value* err = explain_dict_set(out, interp, "max-depth", make_int(interp, max_depth))) return err;
+    if (Value* err = explain_dict_set(out, interp, "truncated",
+        deduce_why_result_truncated_value(rel, truncated, interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "paths", paths)) return err;
     Value* goal_directed_read_context = deduce_why_result_build_goal_directed_read_context(rel, interp);
+    if (goal_directed_read_context != null && goal_directed_read_context.tag == ERROR) return goal_directed_read_context;
     if (goal_directed_read_context != null &&
         goal_directed_read_context.tag == HASHMAP &&
         goal_directed_read_context.hashmap_val != null) {
-        explain_dict_set(out, interp, "goal-directed-read-context", goal_directed_read_context);
+        if (Value* err = explain_dict_set(out, interp, "goal-directed-read-context", goal_directed_read_context)) return err;
     }
     if (code != (SymbolId)0) {
-        explain_dict_set(out, interp, "code", make_symbol(interp, code));
+        if (Value* err = explain_dict_set(out, interp, "code", make_symbol(interp, code))) return err;
     }
     return out;
 }

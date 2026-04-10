@@ -1,5 +1,39 @@
 ## 2026-04-10
 
+- Closed the deduce explain/analyze/why-result checked-insertion follow-up:
+  - the checked-constructor follow-up is now complete for the remaining deduce
+    payload-map family, not just raw `make_hashmap(...)` callsites.
+  - `src/lisp/deduce_why_result_payload.c3`,
+    `src/lisp/deduce_why_result_path_payload.c3`,
+    `src/lisp/deduce_why_result_lookup.c3`, and
+    `src/lisp/deduce_why_result_lookup_derived.c3`
+    now propagate the first `explain_dict_set*` insertion failure from
+    context/path/payload attachment instead of silently returning a partial
+    why-result payload after checked constructor success.
+  - `src/lisp/deduce_rule_eval_analyze_payload_fields.c3`,
+    `src/lisp/deduce_rule_eval_analyze_payload_tail.c3`, and
+    `src/lisp/deduce_rule_eval_analyze_payload_result.c3`
+    now fail `deduce/analyze` result-map construction closed on the first
+    checked insertion failure instead of ignoring the failed write.
+  - the remaining deduce explain/schema/stats helper family now follows the
+    same contract too:
+    - `src/lisp/deduce_parallel_runtime_truth.c3`
+    - `src/lisp/deduce_rule_ops_explain_goal_directed.c3`
+    - `src/lisp/deduce_rule_ops_explain_goal_directed_components.c3`
+    - `src/lisp/deduce_rule_ops_explain_plan_payload.c3`
+    - `src/lisp/deduce_rule_ops_explain_plan_steps.c3`
+    - `src/lisp/deduce_rule_ops_explain_projection.c3`
+    - `src/lisp/deduce_rule_ops_explain_snapshot.c3`
+    - `src/lisp/deduce_rule_ops_explain_step_counters.c3`
+    - `src/lisp/deduce_schema_query_metadata_schema_helpers.c3`
+    - `src/lisp/deduce_schema_query_metadata_schema_payloads.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_parallel_fields.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_payload.c3`
+    - `src/lisp/deduce_schema_query_metadata_stats_tail.c3`
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
+
 - Closed the remaining guarded raw-hashmap normalization lane for
   `deduce_*` / `unify_*` payload and result builders:
   - `src/lisp/deduce_relation_row_materialization.c3` now routes row-dict

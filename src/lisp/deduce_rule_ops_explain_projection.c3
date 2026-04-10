@@ -22,23 +22,21 @@ fn Value* deduce_explain_build_head_projections(
     for (usz i = 0; i < sig.head_term_count; i++) {
         Value* entry = explain_make_dict(interp, 8);
         DeduceRuleTermKind kind = sig.head_term_kinds[i];
-        explain_dict_set(entry, interp, "position", make_int(interp, (long)i));
-        explain_dict_set_symbol(entry, interp, "projection-kind",
-            deduce_explain_head_projection_symbol(interp, kind));
+        if (Value* err = explain_dict_set(entry, interp, "position", make_int(interp, (long)i))) return err;
+        if (Value* err = explain_dict_set_symbol(entry, interp, "projection-kind", deduce_explain_head_projection_symbol(interp, kind))) return err;
         if (kind == DEDUCE_RULE_TERM_LITERAL) {
             Value* literal = sig.head_term_literals != null ? sig.head_term_literals[i] : null;
-            explain_dict_set(entry, interp, "literal", literal == null ? make_nil(interp) : literal);
-            explain_dict_set(entry, interp, "source-var-id", make_nil(interp));
-            explain_dict_set(entry, interp, "aggregate-function", make_nil(interp));
+            if (Value* err = explain_dict_set(entry, interp, "literal", literal == null ? make_nil(interp) : literal)) return err;
+            if (Value* err = explain_dict_set(entry, interp, "source-var-id", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "aggregate-function", make_nil(interp))) return err;
         } else {
             uint source_var_id = sig.head_term_var_ids != null ? sig.head_term_var_ids[i] : 0;
-            explain_dict_set(entry, interp, "literal", make_nil(interp));
-            explain_dict_set(entry, interp, "source-var-id", make_int(interp, (long)source_var_id));
+            if (Value* err = explain_dict_set(entry, interp, "literal", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "source-var-id", make_int(interp, (long)source_var_id))) return err;
             if (kind == DEDUCE_RULE_TERM_AGGREGATE && sig.head_term_aggregate_ops != null) {
-                explain_dict_set_symbol(entry, interp, "aggregate-function",
-                    deduce_explain_aggregate_op_symbol(interp, sig.head_term_aggregate_ops[i]));
+                if (Value* err = explain_dict_set_symbol(entry, interp, "aggregate-function", deduce_explain_aggregate_op_symbol(interp, sig.head_term_aggregate_ops[i]))) return err;
             } else {
-                explain_dict_set(entry, interp, "aggregate-function", make_nil(interp));
+                if (Value* err = explain_dict_set(entry, interp, "aggregate-function", make_nil(interp))) return err;
             }
         }
         rev = make_cons(interp, entry, rev);

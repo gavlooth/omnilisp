@@ -12,10 +12,10 @@ fn Value* deduce_relation_schema_constraints_payload(
     if (schema.unique_column_count > 0 && !deduce_relation_schema_unique_equivalent_to_key(schema)) {
         Value* entry = explain_make_dict(interp, 8);
         Value* columns = deduce_relation_schema_role_columns(schema.unique_columns, schema.unique_column_count, interp);
-        explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("unique"));
-        explain_dict_set(entry, interp, "columns", columns);
-        explain_dict_set(entry, interp, "unique", explain_bool_value(interp, true));
-        explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true));
+        if (Value* err = explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("unique"))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "columns", columns)) return err;
+        if (Value* err = explain_dict_set(entry, interp, "unique", explain_bool_value(interp, true))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true))) return err;
         rev = make_cons(interp, entry, rev);
     }
 
@@ -29,16 +29,16 @@ fn Value* deduce_relation_schema_constraints_payload(
             bool target_unique = false;
             deduce_reference_constraint_resolution(db, ref, &target_declared, &target_column_declared, &target_live, &target_unique);
             Value* columns = make_cons(interp, make_symbol(interp, ref.local_column), make_nil(interp));
-            explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("reference"));
-            explain_dict_set(entry, interp, "columns", columns);
-            explain_dict_set_symbol(entry, interp, "referenced-relation", ref.target_relation);
-            explain_dict_set_symbol(entry, interp, "referenced-column", ref.target_column);
-            explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true));
-            explain_dict_set(entry, interp, "target-declared", explain_bool_value(interp, target_declared));
-            explain_dict_set(entry, interp, "target-column-declared", explain_bool_value(interp, target_column_declared));
-            explain_dict_set(entry, interp, "target-live", explain_bool_value(interp, target_live));
-            explain_dict_set(entry, interp, "target-unique", explain_bool_value(interp, target_unique));
-            explain_dict_set(entry, interp, "resolved", explain_bool_value(interp, target_declared && target_column_declared && target_live && target_unique));
+            if (Value* err = explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("reference"))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "columns", columns)) return err;
+            if (Value* err = explain_dict_set_symbol(entry, interp, "referenced-relation", ref.target_relation)) return err;
+            if (Value* err = explain_dict_set_symbol(entry, interp, "referenced-column", ref.target_column)) return err;
+            if (Value* err = explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "target-declared", explain_bool_value(interp, target_declared))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "target-column-declared", explain_bool_value(interp, target_column_declared))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "target-live", explain_bool_value(interp, target_live))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "target-unique", explain_bool_value(interp, target_unique))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "resolved", explain_bool_value(interp, target_declared && target_column_declared && target_live && target_unique))) return err;
             rev = make_cons(interp, entry, rev);
         }
     }
@@ -48,10 +48,10 @@ fn Value* deduce_relation_schema_constraints_payload(
             DeduceCheckConstraint* check = &schema.check_constraints[i];
             Value* entry = explain_make_dict(interp, 10);
             Value* columns = make_cons(interp, make_symbol(interp, check.local_column), make_nil(interp));
-            explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("check"));
-            explain_dict_set(entry, interp, "columns", columns);
-            explain_dict_set_symbol(entry, interp, "predicate", check.predicate);
-            explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, false));
+            if (Value* err = explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("check"))) return err;
+            if (Value* err = explain_dict_set(entry, interp, "columns", columns)) return err;
+            if (Value* err = explain_dict_set_symbol(entry, interp, "predicate", check.predicate)) return err;
+            if (Value* err = explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, false))) return err;
             rev = make_cons(interp, entry, rev);
         }
     }
@@ -59,10 +59,10 @@ fn Value* deduce_relation_schema_constraints_payload(
     if (schema.key_column != (SymbolId)0) {
         Value* entry = explain_make_dict(interp, 8);
         Value* columns = make_cons(interp, make_symbol(interp, schema.key_column), make_nil(interp));
-        explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("key"));
-        explain_dict_set(entry, interp, "columns", columns);
-        explain_dict_set(entry, interp, "unique", explain_bool_value(interp, true));
-        explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true));
+        if (Value* err = explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("key"))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "columns", columns)) return err;
+        if (Value* err = explain_dict_set(entry, interp, "unique", explain_bool_value(interp, true))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "enforced", explain_bool_value(interp, true))) return err;
         rev = make_cons(interp, entry, rev);
     }
 

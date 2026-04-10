@@ -30,19 +30,18 @@ fn Value* deduce_explain_build_plan_steps(
         ulong bound_mask = sig.body_bound_masks != null ? sig.body_bound_masks[i] : 0;
         DeducePhysicalOpKind op_kind = deduce_rule_choose_op_kind(&op_probe, selected_index);
 
-        explain_dict_set(step, interp, "position", make_int(interp, (long)i));
+        if (Value* err = explain_dict_set(step, interp, "position", make_int(interp, (long)i))) return err;
         if (sig.body_predicates != null) {
-            explain_dict_set(step, interp, "predicate", make_symbol(interp, sig.body_predicates[i]));
+            if (Value* err = explain_dict_set(step, interp, "predicate", make_symbol(interp, sig.body_predicates[i]))) return err;
         } else {
-            explain_dict_set(step, interp, "predicate", make_nil(interp));
+            if (Value* err = explain_dict_set(step, interp, "predicate", make_nil(interp))) return err;
         }
-        explain_dict_set(step, interp, "negated",
-            op_probe.negated ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-        explain_dict_set(step, interp, "bound-mask", make_int(interp, (long)bound_mask));
+        if (Value* err = explain_dict_set(step, interp, "negated", op_probe.negated ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(step, interp, "bound-mask", make_int(interp, (long)bound_mask))) return err;
         if (selected_index >= 0) {
-            explain_dict_set(step, interp, "selected-index", make_int(interp, (long)selected_index));
+            if (Value* err = explain_dict_set(step, interp, "selected-index", make_int(interp, (long)selected_index))) return err;
         } else {
-            explain_dict_set(step, interp, "selected-index", make_nil(interp));
+            if (Value* err = explain_dict_set(step, interp, "selected-index", make_nil(interp))) return err;
         }
         bool filter_pushdown = sig.body_filter_pushdown != null ? sig.body_filter_pushdown[i] : (bound_mask != 0);
         ulong projection_mask = sig.body_projection_masks != null ? sig.body_projection_masks[i] : 0;
@@ -56,12 +55,10 @@ fn Value* deduce_explain_build_plan_steps(
             interp
         );
         if (counters != null && counters.tag == ERROR) return counters;
-        explain_dict_set(step, interp, "filter-pushdown",
-            filter_pushdown ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-        explain_dict_set(step, interp, "projection-mask", make_int(interp, (long)projection_mask));
-        explain_dict_set(step, interp, "operator",
-            make_symbol(interp, deduce_explain_operator_symbol(interp, op_kind)));
-        explain_dict_set(step, interp, "counters", counters);
+        if (Value* err = explain_dict_set(step, interp, "filter-pushdown", filter_pushdown ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(step, interp, "projection-mask", make_int(interp, (long)projection_mask))) return err;
+        if (Value* err = explain_dict_set(step, interp, "operator", make_symbol(interp, deduce_explain_operator_symbol(interp, op_kind)))) return err;
+        if (Value* err = explain_dict_set(step, interp, "counters", counters)) return err;
         rev = make_cons(interp, step, rev);
     }
     return deduce_explain_reverse_list(rev, interp);

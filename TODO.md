@@ -22,6 +22,42 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-DEDUCE-EXPLAIN-INSERT-FAILCLOSED-013` make deduce explain,
+  analyze, schema, stats, and why-result payload builders propagate checked
+  `explain_dict_set*` failures instead of returning partially populated maps
+  - closure evidence:
+    - `src/lisp/deduce_why_result_payload.c3`,
+      `src/lisp/deduce_why_result_path_payload.c3`,
+      `src/lisp/deduce_why_result_lookup.c3`, and
+      `src/lisp/deduce_why_result_lookup_derived.c3`
+      now return the first insertion/grow failure from path/context/payload
+      attachment instead of silently dropping the failed field and returning a
+      successful why-result payload.
+    - `src/lisp/deduce_rule_eval_analyze_payload_fields.c3`,
+      `src/lisp/deduce_rule_eval_analyze_payload_tail.c3`, and
+      `src/lisp/deduce_rule_eval_analyze_payload_result.c3`
+      now treat payload-field insertion failure as a first-class
+      `deduce/analyze` error instead of ignoring the failed write and
+      continuing with a partial result map.
+    - the remaining deduce explain/schema/stats helper family now follows the
+      same checked insertion contract:
+      - `src/lisp/deduce_parallel_runtime_truth.c3`
+      - `src/lisp/deduce_rule_ops_explain_goal_directed.c3`
+      - `src/lisp/deduce_rule_ops_explain_goal_directed_components.c3`
+      - `src/lisp/deduce_rule_ops_explain_plan_payload.c3`
+      - `src/lisp/deduce_rule_ops_explain_plan_steps.c3`
+      - `src/lisp/deduce_rule_ops_explain_projection.c3`
+      - `src/lisp/deduce_rule_ops_explain_snapshot.c3`
+      - `src/lisp/deduce_rule_ops_explain_step_counters.c3`
+      - `src/lisp/deduce_schema_query_metadata_schema_helpers.c3`
+      - `src/lisp/deduce_schema_query_metadata_schema_payloads.c3`
+      - `src/lisp/deduce_schema_query_metadata_stats_parallel_fields.c3`
+      - `src/lisp/deduce_schema_query_metadata_stats_payload.c3`
+      - `src/lisp/deduce_schema_query_metadata_stats_tail.c3`
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
+
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B` normalize the remaining already-guarded `make_hashmap(...)` caller family onto checked constructors or a shared fail-closed helper contract
   - closure evidence:
     - `src/lisp/deduce_relation_row_materialization.c3` now uses checked

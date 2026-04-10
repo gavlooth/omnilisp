@@ -12,14 +12,14 @@ fn Value* deduce_explain_build_rule_execution_entry(
 
     Value* steps = deduce_explain_build_plan_steps(db, sig, observed_rule_counters, interp);
     if (steps != null && steps.tag == ERROR) return steps;
-    explain_dict_set(entry, interp, "rule-index", make_int(interp, (long)rule_index));
-    explain_dict_set(entry, interp, "head-predicate", make_symbol(interp, sig.head_predicate));
-    explain_dict_set(entry, interp, "join-order", deduce_explain_build_join_order(sig, interp));
-    explain_dict_set(entry, interp, "aggregate-projection-count", make_int(interp, (long)sig.aggregate_projection_count));
+    if (Value* err = explain_dict_set(entry, interp, "rule-index", make_int(interp, (long)rule_index))) return err;
+    if (Value* err = explain_dict_set(entry, interp, "head-predicate", make_symbol(interp, sig.head_predicate))) return err;
+    if (Value* err = explain_dict_set(entry, interp, "join-order", deduce_explain_build_join_order(sig, interp))) return err;
+    if (Value* err = explain_dict_set(entry, interp, "aggregate-projection-count", make_int(interp, (long)sig.aggregate_projection_count))) return err;
     Value* head_projections = deduce_explain_build_head_projections(sig, interp);
     if (head_projections != null && head_projections.tag == ERROR) return head_projections;
-    explain_dict_set(entry, interp, "head-projections", head_projections);
-    explain_dict_set(entry, interp, "steps", steps);
+    if (Value* err = explain_dict_set(entry, interp, "head-projections", head_projections)) return err;
+    if (Value* err = explain_dict_set(entry, interp, "steps", steps)) return err;
     return entry;
 }
 

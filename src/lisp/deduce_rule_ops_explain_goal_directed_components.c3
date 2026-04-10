@@ -62,27 +62,14 @@ fn Value* deduce_explain_goal_directed_component_summaries(
 
         Value* entry = explain_make_dict(interp, 16);
 
-        explain_dict_set(entry, interp, "component-id", make_int(interp, (long)component_id));
-        explain_dict_set(entry, interp, "stratum",
-            make_int(interp, component_id < plan.component_strata.len ? (long)plan.component_strata[component_id] : 0));
-        explain_dict_set(entry, interp, "rule-count", make_int(interp, rule_count));
-        explain_dict_set(entry, interp, "goal-directed-eligible",
-            eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-        explain_dict_set(entry, interp, "goal-directed-shape",
-            eligible
-                ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure"))
-                : make_nil(interp));
-        explain_dict_set(entry, interp, "goal-directed-blockers",
-            deduce_explain_goal_directed_blockers(
-                recursive,
-                has_aggregates,
-                has_negated_body_atoms,
-                interp
-            ));
-        explain_dict_set(entry, interp, "aggregate-rules-present",
-            has_aggregates ? make_symbol(interp, interp.sym_true) : make_nil(interp));
-        explain_dict_set(entry, interp, "negated-body-atoms-present",
-            has_negated_body_atoms ? make_symbol(interp, interp.sym_true) : make_nil(interp));
+        if (Value* err = explain_dict_set(entry, interp, "component-id", make_int(interp, (long)component_id))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "stratum", make_int(interp, component_id < plan.component_strata.len ? (long)plan.component_strata[component_id] : 0))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "rule-count", make_int(interp, rule_count))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "goal-directed-eligible", eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "goal-directed-shape", eligible ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure")) : make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "goal-directed-blockers", deduce_explain_goal_directed_blockers( recursive, has_aggregates, has_negated_body_atoms, interp ))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "aggregate-rules-present", has_aggregates ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(entry, interp, "negated-body-atoms-present", has_negated_body_atoms ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
         rev = make_cons(interp, entry, rev);
     }
     return deduce_explain_reverse_list(rev, interp);

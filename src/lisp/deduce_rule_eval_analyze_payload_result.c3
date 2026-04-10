@@ -35,7 +35,7 @@ fn Value* deduce_analyze_build_payload(
     );
     if (goal_directed_err != null) return goal_directed_err;
 
-    deduce_analyze_set_result_payload_fields(
+    Value* fields_err = deduce_analyze_set_result_payload_fields(
         out,
         db,
         scc_plan,
@@ -49,6 +49,7 @@ fn Value* deduce_analyze_build_payload(
         goal_directed_selected_predicates,
         interp
     );
+    if (fields_err != null) return fields_err;
     Value* tail_err = deduce_analyze_append_runtime_tail_payload(
         out,
         db,

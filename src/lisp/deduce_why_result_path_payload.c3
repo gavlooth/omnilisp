@@ -7,8 +7,8 @@ fn Value* deduce_why_result_build_row_subject(
 ) {
     Value* subject = make_hashmap_checked(interp, 8, "deduce/why-result: out of memory");
     if (subject == null || subject.tag != HASHMAP || subject.hashmap_val == null) return subject;
-    explain_dict_set(subject, interp, "relation", make_symbol(interp, rel.name));
-    explain_dict_set(subject, interp, "tuple", deduce_build_tuple_list(tuple, interp));
+    if (Value* err = explain_dict_set(subject, interp, "relation", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(subject, interp, "tuple", deduce_build_tuple_list(tuple, interp))) return err;
     return subject;
 }
 
@@ -19,11 +19,11 @@ fn Value* deduce_why_result_build_fact_frame(
 ) {
     Value* frame = make_hashmap_checked(interp, 8, "deduce/why-result: out of memory");
     if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return frame;
-    explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("fact"));
-    explain_dict_set(frame, interp, "frame-index", make_int(interp, 0));
-    explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name));
-    explain_dict_set(frame, interp, "tuple", deduce_build_tuple_list(tuple, interp));
-    deduce_why_result_maybe_attach_subject_goal_directed_read_context(frame, rel, tuple, interp);
+    if (Value* err = explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("fact"))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "frame-index", make_int(interp, 0))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "tuple", deduce_build_tuple_list(tuple, interp))) return err;
+    if (Value* err = deduce_why_result_maybe_attach_subject_goal_directed_read_context(frame, rel, tuple, interp)) return err;
     return frame;
 }
 
@@ -36,13 +36,13 @@ fn Value* deduce_why_result_build_rule_step_frame(
 ) {
     Value* frame = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
     if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return frame;
-    explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("rule-step"));
-    explain_dict_set(frame, interp, "frame-index", make_int(interp, 0));
-    explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name));
-    explain_dict_set(frame, interp, "tuple", deduce_build_tuple_list(tuple, interp));
-    explain_dict_set(frame, interp, "rule-index", make_int(interp, rule_index));
-    explain_dict_set(frame, interp, "step-index", make_int(interp, step_index));
-    deduce_why_result_maybe_attach_subject_goal_directed_read_context(frame, rel, tuple, interp);
+    if (Value* err = explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("rule-step"))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "frame-index", make_int(interp, 0))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "tuple", deduce_build_tuple_list(tuple, interp))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "rule-index", make_int(interp, rule_index))) return err;
+    if (Value* err = explain_dict_set(frame, interp, "step-index", make_int(interp, step_index))) return err;
+    if (Value* err = deduce_why_result_maybe_attach_subject_goal_directed_read_context(frame, rel, tuple, interp)) return err;
     return frame;
 }
 
@@ -54,15 +54,16 @@ fn Value* deduce_why_result_build_seed_path(
     Value* path = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
     if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return path;
     Value* frame = deduce_why_result_build_fact_frame(rel, tuple, interp);
-    if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return null;
+    if (frame == null || frame.tag == ERROR) return frame;
+    if (frame.tag != HASHMAP || frame.hashmap_val == null) return frame;
     Value* support = make_cons(interp, frame, make_nil(interp));
-    explain_dict_set(path, interp, "path-id", make_int(interp, 0));
-    explain_dict_set_symbol(path, interp, "path-kind", interp.symbols.intern("seed"));
-    explain_dict_set(path, interp, "head-predicate", make_symbol(interp, rel.name));
-    explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp));
-    explain_dict_set(path, interp, "rule-index", make_nil(interp));
-    explain_dict_set(path, interp, "support", support);
-    explain_dict_set(path, interp, "truncated", make_nil(interp));
+    if (Value* err = explain_dict_set(path, interp, "path-id", make_int(interp, 0))) return err;
+    if (Value* err = explain_dict_set_symbol(path, interp, "path-kind", interp.symbols.intern("seed"))) return err;
+    if (Value* err = explain_dict_set(path, interp, "head-predicate", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp))) return err;
+    if (Value* err = explain_dict_set(path, interp, "rule-index", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(path, interp, "support", support)) return err;
+    if (Value* err = explain_dict_set(path, interp, "truncated", make_nil(interp))) return err;
     return path;
 }
 
@@ -154,29 +155,30 @@ fn Value* deduce_why_result_build_support_goal_directed_read_contexts(
     return deduce_why_result_concat_support(rev_contexts, make_nil(interp), interp);
 }
 
-fn void deduce_why_result_maybe_attach_common_support_goal_directed_read_context(
+fn Value* deduce_why_result_maybe_attach_common_support_goal_directed_read_context(
     Value* path,
     Value* support,
     Interp* interp
 ) {
-    if (path == null || path.tag != HASHMAP || path.hashmap_val == null || interp == null) return;
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null || interp == null) return null;
     Value* existing = deduce_why_result_dict_get(path, "goal-directed-read-context", interp);
-    if (existing != null && !is_nil(existing)) return;
+    if (existing != null && !is_nil(existing)) return null;
 
     Value* context = deduce_why_result_find_common_support_goal_directed_read_context(support, interp);
     if (context != null && !is_nil(context)) {
-        explain_dict_set(path, interp, "goal-directed-read-context", context);
+        return explain_dict_set(path, interp, "goal-directed-read-context", context);
     }
+    return null;
 }
 
-fn void deduce_why_result_maybe_attach_support_goal_directed_read_contexts(
+fn Value* deduce_why_result_maybe_attach_support_goal_directed_read_contexts(
     Value* path,
     Value* support,
     Interp* interp
 ) {
-    if (path == null || path.tag != HASHMAP || path.hashmap_val == null || interp == null) return;
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null || interp == null) return null;
     Value* existing = deduce_why_result_dict_get(path, "goal-directed-read-context", interp);
-    if (existing != null && !is_nil(existing)) return;
+    if (existing != null && !is_nil(existing)) return null;
 
     long unique_count = 0;
     Value* contexts = deduce_why_result_build_support_goal_directed_read_contexts(
@@ -185,8 +187,9 @@ fn void deduce_why_result_maybe_attach_support_goal_directed_read_contexts(
         interp
     );
     if (contexts != null && !is_nil(contexts) && unique_count > 1) {
-        explain_dict_set(path, interp, "goal-directed-read-contexts", contexts);
+        return explain_dict_set(path, interp, "goal-directed-read-contexts", contexts);
     }
+    return null;
 }
 
 fn Value* deduce_why_result_build_derived_path(
@@ -198,12 +201,12 @@ fn Value* deduce_why_result_build_derived_path(
 ) {
     Value* path = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
     if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return path;
-    explain_dict_set(path, interp, "path-id", make_int(interp, 0));
-    explain_dict_set_symbol(path, interp, "path-kind", interp.symbols.intern("derived"));
-    explain_dict_set(path, interp, "head-predicate", make_symbol(interp, rel.name));
-    explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp));
-    explain_dict_set(path, interp, "rule-index", make_int(interp, rule_index));
-    explain_dict_set(path, interp, "support", support);
-    explain_dict_set(path, interp, "truncated", make_nil(interp));
+    if (Value* err = explain_dict_set(path, interp, "path-id", make_int(interp, 0))) return err;
+    if (Value* err = explain_dict_set_symbol(path, interp, "path-kind", interp.symbols.intern("derived"))) return err;
+    if (Value* err = explain_dict_set(path, interp, "head-predicate", make_symbol(interp, rel.name))) return err;
+    if (Value* err = explain_dict_set(path, interp, "head-tuple", deduce_build_tuple_list(tuple, interp))) return err;
+    if (Value* err = explain_dict_set(path, interp, "rule-index", make_int(interp, rule_index))) return err;
+    if (Value* err = explain_dict_set(path, interp, "support", support)) return err;
+    if (Value* err = explain_dict_set(path, interp, "truncated", make_nil(interp))) return err;
     return path;
 }

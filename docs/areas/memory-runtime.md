@@ -89,6 +89,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     in `src/lisp/deduce_*` / `src/lisp/unify_*`.
   - scoped grep verification is now clean for that family, and the bounded
     `deduce` slice passes on the shipped tree (`pass=328 fail=0`).
+- That deduce payload family now also treats checked insertion failure as a
+  first-class error:
+  - explain/analyze/schema/stats/why-result payload builders no longer ignore
+    `explain_dict_set*` return values after checked constructor success.
+  - insertion/grow failure now propagates as the typed deduce/schema explain
+    error already owned by the enclosing builder instead of returning a
+    partially populated payload map.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
