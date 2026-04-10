@@ -106,7 +106,8 @@ fn Value* jit_apply_value_closure(Value* func, Value* arg, Interp* interp) {
         usz pc = closure.param_count;
         Env* new_env = closure.env;
         if (pc == 0) {
-            Value* rest_list = make_cons(interp, arg, make_nil(interp));
+            Value* rest_list = make_list1_or_error(interp, arg, "out of memory while binding variadic rest arguments");
+            if (rest_list == null || rest_list.tag == ERROR) return rest_list;
             new_env = jit_env_extend(interp, new_env, closure.rest_param, rest_list);
             if (new_env == null) return raise_error(interp, "out of memory while binding argument");
             Value* result = jit_eval_in_single_scope(closure.body, new_env, interp);

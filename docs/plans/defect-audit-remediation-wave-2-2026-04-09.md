@@ -626,6 +626,27 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed the JIT helper arg-construction fail-closed follow-up:
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/jit_jit_apply_helpers.c3`
+  - `src/lisp/jit_jit_apply_runtime.c3`
+  - `src/lisp/jit_jit_dispatch_helpers.c3`
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- shipped behavior:
+  - one checked `make_list1_or_error(...)` helper now covers variadic rest-list
+    materialization in JIT helper-owned apply paths.
+  - variadic zero-fixed-arg rest binding now fails closed instead of passing a
+    raw cons-constructor fault into env binding.
+  - instance `ref` dispatch now routes its two-arg helper list construction
+    through the shared checked helper instead of nested raw `make_cons(...)`.
+  - direct regression landed in:
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- validation status:
+  - focused `jit-policy`: green (`variadic-rest-list-alloc-failure`)
+- backlog shaping after this slice:
+  - close `AUDIT-JIT-HELPER-ARG-CONSTRUCTION-FAILCLOSED-034`
+  - actionable backlog remains `0`
+
 - landed the JIT quasiquote pair-construction fail-closed follow-up:
   - `src/lisp/jit_jit_quasiquote_macros.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`

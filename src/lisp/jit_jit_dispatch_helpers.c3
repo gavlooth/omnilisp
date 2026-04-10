@@ -6,7 +6,11 @@ fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, 
     SymbolId ref_sym = interp.symbols.intern("ref");
     Value* ref_fn = interp.global_env.lookup(ref_sym);
     if (ref_fn == null || ref_fn.tag != METHOD_TABLE) return false;
-    Value* args = make_cons(interp, collection, make_cons(interp, index, make_nil(interp)));
+    Value* args = make_list2_or_error(interp, collection, index, "ref: failed to construct argument list");
+    if (args == null || args.tag == ERROR) {
+        *out = args;
+        return true;
+    }
     *out = jit_apply_multi_args(interp, ref_fn, args, 2);
     return true;
 }

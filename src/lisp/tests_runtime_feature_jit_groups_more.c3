@@ -1705,6 +1705,35 @@ fn void run_jit_policy_quasiquote_cons_alloc_failure_test(Interp* interp, int* p
     }
 }
 
+fn void run_jit_policy_variadic_rest_list_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: variadic rest list allocation failure skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    char[] source = "((lambda (.. xs) xs) 1)";
+    int saved_force = g_value_force_make_list1_alloc_fail_nth;
+    g_value_force_make_list1_alloc_fail_nth = 1;
+    JitTopLevelEval jit_eval = eval_jit_top_level(interp, source);
+    g_value_force_make_list1_alloc_fail_nth = saved_force;
+
+    Value* result = jit_eval.value;
+    bool ok = jit_eval.ok &&
+              result != null &&
+              result.tag == ERROR &&
+              jit_policy_str_contains(result.str_chars[:result.str_len], "out of memory while binding variadic rest arguments");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: variadic rest list allocation failure returns error");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: variadic rest list allocation failure returns error");
+        print_jit_failure_debug(interp, "jit variadic rest list allocation failure", jit_eval.stage, result);
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1757,6 +1786,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("quasiquote-cons-alloc-failure", &run_jit_policy_quasiquote_cons_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("variadic-rest-list-alloc-failure", &run_jit_policy_variadic_rest_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);

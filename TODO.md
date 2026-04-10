@@ -22,6 +22,27 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-JIT-HELPER-ARG-CONSTRUCTION-FAILCLOSED-034` make JIT helper
+  arg-list and variadic rest-list construction fail closed instead of passing
+  raw cons-constructor faults into normal dispatch/binding flows
+  - closure evidence:
+    - `src/lisp/value_constructors.c3`
+      now exposes a checked `make_list1_or_error(...)` helper with a narrow
+      nth-failure seam for deterministic JIT variadic-rest tests.
+    - `src/lisp/jit_jit_apply_helpers.c3` and
+      `src/lisp/jit_jit_apply_runtime.c3`
+      now reject variadic zero-fixed-arg rest-list construction failure before
+      binding the rest parameter environment.
+    - `src/lisp/jit_jit_dispatch_helpers.c3`
+      now routes instance `ref` dispatch arg-list materialization through the
+      shared checked two-item helper instead of nesting raw `make_cons(...)`.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now directly pins the variadic rest-list allocation failure in the
+      `jit-policy` slice.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=variadic-rest-list-alloc-failure ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-JIT-QUASIQUOTE-CONS-FAILCLOSED-033` make JIT quasiquote pair
   construction fail closed instead of wrapping cons-constructor faults as
   successful quasiquote values
