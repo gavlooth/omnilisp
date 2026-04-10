@@ -1139,6 +1139,86 @@ fn void run_memory_lifetime_env_copy_nested_array_rollback_test(Interp* interp, 
     }
 }
 
+fn void run_memory_lifetime_env_copy_nested_cons_wrapper_alias_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy clones a target-chain outer CONS when a nested CONS
+    // shell still belongs to the source/releasing scope, even if the nested
+    // payload leaves are only scalars.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy nested cons wrapper alias");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId cons_sym = interp.symbols.intern("__copy_env_nested_cons_wrapper");
+
+        interp.current_scope = target;
+        Value* outer_cons = make_cons(interp, make_int(interp, 31), make_nil(interp));
+
+        interp.current_scope = source;
+        Value* nested_cons = make_cons(interp, make_int(interp, 32), make_nil(interp));
+        Env* frame = make_env(interp, interp.global_env);
+        bool setup_ok = outer_cons != null && nested_cons != null && frame != null;
+        if (setup_ok) {
+            outer_cons.cons_val.cdr = nested_cons;
+            setup_ok = frame.define(cons_sym, outer_cons);
+        }
+
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+
+        Value* copied_cons = boundary_env_copy_result_ok(copied) && copied.env != null
+            ? copied.env.lookup(cons_sym)
+            : null;
+        bool copied_ok = boundary_env_copy_result_ok(copied) &&
+                         copied.env != null &&
+                         copied_cons != null &&
+                         copied_cons.tag == CONS &&
+                         copied_cons != outer_cons &&
+                         copied_cons.cons_val.car != null &&
+                         copied_cons.cons_val.car.tag == INT &&
+                         copied_cons.cons_val.car.int_val == 31 &&
+                         copied_cons.cons_val.cdr != null &&
+                         copied_cons.cons_val.cdr.tag == CONS &&
+                         copied_cons.cons_val.cdr != nested_cons &&
+                         copied_cons.cons_val.cdr.cons_val.car != null &&
+                         copied_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                         copied_cons.cons_val.cdr.cons_val.car.int_val == 32;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        bool post_release_ok = copied_ok &&
+                               copied_cons != null &&
+                               copied_cons.cons_val.cdr != null &&
+                               copied_cons.cons_val.cdr.tag == CONS &&
+                               copied_cons.cons_val.cdr.cons_val.car != null &&
+                               copied_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                               copied_cons.cons_val.cdr.cons_val.car.int_val == 32;
+        main::scope_release(target);
+
+        bool ok = setup_ok && copied_ok && post_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy nested cons wrapper alias");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy nested cons wrapper alias (setup_ok=%s copied_ok=%s post_release_ok=%s fault=%s)",
+                setup_ok ? "yes" : "no",
+                copied_ok ? "yes" : "no",
+                post_release_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code)
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
@@ -1162,4 +1242,5 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_cons_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_array_rollback_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_nested_cons_wrapper_alias_test(interp, pass, fail);
 }

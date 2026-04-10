@@ -557,6 +557,95 @@ fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp,
         }
     }
 
+    // Invariant: a target-chain CONS wrapper is defensively copied when a
+    // nested CONS shell still belongs to the releasing scope, even if the
+    // nested payload leaves are only scalars.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* releasing = main::scope_create(saved);
+        if (target == null || releasing == null) {
+            if (releasing != null) main::scope_release(releasing);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: nested cons wrapper defensive clone policy");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = target;
+        Value* outer_cons = make_cons(interp, make_int(interp, 11), make_nil(interp));
+
+        interp.current_scope = releasing;
+        Value* nested_cons = make_cons(interp, make_int(interp, 22), make_nil(interp));
+        bool setup_ok = outer_cons != null && nested_cons != null;
+        if (setup_ok) {
+            outer_cons.cons_val.cdr = nested_cons;
+        }
+
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+        Value* copied_cons = setup_ok ? copy_to_parent(outer_cons, interp) : null;
+        Value* escaped_cons = setup_ok ? promote_to_escape(outer_cons, interp) : null;
+
+        bool copy_ok = copied_cons != null &&
+                       copied_cons.tag == CONS &&
+                       copied_cons != outer_cons &&
+                       copied_cons.cons_val.car != null &&
+                       copied_cons.cons_val.car.tag == INT &&
+                       copied_cons.cons_val.car.int_val == 11 &&
+                       copied_cons.cons_val.cdr != null &&
+                       copied_cons.cons_val.cdr.tag == CONS &&
+                       copied_cons.cons_val.cdr != nested_cons &&
+                       copied_cons.cons_val.cdr.cons_val.car != null &&
+                       copied_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                       copied_cons.cons_val.cdr.cons_val.car.int_val == 22;
+
+        bool escape_ok = escaped_cons != null &&
+                         escaped_cons.tag == CONS &&
+                         escaped_cons != outer_cons &&
+                         escaped_cons.scope_gen == target.escape_generation &&
+                         escaped_cons.cons_val.cdr != null &&
+                         escaped_cons.cons_val.cdr.tag == CONS &&
+                         escaped_cons.cons_val.cdr != nested_cons &&
+                         escaped_cons.cons_val.cdr.scope_gen == target.escape_generation &&
+                         escaped_cons.cons_val.cdr.cons_val.car != null &&
+                         escaped_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                         escaped_cons.cons_val.cdr.cons_val.car.int_val == 22;
+
+        main::scope_release(releasing);
+        bool post_release_ok = copy_ok &&
+                               copied_cons.cons_val.cdr != null &&
+                               copied_cons.cons_val.cdr.tag == CONS &&
+                               copied_cons.cons_val.cdr.cons_val.car != null &&
+                               copied_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                               copied_cons.cons_val.cdr.cons_val.car.int_val == 22 &&
+                               escape_ok &&
+                               escaped_cons.cons_val.cdr != null &&
+                               escaped_cons.cons_val.cdr.tag == CONS &&
+                               escaped_cons.cons_val.cdr.cons_val.car != null &&
+                               escaped_cons.cons_val.cdr.cons_val.car.tag == INT &&
+                               escaped_cons.cons_val.cdr.cons_val.car.int_val == 22;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(target);
+
+        bool ok = setup_ok && copy_ok && escape_ok && post_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: nested cons wrapper defensive clone policy");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: nested cons wrapper defensive clone policy (setup_ok=%s copy_ok=%s escape_ok=%s post_release_ok=%s)",
+                setup_ok ? "yes" : "no",
+                copy_ok ? "yes" : "no",
+                escape_ok ? "yes" : "no",
+                post_release_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+
     // Invariant: primitive wrappers already in target chain are reused, while
     // disjoint plain primitive wrappers are cloned and opaque payloads fail as
     // typed boundary-copy faults.

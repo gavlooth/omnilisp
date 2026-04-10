@@ -1,5 +1,25 @@
 ## 2026-04-10
 
+- Closed a nested `CONS` alias blind spot in shared provenance and env-copy:
+  - `src/lisp/eval_boundary_provenance.c3` now routes `CONS` reuse checks
+    through an iterative cons-specific helper that validates each nested cons
+    shell against the releasing scope and target scope chain before reusing the
+    outer wrapper by identity.
+  - this closes the case where a target-chain outer `CONS` used to be treated
+    as alias-safe even though a nested `cdr` cons shell still belonged to the
+    releasing/source scope and only exposed scalar leaves.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves ordinary
+    boundary copy and ESCAPE promotion defensively clone that nested cons
+    structure.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now proves
+    env-copy clones the same target-chain outer `CONS` instead of reusing it by
+    identity when the nested cons shell still belongs to the source scope.
+  - validation:
+    - `c3c build`
+    - `c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
 - Closed the wrapper-slot leak on shared-wrapper and root-store partial aborts:
   - `src/lisp/eval_promotion_copy_route_helpers.c3`,
     `src/lisp/eval_promotion_root_clone_basic.c3`, and

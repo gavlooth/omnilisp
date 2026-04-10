@@ -63,6 +63,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
   child still points into the releasing scope.
+- Target-chain `CONS` reuse now applies the same rule to each nested cons
+  shell in the cdr spine, so boundary copy, ESCAPE promotion, and env-copy no
+  longer reuse an outer cons by identity when a nested cons wrapper still
+  belongs to the releasing/source scope but only exposes scalar leaves.
 - `PARTIAL_PRIM` / iterator reuse now applies the same nested payload check to
   `first_arg` / `second_arg`, so target-chain partial wrappers no longer alias
   a shared-wrapper argument whose nested child still belongs to the

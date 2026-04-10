@@ -54,6 +54,34 @@ fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp
     return boundary_graph_child_alias_unsafe_for_reuse(mt.fallback, interp, depth);
 }
 
+fn bool boundary_cons_payload_alias_unsafe_for_reuse(Value* cons_v, Interp* interp, usz depth) {
+    if (cons_v == null || cons_v.tag != CONS) return false;
+
+    Value* current = cons_v;
+    usz cur_depth = depth;
+    while (current != null && current.tag == CONS) {
+        if (cur_depth >= 128) return true;
+
+        Value* car = current.cons_val.car;
+        if (car != null) {
+            if (car.tag == CONS && boundary_value_in_releasing_scope(car, interp)) return true;
+            if (boundary_graph_alias_unsafe_for_reuse(car, interp, cur_depth + 1)) return true;
+        }
+
+        Value* cdr = current.cons_val.cdr;
+        if (cdr == null) return false;
+        if (cdr.tag != CONS) {
+            return boundary_graph_alias_unsafe_for_reuse(cdr, interp, cur_depth + 1);
+        }
+        if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+
+        current = cdr;
+        cur_depth++;
+    }
+
+    return false;
+}
+
 fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) {
     if (v == null || interp == null) return false;
     if (depth >= 128) return true;
@@ -66,8 +94,7 @@ fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz dept
         case ITERATOR:
             return boundary_iterator_payload_alias_unsafe_for_reuse(v, interp);
         case CONS:
-            return boundary_graph_alias_unsafe_for_reuse(v.cons_val.car, interp, depth + 1) ||
-                boundary_graph_alias_unsafe_for_reuse(v.cons_val.cdr, interp, depth + 1);
+            return boundary_cons_payload_alias_unsafe_for_reuse(v, interp, depth);
         case ARRAY:
             return boundary_array_payload_alias_unsafe_for_reuse(v, interp, depth);
         case HASHMAP:
