@@ -265,3 +265,15 @@ for future concurrency ownership evolution.
   shared-object/domain lifecycle consolidation.
 - Offload path behavior changed in this migration; this section tracks phase
   sequencing while further shared-object consolidation proceeds.
+## 2026-04-10 follow-up
+
+- Env-copy and return-boundary closure wrapper allocation now fail closed:
+  - closure wrapper cloning no longer dereferences a null `interp.alloc_value()`
+    result in the shared closure-copy helper path,
+  - env-copy iterator wrapper construction now rolls back inner payload
+    materialization if the outer iterator wrapper allocation fails, and
+  - env-copy `TIME_POINT` copy now returns failure instead of writing through a
+    null wrapper on allocation failure.
+- Memory-lifetime coverage now includes direct regressions for:
+  - `copy_to_parent(...)` closure wrapper alloc failure teardown symmetry
+  - env-copy closure wrapper alloc failure teardown symmetry

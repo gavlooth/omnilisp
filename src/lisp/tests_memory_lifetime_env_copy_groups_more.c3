@@ -1309,7 +1309,9 @@ fn void run_memory_lifetime_env_copy_nested_cons_wrapper_alias_test(Interp* inte
 
 fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
+    run_memory_lifetime_copy_parent_closure_wrapper_alloc_fail_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_closure_wrapper_alloc_fail_test(interp, pass, fail);
     run_memory_lifetime_env_copy_closure_retain_stress_test(interp, pass, fail);
     run_memory_lifetime_env_copy_memo_tests(interp, pass, fail);
     run_memory_lifetime_env_copy_persistent_parent_rewrite_test(interp, pass, fail);

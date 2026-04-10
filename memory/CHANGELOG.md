@@ -1,5 +1,30 @@
 ## 2026-04-10
 
+- Closed env-copy / return-boundary wrapper-allocation null-deref paths for
+  closure and iterator special cases:
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now treats a null
+    destination wrapper in `copy_parent_clone_closure_payload(...)` as a
+    typed boundary allocation failure instead of dereferencing it, and
+    `copy_closure_to_parent(...)` now supports deterministic wrapper alloc
+    failure injection for regression coverage.
+  - `src/lisp/eval_env_copy_values.c3` now:
+    - fails closed if `copy_env_copy_time_point(...)` cannot allocate its
+      wrapper,
+    - routes env-copy closure wrapper allocation through the same guarded
+      helper path, and
+    - rolls back iterator inner payloads and returns `null` if iterator wrapper
+      allocation itself fails instead of dereferencing a null wrapper.
+  - `src/lisp/tests_memory_lifetime_env_copy_closure_groups.c3` now proves:
+    - `copy_to_parent(...)` closure wrapper allocation failure does not retain
+      detached closure env scopes or disturb later target/source teardown, and
+    - env-copy closure wrapper allocation failure surfaces
+      `BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY` and preserves detached
+      closure env-scope ownership symmetry.
+  - validation:
+    - `rm -rf build/obj/linux-x64 build/main && c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
 - Closed the remaining full-slice `jit-policy` crash by hardening the TCO
   recycle TEMP-graph scan:
   - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer allocates four

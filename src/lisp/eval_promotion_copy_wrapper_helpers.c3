@@ -2,6 +2,8 @@ module lisp;
 
 import main;
 
+bool g_boundary_force_copy_closure_wrapper_alloc_fail = false;
+
 fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     // Iterative copy to prevent C stack overflow on long lists.
     Value* head = null;
@@ -106,6 +108,10 @@ fn bool copy_parent_clone_closure_payload(
     BoundaryCopyFault* fault_out = null
 ) {
     if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NONE;
+    if (result == null) {
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return false;
+    }
     result.tag = CLOSURE;
     result.closure_val = (Closure*)interp.current_scope.alloc(Closure.sizeof);
     if (result.closure_val == null) {
@@ -174,7 +180,9 @@ fn Value* copy_closure_to_parent(
     BoundaryCopyFault* fault_out = null
 ) {
     if (copy_parent_should_reuse_closure(v, interp)) return v;
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_closure_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
     if (!copy_parent_clone_closure_payload(result, v, interp, fault_out)) return null;
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;

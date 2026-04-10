@@ -51,6 +51,7 @@ fn BoundaryCopyResult copy_env_copy_by_boundary_policy(Value* v, Interp* interp,
 
 fn Value* copy_env_copy_time_point(Value* v, Interp* interp) {
     Value* result = interp.alloc_value();
+    if (result == null) return null;
     result.tag = TIME_POINT;
     result.time_point_val = v.time_point_val;
     return result;
@@ -137,7 +138,9 @@ fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp, Promotion
         if (can_track && ctx != null) promotion_context_remember(ctx, val, val, interp);
         return val;
     }
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_closure_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
     // Reuse the shared closure-clone payload path so env-copy and return-boundary
     // closure relocation keep the same retain/copy semantics.
     if (!copy_parent_clone_closure_payload(result, val, interp, null)) return null;
@@ -186,6 +189,10 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp, Promotio
         return null;
     }
     Value* iter_result = interp.alloc_value();
+    if (iter_result == null) {
+        copy_env_rollback_materialized_value(source_inner, inner, interp.current_scope);
+        return null;
+    }
     iter_result.tag = ITERATOR;
     iter_result.iterator_val = inner;
     if (can_track && ctx != null) promotion_context_remember(ctx, val, iter_result, interp);
