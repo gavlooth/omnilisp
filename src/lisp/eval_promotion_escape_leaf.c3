@@ -57,7 +57,7 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
             : second_arg;
     }
 
-    Value* result = interp.alloc_value_escape();
+    Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         boundary_cleanup_materialized_value(
             v.partial_val.first_arg,

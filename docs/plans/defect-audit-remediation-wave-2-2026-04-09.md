@@ -1178,3 +1178,22 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=182 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed partial primitive and opaque-payload wrapper publication drift:
+  - `src/lisp/eval_promotion_escape_leaf.c3`
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - `PARTIAL_PRIM` ESCAPE promotion now uses the checked boundary allocator for
+    final wrapper publication instead of raw assert-only ESCAPE allocation
+  - primitive and FFI-handle constructors now allocate subordinate heap payloads
+    before publishing/registering root/current-scope wrappers
+  - repeated primitive/FFI payload allocation failures no longer consume
+    wrapper slots
+  - coroutine wrapper allocation-failure diagnostics no longer inspect values
+    after temporary-interpreter teardown, and the stack-pool cleanup assertion now
+    handles ASAN's no-reuse mode
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=185 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=185 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

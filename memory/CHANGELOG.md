@@ -11609,6 +11609,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     half-built closure or dereferencing null payload storage.
   - validation:
     - bounded `memory-lifetime-smoke`: `pass=182 fail=0`
+- 2026-04-10 (partial primitive and opaque payload publication follow-up):
+  - `PARTIAL_PRIM` ESCAPE promotion now uses the checked boundary allocator for
+    final wrapper publication, so wrapper allocation failure returns a typed
+    boundary error instead of relying on assert-only allocation.
+  - primitive and FFI-handle constructors now allocate subordinate heap payloads
+    before publishing/registering root/current-scope wrappers, so repeated
+    payload allocation failures do not consume wrapper slots.
+  - coroutine wrapper allocation-failure diagnostics now read result state before
+    releasing the temporary interpreter, and the stack-pool cleanup expectation
+    accounts for ASAN's no-reuse pool mode.
+  - validation:
+    - bounded `memory-lifetime-smoke`: `pass=185 fail=0`
+    - bounded ASAN `memory-lifetime-smoke`: `pass=185 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

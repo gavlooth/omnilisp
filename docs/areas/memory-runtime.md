@@ -672,3 +672,10 @@ for future concurrency ownership evolution.
   `make_cons(...)` ESCAPE publication uses the checked boundary allocator, and
   `make_closure(...)` / `make_closure_no_param(...)` allocate closure payload
   storage before publishing/registering the wrapper.
+- Partial primitive and opaque-payload constructors now follow the same
+  publication ordering: `PARTIAL_PRIM` ESCAPE promotion uses the checked
+  boundary allocator, and primitive / FFI handle constructors allocate
+  subordinate payloads before publishing wrapper slots.
+- Runtime helper allocation diagnostics now keep temporary-interpreter values
+  alive until after failure reporting, and coroutine stack-pool cleanup tests
+  distinguish normal reuse from ASAN's direct-free pool mode.

@@ -95,6 +95,60 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        usz root_before = interp.root_scope.alloc_count;
+        int saved_force = g_value_force_make_primitive_payload_alloc_fail_nth;
+        g_value_force_make_primitive_payload_alloc_fail_nth = 1;
+        Value* first = make_primitive(interp, "oom-prim", &prim_add, 2);
+        g_value_force_make_primitive_payload_alloc_fail_nth = 1;
+        Value* second = make_primitive(interp, "oom-prim", &prim_add, 2);
+        g_value_force_make_primitive_payload_alloc_fail_nth = saved_force;
+        usz root_after = interp.root_scope.alloc_count;
+
+        bool ok = first == null &&
+            second == null &&
+            root_after == root_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: primitive payload alloc faults do not consume root wrapper slots");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: primitive payload alloc faults do not consume root wrapper slots (first=%s second=%s before=%d after=%d)",
+                first == null ? "null" : "value",
+                second == null ? "null" : "value",
+                (long)root_before,
+                (long)root_after);
+            (*fail)++;
+        }
+    }
+
+    {
+        usz before = interp.current_scope.alloc_count;
+        int saved_force = g_value_force_make_ffi_box_alloc_fail_nth;
+        g_value_force_make_ffi_box_alloc_fail_nth = 1;
+        Value* first = make_ffi_handle_ex(interp, null, "oom-ffi", null, false, false);
+        g_value_force_make_ffi_box_alloc_fail_nth = 1;
+        Value* second = make_ffi_handle_ex(interp, null, "oom-ffi", null, false, false);
+        g_value_force_make_ffi_box_alloc_fail_nth = saved_force;
+        usz after = interp.current_scope.alloc_count;
+
+        bool ok = first == null &&
+            second == null &&
+            after == before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi box alloc faults do not consume wrapper slots");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi box alloc faults do not consume wrapper slots (first=%s second=%s before=%d after=%d)",
+                first == null ? "null" : "value",
+                second == null ? "null" : "value",
+                (long)before,
+                (long)after);
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[2] split_args = {
             make_string(interp, "a,b"),
             make_string(interp, ",")
@@ -138,7 +192,6 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             values_fail = prim_values((Value*[]){ map_value }, null, interp);
         }
         g_value_force_make_cons_or_error_alloc_fail_nth = saved_cons_fail;
-
         bool ok = setup_ok &&
             runtime_alloc_error_matches(keys_fail, "keys: failed to allocate result list") &&
             runtime_alloc_error_matches(values_fail, "values: failed to allocate result list");
@@ -454,7 +507,6 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         );
         Value* iteration_payload = deduce_analyze_iteration_limit_payload(interp, 1, 32);
         g_hashmap_force_struct_alloc_fail = saved_struct_fail;
-
         bool ok =
             runtime_alloc_error_matches(delta_err, "deduce/analyze: out of memory") &&
             runtime_alloc_error_matches(support_err, "deduce/analyze: out of memory") &&
@@ -485,7 +537,6 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         g_hashmap_force_struct_alloc_fail = true;
         Value* iter_raise = iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");
         g_hashmap_force_struct_alloc_fail = saved_struct_fail;
-
         bool ok = runtime_alloc_error_matches(iter_raise, "__iterator-map: expected iterator state");
         if (ok) {
             emit_pass_literal("[PASS] lifetime: iterator ctor raise survives payload hashmap alloc failure");
@@ -543,12 +594,6 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         int after_all = tmp != null ? (int)tmp.stack_ctx_pool.all_count : -1;
         int after_pool = tmp != null ? (int)tmp.stack_ctx_pool.pool_size : -1;
 
-        if (foreign != null) main::scope_release(foreign);
-        if (tmp != null) {
-            tmp.destroy();
-            mem::free(tmp);
-        }
-
         if (ok) {
             emit_pass_literal("[PASS] lifetime: coroutine thunk promotion failure aborts before context creation");
             (*pass)++;
@@ -562,6 +607,12 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 (int)before_all,
                 (int)before_pool);
             (*fail)++;
+        }
+
+        if (foreign != null) main::scope_release(foreign);
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
         }
     }
 
@@ -592,17 +643,16 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             g_boundary_force_alloc_value_fail_nth = saved_force;
         }
 
+        bool asan_stack_pool = main::stack_runtime_asan_enabled();
+        usz expected_all = before_all + (asan_stack_pool ? 0 : 1);
+        usz expected_pool = before_pool + (asan_stack_pool ? 0 : 1);
+
         bool ok = setup_ok &&
             runtime_alloc_error_matches(result, "coroutine: failed to allocate coroutine value") &&
-            tmp.stack_ctx_pool.all_count == before_all + 1 &&
-            tmp.stack_ctx_pool.pool_size == before_pool + 1;
+            tmp.stack_ctx_pool.all_count == expected_all &&
+            tmp.stack_ctx_pool.pool_size == expected_pool;
         int after_all = tmp != null ? (int)tmp.stack_ctx_pool.all_count : -1;
         int after_pool = tmp != null ? (int)tmp.stack_ctx_pool.pool_size : -1;
-
-        if (tmp != null) {
-            tmp.destroy();
-            mem::free(tmp);
-        }
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: coroutine wrapper allocation failure cleans up context");
@@ -618,6 +668,11 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 (int)before_pool
             );
             (*fail)++;
+        }
+
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
         }
     }
 
@@ -684,6 +739,51 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 result.error.has_error ? (ZString)result.error.message[:256] : (ZString)"<none>");
             (*fail)++;
         }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* promoted = null;
+        if (setup_ok) {
+            interp.current_scope = child;
+            Value* escape_first = interp.alloc_value_escape();
+            Value* escape_second = interp.alloc_value_escape();
+            Value* partial = interp.alloc_value();
+            setup_ok = escape_first != null && escape_second != null && partial != null;
+            if (setup_ok) {
+                escape_first.tag = INT;
+                escape_first.int_val = 1;
+                escape_second.tag = INT;
+                escape_second.int_val = 2;
+                partial.tag = PARTIAL_PRIM;
+                partial.partial_val.func = &prim_add;
+                partial.partial_val.first_arg = escape_first;
+                partial.partial_val.second_arg = escape_second;
+                partial.partial_val.remaining = 1;
+                int saved_force = g_boundary_force_alloc_escape_value_fail_nth;
+                g_boundary_force_alloc_escape_value_fail_nth = 1;
+                promoted = promote_to_escape(partial, interp);
+                g_boundary_force_alloc_escape_value_fail_nth = saved_force;
+            }
+            interp.current_scope = saved;
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(promoted, "boundary: failed to allocate partial primitive escape copy");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: partial primitive escape wrapper alloc faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: partial primitive escape wrapper alloc faults fail closed (setup_ok=%s msg=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(promoted));
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
     }
 
     {

@@ -13,6 +13,8 @@ int g_value_force_make_error_chars_alloc_fail_nth = 0;
 int g_value_force_make_cons_or_error_alloc_fail_nth = 0;
 int g_value_force_make_list1_alloc_fail_nth = 0;
 int g_value_force_make_list2_alloc_fail_nth = 0;
+int g_value_force_make_primitive_payload_alloc_fail_nth = 0;
+int g_value_force_make_ffi_box_alloc_fail_nth = 0;
 
 fn bool make_error_should_force_alloc_fail() @inline {
     if (g_value_force_make_error_chars_alloc_fail_nth <= 0) return false;
@@ -38,14 +40,24 @@ fn bool make_cons_or_error_should_force_alloc_fail() @inline {
     return g_value_force_make_cons_or_error_alloc_fail_nth == 0;
 }
 
+fn bool make_primitive_payload_should_force_alloc_fail() @inline {
+    if (g_value_force_make_primitive_payload_alloc_fail_nth <= 0) return false;
+    g_value_force_make_primitive_payload_alloc_fail_nth--;
+    return g_value_force_make_primitive_payload_alloc_fail_nth == 0;
+}
+
+fn bool make_ffi_box_should_force_alloc_fail() @inline {
+    if (g_value_force_make_ffi_box_alloc_fail_nth <= 0) return false;
+    g_value_force_make_ffi_box_alloc_fail_nth--;
+    return g_value_force_make_ffi_box_alloc_fail_nth == 0;
+}
+
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     // Allocate in root_scope — primitives are permanent (defined in global env).
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    if (v == null) return null;
-    v.tag = PRIMITIVE;
-    v.prim_val = (Primitive*)mem::malloc(Primitive.sizeof);
-    if (v.prim_val == null) {
-        v.tag = NIL;
+    Primitive* prim = make_primitive_payload_should_force_alloc_fail()
+        ? null
+        : (Primitive*)mem::malloc(Primitive.sizeof);
+    if (prim == null) {
         return null;
     }
     // Copy name into fixed buffer
@@ -60,13 +72,21 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
         len = max_len;
     }
     for (usz i = 0; i < len; i++) {
-        v.prim_val.name[i] = name[i];
+        prim.name[i] = name[i];
     }
-    v.prim_val.name[len] = 0;
-    v.prim_val.func = func;
-    v.prim_val.arity = arity;
-    v.prim_val.tag = 0;
-    v.prim_val.user_data = null;
+    prim.name[len] = 0;
+    prim.func = func;
+    prim.arity = arity;
+    prim.tag = 0;
+    prim.user_data = null;
+
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        mem::free(prim);
+        return null;
+    }
+    v.tag = PRIMITIVE;
+    v.prim_val = prim;
 
     return v;
 }
@@ -79,7 +99,9 @@ fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
 
 fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finalizer,
     bool free_lib_handle) {
-    FfiHandle* box = (FfiHandle*)mem::malloc(FfiHandle.sizeof);
+    FfiHandle* box = make_ffi_box_should_force_alloc_fail()
+        ? null
+        : (FfiHandle*)mem::malloc(FfiHandle.sizeof);
     if (box == null) return null;
     box.lib_handle = handle;
     box.refcount = 1;
@@ -135,15 +157,17 @@ fn void instance_release(Instance* inst) @inline {
 fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
     FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false) {
     main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
-    Value* v = boundary_alloc_value_in_scope(interp, target_scope, true);
-    if (v == null) return null;
-    v.tag = FFI_HANDLE;
-    v.ffi_val = make_ffi_box(handle, name, finalizer, free_lib_handle);
-    if (v.ffi_val == null) {
-        v.tag = NIL;
-        v.ffi_val = null;
+    FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle);
+    if (box == null) {
         return null;
     }
+    Value* v = boundary_alloc_value_in_scope(interp, target_scope, true);
+    if (v == null) {
+        ffi_handle_release(box);
+        return null;
+    }
+    v.tag = FFI_HANDLE;
+    v.ffi_val = box;
     return v;
 }
 
