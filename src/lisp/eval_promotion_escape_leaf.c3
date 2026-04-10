@@ -19,6 +19,7 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     result.tag = v.tag;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
     result.str_chars = chars;
+    result.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
         result.str_chars[i] = v.str_chars[i];
     }

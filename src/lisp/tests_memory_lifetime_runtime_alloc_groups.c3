@@ -17,6 +17,44 @@ fn ZString runtime_alloc_error_text(Value* value) @inline {
 
 fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass, int* fail) {
     {
+        int saved_force = g_value_force_make_error_chars_alloc_fail_nth;
+        g_value_force_make_error_chars_alloc_fail_nth = 1;
+        Value* err = make_error(interp, "constructor test message");
+        g_value_force_make_error_chars_alloc_fail_nth = saved_force;
+
+        bool ok = runtime_alloc_error_matches(err, "out of memory while allocating error message");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: make_error alloc failure keeps printable fallback");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: make_error alloc failure keeps printable fallback (ok=%s msg=%s)",
+                ok ? "yes" : "no",
+                runtime_alloc_error_text(err));
+            (*fail)++;
+        }
+    }
+
+    {
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* iter_raise = iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = runtime_alloc_error_matches(iter_raise, "__iterator-map: expected iterator state");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: iterator ctor raise survives payload hashmap alloc failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: iterator ctor raise survives payload hashmap alloc failure (ok=%s msg=%s)",
+                ok ? "yes" : "no",
+                runtime_alloc_error_text(iter_raise));
+            (*fail)++;
+        }
+    }
+
+    {
         Value* partial = interp.alloc_value();
         Value* arg = make_int(interp, 42);
         bool setup_ok = partial != null && arg != null && arg.tag == INT;
@@ -46,6 +84,75 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 "[FAIL] lifetime: apply_partial alloc failure returns eval error (setup_ok=%s error=%s)",
                 setup_ok ? "yes" : "no",
                 result.error.has_error ? (ZString)result.error.message[:256] : (ZString)"<none>");
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* list = make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp)));
+        Value* iterator = iterator_from_list_value(list, interp);
+        Value*[1] to_array_args = { iterator };
+
+        bool saved_array_items_fail = g_value_force_make_array_items_alloc_fail;
+        g_value_force_make_array_items_alloc_fail = true;
+        Value* array_fail = prim_to_array(to_array_args[0:1], null, interp);
+        g_value_force_make_array_items_alloc_fail = saved_array_items_fail;
+
+        bool ok = runtime_alloc_error_matches(array_fail, "to-array: failed to allocate result array");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: to-array constructor alloc failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: to-array constructor alloc failures fail closed (ok=%s msg=%s)",
+                ok ? "yes" : "no",
+                runtime_alloc_error_text(array_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value*[2] dict_args = { make_symbol(interp, interp.symbols.intern("k")), make_int(interp, 1) };
+        Value*[2] set_args = { make_int(interp, 1), make_int(interp, 2) };
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        bool saved_entries_fail = g_hashmap_force_entries_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* dict_fail = prim_dict(dict_args[0:2], null, interp);
+        g_hashmap_force_struct_alloc_fail = false;
+        g_hashmap_force_entries_alloc_fail = true;
+        Value* set_fail = prim_set(set_args[0:2], null, interp);
+        g_hashmap_force_entries_alloc_fail = saved_entries_fail;
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        Value* checked_map = make_hashmap_checked(interp, 2, "hashmap test: ctor oom");
+        bool grow_ok = false;
+        if (checked_map != null && checked_map.tag == HASHMAP) {
+            bool saved_grow_fail = g_hashmap_force_grow_entries_alloc_fail;
+            grow_ok =
+                hashmap_set_checked(checked_map.hashmap_val, make_int(interp, 1), make_int(interp, 1), interp) &&
+                hashmap_set_checked(checked_map.hashmap_val, make_int(interp, 2), make_int(interp, 2), interp);
+            g_hashmap_force_grow_entries_alloc_fail = true;
+            bool grow_fail = hashmap_set_checked(checked_map.hashmap_val, make_int(interp, 3), make_int(interp, 3), interp);
+            g_hashmap_force_grow_entries_alloc_fail = saved_grow_fail;
+            grow_ok = grow_ok && !grow_fail;
+        }
+
+        bool ok =
+            runtime_alloc_error_matches(dict_fail, "Dictionary: out of memory") &&
+            runtime_alloc_error_matches(set_fail, "Set: out of memory") &&
+            grow_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: checked collection constructors fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: checked collection constructors fail closed (dict_ok=%s set_ok=%s grow_ok=%s dict_msg=%s set_msg=%s)",
+                runtime_alloc_error_matches(dict_fail, "Dictionary: out of memory") ? "yes" : "no",
+                runtime_alloc_error_matches(set_fail, "Set: out of memory") ? "yes" : "no",
+                grow_ok ? "yes" : "no",
+                runtime_alloc_error_text(dict_fail),
+                runtime_alloc_error_text(set_fail));
             (*fail)++;
         }
     }

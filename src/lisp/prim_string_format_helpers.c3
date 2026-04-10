@@ -105,6 +105,7 @@ fn bool strval_push(StringVal* sv, char c) {
 fn void strval_into_value(StringVal* sv, Value* v) {
     v.str_chars = sv.chars;
     v.str_len = sv.len;
+    v.string_heap_owned = true;
     mem::free(sv);  // free struct only, chars owned by Value
 }
 

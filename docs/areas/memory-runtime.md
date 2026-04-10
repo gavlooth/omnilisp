@@ -334,3 +334,15 @@ for future concurrency ownership evolution.
     introducing a leaked retain before abort,
   - and `TIME_POINT` boundary copies now surface a typed error on allocation
     failure.
+
+- The live runtime constructor substrate is now fail-closed where it matters for
+  shared error/iterator and language-facing collection surfaces:
+  - `make_error(...)` now returns a printable fallback `ERROR` when its message
+    buffer allocation fails,
+  - checked `ARRAY` / `HASHMAP` / `SET` constructor helpers now exist for
+    runtime-facing callers that need an explicit OOM channel, and
+  - raise payload construction, `Dictionary`, `Set`, and `to-array` now use
+    that checked path instead of dereferencing failed constructor internals.
+- The remaining open runtime memory item is now broader constructor-callsite
+  migration from unchecked `make_array(...)` / `make_hashmap(...)` users rather
+  than the shared constructor substrate itself.

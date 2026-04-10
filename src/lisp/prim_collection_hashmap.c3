@@ -3,9 +3,17 @@ module lisp;
 import std::core::mem;
 import main;
 
+bool g_hashmap_force_struct_alloc_fail = false;
+bool g_hashmap_force_entries_alloc_fail = false;
+bool g_hashmap_force_grow_entries_alloc_fail = false;
+
 // Collection primitives: length + hashmap/dict core.
 fn Value* dict_ctor_type_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", code, message, null);
+}
+
+fn Value* dict_ctor_runtime_raise(Interp* interp, char[] message) @inline {
+    return raise_error(interp, message);
 }
 
 fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
@@ -49,21 +57,35 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 // HASH MAP OPERATIONS
 // =============================================================================
 
-fn HashMap* hashmap_new(uint capacity, Interp* interp) {
-    // Allocate HashMap struct via malloc (freed by scope_dtor_value)
-    HashMap* map = (HashMap*)mem::malloc(HashMap.sizeof);
+fn HashEntry* hashmap_alloc_entries(uint capacity, bool force_fail = false) @inline {
+    if (force_fail) return null;
+    HashEntry* entries = (HashEntry*)mem::malloc(HashEntry.sizeof * capacity);
+    if (entries == null) return null;
+    for (uint i = 0; i < capacity; i++) {
+        entries[i].key = null;
+        entries[i].value = null;
+    }
+    return entries;
+}
+
+fn HashMap* hashmap_new_checked(uint capacity, Interp* interp) {
+    HashMap* map = g_hashmap_force_struct_alloc_fail
+        ? null
+        : (HashMap*)mem::malloc(HashMap.sizeof);
+    if (map == null) return null;
     map.capacity = capacity;
     map.count = 0;
     map.mask = capacity - 1;
-
-    // Allocate entries array via malloc (contiguous needed for indexing)
-    map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * capacity);
-    for (uint i = 0; i < capacity; i++) {
-        map.entries[i].key = null;
-        map.entries[i].value = null;
+    map.entries = hashmap_alloc_entries(capacity, g_hashmap_force_entries_alloc_fail);
+    if (map.entries == null) {
+        mem::free(map);
+        return null;
     }
-
     return map;
+}
+
+fn HashMap* hashmap_new(uint capacity, Interp* interp) {
+    return hashmap_new_checked(capacity, interp);
 }
 
 fn Value* hashmap_get(HashMap* map, Value* key) {
@@ -77,9 +99,9 @@ fn Value* hashmap_get(HashMap* map, Value* key) {
     return null;
 }
 
-fn void hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* interp) {
+fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Interp* interp) {
     if (map.count * 10 >= map.capacity * 7) {
-        hashmap_grow(map, interp);
+        if (!hashmap_grow_checked(map, interp)) return false;
     }
 
     Value* key_value = make_symbol(interp, key);
@@ -94,27 +116,28 @@ fn void hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* int
             entry.key = key_value;
             entry.value = value;
             map.count++;
-            return;
+            return true;
         }
         if (entry.key.tag == SYMBOL && entry.key.sym_val == key) {
             entry.value = value;
-            return;
+            return true;
         }
     }
+    return false;
 }
 
-fn void hashmap_grow(HashMap* map, Interp* interp) {
+fn void hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* interp) {
+    hashmap_set_symbol_checked(map, key, value, interp);
+}
+
+fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
     uint old_cap = map.capacity;
     HashEntry* old_entries = map.entries;
     uint new_cap = old_cap * 2;
     uint new_mask = new_cap - 1;
 
-    // Allocate new entries array via malloc
-    HashEntry* new_entries = (HashEntry*)mem::malloc(HashEntry.sizeof * new_cap);
-    for (uint i = 0; i < new_cap; i++) {
-        new_entries[i].key = null;
-        new_entries[i].value = null;
-    }
+    HashEntry* new_entries = hashmap_alloc_entries(new_cap, g_hashmap_force_grow_entries_alloc_fail);
+    if (new_entries == null) return false;
 
     map.entries = new_entries;
     map.capacity = new_cap;
@@ -137,12 +160,17 @@ fn void hashmap_grow(HashMap* map, Interp* interp) {
         }
     }
     mem::free(old_entries);
+    return true;
 }
 
-fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
+fn void hashmap_grow(HashMap* map, Interp* interp) {
+    hashmap_grow_checked(map, interp);
+}
+
+fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* interp) {
     // Grow at 70% load
     if (map.count * 10 >= map.capacity * 7) {
-        hashmap_grow(map, interp);
+        if (!hashmap_grow_checked(map, interp)) return false;
     }
 
     // Promote key/value to root_scope — hashmap lives in root_scope,
@@ -158,13 +186,18 @@ fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
             entry.key = key;
             entry.value = value;
             map.count++;
-            return;
+            return true;
         }
         if (hashmap_key_equals(entry.key, key)) {
             entry.value = value;
-            return;
+            return true;
         }
     }
+    return false;
+}
+
+fn void hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {
+    hashmap_set_checked(map, key, value, interp);
 }
 
 fn bool hashmap_remove(HashMap* map, Value* key) {
@@ -201,11 +234,28 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
     return false;
 }
 
+fn Value* make_hashmap_checked(Interp* interp, uint capacity, char[] oom_message) {
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    v.tag = HASHMAP;
+    v.hashmap_val = hashmap_new_checked(capacity, interp);
+    if (v.hashmap_val == null) {
+        v.tag = NIL;
+        return dict_ctor_runtime_raise(interp, oom_message);
+    }
+    return v;
+}
+
 fn Value* make_hashmap(Interp* interp, uint capacity) {
     // Allocate value in root_scope so it persists.
     Value* v = boundary_alloc_value_in_root(interp, true);
     v.tag = HASHMAP;
     v.hashmap_val = hashmap_new(capacity, interp);
+    return v;
+}
+
+fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {
+    Value* v = make_hashmap_checked(interp, capacity, oom_message);
+    if (v != null && v.tag == HASHMAP) v.tag = SET;
     return v;
 }
 
@@ -216,9 +266,12 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     }
     uint cap = 16;
     while (cap < (uint)args.len * 2) cap *= 2;
-    Value* v = make_hashmap(interp, cap);
+    Value* v = make_hashmap_checked(interp, cap, "Dictionary: out of memory");
+    if (v == null || v.tag != HASHMAP) return v;
     for (usz i = 0; i < args.len; i += 2) {
-        hashmap_set(v.hashmap_val, args[i], args[i + 1], interp);
+        if (!hashmap_set_checked(v.hashmap_val, args[i], args[i + 1], interp)) {
+            return dict_ctor_runtime_raise(interp, "Dictionary: out of memory while growing backing storage");
+        }
     }
     return v;
 }

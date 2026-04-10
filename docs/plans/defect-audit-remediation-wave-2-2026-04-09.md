@@ -414,3 +414,28 @@ Progress update (2026-04-09):
 - new residual audit findings are explicit in `TODO.md` again:
   - `AUDIT-BOUNDARY-DESTINATION-CTX-005`
   - `AUDIT-BOUNDARY-WRAPPER-SLOT-LEAK-005`
+
+- landed the constructor substrate hardening slice for the runtime-dependent
+  surfaces instead of pretending the whole repo had already migrated:
+  - `src/lisp/value_core_types.c3`,
+    `src/lisp/value_interp_alloc_helpers.c3`,
+    `src/lisp/value_constructors_lifecycle.c3`, and
+    `src/lisp/primitives_meta_types.c3`
+    now track heap ownership for `STRING` / `ERROR` chars so best-effort
+    fallback literals do not invalidate teardown.
+  - `src/lisp/value_constructors.c3` now makes `make_error(...)` fail closed
+    with a printable fallback value.
+  - checked constructor/grow helpers landed in:
+    - `src/lisp/value_predicates_accessors_basic.c3`
+    - `src/lisp/prim_collection_hashmap.c3`
+  - the runtime-dependent callers now using those checked helpers are:
+    - raise payload construction
+    - `Dictionary`
+    - `Set`
+    - `to-array`
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- backlog shaping after this slice:
+  - close `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008`
+  - open `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` for the broader
+    internal `make_array(...)` / `make_hashmap(...)` caller migration

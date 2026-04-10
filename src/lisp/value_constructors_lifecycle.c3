@@ -11,10 +11,11 @@ fn void scope_dtor_value(void* ptr) {
     switch (v.tag) {
         case STRING:
         case ERROR:
-            if (v.str_chars != null) {
+            if (v.string_heap_owned && v.str_chars != null) {
                 mem::free(v.str_chars);
                 v.str_chars = null;
             }
+            v.string_heap_owned = false;
         case CLOSURE:
             // Handled by scope_dtor_closure now
             break;

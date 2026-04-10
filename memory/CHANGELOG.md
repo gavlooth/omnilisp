@@ -15,6 +15,38 @@
   - validation:
     - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=128 fail=0`
 
+- Closed the runtime constructor OOM substrate for the live iterator/error and
+  language-facing collection surfaces:
+  - `src/lisp/value_core_types.c3`,
+    `src/lisp/value_interp_alloc_helpers.c3`,
+    `src/lisp/value_constructors_lifecycle.c3`, and
+    `src/lisp/primitives_meta_types.c3`
+    now track whether `STRING` / `ERROR` chars are heap-owned, so fallback
+    literal-backed error values no longer flow into invalid frees.
+  - `src/lisp/value_constructors.c3` now makes `make_error(...)` fail closed:
+    failed message allocation returns a printable fallback `ERROR` instead of
+    dereferencing a failed heap allocation.
+  - `src/lisp/value_predicates_accessors_basic.c3` and
+    `src/lisp/prim_collection_hashmap.c3`
+    now expose checked `ARRAY` / `HASHMAP` / `SET` constructor and hashmap-grow
+    helpers with deterministic OOM seams.
+  - the runtime-dependent surfaces that were actually crashing on this substrate
+    now use the checked path:
+    - raise payload construction
+    - `Dictionary`
+    - `Set`
+    - `to-array`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves:
+    - `make_error(...)` allocation failure keeps a printable fallback error,
+    - iterator ctor raises survive payload-map allocation failure,
+    - `to-array` fails closed on result-array allocation failure,
+    - checked collection constructor and grow failures return ordinary `ERROR`
+      values instead of crashing.
+  - residual scope is now narrower and explicit:
+    - broad internal migration from unchecked `make_array(...)` /
+      `make_hashmap(...)` callsites remains a separate follow-up lane instead
+      of being hand-waved as complete.
+
 - Closed the broader shared `StringVal` builder OOM lane so builder creation
   and growth now fail closed instead of crashing before result materialization:
   - `src/lisp/prim_string_format_helpers.c3` now:

@@ -39,6 +39,7 @@ fn Value* boundary_build_destination_error_escape(
         ? null
         : (char*)mem::malloc(cap);
     if (result.str_chars == null) return error_value;
+    result.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
         result.str_chars[i] = error_value.str_chars[i];
     }

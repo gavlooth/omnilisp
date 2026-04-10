@@ -52,6 +52,7 @@ fn Value* make_string(Interp* interp, char[] str) {
         char[] msg = "out of memory while allocating string";
         fail.str_chars = (char*)msg.ptr;
         fail.str_len = msg.len;
+        fail.string_heap_owned = false;
         return fail;
     }
 
@@ -59,6 +60,7 @@ fn Value* make_string(Interp* interp, char[] str) {
     v.tag = STRING;
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.str_chars = chars;
+    v.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
         v.str_chars[i] = str[i];
     }
@@ -77,6 +79,7 @@ fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
     main::scope_register_dtor(interp.current_scope, (void*)v, &scope_dtor_value);
     v.str_chars = owned_chars;
     v.str_len = len;
+    v.string_heap_owned = true;
     // owned_chars must have capacity >= len + 1.
     v.str_chars[len] = 0;
     return v;

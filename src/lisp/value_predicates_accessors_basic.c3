@@ -1,10 +1,13 @@
 module lisp;
 
 import std::collections::list;
+import std::core::mem;
 import std::io;
 import main;
 
 bool g_value_force_make_iterator_alloc_fail = false;
+bool g_value_force_make_array_struct_alloc_fail = false;
+bool g_value_force_make_array_items_alloc_fail = false;
 
 // =============================================================================
 // SECTION 3/4: VALUE PREDICATES + ACCESSORS + formatting helpers
@@ -129,6 +132,35 @@ fn bool is_hashmap_backed(Value* v) @inline {
     return v != null && (v.tag == HASHMAP || v.tag == SET);
 }
 
+fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    v.tag = ARRAY;
+
+    Array* arr = g_value_force_make_array_struct_alloc_fail
+        ? null
+        : (Array*)mem::malloc(Array.sizeof);
+    if (arr == null) {
+        v.tag = NIL;
+        v.array_val = null;
+        return raise_error(interp, oom_message);
+    }
+
+    arr.capacity = capacity < 4 ? 4 : capacity;
+    arr.length = 0;
+    arr.items = g_value_force_make_array_items_alloc_fail
+        ? null
+        : (Value**)mem::malloc(Value*.sizeof * arr.capacity);
+    if (arr.items == null) {
+        mem::free(arr);
+        v.tag = NIL;
+        v.array_val = null;
+        return raise_error(interp, oom_message);
+    }
+
+    v.array_val = arr;
+    return v;
+}
+
 fn Value* make_array(Interp* interp, usz capacity) {
     // Allocate Value in root_scope so it persists across scope releases.
     Value* v = boundary_alloc_value_in_root(interp, true);
@@ -151,10 +183,7 @@ fn Value* make_module(Interp* interp, Module* mod) {
 }
 
 fn Value* make_set(Interp* interp, uint capacity) {
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    v.tag = SET;
-    v.hashmap_val = hashmap_new(capacity, interp);
-    return v;
+    return make_set_checked(interp, capacity, "Set: out of memory");
 }
 
 fn Value* make_iterator(Interp* interp, Value* thunk) {

@@ -87,7 +87,8 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* consume_err = iterator_consume_items(iterator, &items[0], &count, interp);
     if (consume_err != null) return consume_err;
 
-    Value* arr = make_array(interp, count);
+    Value* arr = make_array_checked(interp, count, "to-array: failed to allocate result array");
+    if (arr == null || arr.tag != ARRAY) return arr;
     for (usz i = 0; i < count; i++) {
         arr.array_val.items[i] = boundary_promote_to_root(items[i], interp);
     }

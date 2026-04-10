@@ -180,6 +180,7 @@ struct Value {
     ValueTag tag;
     uint scope_gen;  // Scope generation stamp — set at allocation, used for O(1) scope checks
     bool continuation_boundary_owned; // True when this wrapper introduced boundary handle retention
+    bool string_heap_owned; // True when STRING/ERROR chars are heap-owned and must be freed
 
     union {
         long          int_val;

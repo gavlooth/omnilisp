@@ -18,22 +18,27 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008` harden shared error/collection constructors that still fail open on OOM
+- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` migrate remaining internal collection constructor callsites onto checked OOM contracts
   - problem:
-    - the new iterator/string helper guards now surface runtime OOM paths more
-      often, but several shared constructors they depend on still dereference
-      unchecked allocations:
-      - `src/lisp/value_constructors.c3`: `make_error(...)`
-      - `src/lisp/value_predicates_accessors_basic.c3`: `make_array(...)`
-      - `src/lisp/prim_collection_hashmap.c3`: `hashmap_new(...)` /
-        `make_hashmap(...)`
-    - this means guarded helper paths can still crash inside shared fallback
-      error or collection construction instead of failing closed end-to-end.
+    - the runtime helper and language-facing collection surfaces are now
+      fail-closed, but many internal helpers still call legacy unchecked
+      `make_array(...)` / `make_hashmap(...)` directly and then immediately
+      dereference payload fields.
+    - representative remaining users include:
+      - `src/lisp/json.c3`
+      - `src/lisp/primitives_data_formats_csv_parse.c3`
+      - `src/lisp/primitives_toml_bridge.c3`
+      - schema/deduce payload builders and related metadata helpers
+    - this means collection-construction OOM behavior is no longer crashing in
+      the live iterator/error and language-facing ctor paths, but broad
+      internal collection payload construction still needs staged migration.
   - required closure:
-    - make those constructors fail closed with one explicit contract
-    - add deterministic regressions for iterator/error paths that depend on
-      them
-    - validate with bounded `memory-lifetime-smoke` and ASAN
+    - define the canonical checked constructor contract for internal collection
+      payload builders
+    - migrate the remaining high-risk callsites in coherent slices instead of
+      one umbrella patch
+    - keep bounded `memory-lifetime-smoke` and targeted feature slices green as
+      the migration expands
 
 ## Recently Closed
 
@@ -51,6 +56,35 @@ Use this file only for still-open work.
       tail allocation error directly.
     - validation:
       - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=128 fail=0`
+
+- [x] `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008` harden shared runtime error/collection constructor paths that live iterator/error helpers depend on
+  - closure evidence:
+    - `src/lisp/value_core_types.c3`,
+      `src/lisp/value_interp_alloc_helpers.c3`,
+      `src/lisp/value_constructors_lifecycle.c3`, and
+      `src/lisp/primitives_meta_types.c3`
+      now track whether `STRING` / `ERROR` chars are heap-owned, so fallback
+      literal-backed error values no longer flow into invalid frees during
+      normal teardown or `unsafe-free`.
+    - `src/lisp/value_constructors.c3` now makes `make_error(...)` fail closed
+      when its message buffer allocation fails.
+    - `src/lisp/value_predicates_accessors_basic.c3` and
+      `src/lisp/prim_collection_hashmap.c3`
+      now expose checked `ARRAY` / `HASHMAP` / `SET` constructor and grow
+      helpers, and the live runtime-dependent surfaces now use them:
+      - raise payload construction
+      - `Dictionary`
+      - `Set`
+      - `to-array`
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now pins the
+      exact constructor seams for:
+      - printable `make_error(...)` fallback
+      - iterator ctor raise payload-map failure
+      - `to-array` result-array failure
+      - checked collection constructor/grow failure
+    - residual broader internal constructor migration is now split into
+      `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` instead of being
+      left implicit.
 
 - [x] `AUDIT-STRING-BUILDER-OOM-007` harden shared `StringVal` builder creation and growth to fail closed
   - closure evidence:

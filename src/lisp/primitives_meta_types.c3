@@ -123,10 +123,11 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
             }
         case STRING:
         case ERROR:
-            if (v.str_chars != null) {
+            if (v.string_heap_owned && v.str_chars != null) {
                 mem::free(v.str_chars);
                 v.str_chars = null;
             }
+            v.string_heap_owned = false;
         default: return make_void(interp);  // No backing to free
     }
     // Mark as error so use-after-free is caught instead of silently becoming nil
@@ -136,6 +137,7 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
     if (err_builder == null) {
         v.str_chars = null;
         v.str_len = 0;
+        v.string_heap_owned = false;
         return make_void(interp);
     }
     strval_into_value(err_builder, v);

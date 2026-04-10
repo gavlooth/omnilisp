@@ -9,6 +9,13 @@ import main;
 // =============================================================================
 
 bool g_warned_primitive_name_truncation = false;
+int g_value_force_make_error_chars_alloc_fail_nth = 0;
+
+fn bool make_error_should_force_alloc_fail() @inline {
+    if (g_value_force_make_error_chars_alloc_fail_nth <= 0) return false;
+    g_value_force_make_error_chars_alloc_fail_nth--;
+    return g_value_force_make_error_chars_alloc_fail_nth == 0;
+}
 
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     // Allocate in root_scope — primitives are permanent (defined in global env).
@@ -119,7 +126,17 @@ fn Value* make_error(Interp* interp, char[] msg) {
     usz len = msg.len;
     usz cap = len + 1;
     if (cap < 32) cap = 32;
-    v.str_chars = (char*)mem::malloc(cap);
+    char[] fallback = "out of memory while allocating error message";
+    v.str_chars = (cap <= len || make_error_should_force_alloc_fail())
+        ? null
+        : (char*)mem::malloc(cap);
+    if (v.str_chars == null) {
+        v.str_len = fallback.len;
+        v.str_chars = (char*)fallback.ptr;
+        v.string_heap_owned = false;
+        return v;
+    }
+    v.string_heap_owned = true;
     for (usz i = 0; i < len; i++) {
         v.str_chars[i] = msg[i];
     }
@@ -144,7 +161,7 @@ fn Value* make_raise_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = make_hashmap(interp, 8);
+    Value* payload = make_hashmap_checked(interp, 8, "raise: failed to allocate payload map");
     if (payload == null || payload.tag != HASHMAP) return null;
 
     SymbolId key_code = interp.symbols.intern("code");
@@ -161,11 +178,15 @@ fn Value* make_raise_payload(
     Value* message_val = make_string(interp, message);
     Value* domain_val = make_symbol(interp, domain_sym);
     Value* data_val = data == null ? make_nil(interp) : data;
+    if ((message_val != null && message_val.tag == ERROR) ||
+        (data_val != null && data_val.tag == ERROR)) {
+        return null;
+    }
 
-    hashmap_set(payload.hashmap_val, code_key, code_val, interp);
-    hashmap_set(payload.hashmap_val, message_key, message_val, interp);
-    hashmap_set(payload.hashmap_val, domain_key, domain_val, interp);
-    hashmap_set(payload.hashmap_val, data_key, data_val, interp);
+    if (!hashmap_set_checked(payload.hashmap_val, code_key, code_val, interp)) return null;
+    if (!hashmap_set_checked(payload.hashmap_val, message_key, message_val, interp)) return null;
+    if (!hashmap_set_checked(payload.hashmap_val, domain_key, domain_val, interp)) return null;
+    if (!hashmap_set_checked(payload.hashmap_val, data_key, data_val, interp)) return null;
 
     return payload;
 }

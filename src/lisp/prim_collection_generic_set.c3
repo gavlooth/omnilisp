@@ -153,10 +153,13 @@ fn uint set_constructor_capacity(usz elem_count) @inline {
 fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     uint cap = set_constructor_capacity(args.len);
     Value* set_val = make_set(interp, cap);
+    if (set_val == null || set_val.tag != SET) return set_val;
     HashMap* map = set_val.hashmap_val;
     Value* true_val = make_symbol(interp, interp.sym_true);
     for (usz i = 0; i < args.len; i++) {
-        hashmap_set(map, args[i], true_val, interp);
+        if (!hashmap_set_checked(map, args[i], true_val, interp)) {
+            return raise_error(interp, "Set: out of memory while growing backing storage");
+        }
     }
     return set_val;
 }
