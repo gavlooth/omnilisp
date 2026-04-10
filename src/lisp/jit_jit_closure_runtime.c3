@@ -67,6 +67,8 @@ fn char[] jit_env_copy_fault_message(BoundaryEnvCopyFault fault_code) @inline {
             return "jit: closure env-copy failed";
         case BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC:
             return "jit: closure env-copy failed (promotion context allocation)";
+        case BOUNDARY_ENV_COPY_FAULT_CONTEXT_ABORTED:
+            return "jit: closure env-copy failed (promotion context aborted)";
         case BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT:
             return "jit: closure env-copy failed (env depth limit)";
         case BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC:

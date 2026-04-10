@@ -77,6 +77,7 @@ const usz BOUNDARY_RETURN_PROVENANCE_COUNT =
 enum BoundaryEnvCopyFault : char {
     BOUNDARY_ENV_COPY_FAULT_NONE,
     BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC,
+    BOUNDARY_ENV_COPY_FAULT_CONTEXT_ABORTED,
     BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT,
     BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC,
     BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC,
@@ -211,6 +212,7 @@ const char[][] BOUNDARY_RETURN_PROVENANCE_NAMES = {
 const char[][] BOUNDARY_ENV_COPY_FAULT_NAMES = {
     "none",
     "promotion-ctx-alloc",
+    "context-aborted",
     "depth-limit",
     "env-alloc",
     "binding-buffer-alloc",

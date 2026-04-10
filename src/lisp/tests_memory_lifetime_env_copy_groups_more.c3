@@ -655,6 +655,102 @@ fn void run_memory_lifetime_env_copy_transactional_binding_rollback_test(Interp*
     }
 }
 
+fn void run_memory_lifetime_env_copy_failure_invalidates_promotion_ctx_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy rollback invalidates a shared promotion context so
+    // stale memoized target values cannot be reused after failure.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy rollback invalidates promotion ctx");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId closure_sym = interp.symbols.intern("__copy_env_ctx_closure");
+        SymbolId fail_sym = interp.symbols.intern("__copy_env_ctx_fail");
+        SymbolId payload_sym = interp.symbols.intern("__copy_env_ctx_payload");
+
+        interp.current_scope = source;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 333), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        }
+
+        Env* bad_capture = make_env(interp, interp.global_env);
+        Value* bad_closure = bad_capture != null ? make_closure_no_param(interp, null, bad_capture) : null;
+
+        Env* frame = make_env(interp, interp.global_env);
+        bool setup_ok = frame != null &&
+                        shared_closure != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        bad_closure != null &&
+                        bad_closure.tag == CLOSURE &&
+                        bad_closure.closure_val != null &&
+                        bad_closure.closure_val.env_scope == null;
+
+        if (setup_ok) {
+            env_define_with_barrier(frame, closure_sym, shared_closure, interp);
+            env_define_with_barrier(frame, fail_sym, bad_closure, interp);
+        }
+
+        PromotionContext ctx = {};
+        boundary_promotion_context_begin(interp, &ctx);
+        BoundaryEnvCopyResult first =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target, 0, &ctx)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+        Value* cached_after_fail = promotion_context_lookup(&ctx, shared_closure);
+        BoundaryEnvCopyResult retry =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target, 0, &ctx)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+        boundary_promotion_context_end(interp, &ctx);
+
+        int closure_rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool first_fault = first.env == null &&
+                           first.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                           first.depth == 0;
+        bool ctx_invalidated = ctx.aborted &&
+                               ctx.abort_reason == PROMOTION_ABORT_INVALIDATED_BY_ROLLBACK &&
+                               ctx.memo_head == null &&
+                               cached_after_fail == null;
+        bool retry_fault = retry.env == null &&
+                           retry.fault_code == BOUNDARY_ENV_COPY_FAULT_CONTEXT_ABORTED &&
+                           retry.depth == 0;
+        bool rollback_ok = closure_rc_after_fail == 1;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        bool ok = setup_ok && first_fault && ctx_invalidated && retry_fault && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy rollback invalidates promotion ctx");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy rollback invalidates promotion ctx (setup_ok=%s first_fault=%s ctx_invalidated=%s retry_fault=%s rollback_ok=%s first_fault_name=%s retry_fault_name=%s abort_reason=%d closure_rc=%d)",
+                setup_ok ? "yes" : "no",
+                first_fault ? "yes" : "no",
+                ctx_invalidated ? "yes" : "no",
+                retry_fault ? "yes" : "no",
+                rollback_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(first.fault_code),
+                (ZString)boundary_env_copy_fault_name(retry.fault_code),
+                (int)ctx.abort_reason,
+                closure_rc_after_fail
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(Interp* interp, int* pass, int* fail) {
     // Invariant: rollback must not destruct a shared iterator payload closure
     // that was merely aliased into the copied iterator wrapper.
@@ -1061,6 +1157,7 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_clones_global_iterator_closure_test(interp, pass, fail);
     run_memory_lifetime_env_copy_memoizes_iterator_closure_payload_clone_test(interp, pass, fail);
     run_memory_lifetime_env_copy_transactional_binding_rollback_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_failure_invalidates_promotion_ctx_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(interp, pass, fail);
     run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_cons_rollback_test(interp, pass, fail);

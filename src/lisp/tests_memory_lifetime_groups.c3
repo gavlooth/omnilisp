@@ -264,6 +264,89 @@ fn void run_memory_lifetime_escape_primitive_guard_tests(Interp* interp, int* pa
     }
 }
 
+fn void run_memory_lifetime_escape_partial_transactional_cleanup_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: escape promotion rolls back already-promoted partial args when
+    // a later arg promotion fails.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: escape partial transactional cleanup");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__escape_partial_txn_payload");
+
+        interp.current_scope = foreign;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 612), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        }
+
+        Value* opaque = interp.alloc_value();
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
+        if (opaque_ok) {
+            *opaque_prim = {};
+            *opaque_payload = 612;
+            opaque.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            opaque_prim.name[0] = 'e';
+            opaque_prim.name[1] = 0;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 612;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.prim_val = opaque_prim;
+        }
+
+        Value* partial = interp.alloc_value();
+        bool setup_ok = shared_closure != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        opaque_ok &&
+                        partial != null;
+        if (setup_ok) {
+            partial.tag = PARTIAL_PRIM;
+            partial.partial_val.func = &prim_add;
+            partial.partial_val.remaining = 1;
+            partial.partial_val.first_arg = shared_closure;
+            partial.partial_val.second_arg = opaque;
+        }
+
+        interp.current_scope = target;
+        Value* promoted = setup_ok ? promote_to_escape(partial, interp) : null;
+        int closure_rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(target);
+
+        bool fault_ok = promoted != null && promoted.tag == ERROR;
+        bool rollback_ok = closure_rc_after_fail == 1;
+        bool ok = setup_ok && fault_ok && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: escape partial transactional cleanup");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: escape partial transactional cleanup (setup_ok=%s fault_ok=%s closure_rc=%d)",
+                setup_ok ? "yes" : "no",
+                fault_ok ? "yes" : "no",
+                closure_rc_after_fail
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_resume_missing_yield_scope_gate_test(Interp* interp, int* pass, int* fail) {
     // Invariant: coroutine resume boundary requires explicit yield provenance.
     // Missing yield_scope must hard-error and must not re-enter copy fallback.
@@ -404,7 +487,10 @@ fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* 
     run_memory_lifetime_cons_barrier_fallback_gate_test(interp, pass, fail);
     run_memory_lifetime_escape_disjoint_fallback_test(interp, pass, fail);
     run_memory_lifetime_escape_primitive_guard_tests(interp, pass, fail);
+    run_memory_lifetime_escape_partial_transactional_cleanup_test(interp, pass, fail);
     run_memory_lifetime_nested_wrapper_boundary_copy_fail_closed_test(interp, pass, fail);
+    run_memory_lifetime_partial_boundary_copy_transactional_cleanup_test(interp, pass, fail);
+    run_memory_lifetime_nested_partial_iterator_boundary_cleanup_test(interp, pass, fail);
     run_memory_lifetime_splice_legality_explicit_reasons_test(interp, pass, fail);
     run_memory_lifetime_resume_missing_yield_scope_gate_test(interp, pass, fail);
 }

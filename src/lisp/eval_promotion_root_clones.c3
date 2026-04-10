@@ -136,6 +136,45 @@ fn void boundary_cleanup_materialized_method_table(
     }
 }
 
+fn void boundary_cleanup_materialized_partial_prim(
+    Value* src,
+    Value* copied,
+    main::ScopeRegion* target_scope,
+    bool escape_lane
+) @inline {
+    if (src == null || copied == null || src.tag != PARTIAL_PRIM || copied.tag != PARTIAL_PRIM) return;
+    boundary_cleanup_materialized_value(
+        src.partial_val.first_arg,
+        copied.partial_val.first_arg,
+        target_scope,
+        escape_lane
+    );
+    if (src.partial_val.second_arg != src.partial_val.first_arg ||
+        copied.partial_val.second_arg != copied.partial_val.first_arg) {
+        boundary_cleanup_materialized_value(
+            src.partial_val.second_arg,
+            copied.partial_val.second_arg,
+            target_scope,
+            escape_lane
+        );
+    }
+}
+
+fn void boundary_cleanup_materialized_iterator(
+    Value* src,
+    Value* copied,
+    main::ScopeRegion* target_scope,
+    bool escape_lane
+) @inline {
+    if (src == null || copied == null || src.tag != ITERATOR || copied.tag != ITERATOR) return;
+    boundary_cleanup_materialized_value(
+        src.iterator_val,
+        copied.iterator_val,
+        target_scope,
+        escape_lane
+    );
+}
+
 fn void boundary_cleanup_materialized_value(
     Value* src,
     Value* copied,
@@ -173,6 +212,24 @@ fn void boundary_cleanup_materialized_value(
         src.tag == METHOD_TABLE &&
         copied.tag == METHOD_TABLE) {
         boundary_cleanup_materialized_method_table(src, copied, target_scope, escape_lane);
+        boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
+        scope_dtor_value((void*)copied);
+        return;
+    }
+    if (src != null &&
+        copied != null &&
+        src.tag == PARTIAL_PRIM &&
+        copied.tag == PARTIAL_PRIM) {
+        boundary_cleanup_materialized_partial_prim(src, copied, target_scope, escape_lane);
+        boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
+        scope_dtor_value((void*)copied);
+        return;
+    }
+    if (src != null &&
+        copied != null &&
+        src.tag == ITERATOR &&
+        copied.tag == ITERATOR) {
+        boundary_cleanup_materialized_iterator(src, copied, target_scope, escape_lane);
         boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
         scope_dtor_value((void*)copied);
         return;

@@ -62,6 +62,7 @@ struct PromotionContextScopeChainCacheEntry {
 enum PromotionAbortReason : char {
     PROMOTION_ABORT_NONE,
     PROMOTION_ABORT_BUDGET_EXHAUSTED,
+    PROMOTION_ABORT_INVALIDATED_BY_ROLLBACK,
 }
 
 enum EnvLifetimeKind : uint {

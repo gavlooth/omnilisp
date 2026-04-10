@@ -37,6 +37,12 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
 
     Value* second_arg = promote_to_escape(v.partial_val.second_arg, interp);
     if (v.partial_val.second_arg != null && (second_arg == null || is_error(second_arg))) {
+        boundary_cleanup_materialized_value(
+            v.partial_val.first_arg,
+            first_arg,
+            interp.current_scope,
+            true
+        );
         return second_arg == null
             ? raise_error(interp, "boundary: failed to promote partial primitive second arg during escape promotion")
             : second_arg;
@@ -44,6 +50,21 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
 
     Value* result = interp.alloc_value_escape();
     if (result == null) {
+        boundary_cleanup_materialized_value(
+            v.partial_val.first_arg,
+            first_arg,
+            interp.current_scope,
+            true
+        );
+        if (v.partial_val.second_arg != v.partial_val.first_arg ||
+            second_arg != first_arg) {
+            boundary_cleanup_materialized_value(
+                v.partial_val.second_arg,
+                second_arg,
+                interp.current_scope,
+                true
+            );
+        }
         return raise_error(interp, "boundary: failed to allocate partial primitive escape copy");
     }
     result.tag = PARTIAL_PRIM;

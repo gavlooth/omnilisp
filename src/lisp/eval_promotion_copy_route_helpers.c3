@@ -18,6 +18,11 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
 
     Value* second_arg = copy_to_parent_with_fault(v.partial_val.second_arg, interp, fault_out);
     if (v.partial_val.second_arg != null && (second_arg == null || is_error(second_arg))) {
+        boundary_cleanup_materialized_value(
+            v.partial_val.first_arg,
+            first_arg,
+            interp.current_scope
+        );
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }
@@ -30,6 +35,19 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
 
     Value* result = interp.alloc_value();
     if (result == null) {
+        boundary_cleanup_materialized_value(
+            v.partial_val.first_arg,
+            first_arg,
+            interp.current_scope
+        );
+        if (v.partial_val.second_arg != v.partial_val.first_arg ||
+            second_arg != first_arg) {
+            boundary_cleanup_materialized_value(
+                v.partial_val.second_arg,
+                second_arg,
+                interp.current_scope
+            );
+        }
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }

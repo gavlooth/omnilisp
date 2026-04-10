@@ -99,8 +99,7 @@ fn Value* boundary_destination_detach_iterator_inner(
     main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
     interp.releasing_scope = target_scope;
     defer interp.releasing_scope = saved_releasing_scope;
-    (void)ctx;
-    return boundary_copy_to_parent_site_ctx(inner, interp, COPY_SITE_GENERIC, null);
+    return boundary_copy_to_parent_site_ctx(inner, interp, COPY_SITE_GENERIC, ctx);
 }
 
 fn main::ScopeRegion* boundary_destination_build_scope_begin(

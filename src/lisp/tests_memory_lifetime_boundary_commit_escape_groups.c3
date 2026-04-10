@@ -242,6 +242,97 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
         }
     }
 
+    // Invariant: destination iterator detachment must participate in the
+    // caller's promotion context so repeated detach of the same target child in
+    // one builder epoch reuses the same copied value.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* build_scope = target_scope == null ? null : main::scope_create(target_scope);
+        if (target_scope == null || build_scope == null) {
+            if (build_scope != null) main::scope_release(build_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape iterator detach shares promotion ctx");
+            (*fail)++;
+        } else {
+            interp.current_scope = target_scope;
+            SymbolId payload_sym = interp.symbols.intern("__boundary_destination_iter_detach_payload");
+            Env* captured_env = make_env(interp, interp.global_env);
+            main::ScopeRegion* closure_env_scope = null;
+            int closure_env_destroy_count = 0;
+            Value* shared_closure = null;
+            if (captured_env != null) {
+                env_define_with_barrier(captured_env, payload_sym, make_int(interp, 1511), interp);
+                shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+                if (closure_env_scope != null) {
+                    main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                        int* counter = (int*)ptr;
+                        if (counter != null) (*counter)++;
+                    });
+                }
+            }
+
+            PromotionContext ctx = {};
+            Value* detached_direct = null;
+            Value* detached_again = null;
+            bool setup_ok = shared_closure != null &&
+                            shared_closure.tag == CLOSURE &&
+                            closure_env_scope != null &&
+                            closure_env_scope.refcount == 1;
+            main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
+            if (setup_ok) {
+                interp.current_scope = build_scope;
+                interp.releasing_scope = target_scope;
+                boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+                detached_direct = boundary_copy_to_parent_site_ctx(
+                    shared_closure,
+                    interp,
+                    COPY_SITE_GENERIC,
+                    &ctx
+                );
+                detached_again = boundary_destination_detach_iterator_inner(
+                    shared_closure,
+                    interp,
+                    target_scope,
+                    &ctx
+                );
+                boundary_promotion_context_end(interp, &ctx);
+            }
+            interp.releasing_scope = saved_releasing_scope;
+
+            bool direct_ok = setup_ok &&
+                             detached_direct != null &&
+                             detached_direct.tag == CLOSURE &&
+                             detached_direct != shared_closure &&
+                             main::is_in_scope((void*)detached_direct, build_scope);
+            bool shared_ok = direct_ok && detached_again == detached_direct;
+
+            interp.current_scope = root_scope;
+            main::scope_release(build_scope);
+            int rc_after_build_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+            int destroy_count_after_build_release = closure_env_destroy_count;
+            bool teardown_ok = rc_after_build_release == 1 &&
+                               destroy_count_after_build_release == 0;
+            main::scope_release(target_scope);
+
+            if (direct_ok && shared_ok && teardown_ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape iterator detach shares promotion ctx");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary_commit_escape iterator detach shares promotion ctx (setup_ok=%s direct_ok=%s shared_ok=%s teardown_ok=%s rc_after_build_release=%d destroy_count=%d)",
+                    setup_ok ? "yes" : "no",
+                    direct_ok ? "yes" : "no",
+                    shared_ok ? "yes" : "no",
+                    teardown_ok ? "yes" : "no",
+                    rc_after_build_release,
+                    destroy_count_after_build_release
+                );
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: mixed/uncertain provenance can commit through destination ESCAPE
     // promotion before falling back to deep boundary copy.
     {

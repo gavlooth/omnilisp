@@ -88,6 +88,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or
   aborts and are not part of same-epoch reuse semantics.
+- Destination iterator detachment now participates in that same builder
+  promotion context instead of bypassing it on the detach subpath, so
+  destination-built iterator copies reuse same-epoch memoized children and do
+  not silently drift around context budget or abort state.
 - Splice legality checks are reason-coded (`BoundaryScopeTransferReason`) and enforced through `boundary_check_scope_transfer(...)`.
 - `ScopeRegion` escape splice uses O(1) tail-link concatenation (`escape_chunks_tail`, `escape_dtors_tail`) with consistency assertions.
 - Boundary guard scripts exist and are wired:
@@ -99,12 +103,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/check_jit_env_scope_guards.sh`
 - Verification status for the already-closed hardening profile remains current:
   - `c3c build` passed.
-  - bounded `memory-lifetime-smoke` passed at `pass=92 fail=0`.
-  - `rm -rf build/obj/linux-x64 build/main && mkdir -p build/obj/linux-x64/tmp_c_compile && c3c build --sanitize=address` passed.
+  - bounded `memory-lifetime-smoke` passed at `pass=100 fail=0`.
+  - `rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 93/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 100/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator
@@ -139,6 +143,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     / partial graphs when they originate from the same source wrapper,
   - so env-copy no longer drifts away from the repo-wide shared promotion
     context contract on those special-case paths.
+- Shared-wrapper late-failure cleanup now also descends through copied nested
+  `PARTIAL_PRIM` and `ITERATOR` payloads, so copied closure/env retains do not
+  survive abort just because the already-materialized child sat behind a
+  partial or iterator wrapper.
 - Committed-root graph-reachability validation is now debug-only and threshold-gated:
   - controlled by `OMNI_BOUNDARY_GRAPH_AUDIT`,
   - sampled by `OMNI_BOUNDARY_GRAPH_AUDIT_RATE` (default 1),

@@ -29,6 +29,7 @@ fn BoundaryEnvCopyResult copy_env_rewrite_persistent_parent(
 
     BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
     if (!boundary_env_copy_result_ok(parent_result)) {
+        promotion_context_invalidate(active_ctx);
         return parent_result;
     }
     env.parent = parent_result.env;
@@ -42,6 +43,7 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
     main::ScopeRegion* target_scope = interp.current_scope;
 
     if (!copy_env_copy_bindings(env, new_env, interp, active_ctx)) {
+        promotion_context_invalidate(active_ctx);
         copy_env_cleanup_partial_frame(new_env);
         return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY, depth);
     }
@@ -49,6 +51,7 @@ fn BoundaryEnvCopyResult copy_env_materialize_frame(Env* env, Interp* interp, us
     BoundaryEnvCopyResult parent_result = copy_env_to_scope_inner_checked(env.parent, interp, depth + 1, active_ctx);
     if (!boundary_env_copy_result_ok(parent_result)) {
         copy_env_rollback_materialized_bindings(env, new_env, target_scope, env.binding_count);
+        promotion_context_invalidate(active_ctx);
         copy_env_cleanup_partial_frame(new_env);
         return parent_result;
     }
@@ -106,6 +109,9 @@ fn BoundaryEnvCopyResult copy_env_to_scope_checked(
             return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_PROMOTION_CTX_ALLOC, depth);
         }
         owns_ctx = true;
+    }
+    if (active_ctx != null && active_ctx.aborted) {
+        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_CONTEXT_ABORTED, depth);
     }
     defer {
         if (owns_ctx) copy_env_end_owned_promotion_ctx(interp, active_ctx, saved_active_ctx);

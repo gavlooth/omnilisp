@@ -41,7 +41,7 @@ fn bool promotion_context_consume(PromotionContext* ctx, usz units = 1) @inline 
 }
 
 fn Value* promotion_context_lookup(PromotionContext* ctx, Value* src) @inline {
-    if (ctx == null || src == null) return null;
+    if (ctx == null || src == null || ctx.aborted) return null;
     PromotionMemoEntry* e = ctx.memo_head;
     while (e != null) {
         if (e.src == src) return e.dst;
@@ -71,7 +71,7 @@ fn bool promotion_context_lookup_scope_chain_cache(
     uint pinned_generation,
     bool* out_result
 ) @inline {
-    if (ctx == null || ptr == null || target_scope == null || out_result == null) return false;
+    if (ctx == null || ctx.aborted || ptr == null || target_scope == null || out_result == null) return false;
     uint target_generation = target_scope.generation;
     uint target_escape_generation = target_scope.escape_generation;
     foreach (PromotionContextScopeChainCacheEntry e : ctx.scope_chain_cache) {
@@ -112,15 +112,23 @@ fn void promotion_context_remember_scope_chain_cache(
     e.used = true;
 }
 
+fn void promotion_context_invalidate(
+    PromotionContext* ctx,
+    PromotionAbortReason reason = PROMOTION_ABORT_INVALIDATED_BY_ROLLBACK
+) @inline {
+    if (ctx == null) return;
+    ctx.aborted = true;
+    ctx.abort_reason = reason;
+    ctx.memo_head = null;
+    promotion_context_reset_scope_chain_cache(ctx);
+}
+
 fn void promotion_context_remember(PromotionContext* ctx, Value* src, Value* dst, Interp* interp) {
     if (ctx == null || src == null || dst == null || interp == null || interp.current_scope == null) return;
     if (ctx.aborted) return;
     PromotionMemoEntry* e = (PromotionMemoEntry*)interp.current_scope.alloc(PromotionMemoEntry.sizeof);
     if (e == null) {
-        ctx.aborted = true;
-        if (ctx.abort_reason == PROMOTION_ABORT_NONE) {
-            ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
-        }
+        promotion_context_invalidate(ctx, PROMOTION_ABORT_BUDGET_EXHAUSTED);
         return;
     }
     e.src = src;

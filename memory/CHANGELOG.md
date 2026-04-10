@@ -1,5 +1,31 @@
 ## 2026-04-10
 
+- Closed a destination-commit promotion-context drift and a nested wrapper
+  rollback symmetry gap:
+  - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` now threads the
+    caller `PromotionContext` through destination iterator detachment instead
+    of discarding it on the detach subpath, so destination-built iterator
+    copies now honor same-epoch memo reuse, budget/accounting, and context
+    abort propagation like the rest of the builder lane.
+  - `src/lisp/eval_promotion_root_clones.c3` now makes
+    `boundary_cleanup_materialized_value(...)` recurse through copied nested
+    `PARTIAL_PRIM` and `ITERATOR` payloads before cleaning the outer wrapper,
+    closing the case where shared-wrapper late-failure cleanup would leave
+    copied closure/env retains live when the already-materialized child was
+    wrapped in a copied partial or iterator shell.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now
+    proves repeated destination iterator detachment in one builder epoch
+    reuses the same copied closure via the shared promotion context.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves failed
+    copied `ARRAY` wrappers unwind nested copied `PARTIAL_PRIM` and `ITERATOR`
+    payload retains immediately and do not destroy the original owner closure
+    env scope during later target teardown.
+  - validation:
+    - `c3c build`
+    - `c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=100 fail=0`
+    - `scripts/check_status_consistency.sh`
+
 - Closed a TCO recycle TEMP-graph detection drift:
   - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer treats
     “graph-carrying wrapper itself is outside TEMP” as sufficient for the
