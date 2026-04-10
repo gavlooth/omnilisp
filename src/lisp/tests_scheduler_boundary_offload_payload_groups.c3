@@ -66,6 +66,29 @@ fn void run_scheduler_invalid_offload_wakeup_boundary_tests(Interp* interp, int*
     }
 }
 
+fn void run_scheduler_invalid_offload_completion_kind_boundary_tests(Interp* interp, int* pass, int* fail) {
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+    OffloadCompletion invalid = {};
+    ((char*)&invalid.kind)[0] = 99;
+
+    Value* out = scheduler_value_from_offload_completion(&invalid, interp);
+    bool ok = out != null &&
+              out.tag == ERROR &&
+              scheduler_test_str_contains(
+                  out.str_chars[:out.str_len],
+                  "invalid completion kind"
+              ) &&
+              scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler invalid offload completion kind fails closed");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] scheduler invalid offload completion kind fails closed");
+        (*fail)++;
+    }
+}
+
 fn void run_scheduler_wakeup_full_payload_ownership_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: WAKEUP_OFFLOAD_READY payload enqueued through the reliable queue
     // must still deliver exactly once and preserve boundary/runtime state.

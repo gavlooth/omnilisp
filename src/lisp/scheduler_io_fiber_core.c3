@@ -133,13 +133,30 @@ fn Value* scheduler_make_root_error(Interp* interp, char[] msg) {
     return make_error(interp, msg);
 }
 
+fn Value* scheduler_publish_result_or_root_error(
+    Value* result,
+    Interp* owner_interp,
+    char[] failure_msg
+) {
+    if (result == null) return null;
+    Value* promoted = boundary_promote_to_root(result, owner_interp);
+    if (promoted == null) {
+        return scheduler_make_root_error(owner_interp, failure_msg);
+    }
+    if (result.tag != ERROR && promoted.tag == ERROR) {
+        return scheduler_make_root_error(owner_interp, failure_msg);
+    }
+    return promoted;
+}
+
 fn void scheduler_mark_done(usz fiber_id, Value* result, Interp* interp) {
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
     Interp* owner_interp = f.owner_interp != null ? f.owner_interp : interp;
-    Value* promoted = result == null ? null : boundary_promote_to_root(result, owner_interp);
-    if (result != null && promoted == null) {
-        promoted = scheduler_make_root_error(owner_interp, "scheduler: failed to promote fiber result to root");
-    }
+    Value* promoted = scheduler_publish_result_or_root_error(
+        result,
+        owner_interp,
+        "scheduler: failed to promote fiber result to root"
+    );
     f.state = FIBER_DONE;
     f.result = promoted;
     f.pending_result = null;
@@ -186,10 +203,11 @@ fn void scheduler_complete_fiber(usz fiber_id, Value* result, Interp* interp) {
     FiberEntry* f = &g_scheduler.fibers[fiber_id];
     Interp* owner_interp = f.owner_interp != null ? f.owner_interp : interp;
     if (f.live_children > 0) {
-        Value* promoted = result == null ? null : boundary_promote_to_root(result, owner_interp);
-        if (result != null && promoted == null) {
-            promoted = scheduler_make_root_error(owner_interp, "scheduler: failed to promote child result to root");
-        }
+        Value* promoted = scheduler_publish_result_or_root_error(
+            result,
+            owner_interp,
+            "scheduler: failed to promote child result to root"
+        );
         f.pending_result = promoted;
         f.waiting_children = true;
         f.awaiting_fiber = false;

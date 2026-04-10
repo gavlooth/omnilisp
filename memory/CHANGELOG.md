@@ -11473,3 +11473,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=159 fail=0`
+## 2026-04-10
+
+- Scheduler completion publication now distinguishes legitimate user `ERROR`
+  results from root-promotion failures. `scheduler_mark_done(...)` and
+  `scheduler_complete_fiber(...)` normalize non-error values whose
+  `boundary_promote_to_root(...)` result is `null` or `ERROR` into explicit
+  scheduler root errors instead of publishing internal promotion faults as if
+  they were the fiber's real result.
+- Offload completion materialization now fails closed on invalid
+  `OffloadResultKind` tags instead of returning an uninitialized pointer.

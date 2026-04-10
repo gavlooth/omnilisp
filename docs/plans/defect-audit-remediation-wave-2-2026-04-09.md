@@ -1001,3 +1001,12 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-JIT-MULTI-ARG-LIST-FAILCLOSED-032`
   - actionable backlog remains `0`
+## 2026-04-10 follow-up
+
+- Closed scheduler completion publication drift:
+  - non-error fiber results whose root promotion faults now become explicit
+    scheduler root errors in both final and pending-result publication paths
+  - intentional user `ERROR` results remain allowed
+- Closed scheduler offload completion decoding drift:
+  - invalid `OffloadResultKind` values now fail closed as scheduler errors
+    instead of returning undefined pointer state

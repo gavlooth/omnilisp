@@ -71,7 +71,11 @@ fn Value* scheduler_value_from_offload_error(OffloadCompletion* completion, Inte
 fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion, Interp* interp) {
     if (completion == null) return scheduler_raise(interp, "scheduler/offload-missing-completion", "offload: missing completion");
 
-    Value* out;
+    Value* out = scheduler_raise(
+        interp,
+        "scheduler/offload-invalid-completion-kind",
+        "offload: invalid completion kind"
+    );
     switch (completion.kind) {
         case OFFLOAD_RES_NIL:
             out = make_nil(interp);
@@ -85,6 +89,12 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
             out = scheduler_value_from_offload_bytes(completion, interp);
         case OFFLOAD_RES_ERROR:
             out = scheduler_value_from_offload_error(completion, interp);
+        default:
+            out = scheduler_raise(
+                interp,
+                "scheduler/offload-invalid-completion-kind",
+                "offload: invalid completion kind"
+            );
     }
     return out;
 }

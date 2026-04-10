@@ -356,12 +356,14 @@ fn void run_scheduler_tests(Interp* interp, int* pass, int* fail) {
     run_scheduler_wakeup_offload_interleave_tests(interp, pass, fail);
     run_scheduler_fiber_temp_cancel_timeout_boundary_tests(interp, pass, fail);
     run_scheduler_offload_cancel_boundary_tests(interp, pass, fail);
+    run_scheduler_result_publication_fail_closed_tests(interp, pass, fail);
     run_scheduler_cancel_tests(interp, pass, fail);
     run_scheduler_fairness_tests(interp, pass, fail);
     run_scheduler_boundary_stress_tests(interp, pass, fail);
     run_scheduler_wakeup_wraparound_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_mixed_event_boundary_tests(interp, pass, fail);
     run_scheduler_invalid_offload_wakeup_boundary_tests(interp, pass, fail);
+    run_scheduler_invalid_offload_completion_kind_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_drop_counter_boundary_tests(interp, pass, fail);
     run_scheduler_wakeup_full_payload_ownership_boundary_tests(interp, pass, fail);
     run_scheduler_inactive_offload_ready_payload_cleanup_boundary_tests(interp, pass, fail);

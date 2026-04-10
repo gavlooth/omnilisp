@@ -1,8 +1,154 @@
 module lisp;
 
 
+import std::core::mem;
 import std::io;
 import main;
+
+fn Value* scheduler_test_make_opaque_primitive_result(Interp* interp, main::ScopeRegion* scope, int tag_value) {
+    interp.current_scope = scope;
+    Value* opaque = interp.alloc_value();
+    opaque.tag = PRIMITIVE;
+    main::scope_register_dtor(scope, (void*)opaque, &scope_dtor_value);
+
+    Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+    int* opaque_payload = (int*)mem::malloc(int.sizeof);
+    if (opaque_prim == null || opaque_payload == null) {
+        if (opaque_prim != null) mem::free(opaque_prim);
+        if (opaque_payload != null) mem::free(opaque_payload);
+        return null;
+    }
+
+    *opaque_prim = {};
+    *opaque_payload = tag_value;
+    opaque_prim.name[0] = 's';
+    opaque_prim.name[1] = 0;
+    opaque_prim.arity = 0;
+    opaque_prim.tag = tag_value;
+    opaque_prim.user_data = (void*)opaque_payload;
+    opaque.prim_val = opaque_prim;
+    return opaque;
+}
+
+fn void run_scheduler_result_publication_fail_closed_tests(Interp* interp, int* pass, int* fail) {
+    scheduler_init();
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* child = main::scope_create(saved_scope);
+    if (child == null) {
+        io::printn("[FAIL] scheduler result publication fail-closed (alloc)");
+        (*fail)++;
+        return;
+    }
+
+    usz saved_fiber_count = g_scheduler.fiber_count;
+    usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+    bool saved_running = g_scheduler.running;
+    usz saved_resume_offset = g_scheduler.resume_offset;
+    FiberEntry saved_fiber_0 = g_scheduler.fibers[0];
+    FiberEntry saved_fiber_1 = g_scheduler.fibers[1];
+    PendingTcpRead saved_pending_read_0 = g_scheduler.pending_reads[0];
+    PendingOffload saved_pending_offload_0 = g_scheduler.pending_offloads[0];
+    PendingSleep saved_pending_sleep_0 = g_scheduler.pending_sleeps[0];
+    PendingDnsResolve saved_pending_dns_0 = g_scheduler.pending_dns[0];
+    PendingTcpConnect saved_pending_connect_0 = g_scheduler.pending_connects[0];
+    PendingTcpAccept saved_pending_accept_0 = g_scheduler.pending_accepts[0];
+    uint saved_join_token_0 = g_scheduler.fiber_join_wait_token[0];
+
+    g_scheduler.fiber_count = 2;
+    g_scheduler.current_fiber_id = NO_FIBER;
+    g_scheduler.running = false;
+    g_scheduler.resume_offset = 0;
+    g_scheduler.fibers[0] = {};
+    g_scheduler.fibers[1] = {};
+    g_scheduler.pending_reads[0] = {};
+    g_scheduler.pending_offloads[0] = {};
+    g_scheduler.pending_sleeps[0] = {};
+    g_scheduler.pending_dns[0] = {};
+    g_scheduler.pending_connects[0] = {};
+    g_scheduler.pending_accepts[0] = {};
+    g_scheduler.fiber_join_wait_token[0] = 0;
+    g_scheduler.fibers[0].owner_interp = interp;
+    g_scheduler.fibers[1].owner_interp = interp;
+
+    bool ok = true;
+
+    Value* opaque_result = scheduler_test_make_opaque_primitive_result(interp, child, 4101);
+    if (opaque_result == null) {
+        ok = false;
+    } else {
+        scheduler_mark_done(0, opaque_result, interp);
+        ok = g_scheduler.fibers[0].state == FIBER_DONE &&
+             g_scheduler.fibers[0].result != null &&
+             g_scheduler.fibers[0].result.tag == ERROR &&
+             scheduler_test_str_contains(
+                 g_scheduler.fibers[0].result.str_chars[:g_scheduler.fibers[0].result.str_len],
+                 "failed to promote fiber result to root"
+             );
+    }
+
+    if (ok) {
+        Value* opaque_child_result = scheduler_test_make_opaque_primitive_result(interp, child, 4102);
+        if (opaque_child_result == null) {
+            ok = false;
+        } else {
+            g_scheduler.fibers[1] = {};
+            g_scheduler.fibers[1].owner_interp = interp;
+            g_scheduler.fibers[1].live_children = 1;
+            scheduler_complete_fiber(1, opaque_child_result, interp);
+            ok = g_scheduler.fibers[1].state == FIBER_BLOCKED &&
+                 g_scheduler.fibers[1].waiting_children &&
+                 g_scheduler.fibers[1].pending_result != null &&
+                 g_scheduler.fibers[1].pending_result.tag == ERROR &&
+                 scheduler_test_str_contains(
+                     g_scheduler.fibers[1].pending_result.str_chars[:g_scheduler.fibers[1].pending_result.str_len],
+                     "failed to promote child result to root"
+                 );
+        }
+    }
+
+    if (ok) {
+        interp.current_scope = child;
+        Value* user_error = scheduler_raise(interp, "scheduler/test-error", "scheduler test error");
+        interp.current_scope = saved_scope;
+        g_scheduler.fibers[0] = {};
+        g_scheduler.fibers[0].owner_interp = interp;
+        scheduler_mark_done(0, user_error, interp);
+        ok = g_scheduler.fibers[0].result != null &&
+             g_scheduler.fibers[0].result.tag == ERROR &&
+             scheduler_test_str_contains(
+                 g_scheduler.fibers[0].result.str_chars[:g_scheduler.fibers[0].result.str_len],
+                 "scheduler test error"
+             ) &&
+             !scheduler_test_str_contains(
+                 g_scheduler.fibers[0].result.str_chars[:g_scheduler.fibers[0].result.str_len],
+                 "failed to promote fiber result to root"
+             );
+    }
+
+    interp.current_scope = saved_scope;
+    main::scope_release(child);
+    g_scheduler.fibers[0] = saved_fiber_0;
+    g_scheduler.fibers[1] = saved_fiber_1;
+    g_scheduler.pending_reads[0] = saved_pending_read_0;
+    g_scheduler.pending_offloads[0] = saved_pending_offload_0;
+    g_scheduler.pending_sleeps[0] = saved_pending_sleep_0;
+    g_scheduler.pending_dns[0] = saved_pending_dns_0;
+    g_scheduler.pending_connects[0] = saved_pending_connect_0;
+    g_scheduler.pending_accepts[0] = saved_pending_accept_0;
+    g_scheduler.fiber_join_wait_token[0] = saved_join_token_0;
+    g_scheduler.fiber_count = saved_fiber_count;
+    g_scheduler.current_fiber_id = saved_current_fiber_id;
+    g_scheduler.running = saved_running;
+    g_scheduler.resume_offset = saved_resume_offset;
+
+    if (ok) {
+        emit_pass_literal("[PASS] scheduler result publication fails closed on promotion faults");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] scheduler result publication fails closed on promotion faults");
+        (*fail)++;
+    }
+}
 
 fn void run_scheduler_fiber_temp_thread_boundary_tests(Interp* interp, int* pass, int* fail) {
     if (test_c_getenv("OMNI_FIBER_TEMP") == null) {

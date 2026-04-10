@@ -594,3 +594,11 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-arg-malformed-list-fails-closed ...`
     -> `pass=1 fail=0`
+## 2026-04-10
+
+- Scheduler result publication is now fail-closed for root-promotion faults:
+  legitimate user `ERROR` completions still round-trip, but non-error fiber
+  results that fail root publication are rewritten to scheduler-owned root
+  errors.
+- Scheduler offload completion decoding now rejects invalid completion kinds
+  explicitly instead of falling through with undefined pointer state.
