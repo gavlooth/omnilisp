@@ -154,7 +154,7 @@ fn void scheduler_uv_offload_after_cb(void* req, int status) {
             completion = scheduler_make_offload_alloc_failure_completion();
         }
         if (completion != null && !scheduler_publish_offload_ready(work.fiber_id, completion, work.wake_epoch)) {
-            scheduler_free_offload_completion(completion);
+            scheduler_handle_wakeup_offload_ready(work.fiber_id, completion, work.wake_epoch);
         }
     }
 

@@ -22,6 +22,25 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-SCHEDULER-WAKEUP-PUBLISH-FALLBACK-025` make scheduler timer,
+  sleep, poll-error, and non-task offload wakeups fail closed when reliable
+  wakeup enqueue fails instead of dropping the blocked-fiber completion
+  - closure evidence:
+    - `src/lisp/scheduler_wakeup_callbacks.c3`
+      now makes timer, sleep, and poll-error callbacks fall back to the same
+      direct wakeup handlers on reliable queue publish failure.
+    - `src/lisp/scheduler_offload_worker.c3`
+      now makes non-task worker completion fall back to
+      `scheduler_handle_wakeup_offload_ready(...)` on publish failure instead
+      of freeing the live completion payload.
+    - `src/lisp/tests_scheduler_groups_more.c3`
+      now pins the real enqueue-failure seam for timer, sleep, poll-error,
+      and offload-after fallback.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-SCHEDULER-SHARED-PROJECTION-FAILCLOSED-024` make scheduler
   shared-handle and offload-path projection fail closed instead of publishing
   empty-string or false-success results

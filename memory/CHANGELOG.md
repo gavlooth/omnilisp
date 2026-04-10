@@ -1,5 +1,24 @@
 ## 2026-04-10
 
+- Closed the scheduler wakeup publish-fallback lane:
+  - `src/lisp/scheduler_wakeup_callbacks.c3`
+    now makes timer, sleep, and poll-error callbacks fall back to the same
+    direct wakeup handlers when reliable wakeup enqueue fails, instead of
+    silently dropping the blocked-fiber completion.
+  - `src/lisp/scheduler_offload_worker.c3`
+    now makes non-task offload completion fall back to
+    `scheduler_handle_wakeup_offload_ready(...)` when offload-ready publish
+    fails, instead of freeing the live completion payload and stranding the
+    blocked waiter.
+  - `src/lisp/tests_scheduler_groups_more.c3`
+    now pins publish-failure fallback for timer, sleep, poll-error, and
+    offload-after paths by forcing the real
+    `scheduler_publish_reliable_wakeup(...)` failure seam.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the collection/apply array fail-open lane:
   - `src/lisp/prim_collection_sort_array.c3`
     now makes `sort` / `sort-by` propagate list-construction failure

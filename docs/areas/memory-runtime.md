@@ -154,9 +154,16 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `(shell cmd true)` no longer returns `(ERROR exit-code)`,
   - `fs-readdir` no longer stores `ERROR` directory entries,
   - `http-get` / `http-request` no longer pass string-constructor `ERROR`
-    values into transport setup/write,
+  values into transport setup/write,
   - `schema-explain` no longer returns a singleton explanation list whose
-    only element is an `ERROR`.
+  only element is an `ERROR`.
+- Scheduler wakeup publication now fails closed too:
+  - timer, sleep, and poll-error callbacks no longer drop blocked-fiber
+    completion when reliable wakeup enqueue fails,
+  - non-task offload worker completion no longer frees the payload and strands
+    the waiter on the same enqueue-failure seam,
+  - those paths now fall back to the same direct wakeup handlers used by the
+    drained queue path.
 - Collection/apply array helpers now fail closed on both constructor and
   boundary-promotion faults:
   - `array`, `list->array`, `set!` on arrays, `push!`, `collect`, and

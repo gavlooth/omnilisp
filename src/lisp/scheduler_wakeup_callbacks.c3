@@ -9,7 +9,9 @@ fn void scheduler_uv_timer_cb(void* handle) {
     PendingTcpRead* op = &g_scheduler.pending_reads[(usz)idx];
     if (!op.active || op.completed) return;
 
-    (void)scheduler_publish_timer_expired((usz)idx);
+    if (!scheduler_publish_timer_expired((usz)idx)) {
+        scheduler_handle_wakeup_timer_expired((usz)idx);
+    }
 }
 
 fn void scheduler_uv_sleep_timer_cb(void* handle) {
@@ -17,7 +19,9 @@ fn void scheduler_uv_sleep_timer_cb(void* handle) {
     if (idx < 0) return;
     PendingSleep* sleep = &g_scheduler.pending_sleeps[(usz)idx];
     if (!sleep.active || sleep.completed) return;
-    (void)scheduler_publish_sleep_done((usz)idx);
+    if (!scheduler_publish_sleep_done((usz)idx)) {
+        scheduler_handle_wakeup_sleep_done((usz)idx);
+    }
 }
 
 fn void scheduler_uv_getaddrinfo_cb(void* req, int status, void* res) {
@@ -175,7 +179,9 @@ fn void scheduler_uv_poll_cb(void* handle, int status, int events) {
     if (!op.active || op.completed) return;
 
     if (status < 0) {
-        (void)scheduler_publish_poll_error((usz)idx, status);
+        if (!scheduler_publish_poll_error((usz)idx, status)) {
+            scheduler_handle_wakeup_poll_error((usz)idx, status);
+        }
     } else {
         if ((events & UV_READABLE) != 0) {
             scheduler_signal_poll_readable((usz)idx);
