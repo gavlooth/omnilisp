@@ -1533,6 +1533,52 @@ fn void run_jit_policy_pending_raise_string_alloc_failure_test(Interp* interp, i
     }
 }
 
+fn void run_jit_policy_pending_raise_payload_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    bool saved_force = g_hashmap_force_struct_alloc_fail;
+    g_hashmap_force_struct_alloc_fail = true;
+    EvalResult r = run("(handle (Dictionary 'a) (raise msg 42))", interp);
+    g_hashmap_force_struct_alloc_fail = saved_force;
+
+    char[] msg = r.error.message[:256];
+    bool ok = r.error.has_error &&
+        jit_policy_str_contains(msg, "raise: failed to construct payload");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: pending raise payload construction fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: pending raise payload construction fails closed (run_error=%s msg=%s)",
+            r.error.has_error ? "yes" : "no",
+            r.error.has_error ? (ZString)msg : (ZString)"<none>"
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_handle_continuation_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    bool saved_force = g_value_force_alloc_lisp_continuation_fail;
+    g_value_force_alloc_lisp_continuation_fail = true;
+    EvalResult r = run("(handle (+ 1 (signal ask 0)) (ask x x))", interp);
+    g_value_force_alloc_lisp_continuation_fail = saved_force;
+
+    char[] msg = r.error.message[:256];
+    bool ok = r.error.has_error &&
+        jit_policy_str_contains(msg, "handle: failed to allocate continuation");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: handled effect continuation allocation fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: handled effect continuation allocation fails closed (run_error=%s msg=%s)",
+            r.error.has_error ? "yes" : "no",
+            r.error.has_error ? (ZString)msg : (ZString)"<none>"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* pass, int* fail) {
     (void)interp;
     Interp* other = (Interp*)mem::malloc(Interp.sizeof);
@@ -1783,6 +1829,8 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
         run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("pending-raise-payload-alloc-failure", &run_jit_policy_pending_raise_payload_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("handle-continuation-alloc-failure", &run_jit_policy_handle_continuation_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("quasiquote-cons-alloc-failure", &run_jit_policy_quasiquote_cons_alloc_failure_test, interp, pass, fail);

@@ -113,6 +113,9 @@ fn Value* jit_shift_impl(Expr* expr, Env* env, Interp* interp) {
 
     // Create continuation wrapping the current context
     Continuation* k = interp.alloc_lisp_continuation();
+    if (k == null) {
+        return make_error(interp, "capture: failed to allocate continuation");
+    }
     k.ctx = current;
     k.is_coroutine_based = true;
 

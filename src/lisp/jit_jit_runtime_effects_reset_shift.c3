@@ -93,6 +93,9 @@ fn Value* jit_shift_value(Interp* interp, Value* body) {
     }
 
     Continuation* k = interp.alloc_lisp_continuation();
+    if (k == null) {
+        return make_error(interp, "capture: failed to allocate continuation");
+    }
     k.ctx = current;
     k.is_coroutine_based = true;
     Value* k_val = make_continuation(interp, k);

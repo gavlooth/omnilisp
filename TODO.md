@@ -22,6 +22,35 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-RUNTIME-EFFECT-PUBLICATION-FAILCLOSED-036` make effect
+  publication/dispatch fail closed when payload or continuation materialization
+  fails, instead of degrading payload shape or null-dereferencing
+  - closure evidence:
+    - `src/lisp/value_constructors.c3`
+      now makes handled raises reject payload-construction failure before
+      handler bind instead of degrading to a message-only handled raise.
+    - `src/lisp/value_interp_continuation_helpers.c3`
+      now exposes a narrow continuation-allocation failure seam instead of
+      dereferencing failed root-scope allocation.
+    - `src/lisp/jit_jit_handle_signal.c3`,
+      `src/lisp/jit_jit_runtime_effects_handle.c3`,
+      `src/lisp/jit_jit_reset_shift.c3`, and
+      `src/lisp/jit_jit_runtime_effects_reset_shift.c3`
+      now fail closed on continuation allocation failure in handled effect and
+      capture dispatch.
+    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+      now returns `"runtime effect payload: out of memory"` when
+      unhandled-effect diagnostic payload construction cannot complete,
+      instead of silently dropping the payload.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` and
+      `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now pin both handled-raise payload construction failure and handled
+      effect continuation allocation failure directly in bounded slices.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=pending-raise-payload-alloc-failure,handle-continuation-alloc-failure ./build/main --test-suite lisp'`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-RUNTIME-LIST-MATERIALIZATION-FAILCLOSED-035` make helper-owned
   list materializers fail closed instead of continuing after cons-constructor
   faults

@@ -213,8 +213,8 @@ fn Value* make_raise_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = make_hashmap_checked(interp, 8, "raise: failed to allocate payload map");
-    if (payload == null || payload.tag != HASHMAP) return null;
+    Value* payload = make_hashmap(interp, 8);
+    if (payload == null || payload.tag != HASHMAP || payload.hashmap_val == null) return null;
 
     SymbolId key_code = interp.symbols.intern("code");
     SymbolId key_message = interp.symbols.intern("message");
@@ -255,7 +255,7 @@ fn Value* make_raise_payload_names(
     return make_raise_payload(interp, domain_sym, code_sym, message, data);
 }
 
-fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null) {
+fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null, bool payload_failed = false) {
     // Fast path: no handlers at all → just return error
     if (interp.handler_count == 0) {
         return make_error(interp, msg);
@@ -278,6 +278,9 @@ fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = 
                 // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
                 // We can't safely call jit_eval from within a primitive call chain,
                 // so we store payload/message and let the handle block dispatch.
+                if (payload_failed) {
+                    return make_error(interp, "raise: failed to construct payload");
+                }
                 Value* promoted_payload = null;
                 if (payload != null) {
                     promoted_payload = boundary_promote_to_root(payload, interp);
@@ -308,7 +311,7 @@ fn Value* raise_error_with_payload(
     Value* data = null
 ) {
     Value* payload = make_raise_payload(interp, domain_sym, code_sym, message, data);
-    return raise_error_pending_impl(interp, message, payload);
+    return raise_error_pending_impl(interp, message, payload, payload == null);
 }
 
 fn Value* raise_error_with_payload_names(

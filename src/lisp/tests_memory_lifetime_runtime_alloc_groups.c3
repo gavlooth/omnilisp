@@ -350,7 +350,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
         bool ok =
             runtime_alloc_error_matches(lambda_fail, "lambda: expected 1 argument(s), got 0") &&
-            runtime_alloc_error_matches(runtime_effect_fail, "unhandled effect 'sample' with arg type Integer") &&
+            runtime_alloc_error_matches(runtime_effect_fail, "runtime effect payload: out of memory") &&
             runtime_alloc_error_matches(ambiguous_fail, "ambiguous method call: multiple methods match with equal specificity") &&
             ctor_data == null;
         if (ok) {
@@ -1666,6 +1666,48 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 "[FAIL] lifetime: pending raise string materialization fails closed before handler bind (run_error=%s msg=%s)",
                 raise_run.error.has_error ? "yes" : "no",
                 raise_run.error.has_error ? (ZString)msg : runtime_alloc_error_text(raise_run.value));
+            (*fail)++;
+        }
+    }
+
+    {
+        bool saved_force = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        EvalResult raise_run = run("(handle (Dictionary 'a) (raise msg 42))", interp);
+        g_hashmap_force_struct_alloc_fail = saved_force;
+
+        char[] msg = raise_run.error.message[:256];
+        bool ok = raise_run.error.has_error &&
+            str_starts_with(msg, "raise: failed to construct payload");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: pending raise payload map construction fails closed before handler bind");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: pending raise payload map construction fails closed before handler bind (run_error=%s msg=%s)",
+                raise_run.error.has_error ? "yes" : "no",
+                raise_run.error.has_error ? (ZString)msg : runtime_alloc_error_text(raise_run.value));
+            (*fail)++;
+        }
+    }
+
+    {
+        bool saved_force = g_value_force_alloc_lisp_continuation_fail;
+        g_value_force_alloc_lisp_continuation_fail = true;
+        EvalResult continuation_run = run("(handle (+ 1 (signal ask 0)) (ask x x))", interp);
+        g_value_force_alloc_lisp_continuation_fail = saved_force;
+
+        char[] msg = continuation_run.error.message[:256];
+        bool ok = continuation_run.error.has_error &&
+            str_starts_with(msg, "handle: failed to allocate continuation");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: handled effect continuation allocation fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: handled effect continuation allocation fails closed (run_error=%s msg=%s)",
+                continuation_run.error.has_error ? "yes" : "no",
+                continuation_run.error.has_error ? (ZString)msg : runtime_alloc_error_text(continuation_run.value));
             (*fail)++;
         }
     }

@@ -1010,3 +1010,15 @@ Progress update (2026-04-09):
 - Closed scheduler offload completion decoding drift:
   - invalid `OffloadResultKind` values now fail closed as scheduler errors
     instead of returning undefined pointer state
+- Closed runtime effect publication drift:
+  - handled raise payload construction now fails closed before handler bind
+    instead of degrading to a message-only handled raise
+  - handled effect / capture dispatch now reject continuation allocation
+    failure instead of null-dereferencing continuation state
+  - unhandled-effect diagnostic payload construction now returns
+    `"runtime effect payload: out of memory"` instead of silently dropping the
+    structured payload
+  - bounded validation:
+    - `jit-policy` filters:
+      `pending-raise-payload-alloc-failure,handle-continuation-alloc-failure`
+    - `memory-lifetime-smoke`

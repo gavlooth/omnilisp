@@ -100,6 +100,9 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
         }
 
         Continuation* k = interp.alloc_lisp_continuation();
+        if (k == null) {
+            return make_error(interp, "handle: failed to allocate continuation");
+        }
         k.ctx = ctx;
         k.is_coroutine_based = true;
         k.handle_state = state;

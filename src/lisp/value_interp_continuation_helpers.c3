@@ -1,5 +1,7 @@
 module lisp;
 
+bool g_value_force_alloc_lisp_continuation_fail = false;
+
 fn void interp_clear_resume_value(Interp* self) @inline {
     self.resume_value = null;
 }
@@ -11,7 +13,10 @@ fn Value* interp_consume_resume_value_or_nil(Interp* self) @inline {
 }
 
 fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
-    Continuation* k = (Continuation*)self.root_scope.alloc(Continuation.sizeof);
+    Continuation* k = g_value_force_alloc_lisp_continuation_fail
+        ? null
+        : (Continuation*)self.root_scope.alloc(Continuation.sizeof);
+    if (k == null) return null;
     k.ctx = null;
     k.owner_interp = self;
     k.is_coroutine_based = false;

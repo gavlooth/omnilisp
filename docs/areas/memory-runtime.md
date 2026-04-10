@@ -75,6 +75,17 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   refcount only when the resolved continuation actually owned the retained
   slot, so shared handle-state continuations no longer consume each other’s
   retains during `resolve`.
+- Handled-effect and capture dispatch now fail closed on continuation
+  allocation failure instead of dereferencing null continuation state:
+  `alloc_lisp_continuation(...)` exposes a narrow failure seam, and both
+  handle/capture dispatch lanes return explicit runtime errors when the
+  continuation wrapper cannot be materialized.
+- Runtime effect publication no longer degrades payload-construction failure
+  into normal business-visible handled/unhandled effect results:
+  handled raises now reject payload map construction failure before handler
+  bind, and unhandled-effect diagnostics now return
+  `"runtime effect payload: out of memory"` instead of silently dropping the
+  structured payload.
 - `make_array(...)` is now just the checked array constructor contract, so raw
   array creation no longer bypasses allocator failure handling and return a
   partially initialized wrapper.
