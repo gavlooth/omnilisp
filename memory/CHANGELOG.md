@@ -10592,3 +10592,29 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `c3c build`
     - targeted `memory-lifetime-smoke` regressions for env-copy iterator/closure
       memo symmetry
+- 2026-04-10 (JIT TCO alias-safety follow-up):
+  - TCO env-copy now fails closed for target-chain `CONS` bindings whose direct
+    scalar edge still belongs to the releasing scope.
+  - shipped consequence:
+    - the JIT TCO lane no longer decides “copy required” and then immediately
+      lose that safety when the shared `copy_to_parent(...)` fast-reuse gate
+      ignores a releasing-scope scalar child on a surviving `CONS` wrapper.
+    - `copy_to_parent_payload_in_releasing_scope(...)` now scans `CONS` spines
+      for direct releasing-scope children before admitting fast reuse, so the
+      generic copy path stays consistent with the narrower JIT TCO reuse rule.
+  - iterator payload alias checks now recurse into target-chain non-closure,
+    non-partial payload graphs instead of relying on a shallow pointer test.
+  - shipped consequence:
+    - `ITERATOR` bindings carrying target-chain `ARRAY` / `HASHMAP` / `SET` /
+      `CONS` style payloads now clone when those payload graphs still reach the
+      releasing scope, instead of being reused by identity through the JIT TCO
+      env-copy path.
+  - validation:
+    - `c3c build`
+    - `OMNI_LISP_TEST_SLICE=jit-policy` with:
+      - `tco-cons-releasing-scalar-edge-copy`
+      - `tco-partial-shared-wrapper-edge-copy`
+      - `tco-iterator-shared-wrapper-edge-copy`
+      - `tco-foreign-partial-shared-wrapper-edge-copy`
+      - `tco-foreign-shared-wrapper-copy`
+    - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`

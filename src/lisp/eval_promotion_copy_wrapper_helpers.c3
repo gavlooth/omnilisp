@@ -220,6 +220,22 @@ fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
 fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inline {
     if (v == null || interp == null) return false;
     main::ScopeRegion* releasing_scope = interp.releasing_scope;
+    if (v.tag == CONS) {
+        Value* current = v;
+        usz depth = 0;
+        while (current != null && current.tag == CONS) {
+            if (depth++ >= 128) return true;
+            if (boundary_value_in_releasing_scope(current.cons_val.car, interp)) return true;
+            Value* cdr = current.cons_val.cdr;
+            if (cdr == null) return false;
+            if (cdr.tag != CONS) {
+                return boundary_value_in_releasing_scope(cdr, interp);
+            }
+            if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+            current = cdr;
+        }
+        return false;
+    }
     if (v.tag == CLOSURE) {
         if (boundary_closure_alias_unsafe_for_reuse(v, interp)) return true;
         return boundary_closure_payload_in_scope(v, releasing_scope);

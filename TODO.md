@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 2
 
 Completed backlog snapshots:
 
@@ -18,7 +18,40 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- None.
+- [ ] `AUDIT-BOUNDARY-DESTINATION-CTX-005` route direct destination escape promotion through the caller promotion context
+  - problem:
+    - direct destination promotion still calls `boundary_promote_to_escape(...)`
+      from destination-commit helpers, so promotion uses
+      `interp.active_promotion_ctx` instead of the explicit caller `ctx`.
+    - current evidence:
+      - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3`
+      - `src/lisp/eval_boundary_commit_escape_helpers.c3`
+      - `src/lisp/eval_boundary_commit_destination.c3`
+  - required closure:
+    - destination-commit direct escape promotion must participate in the same
+      memo/budget/abort epoch as the caller-provided promotion context.
+    - add a bounded regression proving a non-active caller `PromotionContext`
+      still receives deterministic memo/abort state through the direct
+      promotion path.
+
+- [ ] `AUDIT-BOUNDARY-WRAPPER-SLOT-LEAK-005` eliminate pre-dtor wrapper-slot leaks on partial-abort copy/root-store paths
+  - problem:
+    - several root-store clone and shared-wrapper copy helpers allocate/tag the
+      destination wrapper before fallible child-copy work, but early abort
+      returns happen before dtor registration and before the wrapper slot is
+      reclaimed.
+    - current evidence:
+      - `src/lisp/eval_promotion_root_clone_basic.c3`
+      - `src/lisp/eval_promotion_root_clones.c3`
+      - `src/lisp/eval_promotion_copy_route_helpers.c3`
+      - `src/lisp/eval_promotion_root_store.c3`
+  - required closure:
+    - partial-abort cleanup must reclaim both cloned payload containers and the
+      pre-registered wrapper allocation slot, or allocate/register only after
+      the fallible child-copy phase is complete.
+    - add a bounded regression proving repeated failed copy/root-store attempts
+      do not monotonically grow the surviving target/root escape allocation
+      footprint.
 
 
 ## Recently Closed

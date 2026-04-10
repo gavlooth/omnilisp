@@ -428,6 +428,127 @@ fn void run_memory_lifetime_tco_nested_temp_graph_recycle_guard_test(Interp* int
     }
 }
 
+fn void run_memory_lifetime_tco_closure_payload_temp_recycle_guard_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: TCO recycle must not fast-reset TEMP when a surviving closure
+    // wrapper still points at a TEMP-owned closure payload.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+        Env* saved_jit_env = interp.jit_env;
+
+        main::ScopeRegion* owner = main::scope_create(saved_scope);
+        if (owner == null) {
+            io::printn("[FAIL] lifetime: tco closure payload temp blocks fast reset");
+            (*fail)++;
+            return;
+        }
+
+        main::ScopeRegion* recycle_scope = main::scope_create(owner);
+        if (recycle_scope == null) {
+            main::scope_release(owner);
+            io::printn("[FAIL] lifetime: tco closure payload temp blocks fast reset");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId closure_sym = interp.symbols.intern("__tco_temp_payload_closure");
+
+        interp.current_scope = owner;
+        Env* env = make_env(interp, interp.global_env);
+        Value* closure_value = interp.alloc_value();
+        bool setup_ok = env != null && closure_value != null;
+
+        interp.current_scope = recycle_scope;
+        Closure* payload = setup_ok ? (Closure*)recycle_scope.alloc(Closure.sizeof) : null;
+        if (setup_ok) {
+            setup_ok = payload != null;
+        }
+        if (setup_ok) {
+            payload.scope_gen = recycle_scope.generation;
+            payload.env_scope = null;
+            payload.param = (SymbolId)0;
+            payload.params = null;
+            payload.param_count = 0;
+            payload.has_rest = false;
+            payload.rest_param = (SymbolId)0;
+            payload.body = null;
+            payload.env = interp.global_env;
+            payload.has_param = false;
+            payload.has_typed_params = false;
+            payload.type_sig = null;
+            payload.name = (SymbolId)0;
+        }
+
+        interp.current_scope = owner;
+        if (setup_ok) {
+            closure_value.tag = CLOSURE;
+            closure_value.closure_val = payload;
+            env_define_with_barrier(env, closure_sym, closure_value, interp);
+        }
+
+        interp.current_scope = recycle_scope;
+        interp.tco_recycle_scope = recycle_scope;
+        interp.jit_env = interp.global_env;
+        Env* env_io = env;
+
+        bool shallow_frame_ok = !env_chain_has_frame_in_temp_scope(env_io, recycle_scope, interp.global_env);
+        bool shallow_binding_ok = !env_chain_has_binding_in_temp_scope(env_io, recycle_scope, interp.global_env);
+        bool nested_detected = env_chain_has_graph_binding_values_in_temp_scope(env_io, recycle_scope, interp.global_env);
+
+        Value* err = setup_ok ? jit_prepare_tco_recycle(&env_io, interp.global_env, interp) : make_nil(interp);
+        main::ScopeRegion* post_scope = interp.current_scope;
+        Value* copied_closure = env_io != null ? env_io.lookup(closure_sym) : null;
+
+        bool copied_ok = err == null &&
+            env_io != null &&
+            env_io != env &&
+            post_scope != null &&
+            post_scope != recycle_scope &&
+            interp.tco_recycle_scope == post_scope &&
+            copied_closure != null &&
+            copied_closure.tag == CLOSURE &&
+            copied_closure != closure_value &&
+            copied_closure.closure_val != null &&
+            copied_closure.closure_val != payload &&
+            copied_closure.closure_val.scope_gen == post_scope.generation &&
+            copied_closure.closure_val.env == interp.global_env;
+
+        interp.current_scope = saved_scope;
+        interp.tco_recycle_scope = saved_tco_recycle;
+        interp.jit_env = saved_jit_env;
+
+        if (post_scope != null && post_scope != recycle_scope && post_scope != owner && post_scope != saved_scope) {
+            main::scope_release(post_scope);
+        }
+        if (post_scope == recycle_scope) {
+            main::scope_release(recycle_scope);
+        }
+        main::scope_release(owner);
+
+        bool ok = setup_ok &&
+            shallow_frame_ok &&
+            shallow_binding_ok &&
+            nested_detected &&
+            copied_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tco closure payload temp blocks fast reset");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tco closure payload temp blocks fast reset (setup_ok=%s frame_ok=%s binding_ok=%s nested_detected=%s env_rewritten=%s copied_ok=%s err=%s)",
+                setup_ok ? "yes" : "no",
+                shallow_frame_ok ? "yes" : "no",
+                shallow_binding_ok ? "yes" : "no",
+                nested_detected ? "yes" : "no",
+                (env_io != null && env_io != env) ? "yes" : "no",
+                copied_ok ? "yes" : "no",
+                err != null && err.tag == ERROR ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_hot_budget_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_jit_copy_hot_budget_test(interp, pass, fail);
     run_memory_lifetime_tco_frame_budget_test(interp, pass, fail);
@@ -436,4 +557,5 @@ fn void run_memory_lifetime_hot_budget_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_tco_runtime_fields_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_recycle_error_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_nested_temp_graph_recycle_guard_test(interp, pass, fail);
+    run_memory_lifetime_tco_closure_payload_temp_recycle_guard_test(interp, pass, fail);
 }

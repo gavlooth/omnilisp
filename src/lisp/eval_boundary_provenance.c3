@@ -248,7 +248,9 @@ fn bool boundary_iterator_payload_alias_unsafe_for_reuse(Value* iterator, Interp
         return boundary_partial_payload_alias_unsafe_for_reuse(payload, interp);
     }
 
-    // Iterator thunk wrappers that are not closures must not alias values from
-    // foreign/transient scope chains.
-    return !boundary_ptr_in_target_scope_chain_with_hint((void*)payload, interp, payload.scope_gen);
+    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)payload, interp, payload.scope_gen)) {
+        return true;
+    }
+
+    return boundary_graph_alias_unsafe_for_reuse(payload, interp, 1);
 }

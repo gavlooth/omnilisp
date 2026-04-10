@@ -146,6 +146,17 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     / partial graphs when they originate from the same source wrapper,
   - so env-copy no longer drifts away from the repo-wide shared promotion
     context contract on those special-case paths.
+- JIT TCO env-copy is now aligned with the generic copy fast-reuse gate for
+  direct `CONS` scalar edges:
+  - when a surviving target-chain `CONS` still points directly at a
+    releasing-scope scalar child, the shared `copy_to_parent(...)` fast-reuse
+    gate now rejects wrapper reuse before the JIT lane can accidentally keep
+    the old wrapper by identity.
+- Iterator alias safety now recurses into target-chain non-closure,
+  non-partial payload graphs:
+  - a surviving `ITERATOR` whose payload is a target-chain `ARRAY`, `HASHMAP`,
+    `SET`, `CONS`, or similar graph now clones when that payload still reaches
+    the releasing scope, instead of relying on a shallow payload pointer test.
 - Shared-wrapper late-failure cleanup now also descends through copied nested
   `PARTIAL_PRIM` and `ITERATOR` payloads, so copied closure/env retains do not
   survive abort just because the already-materialized child sat behind a
@@ -192,6 +203,9 @@ Repro artifacts:
 6. Treat any new bounded `advanced`, `basic`, or `memory-lifetime-smoke` regression as a fresh blocker instead of reopening stale historical notes here.
 7. Keep runtime modularization queue updates in sync with `docs/plans/runtime-modularization-split-2026-03-11.md` and `memory/CHANGELOG.md` when deduce/runtime test splits land.
 8. Keep contributor guidance aligned with lane ownership: boundary/lifetime lanes stay container-bound, allocator lanes stay separate, and syntax/compiler-only work should not inherit memory lanes by convenience.
+9. Open follow-up blockers after the latest focused audit are explicit again in
+   `TODO.md`: direct destination-promotion context drift and partial-abort
+   wrapper-slot leaks are not closed by the current tree.
 
 ## Concurrency Boundary Plan Alignment
 

@@ -299,3 +299,29 @@ Progress update (2026-04-09):
 - WS3 shipped and validated.
 - WS4 shipped and validated.
 - `TODO.md` actionable count returns to `0`.
+
+## Post-Wave Follow-Up (2026-04-10)
+
+- landed focused JIT/boundary alias-safety hardening on top of the closed wave:
+  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` now treats target-chain
+    `CONS` bindings with releasing-scope scalar edges as copy-required in the
+    TCO env-copy lane.
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now makes the shared
+    `copy_to_parent(...)` fast-reuse gate reject `CONS` wrappers whose direct
+    children still live in the releasing scope, so the JIT TCO decision and
+    the generic copy execution path stay consistent.
+  - `src/lisp/eval_boundary_provenance.c3` now makes iterator alias safety
+    recurse into target-chain non-closure / non-partial payload graphs instead
+    of relying on a shallow payload pointer check.
+  - focused regressions landed in:
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+    - `src/lisp/tests_memory_lifetime_tco_budget_groups.c3`
+    - `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3`
+- validation status:
+  - `c3c build`: green
+  - targeted `OMNI_LISP_TEST_SLICE=jit-policy`: green for the focused alias
+    regressions
+  - bounded `memory-lifetime-smoke`: green (`pass=103 fail=0`)
+- new residual audit findings are explicit in `TODO.md` again:
+  - `AUDIT-BOUNDARY-DESTINATION-CTX-005`
+  - `AUDIT-BOUNDARY-WRAPPER-SLOT-LEAK-005`

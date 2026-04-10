@@ -214,9 +214,14 @@ fn bool jit_graph_binding_reaches_temp_scope(
                     }
                     break;
                 case CLOSURE:
-                    if (cur.closure_val != null &&
-                        !jit_temp_graph_push_env(&env_stack[0], &env_stack_len, cur.closure_val.env)) {
-                        return true;
+                    if (cur.closure_val != null) {
+                        if (cur.closure_val.scope_gen == scope.generation ||
+                            boundary_ptr_in_scope((void*)cur.closure_val, scope)) {
+                            return true;
+                        }
+                        if (!jit_temp_graph_push_env(&env_stack[0], &env_stack_len, cur.closure_val.env)) {
+                            return true;
+                        }
                     }
                     break;
                 case PARTIAL_PRIM:
@@ -343,19 +348,56 @@ fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
     if (v == null || interp == null || interp.releasing_scope == null) return false;
     if (depth >= 128) return true;
     if (boundary_ptr_in_scope((void*)v, interp.releasing_scope)) return true;
+
+    switch (v.tag) {
+        case CONS:
+            {
+                if (!boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
+                    return true;
+                }
+                Value* current = v;
+                usz cur_depth = depth;
+                while (current != null && current.tag == CONS) {
+                    if (cur_depth >= 128) return true;
+
+                    Value* car = current.cons_val.car;
+                    if (car != null) {
+                        if (boundary_value_in_releasing_scope(car, interp)) return true;
+                        if (!boundary_ptr_in_target_scope_chain_with_hint((void*)car, interp, car.scope_gen)) {
+                            return true;
+                        }
+                        if (jit_binding_graph_needs_copy(car, interp, cur_depth + 1)) return true;
+                    }
+
+                    Value* cdr = current.cons_val.cdr;
+                    if (cdr == null) return false;
+                    if (cdr.tag != CONS) {
+                        if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+                        if (!boundary_ptr_in_target_scope_chain_with_hint((void*)cdr, interp, cdr.scope_gen)) {
+                            return true;
+                        }
+                        return jit_binding_graph_needs_copy(cdr, interp, cur_depth + 1);
+                    }
+                    if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+                    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)cdr, interp, cdr.scope_gen)) {
+                        return true;
+                    }
+
+                    current = cdr;
+                    cur_depth++;
+                }
+                return false;
+            }
+        default:
+            break;
+    }
+
     if (boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen)) {
         return boundary_graph_alias_unsafe_for_reuse(v, interp, depth);
     }
     if (jit_value_is_graph_carrying(v)) return true;
     if (copy_to_parent_payload_in_releasing_scope(v, interp)) return true;
-
-    switch (v.tag) {
-        case CONS:
-            return jit_binding_graph_needs_copy(v.cons_val.car, interp, depth + 1) ||
-                jit_binding_graph_needs_copy(v.cons_val.cdr, interp, depth + 1);
-        default:
-            return false;
-    }
+    return false;
 }
 
 fn bool jit_tco_binding_needs_copy(
