@@ -136,6 +136,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `set!` on dictionary targets and `set-add` on sets now raise
     `runtime/out-of-memory` instead of returning `Void` after silently
     dropping the write.
+- Schema-explain list assembly now fails closed too:
+  - helper-level list accumulation and reversal for signature params,
+    constraints, arg types, handler tag lists, and candidate lists now route
+    through one checked prepend helper,
+  - so schema-explain payload builders now return the existing
+    `"schema explain: out of memory"` error instead of hard-aborting on an
+    internal cons allocation failure.
 - The staged internal collection-constructor OOM migration is now closed
   across the live runtime-facing families:
   - shared constructor substrate,

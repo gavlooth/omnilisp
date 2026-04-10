@@ -1,5 +1,7 @@
 module lisp;
 
+int g_schema_explain_force_cons_alloc_fail_nth = 0;
+
 fn Value* explain_oom(Interp* interp) @inline {
     return raise_error(interp, "schema explain: out of memory");
 }
@@ -34,11 +36,24 @@ fn Value* explain_dict_set_symbol(Value* dict, Interp* interp, char[] key, Symbo
     return explain_dict_set(dict, interp, key, make_symbol(interp, value));
 }
 
+fn bool explain_force_cons_alloc_fail() @inline {
+    if (g_schema_explain_force_cons_alloc_fail_nth <= 0) return false;
+    g_schema_explain_force_cons_alloc_fail_nth--;
+    return g_schema_explain_force_cons_alloc_fail_nth == 0;
+}
+
+fn Value* explain_prepend_or_oom(Value* item, Value* rev, Interp* interp) @inline {
+    if (explain_force_cons_alloc_fail()) return explain_oom(interp);
+    return make_cons(interp, item, rev);
+}
+
 fn Value* explain_reverse_list(Value* list, Interp* interp) {
     Value* out = make_nil(interp);
     Value* cur = list;
     while (is_cons(cur)) {
-        out = make_cons(interp, cur.cons_val.car, out);
+        Value* next = explain_prepend_or_oom(cur.cons_val.car, out, interp);
+        if (next != null && next.tag == ERROR) return next;
+        out = next;
         cur = cur.cons_val.cdr;
     }
     return out;
@@ -156,7 +171,8 @@ fn Value* explain_signature_params(Interp* interp, MethodSignature* sig) {
         } else {
             if (Value* err = explain_dict_set_symbol(param, interp, "kind", interp.symbols.intern("any"))) return err;
         }
-        rev = make_cons(interp, param, rev);
+        rev = explain_prepend_or_oom(param, rev, interp);
+        if (rev != null && rev.tag == ERROR) return rev;
     }
     return explain_reverse_list(rev, interp);
 }
@@ -169,7 +185,8 @@ fn Value* explain_constraints(Interp* interp, MethodSignature* sig) {
         if (c == null || c.tag != HASHMAP) return c;
         if (Value* err = explain_dict_set(c, interp, "param", make_symbol(interp, sig.constraints[i].param_sym))) return err;
         if (Value* err = explain_dict_set(c, interp, "bound", make_symbol(interp, explain_type_symbol(interp, sig.constraints[i].bound_type)))) return err;
-        rev = make_cons(interp, c, rev);
+        rev = explain_prepend_or_oom(c, rev, interp);
+        if (rev != null && rev.tag == ERROR) return rev;
     }
     return explain_reverse_list(rev, interp);
 }
@@ -190,7 +207,11 @@ fn Value* explain_score_components(Interp* interp, DispatchMatchBreakdown* break
 fn Value* explain_arg_types(Interp* interp, TypeId[] arg_types) {
     Value* rev = make_nil(interp);
     for (usz i = 0; i < arg_types.len; i++) {
-        rev = make_cons(interp, make_symbol(interp, explain_type_symbol(interp, arg_types[i])), rev);
+        rev = explain_prepend_or_oom(
+            make_symbol(interp, explain_type_symbol(interp, arg_types[i])),
+            rev,
+            interp);
+        if (rev != null && rev.tag == ERROR) return rev;
     }
     return explain_reverse_list(rev, interp);
 }

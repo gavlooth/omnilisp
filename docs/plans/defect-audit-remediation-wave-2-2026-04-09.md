@@ -40,6 +40,23 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The schema-explain list-builder follow-up is now also closed:
+  - `src/lisp/schema_explain_payload_helpers.c3`
+    now routes list accumulation and reversal through a checked
+    `explain_prepend_or_oom(...)` helper.
+  - `src/lisp/schema_explain_helpers.c3`,
+    `src/lisp/schema_explain_effect_helpers.c3`, and
+    `src/lisp/schema_explain_effect_runtime.c3`
+    now propagate the same list-builder failure for dispatch candidates,
+    handler tags, and effect candidates.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins those list-builder OOM seams through a dedicated local `nth`
+    fail seam.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The checked collection-mutator silent-failure lane is now also closed:
   - `src/lisp/prim_collection_hashmap.c3`
     now exposes checked-return `hashmap_set_symbol(...)`,

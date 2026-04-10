@@ -22,6 +22,25 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-SCHEMA-EXPLAIN-LIST-BUILDERS-015` make schema-explain list
+  assembly fail closed instead of hard-aborting on internal cons allocation
+  failure
+  - closure evidence:
+    - `src/lisp/schema_explain_payload_helpers.c3` now routes list
+      accumulation/reversal through `explain_prepend_or_oom(...)` instead of
+      raw `make_cons(...)`.
+    - `src/lisp/schema_explain_helpers.c3`,
+      `src/lisp/schema_explain_effect_helpers.c3`, and
+      `src/lisp/schema_explain_effect_runtime.c3`
+      now propagate that failure through dispatch candidates, handler tag
+      lists, and effect candidates.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins helper-level and top-level schema-explain list-builder OOM
+      seams through a dedicated local `nth` fail seam.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-COLLECTION-MUTATOR-CHECKED-RETURNS-014` make dictionary/set
   mutation fail closed on backing-storage grow failure instead of silently
   dropping writes behind void mutator wrappers

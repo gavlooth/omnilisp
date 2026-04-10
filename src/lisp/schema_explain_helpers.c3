@@ -122,7 +122,8 @@ fn Value* explain_dispatch_result_from_evaluated_call(
             }
         }
 
-        rev_candidates = make_cons(interp, candidate, rev_candidates);
+        rev_candidates = explain_prepend_or_oom(candidate, rev_candidates, interp);
+        if (rev_candidates != null && rev_candidates.tag == ERROR) return rev_candidates;
     }
 
     Value* candidates = explain_reverse_list(rev_candidates, interp);

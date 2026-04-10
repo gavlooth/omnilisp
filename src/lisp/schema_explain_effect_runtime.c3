@@ -81,7 +81,8 @@ fn Value* explain_effect_result_from_signal_value(
             if (Value* err = explain_dict_set(candidate, interp, "continuation-name", make_nil(interp))) return err;
         }
 
-        rev_candidates = make_cons(interp, candidate, rev_candidates);
+        rev_candidates = explain_prepend_or_oom(candidate, rev_candidates, interp);
+        if (rev_candidates != null && rev_candidates.tag == ERROR) return rev_candidates;
         searched_handlers++;
 
         if (dispatchable) {

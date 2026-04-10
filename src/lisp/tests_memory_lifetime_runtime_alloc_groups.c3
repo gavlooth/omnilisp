@@ -111,6 +111,112 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        MethodSignature sig = {
+            .param_count = 1,
+        };
+        MethodConstraint[1] constraints = {
+            { .param_sym = interp.symbols.intern("T"), .bound_type = INVALID_TYPE_ID }
+        };
+        sig.constraints = &constraints[0];
+        sig.constraint_count = 1;
+
+        TypeId[1] arg_types = { INVALID_TYPE_ID };
+        SymbolId[1] handler_tags = { interp.symbols.intern("sample") };
+        EffectHandler handler = {
+            .tags = &handler_tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = null,
+        };
+
+        MethodEntry[1] entries = {
+            {
+                .sig = sig,
+                .implementation = make_nil(interp),
+            }
+        };
+        MethodTable mt = {
+            .name = interp.symbols.intern("explain-test"),
+            .entries = &entries[0],
+            .entry_count = 1,
+            .fallback = null,
+        };
+        Value* callee = interp.alloc_value();
+        bool setup_ok = callee != null;
+        if (setup_ok) {
+            callee.tag = METHOD_TABLE;
+            callee.method_table_val = &mt;
+        }
+
+        Value* params_fail = null;
+        Value* constraints_fail = null;
+        Value* arg_types_fail = null;
+        Value* handler_tags_fail = null;
+        Value* dispatch_fail = null;
+        Value* effect_fail = null;
+        Value*[] no_args = {};
+
+        int saved_cons_fail = g_schema_explain_force_cons_alloc_fail_nth;
+
+        g_schema_explain_force_cons_alloc_fail_nth = 1;
+        params_fail = explain_signature_params(interp, &sig);
+        g_schema_explain_force_cons_alloc_fail_nth = 1;
+        constraints_fail = explain_constraints(interp, &sig);
+        g_schema_explain_force_cons_alloc_fail_nth = 1;
+        arg_types_fail = explain_arg_types(interp, arg_types[0:1]);
+        g_schema_explain_force_cons_alloc_fail_nth = 1;
+        handler_tags_fail = explain_effect_handler_tags(interp, &handler);
+        g_schema_explain_force_cons_alloc_fail_nth = 1;
+        dispatch_fail = setup_ok
+            ? explain_dispatch_result_from_evaluated_call(interp, make_nil(interp), callee, no_args)
+            : raise_error(interp, "setup failed");
+
+        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        if (setup_ok) {
+            interp.handler_stack[interp.handler_count++] = handler;
+            g_schema_explain_force_cons_alloc_fail_nth = 1;
+            effect_fail = explain_effect_result_from_compiled_signal(
+                interp,
+                "(perform sample 1)",
+                interp.symbols.intern("sample"),
+                make_int(interp, 1));
+            interp.handler_count--;
+        } else {
+            effect_fail = raise_error(interp, "setup failed");
+        }
+
+        g_schema_explain_force_cons_alloc_fail_nth = saved_cons_fail;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(params_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(constraints_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(arg_types_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(handler_tags_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(dispatch_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(effect_fail, "schema explain: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: schema explain list builders fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: schema explain list builders fail closed (setup_ok=%s params=%s constraints=%s arg_types=%s handler_tags=%s dispatch=%s effect=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(params_fail),
+                runtime_alloc_error_text(constraints_fail),
+                runtime_alloc_error_text(arg_types_fail),
+                runtime_alloc_error_text(handler_tags_fail),
+                runtime_alloc_error_text(dispatch_fail),
+                runtime_alloc_error_text(effect_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         MethodSignature sig = { .param_count = 1 };
         MethodTable ambiguous_mt = { .name = interp.symbols.intern("ambiguous-test") };
         DispatchMatchBreakdown breakdown = {

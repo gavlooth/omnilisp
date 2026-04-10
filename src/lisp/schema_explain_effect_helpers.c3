@@ -58,7 +58,8 @@ fn Value* explain_effect_handler_tags(Interp* interp, EffectHandler* handler) {
     for (usz j = 0; j < handler.clause_count; j++) {
         SymbolId tag = explain_effect_clause_tag(handler, j);
         if ((uint)tag == 0) continue;
-        rev = make_cons(interp, make_symbol(interp, tag), rev);
+        rev = explain_prepend_or_oom(make_symbol(interp, tag), rev, interp);
+        if (rev != null && rev.tag == ERROR) return rev;
     }
     return explain_reverse_list(rev, interp);
 }
