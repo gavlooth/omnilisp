@@ -1510,6 +1510,29 @@ fn void run_jit_policy_invalid_primitive_state_fails_closed_test(Interp* interp,
     }
 }
 
+fn void run_jit_policy_pending_raise_string_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    bool saved_force = g_value_force_make_string_alloc_fail;
+    g_value_force_make_string_alloc_fail = true;
+    EvalResult r = run("(handle (/ 1 0) (raise msg 42))", interp);
+    g_value_force_make_string_alloc_fail = saved_force;
+
+    char[] msg = r.error.message[:256];
+    bool ok = r.error.has_error &&
+        jit_policy_str_contains(msg, "out of memory while allocating string");
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: pending raise string materialization fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: pending raise string materialization fails closed (run_error=%s msg=%s)",
+            r.error.has_error ? "yes" : "no",
+            r.error.has_error ? (ZString)msg : (ZString)"<none>"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1558,6 +1581,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("closure-persistent-env-copy-scope-contract", &run_jit_policy_closure_persistent_env_copy_scope_contract_test, interp, pass, fail);
         run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
         run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
+        run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);

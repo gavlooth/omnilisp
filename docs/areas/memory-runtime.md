@@ -89,6 +89,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - if both the original completion and the alloc-failure completion are
     unavailable, `scheduler_complete_os_thread(...)` now drops the OS-thread
     entry and wakes the waiter instead of leaving a running entry stranded.
+- Pending raise publication and dispatch now fail closed on payload/message
+  materialization failure:
+  - pending raise state no longer stores `boundary_promote_to_root(...)`
+    null/error results as ordinary payload.
+  - JIT handle raise dispatch no longer binds or applies fallback
+    `make_string(...)` / `make_cons(...)` constructor failures as handler
+    arguments.
 - `deduce 'match` result dictionary materialization now uses checked hashmap
   construction and checked insertion, so match-result building no longer
   dereferences a raw hashmap shell or embed builder `ERROR`s into a successful

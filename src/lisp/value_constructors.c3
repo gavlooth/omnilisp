@@ -226,8 +226,16 @@ fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = 
                 // Found a raise handler — set pending flag for jit_handle_impl to dispatch.
                 // We can't safely call jit_eval from within a primitive call chain,
                 // so we store payload/message and let the handle block dispatch.
+                Value* promoted_payload = null;
+                if (payload != null) {
+                    promoted_payload = boundary_promote_to_root(payload, interp);
+                    if (promoted_payload == null) {
+                        return make_error(interp, "raise: failed to promote payload");
+                    }
+                    if (promoted_payload.tag == ERROR) return promoted_payload;
+                }
                 interp.flags.raise_pending = true;
-                interp.raise_payload = payload == null ? null : boundary_promote_to_root(payload, interp);
+                interp.raise_payload = promoted_payload;
                 copy_pending_raise_message(interp, msg);
                 return make_error(interp, msg);
             }

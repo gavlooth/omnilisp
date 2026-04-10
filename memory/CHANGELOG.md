@@ -11349,3 +11349,16 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=156 fail=0`
+- 2026-04-10 (pending raise payload materialization fail-closed follow-up):
+  - pending raise publication now rejects `boundary_promote_to_root(...)`
+    null/error results before storing payload state in the interpreter.
+  - JIT handle raise dispatch now rejects fallback message-string and
+    arg-list constructor failure before calling or binding the raise handler.
+  - shipped consequence:
+    - pending raise message/payload materialization failure now remains a
+      top-level eval/runtime error instead of running the raise clause with a
+      constructor-failed value as ordinary data.
+  - validation:
+    - `c3c build`
+    - targeted `jit-policy`: `pass=1 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=157 fail=0`

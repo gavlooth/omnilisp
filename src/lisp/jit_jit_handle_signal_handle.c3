@@ -26,6 +26,10 @@ fn Value* dispatch_pending_raise(Expr* expr, EffectHandler* h, Env* env, Interp*
             interp.raise_payload = null;
             interp.raise_msg_len = 0;
             interp.raise_msg[0] = 0;
+            if (msg_val == null) {
+                return make_error(interp, "handle: failed to materialize raise payload");
+            }
+            if (msg_val.tag == ERROR) return msg_val;
             Value* k_val = make_nil(interp);
             Env* clause_env = jit_env_extend(interp, env, clause.k_name, k_val);
             if (clause_env == null) {

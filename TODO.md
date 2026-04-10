@@ -22,6 +22,30 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-PENDING-RAISE-PAYLOAD-FAILCLOSED-028` make pending raise
+  payload/message materialization fail closed instead of binding constructor
+  failures as ordinary handler data
+  - closure evidence:
+    - `src/lisp/value_constructors.c3`
+      now rejects `boundary_promote_to_root(...)` null/error results before
+      publishing pending raise payload state.
+    - `src/lisp/jit_jit_runtime_effects_handle.c3`
+      now rejects raise fallback `make_string(...)` and arg-pair
+      `make_cons(...)` failure before handler call-through.
+    - `src/lisp/jit_jit_handle_signal_handle.c3`
+      now rejects raise fallback string materialization failure before clause
+      env extension.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now proves the surface `handle` form returns a top-level eval error
+      instead of invoking the raise clause when pending raise message
+      materialization fails.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+      now pins the same fail-closed contract in the `jit-policy` slice.
+    - validation:
+      - `c3c build`
+      - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=pending-raise-string-alloc-failure ./build/main --test-suite lisp`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-SCHEDULER-OS-THREAD-NULL-COMPLETION-FAILCLOSED-027` make
   `scheduler_complete_os_thread(...)` drop+wake instead of stranding a running
   OS-thread entry when both completion materialization and alloc-failure

@@ -1503,6 +1503,27 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        EvalResult raise_run = run("(handle (/ 1 0) (raise msg 42))", interp);
+        g_value_force_make_string_alloc_fail = saved_force;
+
+        char[] msg = raise_run.error.message[:256];
+        bool ok = raise_run.error.has_error &&
+            str_starts_with(msg, "out of memory while allocating string");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: pending raise string materialization fails closed before handler bind");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: pending raise string materialization fails closed before handler bind (run_error=%s msg=%s)",
+                raise_run.error.has_error ? "yes" : "no",
+                raise_run.error.has_error ? (ZString)msg : runtime_alloc_error_text(raise_run.value));
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult cmp_run = run("(lambda (a) (lambda (b) (error \"boom\")))", interp);
         Value* list = make_cons(interp, make_int(interp, 3), make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp))));
         Value*[2] sort_args = { cmp_run.error.has_error ? null : cmp_run.value, list };

@@ -76,8 +76,16 @@ fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectSt
         interp.raise_payload = null;
         interp.raise_msg_len = 0;
         interp.raise_msg[0] = 0;
+        if (msg_val == null) {
+            return make_error(interp, "handle: failed to materialize raise payload");
+        }
+        if (msg_val.tag == ERROR) return msg_val;
         Value* k_val = make_nil(interp);
         Value* pair = make_cons(interp, k_val, msg_val);
+        if (pair == null) {
+            return make_error(interp, "handle: failed to construct raise handler args");
+        }
+        if (pair.tag == ERROR) return pair;
         return jit_apply_value(handler_closure, pair, interp);
     }
     return null;
