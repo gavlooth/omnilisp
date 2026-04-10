@@ -1,5 +1,24 @@
 ## 2026-04-10
 
+- Closed remaining boundary leaf-wrapper allocation fail-open paths for
+  `INSTANCE`, `FFI_HANDLE`, and `TIME_POINT` copies:
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now fails closed before
+    `instance_retain(...)` / `ffi_handle_retain(...)` if destination wrapper
+    allocation fails for `copy_instance_to_parent(...)` or
+    `copy_ffi_handle_to_parent(...)`.
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` now returns a typed
+    boundary error if `copy_time_point_to_parent(...)` cannot allocate its
+    wrapper instead of dereferencing a null result.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves forced
+    boundary-copy wrapper allocation failure:
+    - does not retain instance owner scopes,
+    - does not increment `FFI_HANDLE` refcounts or trigger early finalization,
+    - and surfaces a typed error for `TIME_POINT` copies.
+  - validation:
+    - `rm -rf build/obj/linux-x64 build/main && c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
 - Closed env-copy / return-boundary wrapper-allocation null-deref paths for
   closure and iterator special cases:
   - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now treats a null

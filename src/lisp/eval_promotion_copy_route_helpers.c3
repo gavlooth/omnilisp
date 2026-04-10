@@ -4,6 +4,7 @@ import std::core::mem;
 import main;
 
 bool g_boundary_force_copy_continuation_wrapper_alloc_fail = false;
+bool g_boundary_force_copy_time_point_wrapper_alloc_fail = false;
 
 fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     Value* first_arg = copy_to_parent_with_fault(v.partial_val.first_arg, interp, fault_out);
@@ -477,7 +478,12 @@ fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
 }
 
 fn Value* copy_time_point_to_parent(Value* v, Interp* interp) {
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_time_point_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
+    if (result == null) {
+        return raise_error(interp, "boundary: failed to allocate time-point copy value");
+    }
     result.tag = TIME_POINT;
     result.time_point_val = v.time_point_val;
     return result;

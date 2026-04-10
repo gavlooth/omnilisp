@@ -215,6 +215,139 @@ fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp,
         }
     }
 
+    // Invariant: boundary copy fails closed on instance/ffi/time-point wrapper
+    // allocation failure and does not introduce retained ownership side effects.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: leaf wrapper alloc failure rollback");
+            (*fail)++;
+            return;
+        }
+
+        int ffi_destroy_count = 0;
+
+        interp.current_scope = foreign;
+        Value* inst_value = make_instance(interp, (TypeId)1, null, 0);
+        main::ScopeRegion* inst_owner_scope =
+            inst_value != null && inst_value.tag == INSTANCE ? inst_value.instance_val.owner_scope : null;
+        Value* ffi_value = make_ffi_handle_ex(
+            interp,
+            (void*)0x1234,
+            "__leaf-wrapper-fail",
+            fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            },
+            false
+        );
+        if (ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null) {
+            ffi_value.ffi_val.finalizer = fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            };
+            ffi_value.ffi_val.lib_handle = (void*)&ffi_destroy_count;
+            ffi_value.ffi_val.free_lib_handle = false;
+        }
+        Value* time_point = make_time_point(interp, TIME_POINT_DATETIME, 2026, 4, 10, 1, 2, 3, 0, 0);
+
+        bool setup_ok = inst_value != null &&
+                        inst_value.tag == INSTANCE &&
+                        inst_owner_scope != null &&
+                        inst_owner_scope.refcount == 1 &&
+                        ffi_value != null &&
+                        ffi_value.tag == FFI_HANDLE &&
+                        ffi_value.ffi_val != null &&
+                        ffi_value.ffi_val.refcount == 1 &&
+                        time_point != null &&
+                        time_point.tag == TIME_POINT;
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+
+        bool saved_force_instance = g_boundary_force_copy_instance_wrapper_alloc_fail;
+        bool saved_force_ffi = g_boundary_force_copy_ffi_handle_wrapper_alloc_fail;
+        bool saved_force_time = g_boundary_force_copy_time_point_wrapper_alloc_fail;
+        g_boundary_force_copy_instance_wrapper_alloc_fail = true;
+        g_boundary_force_copy_ffi_handle_wrapper_alloc_fail = true;
+        g_boundary_force_copy_time_point_wrapper_alloc_fail = true;
+
+        BoundaryCopyResult copied_instance =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(inst_value, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_ffi =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(ffi_value, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        BoundaryCopyResult copied_time =
+            setup_ok ? boundary_copy_to_parent_site_ctx_checked(time_point, interp, COPY_SITE_GENERIC, null)
+                     : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+
+        g_boundary_force_copy_instance_wrapper_alloc_fail = saved_force_instance;
+        g_boundary_force_copy_ffi_handle_wrapper_alloc_fail = saved_force_ffi;
+        g_boundary_force_copy_time_point_wrapper_alloc_fail = saved_force_time;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+
+        int inst_owner_rc_after_fail = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_fail = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+
+        bool instance_fault_ok = !boundary_copy_result_ok(copied_instance) &&
+                                 copied_instance.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT &&
+                                 inst_owner_rc_after_fail == 1;
+        bool ffi_fault_ok = !boundary_copy_result_ok(copied_ffi) &&
+                            copied_ffi.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT &&
+                            ffi_rc_after_fail == 1;
+        bool time_fault_ok = boundary_copy_result_ok(copied_time) &&
+                             copied_time.value != null &&
+                             copied_time.value.tag == ERROR &&
+                             copied_time.value.str_chars != null &&
+                             str_starts_with(copied_time.value.str_chars[:copied_time.value.str_len], "boundary: failed to allocate time-point copy value");
+
+        main::scope_release(target);
+        int inst_owner_rc_after_target_release = inst_owner_scope != null ? (int)inst_owner_scope.refcount : -1;
+        int ffi_rc_after_target_release = ffi_value != null && ffi_value.tag == FFI_HANDLE && ffi_value.ffi_val != null
+            ? (int)ffi_value.ffi_val.refcount
+            : -1;
+        bool teardown_ok = inst_owner_rc_after_target_release == 1 &&
+                           ffi_rc_after_target_release == 1 &&
+                           ffi_destroy_count == 0;
+
+        main::scope_release(foreign);
+        bool owner_release_ok = ffi_destroy_count == 1;
+
+        bool ok = setup_ok &&
+                  instance_fault_ok &&
+                  ffi_fault_ok &&
+                  time_fault_ok &&
+                  teardown_ok &&
+                  owner_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: leaf wrapper alloc failure rollback");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: leaf wrapper alloc failure rollback (setup_ok=%s inst_fault_ok=%s ffi_fault_ok=%s time_fault_ok=%s inst_rc_fail=%d ffi_rc_fail=%d inst_rc_target=%d ffi_rc_target=%d ffi_destroy_count=%d)",
+                setup_ok ? "yes" : "no",
+                instance_fault_ok ? "yes" : "no",
+                ffi_fault_ok ? "yes" : "no",
+                time_fault_ok ? "yes" : "no",
+                inst_owner_rc_after_fail,
+                ffi_rc_after_fail,
+                inst_owner_rc_after_target_release,
+                ffi_rc_after_target_release,
+                ffi_destroy_count
+            );
+            (*fail)++;
+        }
+    }
+
     // Invariant: disjoint shared wrappers (collections/method tables) are
     // defensively cloned rather than aliased once reuse is declined.
     {

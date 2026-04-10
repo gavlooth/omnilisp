@@ -277,3 +277,10 @@ for future concurrency ownership evolution.
 - Memory-lifetime coverage now includes direct regressions for:
   - `copy_to_parent(...)` closure wrapper alloc failure teardown symmetry
   - env-copy closure wrapper alloc failure teardown symmetry
+- Boundary leaf-wrapper copies now also fail closed for `INSTANCE`,
+  `FFI_HANDLE`, and `TIME_POINT`:
+  - failed wrapper allocation no longer dereferences null in those copy paths,
+  - failed `INSTANCE` / `FFI_HANDLE` wrapper allocation no longer risks
+    introducing a leaked retain before abort,
+  - and `TIME_POINT` boundary copies now surface a typed error on allocation
+    failure.

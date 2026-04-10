@@ -3,6 +3,8 @@ module lisp;
 import main;
 
 bool g_boundary_force_copy_closure_wrapper_alloc_fail = false;
+bool g_boundary_force_copy_instance_wrapper_alloc_fail = false;
+bool g_boundary_force_copy_ffi_handle_wrapper_alloc_fail = false;
 
 fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     // Iterative copy to prevent C stack overflow on long lists.
@@ -207,7 +209,10 @@ fn bool primitive_clone_plain_header(Primitive* dst, Primitive* src) @inline {
 
 fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
     if (!needs_wrapper_copy(v, interp)) return v;
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_instance_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
+    if (result == null) return null;
     result.tag = INSTANCE;
     result.instance_val = v.instance_val;
     instance_retain(v.instance_val);
@@ -217,7 +222,10 @@ fn Value* copy_instance_to_parent(Value* v, Interp* interp) {
 
 fn Value* copy_ffi_handle_to_parent(Value* v, Interp* interp) {
     if (!needs_wrapper_copy(v, interp)) return v;
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_ffi_handle_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
+    if (result == null) return null;
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
     ffi_handle_retain(result.ffi_val);
