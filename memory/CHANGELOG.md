@@ -1,5 +1,21 @@
 ## 2026-04-10
 
+- Closed the root-store shared-wrapper partial-cleanup follow-up:
+  - `src/lisp/eval_promotion_root_clone_basic.c3` now routes late-failure
+    `ARRAY` and `HASHMAP` / `SET` clone aborts through the same shared partial
+    cleanup helpers used by ordinary boundary copy and ESCAPE promotion.
+  - root-store clone rollback now unwinds already-copied child ownership side
+    effects before freeing the aborted heap wrapper, instead of leaking copied
+    closure-env retains on a later element/value failure.
+  - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` now includes a
+    focused root-boundary regression covering both `ARRAY` and `HASHMAP`
+    partial-clone abort cleanup, and
+    `src/lisp/tests_memory_lifetime_groups.c3` wires it into the bounded smoke
+    lane.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=86 fail=0`
+
 - Closed the shared-wrapper partial-cleanup follow-up for boundary copy and
   ESCAPE promotion:
   - `src/lisp/eval_promotion_root_clones.c3` now owns shared cleanup helpers

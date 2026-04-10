@@ -90,8 +90,7 @@ fn Value* root_store_clone_array_to_scope(
             &copy_ctx
         );
         if (copied != null && copied.tag == ERROR) {
-            mem::free(dst_arr.items);
-            mem::free(dst_arr);
+            boundary_cleanup_partial_array_copy(src_arr, dst_arr, i);
             return copied;
         }
         dst_arr.items[i] = copied;
@@ -155,10 +154,10 @@ fn Value* root_store_clone_hashmap_to_scope(
                     &copy_ctx
                 );
                 if (copied_key != null && copied_key.tag == ERROR) {
-                    mem::free(dst_map.entries);
-                    mem::free(dst_map);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
                     return copied_key;
                 }
+                dst_e.key = copied_key;
                 Value* copied_value = boundary_copy_to_parent_site_ctx(
                     src_e.value,
                     interp,
@@ -166,11 +165,9 @@ fn Value* root_store_clone_hashmap_to_scope(
                     &copy_ctx
                 );
                 if (copied_value != null && copied_value.tag == ERROR) {
-                    mem::free(dst_map.entries);
-                    mem::free(dst_map);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
                     return copied_value;
                 }
-                dst_e.key = copied_key;
                 dst_e.value = copied_value;
             }
         }
