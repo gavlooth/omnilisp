@@ -63,6 +63,27 @@ Post-wave follow-up (2026-04-10):
     not survive after the builder returns or aborts.
   - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now pins
     that contract directly.
+- The destination-context follow-up is now also closed:
+  - direct destination escape promotion in
+    `src/lisp/eval_boundary_commit_escape_builder_helpers.c3`,
+    `src/lisp/eval_boundary_commit_escape_helpers.c3`, and
+    `src/lisp/eval_boundary_commit_destination.c3` now runs under the
+    caller-provided `PromotionContext` rather than silently consuming ambient
+    interpreter context.
+  - destination-builder teardown now restores both memo state and the
+    builder-local scope-chain cache snapshot.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now
+    proves both the builder-local cache reset contract and the non-active
+    caller-context direct-promotion contract.
+- The wrapper-slot leak follow-up is now also closed:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3`,
+    `src/lisp/eval_promotion_root_clone_basic.c3`, and
+    `src/lisp/eval_promotion_root_clones.c3` now allocate destination wrapper
+    values only at the commit point after fallible payload copy succeeds.
+  - repeated failed shared-wrapper copy and root-store method-table clone
+    attempts are now covered directly by allocation-count regressions in
+    `src/lisp/tests_memory_lifetime_boundary_groups.c3` and
+    `src/lisp/tests_memory_lifetime_root_boundary_groups.c3`.
 - No live backlog items remain from this audit wave.
 
 ## Objective

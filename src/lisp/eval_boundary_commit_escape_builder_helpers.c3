@@ -5,18 +5,57 @@ import main;
 
 bool g_boundary_force_destination_error_escape_alloc_fail = false;
 
-fn PromotionMemoEntry* boundary_destination_builder_memo_scope_begin(PromotionContext* ctx) @inline {
-    return ctx != null ? ctx.memo_head : null;
+struct BoundaryDestinationBuilderMemoScope {
+    PromotionMemoEntry* saved_memo_head;
+    usz saved_scope_chain_cache_cursor;
+    PromotionContextScopeChainCacheEntry[ PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE ] saved_scope_chain_cache;
+    bool active;
+}
+
+fn BoundaryDestinationBuilderMemoScope boundary_destination_builder_memo_scope_begin(PromotionContext* ctx) @inline {
+    BoundaryDestinationBuilderMemoScope saved = {
+        .saved_memo_head = null,
+        .saved_scope_chain_cache_cursor = 0,
+        .active = ctx != null,
+    };
+    if (ctx == null) return saved;
+    saved.saved_memo_head = ctx.memo_head;
+    saved.saved_scope_chain_cache_cursor = ctx.scope_chain_cache_cursor;
+    for (usz i = 0; i < PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE; i++) {
+        saved.saved_scope_chain_cache[i] = ctx.scope_chain_cache[i];
+    }
+    return saved;
 }
 
 fn void boundary_destination_builder_memo_scope_end(
     PromotionContext* ctx,
-    PromotionMemoEntry* saved_memo_head
+    BoundaryDestinationBuilderMemoScope saved
 ) @inline {
     // Destination builders allocate through a temporary build scope. Any memo
-    // entries remembered while routing nested children are builder-local and
-    // must not survive after the builder returns or aborts.
-    if (ctx != null) ctx.memo_head = saved_memo_head;
+    // entries or scope-chain cache probes remembered while routing nested
+    // children are builder-local and must not survive after the builder
+    // returns or aborts.
+    if (ctx == null || !saved.active) return;
+    ctx.memo_head = saved.saved_memo_head;
+    ctx.scope_chain_cache_cursor = saved.saved_scope_chain_cache_cursor;
+    for (usz i = 0; i < PROMOTION_CONTEXT_SCOPE_CHAIN_CACHE_SIZE; i++) {
+        ctx.scope_chain_cache[i] = saved.saved_scope_chain_cache[i];
+    }
+}
+
+fn Value* boundary_promote_to_escape_ctx(
+    Value* routed,
+    Interp* interp,
+    PromotionContext* ctx = null
+) @inline {
+    if (ctx == null || interp == null || interp.active_promotion_ctx == ctx) {
+        return boundary_promote_to_escape(routed, interp);
+    }
+
+    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
+    interp.active_promotion_ctx = ctx;
+    defer interp.active_promotion_ctx = saved_active_ctx;
+    return boundary_promote_to_escape(routed, interp);
 }
 
 fn Value* boundary_fallback_disallowed_error(Interp* interp, BoundaryCommitFault fault_code) @noinline {
@@ -40,7 +79,7 @@ fn Value* boundary_destination_promote_routed_escape(
     if (routed == null) return null;
     if (ctx != null && ctx.aborted) return routed;
     if (routed.scope_gen == target_scope.escape_generation) return routed;
-    return boundary_promote_to_escape(routed, interp);
+    return boundary_promote_to_escape_ctx(routed, interp, ctx);
 }
 
 fn Value* boundary_destination_bubble_child_fault(

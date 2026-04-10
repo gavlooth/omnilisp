@@ -18,8 +18,9 @@ fn Value* boundary_build_destination_cons_escape(
 ) {
     if (list.tag != CONS) return list;
     if (ctx != null && ctx.aborted) return list;
-    PromotionMemoEntry* saved_memo_head = boundary_destination_builder_memo_scope_begin(ctx);
-    defer boundary_destination_builder_memo_scope_end(ctx, saved_memo_head);
+    BoundaryDestinationBuilderMemoScope saved_builder_scope =
+        boundary_destination_builder_memo_scope_begin(ctx);
+    defer boundary_destination_builder_memo_scope_end(ctx, saved_builder_scope);
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);

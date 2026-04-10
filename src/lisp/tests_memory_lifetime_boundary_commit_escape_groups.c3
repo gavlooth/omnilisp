@@ -170,6 +170,8 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
             bool memo_empty_after_second = false;
             bool child_cache_empty_after_first = false;
             bool child_cache_empty_after_second = false;
+            bool chain_cache_empty_after_first = false;
+            bool chain_cache_empty_after_second = false;
             if (setup_ok) {
                 boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
                 memo_empty_before = ctx.memo_head == null;
@@ -182,6 +184,15 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 );
                 memo_empty_after_first = ctx.memo_head == null;
                 child_cache_empty_after_first = promotion_context_lookup(&ctx, nested) == null;
+                bool cached_first = false;
+                chain_cache_empty_after_first =
+                    !promotion_context_lookup_scope_chain_cache(
+                        &ctx,
+                        (void*)nested,
+                        target_scope,
+                        nested.scope_gen,
+                        &cached_first
+                    );
                 built_second = boundary_build_destination_partial_escape(
                     src,
                     interp,
@@ -191,6 +202,15 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 );
                 memo_empty_after_second = ctx.memo_head == null;
                 child_cache_empty_after_second = promotion_context_lookup(&ctx, nested) == null;
+                bool cached_second = false;
+                chain_cache_empty_after_second =
+                    !promotion_context_lookup_scope_chain_cache(
+                        &ctx,
+                        (void*)nested,
+                        target_scope,
+                        nested.scope_gen,
+                        &cached_second
+                    );
                 boundary_promotion_context_end(interp, &ctx);
             }
 
@@ -216,7 +236,9 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 memo_empty_after_first &&
                 memo_empty_after_second &&
                 child_cache_empty_after_first &&
-                child_cache_empty_after_second;
+                child_cache_empty_after_second &&
+                chain_cache_empty_after_first &&
+                chain_cache_empty_after_second;
 
             interp.current_scope = root_scope;
             main::scope_release(releasing_scope);
@@ -227,7 +249,7 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                 (*pass)++;
             } else {
                 io::printfn(
-                    "[FAIL] lifetime: boundary_commit_escape destination builder memo is local (setup_ok=%s first_ok=%s second_ok=%s memo_ok=%s memo_after_first=%s memo_after_second=%s child_cached_first=%s child_cached_second=%s)",
+                    "[FAIL] lifetime: boundary_commit_escape destination builder memo is local (setup_ok=%s first_ok=%s second_ok=%s memo_ok=%s memo_after_first=%s memo_after_second=%s child_cached_first=%s child_cached_second=%s chain_cached_first=%s chain_cached_second=%s)",
                     setup_ok ? "yes" : "no",
                     first_ok ? "yes" : "no",
                     second_ok ? "yes" : "no",
@@ -235,7 +257,9 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                     memo_empty_after_first ? "empty" : "live",
                     memo_empty_after_second ? "empty" : "live",
                     child_cache_empty_after_first ? "no" : "yes",
-                    child_cache_empty_after_second ? "no" : "yes"
+                    child_cache_empty_after_second ? "no" : "yes",
+                    chain_cache_empty_after_first ? "no" : "yes",
+                    chain_cache_empty_after_second ? "no" : "yes"
                 );
                 (*fail)++;
             }
@@ -394,6 +418,79 @@ fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pa
                     (long)generic_delta,
                     (long)commit_delta,
                     committed.value == src ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: direct destination promotion must honor the caller-provided
+    // promotion context even when a different context is currently active.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        main::ScopeRegion* disjoint_scope = main::scope_create(root_scope);
+        if (target_scope == null || releasing_scope == null || disjoint_scope == null) {
+            if (disjoint_scope != null) main::scope_release(disjoint_scope);
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape direct promotion honors caller ctx");
+            (*fail)++;
+        } else {
+            interp.current_scope = disjoint_scope;
+            Value* src = make_int(interp, 1701);
+
+            PromotionContext outer_ctx = {};
+            PromotionContext caller_ctx = {};
+            boundary_promotion_context_begin(interp, &outer_ctx, PROMOTION_CTX_BUDGET_RETURN);
+            caller_ctx.epoch = outer_ctx.epoch + 1;
+            caller_ctx.budget = 0;
+            caller_ctx.aborted = false;
+            caller_ctx.abort_reason = PROMOTION_ABORT_NONE;
+            caller_ctx.memo_head = null;
+            caller_ctx.prev = &outer_ctx;
+            promotion_context_reset_scope_chain_cache(&caller_ctx);
+
+            BoundaryCommitDestinationPromotion promotion =
+                boundary_commit_try_destination_promotion(
+                    src,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &caller_ctx,
+                    true
+                );
+
+            bool ok = !promotion.committed &&
+                      promotion.value == src &&
+                      promotion.fault_code == BOUNDARY_COMMIT_FAULT_DESTINATION_DIRECT_PROMOTION &&
+                      caller_ctx.aborted &&
+                      caller_ctx.abort_reason == PROMOTION_ABORT_BUDGET_EXHAUSTED &&
+                      !outer_ctx.aborted &&
+                      outer_ctx.abort_reason == PROMOTION_ABORT_NONE &&
+                      interp.active_promotion_ctx == &outer_ctx;
+
+            boundary_promotion_context_end(interp, &outer_ctx);
+
+            interp.current_scope = root_scope;
+            main::scope_release(disjoint_scope);
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape direct promotion honors caller ctx");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary_commit_escape direct promotion honors caller ctx (committed=%s fault=%s caller_aborted=%s caller_reason=%d outer_aborted=%s active_outer=%s same=%s)",
+                    promotion.committed ? "yes" : "no",
+                    (ZString)boundary_commit_fault_name(promotion.fault_code),
+                    caller_ctx.aborted ? "yes" : "no",
+                    (int)caller_ctx.abort_reason,
+                    outer_ctx.aborted ? "yes" : "no",
+                    interp.active_promotion_ctx == null ? "no" : (interp.active_promotion_ctx == &outer_ctx ? "yes" : "other"),
+                    promotion.value == src ? "yes" : "no"
+                );
                 (*fail)++;
             }
         }

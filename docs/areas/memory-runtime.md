@@ -88,10 +88,22 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or
   aborts and are not part of same-epoch reuse semantics.
+- The same builder-local teardown now restores the small scope-chain cache
+  snapshot too, so temporary destination-build membership probes do not leak
+  stale cache entries back into the caller’s longer-lived `PromotionContext`.
 - Destination iterator detachment now participates in that same builder
   promotion context instead of bypassing it on the detach subpath, so
   destination-built iterator copies reuse same-epoch memoized children and do
   not silently drift around context budget or abort state.
+- Direct destination escape promotion now also routes through the explicit
+  caller-owned `PromotionContext`, so releasing-scope retry, mixed-destination
+  retry, and direct destination promotion all participate in one coherent
+  memo/budget/abort epoch instead of falling back to ambient interpreter
+  state.
+- Shared-wrapper copy and root-store clone helpers now allocate/register the
+  destination wrapper only at the commit point after child-copy and payload
+  clone work succeeds, so repeated partial-abort attempts no longer leave
+  unreachable wrapper slots behind in the surviving target/root scope.
 - Direct iterative `CONS` boundary copy and ESCAPE promotion now apply the
   same transactional rollback rule, so a copied/promoted car retain is
   unwound immediately if a later cdr copy/promotion step fails.
@@ -111,7 +123,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 102/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 106/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator

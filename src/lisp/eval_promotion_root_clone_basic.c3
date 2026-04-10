@@ -16,12 +16,12 @@ fn Value* root_store_clone_primitive_to_scope(
     interp.current_scope = target_scope;
     interp.releasing_scope = releasing_scope;
 
-    Value* result = interp.alloc_value_escape();
-    result.tag = PRIMITIVE;
-    result.prim_val = null;
-
     Primitive* src_prim = src.prim_val;
     if (src_prim == null) {
+        Value* result = interp.alloc_value_escape();
+        if (result == null) return null;
+        result.tag = PRIMITIVE;
+        result.prim_val = null;
         main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -36,6 +36,12 @@ fn Value* root_store_clone_primitive_to_scope(
         return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
     }
 
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        mem::free(dst_prim);
+        return null;
+    }
+    result.tag = PRIMITIVE;
     result.prim_val = dst_prim;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
     return result;
@@ -57,12 +63,12 @@ fn Value* root_store_clone_array_to_scope(
     boundary_promotion_context_begin(interp, &copy_ctx);
     defer boundary_promotion_context_end(interp, &copy_ctx);
 
-    Value* result = interp.alloc_value_escape();
-    result.tag = ARRAY;
-    result.array_val = null;
-
     Array* src_arr = src.array_val;
     if (src_arr == null) {
+        Value* result = interp.alloc_value_escape();
+        if (result == null) return null;
+        result.tag = ARRAY;
+        result.array_val = null;
         main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -96,6 +102,12 @@ fn Value* root_store_clone_array_to_scope(
         dst_arr.items[i] = copied;
     }
 
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, target_scope, true);
+        return null;
+    }
+    result.tag = ARRAY;
     result.array_val = dst_arr;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
     return result;
@@ -117,12 +129,12 @@ fn Value* root_store_clone_hashmap_to_scope(
     boundary_promotion_context_begin(interp, &copy_ctx);
     defer boundary_promotion_context_end(interp, &copy_ctx);
 
-    Value* result = interp.alloc_value_escape();
-    result.tag = src.tag;
-    result.hashmap_val = null;
-
     HashMap* src_map = src.hashmap_val;
     if (src_map == null) {
+        Value* result = interp.alloc_value_escape();
+        if (result == null) return null;
+        result.tag = src.tag;
+        result.hashmap_val = null;
         main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -173,6 +185,12 @@ fn Value* root_store_clone_hashmap_to_scope(
         }
     }
 
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, target_scope, true);
+        return null;
+    }
+    result.tag = src.tag;
     result.hashmap_val = dst_map;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
     return result;

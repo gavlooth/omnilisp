@@ -226,6 +226,108 @@ fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp
     }
 }
 
+fn void run_memory_lifetime_root_boundary_method_table_abort_no_wrapper_slot_leak_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: failed root-store METHOD_TABLE clone does not consume root
+    // wrapper allocation slots before the wrapper is actually committed.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        if (child == null) {
+            io::printn("[FAIL] lifetime: root-boundary method-table abort does not leak wrapper slots (setup child)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = child;
+
+        Value* local = interp.alloc_value();
+        local.tag = METHOD_TABLE;
+        main::scope_register_dtor(child, (void*)local, &scope_dtor_value);
+        local.method_table_val = null;
+
+        MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
+        if (mt == null) {
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary method-table abort does not leak wrapper slots (setup table)");
+            (*fail)++;
+            return;
+        }
+        mt.name = interp.symbols.intern("root-boundary-method-table-abort");
+        mt.capacity = 1;
+        mt.entry_count = 1;
+        mt.fallback = null;
+        mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof);
+        if (mt.entries == null) {
+            mem::free(mt);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary method-table abort does not leak wrapper slots (setup entries)");
+            (*fail)++;
+            return;
+        }
+
+        method_signature_init_empty(&mt.entries[0].sig);
+        MethodSignature src_sig;
+        method_signature_init_empty(&src_sig);
+        if (!method_signature_alloc_arrays_in_scope(&src_sig, child, 1, 0) ||
+            !method_signature_copy_to_heap(&mt.entries[0].sig, &src_sig)) {
+            method_table_free_partial_heap(mt, mt.entry_count);
+            interp.current_scope = saved;
+            main::scope_release(child);
+            io::printn("[FAIL] lifetime: root-boundary method-table abort does not leak wrapper slots (setup signature)");
+            (*fail)++;
+            return;
+        }
+        mt.entries[0].implementation = make_int(interp, 2042);
+        local.method_table_val = mt;
+
+        usz alloc_before = interp.root_scope.alloc_count;
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 1;
+        Value* first_promoted = root_store_clone_method_table_to_scope(
+            local,
+            interp,
+            interp.root_scope,
+            child
+        );
+        usz alloc_after_first = interp.root_scope.alloc_count;
+
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 1;
+        Value* second_promoted = root_store_clone_method_table_to_scope(
+            local,
+            interp,
+            interp.root_scope,
+            child
+        );
+        usz alloc_after_second = interp.root_scope.alloc_count;
+        g_method_signature_force_heap_copy_fail_on_call = 0;
+
+        interp.current_scope = saved;
+        main::scope_release(child);
+
+        bool ok = first_promoted == null &&
+                  second_promoted == null &&
+                  alloc_after_first == alloc_before &&
+                  alloc_after_second == alloc_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root-boundary method-table abort does not leak wrapper slots");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: root-boundary method-table abort does not leak wrapper slots (first_null=%s second_null=%s alloc_before=%d alloc_after_first=%d alloc_after_second=%d)",
+                first_promoted == null ? "yes" : "no",
+                second_promoted == null ? "yes" : "no",
+                (long)alloc_before,
+                (long)alloc_after_first,
+                (long)alloc_after_second
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_root_boundary_primitive_clone_test(Interp* interp, int* pass, int* fail) {
     // Invariant: child-owned PRIMITIVE wrapper crossing root-store boundary is
     // cloned only when its payload is plain data; opaque user_data must fail

@@ -696,6 +696,127 @@ fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp,
             (*fail)++;
         }
     }
+
+    // Invariant: failed shared-wrapper copy does not consume target wrapper
+    // allocation slots before the wrapper is actually committed.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* releasing = target == null ? null : main::scope_create(target);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || releasing == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (releasing != null) main::scope_release(releasing);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper copy abort does not leak wrapper slots");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = foreign;
+        Value* mt_src = interp.alloc_value();
+        mt_src.tag = METHOD_TABLE;
+        main::scope_register_dtor(foreign, (void*)mt_src, &scope_dtor_value);
+
+        MethodTable* mt_payload = (MethodTable*)mem::malloc(MethodTable.sizeof);
+        if (mt_payload == null) {
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper copy abort does not leak wrapper slots (setup table)");
+            (*fail)++;
+            return;
+        }
+        mt_payload.name = interp.symbols.intern("__mt_wrapper_slot_abort");
+        mt_payload.capacity = 1;
+        mt_payload.entry_count = 1;
+        mt_payload.fallback = null;
+        mt_payload.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof);
+        if (mt_payload.entries == null) {
+            mem::free(mt_payload);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper copy abort does not leak wrapper slots (setup entries)");
+            (*fail)++;
+            return;
+        }
+        method_signature_init_empty(&mt_payload.entries[0].sig);
+        MethodSignature sig_src;
+        method_signature_init_empty(&sig_src);
+        if (!method_signature_alloc_arrays_in_scope(&sig_src, foreign, 1, 0) ||
+            !method_signature_copy_to_heap(&mt_payload.entries[0].sig, &sig_src)) {
+            method_table_free_partial_heap(mt_payload, mt_payload.entry_count);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper copy abort does not leak wrapper slots (setup signature)");
+            (*fail)++;
+            return;
+        }
+        mt_payload.entries[0].implementation = make_int(interp, 1901);
+        mt_src.method_table_val = mt_payload;
+
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+        usz alloc_before = target.alloc_count;
+
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 1;
+        BoundaryCopyResult first_result = boundary_copy_to_parent_site_ctx_checked(
+            mt_src,
+            interp,
+            COPY_SITE_GENERIC,
+            null
+        );
+        usz alloc_after_first = target.alloc_count;
+
+        g_method_signature_heap_copy_call_count = 0;
+        g_method_signature_force_heap_copy_fail_on_call = 1;
+        BoundaryCopyResult second_result = boundary_copy_to_parent_site_ctx_checked(
+            mt_src,
+            interp,
+            COPY_SITE_GENERIC,
+            null
+        );
+        usz alloc_after_second = target.alloc_count;
+        g_method_signature_force_heap_copy_fail_on_call = 0;
+        interp.releasing_scope = null;
+
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(releasing);
+        main::scope_release(target);
+
+        bool first_ok = !boundary_copy_result_ok(first_result) &&
+                        first_result.value == null &&
+                        first_result.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT;
+        bool second_ok = !boundary_copy_result_ok(second_result) &&
+                         second_result.value == null &&
+                         second_result.fault_code == BOUNDARY_COPY_FAULT_NULL_RESULT;
+        bool alloc_ok = alloc_after_first == alloc_before &&
+                        alloc_after_second == alloc_before;
+
+        if (first_ok && second_ok && alloc_ok) {
+            emit_pass_literal("[PASS] lifetime: shared-wrapper copy abort does not leak wrapper slots");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: shared-wrapper copy abort does not leak wrapper slots (first_ok=%s second_ok=%s alloc_before=%d alloc_after_first=%d alloc_after_second=%d first_fault=%s second_fault=%s)",
+                first_ok ? "yes" : "no",
+                second_ok ? "yes" : "no",
+                (long)alloc_before,
+                (long)alloc_after_first,
+                (long)alloc_after_second,
+                (ZString)boundary_copy_fault_name(first_result.fault_code),
+                (ZString)boundary_copy_fault_name(second_result.fault_code)
+            );
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Interp* interp, int* pass, int* fail) {

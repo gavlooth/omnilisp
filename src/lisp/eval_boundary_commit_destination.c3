@@ -140,7 +140,7 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
     }
 
     if (allow_direct_promotion) {
-        Value* destination_direct = boundary_promote_to_escape(result, interp);
+        Value* destination_direct = boundary_promote_to_escape_ctx(result, interp, active_ctx);
         if (!active_ctx.aborted &&
             destination_direct != null &&
             destination_direct != result &&

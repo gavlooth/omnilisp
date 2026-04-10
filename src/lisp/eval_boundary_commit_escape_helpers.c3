@@ -78,7 +78,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
             boundary_note_promotion_attempt();
             BoundaryScopeSwap promote_scope = boundary_scope_swap_begin(interp, releasing_scope);
             defer boundary_scope_swap_end(interp, &promote_scope);
-            result = boundary_promote_to_escape(result, interp);
+            result = boundary_promote_to_escape_ctx(result, interp, active_ctx);
             *classification_io = boundary_classify_return_value(result, interp, target_scope, releasing_scope);
             *result_io = result;
         }
@@ -141,7 +141,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
 
     if (releasing_scope.refcount != 1 &&
         boundary_nonunique_destination_retry_allowed(result)) {
-        Value* destination_direct = boundary_promote_to_escape(result, interp);
+        Value* destination_direct = boundary_promote_to_escape_ctx(result, interp, active_ctx);
         if (!active_ctx.aborted &&
             destination_direct != null &&
             destination_direct != result &&
@@ -210,7 +210,7 @@ fn void boundary_commit_escape_handle_mixed_destination(
         if (owns_mixed_ctx) boundary_promotion_context_end(interp, mixed_ctx);
     }
 
-    Value* mixed_destination = boundary_promote_to_escape(result, interp);
+    Value* mixed_destination = boundary_promote_to_escape_ctx(result, interp, mixed_ctx);
     if (!mixed_ctx.aborted &&
         mixed_destination != null &&
         mixed_destination != result &&

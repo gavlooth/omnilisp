@@ -1,5 +1,49 @@
 ## 2026-04-10
 
+- Closed the wrapper-slot leak on shared-wrapper and root-store partial aborts:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3`,
+    `src/lisp/eval_promotion_root_clone_basic.c3`, and
+    `src/lisp/eval_promotion_root_clones.c3` now delay destination wrapper
+    allocation/registration until after fallible child-copy and payload clone
+    work succeeds.
+  - when wrapper allocation itself fails after payload materialization, those
+    paths now route through the existing partial-cleanup helpers so copied
+    child retains and heap payloads are unwound before returning.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves repeated
+    failed shared-wrapper copy attempts do not monotonically grow the
+    surviving target scope allocation count.
+  - `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` now proves the
+    same invariant for repeated failed root-store method-table clone attempts
+    against `root_scope`.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
+- Closed a destination-commit promotion-context drift:
+  - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` now routes
+    direct destination escape promotion through an explicit ctx-aware helper
+    instead of silently consuming `interp.active_promotion_ctx`.
+  - `src/lisp/eval_boundary_commit_escape_helpers.c3` and
+    `src/lisp/eval_boundary_commit_destination.c3` now use that helper for
+    releasing-scope retry, mixed-destination retry, and direct destination
+    promotion, so the caller-provided `PromotionContext` owns the same
+    memo/budget/abort epoch across the whole destination-commit lane.
+  - destination-builder teardown now restores both `memo_head` and the
+    builder-local scope-chain cache snapshot, so temporary build-scope cache
+    entries do not survive after the builder returns or aborts.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now
+    proves:
+    - repeated builder calls do not retain builder-local scope-chain cache
+      state, and
+    - a non-active caller `PromotionContext` still receives the abort state
+      from direct destination promotion while the unrelated active context
+      remains untouched.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+    - `scripts/check_status_consistency.sh`
+
 - Closed a direct `CONS` rollback symmetry gap in boundary copy and ESCAPE promotion:
   - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now treats iterative
     `CONS` copy as transactional: newly allocated spine cells are initialized

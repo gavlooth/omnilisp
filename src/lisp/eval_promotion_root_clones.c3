@@ -363,12 +363,12 @@ fn Value* root_store_clone_method_table_to_scope(
     boundary_promotion_context_begin(interp, &copy_ctx);
     defer boundary_promotion_context_end(interp, &copy_ctx);
 
-    Value* result = interp.alloc_value_escape();
-    result.tag = METHOD_TABLE;
-    result.method_table_val = null;
-
     MethodTable* src_mt = src.method_table_val;
     if (src_mt == null) {
+        Value* result = interp.alloc_value_escape();
+        if (result == null) return null;
+        result.tag = METHOD_TABLE;
+        result.method_table_val = null;
         main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
         return result;
     }
@@ -424,6 +424,19 @@ fn Value* root_store_clone_method_table_to_scope(
     }
     dst_mt.fallback = copied_fallback;
 
+    Value* result = interp.alloc_value_escape();
+    if (result == null) {
+        boundary_cleanup_partial_method_table_copy(
+            src_mt,
+            dst_mt,
+            dst_mt.entry_count,
+            true,
+            target_scope,
+            true
+        );
+        return null;
+    }
+    result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
     main::scope_register_dtor_escape(target_scope, (void*)result, &scope_dtor_value);
     return result;
