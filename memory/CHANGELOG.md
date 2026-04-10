@@ -1,5 +1,23 @@
 ## 2026-04-10
 
+- Closed the OS-thread null-completion fail-closed lane:
+  - `src/lisp/scheduler_thread_task_transition_scaffold.c3`
+    now exposes a narrow transition-completion allocation fail seam for
+    deterministic scheduler boundary tests.
+  - `src/lisp/scheduler_thread_task_transitions.c3`
+    now drops the OS-thread entry when both completion materialization and
+    alloc-failure completion materialization fail, instead of returning with
+    the entry still running.
+  - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+    now proves the double-failure seam wakes the blocked waiter, clears the
+    join token, and removes the OS-thread entry.
+  - `src/lisp/tests_scheduler_groups.c3`
+    now wires that regression into the bounded scheduler slice.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the malformed iterator-tail fail-open lane:
   - `src/lisp/primitives_iter_state.c3`
     now exposes `iterator_tail_or_error(...)` so iterator tail validation is

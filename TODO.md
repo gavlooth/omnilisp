@@ -22,6 +22,27 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-SCHEDULER-OS-THREAD-NULL-COMPLETION-FAILCLOSED-027` make
+  `scheduler_complete_os_thread(...)` drop+wake instead of stranding a running
+  OS-thread entry when both completion materialization and alloc-failure
+  completion materialization fail
+  - closure evidence:
+    - `src/lisp/scheduler_thread_task_transition_scaffold.c3`
+      now exposes a narrow transition-completion allocation fail seam for
+      deterministic scheduler boundary tests.
+    - `src/lisp/scheduler_thread_task_transitions.c3`
+      now drops the OS-thread entry on null completion plus alloc-failure
+      completion OOM instead of returning with the entry still running.
+    - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
+      now pins the double-failure seam and proves the blocked waiter wakes,
+      join token clears, and the OS-thread entry is removed.
+    - `src/lisp/tests_scheduler_groups.c3`
+      now wires the new boundary regression into the bounded scheduler slice.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-ITERATOR-MALFORMED-TAIL-FAILCLOSED-026` make iterator
   terminal and coroutine helpers reject malformed pair tails instead of
   truncating pipelines as successful completion

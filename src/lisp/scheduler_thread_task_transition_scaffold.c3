@@ -1,6 +1,12 @@
 module lisp;
 
+int g_scheduler_force_transition_completion_alloc_fail_nth = 0;
+
 fn OffloadCompletion* scheduler_make_transition_error_completion(char[] error_message) {
+    if (g_scheduler_force_transition_completion_alloc_fail_nth > 0) {
+        g_scheduler_force_transition_completion_alloc_fail_nth--;
+        if (g_scheduler_force_transition_completion_alloc_fail_nth == 0) return null;
+    }
     OffloadCompletion* completion = (OffloadCompletion*)mem::malloc(OffloadCompletion.sizeof);
     if (completion == null) return null;
     *completion = {};

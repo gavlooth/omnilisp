@@ -52,7 +52,12 @@ fn void scheduler_complete_os_thread(usz thread_id, uint generation, OffloadComp
     }
     if (completion == null) {
         completion = scheduler_make_os_thread_alloc_failure_completion();
-        if (completion == null) return;
+        if (completion == null) {
+            // Fail closed: never leave a RUNNING os-thread entry stranded on
+            // completion materialization failure.
+            scheduler_drop_os_thread(thread_id, generation);
+            return;
+        }
     }
 
     usz waiter_fiber_id = NO_FIBER;

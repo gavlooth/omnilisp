@@ -70,6 +70,92 @@ fn void run_scheduler_thread_task_null_completion_fail_closed_boundary_tests(Int
     );
 }
 
+fn void run_scheduler_os_thread_null_completion_fail_closed_boundary_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: null completion delivery into os-thread completion path must
+    // fail closed (error completion or drop+wake) and restore boundary/runtime
+    // state.
+    SchedulerBoundarySnapshot saved = scheduler_capture_runtime_boundary_snapshot(interp);
+
+    bool ok = true;
+    char[] failed_phase = "";
+
+    scheduler_init();
+    usz saved_fiber_count = g_scheduler.fiber_count;
+    usz saved_current_fiber_id = g_scheduler.current_fiber_id;
+    bool saved_running = g_scheduler.running;
+    FiberEntry saved_fiber_1 = g_scheduler.fibers[1];
+    uint saved_join_token_1 = g_scheduler.fiber_join_wait_token[1];
+    uint saved_latched_os_thread_1 = g_scheduler.latched_os_thread_done_wake_epoch[1];
+    int saved_force_fail = g_scheduler_force_transition_completion_alloc_fail_nth;
+
+    if (g_scheduler.fiber_count < 2) g_scheduler.fiber_count = 2;
+    g_scheduler.fibers[1] = {};
+    g_scheduler.fibers[1].state = FIBER_BLOCKED;
+    g_scheduler.fiber_join_wait_token[1] = 0;
+    g_scheduler.latched_os_thread_done_wake_epoch[1] = 0;
+
+    usz thread_id = scheduler_alloc_os_thread();
+    uint generation = 0;
+    if (thread_id == NO_OS_THREAD ||
+        !scheduler_get_os_thread_generation(thread_id, &generation) ||
+        generation == 0) {
+        ok = false;
+        failed_phase = "alloc";
+    } else if (!scheduler_try_begin_os_thread(thread_id, generation)) {
+        ok = false;
+        failed_phase = "begin";
+    } else {
+        int wait_state = scheduler_register_os_thread_waiter(thread_id, generation, 1);
+        if (wait_state != SCHEDULER_JOIN_WAIT_REGISTERED) {
+            ok = false;
+            failed_phase = "register";
+        } else {
+            g_scheduler_force_transition_completion_alloc_fail_nth = 1;
+            scheduler_complete_os_thread(thread_id, generation, null);
+            g_scheduler_force_transition_completion_alloc_fail_nth = saved_force_fail;
+            drain_wakeups();
+
+            bool waiter_woken = g_scheduler.fibers[1].state == FIBER_READY;
+            bool token_cleared = g_scheduler.fiber_join_wait_token[1] == 0;
+            bool dropped = !scheduler_os_thread_exists(thread_id, generation);
+            int done_state = scheduler_wait_os_thread_completion_state(thread_id, generation, 0);
+            bool invalid_after_drop = done_state == SCHEDULER_JOIN_WAIT_INVALID;
+            bool state_ok = scheduler_runtime_boundary_matches_snapshot(interp, &saved);
+
+            ok = waiter_woken && token_cleared && dropped && invalid_after_drop && state_ok;
+            if (!waiter_woken) {
+                failed_phase = "waiter";
+            } else if (!token_cleared) {
+                failed_phase = "token";
+            } else if (!dropped || !invalid_after_drop) {
+                failed_phase = "drop";
+            } else if (!state_ok) {
+                failed_phase = "boundary";
+            }
+        }
+    }
+
+    g_scheduler_force_transition_completion_alloc_fail_nth = saved_force_fail;
+    if (thread_id != NO_OS_THREAD && scheduler_os_thread_exists(thread_id, generation)) {
+        scheduler_drop_os_thread(thread_id, generation);
+    }
+    g_scheduler.fiber_join_wait_token[1] = saved_join_token_1;
+    g_scheduler.latched_os_thread_done_wake_epoch[1] = saved_latched_os_thread_1;
+    g_scheduler.fibers[1] = saved_fiber_1;
+    g_scheduler.running = saved_running;
+    g_scheduler.current_fiber_id = saved_current_fiber_id;
+    g_scheduler.fiber_count = saved_fiber_count;
+
+    scheduler_test_finish_phase(
+        ok,
+        failed_phase,
+        "[PASS] scheduler os-thread null completion fail-closed boundary restore",
+        "[FAIL] scheduler os-thread null completion fail-closed boundary restore (%s)",
+        pass,
+        fail
+    );
+}
+
 fn void run_scheduler_waiter_take_does_not_strand_blocked_fiber_boundary_tests(Interp* interp, int* pass, int* fail) {
     // Invariant: completion-take paths must not strand an already-registered
     // blocked waiter fiber when another consumer takes completion first.

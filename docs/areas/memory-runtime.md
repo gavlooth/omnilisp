@@ -85,6 +85,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `map`, `filter`, `take`, `zip`, and `foldl` now reject malformed iterator
     tails directly instead of truncating or deferring broken iterator state as
     a later partial success.
+- Scheduler OS-thread completion now fails closed on double-allocation failure:
+  - if both the original completion and the alloc-failure completion are
+    unavailable, `scheduler_complete_os_thread(...)` now drops the OS-thread
+    entry and wakes the waiter instead of leaving a running entry stranded.
 - `deduce 'match` result dictionary materialization now uses checked hashmap
   construction and checked insertion, so match-result building no longer
   dereferences a raw hashmap shell or embed builder `ERROR`s into a successful
