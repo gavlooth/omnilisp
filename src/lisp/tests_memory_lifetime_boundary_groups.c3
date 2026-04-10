@@ -1330,6 +1330,43 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
             }
         }
 
+        Value* src_hashmap = null;
+        if (shared_cons != null) {
+            src_hashmap = interp.alloc_value();
+            if (src_hashmap != null) {
+                src_hashmap.tag = HASHMAP;
+                main::scope_register_dtor(foreign, (void*)src_hashmap, &scope_dtor_value);
+                HashMap* src_hashmap_payload = (HashMap*)mem::malloc(HashMap.sizeof);
+                if (src_hashmap_payload != null) {
+                    src_hashmap_payload.capacity = 8;
+                    src_hashmap_payload.count = 2;
+                    src_hashmap_payload.mask = src_hashmap_payload.capacity - 1;
+                    src_hashmap_payload.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_hashmap_payload.capacity);
+                    if (src_hashmap_payload.entries != null) {
+                        for (uint i = 0; i < src_hashmap_payload.capacity; i++) {
+                            src_hashmap_payload.entries[i].key = null;
+                            src_hashmap_payload.entries[i].value = null;
+                        }
+                        Value* good_key = make_int(interp, 31);
+                        Value* bad_key = make_int(interp, 32);
+                        uint good_idx = hash_value(good_key) & src_hashmap_payload.mask;
+                        uint bad_idx = hash_value(bad_key) & src_hashmap_payload.mask;
+                        if (bad_idx == good_idx) bad_idx = (bad_idx + 1) & src_hashmap_payload.mask;
+                        src_hashmap_payload.entries[good_idx].key = good_key;
+                        src_hashmap_payload.entries[good_idx].value = shared_cons;
+                        src_hashmap_payload.entries[bad_idx].key = bad_key;
+                        src_hashmap_payload.entries[bad_idx].value = opaque;
+                        src_hashmap.hashmap_val = src_hashmap_payload;
+                    } else {
+                        mem::free(src_hashmap_payload);
+                        src_hashmap.hashmap_val = null;
+                    }
+                } else {
+                    src_hashmap.hashmap_val = null;
+                }
+            }
+        }
+
         bool setup_ok = shared_closure != null &&
                         shared_cons != null &&
                         shared_cons.tag == CONS &&
@@ -1343,34 +1380,49 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
                         src_array != null &&
                         src_array.tag == ARRAY &&
                         src_array.array_val != null &&
-                        src_array.array_val.length == 2;
+                        src_array.array_val.length == 2 &&
+                        src_hashmap != null &&
+                        src_hashmap.tag == HASHMAP &&
+                        src_hashmap.hashmap_val != null &&
+                        src_hashmap.hashmap_val.entries != null &&
+                        src_hashmap.hashmap_val.count == 2;
 
         interp.current_scope = target;
         interp.releasing_scope = foreign;
-        BoundaryCopyResult copy_result = setup_ok
+        BoundaryCopyResult array_copy_result = setup_ok
             ? boundary_copy_to_parent_site_ctx_checked(src_array, interp, COPY_SITE_GENERIC, null)
             : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
-        int rc_after_copy_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        int rc_after_array_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        BoundaryCopyResult hashmap_copy_result = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(src_hashmap, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        int rc_after_hashmap_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
 
         interp.releasing_scope = null;
         interp.current_scope = saved;
         main::scope_release(foreign);
         main::scope_release(target);
 
-        bool copy_ok = !boundary_copy_result_ok(copy_result) &&
-                       copy_result.value == null &&
-                       copy_result.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD &&
-                       rc_after_copy_fail == 1;
-        bool ok = setup_ok && copy_ok;
+        bool array_ok = !boundary_copy_result_ok(array_copy_result) &&
+                        array_copy_result.value == null &&
+                        array_copy_result.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD &&
+                        rc_after_array_fail == 1;
+        bool hashmap_ok = !boundary_copy_result_ok(hashmap_copy_result) &&
+                          hashmap_copy_result.value == null &&
+                          hashmap_copy_result.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD &&
+                          rc_after_hashmap_fail == 1;
+        bool ok = setup_ok && array_ok && hashmap_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: shared-wrapper partial cleanup releases retains");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup_ok=%s copy_fault=%s rc_after_copy_fail=%d)",
+                "[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup_ok=%s array_fault=%s hashmap_fault=%s rc_after_array_fail=%d rc_after_hashmap_fail=%d)",
                 setup_ok ? "yes" : "no",
-                (ZString)boundary_copy_fault_name(copy_result.fault_code),
-                rc_after_copy_fail
+                (ZString)boundary_copy_fault_name(array_copy_result.fault_code),
+                (ZString)boundary_copy_fault_name(hashmap_copy_result.fault_code),
+                rc_after_array_fail,
+                rc_after_hashmap_fail
             );
             (*fail)++;
         }
