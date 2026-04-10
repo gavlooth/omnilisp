@@ -1170,6 +1170,43 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* pair = null;
+        if (setup_ok) {
+            interp.current_scope = child;
+            Value* temp_string = make_string(interp, "x");
+            Value* escape_nil = interp.alloc_value_escape();
+            if (temp_string == null || temp_string.tag == ERROR || escape_nil == null) {
+                setup_ok = false;
+            } else {
+                escape_nil.tag = NIL;
+                bool saved_force = g_boundary_force_escape_string_or_error_promotion_alloc_fail;
+                g_boundary_force_escape_string_or_error_promotion_alloc_fail = true;
+                pair = make_cons(interp, temp_string, escape_nil);
+                g_boundary_force_escape_string_or_error_promotion_alloc_fail = saved_force;
+            }
+            interp.current_scope = saved;
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(pair, "cons: failed to promote car to escape");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: make_cons escape promotion faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: make_cons escape promotion faults fail closed (setup_ok=%s pair=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(pair));
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
+    }
+
+    {
         bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
 

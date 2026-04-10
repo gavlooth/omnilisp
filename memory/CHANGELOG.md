@@ -11268,3 +11268,15 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=154 fail=0`
+- 2026-04-10 (escape cons publication fail-closed follow-up):
+  - `make_cons(...)` now stages ESCAPE-lane `car` / `cdr` promotion before
+    pair allocation and rejects invalid string/error promotion results instead
+    of publishing an ESCAPE-lane cons that still points at TEMP-backed data.
+  - shipped consequence:
+    - the string/error escape-promotion seam no longer degrades into a
+      successful cons carrying a non-escape field.
+    - staged promoted fields are unwound if final escape-pair allocation
+      fails.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=155 fail=0`

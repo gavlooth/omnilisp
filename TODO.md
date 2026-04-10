@@ -22,6 +22,23 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-CONS-ESCAPE-PROMOTION-FAILCLOSED-023` make escape-lane cons
+  publication fail closed when string/error promotion cannot actually move the
+  field into the ESCAPE lane
+  - closure evidence:
+    - `src/lisp/value_constructors_core.c3`
+      now stages `car` / `cdr` escape promotion before pair allocation,
+      rejects null or `ERROR` promotion results, rejects the string/error
+      case where promotion falls back to the original non-escape value, and
+      unwinds staged promoted fields if final pair allocation fails.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins the forced string/error escape-promotion seam and proves
+      `make_cons(...)` returns a typed error instead of publishing an
+      ESCAPE-lane cons that still points at a TEMP string.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-DATA-FORMAT-ARRAY-PROMOTION-FAILCLOSED-022` make JSON/TOML
   array assembly reject promoted boundary `ERROR` values instead of storing
   them as ordinary array elements

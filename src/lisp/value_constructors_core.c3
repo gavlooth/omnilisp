@@ -102,18 +102,77 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     if (cdr != null &&
         (cdr.scope_gen == interp.current_scope.escape_generation ||
          (interp.escape_env_mode && cdr.tag == NIL))) {
-        Value* v = interp.alloc_value_escape();
-        v.tag = CONS;
-        // Reusing an existing current-scope ESCAPE tail is safe and avoids
-        // rewalking the full accumulator spine on every cons in TCO loops.
-        v.cons_val.car =
+        Value* promoted_car =
             car != null && car.scope_gen == interp.current_scope.escape_generation
             ? car
             : boundary_promote_to_escape(car, interp);
-        v.cons_val.cdr =
+        if (car != null && car.scope_gen != interp.current_scope.escape_generation) {
+            if (promoted_car == null) {
+                return raise_error(interp, "cons: failed to promote car to escape");
+            }
+            if (promoted_car.tag == ERROR) return promoted_car;
+            bool string_like_car = car.tag == STRING || car.tag == ERROR;
+            if (string_like_car && promoted_car == car) {
+                return raise_error(interp, "cons: failed to promote car to escape");
+            }
+        }
+
+        Value* promoted_cdr =
             cdr != null && cdr.scope_gen == interp.current_scope.escape_generation
             ? cdr
             : boundary_promote_to_escape(cdr, interp);
+        if (cdr != null && cdr.scope_gen != interp.current_scope.escape_generation) {
+            if (promoted_cdr == null) {
+                boundary_cleanup_materialized_value(
+                    car,
+                    promoted_car,
+                    interp.current_scope,
+                    true
+                );
+                return raise_error(interp, "cons: failed to promote cdr to escape");
+            }
+            if (promoted_cdr.tag == ERROR) {
+                boundary_cleanup_materialized_value(
+                    car,
+                    promoted_car,
+                    interp.current_scope,
+                    true
+                );
+                return promoted_cdr;
+            }
+            bool string_like_cdr = cdr.tag == STRING || cdr.tag == ERROR;
+            if (string_like_cdr && promoted_cdr == cdr) {
+                boundary_cleanup_materialized_value(
+                    car,
+                    promoted_car,
+                    interp.current_scope,
+                    true
+                );
+                return raise_error(interp, "cons: failed to promote cdr to escape");
+            }
+        }
+
+        Value* v = interp.alloc_value_escape();
+        if (v == null) {
+            boundary_cleanup_materialized_value(
+                car,
+                promoted_car,
+                interp.current_scope,
+                true
+            );
+            boundary_cleanup_materialized_value(
+                cdr,
+                promoted_cdr,
+                interp.current_scope,
+                true
+            );
+            return raise_error(interp, "cons: failed to allocate escape pair");
+        }
+        v.tag = CONS;
+        // Reusing an existing current-scope ESCAPE tail is safe and avoids
+        // rewalking the full accumulator spine on every cons in TCO loops.
+        v.cons_val.car = promoted_car;
+        v.cons_val.cdr = promoted_cdr;
         return v;
     }
 

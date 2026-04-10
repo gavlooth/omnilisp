@@ -759,3 +759,18 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-DATA-FORMAT-ARRAY-PROMOTION-FAILCLOSED-022`
   - actionable backlog remains `0`
+
+- landed the escape cons publication follow-up:
+  - `src/lisp/value_constructors_core.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - `make_cons(...)` now fails closed if string/error escape promotion cannot
+    actually move the field into the ESCAPE lane.
+  - staged promoted fields are unwound if final escape-pair allocation fails.
+  - direct regression landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=155 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-CONS-ESCAPE-PROMOTION-FAILCLOSED-023`
+  - actionable backlog remains `0`

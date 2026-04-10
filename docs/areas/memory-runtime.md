@@ -471,3 +471,13 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=154 fail=0`
+
+- Escape-lane cons publication is now fail-closed for string/error promotion:
+  - `make_cons(...)` now stages escape promotion before pair allocation,
+    rejects null / `ERROR` promotion results, and rejects the string/error
+    fallback case where promotion returns the original non-escape field.
+  - staged promoted fields are cleaned up if escape-pair allocation itself
+    fails.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=155 fail=0`
