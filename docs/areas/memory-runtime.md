@@ -536,3 +536,17 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=scheduler ...`
     -> `pass=109 fail=0`
+
+- Shared two-arg list materialization is now fail-closed too:
+  - `make_list2_or_error(...)` now provides one checked two-value list helper
+    for runtime/JIT helper paths that previously nested raw `make_cons(...)`
+    calls.
+  - `(shell cmd true)` now fails closed if final result-list construction
+    fails.
+  - pending-raise and effect-handler arg-pair construction now fail closed
+    before handler call-through if the `(k arg)` pair cannot be built.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=handler-arg-list-alloc-failure ...`
+    -> `pass=1 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=160 fail=0`

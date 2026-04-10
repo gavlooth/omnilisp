@@ -904,3 +904,25 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-SCHEDULER-BATCH-RESULT-LIST-FAILCLOSED-030`
   - actionable backlog remains `0`
+
+- landed the shared two-arg list materialization follow-up:
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/prim_system.c3`
+  - `src/lisp/jit_jit_runtime_effects_handle.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- shipped behavior:
+  - one checked `make_list2_or_error(...)` helper now covers runtime/JIT
+    helper sites that were previously nesting raw `make_cons(...)`.
+  - `(shell cmd true)` now fails closed if result-list construction fails.
+  - pending-raise and effect-handler arg-pair materialization now fail closed
+    before handler call-through if `(k arg)` construction fails.
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
+- validation status:
+  - focused `jit-policy`: green (`handler-arg-list-alloc-failure`)
+  - bounded `memory-lifetime-smoke`: green (`pass=160 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-TWO-ARG-LIST-MATERIALIZATION-FAILCLOSED-031`
+  - actionable backlog remains `0`

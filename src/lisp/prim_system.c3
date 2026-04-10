@@ -44,7 +44,7 @@ fn Value* prim_shell(Value*[] args, Env* env, Interp* interp) {
     // If second arg is truthy, return (output exit-code)
     if (args.len >= 2 && !is_falsy(args[1], interp)) {
         Value* code = make_int(interp, exit_code);
-        return make_cons(interp, output, make_cons(interp, code, make_nil(interp)));
+        return make_list2_or_error(interp, output, code, "shell: failed to construct result list");
     }
     return output;
 }

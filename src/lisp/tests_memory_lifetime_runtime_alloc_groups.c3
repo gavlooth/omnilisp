@@ -1564,6 +1564,31 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[2] shell_args = { make_string(interp, "printf ok"), make_symbol(interp, interp.sym_true) };
+        bool setup_ok =
+            shell_args[0] != null && shell_args[0].tag == STRING &&
+            shell_args[1] != null;
+
+        int saved_force = g_value_force_make_list2_alloc_fail_nth;
+        g_value_force_make_list2_alloc_fail_nth = 1;
+        Value* shell_fail = setup_ok ? prim_shell(shell_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        g_value_force_make_list2_alloc_fail_nth = saved_force;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(shell_fail, "shell: failed to construct result list");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: shell result list construction fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: shell result list construction fails closed (setup_ok=%s msg=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(shell_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_force = g_value_force_make_string_alloc_fail;
         g_value_force_make_string_alloc_fail = true;
         EvalResult raise_run = run("(handle (/ 1 0) (raise msg 42))", interp);

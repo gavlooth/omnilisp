@@ -10,11 +10,18 @@ import main;
 
 bool g_warned_primitive_name_truncation = false;
 int g_value_force_make_error_chars_alloc_fail_nth = 0;
+int g_value_force_make_list2_alloc_fail_nth = 0;
 
 fn bool make_error_should_force_alloc_fail() @inline {
     if (g_value_force_make_error_chars_alloc_fail_nth <= 0) return false;
     g_value_force_make_error_chars_alloc_fail_nth--;
     return g_value_force_make_error_chars_alloc_fail_nth == 0;
+}
+
+fn bool make_list2_should_force_alloc_fail() @inline {
+    if (g_value_force_make_list2_alloc_fail_nth <= 0) return false;
+    g_value_force_make_list2_alloc_fail_nth--;
+    return g_value_force_make_list2_alloc_fail_nth == 0;
 }
 
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
@@ -144,6 +151,19 @@ fn Value* make_error(Interp* interp, char[] msg) {
     v.str_len = len;
 
     return v;
+}
+
+fn Value* make_list2_or_error(Interp* interp, Value* first, Value* second, char[] message) {
+    if (make_list2_should_force_alloc_fail()) return make_error(interp, message);
+
+    Value* tail = make_cons(interp, second, make_nil(interp));
+    if (tail == null) return make_error(interp, message);
+    if (tail.tag == ERROR) return tail;
+
+    Value* out = make_cons(interp, first, tail);
+    if (out == null) return make_error(interp, message);
+    if (out.tag == ERROR) return out;
+    return out;
 }
 
 fn void copy_pending_raise_message(Interp* interp, char[] msg) @inline {

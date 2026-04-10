@@ -81,10 +81,7 @@ fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectSt
         }
         if (msg_val.tag == ERROR) return msg_val;
         Value* k_val = make_nil(interp);
-        Value* pair = make_cons(interp, k_val, msg_val);
-        if (pair == null) {
-            return make_error(interp, "handle: failed to construct raise handler args");
-        }
+        Value* pair = make_list2_or_error(interp, k_val, msg_val, "handle: failed to construct raise handler args");
         if (pair.tag == ERROR) return pair;
         return jit_apply_value(handler_closure, pair, interp);
     }
@@ -107,7 +104,8 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
         k.is_coroutine_based = true;
         k.handle_state = state;
         Value* k_val = make_continuation(interp, k);
-        Value* pair = make_cons(interp, k_val, state.signal_arg);
+        Value* pair = make_list2_or_error(interp, k_val, state.signal_arg, "handle: failed to construct handler args");
+        if (pair.tag == ERROR) return pair;
 
         last_handler_v = jit_apply_value(handler_closure, pair, interp);
         // Retain before frame cleanup when the continuation escapes in the handler result graph.

@@ -1533,6 +1533,87 @@ fn void run_jit_policy_pending_raise_string_alloc_failure_test(Interp* interp, i
     }
 }
 
+fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    main::StackCtx* ctx = null;
+    HandleEffectState* state = null;
+    Value* handler_closure = null;
+    Value* signal_result = null;
+    Value* raise_result = null;
+    if (ok) {
+        EvalResult closure_r = run("(lambda (k x) x)", other);
+        ok = !closure_r.error.has_error && closure_r.value != null && closure_r.value.tag == CLOSURE;
+        if (ok) handler_closure = closure_r.value;
+    }
+    if (ok) {
+        state = (HandleEffectState*)mem::malloc(HandleEffectState.sizeof);
+        ok = state != null;
+    }
+    if (ok) {
+        handle_effect_state_init(state, other);
+        state.handler_copy.clause_count = 1;
+        state.handler_copy.tags = (SymbolId*)mem::malloc(SymbolId.sizeof);
+        state.handler_copy.closures = (Value**)mem::malloc(Value*.sizeof);
+        ok = state.handler_copy.tags != null && state.handler_copy.closures != null;
+    }
+    if (ok) {
+        ctx = main::stack_ctx_create(&other.stack_ctx_pool);
+        ok = ctx != null;
+    }
+    if (ok) {
+        int saved_force = g_value_force_make_list2_alloc_fail_nth;
+
+        state.signal_tag = other.symbols.intern("ask");
+        state.signal_arg = make_int(other, 0);
+        state.handler_copy.tags[0] = state.signal_tag;
+        state.handler_copy.closures[0] = handler_closure;
+        state.signaled = true;
+        g_value_force_make_list2_alloc_fail_nth = 1;
+        signal_result = jit_handle_run_signals(other, ctx, state, 0);
+
+        other.flags.raise_pending = true;
+        other.raise_payload = make_int(other, 42);
+        other.raise_msg_len = 0;
+        other.raise_msg[0] = 0;
+        state.handler_copy.tags[0] = other.sym_raise;
+        g_value_force_make_list2_alloc_fail_nth = 1;
+        raise_result = jit_handle_dispatch_pending_raise_value(other, state);
+
+        g_value_force_make_list2_alloc_fail_nth = saved_force;
+    }
+
+    ok = ok &&
+        signal_result != null &&
+        signal_result.tag == ERROR &&
+        jit_policy_str_contains(signal_result.str_chars[:signal_result.str_len], "handle: failed to construct handler args") &&
+        raise_result != null &&
+        raise_result.tag == ERROR &&
+        jit_policy_str_contains(raise_result.str_chars[:raise_result.str_len], "handle: failed to construct raise handler args");
+
+    if (ctx != null) main::stack_ctx_destroy(ctx, &other.stack_ctx_pool);
+    if (state != null) handle_effect_state_release(state);
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: handler arg list construction fails closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: handler arg list construction fails closed (signal_tag=%d raise_tag=%d)",
+            signal_result != null ? (int)signal_result.tag : -1,
+            raise_result != null ? (int)raise_result.tag : -1
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("JIT Policy Tests");
 
@@ -1582,6 +1663,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("cross-scope-alias-policy", &run_jit_policy_cross_scope_alias_policy_test, interp, pass, fail);
         run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-releasing-scalar-edge-copy", &run_jit_policy_tco_cons_releasing_scalar_edge_copy_test, interp, pass, fail);
