@@ -76,6 +76,34 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* list = make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp)));
+        Value* base_iterator = iterator_from_list_value(list, interp);
+        Value*[1] repeat_args = { make_int(interp, 7) };
+        Value*[2] take_args = { make_int(interp, 2), base_iterator };
+
+        bool saved_force = g_iterator_force_partial_alloc_fail;
+        g_iterator_force_partial_alloc_fail = true;
+        Value* repeat_fail = prim_iterator_repeat_thunk(repeat_args[0:1], null, interp);
+        Value* take_fail = prim_iterator_take_thunk(take_args[0:2], null, interp);
+        g_iterator_force_partial_alloc_fail = saved_force;
+
+        bool ok = runtime_alloc_error_matches(repeat_fail, "iterator: failed to allocate thunk") &&
+                  runtime_alloc_error_matches(take_fail, "iterator: failed to allocate thunk");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: iterator tail constructor errors propagate");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: iterator tail constructor errors propagate (repeat=%s take=%s repeat_msg=%s take_msg=%s)",
+                runtime_alloc_error_matches(repeat_fail, "iterator: failed to allocate thunk") ? "yes" : "no",
+                runtime_alloc_error_matches(take_fail, "iterator: failed to allocate thunk") ? "yes" : "no",
+                runtime_alloc_error_text(repeat_fail),
+                runtime_alloc_error_text(take_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_force = g_string_force_result_wrapper_alloc_fail;
         g_string_force_result_wrapper_alloc_fail = true;
         StringVal* builder = strval_new_from_slice("hello");

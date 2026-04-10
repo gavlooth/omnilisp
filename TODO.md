@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 2
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -35,21 +35,22 @@ Use this file only for still-open work.
       them
     - validate with bounded `memory-lifetime-smoke` and ASAN
 
-- [ ] `AUDIT-ITERATOR-TAIL-ERROR-PROPAGATION-008` stop iterator tail-construction faults from degrading into silent truncation
-  - problem:
-    - several iterator thunk builders still compose `(item . next)` pairs
-      without checking whether the tail constructor returned `ERROR`
-    - when the tail is not an actual iterator, downstream logic treats it as
-      termination, so allocation faults can look like a shortened iteration
-      instead of a runtime error
-  - required closure:
-    - propagate tail construction `ERROR` values explicitly through iterator
-      thunk/coroutine helpers
-    - add focused regressions that prove iterator OOM does not degrade into
-      normal completion
-    - validate targeted iterator slices plus bounded smoke
-
 ## Recently Closed
+
+- [x] `AUDIT-ITERATOR-TAIL-ERROR-PROPAGATION-008` stop iterator tail-construction faults from degrading into silent truncation
+  - closure evidence:
+    - `src/lisp/primitives_iter_state.c3` now routes `(item . next)` iterator
+      pair construction through `iterator_make_pair_or_propagate(...)`, which
+      returns tail `ERROR` values directly instead of wrapping them in `CONS`.
+    - source iterator thunks in `src/lisp/primitives_iter_sources.c3` and
+      coroutine/transform thunks in `src/lisp/primitives_iter_coroutine.c3`
+      now share that helper, so tail constructor failure no longer looks like
+      normal iterator completion/truncation.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves both
+      a source thunk (`repeat`) and a coroutine thunk (`take`) propagate the
+      tail allocation error directly.
+    - validation:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=128 fail=0`
 
 - [x] `AUDIT-STRING-BUILDER-OOM-007` harden shared `StringVal` builder creation and growth to fail closed
   - closure evidence:

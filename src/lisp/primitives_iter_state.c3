@@ -4,6 +4,11 @@ import main;
 
 bool g_iterator_force_partial_alloc_fail = false;
 
+fn Value* iterator_make_pair_or_propagate(Value* item, Value* next, Interp* interp) @inline {
+    if (next == null || next.tag == ERROR) return next;
+    return make_cons(interp, item, next);
+}
+
 fn Value* iterator_make_thunk1(PrimitiveFn func, Value* first_arg, Interp* interp) {
     Value* partial = g_iterator_force_partial_alloc_fail ? null : interp.alloc_value();
     if (partial == null) {
@@ -37,7 +42,7 @@ fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp)
     if (!is_cons(current)) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list");
     }
-    return make_cons(interp, car(current), iterator_from_list_value(cdr(current), interp));
+    return iterator_make_pair_or_propagate(car(current), iterator_from_list_value(cdr(current), interp), interp);
 }
 
 fn Value* prim_iterator_from_array_thunk(Value*[] args, Env* env, Interp* interp) {
@@ -52,7 +57,7 @@ fn Value* prim_iterator_from_array_thunk(Value*[] args, Env* env, Interp* interp
     if (index < 0 || (usz)index >= array_value.array_val.length) return make_nil(interp);
 
     Value* item = array_value.array_val.items[(usz)index];
-    return make_cons(interp, item, iterator_from_array_value(array_value, index + 1, interp));
+    return iterator_make_pair_or_propagate(item, iterator_from_array_value(array_value, index + 1, interp), interp);
 }
 
 fn Value* iterator_from_list_value(Value* list_value, Interp* interp) {

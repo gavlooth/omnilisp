@@ -28,7 +28,7 @@ fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
 
     Value* mapped = jit_apply_value(func, car(pair), interp);
     if (mapped != null && mapped.tag == ERROR) return mapped;
-    return make_cons(interp, mapped, iterator_map_value(func, cdr(pair), interp));
+    return iterator_make_pair_or_propagate(mapped, iterator_map_value(func, cdr(pair), interp), interp);
 }
 
 fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
@@ -54,7 +54,7 @@ fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
         Value* keep = jit_apply_value(pred, car(pair), interp);
         if (keep != null && keep.tag == ERROR) return keep;
         if (iterator_predicate_truthy(keep)) {
-            return make_cons(interp, car(pair), iterator_filter_value(pred, cdr(pair), interp));
+            return iterator_make_pair_or_propagate(car(pair), iterator_filter_value(pred, cdr(pair), interp), interp);
         }
         iterator = cdr(pair);
     }
@@ -85,10 +85,10 @@ fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator pair");
     }
 
-    return make_cons(
-        interp,
+    return iterator_make_pair_or_propagate(
         car(pair),
-        iterator_take_value(make_int(interp, n_value.int_val - 1), cdr(pair), interp)
+        iterator_take_value(make_int(interp, n_value.int_val - 1), cdr(pair), interp),
+        interp
     );
 }
 
@@ -113,7 +113,7 @@ fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* item_pair = make_cons(interp, car(left_pair), car(right_pair));
-    return make_cons(interp, item_pair, iterator_zip_value(cdr(left_pair), cdr(right_pair), interp));
+    return iterator_make_pair_or_propagate(item_pair, iterator_zip_value(cdr(left_pair), cdr(right_pair), interp), interp);
 }
 
 fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {

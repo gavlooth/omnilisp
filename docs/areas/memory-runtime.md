@@ -267,6 +267,14 @@ for future concurrency ownership evolution.
   sequencing while further shared-object consolidation proceeds.
 ## 2026-04-10 follow-up
 
+- Iterator thunks no longer hide tail constructor errors behind normal-looking
+  `(item . next)` pairs:
+  - `primitives_iter_state.c3` now routes shared pair construction through one
+    helper that propagates tail `ERROR` values directly,
+  - and both source iterator thunks and coroutine/transform thunks now use it.
+- Latest bounded evidence for that lane:
+  - bounded `memory-lifetime-smoke`: `pass=128 fail=0`
+
 - The shared `StringVal` builder contract is now fail-closed:
   - builder creation returns `null` on OOM,
   - growth returns failure instead of writing through null grow buffers,

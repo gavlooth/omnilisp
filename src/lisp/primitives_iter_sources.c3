@@ -37,7 +37,7 @@ fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_iterator_range_from_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args[0] == null || !is_int(args[0])) return make_nil(interp);
     Value* current = args[0];
-    return make_cons(interp, current, iterator_range_from_value(make_int(interp, current.int_val + 1), interp));
+    return iterator_make_pair_or_propagate(current, iterator_range_from_value(make_int(interp, current.int_val + 1), interp), interp);
 }
 
 fn Value* prim_iterator_repeat(Value*[] args, Env* env, Interp* interp) {
@@ -47,7 +47,7 @@ fn Value* prim_iterator_repeat(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_iterator_repeat_thunk(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
-    return make_cons(interp, args[0], iterator_repeat_value(args[0], interp));
+    return iterator_make_pair_or_propagate(args[0], iterator_repeat_value(args[0], interp), interp);
 }
 
 fn Value* prim_iterator_cycle(Value*[] args, Env* env, Interp* interp) {
@@ -76,11 +76,11 @@ fn Value* prim_iterator_cycle_thunk(Value*[] args, Env* env, Interp* interp) {
             if (!is_cons(reset_pair)) {
                 return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
             }
-            return make_cons(interp, car(reset_pair), iterator_cycle_state_value(coll, cdr(reset_pair), interp));
+            return iterator_make_pair_or_propagate(car(reset_pair), iterator_cycle_state_value(coll, cdr(reset_pair), interp), interp);
         }
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
         }
-        return make_cons(interp, car(pair), iterator_cycle_state_value(coll, cdr(pair), interp));
+        return iterator_make_pair_or_propagate(car(pair), iterator_cycle_state_value(coll, cdr(pair), interp), interp);
     }
 }

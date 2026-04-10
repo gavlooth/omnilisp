@@ -330,6 +330,20 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed the iterator tail propagation fix on top of the `StringVal` batch:
+  - `src/lisp/primitives_iter_state.c3` now centralizes iterator pair
+    construction through `iterator_make_pair_or_propagate(...)`
+  - source iterator thunks in `src/lisp/primitives_iter_sources.c3` and
+    coroutine/transform thunks in `src/lisp/primitives_iter_coroutine.c3` now
+    return tail `ERROR` values directly instead of wrapping them in `CONS`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` adds direct
+    regressions for both source-thunk and coroutine-thunk tail allocation
+    failure
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=128 fail=0`)
+- residual queue narrowed again:
+  - `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008`
+
 - landed the broader shared `StringVal` builder hardening slice after the
   runtime-helper wrapper pass:
   - `src/lisp/prim_string_format_helpers.c3` now makes builder creation/growth

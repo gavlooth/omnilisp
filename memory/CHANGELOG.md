@@ -1,5 +1,20 @@
 ## 2026-04-10
 
+- Closed iterator tail error propagation so iterator OOM no longer degrades
+  into silent truncation:
+  - `src/lisp/primitives_iter_state.c3` now centralizes iterator pair
+    construction through `iterator_make_pair_or_propagate(...)`.
+  - `src/lisp/primitives_iter_sources.c3` and
+    `src/lisp/primitives_iter_coroutine.c3` now use that helper whenever a
+    thunk builds `(item . next)`, so any tail `ERROR` is returned directly
+    instead of being wrapped in a `CONS` and later mistaken for iterator
+    termination.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves both
+    a source iterator thunk and a coroutine iterator thunk propagate tail
+    allocation failure directly.
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=128 fail=0`
+
 - Closed the broader shared `StringVal` builder OOM lane so builder creation
   and growth now fail closed instead of crashing before result materialization:
   - `src/lisp/prim_string_format_helpers.c3` now:
