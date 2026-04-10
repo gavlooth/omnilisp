@@ -125,34 +125,51 @@ fn bool copy_env_invalid_closure_alias(Value* val, Interp* interp) @inline {
     return boundary_closure_alias_unsafe_for_reuse(val, interp);
 }
 
-fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp) {
+fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp, PromotionContext* ctx = null) {
+    if (ctx != null) {
+        Value* cached = promotion_context_lookup(ctx, val);
+        if (cached != null) return cached;
+    }
     bool safe_undelimited_clone = copy_env_should_clone_closure(val, interp);
     if (copy_env_invalid_closure_alias(val, interp) && !safe_undelimited_clone) return null;
-    if (!copy_env_should_clone_closure(val, interp)) return val;
+    bool can_track = promotion_context_consume(ctx, 1);
+    if (!copy_env_should_clone_closure(val, interp)) {
+        if (can_track && ctx != null) promotion_context_remember(ctx, val, val, interp);
+        return val;
+    }
     Value* result = interp.alloc_value();
     // Reuse the shared closure-clone payload path so env-copy and return-boundary
     // closure relocation keep the same retain/copy semantics.
     if (!copy_parent_clone_closure_payload(result, val, interp, null)) return null;
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
+    if (can_track && ctx != null) promotion_context_remember(ctx, val, result, interp);
     return result;
 }
 
-fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
+fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp, PromotionContext* ctx = null) {
     if (val == null || val.tag != ITERATOR) return val;
+    if (ctx != null) {
+        Value* cached = promotion_context_lookup(ctx, val);
+        if (cached != null) return cached;
+    }
+    bool can_track = promotion_context_consume(ctx, 1);
     bool wrapper_in_target = boundary_ptr_in_target_scope_chain_with_hint((void*)val, interp, val.scope_gen);
     bool payload_alias_safe = !boundary_iterator_payload_alias_unsafe_for_reuse(val, interp);
-    if (wrapper_in_target && payload_alias_safe) return val;
+    if (wrapper_in_target && payload_alias_safe) {
+        if (can_track && ctx != null) promotion_context_remember(ctx, val, val, interp);
+        return val;
+    }
 
     Value* inner = val.iterator_val;
     Value* source_inner = inner;
     if (inner != null && inner.tag == CLOSURE) {
-        Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
+        Value* cloned = copy_env_clone_closure_if_needed(inner, interp, ctx);
         if (cloned == null || cloned.tag != CLOSURE) {
             return null;
         }
         inner = cloned;
     } else if (inner != null && inner.tag == PARTIAL_PRIM) {
-        Value* copied_inner = copy_env_value_fast(inner, interp);
+        Value* copied_inner = copy_env_value_fast(inner, interp, ctx);
         if (copied_inner == null || copied_inner.tag != PARTIAL_PRIM) {
             return null;
         }
@@ -171,15 +188,16 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     Value* iter_result = interp.alloc_value();
     iter_result.tag = ITERATOR;
     iter_result.iterator_val = inner;
+    if (can_track && ctx != null) promotion_context_remember(ctx, val, iter_result, interp);
     return iter_result;
 }
 
 fn Value* copy_env_binding_value(Value* val, Interp* interp, PromotionContext* ctx) {
     if (val != null && val.tag == CLOSURE) {
-        return copy_env_clone_closure_if_needed(val, interp);
+        return copy_env_clone_closure_if_needed(val, interp, ctx);
     }
     if (val != null && val.tag == ITERATOR) {
-        return copy_env_clone_iterator_if_needed(val, interp);
+        return copy_env_clone_iterator_if_needed(val, interp, ctx);
     }
     return copy_env_value_fast(val, interp, ctx);
 }

@@ -10531,3 +10531,17 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `c3c build`
     - targeted `memory-lifetime-smoke` regressions for target-chain wrapper
       alias policy and env-copy shared-wrapper policy
+- 2026-04-10 (env-copy iterator/closure memo symmetry):
+  - env-copy closure and iterator special-cases now participate in the shared
+    `PromotionContext` epoch instead of bypassing memoization.
+  - shipped consequence:
+    - when the same source closure is bound directly and also reached through an
+      iterator wrapper, env-copy now produces one shared cloned closure in the
+      target scope instead of duplicating it.
+    - when a source `PARTIAL_PRIM` is bound directly and also reached through an
+      iterator wrapper, env-copy now reuses the same copied partial payload
+      graph across both bindings.
+  - validation:
+    - `c3c build`
+    - targeted `memory-lifetime-smoke` regressions for env-copy iterator/closure
+      memo symmetry

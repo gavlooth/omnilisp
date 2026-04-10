@@ -134,6 +134,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - boundary commit paths now return explicit hard outcomes for disallowed fallback classes,
   - root/persistent-store mutation paths are routed through explicit destination-aware helpers (not deep-copy fallback branches),
   - graph traversal remains a debug/audit surface only.
+- Env-copy now keeps closure/iterator special-cases inside one shared promotion epoch:
+  - direct bindings and iterator-reached payloads reuse the same copied closure
+    / partial graphs when they originate from the same source wrapper,
+  - so env-copy no longer drifts away from the repo-wide shared promotion
+    context contract on those special-case paths.
 - Committed-root graph-reachability validation is now debug-only and threshold-gated:
   - controlled by `OMNI_BOUNDARY_GRAPH_AUDIT`,
   - sampled by `OMNI_BOUNDARY_GRAPH_AUDIT_RATE` (default 1),

@@ -105,8 +105,9 @@ fn void run_memory_lifetime_copy_parent_closure_env_scope_retain_test(Interp* in
 }
 
 fn void run_memory_lifetime_env_copy_nested_closure_retain_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: nested env-copy cloning retains shared closure env scopes once
-    // per cloned closure and source release drops only the original owner edge.
+    // Invariant: nested env-copy memoizes one cloned closure per source wrapper,
+    // retains standalone closure env scopes once for that clone, and source
+    // release drops only the original owner edge.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;
         main::ScopeRegion* source = main::scope_create(saved_scope);
@@ -152,12 +153,11 @@ fn void run_memory_lifetime_env_copy_nested_closure_retain_test(Interp* interp, 
                          copied_inner.tag == CLOSURE &&
                          copied_outer.tag == CLOSURE &&
                          copied_inner != shared_closure &&
-                         copied_outer != shared_closure &&
-                         copied_inner != copied_outer &&
+                         copied_outer == copied_inner &&
                          copied_inner.closure_val.env_scope == closure_env_scope &&
                          copied_outer.closure_val.env_scope == closure_env_scope &&
                          closure_env_scope != null &&
-                         closure_env_scope.refcount == 3;
+                         closure_env_scope.refcount == 2;
 
         int rc_before_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
         main::scope_release(source);
@@ -166,7 +166,7 @@ fn void run_memory_lifetime_env_copy_nested_closure_retain_test(Interp* interp, 
         bool post_release_ok = false;
         if (copied_ok) {
             rc_after_release = (int)closure_env_scope.refcount;
-            post_release_ok = rc_after_release == 2 &&
+            post_release_ok = rc_after_release == 1 &&
                               closure_env_lookup_int(copied_inner, payload_sym, 88) &&
                               closure_env_lookup_int(copied_outer, payload_sym, 88);
         }

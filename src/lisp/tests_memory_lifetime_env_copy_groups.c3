@@ -810,10 +810,10 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
                            iterator_copied != iterator_src &&
                            iterator_copy_partial != null &&
                            iterator_copy_partial.tag == PARTIAL_PRIM &&
-                           iterator_copy_partial != partial_src &&
+                           iterator_copy_partial == partial_copied &&
                            iterator_copy_first != null &&
                            iterator_copy_first.tag == ARRAY &&
-                           iterator_copy_first != alias_array &&
+                           iterator_copy_first == partial_copy_first &&
                            iterator_copy_first.array_val != null &&
                            iterator_copy_first.array_val.items != null &&
                            iterator_copy_first.array_val.items[0] != null &&
