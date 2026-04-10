@@ -179,7 +179,10 @@ fn Value* prim_iterator_foldl(Value*[] args, Env* env, Interp* interp) {
 
     while (current != null && current.tag == ITERATOR) {
         Value* pair = iterator_call_next(current, interp);
-        if (pair == null || pair.tag == NIL) return acc;
+        if (pair == null) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-foldl: expected iterator pair");
+        }
+        if (pair.tag == NIL) return acc;
         if (pair.tag == ERROR) return pair;
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-foldl: expected iterator pair");

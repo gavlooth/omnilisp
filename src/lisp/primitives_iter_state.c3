@@ -52,7 +52,10 @@ fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp)
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list state");
     }
     Value* current = args[0];
-    if (current == null || current.tag == NIL) return make_nil(interp);
+    if (current == null) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list state");
+    }
+    if (current.tag == NIL) return make_nil(interp);
     if (!is_cons(current)) {
         return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list");
     }

@@ -35,7 +35,9 @@ fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_range_from_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0] == null || !is_int(args[0])) return make_nil(interp);
+    if (args.len < 1 || args[0] == null || !is_int(args[0])) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-range-from: expected integer state");
+    }
     Value* current = args[0];
     return iterator_make_pair_or_propagate(current, iterator_range_from_value(make_int(interp, current.int_val + 1), interp), interp);
 }
@@ -46,7 +48,9 @@ fn Value* prim_iterator_repeat(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_repeat_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-repeat: expected item state");
+    }
     return iterator_make_pair_or_propagate(args[0], iterator_repeat_value(args[0], interp), interp);
 }
 
@@ -59,28 +63,47 @@ fn Value* prim_iterator_cycle(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_cycle_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator state");
+    }
     Value* coll = args[0];
     Value* current = args[1];
+    if (current == null || current.tag != ITERATOR) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator state");
+    }
 
     while (true) {
         Value* pair = iterator_call_next(current, interp);
-        if (pair == null || pair.tag == ERROR) return pair;
+        if (pair == null) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
+        }
+        if (pair.tag == ERROR) return pair;
         if (pair.tag == NIL) {
             Value*[1] one = { coll };
             Value* reset = prim_ctor_iterator(one[0:1], null, interp);
             if (reset != null && reset.tag == ERROR) return reset;
-            if (reset == null || reset.tag != ITERATOR) return make_nil(interp);
+            if (reset == null || reset.tag != ITERATOR) {
+                return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator state");
+            }
             Value* reset_pair = iterator_call_next(reset, interp);
-            if (reset_pair == null || reset_pair.tag == ERROR || reset_pair.tag == NIL) return reset_pair;
+            if (reset_pair == null) {
+                return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
+            }
+            if (reset_pair.tag == ERROR || reset_pair.tag == NIL) return reset_pair;
             if (!is_cons(reset_pair)) {
                 return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
             }
-            return iterator_make_pair_or_propagate(car(reset_pair), iterator_cycle_state_value(coll, cdr(reset_pair), interp), interp);
+            Value* reset_rest = null;
+            Value* reset_tail_err = iterator_tail_or_error(reset_pair, "__iterator-cycle: expected iterator tail", &reset_rest, interp);
+            if (reset_tail_err != null) return reset_tail_err;
+            return iterator_make_pair_or_propagate(car(reset_pair), iterator_cycle_state_value(coll, reset_rest, interp), interp);
         }
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-cycle: expected iterator pair");
         }
-        return iterator_make_pair_or_propagate(car(pair), iterator_cycle_state_value(coll, cdr(pair), interp), interp);
+        Value* rest = null;
+        Value* tail_err = iterator_tail_or_error(pair, "__iterator-cycle: expected iterator tail", &rest, interp);
+        if (tail_err != null) return tail_err;
+        return iterator_make_pair_or_propagate(car(pair), iterator_cycle_state_value(coll, rest, interp), interp);
     }
 }

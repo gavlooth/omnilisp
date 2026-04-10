@@ -1045,3 +1045,23 @@ Progress update (2026-04-09):
     - `jit-policy` filters:
       `pending-raise-payload-alloc-failure,handle-continuation-alloc-failure`
     - `memory-lifetime-smoke`
+- Closed iterator source malformed-state drift:
+  - `src/lisp/primitives_iter_sources.c3`
+  - `src/lisp/primitives_iter_state.c3`
+  - `src/lisp/primitives_iter_coroutine.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+- shipped behavior:
+  - iterator source thunks now fail closed when internal state is missing,
+    null, or malformed instead of normalizing that state to successful
+    exhaustion
+  - `__iterator-cycle` now rejects malformed iterator tails on both active and
+    reset branches
+  - `__iterator-foldl` now rejects `null` next-results as malformed iterator
+    pairs instead of treating them as normal completion
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=169 fail=0`)
+  - focused `advanced-unicode-iterator` still shows the unrelated pre-existing
+    `Void print surface` failure
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

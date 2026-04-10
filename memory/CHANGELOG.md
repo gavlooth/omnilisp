@@ -11523,6 +11523,20 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=159 fail=0`
+- 2026-04-10 (iterator source malformed-state fail-closed follow-up):
+  - iterator source thunks no longer normalize malformed internal state into
+    successful exhaustion.
+  - `__iterator-range-from`, `__iterator-repeat`, `__iterator-cycle`, and
+    `__iterator-from-list` now surface typed constructor/state errors when
+    thunk state is missing, null, or not the expected iterator/list payload.
+  - `__iterator-cycle` now validates iterator tails through
+    `iterator_tail_or_error(...)` for both the active and reset iterator
+    branches.
+  - `__iterator-foldl` now rejects `null` next-results as malformed iterator
+    pairs instead of treating them as clean completion.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=169 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

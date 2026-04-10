@@ -17,6 +17,10 @@ fn ZString runtime_alloc_error_text(Value* value) @inline {
         : (ZString)"<none>";
 }
 
+fn Value* runtime_alloc_null_iterator_next(Value*[] args, Env* env, Interp* interp) {
+    return null;
+}
+
 fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass, int* fail) {
     {
         int saved_force = g_value_force_make_error_chars_alloc_fail_nth;
@@ -1449,6 +1453,65 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(list_missing_state),
                 runtime_alloc_error_text(array_missing_state),
                 runtime_alloc_error_text(filter_bad_iter_state)
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        Value*[1] no_args = { null };
+        Value*[1] list_null_args = { null };
+        Value*[1] range_bad_args = { make_nil(interp) };
+        Value*[2] cycle_bad_args = { make_int(interp, 1), make_nil(interp) };
+        Value* range_missing_state = prim_iterator_range_from_thunk(no_args[0:0], null, interp);
+        Value* list_null_state = prim_iterator_from_list_thunk(list_null_args[0:1], null, interp);
+        Value* range_bad_state = prim_iterator_range_from_thunk(range_bad_args[0:1], null, interp);
+        Value* repeat_missing_state = prim_iterator_repeat_thunk(no_args[0:0], null, interp);
+        Value* cycle_missing_state = prim_iterator_cycle_thunk(no_args[0:0], null, interp);
+        Value* cycle_bad_state = prim_iterator_cycle_thunk(cycle_bad_args[0:2], null, interp);
+
+        bool ok =
+            runtime_alloc_error_matches(range_missing_state, "__iterator-range-from: expected integer state") &&
+            runtime_alloc_error_matches(list_null_state, "__iterator-from-list: expected list state") &&
+            runtime_alloc_error_matches(range_bad_state, "__iterator-range-from: expected integer state") &&
+            runtime_alloc_error_matches(repeat_missing_state, "__iterator-repeat: expected item state") &&
+            runtime_alloc_error_matches(cycle_missing_state, "__iterator-cycle: expected iterator state") &&
+            runtime_alloc_error_matches(cycle_bad_state, "__iterator-cycle: expected iterator state");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: malformed iterator source state fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: malformed iterator source state fails closed (range_missing=%s list_null=%s range_bad=%s repeat=%s cycle_missing=%s cycle_bad=%s)",
+                runtime_alloc_error_text(range_missing_state),
+                runtime_alloc_error_text(list_null_state),
+                runtime_alloc_error_text(range_bad_state),
+                runtime_alloc_error_text(repeat_missing_state),
+                runtime_alloc_error_text(cycle_missing_state),
+                runtime_alloc_error_text(cycle_bad_state)
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* null_next = make_primitive(interp, "__test-null-iterator-next", &runtime_alloc_null_iterator_next, 1);
+        Value* null_iter = null_next != null && null_next.tag != ERROR ? make_iterator(interp, null_next) : null_next;
+        Value*[3] fold_args = {
+            make_primitive(interp, "+", &prim_add, 2),
+            make_int(interp, 0),
+            null_iter
+        };
+        Value* fold_null_pair = prim_iterator_foldl(fold_args[0:3], null, interp);
+
+        bool ok = runtime_alloc_error_matches(fold_null_pair, "__iterator-foldl: expected iterator pair");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: malformed iterator fold state fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: malformed iterator fold state fails closed (msg=%s)",
+                runtime_alloc_error_text(fold_null_pair)
             );
             (*fail)++;
         }

@@ -620,3 +620,11 @@ for future concurrency ownership evolution.
   errors.
 - Scheduler offload completion decoding now rejects invalid completion kinds
   explicitly instead of falling through with undefined pointer state.
+- Iterator source/coroutine state normalization is now fail-closed too:
+  malformed internal thunk state for `__iterator-range-from`,
+  `__iterator-repeat`, `__iterator-cycle`, and `__iterator-from-list` now
+  returns typed iterator constructor/state errors instead of silently
+  terminating the stream.
+- `__iterator-cycle` now validates both active and reset iterator tails before
+  re-publication, and `__iterator-foldl` now rejects `null` next-results as
+  malformed iterator pairs instead of treating them as normal completion.

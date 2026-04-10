@@ -232,6 +232,9 @@ fn void run_advanced_unicode_iterator_lazy_pipeline_tests(Interp* interp, int* p
     test_error_contains(interp, "zip malformed iterator tail rejected",
         "(List (zip (Iterator (lambda () (cons 1 2))) (Iterator [4 5])))",
         "__iterator-zip: expected iterator tail", pass, fail);
+    test_error_contains(interp, "cycle malformed iterator tail rejected",
+        "(List (take 1 (cycle (Iterator (lambda () (cons 1 2))))))",
+        "__iterator-cycle: expected iterator tail", pass, fail);
     test_error_contains(interp, "foldl malformed iterator tail rejected",
         "(foldl (lambda (a x) (+ a x)) 0 (Iterator (lambda () (cons 1 9))))",
         "__iterator-foldl: expected iterator tail", pass, fail);
