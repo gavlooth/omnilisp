@@ -2,13 +2,21 @@
 
 - Closed an env-copy rollback destructor-symmetry bug:
   - `src/scope_region_chunk_helpers.c3` now exposes
-    `scope_cancel_dtor(...)`, which tombstones the newest matching TEMP-lane
-    destructor entry without mutating dtor-list topology.
+    `scope_cancel_dtor(...)` and `scope_cancel_dtor_escape(...)`, which
+    tombstone the newest matching TEMP- or ESCAPE-lane destructor entry
+    without mutating dtor-list topology.
   - `src/lisp/eval_env_copy_frame_helpers.c3` now cancels a copied
     target-scope value's registered dtor before manually unwinding that value
     during env-copy rollback, so rollback no longer replays
     `scope_dtor_value(...)` or `scope_dtor_closure(...)` and then lets target
     scope teardown run the same destructor again.
+  - `src/lisp/eval_promotion_root_clones.c3`,
+    `src/lisp/eval_promotion_copy_route_helpers.c3`,
+    `src/lisp/eval_promotion_root_clone_basic.c3`, and
+    `src/lisp/eval_promotion_escape_structured.c3` now use the same dtor
+    tombstoning in shared-wrapper partial cleanup, so ordinary boundary copy,
+    root-store clone, and ESCAPE-promotion late-failure cleanup no longer
+    replay copied child dtors after manual unwind.
   - this closes the concrete double-dtor hazard for copied closures with
     retained standalone env scopes and keeps rollback transactional instead of
     relying on later target teardown to tolerate already-consumed ownership.
@@ -16,6 +24,11 @@
     copied closure env scope is not destroyed when the abandoned target scope
     is released after a failed nested-array env-copy, and is destroyed exactly
     once when the original owner scope later releases it.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves the same
+    teardown symmetry for ordinary shared-wrapper partial cleanup: failed
+    copied `ARRAY` and `HASHMAP` wrappers leave the original closure env scope
+    intact across target-scope release and destroy it exactly once when the
+    foreign owner scope later releases it.
   - validation:
     - `c3c build`
     - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`

@@ -35,6 +35,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   partial cleanup remains correct even when the already-copied retained child
   was itself wrapped in another copied structured value before the later
   failure.
+- Shared rollback/partial-cleanup helpers now tombstone the copied target-scope
+  dtor entry before manually unwinding a materialized child, so env-copy,
+  ordinary boundary copy, root-store clone, and ESCAPE-promotion late-failure
+  cleanup no longer consume copied closure/env retains and then replay the
+  same destructor again during later scope teardown.
 - The same late-abort cleanup contract now also holds for root-store
   `ARRAY` / `HASHMAP` / `SET` clone routing, not just ordinary boundary copy
   and ESCAPE promotion.

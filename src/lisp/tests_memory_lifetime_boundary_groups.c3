@@ -1277,8 +1277,15 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
             env_define_with_barrier(captured_env, payload_sym, make_int(interp, 808), interp);
         }
         main::ScopeRegion* closure_env_scope = null;
+        int closure_env_destroy_count = 0;
         Value* shared_closure =
             captured_env != null ? make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope) : null;
+        if (closure_env_scope != null) {
+            main::scope_register_dtor(closure_env_scope, (void*)&closure_env_destroy_count, fn void(void* ptr) {
+                int* counter = (int*)ptr;
+                if (counter != null) (*counter)++;
+            });
+        }
         Value* shared_cons =
             shared_closure != null ? make_cons(interp, shared_closure, make_nil(interp)) : null;
         Value* opaque = interp.alloc_value();
@@ -1400,8 +1407,11 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
 
         interp.releasing_scope = null;
         interp.current_scope = saved;
-        main::scope_release(foreign);
         main::scope_release(target);
+        int rc_after_target_release = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        int destroy_count_after_target_release = closure_env_destroy_count;
+        main::scope_release(foreign);
+        int destroy_count_after_foreign_release = closure_env_destroy_count;
 
         bool array_ok = !boundary_copy_result_ok(array_copy_result) &&
                         array_copy_result.value == null &&
@@ -1411,18 +1421,24 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
                           hashmap_copy_result.value == null &&
                           hashmap_copy_result.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD &&
                           rc_after_hashmap_fail == 1;
-        bool ok = setup_ok && array_ok && hashmap_ok;
+        bool teardown_ok = rc_after_target_release == 1 &&
+                           destroy_count_after_target_release == 0 &&
+                           destroy_count_after_foreign_release == 1;
+        bool ok = setup_ok && array_ok && hashmap_ok && teardown_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: shared-wrapper partial cleanup releases retains");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup_ok=%s array_fault=%s hashmap_fault=%s rc_after_array_fail=%d rc_after_hashmap_fail=%d)",
+                "[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup_ok=%s array_fault=%s hashmap_fault=%s rc_after_array_fail=%d rc_after_hashmap_fail=%d rc_after_target_release=%d destroy_count_after_target_release=%d destroy_count_after_foreign_release=%d)",
                 setup_ok ? "yes" : "no",
                 (ZString)boundary_copy_fault_name(array_copy_result.fault_code),
                 (ZString)boundary_copy_fault_name(hashmap_copy_result.fault_code),
                 rc_after_array_fail,
-                rc_after_hashmap_fail
+                rc_after_hashmap_fail,
+                rc_after_target_release,
+                destroy_count_after_target_release,
+                destroy_count_after_foreign_release
             );
             (*fail)++;
         }

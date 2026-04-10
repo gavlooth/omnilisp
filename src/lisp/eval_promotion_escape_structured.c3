@@ -72,7 +72,7 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
     for (usz i = 0; i < src_arr.length; i++) {
         Value* promoted = promote_to_escape(src_arr.items[i], interp);
         if (src_arr.items[i] != null && (promoted == null || is_error(promoted))) {
-            boundary_cleanup_partial_array_copy(src_arr, dst_arr, i);
+            boundary_cleanup_partial_array_copy(src_arr, dst_arr, i, interp.current_scope, true);
             return promoted == null
                 ? raise_error(interp, "boundary: failed to promote array item during escape promotion")
                 : promoted;
@@ -125,7 +125,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
             if (src_e.key != null) {
                 Value* promoted_key = promote_to_escape(src_e.key, interp);
                 if (promoted_key == null || is_error(promoted_key)) {
-                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1, interp.current_scope, true);
                     return promoted_key == null
                         ? raise_error(interp, "boundary: failed to promote hashmap key during escape promotion")
                         : promoted_key;
@@ -133,7 +133,7 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
                 dst_e.key = promoted_key;
                 Value* promoted_value = promote_to_escape(src_e.value, interp);
                 if (src_e.value != null && (promoted_value == null || is_error(promoted_value))) {
-                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1, interp.current_scope, true);
                     return promoted_value == null
                         ? raise_error(interp, "boundary: failed to promote hashmap value during escape promotion")
                         : promoted_value;
@@ -187,12 +187,12 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
         method_signature_init_empty(&dst_mt.entries[i].sig);
         dst_mt.entries[i].implementation = null;
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i);
+            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i, false, interp.current_scope, true);
             return raise_error(interp, "boundary: failed to copy method signature during escape promotion");
         }
         Value* promoted_impl = promote_to_escape(src_mt.entries[i].implementation, interp);
         if (src_mt.entries[i].implementation != null && (promoted_impl == null || is_error(promoted_impl))) {
-            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i);
+            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i, false, interp.current_scope, true);
             return promoted_impl == null
                 ? raise_error(interp, "boundary: failed to promote method implementation during escape promotion")
                 : promoted_impl;
@@ -202,7 +202,7 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 
     Value* promoted_fallback = promote_to_escape(src_mt.fallback, interp);
     if (src_mt.fallback != null && (promoted_fallback == null || is_error(promoted_fallback))) {
-        boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, dst_mt.entry_count);
+        boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, dst_mt.entry_count, false, interp.current_scope, true);
         return promoted_fallback == null
             ? raise_error(interp, "boundary: failed to promote method fallback during escape promotion")
             : promoted_fallback;
