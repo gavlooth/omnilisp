@@ -3,6 +3,32 @@ module lisp;
 import std::core::mem;
 import std::io;
 
+int g_scheduler_force_result_list_cons_alloc_fail_nth = 0;
+
+fn bool scheduler_should_force_result_list_cons_alloc_fail() @inline {
+    if (g_scheduler_force_result_list_cons_alloc_fail_nth <= 0) return false;
+    g_scheduler_force_result_list_cons_alloc_fail_nth--;
+    return g_scheduler_force_result_list_cons_alloc_fail_nth == 0;
+}
+
+fn Value* scheduler_prepend_result_or_error(
+    Value* item,
+    Value* list,
+    char[] code,
+    char[] message,
+    Interp* interp
+) @inline {
+    if (scheduler_should_force_result_list_cons_alloc_fail()) {
+        return scheduler_raise(interp, code, message);
+    }
+    Value* next = make_cons(interp, item, list);
+    if (next == null) {
+        return scheduler_raise(interp, code, message);
+    }
+    if (next.tag == ERROR) return next;
+    return next;
+}
+
 fn Value* prim_thread_spawn(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     scheduler_init();
@@ -131,7 +157,14 @@ fn Value* prim_thread_spawn_batch(Value*[] args, Env* env, Interp* interp) {
 
     Value* results_rev = make_nil(interp);
     for (usz i = job_count; i > 0; i--) {
-        results_rev = make_cons(interp, results[i - 1], results_rev);
+        results_rev = scheduler_prepend_result_or_error(
+            results[i - 1],
+            results_rev,
+            "scheduler/thread-spawn-batch-out-of-memory",
+            "thread-spawn-batch: out of memory",
+            interp
+        );
+        if (results_rev != null && results_rev.tag == ERROR) return results_rev;
     }
     return results_rev;
 }

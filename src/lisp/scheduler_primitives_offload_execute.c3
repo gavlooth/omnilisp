@@ -143,7 +143,14 @@ fn Value* scheduler_execute_offload_job_batch(Value* jobs, bool allow_internal_i
 
     Value* results_rev = make_nil(interp);
     for (usz i = job_count; i > 0; i--) {
-        results_rev = make_cons(interp, results[i - 1], results_rev);
+        results_rev = scheduler_prepend_result_or_error(
+            results[i - 1],
+            results_rev,
+            "scheduler/offload-out-of-memory",
+            "offload: out of memory",
+            interp
+        );
+        if (results_rev != null && results_rev.tag == ERROR) return results_rev;
     }
     return results_rev;
 }

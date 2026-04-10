@@ -1,5 +1,23 @@
 ## 2026-04-10
 
+- Closed the scheduler batch result-list fail-closed lane:
+  - `src/lisp/scheduler_primitives_threads.c3`
+    now routes batch thread result-list assembly through one checked
+    scheduler-local prepend helper with a narrow nth-failure seam.
+  - `src/lisp/scheduler_primitives_offload_execute.c3`
+    now returns a typed `"offload: out of memory"` error if final result-list
+    publication fails.
+  - `src/lisp/scheduler_primitives_task_spawn.c3`
+    now drops already-spawned live thread-task entries if result-list
+    publication fails after task creation.
+  - `src/lisp/tests_scheduler_groups_more.c3`
+    now proves forced result-list cons allocation failure in offload-batch,
+    task-spawn-batch, and thread-spawn-batch leaves active thread-task count
+    unchanged.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+
 - Closed the OS-thread null-completion fail-closed lane:
   - `src/lisp/scheduler_thread_task_transition_scaffold.c3`
     now exposes a narrow transition-completion allocation fail seam for

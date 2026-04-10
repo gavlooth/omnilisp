@@ -884,3 +884,23 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-SCHEDULER-SHARED-PROJECTION-FAILCLOSED-024`
   - actionable backlog remains `0`
+
+- landed the scheduler batch result-list fail-closed follow-up:
+  - `src/lisp/scheduler_primitives_threads.c3`
+  - `src/lisp/scheduler_primitives_offload_execute.c3`
+  - `src/lisp/scheduler_primitives_task_spawn.c3`
+  - `src/lisp/tests_scheduler_groups_more.c3`
+- shipped behavior:
+  - scheduler batch primitives now route final result-list assembly through a
+    checked scheduler-local prepend helper and surface typed out-of-memory
+    errors instead of publishing partial result lists when final cons
+    construction fails.
+  - `task-spawn-batch` now drops already-spawned live thread-task entries if
+    result-list publication fails after task creation.
+  - direct regression landed in:
+    - `src/lisp/tests_scheduler_groups_more.c3`
+- validation status:
+  - bounded `scheduler`: green (`pass=109 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-SCHEDULER-BATCH-RESULT-LIST-FAILCLOSED-030`
+  - actionable backlog remains `0`

@@ -523,3 +523,16 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=156 fail=0`
+
+- Scheduler batch result-list publication is now fail-closed too:
+  - `__raw-offload-batch` and `__raw-thread-spawn-batch` now route final list
+    assembly through a checked scheduler-local prepend helper and surface
+    typed out-of-memory errors instead of publishing partial success lists.
+  - `__raw-task-spawn-batch` now drops already-spawned live thread-task
+    entries if result-list publication fails after task creation.
+  - the bounded scheduler slice now pins forced result-list cons allocation
+    failure for all three batch primitives and proves active thread-task count
+    stays unchanged across the failure path.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=scheduler ...`
+    -> `pass=109 fail=0`

@@ -22,6 +22,28 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-SCHEDULER-BATCH-RESULT-LIST-FAILCLOSED-030` make scheduler
+  batch primitives fail closed when result-list cons construction fails instead
+  of publishing partial success or leaking spawned task state
+  - closure evidence:
+    - `src/lisp/scheduler_primitives_threads.c3`
+      now routes batch thread result-list assembly through one checked
+      scheduler-local prepend helper with a narrow nth-failure seam.
+    - `src/lisp/scheduler_primitives_offload_execute.c3`
+      now makes offload batch result-list construction return a typed
+      `"offload: out of memory"` error instead of publishing a partial result
+      list.
+    - `src/lisp/scheduler_primitives_task_spawn.c3`
+      now drops already-spawned live thread-task entries if result-list
+      publication fails after task creation.
+    - `src/lisp/tests_scheduler_groups_more.c3`
+      now pins forced result-list cons allocation failure for offload-batch,
+      task-spawn-batch, and thread-spawn-batch, and proves active thread-task
+      count is unchanged after the failure path.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-ITERATOR-CONS-CONSTRUCTOR-FAILCLOSED-029` make iterator
   coroutine cons construction fail closed instead of publishing constructor
   failures as data or remapping them to misleading apply errors

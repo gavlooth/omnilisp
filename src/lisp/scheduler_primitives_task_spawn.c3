@@ -216,7 +216,21 @@ fn Value* prim_task_spawn_batch(Value*[] args, Env* env, Interp* interp) {
 
     Value* results_rev = make_nil(interp);
     for (usz i = job_count; i > 0; i--) {
-        results_rev = make_cons(interp, handle_vals[i - 1], results_rev);
+        results_rev = scheduler_prepend_result_or_error(
+            handle_vals[i - 1],
+            results_rev,
+            "scheduler/task-spawn-batch-out-of-memory",
+            "task-spawn-batch: out of memory",
+            interp
+        );
+        if (results_rev != null && results_rev.tag == ERROR) {
+            for (usz j = 0; j < spawned_count; j++) {
+                if (task_ids[j] != NO_TASK && scheduler_thread_task_exists(task_ids[j], generations[j])) {
+                    scheduler_drop_thread_task(task_ids[j], generations[j]);
+                }
+            }
+            return results_rev;
+        }
     }
     return results_rev;
 }
