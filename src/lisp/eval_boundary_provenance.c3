@@ -220,12 +220,14 @@ fn bool boundary_partial_payload_alias_unsafe_for_reuse(Value* partial, Interp* 
     if (first != null) {
         if (boundary_value_in_releasing_scope(first, interp)) return true;
         if (!boundary_ptr_in_target_scope_chain_with_hint((void*)first, interp, first.scope_gen)) return true;
+        if (boundary_graph_alias_unsafe_for_reuse(first, interp, 1)) return true;
     }
 
     Value* second = partial.partial_val.second_arg;
     if (second != null) {
         if (boundary_value_in_releasing_scope(second, interp)) return true;
         if (!boundary_ptr_in_target_scope_chain_with_hint((void*)second, interp, second.scope_gen)) return true;
+        if (boundary_graph_alias_unsafe_for_reuse(second, interp, 1)) return true;
     }
 
     return false;

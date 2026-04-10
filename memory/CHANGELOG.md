@@ -10462,3 +10462,19 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `readelf -d build/main`
     - `ldd build/main`
     - `./build/main --help`
+- 2026-04-10 (boundary partial/iterator nested alias hardening):
+  - `PARTIAL_PRIM` target-chain reuse and env-copy reuse now recurse into
+    `first_arg` / `second_arg` payload graphs instead of checking only the
+    direct arg wrappers.
+  - shipped consequence:
+    - a partial or iterator wrapper already in the target chain is no longer
+      reused by identity when one arg is a target-chain `ARRAY`, `HASHMAP`,
+      `SET`, or `METHOD_TABLE` wrapper whose nested child still belongs to the
+      releasing/source scope.
+    - those wrappers now fall back to the existing clone/promotion paths, so
+      nested shared-wrapper aliasing stays fail-closed under both direct
+      boundary copy and env-copy.
+  - validation:
+    - `c3c build`
+    - targeted `memory-lifetime-smoke` regressions for target-chain wrapper
+      alias policy and env-copy shared-wrapper policy

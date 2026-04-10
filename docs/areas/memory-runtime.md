@@ -63,6 +63,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
   child still points into the releasing scope.
+- `PARTIAL_PRIM` / iterator reuse now applies the same nested payload check to
+  `first_arg` / `second_arg`, so target-chain partial wrappers no longer alias
+  a shared-wrapper argument whose nested child still belongs to the
+  releasing/source scope.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or

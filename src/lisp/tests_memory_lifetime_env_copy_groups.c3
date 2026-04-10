@@ -441,7 +441,9 @@ fn void run_memory_lifetime_env_copy_primitive_policy_test(Interp* interp, int* 
 
 fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, int* pass, int* fail) {
     // Invariant: env-copy clones disjoint shared wrappers instead of reusing
-    // source-scope ARRAY / HASHMAP / SET / METHOD_TABLE wrappers by identity.
+    // source-scope ARRAY / HASHMAP / SET / METHOD_TABLE wrappers by identity,
+    // and it also clones target-chain PARTIAL_PRIM / ITERATOR wrappers when
+    // their nested shared-wrapper payload still points into the source scope.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* source = main::scope_create(saved);
@@ -458,6 +460,8 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
         SymbolId hashmap_sym = interp.symbols.intern("__copy_env_shared_hashmap");
         SymbolId set_sym = interp.symbols.intern("__copy_env_shared_set");
         SymbolId mt_sym = interp.symbols.intern("__copy_env_shared_method_table");
+        SymbolId partial_sym = interp.symbols.intern("__copy_env_partial_alias");
+        SymbolId iterator_sym = interp.symbols.intern("__copy_env_iterator_alias");
 
         interp.current_scope = source;
         Env* src_env = make_env(interp, interp.global_env);
@@ -631,6 +635,59 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
         mt_src.method_table_val = mt_payload;
         env_define_with_barrier(src_env, mt_sym, mt_src, interp);
 
+        interp.current_scope = target;
+        Value* alias_array = interp.alloc_value();
+        alias_array.tag = ARRAY;
+        main::scope_register_dtor(target, (void*)alias_array, &scope_dtor_value);
+        Array* alias_array_payload = (Array*)mem::malloc(Array.sizeof);
+        if (alias_array_payload == null) {
+            interp.current_scope = saved;
+            main::scope_release(source);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy shared wrapper policy (setup alias array)");
+            (*fail)++;
+            return;
+        }
+        alias_array_payload.capacity = 4;
+        alias_array_payload.length = 1;
+        alias_array_payload.items = (Value**)mem::malloc(Value*.sizeof * alias_array_payload.capacity);
+        if (alias_array_payload.items == null) {
+            mem::free(alias_array_payload);
+            interp.current_scope = saved;
+            main::scope_release(source);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy shared wrapper policy (setup alias array items)");
+            (*fail)++;
+            return;
+        }
+        for (usz i = 0; i < alias_array_payload.capacity; i++) {
+            alias_array_payload.items[i] = null;
+        }
+        alias_array.array_val = alias_array_payload;
+
+        Value* partial_src = interp.alloc_value();
+        partial_src.tag = PARTIAL_PRIM;
+        partial_src.partial_val.func = &prim_add;
+        partial_src.partial_val.remaining = 1;
+        partial_src.partial_val.first_arg = alias_array;
+        partial_src.partial_val.second_arg = make_int(interp, 88);
+
+        Value* iterator_src = make_iterator(interp, partial_src);
+        if (iterator_src == null) {
+            interp.current_scope = saved;
+            main::scope_release(source);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy shared wrapper policy (setup alias iterator)");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = source;
+        Value* alias_child = make_int(interp, 777);
+        alias_array_payload.items[0] = alias_child;
+        env_define_with_barrier(src_env, partial_sym, partial_src, interp);
+        env_define_with_barrier(src_env, iterator_sym, iterator_src, interp);
+
         BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(src_env, interp, target);
 
         Value* array_copied = boundary_env_copy_result_ok(copied) && copied.env != null
@@ -644,6 +701,12 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
             : null;
         Value* mt_copied = boundary_env_copy_result_ok(copied) && copied.env != null
             ? copied.env.lookup(mt_sym)
+            : null;
+        Value* partial_copied = boundary_env_copy_result_ok(copied) && copied.env != null
+            ? copied.env.lookup(partial_sym)
+            : null;
+        Value* iterator_copied = boundary_env_copy_result_ok(copied) && copied.env != null
+            ? copied.env.lookup(iterator_sym)
             : null;
 
         bool array_ok = array_copied != null &&
@@ -719,6 +782,45 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
                      mt_copied.method_table_val.fallback.tag == INT &&
                      mt_copied.method_table_val.fallback.int_val == 123;
 
+        Value* partial_copy_first = partial_copied != null && partial_copied.tag == PARTIAL_PRIM
+            ? partial_copied.partial_val.first_arg
+            : null;
+        Value* iterator_copy_partial = iterator_copied != null && iterator_copied.tag == ITERATOR
+            ? iterator_copied.iterator_val
+            : null;
+        Value* iterator_copy_first = iterator_copy_partial != null && iterator_copy_partial.tag == PARTIAL_PRIM
+            ? iterator_copy_partial.partial_val.first_arg
+            : null;
+
+        bool partial_ok = partial_copied != null &&
+                          partial_copied.tag == PARTIAL_PRIM &&
+                          partial_copied != partial_src &&
+                          partial_copy_first != null &&
+                          partial_copy_first.tag == ARRAY &&
+                          partial_copy_first != alias_array &&
+                          partial_copy_first.array_val != null &&
+                          partial_copy_first.array_val.items != null &&
+                          partial_copy_first.array_val.items[0] != null &&
+                          partial_copy_first.array_val.items[0] != alias_child &&
+                          partial_copy_first.array_val.items[0].tag == INT &&
+                          partial_copy_first.array_val.items[0].int_val == 777;
+
+        bool iterator_ok = iterator_copied != null &&
+                           iterator_copied.tag == ITERATOR &&
+                           iterator_copied != iterator_src &&
+                           iterator_copy_partial != null &&
+                           iterator_copy_partial.tag == PARTIAL_PRIM &&
+                           iterator_copy_partial != partial_src &&
+                           iterator_copy_first != null &&
+                           iterator_copy_first.tag == ARRAY &&
+                           iterator_copy_first != alias_array &&
+                           iterator_copy_first.array_val != null &&
+                           iterator_copy_first.array_val.items != null &&
+                           iterator_copy_first.array_val.items[0] != null &&
+                           iterator_copy_first.array_val.items[0] != alias_child &&
+                           iterator_copy_first.array_val.items[0].tag == INT &&
+                           iterator_copy_first.array_val.items[0].int_val == 777;
+
         main::scope_release(source);
 
         bool post_ok = array_copied != null &&
@@ -738,25 +840,35 @@ fn void run_memory_lifetime_env_copy_shared_wrapper_policy_test(Interp* interp, 
                        mt_copied.method_table_val.entries != null &&
                        mt_copied.method_table_val.entries[0].implementation != null &&
                        mt_copied.method_table_val.entries[0].implementation.tag == INT &&
-                       mt_copied.method_table_val.entries[0].implementation.int_val == 456;
+                       mt_copied.method_table_val.entries[0].implementation.int_val == 456 &&
+                       partial_copied != null &&
+                       partial_copy_first != null &&
+                       partial_copy_first.tag == ARRAY &&
+                       partial_copy_first.array_val != null &&
+                       partial_copy_first.array_val.items != null &&
+                       partial_copy_first.array_val.items[0] != null &&
+                       partial_copy_first.array_val.items[0].tag == INT &&
+                       partial_copy_first.array_val.items[0].int_val == 777;
 
         interp.current_scope = saved;
         main::scope_release(target);
 
         bool ok = boundary_env_copy_result_ok(copied) &&
                   copied.env != null &&
-                  array_ok && hashmap_ok && set_ok && mt_ok && post_ok;
+                  array_ok && hashmap_ok && set_ok && mt_ok && partial_ok && iterator_ok && post_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: env-copy shared wrapper policy");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: env-copy shared wrapper policy (copy_ok=%s array_ok=%s hashmap_ok=%s set_ok=%s mt_ok=%s post_ok=%s fault=%s)",
+                "[FAIL] lifetime: env-copy shared wrapper policy (copy_ok=%s array_ok=%s hashmap_ok=%s set_ok=%s mt_ok=%s partial_ok=%s iterator_ok=%s post_ok=%s fault=%s)",
                 boundary_env_copy_result_ok(copied) ? "yes" : "no",
                 array_ok ? "yes" : "no",
                 hashmap_ok ? "yes" : "no",
                 set_ok ? "yes" : "no",
                 mt_ok ? "yes" : "no",
+                partial_ok ? "yes" : "no",
+                iterator_ok ? "yes" : "no",
                 post_ok ? "yes" : "no",
                 (ZString)boundary_env_copy_fault_name(copied.fault_code)
             );

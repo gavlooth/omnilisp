@@ -700,7 +700,8 @@ fn void run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(Interp* interp,
 
 fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Interp* interp, int* pass, int* fail) {
     // Invariant: a shared wrapper already in the target chain must still clone
-    // when one nested child remains owned by the releasing scope.
+    // when one nested child remains owned by the releasing scope, including
+    // when that wrapper is nested inside PARTIAL_PRIM / ITERATOR payloads.
     {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* target = main::scope_create(saved);
@@ -863,6 +864,23 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
         }
         mt_src.method_table_val = mt_payload;
 
+        Value* partial_src = interp.alloc_value();
+        partial_src.tag = PARTIAL_PRIM;
+        partial_src.partial_val.func = &prim_add;
+        partial_src.partial_val.remaining = 1;
+        partial_src.partial_val.first_arg = array_src;
+        partial_src.partial_val.second_arg = make_int(interp, 903);
+
+        Value* iter_src = make_iterator(interp, partial_src);
+        if (iter_src == null) {
+            interp.current_scope = saved;
+            main::scope_release(releasing);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: target-chain shared wrapper payload alias policy (setup iterator)");
+            (*fail)++;
+            return;
+        }
+
         interp.current_scope = releasing;
         Value* array_child = make_int(interp, 1701);
         Value* hashmap_value = make_int(interp, 1702);
@@ -884,10 +902,14 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
         Value* hashmap_copied = copy_to_parent(hashmap_src, interp);
         Value* set_copied = copy_to_parent(set_src, interp);
         Value* mt_copied = copy_to_parent(mt_src, interp);
+        Value* partial_copied = copy_to_parent(partial_src, interp);
+        Value* iter_copied = copy_to_parent(iter_src, interp);
         Value* array_escaped = promote_to_escape(array_src, interp);
         Value* hashmap_escaped = promote_to_escape(hashmap_src, interp);
         Value* set_escaped = promote_to_escape(set_src, interp);
         Value* mt_escaped = promote_to_escape(mt_src, interp);
+        Value* partial_escaped = promote_to_escape(partial_src, interp);
+        Value* iter_escaped = promote_to_escape(iter_src, interp);
 
         bool array_copy_ok = array_copied != null &&
             array_copied != array_src &&
@@ -985,6 +1007,88 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
             mt_escaped.method_table_val.fallback.tag == INT &&
             mt_escaped.method_table_val.fallback.int_val == 1705;
 
+        Value* partial_copy_first = partial_copied != null && partial_copied.tag == PARTIAL_PRIM
+            ? partial_copied.partial_val.first_arg
+            : null;
+        Value* partial_escape_first = partial_escaped != null && partial_escaped.tag == PARTIAL_PRIM
+            ? partial_escaped.partial_val.first_arg
+            : null;
+        Value* iter_copy_partial = iter_copied != null && iter_copied.tag == ITERATOR
+            ? iter_copied.iterator_val
+            : null;
+        Value* iter_escape_partial = iter_escaped != null && iter_escaped.tag == ITERATOR
+            ? iter_escaped.iterator_val
+            : null;
+        Value* iter_copy_first = iter_copy_partial != null && iter_copy_partial.tag == PARTIAL_PRIM
+            ? iter_copy_partial.partial_val.first_arg
+            : null;
+        Value* iter_escape_first = iter_escape_partial != null && iter_escape_partial.tag == PARTIAL_PRIM
+            ? iter_escape_partial.partial_val.first_arg
+            : null;
+
+        bool partial_copy_ok = partial_copied != null &&
+            partial_copied != partial_src &&
+            partial_copied.tag == PARTIAL_PRIM &&
+            partial_copy_first != null &&
+            partial_copy_first != array_src &&
+            partial_copy_first.tag == ARRAY &&
+            partial_copy_first.array_val != null &&
+            partial_copy_first.array_val.items != null &&
+            partial_copy_first.array_val.items[0] != null &&
+            partial_copy_first.array_val.items[0] != array_child &&
+            partial_copy_first.array_val.items[0].tag == INT &&
+            partial_copy_first.array_val.items[0].int_val == 1701;
+
+        bool iter_copy_ok = iter_copied != null &&
+            iter_copied != iter_src &&
+            iter_copied.tag == ITERATOR &&
+            iter_copy_partial != null &&
+            iter_copy_partial != partial_src &&
+            iter_copy_partial.tag == PARTIAL_PRIM &&
+            iter_copy_first != null &&
+            iter_copy_first != array_src &&
+            iter_copy_first.tag == ARRAY &&
+            iter_copy_first.array_val != null &&
+            iter_copy_first.array_val.items != null &&
+            iter_copy_first.array_val.items[0] != null &&
+            iter_copy_first.array_val.items[0] != array_child &&
+            iter_copy_first.array_val.items[0].tag == INT &&
+            iter_copy_first.array_val.items[0].int_val == 1701;
+
+        bool partial_escape_ok = partial_escaped != null &&
+            partial_escaped != partial_src &&
+            partial_escaped.tag == PARTIAL_PRIM &&
+            partial_escaped.scope_gen == target.escape_generation &&
+            partial_escape_first != null &&
+            partial_escape_first != array_src &&
+            partial_escape_first.tag == ARRAY &&
+            partial_escape_first.scope_gen == target.escape_generation &&
+            partial_escape_first.array_val != null &&
+            partial_escape_first.array_val.items != null &&
+            partial_escape_first.array_val.items[0] != null &&
+            partial_escape_first.array_val.items[0] != array_child &&
+            partial_escape_first.array_val.items[0].tag == INT &&
+            partial_escape_first.array_val.items[0].int_val == 1701;
+
+        bool iter_escape_ok = iter_escaped != null &&
+            iter_escaped != iter_src &&
+            iter_escaped.tag == ITERATOR &&
+            iter_escaped.scope_gen == target.escape_generation &&
+            iter_escape_partial != null &&
+            iter_escape_partial != partial_src &&
+            iter_escape_partial.tag == PARTIAL_PRIM &&
+            iter_escape_partial.scope_gen == target.escape_generation &&
+            iter_escape_first != null &&
+            iter_escape_first != array_src &&
+            iter_escape_first.tag == ARRAY &&
+            iter_escape_first.scope_gen == target.escape_generation &&
+            iter_escape_first.array_val != null &&
+            iter_escape_first.array_val.items != null &&
+            iter_escape_first.array_val.items[0] != null &&
+            iter_escape_first.array_val.items[0] != array_child &&
+            iter_escape_first.array_val.items[0].tag == INT &&
+            iter_escape_first.array_val.items[0].int_val == 1701;
+
         main::scope_release(releasing);
 
         bool post_ok = array_copied != null &&
@@ -993,6 +1097,15 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
             array_copied.array_val.items[0] != null &&
             array_copied.array_val.items[0].tag == INT &&
             array_copied.array_val.items[0].int_val == 1701 &&
+            partial_copied != null &&
+            partial_copied.tag == PARTIAL_PRIM &&
+            partial_copy_first != null &&
+            partial_copy_first.tag == ARRAY &&
+            partial_copy_first.array_val != null &&
+            partial_copy_first.array_val.items != null &&
+            partial_copy_first.array_val.items[0] != null &&
+            partial_copy_first.array_val.items[0].tag == INT &&
+            partial_copy_first.array_val.items[0].int_val == 1701 &&
             mt_copied != null &&
             mt_copied.tag == METHOD_TABLE &&
             mt_copied.method_table_val != null &&
@@ -1005,22 +1118,28 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
         main::scope_release(target);
 
         bool ok = array_copy_ok && hashmap_copy_ok && set_copy_ok && mt_copy_ok &&
+            partial_copy_ok && iter_copy_ok &&
             array_escape_ok && hashmap_escape_ok && set_escape_ok && mt_escape_ok &&
+            partial_escape_ok && iter_escape_ok &&
             post_ok;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: target-chain shared wrapper payload alias policy");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: target-chain shared wrapper payload alias policy (array_copy=%s hashmap_copy=%s set_copy=%s mt_copy=%s array_escape=%s hashmap_escape=%s set_escape=%s mt_escape=%s post_ok=%s)",
+                "[FAIL] lifetime: target-chain shared wrapper payload alias policy (array_copy=%s hashmap_copy=%s set_copy=%s mt_copy=%s partial_copy=%s iter_copy=%s array_escape=%s hashmap_escape=%s set_escape=%s mt_escape=%s partial_escape=%s iter_escape=%s post_ok=%s)",
                 array_copy_ok ? "yes" : "no",
                 hashmap_copy_ok ? "yes" : "no",
                 set_copy_ok ? "yes" : "no",
                 mt_copy_ok ? "yes" : "no",
+                partial_copy_ok ? "yes" : "no",
+                iter_copy_ok ? "yes" : "no",
                 array_escape_ok ? "yes" : "no",
                 hashmap_escape_ok ? "yes" : "no",
                 set_escape_ok ? "yes" : "no",
                 mt_escape_ok ? "yes" : "no",
+                partial_escape_ok ? "yes" : "no",
+                iter_escape_ok ? "yes" : "no",
                 post_ok ? "yes" : "no"
             );
             (*fail)++;
