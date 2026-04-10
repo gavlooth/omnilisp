@@ -109,7 +109,7 @@ fn Value* deduce_parallel_component_batch_topology_payload(
         }
         if (batch_seen) continue;
 
-        Value* entry = make_hashmap(interp, 8);
+        Value* entry = make_hashmap_checked(interp, 8, "deduce/analyze: out of memory");
         if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
             return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
         }
@@ -125,14 +125,29 @@ fn Value* deduce_parallel_component_batch_topology_payload(
             );
         }
 
-        explain_dict_set(entry, interp, "leader-component-id", make_int(interp, (long)component_id));
-        explain_dict_set(entry, interp, "stratum",
-            make_int(interp, component_id < plan.component_strata.len ? (long)plan.component_strata[component_id] : 0));
-        explain_dict_set(entry, interp, "wave",
-            make_int(interp, component_id < wave_ids.len ? (long)wave_ids[component_id] : 0));
-        explain_dict_set(entry, interp, "batch-size",
-            make_int(interp, component_id < batch_sizes.len ? (long)batch_sizes[component_id] : 0));
-        explain_dict_set(entry, interp, "component-predicates", deduce_reverse_list(predicate_rev, interp));
+        if (Value* err = explain_dict_set(entry, interp, "leader-component-id", make_int(interp, (long)component_id))) {
+            (void)err;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (Value* err = explain_dict_set(entry, interp, "stratum",
+                make_int(interp, component_id < plan.component_strata.len ? (long)plan.component_strata[component_id] : 0))) {
+            (void)err;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (Value* err = explain_dict_set(entry, interp, "wave",
+                make_int(interp, component_id < wave_ids.len ? (long)wave_ids[component_id] : 0))) {
+            (void)err;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (Value* err = explain_dict_set(entry, interp, "batch-size",
+                make_int(interp, component_id < batch_sizes.len ? (long)batch_sizes[component_id] : 0))) {
+            (void)err;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        if (Value* err = explain_dict_set(entry, interp, "component-predicates", deduce_reverse_list(predicate_rev, interp))) {
+            (void)err;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
         rev = make_cons(interp, entry, rev);
     }
 

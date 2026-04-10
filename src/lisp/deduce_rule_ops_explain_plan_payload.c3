@@ -8,10 +8,7 @@ fn Value* deduce_explain_build_rule_execution_entry(
     Interp* interp
 ) {
     if (sig == null) return make_nil(interp);
-    Value* entry = make_hashmap(interp, 16);
-    if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
-    }
+    Value* entry = explain_make_dict(interp, 16);
 
     Value* steps = deduce_explain_build_plan_steps(db, sig, observed_rule_counters, interp);
     if (steps != null && steps.tag == ERROR) return steps;

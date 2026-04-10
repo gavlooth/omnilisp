@@ -20,10 +20,7 @@ fn Value* deduce_explain_build_head_projections(
 
     Value* rev = make_nil(interp);
     for (usz i = 0; i < sig.head_term_count; i++) {
-        Value* entry = make_hashmap(interp, 8);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 8);
         DeduceRuleTermKind kind = sig.head_term_kinds[i];
         explain_dict_set(entry, interp, "position", make_int(interp, (long)i));
         explain_dict_set_symbol(entry, interp, "projection-kind",

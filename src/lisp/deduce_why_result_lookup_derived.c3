@@ -36,6 +36,10 @@ fn Value* deduce_why_result_build_derived_payload(
             first_support,
             interp
         );
+        if (path == null) {
+            return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
+        }
+        if (path.tag == ERROR) return path;
         deduce_why_result_maybe_attach_path_goal_directed_read_context(
             path,
             rel,
@@ -82,6 +86,10 @@ fn Value* deduce_why_result_build_derived_payload(
         make_nil(interp),
         interp
     );
+    if (fallback_path == null) {
+        return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
+    }
+    if (fallback_path.tag == ERROR) return fallback_path;
     deduce_why_result_maybe_attach_path_goal_directed_read_context(
         fallback_path,
         rel,

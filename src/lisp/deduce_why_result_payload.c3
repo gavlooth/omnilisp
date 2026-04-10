@@ -39,7 +39,7 @@ fn Value* deduce_why_result_build_goal_directed_read_context(
         return make_nil(interp);
     }
 
-    Value* out = make_hashmap(interp, 16);
+    Value* out = make_hashmap_checked(interp, 16, "deduce/why-result: out of memory");
     if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
     explain_dict_set(out, interp, "relation", make_symbol(interp, rel.name));
     explain_dict_set(out, interp, "execution-path", make_symbol(interp, schema.last_goal_directed_read_execution_path));
@@ -129,7 +129,7 @@ fn void deduce_why_result_maybe_attach_path_goal_directed_read_context(
 ) {
     if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return;
     Value* context = deduce_why_result_build_path_goal_directed_read_context(rel, subject_key, subject_key_len, interp);
-    if (context != null && !is_nil(context)) {
+    if (context != null && context.tag == HASHMAP && context.hashmap_val != null) {
         explain_dict_set(path, interp, "goal-directed-read-context", context);
     }
 }
@@ -160,7 +160,7 @@ fn void deduce_why_result_maybe_attach_subject_goal_directed_read_context(
         subject_key_len,
         interp
     );
-    if (context != null && !is_nil(context)) {
+    if (context != null && context.tag == HASHMAP && context.hashmap_val != null) {
         explain_dict_set(node, interp, "goal-directed-read-context", context);
     }
 }
@@ -176,13 +176,15 @@ fn Value* deduce_why_result_build_payload(
     Interp* interp,
     SymbolId code = (SymbolId)0
 ) {
-    Value* out = make_hashmap(interp, 16);
+    Value* out = make_hashmap_checked(interp, 16, "deduce/why-result: out of memory");
     if (out == null || out.tag != HASHMAP || out.hashmap_val == null) return out;
     explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("why-result"));
     explain_dict_set_symbol(out, interp, "status", status);
     explain_dict_set_symbol(out, interp, "surface-kind", interp.symbols.intern("provenance-snapshot"));
     explain_dict_set_symbol(out, interp, "subject-kind", interp.symbols.intern("row"));
-    explain_dict_set(out, interp, "subject", deduce_why_result_build_row_subject(rel, tuple, interp));
+    Value* subject = deduce_why_result_build_row_subject(rel, tuple, interp);
+    if (subject != null && subject.tag == ERROR) return subject;
+    explain_dict_set(out, interp, "subject", subject);
     explain_dict_set(out, interp, "path-count", make_int(interp, path_count));
     explain_dict_set(out, interp, "max-depth", make_int(interp, max_depth));
     explain_dict_set(out, interp, "truncated",
@@ -190,7 +192,8 @@ fn Value* deduce_why_result_build_payload(
     explain_dict_set(out, interp, "paths", paths);
     Value* goal_directed_read_context = deduce_why_result_build_goal_directed_read_context(rel, interp);
     if (goal_directed_read_context != null &&
-        !(is_nil(goal_directed_read_context))) {
+        goal_directed_read_context.tag == HASHMAP &&
+        goal_directed_read_context.hashmap_val != null) {
         explain_dict_set(out, interp, "goal-directed-read-context", goal_directed_read_context);
     }
     if (code != (SymbolId)0) {

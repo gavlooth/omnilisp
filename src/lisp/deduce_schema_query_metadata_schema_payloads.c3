@@ -5,10 +5,7 @@ fn Value* deduce_relation_schema_payload(
     DeduceRelationSchema* schema,
     Interp* interp
 ) {
-    Value* out = make_hashmap(interp, 32);
-    if (out == null || out.tag != HASHMAP || out.hashmap_val == null) {
-        return deduce_raise(interp, "deduce/schema-out-of-memory", "deduce/schema: out of memory");
-    }
+    Value* out = explain_make_dict(interp, 32);
 
     long resolved_reference_constraint_count =
         deduce_relation_schema_resolved_reference_constraint_count(rel != null ? rel.db : null, schema);
@@ -82,10 +79,7 @@ fn Value* deduce_relation_indexes_payload(
     Value* rev = make_nil(interp);
     for (usz i = 0; i < schema.index_count; i++) {
         DeduceIndexDescriptor* index = &schema.indexes[i];
-        Value* entry = make_hashmap(interp, 8);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/indexes-out-of-memory", "deduce/indexes: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 8);
         explain_dict_set(entry, interp, "index-id", make_int(interp, (long)i));
         explain_dict_set(entry, interp, "columns", deduce_relation_index_columns_list(schema, index, interp));
         explain_dict_set(entry, interp, "column-count", make_int(interp, (long)index.column_count));

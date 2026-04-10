@@ -40,6 +40,42 @@ fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail
         fail
     );
 
+    {
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        EvalResult r = run(
+            "(block "
+            "  (define db-key-conflict-oom (deduce 'open 'memory)) "
+            "  (define [relation db-key-conflict-oom] rel-key-conflict-oom (key id) (name)) "
+            "  (deduce 'fact! rel-key-conflict-oom 1 \"Alice\") "
+            "  (define code "
+            "    (handle (deduce 'fact! rel-key-conflict-oom 1 \"Bob\") "
+            "      (raise payload "
+            "        (if (dict? payload) "
+            "            (symbol->string (ref payload 'code)) "
+            "            \"deduce/integrity-key-conflict\")))) "
+            "  (cons code (cons (deduce 'count rel-key-conflict-oom) nil)))",
+            interp
+        );
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            !r.error.has_error &&
+            is_cons(r.value) &&
+            is_string(car(r.value)) &&
+            deduce_name_equals(car(r.value).str_chars[:car(r.value).str_len], "deduce/integrity-key-conflict") &&
+            is_cons(cdr(r.value)) &&
+            is_int(car(cdr(r.value))) &&
+            car(cdr(r.value)).int_val == 1;
+        if (ok) {
+            emit_pass_literal("[PASS] deduce keyed fact! degrades to payload-less conflict under payload-map oom");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce keyed fact! degrades to payload-less conflict under payload-map oom");
+            (*fail)++;
+        }
+    }
+
     deduce_test_expect_true_symbol(
         interp,
         "(block "

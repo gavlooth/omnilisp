@@ -10,10 +10,7 @@ fn Value* deduce_relation_schema_constraints_payload(
     Value* rev = make_nil(interp);
 
     if (schema.unique_column_count > 0 && !deduce_relation_schema_unique_equivalent_to_key(schema)) {
-        Value* entry = make_hashmap(interp, 8);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/schema-out-of-memory", "deduce/schema: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 8);
         Value* columns = deduce_relation_schema_role_columns(schema.unique_columns, schema.unique_column_count, interp);
         explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("unique"));
         explain_dict_set(entry, interp, "columns", columns);
@@ -25,10 +22,7 @@ fn Value* deduce_relation_schema_constraints_payload(
     if (schema.reference_constraint_count > 0 && schema.reference_constraints != null) {
         for (usz i = 0; i < schema.reference_constraint_count; i++) {
             DeduceReferenceConstraint* ref = &schema.reference_constraints[i];
-            Value* entry = make_hashmap(interp, 16);
-            if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-                return deduce_raise(interp, "deduce/schema-out-of-memory", "deduce/schema: out of memory");
-            }
+            Value* entry = explain_make_dict(interp, 16);
             bool target_declared = false;
             bool target_column_declared = false;
             bool target_live = false;
@@ -52,10 +46,7 @@ fn Value* deduce_relation_schema_constraints_payload(
     if (schema.check_constraint_count > 0 && schema.check_constraints != null) {
         for (usz i = 0; i < schema.check_constraint_count; i++) {
             DeduceCheckConstraint* check = &schema.check_constraints[i];
-            Value* entry = make_hashmap(interp, 10);
-            if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-                return deduce_raise(interp, "deduce/schema-out-of-memory", "deduce/schema: out of memory");
-            }
+            Value* entry = explain_make_dict(interp, 10);
             Value* columns = make_cons(interp, make_symbol(interp, check.local_column), make_nil(interp));
             explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("check"));
             explain_dict_set(entry, interp, "columns", columns);
@@ -66,10 +57,7 @@ fn Value* deduce_relation_schema_constraints_payload(
     }
 
     if (schema.key_column != (SymbolId)0) {
-        Value* entry = make_hashmap(interp, 8);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/schema-out-of-memory", "deduce/schema: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 8);
         Value* columns = make_cons(interp, make_symbol(interp, schema.key_column), make_nil(interp));
         explain_dict_set_symbol(entry, interp, "kind", interp.symbols.intern("key"));
         explain_dict_set(entry, interp, "columns", columns);

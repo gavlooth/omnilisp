@@ -52,6 +52,36 @@ Post-wave follow-up (2026-04-10):
   - the residual raw-hashmap lane is now narrower again:
     - `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B`
 
+- The remaining guarded raw-hashmap normalization lane is now also closed:
+  - row materialization in `src/lisp/deduce_relation_row_materialization.c3`
+    now uses checked hashmap construction plus checked insertion.
+  - integrity payload builders in
+    `src/lisp/deduce_relation_ops_validation_payload.c3`
+    now use a checked payload-dict helper and fail closed to payload omission
+    when insert-time allocation fails.
+  - the deduce runtime helper state family now consistently uses checked map
+    construction/insertion:
+    - `src/lisp/deduce_rule_eval_exec_component_state_helpers.c3`
+    - `src/lisp/deduce_rule_eval_exec_component_state.c3`
+    - `src/lisp/deduce_rule_eval_exec_aggregate_state.c3`
+    - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
+    - `src/lisp/deduce_rule_eval_scc.c3`
+    - `src/lisp/deduce_relation_scan_helpers_join.c3`
+    - `src/lisp/deduce_rule_eval_analyze_setup.c3`
+    - `src/lisp/deduce_rule_eval_fixpoint_goal_directed_selector_prepare.c3`
+  - remaining deduce explain/schema/analyze and why-result payload/result
+    builders no longer use raw `make_hashmap(...)`; scoped grep over
+    `src/lisp/deduce_*` and `src/lisp/unify_*` is now clean.
+  - regressions now cover:
+    - deduce helper-state constructor OOM,
+    - integrity payload-map OOM degradation,
+    - why-result path/payload OOM.
+  - validation:
+    - `c3c build`
+    - bounded deduce slice:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
+  - `TODO.md` no longer tracks `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B`.
+
 - The raw-array constructor and AOT dict payload slice is now also closed:
   - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`
     through the checked array constructor path.

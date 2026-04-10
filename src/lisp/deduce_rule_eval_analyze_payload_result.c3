@@ -16,7 +16,7 @@ fn Value* deduce_analyze_build_payload(
             "deduce/analyze: invalid result payload state");
     }
 
-    Value* out = make_hashmap(interp, 128);
+    Value* out = make_hashmap_checked(interp, 128, "deduce/analyze: out of memory");
     if (out == null || out.tag != HASHMAP || out.hashmap_val == null) {
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }

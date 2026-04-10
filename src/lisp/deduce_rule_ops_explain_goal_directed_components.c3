@@ -60,10 +60,7 @@ fn Value* deduce_explain_goal_directed_component_summaries(
             rule_count++;
         }
 
-        Value* entry = make_hashmap(interp, 16);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 16);
 
         explain_dict_set(entry, interp, "component-id", make_int(interp, (long)component_id));
         explain_dict_set(entry, interp, "stratum",

@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 0
 
 Completed backlog snapshots:
 
@@ -18,20 +18,42 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B` normalize the remaining already-guarded `make_hashmap(...)` caller family onto checked constructors or a shared fail-closed helper contract
-  - scope:
-    - deduce payload/result builders
-    - deduce runtime helper state maps
-    - unify/deduce row materialization helpers
-  - why this remains open:
-    - the direct crashable caller class is now closed separately
-    - the remaining family already guards `tag` / `hashmap_val`, but it still
-      depends on repeated ad-hoc raw-constructor checks instead of one checked
-      constructor or shared helper contract
-    - this is now strictly a normalization and consistency lane, not the same
-      immediate crash class that `deduce 'match` used to have
+- None.
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B` normalize the remaining already-guarded `make_hashmap(...)` caller family onto checked constructors or a shared fail-closed helper contract
+  - closure evidence:
+    - `src/lisp/deduce_relation_row_materialization.c3` now uses checked
+      hashmap construction plus checked insertion for row-dict materialization.
+    - `src/lisp/deduce_relation_ops_validation_payload.c3` now routes
+      integrity payload maps through a checked helper and drops the payload
+      cleanly when insertion fails instead of returning partially populated
+      dicts.
+    - deduce runtime helper state maps in:
+      - `src/lisp/deduce_rule_eval_exec_component_state_helpers.c3`
+      - `src/lisp/deduce_rule_eval_exec_component_state.c3`
+      - `src/lisp/deduce_rule_eval_exec_aggregate_state.c3`
+      - `src/lisp/deduce_rule_eval_exec_seminaive.c3`
+      - `src/lisp/deduce_rule_eval_scc.c3`
+      - `src/lisp/deduce_relation_scan_helpers_join.c3`
+      - `src/lisp/deduce_rule_eval_analyze_setup.c3`
+      - `src/lisp/deduce_rule_eval_fixpoint_goal_directed_selector_prepare.c3`
+      now all use checked constructor/insertion paths.
+    - the remaining deduce explain/schema/analyze and why-result payload dict
+      families no longer use raw `make_hashmap(...)` either:
+      - `rg -n "make_hashmap\\(" src/lisp/deduce_* src/lisp/unify_* -S`
+        returns no matches.
+    - regressions now pin:
+      - helper-state constructor OOM in
+        `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      - integrity payload-map OOM degradation in
+        `src/lisp/tests_deduce_groups_integrity.c3`
+      - why-result payload/path OOM in
+        `src/lisp/tests_deduce_query_groups.c3`
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
 
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-HASHMAP-CRASHERS-012A` close the direct raw-hashmap caller class that still dereferenced payloads without constructor checks
   - closure evidence:

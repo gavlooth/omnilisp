@@ -25,6 +25,10 @@ fn Value* deduce_why_result_build_seed_payload(
     Interp* interp
 ) {
     Value* path = deduce_why_result_build_seed_path(rel, tuple, interp);
+    if (path == null) {
+        return deduce_raise(interp, "deduce/why-result-out-of-memory", "deduce/why-result: out of memory");
+    }
+    if (path.tag == ERROR) return path;
     deduce_why_result_maybe_attach_path_goal_directed_read_context(
         path,
         rel,

@@ -23,10 +23,7 @@ fn Value* deduce_explain_build_plan_steps(
     if (sig == null || sig.body_count == 0) return make_nil(interp);
     Value* rev = make_nil(interp);
     for (usz i = 0; i < sig.body_count; i++) {
-        Value* step = make_hashmap(interp, 16);
-        if (step == null || step.tag != HASHMAP || step.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-        }
+        Value* step = explain_make_dict(interp, 16);
         DeduceRuleAtom op_probe = {};
         op_probe.negated = sig.body_negated != null ? sig.body_negated[i] : false;
         int selected_index = sig.body_selected_indexes != null ? sig.body_selected_indexes[i] : -1;

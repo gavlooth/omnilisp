@@ -1,5 +1,56 @@
 ## 2026-04-10
 
+- Closed the remaining guarded raw-hashmap normalization lane for
+  `deduce_*` / `unify_*` payload and result builders:
+  - `src/lisp/deduce_relation_row_materialization.c3` now routes row-dict
+    materialization through checked hashmap construction plus checked
+    insertion, so scan/query row payload building fails closed under
+    constructor or grow pressure.
+  - `src/lisp/deduce_relation_ops_validation_payload.c3` now routes integrity
+    payload maps through one checked payload-dict helper and treats
+    `explain_dict_set*` failure as payload omission instead of returning a
+    partially populated machine-readable conflict payload.
+  - `src/lisp/deduce_rule_eval_exec_component_state_helpers.c3`,
+    `src/lisp/deduce_rule_eval_exec_component_state.c3`,
+    `src/lisp/deduce_rule_eval_exec_aggregate_state.c3`,
+    `src/lisp/deduce_rule_eval_exec_seminaive.c3`,
+    `src/lisp/deduce_rule_eval_scc.c3`,
+    `src/lisp/deduce_relation_scan_helpers_join.c3`,
+    `src/lisp/deduce_rule_eval_analyze_setup.c3`, and
+    `src/lisp/deduce_rule_eval_fixpoint_goal_directed_selector_prepare.c3`
+    now use checked hashmap construction and checked insertion for deduce
+    runtime helper state maps instead of ad hoc raw-constructor mutation.
+  - `src/lisp/deduce_rule_ops_explain_goal_directed_components.c3`,
+    `src/lisp/deduce_rule_ops_explain_plan_payload.c3`,
+    `src/lisp/deduce_rule_ops_explain_plan_steps.c3`,
+    `src/lisp/deduce_rule_ops_explain_projection.c3`,
+    `src/lisp/deduce_rule_ops_explain_snapshot.c3`,
+    `src/lisp/deduce_rule_ops_explain_step_counters.c3`,
+    `src/lisp/deduce_schema_query_metadata_schema_helpers.c3`,
+    `src/lisp/deduce_schema_query_metadata_schema_payloads.c3`,
+    `src/lisp/deduce_schema_query_metadata_stats.c3`,
+    `src/lisp/deduce_schema_query_metadata_integrity_history.c3`, and
+    `src/lisp/deduce_rule_eval_analyze_payload_result.c3`
+    now route the remaining already-guarded deduce explain/schema/analyze
+    payload dictionaries through checked constructors instead of raw
+    `make_hashmap(...)`.
+  - `src/lisp/deduce_why_result_path_payload.c3`,
+    `src/lisp/deduce_why_result_payload.c3`,
+    `src/lisp/deduce_why_result_lookup.c3`, and
+    `src/lisp/deduce_why_result_lookup_derived.c3`
+    now fail closed when why-result path/payload dictionary construction
+    fails, instead of treating missing path payloads as ordinary successful
+    provenance snapshots.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`,
+    `src/lisp/tests_deduce_groups_integrity.c3`, and
+    `src/lisp/tests_deduce_query_groups.c3`
+    now pin the deduce helper-state, integrity payload, and why-result OOM
+    seams directly.
+  - scoped verification:
+    - `rg -n "make_hashmap\\(" src/lisp/deduce_* src/lisp/unify_* -S` -> no matches
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'` -> `pass=328 fail=0`
+
 - Closed the direct-crash raw-hashmap caller slice of the internal
   collection-constructor hardening pass:
   - `src/lisp/unify_match_helpers.c3` now routes `build_result_dict(...)`

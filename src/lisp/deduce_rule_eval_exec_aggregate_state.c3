@@ -50,7 +50,7 @@ fn Value* deduce_aggregate_group_ensure_term_support_map(
         return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid aggregate support state");
     }
     if (group.term_support_counts[term_idx] == null) {
-        group.term_support_counts[term_idx] = make_hashmap(interp, 16);
+        group.term_support_counts[term_idx] = make_hashmap_checked(interp, 16, "deduce/analyze: out of memory");
         if (group.term_support_counts[term_idx] == null ||
             group.term_support_counts[term_idx].tag != HASHMAP ||
             group.term_support_counts[term_idx].hashmap_val == null) {
@@ -105,7 +105,9 @@ fn Value* deduce_aggregate_group_adjust_term_support_count(
         }
         next = 0;
     } else {
-        hashmap_set(group.term_support_counts[term_idx].hashmap_val, input, make_int(interp, next), interp);
+        if (!hashmap_set_checked(group.term_support_counts[term_idx].hashmap_val, input, make_int(interp, next), interp)) {
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
     }
     if (next_count_out != null) *next_count_out = next;
     return null;

@@ -9,10 +9,7 @@ fn Value* deduce_explain_observed_step_counter_payload(
 
     Value* rev = make_nil(interp);
     for (usz i = 0; i < step_count; i++) {
-        Value* entry = make_hashmap(interp, 8);
-        if (entry == null || entry.tag != HASHMAP || entry.hashmap_val == null) {
-            return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-        }
+        Value* entry = explain_make_dict(interp, 8);
         explain_dict_set(entry, interp, "step-index", make_int(interp, (long)i));
         explain_dict_set(entry, interp, "rows-read", make_int(interp, steps[i].rows_read));
         explain_dict_set(entry, interp, "rows-emitted", make_int(interp, steps[i].rows_emitted));
@@ -34,10 +31,7 @@ fn Value* deduce_explain_build_step_counters(
     DeduceObservedRuleCounters* observed_rule_counters,
     Interp* interp
 ) {
-    Value* counters = make_hashmap(interp, 8);
-    if (counters == null || counters.tag != HASHMAP || counters.hashmap_val == null) {
-        return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-    }
+    Value* counters = explain_make_dict(interp, 8);
 
     if (observed_rule_counters != null && observed_rule_counters.steps != null &&
         step_index < observed_rule_counters.step_count) {

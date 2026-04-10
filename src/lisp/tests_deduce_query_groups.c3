@@ -45,6 +45,10 @@ fn Value* deduce_query_test_find_row_by_value(Interp* interp, Value* rows, char[
     return null;
 }
 
+fn bool deduce_query_test_error_matches(EvalResult result, char[] expected) {
+    return result.error.has_error && str_starts_with(result.error.message[:256], expected);
+}
+
 fn bool deduce_query_filter_matches(char* filter, char[] name) {
     if (filter == null) return false;
     usz len = 0;
@@ -269,6 +273,82 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
             (*pass)++;
         } else {
             io::printn("[FAIL] deduce 'match propagates result-dict constructor oom");
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult setup = run(
+            "(block "
+            "  (define db-why-result-oom-seed (deduce 'open 'memory)) "
+            "  (define [relation db-why-result-oom-seed] parent-oom-seed (src) (dst)) "
+            "  (deduce/fact! parent-oom-seed 1 2))",
+            interp
+        );
+        if (setup.error.has_error) {
+            io::printfn(
+                "[FAIL] deduce why-result fails closed when seed payload path allocation fails (setup error=%s)",
+                (ZString)setup.error.message[:256]
+            );
+            (*fail)++;
+            return;
+        }
+
+        bool saved_hashmap_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        EvalResult r = run("(deduce/why-result parent-oom-seed 1 2)", interp);
+        g_hashmap_force_struct_alloc_fail = saved_hashmap_struct_fail;
+
+        bool ok = deduce_query_test_error_matches(r, "deduce/why-result: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] deduce why-result fails closed when seed payload path allocation fails");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce why-result fails closed when seed payload path allocation fails (error=%s msg=%s)",
+                r.error.has_error ? "yes" : "no",
+                r.error.has_error ? (ZString)r.error.message[:256] : (ZString)"<none>"
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult setup = run(
+            "(block "
+            "  (define db-why-result-oom-derived (deduce 'open 'memory)) "
+            "  (define [relation db-why-result-oom-derived] parent-oom-derived (src) (dst)) "
+            "  (define [relation db-why-result-oom-derived materialized] reach-oom-derived (src) (dst)) "
+            "  (deduce/rule! db-why-result-oom-derived '(reach-oom-derived ?x ?y) '(parent-oom-derived ?x ?y)) "
+            "  (deduce/fact! parent-oom-derived 1 2) "
+            "  (deduce/refresh! reach-oom-derived) "
+            "  (deduce/fact! parent-oom-derived 2 3))",
+            interp
+        );
+        if (setup.error.has_error) {
+            io::printfn(
+                "[FAIL] deduce why-result fails closed when derived payload path allocation fails (setup error=%s)",
+                (ZString)setup.error.message[:256]
+            );
+            (*fail)++;
+            return;
+        }
+
+        bool saved_hashmap_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        EvalResult r = run("(deduce/why-result reach-oom-derived 1 2)", interp);
+        g_hashmap_force_struct_alloc_fail = saved_hashmap_struct_fail;
+
+        bool ok = deduce_query_test_error_matches(r, "deduce/why-result: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] deduce why-result fails closed when derived payload path allocation fails");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] deduce why-result fails closed when derived payload path allocation fails (error=%s msg=%s)",
+                r.error.has_error ? "yes" : "no",
+                r.error.has_error ? (ZString)r.error.message[:256] : (ZString)"<none>"
+            );
             (*fail)++;
         }
     }

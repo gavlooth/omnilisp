@@ -27,9 +27,6 @@ fn Value* prim_deduce_stats(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/stats-relation-not-found", "deduce/stats: relation schema is not registered");
     }
 
-    Value* out = make_hashmap(interp, 32);
-    if (out == null || out.tag != HASHMAP || out.hashmap_val == null) {
-        return deduce_raise(interp, "deduce/stats-out-of-memory", "deduce/stats: out of memory");
-    }
+    Value* out = explain_make_dict(interp, 32);
     return deduce_stats_build_payload(out, rel, schema, interp);
 }

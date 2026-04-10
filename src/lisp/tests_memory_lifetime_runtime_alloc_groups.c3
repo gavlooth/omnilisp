@@ -184,6 +184,72 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        char key_byte = 'k';
+        Value* support_map = null;
+        DeduceDeltaTupleSet delta_set = {};
+        DeduceSemiNaiveRuleExec proof_exec = {};
+        proof_exec.interp = interp;
+        proof_exec.aggregate_component_mode = true;
+        bool already_seen = false;
+        bool[] empty_bound = {};
+        Value*[] empty_values = {};
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* delta_err = deduce_delta_set_insert(&delta_set, &key_byte, 1, interp);
+        Value* support_err = deduce_tuple_support_table_set_count(&support_map, &key_byte, 1, 1, interp);
+        Value* proof_err = deduce_seminaive_mark_current_proof_seen(
+            &proof_exec,
+            empty_bound,
+            empty_values,
+            &already_seen
+        );
+        Value* selector_err = deduce_analyze_goal_directed_selector_error(7, 1, make_nil(interp), interp);
+        Value* surface_err = deduce_goal_directed_selector_surface_error(
+            "deduce/test-selector",
+            "deduce: selector test",
+            7,
+            1,
+            make_nil(interp),
+            interp
+        );
+        Value* relation_err = deduce_goal_directed_relation_surface_error(
+            "deduce/test-relation",
+            "deduce: relation test",
+            7,
+            1,
+            interp.symbols.intern("rel"),
+            interp
+        );
+        Value* iteration_payload = deduce_analyze_iteration_limit_payload(interp, 1, 32);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(delta_err, "deduce/analyze: out of memory") &&
+            runtime_alloc_error_matches(support_err, "deduce/analyze: out of memory") &&
+            runtime_alloc_error_matches(proof_err, "deduce/analyze: out of memory") &&
+            runtime_alloc_error_matches(selector_err, "deduce/analyze: out of memory") &&
+            runtime_alloc_error_matches(surface_err, "deduce: out of memory") &&
+            runtime_alloc_error_matches(relation_err, "deduce: out of memory") &&
+            iteration_payload == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: deduce runtime helper state payload constructors fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: deduce runtime helper state payload constructors fail closed (delta=%s support=%s proof=%s selector=%s surface=%s relation=%s iteration_null=%s)",
+                runtime_alloc_error_text(delta_err),
+                runtime_alloc_error_text(support_err),
+                runtime_alloc_error_text(proof_err),
+                runtime_alloc_error_text(selector_err),
+                runtime_alloc_error_text(surface_err),
+                runtime_alloc_error_text(relation_err),
+                iteration_payload == null ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
         Value* iter_raise = iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");

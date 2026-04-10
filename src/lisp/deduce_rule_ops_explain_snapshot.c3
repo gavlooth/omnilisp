@@ -12,10 +12,7 @@ fn Value* deduce_explain_build_snapshot(
     Interp* interp
 ) {
     DeduceRuleSignature* sig = &db.rule_signatures[(usz)request.selected_rule_index];
-    Value* out = make_hashmap(interp, 16);
-    if (out == null || out.tag != HASHMAP || out.hashmap_val == null) {
-        return deduce_raise(interp, "deduce/explain-out-of-memory", "deduce/explain: out of memory");
-    }
+    Value* out = explain_make_dict(interp, 16);
 
     DeduceObservedStepCounters[] observed_steps = {};
     if (sig.body_count > 0) {

@@ -42,7 +42,7 @@ fn bool deduce_hash_join_count(
     }
     defer if (outer_key_vals.ptr != null) mem::free(outer_key_vals.ptr);
 
-    Value* key_count_map = make_hashmap(interp, 128);
+    Value* key_count_map = make_hashmap_checked(interp, 128, "deduce/analyze: out of memory");
     if (key_count_map == null || key_count_map.tag != HASHMAP || key_count_map.hashmap_val == null) return false;
 
     DeduceTupleIterator inner_it = {};
@@ -67,7 +67,7 @@ fn bool deduce_hash_join_count(
         Value* key_val = make_string(interp, key_buf[:key_len]);
         Value* existing = hashmap_get(key_count_map.hashmap_val, key_val);
         long next_count = existing != null && existing.tag == INT ? existing.int_val + 1 : 1;
-        hashmap_set(key_count_map.hashmap_val, key_val, make_int(interp, next_count), interp);
+        if (!hashmap_set_checked(key_count_map.hashmap_val, key_val, make_int(interp, next_count), interp)) return false;
     }
     deduce_tuple_iterator_close(&inner_it);
     inner_it_open = false;

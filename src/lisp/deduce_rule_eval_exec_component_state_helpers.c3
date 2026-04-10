@@ -18,7 +18,7 @@ fn Value* deduce_delta_set_insert(DeduceDeltaTupleSet* set, void* key_data, usz 
         return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid delta-set state");
     }
     if (set.seen_map == null) {
-        set.seen_map = make_hashmap(interp, 64);
+        set.seen_map = make_hashmap_checked(interp, 64, "deduce/analyze: out of memory");
         if (set.seen_map == null || set.seen_map.tag != HASHMAP || set.seen_map.hashmap_val == null) {
             return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
         }
@@ -31,7 +31,9 @@ fn Value* deduce_delta_set_insert(DeduceDeltaTupleSet* set, void* key_data, usz 
     char[] key_slice = ((char*)key_data)[:key_len];
     Value* key_val = make_string(interp, key_slice);
     if (hashmap_get(set.seen_map.hashmap_val, key_val) != null) return null;
-    hashmap_set(set.seen_map.hashmap_val, key_val, make_symbol(interp, interp.sym_true), interp);
+    if (!hashmap_set_checked(set.seen_map.hashmap_val, key_val, make_symbol(interp, interp.sym_true), interp)) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
 
     if (set.count >= set.capacity) {
         usz new_cap = set.capacity > 0 ? set.capacity * 2 : 4;
@@ -67,7 +69,7 @@ fn Value* deduce_tuple_support_table_ensure_map(Value** map_out, Interp* interp)
         return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: invalid support-table state");
     }
     if (*map_out == null) {
-        *map_out = make_hashmap(interp, 64);
+        *map_out = make_hashmap_checked(interp, 64, "deduce/analyze: out of memory");
         if (*map_out == null || (*map_out).tag != HASHMAP || (*map_out).hashmap_val == null) {
             return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
         }
@@ -118,7 +120,9 @@ fn Value* deduce_tuple_support_table_set_count(
 
     Value* err = deduce_tuple_support_table_ensure_map(map_out, interp);
     if (err != null) return err;
-    hashmap_set((*map_out).hashmap_val, key_val, make_int(interp, count), interp);
+    if (!hashmap_set_checked((*map_out).hashmap_val, key_val, make_int(interp, count), interp)) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
     return null;
 }
 

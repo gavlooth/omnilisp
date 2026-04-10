@@ -19,16 +19,18 @@ fn Value* deduce_relation_materialize_row_dict(
     Interp* interp,
     uint dict_capacity
 ) {
-    Value* dict = make_hashmap(interp, dict_capacity);
+    Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-scan-range: out of memory");
     if (g_deduce_force_row_dict_oom || test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
     }
-    if (dict == null || dict.hashmap_val == null) {
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
     }
     for (usz i = 0; i < rel.col_count && i < vals.len; i++) {
         Value* k = rel.column_key_values[i];
-        hashmap_set(dict.hashmap_val, k, vals[i], interp);
+        if (!hashmap_set_checked(dict.hashmap_val, k, vals[i], interp)) {
+            return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
+        }
     }
     return dict;
 }

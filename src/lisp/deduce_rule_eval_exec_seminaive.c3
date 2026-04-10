@@ -58,7 +58,7 @@ fn Value* deduce_seminaive_mark_current_proof_seen(
     if (exec == null || exec.interp == null || !exec.aggregate_component_mode) return null;
 
     if (exec.proof_seen_map == null) {
-        exec.proof_seen_map = make_hashmap(exec.interp, 64);
+        exec.proof_seen_map = make_hashmap_checked(exec.interp, 64, "deduce/analyze: out of memory");
         if (exec.proof_seen_map == null || exec.proof_seen_map.tag != HASHMAP || exec.proof_seen_map.hashmap_val == null) {
             return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
         }
@@ -73,12 +73,14 @@ fn Value* deduce_seminaive_mark_current_proof_seen(
         return null;
     }
 
-    hashmap_set(
-        exec.proof_seen_map.hashmap_val,
-        proof_key,
-        make_symbol(exec.interp, exec.interp.sym_true),
-        exec.interp
-    );
+    if (!hashmap_set_checked(
+            exec.proof_seen_map.hashmap_val,
+            proof_key,
+            make_symbol(exec.interp, exec.interp.sym_true),
+            exec.interp
+        )) {
+        return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
     return null;
 }
 

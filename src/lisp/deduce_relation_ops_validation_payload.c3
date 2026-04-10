@@ -33,6 +33,16 @@ fn Value* deduce_build_tuple_projection_list(Value*[] tuple, usz[] positions, In
     return deduce_reverse_list(rev, interp);
 }
 
+fn Value* deduce_integrity_make_payload_dict(Interp* interp, uint capacity) @inline {
+    Value* data = make_hashmap_checked(interp, capacity, "deduce/integrity: out of memory");
+    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    return data;
+}
+
+fn bool deduce_integrity_payload_set(Value* err) @inline {
+    return err == null;
+}
+
 fn Value* deduce_build_single_column_integrity_payload(
     Relation* rel,
     Value*[] attempted_tuple,
@@ -42,20 +52,20 @@ fn Value* deduce_build_single_column_integrity_payload(
     char[] violation_kind_name,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation"));
-    explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern(violation_kind_name));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(column, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern(violation_kind_name)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(column, interp)))) return null;
     usz[1] positions = { column_pos };
-    explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp));
-    explain_dict_set(data, interp, "key-value",
-        column_pos < attempted_tuple.len ? attempted_tuple[column_pos] : make_nil(interp));
-    explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true));
-    explain_dict_set(data, interp, "existing-tuple", deduce_build_tuple_list(existing_tuple, interp));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "key-value",
+            column_pos < attempted_tuple.len ? attempted_tuple[column_pos] : make_nil(interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "existing-tuple", deduce_build_tuple_list(existing_tuple, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
     return data;
 }
 
@@ -76,7 +86,7 @@ fn Value* deduce_build_key_integrity_payload(
         interp
     );
     if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return data;
-    explain_dict_set_symbol(data, interp, "key-column", rel.key_col);
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "key-column", rel.key_col))) return null;
     return data;
 }
 
@@ -97,7 +107,7 @@ fn Value* deduce_build_unique_integrity_payload(
         interp
     );
     if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return data;
-    explain_dict_set_symbol(data, interp, "unique-column", rel.unique_col);
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "unique-column", rel.unique_col))) return null;
     return data;
 }
 
@@ -108,20 +118,20 @@ fn Value* deduce_build_composite_unique_integrity_payload(
     usz[] positions,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
     Value* constraint_values = deduce_build_tuple_projection_list(attempted_tuple, positions, interp);
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation"));
-    explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("unique-conflict"));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set(data, interp, "columns", deduce_build_integrity_columns_list(rel.unique_cols, rel.unique_col_count, interp));
-    explain_dict_set(data, interp, "constraint-values", constraint_values);
-    explain_dict_set(data, interp, "key-value", constraint_values);
-    explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true));
-    explain_dict_set(data, interp, "existing-tuple", deduce_build_tuple_list(existing_tuple, interp));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
-    explain_dict_set(data, interp, "unique-columns", deduce_build_integrity_columns_list(rel.unique_cols, rel.unique_col_count, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("unique-conflict")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "columns", deduce_build_integrity_columns_list(rel.unique_cols, rel.unique_col_count, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "constraint-values", constraint_values))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "key-value", constraint_values))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "existing-tuple", deduce_build_tuple_list(existing_tuple, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "unique-columns", deduce_build_integrity_columns_list(rel.unique_cols, rel.unique_col_count, interp)))) return null;
     return data;
 }
 
@@ -134,21 +144,21 @@ fn Value* deduce_build_reference_integrity_payload(
     char[] violation_kind_name,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation"));
-    explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern(violation_kind_name));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(local_column, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern(violation_kind_name)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(local_column, interp)))) return null;
     usz[1] positions = { local_column_pos };
-    explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp));
-    explain_dict_set(data, interp, "key-value",
-        local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp));
-    explain_dict_set_symbol(data, interp, "referenced-relation", ref_constraint.target_relation);
-    explain_dict_set_symbol(data, interp, "referenced-column", ref_constraint.target_column);
-    explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "key-value",
+            local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "referenced-relation", ref_constraint.target_relation))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "referenced-column", ref_constraint.target_column))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
     return data;
 }
 
@@ -162,23 +172,23 @@ fn Value* deduce_build_reference_target_in_use_payload(
     Value*[] blocking_tuple,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation"));
-    explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("reference-target-in-use"));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(target_column, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("reference-target-in-use")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(target_column, interp)))) return null;
     usz[1] positions = { target_column_pos };
-    explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp));
-    explain_dict_set(data, interp, "key-value",
-        target_column_pos < attempted_tuple.len ? attempted_tuple[target_column_pos] : make_nil(interp));
-    explain_dict_set_symbol(data, interp, "referenced-column", target_column);
-    explain_dict_set_symbol(data, interp, "blocking-relation", blocking_relation);
-    explain_dict_set_symbol(data, interp, "blocking-column", blocking_column);
-    explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
-    explain_dict_set(data, interp, "blocking-tuple", deduce_build_tuple_list(blocking_tuple, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "key-value",
+            target_column_pos < attempted_tuple.len ? attempted_tuple[target_column_pos] : make_nil(interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "referenced-column", target_column))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "blocking-relation", blocking_relation))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "blocking-column", blocking_column))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "blocking-tuple", deduce_build_tuple_list(blocking_tuple, interp)))) return null;
     return data;
 }
 
@@ -190,20 +200,20 @@ fn Value* deduce_build_check_integrity_payload(
     SymbolId predicate,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation"));
-    explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("check-failed"));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(local_column, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-integrity-violation")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "violation-kind", interp.symbols.intern("check-failed")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "columns", deduce_build_integrity_column_list(local_column, interp)))) return null;
     usz[1] positions = { local_column_pos };
-    explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp));
-    explain_dict_set(data, interp, "key-value",
-        local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp));
-    explain_dict_set_symbol(data, interp, "predicate", predicate);
-    explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "constraint-values", deduce_build_tuple_projection_list(attempted_tuple, positions[..], interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "key-value",
+            local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "predicate", predicate))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "enforced", explain_bool_value(interp, true)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
     return data;
 }
 
@@ -216,16 +226,16 @@ fn Value* deduce_build_check_constraint_context_payload(
     Value* cause,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 16);
-    if (data == null || data.tag != HASHMAP || data.hashmap_val == null) return null;
+    Value* data = deduce_integrity_make_payload_dict(interp, 16);
+    if (data == null) return null;
 
-    explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-check-constraint"));
-    explain_dict_set_symbol(data, interp, "relation", rel.name);
-    explain_dict_set_symbol(data, interp, "column", local_column);
-    explain_dict_set_symbol(data, interp, "predicate", predicate);
-    explain_dict_set(data, interp, "value",
-        local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp));
-    explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp));
-    explain_dict_set(data, interp, "cause", cause != null ? cause : make_nil(interp));
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "kind", interp.symbols.intern("deduce-check-constraint")))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "relation", rel.name))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "column", local_column))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set_symbol(data, interp, "predicate", predicate))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "value",
+            local_column_pos < attempted_tuple.len ? attempted_tuple[local_column_pos] : make_nil(interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "attempted-tuple", deduce_build_tuple_list(attempted_tuple, interp)))) return null;
+    if (!deduce_integrity_payload_set(explain_dict_set(data, interp, "cause", cause != null ? cause : make_nil(interp)))) return null;
     return data;
 }

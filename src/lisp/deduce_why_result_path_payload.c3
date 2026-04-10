@@ -5,8 +5,8 @@ fn Value* deduce_why_result_build_row_subject(
     Value*[] tuple,
     Interp* interp
 ) {
-    Value* subject = make_hashmap(interp, 8);
-    if (subject == null || subject.tag != HASHMAP || subject.hashmap_val == null) return null;
+    Value* subject = make_hashmap_checked(interp, 8, "deduce/why-result: out of memory");
+    if (subject == null || subject.tag != HASHMAP || subject.hashmap_val == null) return subject;
     explain_dict_set(subject, interp, "relation", make_symbol(interp, rel.name));
     explain_dict_set(subject, interp, "tuple", deduce_build_tuple_list(tuple, interp));
     return subject;
@@ -17,8 +17,8 @@ fn Value* deduce_why_result_build_fact_frame(
     Value*[] tuple,
     Interp* interp
 ) {
-    Value* frame = make_hashmap(interp, 8);
-    if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return null;
+    Value* frame = make_hashmap_checked(interp, 8, "deduce/why-result: out of memory");
+    if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return frame;
     explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("fact"));
     explain_dict_set(frame, interp, "frame-index", make_int(interp, 0));
     explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name));
@@ -34,8 +34,8 @@ fn Value* deduce_why_result_build_rule_step_frame(
     long step_index,
     Interp* interp
 ) {
-    Value* frame = make_hashmap(interp, 12);
-    if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return null;
+    Value* frame = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
+    if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return frame;
     explain_dict_set_symbol(frame, interp, "kind", interp.symbols.intern("rule-step"));
     explain_dict_set(frame, interp, "frame-index", make_int(interp, 0));
     explain_dict_set(frame, interp, "predicate", make_symbol(interp, rel.name));
@@ -51,8 +51,8 @@ fn Value* deduce_why_result_build_seed_path(
     Value*[] tuple,
     Interp* interp
 ) {
-    Value* path = make_hashmap(interp, 12);
-    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return null;
+    Value* path = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return path;
     Value* frame = deduce_why_result_build_fact_frame(rel, tuple, interp);
     if (frame == null || frame.tag != HASHMAP || frame.hashmap_val == null) return null;
     Value* support = make_cons(interp, frame, make_nil(interp));
@@ -196,8 +196,8 @@ fn Value* deduce_why_result_build_derived_path(
     Value* support,
     Interp* interp
 ) {
-    Value* path = make_hashmap(interp, 12);
-    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return null;
+    Value* path = make_hashmap_checked(interp, 12, "deduce/why-result: out of memory");
+    if (path == null || path.tag != HASHMAP || path.hashmap_val == null) return path;
     explain_dict_set(path, interp, "path-id", make_int(interp, 0));
     explain_dict_set_symbol(path, interp, "path-kind", interp.symbols.intern("derived"));
     explain_dict_set(path, interp, "head-predicate", make_symbol(interp, rel.name));

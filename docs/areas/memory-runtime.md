@@ -82,6 +82,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   construction and checked insertion, so match-result building no longer
   dereferences a raw hashmap shell or embed builder `ERROR`s into a successful
   result list.
+- The remaining guarded deduce/unify hashmap-constructor family is now closed:
+  - row materialization, integrity payload builders, deduce runtime helper
+    state maps, deduce explain/schema/analyze payload maps, and deduce
+    why-result path/payload builders no longer use raw `make_hashmap(...)`
+    in `src/lisp/deduce_*` / `src/lisp/unify_*`.
+  - scoped grep verification is now clean for that family, and the bounded
+    `deduce` slice passes on the shipped tree (`pass=328 fail=0`).
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested

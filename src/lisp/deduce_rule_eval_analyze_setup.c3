@@ -14,15 +14,24 @@ fn Value* deduce_analyze_goal_directed_selector_error(
     Value* blockers,
     Interp* interp
 ) {
-    Value* data = make_hashmap(interp, 8);
+    Value* data = make_hashmap_checked(interp, 8, "deduce/analyze: out of memory");
     if (data == null || data.tag != HASHMAP || data.hashmap_val == null) {
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }
 
-    explain_dict_set(data, interp, "rule-index", make_int(interp, selector_rule_index));
-    explain_dict_set(data, interp, "component-id", make_int(interp, (long)component_id));
-    explain_dict_set(data, interp, "goal-directed-blockers",
-        blockers == null ? make_nil(interp) : blockers);
+    if (Value* err = explain_dict_set(data, interp, "rule-index", make_int(interp, selector_rule_index))) {
+        (void)err;
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    if (Value* err = explain_dict_set(data, interp, "component-id", make_int(interp, (long)component_id))) {
+        (void)err;
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    if (Value* err = explain_dict_set(data, interp, "goal-directed-blockers",
+            blockers == null ? make_nil(interp) : blockers)) {
+        (void)err;
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
     return deduce_raise(
         interp,
         "deduce/analyze-goal-directed-selector-not-eligible",

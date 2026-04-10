@@ -211,10 +211,12 @@ fn Value* deduce_analyze_iteration_limit_payload(
     usz component_id,
     usz iteration_limit
 ) {
-    Value* payload = make_hashmap(interp, 8);
+    Value* payload = make_hashmap_checked(interp, 8, "deduce/analyze: out of memory");
     if (payload == null || payload.tag != HASHMAP || payload.hashmap_val == null) return null;
-    hashmap_set(payload.hashmap_val, make_symbol(interp, interp.symbols.intern("component-id")), make_int(interp, (long)component_id), interp);
-    hashmap_set(payload.hashmap_val, make_symbol(interp, interp.symbols.intern("iteration-limit")), make_int(interp, (long)iteration_limit), interp);
+    if (!hashmap_set_checked(payload.hashmap_val, make_symbol(interp, interp.symbols.intern("component-id")), make_int(interp, (long)component_id), interp) ||
+        !hashmap_set_checked(payload.hashmap_val, make_symbol(interp, interp.symbols.intern("iteration-limit")), make_int(interp, (long)iteration_limit), interp)) {
+        return null;
+    }
     return payload;
 }
 
