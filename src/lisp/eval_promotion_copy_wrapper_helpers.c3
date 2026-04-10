@@ -212,6 +212,9 @@ fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inl
         if (boundary_closure_alias_unsafe_for_reuse(v, interp)) return true;
         return boundary_closure_payload_in_scope(v, releasing_scope);
     }
+    if (v.tag == PARTIAL_PRIM) {
+        return boundary_partial_payload_alias_unsafe_for_reuse(v, interp);
+    }
     if (v.tag == ITERATOR) {
         Value* payload = v.iterator_val;
         if (payload != null && boundary_ptr_in_scope((void*)payload, releasing_scope)) {

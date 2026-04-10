@@ -71,6 +71,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   before keeping a target-chain binding by identity, so target-chain
   partial/iterator bindings no longer bypass copying when their shared-wrapper
   args still point into the releasing scope.
+- The shared fast-reuse precheck now applies the same rule to foreign
+  `PARTIAL_PRIM` wrappers as well, so JIT TCO copy cannot bypass nested
+  releasing-scope payload checks merely because the wrapper itself sits in a
+  sibling/foreign scope.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or
