@@ -1,6 +1,8 @@
 module lisp;
 
 import std::io;
+import std::core::mem;
+import main;
 
 fn bool runtime_alloc_error_matches(Value* value, char[] expected) @inline {
     return value != null &&
@@ -471,6 +473,149 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        int* opaque_payload = null;
+        Value* opaque = null;
+        Primitive* opaque_prim = null;
+        Value* list = null;
+        Value* iterator = null;
+        Value* array_value = null;
+
+        bool setup_ok = foreign != null;
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            opaque_payload = (int*)interp.current_scope.alloc(int.sizeof);
+            opaque = interp.alloc_value();
+            if (opaque != null) {
+                opaque.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            }
+            setup_ok = opaque_payload != null && opaque != null;
+        }
+
+        if (setup_ok) {
+            opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            setup_ok = opaque_prim != null;
+        }
+
+        if (setup_ok) {
+            *opaque_payload = 701;
+            *opaque_prim = {};
+            opaque_prim.name[0] = 'o';
+            opaque_prim.name[1] = 0;
+            opaque_prim.func = &prim_add;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 701;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.tag = PRIMITIVE;
+            opaque.prim_val = opaque_prim;
+
+            list = make_cons(interp, opaque, make_nil(interp));
+            iterator = iterator_from_list_value(list, interp);
+            interp.current_scope = saved;
+            array_value = make_array(interp, 1);
+            setup_ok = list != null && list.tag == CONS &&
+                iterator != null && iterator.tag == ITERATOR &&
+                array_value != null && array_value.tag == ARRAY &&
+                array_value.array_val != null;
+        }
+        interp.current_scope = saved;
+
+        if (setup_ok) {
+            array_value.array_val.items[0] = make_int(interp, 1);
+            array_value.array_val.length = 1;
+        }
+
+        Value*[1] prim_array_args = { opaque };
+        Value*[1] list_to_array_args = { list };
+        Value*[3] array_set_args = { array_value, make_int(interp, 0), opaque };
+        Value*[1] to_array_args = { iterator };
+
+        if (setup_ok) interp.current_scope = foreign;
+        Value* prim_array_boundary_fail = setup_ok ? prim_array(prim_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* list_to_array_boundary_fail = setup_ok ? prim_list_to_array(list_to_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* array_set_boundary_fail = setup_ok ? prim_array_set(array_set_args[0:3], null, interp) : raise_error(interp, "setup failed");
+        Value* to_array_boundary_fail = setup_ok ? prim_to_array(to_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        interp.current_scope = saved;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(prim_array_boundary_fail, "root-store: refusing primitive clone with opaque user_data") &&
+            runtime_alloc_error_matches(list_to_array_boundary_fail, "root-store: refusing primitive clone with opaque user_data") &&
+            runtime_alloc_error_matches(array_set_boundary_fail, "root-store: refusing primitive clone with opaque user_data") &&
+            runtime_alloc_error_matches(to_array_boundary_fail, "root-store: refusing primitive clone with opaque user_data") &&
+            array_value.array_val.length == 1 &&
+            array_value.array_val.items[0] != null &&
+            array_value.array_val.items[0].tag == INT &&
+            array_value.array_val.items[0].int_val == 1;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: array write paths fail closed on boundary promotion faults");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: array write paths fail closed on boundary promotion faults (setup_ok=%s ctor=%s list=%s set=%s iter=%s array_intact=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(prim_array_boundary_fail),
+                runtime_alloc_error_text(list_to_array_boundary_fail),
+                runtime_alloc_error_text(array_set_boundary_fail),
+                runtime_alloc_error_text(to_array_boundary_fail),
+                setup_ok &&
+                    array_value != null &&
+                    array_value.tag == ARRAY &&
+                    array_value.array_val != null &&
+                    array_value.array_val.length == 1 &&
+                    array_value.array_val.items[0] != null &&
+                    array_value.array_val.items[0].tag == INT &&
+                    array_value.array_val.items[0].int_val == 1 ? "yes" : "no");
+            (*fail)++;
+        }
+        if (foreign != null) main::scope_release(foreign);
+    }
+
+    {
+        Value* array_value = make_array(interp, 1);
+        bool setup_ok = array_value != null && array_value.tag == ARRAY && array_value.array_val != null;
+        if (setup_ok) {
+            array_value.array_val.items[0] = make_int(interp, 1);
+            array_value.array_val.length = array_value.array_val.capacity;
+            for (usz i = 1; i < array_value.array_val.length; i++) {
+                array_value.array_val.items[i] = make_int(interp, (long)(i + 1));
+            }
+        }
+
+        Value*[2] push_args = { array_value, make_int(interp, 2) };
+        bool saved_grow_fail = g_array_push_force_grow_alloc_fail;
+        g_array_push_force_grow_alloc_fail = true;
+        Value* push_fail = setup_ok ? prim_array_push(push_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        g_array_push_force_grow_alloc_fail = saved_grow_fail;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(push_fail, "push!: array backing storage out of memory") &&
+            array_value.array_val.length == array_value.array_val.capacity &&
+            array_value.array_val.items[0] != null &&
+            array_value.array_val.items[0].tag == INT &&
+            array_value.array_val.items[0].int_val == 1;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: array push grow failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: array push grow failures fail closed (setup_ok=%s msg=%s array_intact=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(push_fail),
+                setup_ok &&
+                    array_value != null &&
+                    array_value.tag == ARRAY &&
+                    array_value.array_val != null &&
+                    array_value.array_val.length == array_value.array_val.capacity &&
+                    array_value.array_val.items[0] != null &&
+                    array_value.array_val.items[0].tag == INT &&
+                    array_value.array_val.items[0].int_val == 1 ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
         Value*[2] dict_args = { make_symbol(interp, interp.symbols.intern("k")), make_int(interp, 1) };
         Value*[2] set_args = { make_int(interp, 1), make_int(interp, 2) };
 
@@ -865,6 +1010,29 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(shell_fail),
                 runtime_alloc_error_text(readdir_fail),
                 runtime_alloc_error_text(schema_explain_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult cmp_run = run("(lambda (a) (lambda (b) (error \"boom\")))", interp);
+        Value* list = make_cons(interp, make_int(interp, 3), make_cons(interp, make_int(interp, 1), make_cons(interp, make_int(interp, 2), make_nil(interp))));
+        Value*[2] sort_args = { cmp_run.error.has_error ? null : cmp_run.value, list };
+        Value* sort_fail = !cmp_run.error.has_error && cmp_run.value != null
+            ? prim_sort_by(sort_args[0:2], null, interp)
+            : raise_error(interp, "setup failed");
+
+        bool ok = !cmp_run.error.has_error &&
+            cmp_run.value != null &&
+            runtime_alloc_error_matches(sort_fail, "boom");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: sort-by comparator failures propagate directly");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: sort-by comparator failures propagate directly (setup_ok=%s msg=%s)",
+                !cmp_run.error.has_error && cmp_run.value != null ? "yes" : "no",
+                runtime_alloc_error_text(sort_fail));
             (*fail)++;
         }
     }

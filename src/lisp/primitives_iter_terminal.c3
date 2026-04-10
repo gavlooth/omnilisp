@@ -3,6 +3,12 @@ module lisp;
 import main;
 
 // Iterator terminal and collection-conversion primitives.
+fn Value* iterator_promote_item_or_error(Value* value, Interp* interp) @inline {
+    Value* promoted = boundary_promote_to_root(value, interp);
+    if (promoted != null && promoted.tag == ERROR) return promoted;
+    return promoted;
+}
+
 fn Value* prim_iterator_p(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return make_nil(interp);
     if (args[0].tag == ITERATOR) return make_symbol(interp, interp.sym_true);
@@ -72,7 +78,9 @@ fn Value* prim_collect(Value*[] args, Env* env, Interp* interp) {
 
     Value* result = make_nil(interp);
     for (isz i = (isz)count - 1; i >= 0; i--) {
-        result = make_cons(interp, items[(usz)i], result);
+        Value* next = make_cons(interp, items[(usz)i], result);
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
     }
     return result;
 }
@@ -90,7 +98,9 @@ fn Value* prim_to_array(Value*[] args, Env* env, Interp* interp) {
     Value* arr = make_array_checked(interp, count, "to-array: failed to allocate result array");
     if (arr == null || arr.tag != ARRAY) return arr;
     for (usz i = 0; i < count; i++) {
-        arr.array_val.items[i] = boundary_promote_to_root(items[i], interp);
+        Value* promoted = iterator_promote_item_or_error(items[i], interp);
+        if (promoted == null || promoted.tag == ERROR) return promoted;
+        arr.array_val.items[i] = promoted;
     }
     arr.array_val.length = count;
     return arr;

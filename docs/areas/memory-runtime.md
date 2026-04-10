@@ -157,6 +157,14 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     values into transport setup/write,
   - `schema-explain` no longer returns a singleton explanation list whose
     only element is an `ERROR`.
+- Collection/apply array helpers now fail closed on both constructor and
+  boundary-promotion faults:
+  - `array`, `list->array`, `set!` on arrays, `push!`, `collect`, and
+    `to-array` no longer treat `boundary_promote_to_root(...)` failure as
+    ordinary data,
+  - `push!` no longer null-dereferences on grow allocation failure,
+  - `sort-by` no longer swallows comparator runtime errors and return a
+    partial sort.
 - The staged internal collection-constructor OOM migration is now closed
   across the live runtime-facing families:
   - shared constructor substrate,

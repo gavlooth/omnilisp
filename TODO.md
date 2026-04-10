@@ -22,6 +22,29 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-COLLECTION-ARRAY-FAILCLOSED-018` make collection/apply array
+  write helpers fail closed on boundary promotion faults, grow failures, and
+  comparator runtime errors
+  - closure evidence:
+    - `src/lisp/prim_collection_sort_array.c3`
+      now makes `sort` / `sort-by` list rebuilding propagate `make_cons(...)`
+      failure directly, makes `sort-by` propagate comparator application
+      errors instead of silently returning a partial sort, makes `array`,
+      `list->array`, `set!` on arrays, and `push!` reject
+      `boundary_promote_to_root(...)` failures instead of storing `ERROR`
+      values as data, and makes `push!` fail closed on grow allocation
+      failure instead of null-dereferencing the new item buffer.
+    - `src/lisp/primitives_iter_terminal.c3`
+      now makes `collect` propagate list-construction failure directly and
+      makes `to-array` reject `boundary_promote_to_root(...)` failures
+      instead of returning arrays populated with `ERROR` elements.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins array constructor/mutator and `to-array` boundary-promotion
+      failure, `push!` grow failure, and `sort-by` comparator failure.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-STRING-PAYLOAD-MATERIALIZERS-017` make string-backed runtime
   payload/list helpers fail closed on string wrapper allocation failure
   - closure evidence:
