@@ -49,14 +49,24 @@ fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
     // Phase 4b: Promote thunk to root_scope so it survives call_scope release.
     // The coroutine may be resumed after the creating scope is freed.
     thunk = boundary_promote_to_root(thunk, interp);
-    if (thunk != null && thunk.tag == CLOSURE) {
-        // Precompile coroutine body before first execution on switched stack.
-        jit_warm_expr_cache(thunk.closure_val.body, interp);
+    if (thunk == null) {
+        return raise_error(interp, "coroutine: failed to promote thunk");
     }
+    if (thunk.tag == ERROR) return thunk;
+    if (thunk.tag != CLOSURE || thunk.closure_val == null) {
+        return raise_error(interp, "coroutine: failed to promote thunk");
+    }
+    // Precompile coroutine body before first execution on switched stack.
+    jit_warm_expr_cache(thunk.closure_val.body, interp);
     return thunk;
 }
 
 fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Interp* interp) {
+    if (thunk == null) return raise_error(interp, "coroutine: failed to promote thunk");
+    if (thunk.tag == ERROR) return thunk;
+    if (thunk.tag != CLOSURE || thunk.closure_val == null) {
+        return raise_error(interp, "coroutine: failed to promote thunk");
+    }
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
     if (ctx == null) return raise_error(interp, "coroutine: failed to create context");
 

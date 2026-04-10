@@ -724,3 +724,22 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-APPLY-DISPATCH-FAILCLOSED-020`
   - actionable backlog remains `0`
+
+- landed the coroutine thunk promotion follow-up:
+  - `src/lisp/primitives_coroutine.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - coroutine thunk publication now fails closed after
+    `boundary_promote_to_root(...)` if promotion returns:
+    - `null`,
+    - an `ERROR`,
+    - or an invalid/non-closure thunk wrapper.
+  - coroutine creation no longer allocates `StackCtx` state around invalid
+    promoted thunk values.
+  - direct regression landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=153 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-COROUTINE-THUNK-PROMOTION-FAILCLOSED-021`
+  - actionable backlog remains `0`

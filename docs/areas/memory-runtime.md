@@ -450,3 +450,14 @@ for future concurrency ownership evolution.
 - Focused validation after this slice:
   - `OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=invalid-primitive-state-fails-closed`
     -> `pass=1 fail=0`
+
+- Coroutine thunk publication is now fail-closed too:
+  - `prim_coroutine_prepare_thunk(...)` and `prim_coroutine_create_ctx(...)`
+    reject null promotion results, promoted `ERROR` values, and invalid
+    post-promotion closure state before allocating any `StackCtx`.
+  - the memory-lifetime runtime alloc lane now pins the forced closure-wrapper
+    promotion seam and proves coroutine creation leaves `stack_ctx_pool`
+    counters unchanged when thunk promotion fails.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=153 fail=0`

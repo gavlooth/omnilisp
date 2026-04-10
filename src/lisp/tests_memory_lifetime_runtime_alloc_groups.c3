@@ -377,6 +377,72 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Interp* tmp = (Interp*)mem::malloc(Interp.sizeof);
+        bool setup_ok = tmp != null;
+        if (setup_ok) {
+            tmp.init();
+            setup_ok = register_primitives(tmp);
+        }
+
+        main::ScopeRegion* saved = setup_ok ? tmp.current_scope : null;
+        main::ScopeRegion* foreign = setup_ok ? main::scope_create(saved) : null;
+        Value* thunk = null;
+        usz before_all = 0;
+        usz before_pool = 0;
+        Value* result = null;
+
+        if (setup_ok) {
+            setup_ok = foreign != null;
+        }
+        if (setup_ok) {
+            tmp.current_scope = foreign;
+            thunk = make_closure_no_param(tmp, null, tmp.global_env);
+            tmp.current_scope = saved;
+            setup_ok = thunk != null && thunk.tag == CLOSURE;
+        }
+        if (setup_ok) {
+            Value*[1] coro_args = { thunk };
+            bool saved_force = g_boundary_force_copy_closure_wrapper_alloc_fail;
+            before_all = tmp.stack_ctx_pool.all_count;
+            before_pool = tmp.stack_ctx_pool.pool_size;
+            tmp.current_scope = foreign;
+            g_boundary_force_copy_closure_wrapper_alloc_fail = true;
+            result = prim_coroutine(coro_args[0:1], null, tmp);
+            g_boundary_force_copy_closure_wrapper_alloc_fail = saved_force;
+            tmp.current_scope = saved;
+        }
+
+        bool ok = setup_ok &&
+            result != null &&
+            result.tag == ERROR &&
+            tmp.stack_ctx_pool.all_count == before_all &&
+            tmp.stack_ctx_pool.pool_size == before_pool;
+        int after_all = tmp != null ? (int)tmp.stack_ctx_pool.all_count : -1;
+        int after_pool = tmp != null ? (int)tmp.stack_ctx_pool.pool_size : -1;
+
+        if (foreign != null) main::scope_release(foreign);
+        if (tmp != null) {
+            tmp.destroy();
+            mem::free(tmp);
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: coroutine thunk promotion failure aborts before context creation");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: coroutine thunk promotion failure aborts before context creation (setup_ok=%s tag=%d all=%d pool=%d before_all=%d before_pool=%d)",
+                setup_ok ? "yes" : "no",
+                result != null ? (int)result.tag : -1,
+                after_all,
+                after_pool,
+                (int)before_all,
+                (int)before_pool);
+            (*fail)++;
+        }
+    }
+
+    {
         Value* partial = interp.alloc_value();
         Value* arg = make_int(interp, 42);
         bool setup_ok = partial != null && arg != null && arg.tag == INT;

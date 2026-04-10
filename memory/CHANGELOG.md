@@ -11241,3 +11241,18 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - focused `jit-policy`:
       - `invalid-primitive-state-fails-closed`
     - bounded `memory-lifetime-smoke`: `pass=152 fail=0`
+- 2026-04-10 (coroutine thunk promotion fail-closed follow-up):
+  - coroutine thunk publication now rejects invalid post-promotion state before
+    any coroutine stack context allocation:
+    - null promotion results,
+    - promoted `ERROR` values,
+    - non-closure thunk wrappers,
+    - and closure wrappers with null `closure_val`
+  - shipped consequence:
+    - forced closure-wrapper promotion allocation failure no longer reaches
+      `stack_ctx_make(...)` or mutates `stack_ctx_pool` counters.
+    - coroutine thunk publication now matches the repo-wide fail-closed
+      contract already enforced for adjacent scheduler/fiber promotion paths.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=153 fail=0`
