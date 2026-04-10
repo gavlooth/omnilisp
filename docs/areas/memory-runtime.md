@@ -104,6 +104,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   or target-chain wrapper that still points into the recycle-scope TEMP lane
   can no longer survive an in-place reset merely because the outer wrapper
   shell itself lives outside TEMP.
+- The supporting TCO graph scanner no longer carries its bounded traversal
+  state on the runtime stack. `jit_graph_binding_reaches_temp_scope(...)` now
+  allocates one heap-backed scan state object, closing the full-slice
+  `jit-policy` crash where the previous four `4096`-entry local pointer arrays
+  could overflow a smaller runtime stack before the scan body even ran.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or
@@ -146,7 +151,8 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 118/0`).
 - Latest continuation-focused JIT evidence:
   - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-interp-lifetime,continuation-teardown,shared-handle-state-teardown,cross-interp-continuation-guard,escaped-handle-continuation-guard,side-effect-escaped-handle-continuation-guard ./build/main --test-suite lisp'` passed (`6 passed, 0 failed`).
-  - The broad `jit-policy` slice still needs a separate audit lane; see `TODO.md`.
+- Latest full JIT-policy evidence:
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp'` passed (`unified: 41/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator

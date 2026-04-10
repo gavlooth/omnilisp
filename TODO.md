@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 0
 
 Completed backlog snapshots:
 
@@ -18,15 +18,22 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-JIT-POLICY-FULL-SLICE-006` isolate and close the remaining non-continuation `jit-policy` slice crash
-  - evidence:
-    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp'` still exits `139`
-    - the narrowed continuation-focused subset passes:
-      - `OMNI_JIT_POLICY_FILTER=multi-interp-lifetime,continuation-teardown,shared-handle-state-teardown,cross-interp-continuation-guard,escaped-handle-continuation-guard,side-effect-escaped-handle-continuation-guard`
-  - closure target:
-    - identify the specific remaining `jit-policy` case outside the continuation subset that crashes,
-    - land a focused fix or explicitly split further if it is an unrelated validation/configuration issue,
-    - restore a clean bounded `OMNI_LISP_TEST_SLICE=jit-policy` container run.
+- None.
+
+## Recently Closed
+
+- [x] `AUDIT-JIT-POLICY-FULL-SLICE-006` isolate and close the remaining non-continuation `jit-policy` slice crash
+  - closure evidence:
+    - the crash was isolated to the `stale-raise-scrub` JIT policy case, but
+      the actual fault site was the TCO recycle TEMP-graph scan in
+      `src/lisp/jit_jit_eval_scope_chain_helpers.c3`, not stale raise state.
+    - `jit_graph_binding_reaches_temp_scope(...)` no longer allocates four
+      `4096`-entry pointer arrays on the runtime stack; it now uses one
+      heap-backed `JitTempGraphScan`, closing the entry-time stack-overflow
+      crash on smaller runtime stacks.
+    - validation:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=stale-raise-scrub ./build/main --test-suite lisp'` -> `1 passed, 0 failed`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp'` -> `pass=41 fail=0`
 
 ## Recently Closed
 

@@ -1,5 +1,20 @@
 ## 2026-04-10
 
+- Closed the remaining full-slice `jit-policy` crash by hardening the TCO
+  recycle TEMP-graph scan:
+  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer allocates four
+    `4096`-entry pointer arrays on the runtime stack inside
+    `jit_graph_binding_reaches_temp_scope(...)`.
+  - the scan state now lives in one heap-allocated `JitTempGraphScan`, so the
+    TCO recycle safety gate no longer segfaults on entry when a top-level JIT
+    policy case drives that helper through a smaller runtime stack.
+  - this specifically restores the `stale-raise-scrub` JIT policy case, whose
+    top-level run path was only exposing the stack-footprint bug in the nested
+    graph scanner.
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=stale-raise-scrub ./build/main --test-suite lisp'` -> `1 passed, 0 failed`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp'` -> `pass=41 fail=0`
+
 - Closed the normal-teardown and allocation-failure symmetry gaps for
   boundary-owned `CONTINUATION` wrappers:
   - `src/lisp/value_constructors_lifecycle.c3` now releases retained

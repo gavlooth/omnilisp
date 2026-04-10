@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import main;
 
 fn bool env_chain_has_frame_in_scope(Env* env, main::ScopeRegion* scope, Env* stop_at) {
@@ -106,6 +107,13 @@ fn bool jit_value_is_graph_carrying(Value* v) @inline {
 
 const usz JIT_TEMP_GRAPH_SCAN_MAX_NODES = 4096;
 
+struct JitTempGraphScan {
+    Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] value_stack;
+    Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] seen_values;
+    Env*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] env_stack;
+    Env*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] seen_envs;
+}
+
 fn bool jit_temp_graph_value_seen(Value** seen, usz seen_len, Value* v) @inline {
     for (usz i = 0; i < seen_len; i++) {
         if (seen[i] == v) return true;
@@ -151,40 +159,39 @@ fn bool jit_graph_binding_reaches_temp_scope(
 ) {
     if (root == null || scope == null) return false;
 
-    Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] value_stack;
-    Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] seen_values;
-    Env*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] env_stack;
-    Env*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] seen_envs;
+    JitTempGraphScan* scan = (JitTempGraphScan*)mem::malloc(JitTempGraphScan.sizeof);
+    if (scan == null) return true;
+    defer mem::free(scan);
     usz value_stack_len = 0;
     usz seen_value_len = 0;
     usz env_stack_len = 0;
     usz seen_env_len = 0;
 
-    if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, root)) {
+    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, root)) {
         return true;
     }
 
     while (value_stack_len > 0 || env_stack_len > 0) {
         while (value_stack_len > 0) {
-            Value* cur = value_stack[--value_stack_len];
+            Value* cur = scan.value_stack[--value_stack_len];
             if (cur == null) continue;
-            if (jit_temp_graph_value_seen(&seen_values[0], seen_value_len, cur)) continue;
+            if (jit_temp_graph_value_seen(&scan.seen_values[0], seen_value_len, cur)) continue;
             if (seen_value_len >= JIT_TEMP_GRAPH_SCAN_MAX_NODES) return true;
-            seen_values[seen_value_len++] = cur;
+            scan.seen_values[seen_value_len++] = cur;
 
             if (value_in_temp_lane(cur, scope)) return true;
 
             switch (cur.tag) {
                 case CONS:
-                    if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.cons_val.car) ||
-                        !jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.cons_val.cdr)) {
+                    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.car) ||
+                        !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.cdr)) {
                         return true;
                     }
                     break;
                 case ARRAY:
                     if (cur.array_val != null) {
                         for (usz i = 0; i < cur.array_val.length; i++) {
-                            if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.array_val.items[i])) {
+                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.array_val.items[i])) {
                                 return true;
                             }
                         }
@@ -195,8 +202,8 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, key) ||
-                                !jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.hashmap_val.entries[i].value)) {
+                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key) ||
+                                !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.hashmap_val.entries[i].value)) {
                                 return true;
                             }
                         }
@@ -207,7 +214,7 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, key)) {
+                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key)) {
                                 return true;
                             }
                         }
@@ -219,14 +226,14 @@ fn bool jit_graph_binding_reaches_temp_scope(
                             boundary_ptr_in_scope((void*)cur.closure_val, scope)) {
                             return true;
                         }
-                        if (!jit_temp_graph_push_env(&env_stack[0], &env_stack_len, cur.closure_val.env)) {
+                        if (!jit_temp_graph_push_env(&scan.env_stack[0], &env_stack_len, cur.closure_val.env)) {
                             return true;
                         }
                     }
                     break;
                 case PARTIAL_PRIM:
-                    if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.partial_val.first_arg) ||
-                        !jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.partial_val.second_arg)) {
+                    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.partial_val.first_arg) ||
+                        !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.partial_val.second_arg)) {
                         return true;
                     }
                     break;
@@ -234,30 +241,30 @@ fn bool jit_graph_binding_reaches_temp_scope(
                     if (cur.method_table_val != null) {
                         MethodTable* mt = cur.method_table_val;
                         for (usz i = 0; i < mt.entry_count; i++) {
-                            if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, mt.entries[i].implementation)) {
+                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, mt.entries[i].implementation)) {
                                 return true;
                             }
                         }
-                        if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, mt.fallback)) {
+                        if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, mt.fallback)) {
                             return true;
                         }
                     }
                     break;
                 case MODULE:
                     if (cur.module_val != null &&
-                        !jit_temp_graph_push_env(&env_stack[0], &env_stack_len, cur.module_val.env)) {
+                        !jit_temp_graph_push_env(&scan.env_stack[0], &env_stack_len, cur.module_val.env)) {
                         return true;
                     }
                     break;
                 case ITERATOR:
-                    if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, cur.iterator_val)) {
+                    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.iterator_val)) {
                         return true;
                     }
                     break;
                 case INSTANCE:
                     if (cur.instance_val != null && cur.instance_val.fields != null) {
                         for (usz i = 0; i < cur.instance_val.field_count; i++) {
-                            if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, &cur.instance_val.fields[i])) {
+                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, &cur.instance_val.fields[i])) {
                                 return true;
                             }
                         }
@@ -269,18 +276,18 @@ fn bool jit_graph_binding_reaches_temp_scope(
         }
 
         while (env_stack_len > 0) {
-            Env* env = env_stack[--env_stack_len];
+            Env* env = scan.env_stack[--env_stack_len];
             if (env == null || env == stop_at) continue;
-            if (jit_temp_graph_env_seen(&seen_envs[0], seen_env_len, env)) continue;
+            if (jit_temp_graph_env_seen(&scan.seen_envs[0], seen_env_len, env)) continue;
             if (seen_env_len >= JIT_TEMP_GRAPH_SCAN_MAX_NODES) return true;
-            seen_envs[seen_env_len++] = env;
+            scan.seen_envs[seen_env_len++] = env;
 
             if (env_frame_in_temp_lane(env, scope)) return true;
-            if (!jit_temp_graph_push_env(&env_stack[0], &env_stack_len, env.parent)) {
+            if (!jit_temp_graph_push_env(&scan.env_stack[0], &env_stack_len, env.parent)) {
                 return true;
             }
             for (usz i = 0; i < env.binding_count; i++) {
-                if (!jit_temp_graph_push_value(&value_stack[0], &value_stack_len, env.bindings[i].value)) {
+                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, env.bindings[i].value)) {
                     return true;
                 }
             }
