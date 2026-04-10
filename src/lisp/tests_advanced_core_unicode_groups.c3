@@ -51,6 +51,7 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Void singleton type", "(= (type-of (Void)) 'Void)", pass, fail);
     test_truthy(interp, "Void singleton equality", "(= (Void) (Void))", pass, fail);
     test_truthy(interp, "Void singleton truthy", "(if (Void) true nil)", pass, fail);
+    test_str_val(interp, "nil print surface", "(format \"%s\" nil)", "nil", pass, fail);
     test_str_val(interp, "Void print surface", "(format \"%s\" (Void))", "#<void>", pass, fail);
     test_truthy(interp, "Closure ctor identity", "(closure? (Closure (lambda (x) x)))", pass, fail);
     test_truthy(interp, "List ctor type", "(= (type-of (List 1 2 3)) 'List)", pass, fail);

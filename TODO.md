@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 0
 
 Completed backlog snapshots:
 
@@ -18,20 +18,27 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` fix `%s`
-  formatting display path so plain `(format "%s" value)` does not fail with
-  `"format: failed to grow temporary builder"` for ordinary values.
-  - observed during validation while running
-    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`
-  - reproducer:
-    - `(format "%s" nil)`
-    - `(format "%s" (Void))`
-  - expected:
-    - returns `"nil"` and `"#<void>"` respectively
-  - validation target:
-    - bounded `advanced` slice with `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`
+- None.
 
 ## Recently Closed
+
+- [x] `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` fix `%s`
+  formatting display path so plain `(format "%s" value)` does not fail with
+  `"format: failed to grow temporary builder"` for ordinary values
+  - closure evidence:
+    - `src/lisp/prim_string_format_helpers.c3`
+      now computes `StringVal` target capacity through checked overflow
+      addition instead of comparing normal small appends against `usz.max`.
+    - `src/lisp/tests_advanced_core_unicode_groups.c3`
+      now pins both `(format "%s" nil)` and `(format "%s" (Void))`.
+    - validation:
+      - `c3c build`
+      - bounded `advanced` slice with
+        `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`: `pass=129 fail=0`
+      - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+      - bounded ASAN `memory-lifetime-smoke`: `pass=189 fail=0`
+      - direct JSON REPL probes for `(format "%s" nil)`,
+        `(format "%s" (Void))`, and a long `%s` string that requires growth
 
 - [x] `AUDIT-RUNTIME-EFFECT-PUBLICATION-FAILCLOSED-036` make effect
   publication/dispatch fail closed when payload or continuation materialization

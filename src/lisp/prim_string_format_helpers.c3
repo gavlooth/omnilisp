@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::math;
 import main;
 
 int g_string_force_builder_alloc_fail_nth = 0;
@@ -14,10 +15,18 @@ fn bool strval_should_force_fail(int* counter) @inline {
 }
 
 fn bool strval_needs_growth(StringVal* sv, usz needed) @inline {
-    return sv == null ||
-        sv.failed ||
-        needed > usz.max - sv.len - 1 ||
-        sv.len + needed + 1 > sv.capacity;
+    if (sv == null || sv.failed) return true;
+    usz target = 0;
+    if (strval_target_capacity_overflows(sv.len, needed, &target)) return true;
+    return target > sv.capacity;
+}
+
+fn bool strval_target_capacity_overflows(usz len, usz needed, usz* out) @inline {
+    usz target = 0;
+    if (math::overflow_add(len, needed, &target)) return true;
+    if (math::overflow_add(target, (usz)1, &target)) return true;
+    *out = target;
+    return false;
 }
 
 fn StringVal* strval_new(usz initial_cap) {
@@ -58,12 +67,12 @@ fn StringVal* strval_new_from_slice(char[] s) {
 fn bool strval_ensure(StringVal* sv, usz needed) {
     if (sv == null || sv.failed) return false;
     if (!strval_needs_growth(sv, needed)) return true;
-    if (needed > usz.max - sv.len - 1) {
+    usz target = 0;
+    if (strval_target_capacity_overflows(sv.len, needed, &target)) {
         sv.failed = true;
         return false;
     }
 
-    usz target = sv.len + needed + 1;
     usz new_cap = sv.capacity > 0 ? sv.capacity : 32;
     while (new_cap < target) {
         if (new_cap > usz.max / 2) {

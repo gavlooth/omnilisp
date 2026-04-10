@@ -1237,3 +1237,26 @@ Progress update (2026-04-09):
     unicode iterator validation group.
 - backlog shaping after this slice:
   - actionable backlog is `1`
+- Closed `%s` display formatter target-capacity drift:
+  - `src/lisp/prim_string_format_helpers.c3`
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+- shipped behavior:
+  - `StringVal` target-capacity calculation now uses checked overflow addition
+    for `len + needed + 1` instead of comparing against `usz.max`, which this
+    C3 build lowered as a signed comparison and treated normal appends as
+    overflow.
+  - `(format "%s" nil)` now returns `"nil"`, `(format "%s" (Void))` returns
+    `"#<void>"`, and long `%s` strings that need builder growth still render.
+- validation status:
+  - `c3c build`: green
+  - bounded `advanced` slice with
+    `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`: green
+    (`pass=129 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+  - direct JSON REPL:
+    - `(format "%s" nil)` returns `"nil"`
+    - `(format "%s" (Void))` returns `"#<void>"`
+    - long `%s` string requiring builder growth returns the source text
+- backlog shaping after this slice:
+  - actionable backlog returns to `0`

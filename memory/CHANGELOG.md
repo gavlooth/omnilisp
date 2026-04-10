@@ -11647,6 +11647,24 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
     - `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037` tracks the unrelated
       `%s` display formatter failure surfaced by the advanced unicode iterator
       validation group.
+- 2026-04-10 (`%s` display formatter builder-growth guard):
+  - `StringVal` target-capacity calculation now uses checked overflow addition
+    instead of comparing ordinary small appends against `usz.max`, avoiding the
+    signed-lowered `usz.max` comparison that made `(format "%s" nil)` and
+    `(format "%s" (Void))` fail with `"format: failed to grow temporary builder"`.
+  - the advanced unicode/type constructor surface now pins `(format "%s" nil)`
+    beside the existing `(format "%s" (Void))` regression.
+  - validation:
+    - `c3c build`
+    - bounded `advanced` slice with
+      `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`: `pass=129 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+    - bounded ASAN `memory-lifetime-smoke`: `pass=189 fail=0`
+    - direct JSON REPL probes for `(format "%s" nil)`, `(format "%s" (Void))`,
+      and a long `%s` string that requires real builder growth
+  - backlog:
+    - closed `AUDIT-FORMAT-DISPLAY-TEMP-BUILDER-FAILCLOSED-037`; actionable
+      backlog returns to `0`.
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

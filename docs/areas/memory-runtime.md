@@ -687,3 +687,7 @@ for future concurrency ownership evolution.
   construction for `string->list` and `list`, and JSON pointer lookup now
   propagates key string materialization failure instead of falling through to a
   different lookup mode.
+- `StringVal` capacity growth now computes the target size through checked
+  overflow addition instead of a `usz.max` comparison, so `%s` display
+  formatting for ordinary values such as `nil` and `Void` reaches the normal
+  append/growth path.
