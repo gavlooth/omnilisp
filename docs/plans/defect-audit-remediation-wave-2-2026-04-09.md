@@ -40,6 +40,29 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The iterator/coroutine malformed-state normalization lane is now also closed:
+  - `src/lisp/primitives_iter_state.c3`
+    now rejects missing list/array source thunk state directly, and
+    `iterator_make_pair_or_propagate(...)` no longer maps a null recursive
+    tail to successful completion.
+  - `src/lisp/primitives_iter_coroutine.c3`
+    now rejects malformed thunk arg state for `map`, `filter`, `take`, and
+    `zip` instead of returning `nil`, and `filter` no longer treats a
+    non-iterator internal state transition as valid exhaustion.
+  - `src/lisp/primitives_iter_terminal.c3`
+    now rejects null iterator pairs from internal thunk dispatch instead of
+    truncating `collect` / `to-array`.
+  - `src/lisp/primitives_coroutine_resume.c3`
+    now rejects missing yielded values and missing completed results instead of
+    fabricating successful `nil` resume results.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` and
+    `src/lisp/tests_memory_lifetime_groups.c3`
+    now pin the malformed-thunk and malformed-resume state directly.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The iterator coroutine cons-construction lane is now also closed:
   - `src/lisp/primitives_iter_coroutine.c3`
     now routes internal `zip` item-pair and `foldl` arg-list cons building

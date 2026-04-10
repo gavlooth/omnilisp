@@ -461,6 +461,80 @@ fn void run_memory_lifetime_resume_missing_yield_scope_gate_test(Interp* interp,
             (*fail)++;
         }
     }
+
+    {
+        Value* saved_yield = interp.yield_value;
+        main::ScopeRegion* saved_yield_scope = interp.yield_scope;
+        defer {
+            interp.yield_value = saved_yield;
+            interp.yield_scope = saved_yield_scope;
+        }
+
+        usz base_site = copy_to_parent_site_calls(COPY_SITE_PRIM_RESUME);
+        interp.yield_value = null;
+        interp.yield_scope = interp.current_scope;
+
+        Value* result = prim_resume_yield_result(interp);
+        usz site_delta = copy_to_parent_site_calls(COPY_SITE_PRIM_RESUME) - base_site;
+
+        bool ok = result != null &&
+            result.tag == ERROR &&
+            str_starts_with(result.str_chars[:result.str_len], "resume: missing yielded value") &&
+            interp.yield_value == null &&
+            interp.yield_scope == null &&
+            site_delta == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: resume missing yielded value gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: resume missing yielded value gate (site_delta=%d tag=%d state_yield=%s state_scope=%s)",
+                (long)site_delta,
+                result != null ? (int)result.tag : -1,
+                interp.yield_value == null ? "cleared" : "dirty",
+                interp.yield_scope == null ? "cleared" : "dirty");
+            (*fail)++;
+        }
+    }
+
+    {
+        main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
+        Value* coroutine_val = null;
+        bool setup_ok = ctx != null;
+        if (setup_ok) {
+            ctx.status = main::StackCtxStatus.CTX_COMPLETED;
+            ctx.result = null;
+            coroutine_val = make_coroutine(interp, ctx);
+            setup_ok = coroutine_val != null && coroutine_val.tag == COROUTINE;
+        }
+
+        Value* result = setup_ok
+            ? prim_resume_complete(coroutine_val, ctx, interp)
+            : raise_error(interp, "resume: failed to allocate coroutine test state");
+
+        bool ok = setup_ok &&
+            result != null &&
+            result.tag == ERROR &&
+            str_starts_with(result.str_chars[:result.str_len], "resume: missing completed result") &&
+            coroutine_val.coroutine_val == null;
+        if (!setup_ok && ctx != null) {
+            main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: resume missing completed result gate");
+            (*pass)++;
+        } else {
+            io::printfn("[FAIL] lifetime: resume missing completed result gate (setup_ok=%s tag=%d msg=%s coroutine_state=%s)",
+                setup_ok ? "yes" : "no",
+                result != null ? (int)result.tag : -1,
+                result != null && result.tag == ERROR && result.str_chars != null
+                    ? (ZString)result.str_chars[:result.str_len]
+                    : (ZString)"<none>",
+                coroutine_val != null && coroutine_val.coroutine_val == null ? "cleared" : "dirty");
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass, int* fail) {

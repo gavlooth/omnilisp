@@ -36,7 +36,9 @@ fn Value* prim_iterator_map(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_map_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-map: expected iterator state");
+    }
     Value* func = args[0];
     Value* iterator = args[1];
     Value* pair = iterator_call_next(iterator, interp);
@@ -62,7 +64,9 @@ fn Value* prim_iterator_filter(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator state");
+    }
     Value* pred = args[0];
     Value* iterator = args[1];
 
@@ -83,7 +87,7 @@ fn Value* prim_iterator_filter_thunk(Value*[] args, Env* env, Interp* interp) {
         }
         iterator = rest;
     }
-    return make_nil(interp);
+    return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-filter: expected iterator state");
 }
 
 fn Value* prim_iterator_take(Value*[] args, Env* env, Interp* interp) {
@@ -99,10 +103,15 @@ fn Value* prim_iterator_take(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_take_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected iterator state");
+    }
     Value* n_value = args[0];
     Value* iterator = args[1];
-    if (n_value == null || !is_int(n_value) || n_value.int_val <= 0) return make_nil(interp);
+    if (n_value == null || !is_int(n_value)) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-take: expected integer count");
+    }
+    if (n_value.int_val <= 0) return make_nil(interp);
 
     Value* pair = iterator_call_next(iterator, interp);
     if (pair == null || pair.tag == NIL || pair.tag == ERROR) return pair;
@@ -129,7 +138,9 @@ fn Value* prim_iterator_zip(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_iterator_zip_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-zip: expected iterators");
+    }
     Value* left = args[0];
     Value* right = args[1];
     Value* left_pair = iterator_call_next(left, interp);

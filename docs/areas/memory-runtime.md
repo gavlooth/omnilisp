@@ -96,6 +96,13 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `map`, `filter`, `take`, `zip`, and `foldl` now reject malformed iterator
     tails directly instead of truncating or deferring broken iterator state as
     a later partial success.
+- Iterator/coroutine malformed internal state is now fail-closed as well:
+  - missing internal thunk args for list/array iterator sources and lazy
+    iterator combinators no longer normalize to `nil`,
+  - null iterator pairs returned from internal thunk dispatch no longer look
+    like clean exhaustion to terminal consumers, and
+  - `resume` no longer fabricates successful `nil` values when a coroutine is
+    missing its yielded value or completed result.
 - Iterator coroutine helpers now also fail closed on internal cons
   construction:
   - `zip` no longer publishes constructor-failed item pairs as iterator data.

@@ -1417,6 +1417,44 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[1] no_args = { null };
+        Value*[1] one_arg = { make_int(interp, 1) };
+        Value*[2] filter_bad_args = { make_int(interp, 1), make_nil(interp) };
+        Value* map_missing_state = prim_iterator_map_thunk(no_args[0:0], null, interp);
+        Value* filter_missing_state = prim_iterator_filter_thunk(no_args[0:0], null, interp);
+        Value* take_missing_state = prim_iterator_take_thunk(no_args[0:0], null, interp);
+        Value* zip_missing_state = prim_iterator_zip_thunk(no_args[0:0], null, interp);
+        Value* list_missing_state = prim_iterator_from_list_thunk(no_args[0:0], null, interp);
+        Value* array_missing_state = prim_iterator_from_array_thunk(one_arg[0:1], null, interp);
+        Value* filter_bad_iter_state = prim_iterator_filter_thunk(filter_bad_args[0:2], null, interp);
+
+        bool ok =
+            runtime_alloc_error_matches(map_missing_state, "__iterator-map: expected iterator state") &&
+            runtime_alloc_error_matches(filter_missing_state, "__iterator-filter: expected iterator state") &&
+            runtime_alloc_error_matches(take_missing_state, "__iterator-take: expected iterator state") &&
+            runtime_alloc_error_matches(zip_missing_state, "__iterator-zip: expected iterators") &&
+            runtime_alloc_error_matches(list_missing_state, "__iterator-from-list: expected list state") &&
+            runtime_alloc_error_matches(array_missing_state, "__iterator-from-array: expected array state") &&
+            runtime_alloc_error_matches(filter_bad_iter_state, "__iterator-filter: expected iterator state");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: malformed iterator thunk state fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: malformed iterator thunk state fails closed (map=%s filter=%s take=%s zip=%s list=%s array=%s bad_filter=%s)",
+                runtime_alloc_error_text(map_missing_state),
+                runtime_alloc_error_text(filter_missing_state),
+                runtime_alloc_error_text(take_missing_state),
+                runtime_alloc_error_text(zip_missing_state),
+                runtime_alloc_error_text(list_missing_state),
+                runtime_alloc_error_text(array_missing_state),
+                runtime_alloc_error_text(filter_bad_iter_state)
+            );
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult func_run = run("(lambda (a x) (+ a x))", interp);
         Value* list = make_cons(interp, make_int(interp, 1), make_nil(interp));
         Value* iterator = iterator_from_list_value(list, interp);

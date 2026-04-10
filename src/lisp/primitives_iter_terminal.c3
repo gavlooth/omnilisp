@@ -52,7 +52,10 @@ fn Value* iterator_consume_items(Value* iterator, Value** items, usz* count_out,
 
     while (count < ITER_BUFFER_MAX) {
         Value* pair = jit_apply_value(it.iterator_val, make_nil(interp), interp);
-        if (pair == null || pair.tag == NIL) break;
+        if (pair == null) {
+            return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator pair");
+        }
+        if (pair.tag == NIL) break;
         if (pair.tag == ERROR) return pair;
         if (!is_cons(pair)) {
             return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator pair");

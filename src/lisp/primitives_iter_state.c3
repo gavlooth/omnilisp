@@ -5,7 +5,10 @@ import main;
 bool g_iterator_force_partial_alloc_fail = false;
 
 fn Value* iterator_make_pair_or_propagate(Value* item, Value* next, Interp* interp) @inline {
-    if (next == null || next.tag == ERROR) return next;
+    if (next == null) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "iterator: expected iterator tail");
+    }
+    if (next.tag == ERROR) return next;
     return make_cons(interp, item, next);
 }
 
@@ -45,7 +48,9 @@ fn Value* iterator_make_thunk2(PrimitiveFn func, Value* first_arg, Value* second
 }
 
 fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return make_nil(interp);
+    if (args.len < 1) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-list: expected list state");
+    }
     Value* current = args[0];
     if (current == null || current.tag == NIL) return make_nil(interp);
     if (!is_cons(current)) {
@@ -55,7 +60,9 @@ fn Value* prim_iterator_from_list_thunk(Value*[] args, Env* env, Interp* interp)
 }
 
 fn Value* prim_iterator_from_array_thunk(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return make_nil(interp);
+    if (args.len < 2) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-array: expected array state");
+    }
     Value* array_value = args[0];
     Value* index_value = args[1];
     if (array_value == null || !is_array(array_value) || index_value == null || !is_int(index_value)) {

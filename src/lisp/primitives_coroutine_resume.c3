@@ -16,10 +16,13 @@ fn Value* prim_resume_error_and_cleanup(
 
 fn Value* prim_resume_complete(Value* coroutine_val, main::StackCtx* ctx, Interp* interp) {
     Value* result = (Value*)ctx.result;
+    if (result == null) {
+        return prim_resume_error_and_cleanup(coroutine_val, ctx, interp, "resume: missing completed result");
+    }
     coroutine_clear_yield_boundary_state(interp);
     interp_clear_resume_value(interp);
     coroutine_ctx_cleanup(coroutine_val, ctx, interp);
-    return result != null ? result : make_nil(interp);
+    return result;
 }
 
 fn Value* prim_resume_yield_result(Interp* interp) {
@@ -27,7 +30,7 @@ fn Value* prim_resume_yield_result(Interp* interp) {
     main::ScopeRegion* yield_scope = interp.yield_scope;
     coroutine_clear_yield_boundary_state(interp);
 
-    if (yielded == null) return make_nil(interp);
+    if (yielded == null) return raise_error(interp, "resume: missing yielded value");
     if (yield_scope == null) {
         return raise_error(interp, "resume: missing yield-scope provenance");
     }

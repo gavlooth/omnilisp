@@ -1,5 +1,27 @@
 ## 2026-04-10
 
+- Closed the iterator/coroutine malformed-state normalization lane:
+  - `src/lisp/primitives_iter_state.c3`
+    now rejects missing internal list/array iterator thunk state directly, and
+    no longer treats a null recursive tail as ordinary iterator completion.
+  - `src/lisp/primitives_iter_coroutine.c3`
+    now rejects malformed thunk arg state for `map`, `filter`, `take`, and
+    `zip` instead of normalizing it to `nil`, and `filter` no longer treats a
+    non-iterator internal state transition as successful exhaustion.
+  - `src/lisp/primitives_iter_terminal.c3`
+    now rejects a null iterator pair from internal thunk dispatch instead of
+    truncating `collect` / `to-array` as if the stream completed normally.
+  - `src/lisp/primitives_coroutine_resume.c3`
+    now rejects missing yielded values and missing completed results instead of
+    fabricating successful `nil` returns during coroutine resume.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` and
+    `src/lisp/tests_memory_lifetime_groups.c3`
+    now pin malformed iterator thunk state plus missing-yield /
+    missing-completion resume state directly in the bounded lifetime lanes.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the runtime effect publication fail-closed lane:
   - `src/lisp/value_constructors.c3`
     now builds handled-raise payload maps through the raw constructor path,
