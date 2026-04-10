@@ -924,6 +924,124 @@ fn void run_memory_lifetime_method_table_abort_cleanup_test(Interp* interp, int*
     }
 }
 
+fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: shared-wrapper partial-copy failure unwinds already-copied
+    // child ownership side effects instead of leaking retained env scopes.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        main::ScopeRegion* target = main::scope_create(saved);
+        if (foreign == null || target == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper partial cleanup releases retains");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__shared_wrapper_partial_cleanup_payload");
+
+        interp.current_scope = foreign;
+        Env* captured_env = make_env(interp, interp.global_env);
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 808), interp);
+        }
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure =
+            captured_env != null ? make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope) : null;
+        Value* opaque = interp.alloc_value();
+        opaque.tag = PRIMITIVE;
+        main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        if (opaque_prim == null || opaque_payload == null) {
+            if (opaque_prim != null) mem::free(opaque_prim);
+            if (opaque_payload != null) mem::free(opaque_payload);
+            interp.current_scope = saved;
+            main::scope_release(foreign);
+            main::scope_release(target);
+            io::printn("[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup opaque)");
+            (*fail)++;
+            return;
+        }
+        *opaque_prim = {};
+        *opaque_payload = 809;
+        opaque_prim.name[0] = 'p';
+        opaque_prim.name[1] = 0;
+        opaque_prim.arity = 1;
+        opaque_prim.tag = 809;
+        opaque_prim.user_data = (void*)opaque_payload;
+        opaque.prim_val = opaque_prim;
+
+        Value* src_array = null;
+        if (shared_closure != null) {
+            src_array = interp.alloc_value();
+            if (src_array != null) {
+                src_array.tag = ARRAY;
+                main::scope_register_dtor(foreign, (void*)src_array, &scope_dtor_value);
+                Array* src_array_payload = (Array*)mem::malloc(Array.sizeof);
+                if (src_array_payload != null) {
+                    src_array_payload.capacity = 2;
+                    src_array_payload.length = 2;
+                    src_array_payload.items = (Value**)mem::malloc(Value*.sizeof * src_array_payload.capacity);
+                    if (src_array_payload.items != null) {
+                        src_array_payload.items[0] = shared_closure;
+                        src_array_payload.items[1] = opaque;
+                        src_array.array_val = src_array_payload;
+                    } else {
+                        mem::free(src_array_payload);
+                        src_array.array_val = null;
+                    }
+                } else {
+                    src_array.array_val = null;
+                }
+            }
+        }
+
+        bool setup_ok = shared_closure != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        opaque != null &&
+                        opaque.tag == PRIMITIVE &&
+                        opaque.prim_val != null &&
+                        opaque.prim_val.user_data != null &&
+                        src_array != null &&
+                        src_array.tag == ARRAY &&
+                        src_array.array_val != null &&
+                        src_array.array_val.length == 2;
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+        BoundaryCopyResult copy_result = setup_ok
+            ? boundary_copy_to_parent_site_ctx_checked(src_array, interp, COPY_SITE_GENERIC, null)
+            : boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
+        int rc_after_copy_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(target);
+
+        bool copy_ok = !boundary_copy_result_ok(copy_result) &&
+                       copy_result.value == null &&
+                       copy_result.fault_code == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD &&
+                       rc_after_copy_fail == 1;
+        bool ok = setup_ok && copy_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: shared-wrapper partial cleanup releases retains");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: shared-wrapper partial cleanup releases retains (setup_ok=%s copy_fault=%s rc_after_copy_fail=%d)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(copy_result.fault_code),
+                rc_after_copy_fail
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_splice_legality_explicit_reasons_test(Interp* interp, int* pass, int* fail) {
     // Invariant: splice fast-path rejects sibling/foreign/retained-child transfers with explicit reasons.
     {

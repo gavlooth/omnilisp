@@ -22,5 +22,6 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_run_program_error_boundary_state_test(interp, pass, fail);
     run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(interp, pass, fail);
     run_memory_lifetime_method_table_abort_cleanup_test(interp, pass, fail);
+    run_memory_lifetime_shared_wrapper_partial_cleanup_test(interp, pass, fail);
     run_memory_lifetime_env_copy_escape_mode_tests(interp, pass, fail);
 }

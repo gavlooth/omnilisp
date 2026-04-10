@@ -1,5 +1,25 @@
 ## 2026-04-10
 
+- Closed the shared-wrapper partial-cleanup follow-up for boundary copy and
+  ESCAPE promotion:
+  - `src/lisp/eval_promotion_root_clones.c3` now owns shared cleanup helpers
+    for partially materialized arrays, hashmaps/sets, and method tables, and
+    those helpers unwind already-copied child ownership side effects before
+    freeing the aborted heap wrapper.
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` and
+    `src/lisp/eval_promotion_escape_structured.c3` now route array,
+    hashmap/set, and method-table partial-copy failures through that cleanup
+    path instead of freeing only the wrapper heap and leaking already-copied
+    child retains.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now includes a
+    disjoint-array regression that proves a failed second-element copy releases
+    the first copied closure-env retain, and
+    `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` wires that probe
+    into the bounded smoke lane.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=85 fail=0`
+
 - Closed two post-`478bc24` boundary follow-ups:
   - `src/lisp/eval_env_copy_values.c3` now routes iterator closure payloads
     through the same safe undelimited clone helper as plain closure env-copy,

@@ -82,8 +82,7 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
     for (usz i = 0; i < src_arr.length; i++) {
         Value* copied = copy_to_parent_with_fault(src_arr.items[i], interp, fault_out);
         if (src_arr.items[i] != null && (copied == null || is_error(copied))) {
-            mem::free(dst_arr.items);
-            mem::free(dst_arr);
+            boundary_cleanup_partial_array_copy(src_arr, dst_arr, i);
             if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                 *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             }
@@ -144,8 +143,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
             if (src_e.key != null) {
                 Value* copied_key = copy_to_parent_with_fault(src_e.key, interp, fault_out);
                 if (copied_key == null || is_error(copied_key)) {
-                    mem::free(dst_map.entries);
-                    mem::free(dst_map);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
                     if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                         *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
                     }
@@ -155,10 +153,10 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
                             ? raise_error(interp, "boundary: failed to copy hashmap key")
                             : copied_key);
                 }
+                dst_e.key = copied_key;
                 Value* copied_value = copy_to_parent_with_fault(src_e.value, interp, fault_out);
                 if (src_e.value != null && (copied_value == null || is_error(copied_value))) {
-                    mem::free(dst_map.entries);
-                    mem::free(dst_map);
+                    boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1);
                     if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                         *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
                     }
@@ -168,7 +166,6 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
                             ? raise_error(interp, "boundary: failed to copy hashmap value")
                             : copied_value);
                 }
-                dst_e.key = copied_key;
                 dst_e.value = copied_value;
             }
         }
@@ -219,14 +216,15 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
 
     for (usz i = 0; i < dst_mt.entry_count; i++) {
         method_signature_init_empty(&dst_mt.entries[i].sig);
+        dst_mt.entries[i].implementation = null;
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
-            method_table_free_partial_heap(dst_mt, i);
+            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             return fault_out != null ? null : raise_error(interp, "boundary: failed to copy method signature");
         }
         Value* copied_impl = copy_to_parent_with_fault(src_mt.entries[i].implementation, interp, fault_out);
         if (src_mt.entries[i].implementation != null && (copied_impl == null || is_error(copied_impl))) {
-            method_table_free_partial_heap(dst_mt, i + 1);
+            boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, i);
             if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                 *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             }
@@ -241,7 +239,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
 
     Value* copied_fallback = copy_to_parent_with_fault(src_mt.fallback, interp, fault_out);
     if (src_mt.fallback != null && (copied_fallback == null || is_error(copied_fallback))) {
-        method_table_free_partial_heap(dst_mt, dst_mt.entry_count);
+        boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, dst_mt.entry_count);
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }

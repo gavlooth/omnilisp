@@ -27,6 +27,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   promotion paths now fail closed when they encounter opaque primitive payload
   state transitively; they no longer silently embed null/error payloads into
   rebuilt structured wrappers.
+- Shared-wrapper abort paths for `ARRAY`, `HASHMAP` / `SET`, and
+  `METHOD_TABLE` now unwind already-copied child ownership side effects before
+  freeing the partially built heap wrapper, so failed late-element copy does
+  not leak retained closure env scopes or other copied child resources.
 - Splice legality checks are reason-coded (`BoundaryScopeTransferReason`) and enforced through `boundary_check_scope_transfer(...)`.
 - `ScopeRegion` escape splice uses O(1) tail-link concatenation (`escape_chunks_tail`, `escape_dtors_tail`) with consistency assertions.
 - Boundary guard scripts exist and are wired:
@@ -38,6 +42,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/check_jit_env_scope_guards.sh`
 - Verification status for the already-closed hardening profile remains current:
   - `c3c build` passed.
+  - bounded `memory-lifetime-smoke` passed at `pass=85 fail=0`.
   - `rm -rf build/obj/linux-x64 build/main && mkdir -p build/obj/linux-x64/tmp_c_compile && c3c build --sanitize=address` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
