@@ -13,10 +13,10 @@ fn Value* explain_effect_result_from_signal_value(
     TypeId arg_type = infer_value_type(arg_value, interp);
     bool has_stack_ctx = main::g_current_stack_ctx != null;
 
-    explain_dict_set(trace, interp, "effect-tag", make_symbol(interp, effect_tag));
-    explain_dict_set(trace, interp, "arg-type", make_symbol(interp, explain_type_symbol(interp, arg_type)));
-    explain_dict_set(trace, interp, "handler-count", make_int(interp, (long)interp.handler_count));
-    explain_dict_set(trace, interp, "stack-context-active", explain_bool_value(interp, has_stack_ctx));
+    if (Value* err = explain_dict_set(trace, interp, "effect-tag", make_symbol(interp, effect_tag))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "arg-type", make_symbol(interp, explain_type_symbol(interp, arg_type)))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "handler-count", make_int(interp, (long)interp.handler_count))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "stack-context-active", explain_bool_value(interp, has_stack_ctx))) return err;
 
     Value* rev_candidates = make_nil(interp);
     usz searched_handlers = 0;
@@ -40,44 +40,45 @@ fn Value* explain_effect_result_from_signal_value(
         usz clause_index = clause_match ? (usz)clause_idx : usz.max;
         bool dispatchable = clause_match && has_stack_ctx && handler.effect_state != null;
 
-        Value* candidate = make_hashmap(interp, 20);
-        explain_dict_set(candidate, interp, "index", make_int(interp, (long)search_order));
-        explain_dict_set(candidate, interp, "handler-index", make_int(interp, (long)i));
-        explain_dict_set(candidate, interp, "strict", explain_bool_value(interp, handler.strict_mode));
-        explain_dict_set(candidate, interp, "clause-count", make_int(interp, (long)handler.clause_count));
-        explain_dict_set(candidate, interp, "tags", explain_effect_handler_tags(interp, handler));
-        explain_dict_set(candidate, interp, "matched", explain_bool_value(interp, clause_match));
-        explain_dict_set(candidate, interp, "dispatchable", explain_bool_value(interp, dispatchable));
-        explain_dict_set_symbol(candidate, interp, "miss-reason",
-            explain_effect_miss_reason_symbol(interp, dispatchable, clause_match, handler.strict_mode));
-        explain_dict_set(candidate, interp, "debug_message", make_nil(interp));
+        Value* candidate = explain_make_dict(interp, 20);
+        if (candidate == null || candidate.tag != HASHMAP) return candidate;
+        if (Value* err = explain_dict_set(candidate, interp, "index", make_int(interp, (long)search_order))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "handler-index", make_int(interp, (long)i))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "strict", explain_bool_value(interp, handler.strict_mode))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "clause-count", make_int(interp, (long)handler.clause_count))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "tags", explain_effect_handler_tags(interp, handler))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "matched", explain_bool_value(interp, clause_match))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "dispatchable", explain_bool_value(interp, dispatchable))) return err;
+        if (Value* err = explain_dict_set_symbol(candidate, interp, "miss-reason",
+            explain_effect_miss_reason_symbol(interp, dispatchable, clause_match, handler.strict_mode))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "debug_message", make_nil(interp))) return err;
         if (clause_match) {
             Expr* clause_body = explain_effect_clause_body(handler, clause_index);
-            explain_dict_set(candidate, interp, "match-clause-index", make_int(interp, (long)clause_index));
-            explain_dict_set(candidate, interp, "match-tag", make_symbol(interp, explain_effect_clause_tag(handler, clause_index)));
-            explain_dict_set(candidate, interp, "source", explain_effect_clause_source(interp, clause_body));
-            explain_dict_set_symbol(candidate, interp, "outcome",
-                explain_effect_handler_outcome_symbol(clause_body, interp));
+            if (Value* err = explain_dict_set(candidate, interp, "match-clause-index", make_int(interp, (long)clause_index))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "match-tag", make_symbol(interp, explain_effect_clause_tag(handler, clause_index)))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "source", explain_effect_clause_source(interp, clause_body))) return err;
+            if (Value* err = explain_dict_set_symbol(candidate, interp, "outcome",
+                explain_effect_handler_outcome_symbol(clause_body, interp))) return err;
 
             SymbolId arg_name = explain_effect_clause_arg_name(handler, clause_index);
             SymbolId k_name = explain_effect_clause_k_name(handler, clause_index, interp);
             if ((uint)arg_name != 0) {
-                explain_dict_set(candidate, interp, "arg-name", make_symbol(interp, arg_name));
+                if (Value* err = explain_dict_set(candidate, interp, "arg-name", make_symbol(interp, arg_name))) return err;
             } else {
-                explain_dict_set(candidate, interp, "arg-name", make_nil(interp));
+                if (Value* err = explain_dict_set(candidate, interp, "arg-name", make_nil(interp))) return err;
             }
             if ((uint)k_name != 0) {
-                explain_dict_set(candidate, interp, "continuation-name", make_symbol(interp, k_name));
+                if (Value* err = explain_dict_set(candidate, interp, "continuation-name", make_symbol(interp, k_name))) return err;
             } else {
-                explain_dict_set(candidate, interp, "continuation-name", make_nil(interp));
+                if (Value* err = explain_dict_set(candidate, interp, "continuation-name", make_nil(interp))) return err;
             }
         } else {
-            explain_dict_set(candidate, interp, "match-clause-index", make_nil(interp));
-            explain_dict_set(candidate, interp, "match-tag", make_nil(interp));
-            explain_dict_set(candidate, interp, "source", make_nil(interp));
-            explain_dict_set(candidate, interp, "outcome", make_nil(interp));
-            explain_dict_set(candidate, interp, "arg-name", make_nil(interp));
-            explain_dict_set(candidate, interp, "continuation-name", make_nil(interp));
+            if (Value* err = explain_dict_set(candidate, interp, "match-clause-index", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "match-tag", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "source", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "outcome", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "arg-name", make_nil(interp))) return err;
+            if (Value* err = explain_dict_set(candidate, interp, "continuation-name", make_nil(interp))) return err;
         }
 
         rev_candidates = make_cons(interp, candidate, rev_candidates);
@@ -104,60 +105,60 @@ fn Value* explain_effect_result_from_signal_value(
     }
 
     Value* candidates = explain_reverse_list(rev_candidates, interp);
-    explain_dict_set(out, interp, "candidates", candidates);
-    explain_dict_set(trace, interp, "searched-handlers", make_int(interp, (long)searched_handlers));
+    if (Value* err = explain_dict_set(out, interp, "candidates", candidates)) return err;
+    if (Value* err = explain_dict_set(trace, interp, "searched-handlers", make_int(interp, (long)searched_handlers))) return err;
 
     if (matched) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("handler-match"));
-        explain_dict_set(decision, interp, "handler-index", make_int(interp, (long)matched_handler_index));
-        explain_dict_set(decision, interp, "search-order", make_int(interp, (long)matched_search_order));
-        explain_dict_set(decision, interp, "clause-index", make_int(interp, (long)matched_clause_index));
-        explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag));
-        explain_dict_set_symbol(decision, interp, "outcome",
-            explain_effect_handler_outcome_symbol(matched_clause_body, interp));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("handler-match"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "handler-index", make_int(interp, (long)matched_handler_index))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "search-order", make_int(interp, (long)matched_search_order))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "clause-index", make_int(interp, (long)matched_clause_index))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome",
+            explain_effect_handler_outcome_symbol(matched_clause_body, interp))) return err;
         if ((uint)matched_clause_arg != 0) {
-            explain_dict_set(decision, interp, "arg-name", make_symbol(interp, matched_clause_arg));
+            if (Value* err = explain_dict_set(decision, interp, "arg-name", make_symbol(interp, matched_clause_arg))) return err;
         } else {
-            explain_dict_set(decision, interp, "arg-name", make_nil(interp));
+            if (Value* err = explain_dict_set(decision, interp, "arg-name", make_nil(interp))) return err;
         }
         if ((uint)matched_clause_k != 0) {
-            explain_dict_set(decision, interp, "continuation-name", make_symbol(interp, matched_clause_k));
+            if (Value* err = explain_dict_set(decision, interp, "continuation-name", make_symbol(interp, matched_clause_k))) return err;
         } else {
-            explain_dict_set(decision, interp, "continuation-name", make_nil(interp));
+            if (Value* err = explain_dict_set(decision, interp, "continuation-name", make_nil(interp))) return err;
         }
         return out;
     }
 
     if (strict_stop) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unhandled"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("strict-unhandled-effect"));
-        explain_dict_set(decision, interp, "strict-handler-index", make_int(interp, (long)strict_handler_index));
-        explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unhandled"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("strict-unhandled-effect"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "strict-handler-index", make_int(interp, (long)strict_handler_index))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
         return out;
     }
 
     usz fast_path_index = usz.max;
     Value* fast_path_prim = explain_effect_fast_path_primitive(interp, effect_tag, &fast_path_index);
     if (fast_path_prim != null) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("fast-path"));
-        explain_dict_set(decision, interp, "fast-path-index", make_int(interp, (long)fast_path_index));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("fast-path"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "fast-path-index", make_int(interp, (long)fast_path_index))) return err;
         if (fast_path_prim.tag == PRIMITIVE) {
-            explain_dict_set(decision, interp, "fast-path-primitive", explain_primitive_name_value(interp, fast_path_prim.prim_val));
+            if (Value* err = explain_dict_set(decision, interp, "fast-path-primitive", explain_primitive_name_value(interp, fast_path_prim.prim_val))) return err;
         } else {
-            explain_dict_set(decision, interp, "fast-path-primitive", make_nil(interp));
+            if (Value* err = explain_dict_set(decision, interp, "fast-path-primitive", make_nil(interp))) return err;
         }
-        explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+        if (Value* err = explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
         return out;
     }
 
-    explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unhandled"));
-    explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("unhandled-effect"));
-    explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag));
-    explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+    if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unhandled"))) return err;
+    if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("unhandled-effect"))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "match-tag", make_symbol(interp, effect_tag))) return err;
+    if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
     return out;
 }
 
@@ -185,41 +186,41 @@ fn Value* explain_effect_result_from_resolve_value(
     Value* decision,
     Value* trace
 ) {
-    explain_dict_set(trace, interp, "has-continuation-binding", explain_bool_value(interp, k_val != null));
+    if (Value* err = explain_dict_set(trace, interp, "has-continuation-binding", explain_bool_value(interp, k_val != null))) return err;
 
     if (k_val == null || k_val.tag != CONTINUATION) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-invalid-continuation"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-invalid-continuation"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
         return out;
     }
 
     Continuation* k = k_val.cont_val;
     bool effect_cont = k.is_coroutine_based && k.handle_state != null;
-    explain_dict_set(trace, interp, "effect-continuation", explain_bool_value(interp, effect_cont));
+    if (Value* err = explain_dict_set(trace, interp, "effect-continuation", explain_bool_value(interp, effect_cont))) return err;
 
     if (effect_cont) {
         if (k.ctx == null || k.ctx.status == main::StackCtxStatus.CTX_DEAD || k.ctx.status == main::StackCtxStatus.CTX_COMPLETED) {
-            explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"));
-            explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-dead-continuation"));
-            explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+            if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"))) return err;
+            if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-dead-continuation"))) return err;
+            if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
             return out;
         }
         if (k.ctx.status != main::StackCtxStatus.CTX_SUSPENDED) {
-            explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"));
-            explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-continuation-not-suspended"));
-            explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
+            if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("invalid"))) return err;
+            if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-continuation-not-suspended"))) return err;
+            if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
             return out;
         }
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-effect-continuation"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.sym_resolve);
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-effect-continuation"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.sym_resolve)) return err;
         return out;
     }
 
-    explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-    explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-generic-continuation"));
-    explain_dict_set_symbol(decision, interp, "outcome", interp.sym_resolve);
+    if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+    if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("resolve-generic-continuation"))) return err;
+    if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.sym_resolve)) return err;
     return out;
 }
 

@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 2
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -17,25 +17,6 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
-
-- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010` migrate schema explain payload builders onto checked collection-constructor OOM contracts
-  - problem:
-    - the data-format bridge lane is now fail-closed, but schema explain still
-      constructs multiple payload maps with unchecked `make_hashmap(...)` and
-      then immediately writes through `hashmap_val`.
-    - concrete audited entrypoints and helpers include:
-      - `src/lisp/schema_explain_helpers.c3`
-      - `src/lisp/schema_explain_effect.c3`
-      - `src/lisp/schema_explain_effect_result_payload.c3`
-      - `src/lisp/schema_explain_effect_runtime.c3`
-      - `src/lisp/schema_explain_payload_helpers.c3`
-    - this means explain/trace payload construction can still crash on
-      constructor OOM instead of failing closed as an ordinary runtime error.
-  - required closure:
-    - move the schema explain map constructors onto checked helpers
-    - fail closed on checked `hashmap_set(...)` / grow failures in this lane
-    - add deterministic regressions for explain payload-map allocation failure
-    - keep bounded `memory-lifetime-smoke` green
 
 - [ ] `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011` migrate remaining runtime/status payload builders off unchecked collection constructors
   - problem:
@@ -57,6 +38,30 @@ Use this file only for still-open work.
     - add focused regressions instead of relying only on the broad smoke slice
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010` migrate schema explain payload builders onto checked collection-constructor OOM contracts
+  - closure evidence:
+    - `src/lisp/schema_explain_payload_helpers.c3` now centralizes checked map
+      construction and checked `explain_dict_set*` insertion through one
+      explicit `"schema explain: out of memory"` contract.
+    - `src/lisp/schema_explain_helpers.c3`,
+      `src/lisp/schema_explain_effect.c3`,
+      `src/lisp/schema_explain_effect_result_payload.c3`,
+      `src/lisp/schema_explain_effect_runtime.c3`, and
+      `src/lisp/schema_explain_effect_helpers.c3`
+      now route entrypoint/result/candidate/source payload maps through that
+      checked path instead of dereferencing unchecked `make_hashmap(...)`
+      results.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves:
+      - dispatch explain result construction fails closed on map OOM,
+      - effect explain result construction fails closed on map OOM,
+      - helper payload/source maps fail closed on map OOM.
+    - residual unchecked collection-constructor work is now just the separate
+      runtime/status payload-builder lane:
+      - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`
+    - validation:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=134 fail=0`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=134 fail=0`
 
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` close the data-format bridge slice of internal collection-constructor OOM hardening and split the residual backlog by real callsite family
   - closure evidence:

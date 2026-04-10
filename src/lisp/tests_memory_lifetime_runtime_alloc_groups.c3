@@ -200,6 +200,40 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+
+        Value*[] no_args = {};
+        Value* dispatch_fail =
+            explain_dispatch_result_from_evaluated_call(interp, make_nil(interp), make_nil(interp), no_args);
+        Value* effect_fail =
+            explain_effect_result_from_compiled_signal(
+                interp,
+                "(perform sample 1)",
+                interp.symbols.intern("sample"),
+                make_int(interp, 1));
+        Value* helper_fail = explain_method_source(interp, make_nil(interp));
+
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(dispatch_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(effect_fail, "schema explain: out of memory") &&
+            runtime_alloc_error_matches(helper_fail, "schema explain: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: schema explain constructor alloc failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: schema explain constructor alloc failures fail closed (dispatch=%s effect=%s helper=%s)",
+                runtime_alloc_error_text(dispatch_fail),
+                runtime_alloc_error_text(effect_fail),
+                runtime_alloc_error_text(helper_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_partial_force = g_iterator_force_partial_alloc_fail;
         g_iterator_force_partial_alloc_fail = true;
         Value* iterator_fail = iterator_from_list_value(make_nil(interp), interp);

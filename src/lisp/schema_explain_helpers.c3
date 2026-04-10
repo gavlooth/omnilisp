@@ -48,12 +48,15 @@ fn Value* explain_dispatch_result_from_evaluated_call(
     Value* callee,
     Value*[] call_args
 ) {
-    Value* out = make_hashmap(interp, 16);
-    Value* decision = make_hashmap(interp, 16);
-    Value* trace = make_hashmap(interp, 16);
-    explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace);
-    explain_init_dispatch_decision_shape(interp, decision);
-    explain_init_dispatch_trace_shape(interp, trace);
+    Value* out = explain_make_dict(interp, 16);
+    if (out == null || out.tag != HASHMAP) return out;
+    Value* decision = explain_make_dict(interp, 16);
+    if (decision == null || decision.tag != HASHMAP) return decision;
+    Value* trace = explain_make_dict(interp, 16);
+    if (trace == null || trace.tag != HASHMAP) return trace;
+    if (Value* err = explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace)) return err;
+    if (Value* err = explain_init_dispatch_decision_shape(interp, decision)) return err;
+    if (Value* err = explain_init_dispatch_trace_shape(interp, trace)) return err;
 
     TypeId[] arg_types = {};
     TypeId* arg_types_storage = null;
@@ -69,19 +72,19 @@ fn Value* explain_dispatch_result_from_evaluated_call(
     }
     defer if (arg_types_storage != null) mem::free(arg_types_storage);
 
-    explain_dict_set(trace, interp, "arg-types", explain_arg_types(interp, arg_types));
-    explain_dict_set(trace, interp, "arg-count", make_int(interp, (long)call_args.len));
-    explain_dict_set(trace, interp, "target-type", make_symbol(interp, value_type_name(callee, interp)));
+    if (Value* err = explain_dict_set(trace, interp, "arg-types", explain_arg_types(interp, arg_types))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "arg-count", make_int(interp, (long)call_args.len))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "target-type", make_symbol(interp, value_type_name(callee, interp)))) return err;
 
     if (callee == null || callee.tag != METHOD_TABLE || callee.method_table_val == null) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-method-table"));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-method-table"))) return err;
         return out;
     }
 
     MethodTable* mt = callee.method_table_val;
-    explain_dict_set(trace, interp, "method-name", make_symbol(interp, mt.name));
-    explain_dict_set(trace, interp, "method-count", make_int(interp, (long)mt.entry_count));
+    if (Value* err = explain_dict_set(trace, interp, "method-name", make_symbol(interp, mt.name))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "method-count", make_int(interp, (long)mt.entry_count))) return err;
 
     long best_score = -1;
     isz winner_index = -1;
@@ -92,20 +95,21 @@ fn Value* explain_dispatch_result_from_evaluated_call(
         MethodEntry* entry = &mt.entries[i];
         DispatchMatchBreakdown breakdown = dispatch_match_breakdown(entry, call_args, arg_types, interp);
 
-        Value* candidate = make_hashmap(interp, 24);
-        explain_dict_set(candidate, interp, "index", make_int(interp, (long)i));
-        explain_dict_set(candidate, interp, "name", make_symbol(interp, mt.name));
-        explain_dict_set(candidate, interp, "signature", explain_signature_params(interp, &entry.sig));
-        explain_dict_set(candidate, interp, "constraints", explain_constraints(interp, &entry.sig));
-        explain_dict_set(candidate, interp, "source", explain_method_source(interp, entry.implementation));
-        explain_dict_set(candidate, interp, "applicable", explain_bool_value(interp, breakdown.matched));
-        explain_dict_set(candidate, interp, "score-components", explain_score_components(interp, &breakdown));
-        explain_dict_set_symbol(candidate, interp, "failure", explain_dispatch_failure_symbol(interp, breakdown.failure_reason));
-        explain_dict_set(candidate, interp, "debug_message", make_nil(interp));
+        Value* candidate = explain_make_dict(interp, 24);
+        if (candidate == null || candidate.tag != HASHMAP) return candidate;
+        if (Value* err = explain_dict_set(candidate, interp, "index", make_int(interp, (long)i))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "name", make_symbol(interp, mt.name))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "signature", explain_signature_params(interp, &entry.sig))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "constraints", explain_constraints(interp, &entry.sig))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "source", explain_method_source(interp, entry.implementation))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "applicable", explain_bool_value(interp, breakdown.matched))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "score-components", explain_score_components(interp, &breakdown))) return err;
+        if (Value* err = explain_dict_set_symbol(candidate, interp, "failure", explain_dispatch_failure_symbol(interp, breakdown.failure_reason))) return err;
+        if (Value* err = explain_dict_set(candidate, interp, "debug_message", make_nil(interp))) return err;
         if (breakdown.failure_arg_index != usz.max) {
-            explain_dict_set(candidate, interp, "failure-arg-index", make_int(interp, (long)breakdown.failure_arg_index));
+            if (Value* err = explain_dict_set(candidate, interp, "failure-arg-index", make_int(interp, (long)breakdown.failure_arg_index))) return err;
         } else {
-            explain_dict_set(candidate, interp, "failure-arg-index", make_nil(interp));
+            if (Value* err = explain_dict_set(candidate, interp, "failure-arg-index", make_nil(interp))) return err;
         }
 
         if (breakdown.matched) {
@@ -122,37 +126,37 @@ fn Value* explain_dispatch_result_from_evaluated_call(
     }
 
     Value* candidates = explain_reverse_list(rev_candidates, interp);
-    explain_dict_set(out, interp, "candidates", candidates);
+    if (Value* err = explain_dict_set(out, interp, "candidates", candidates)) return err;
 
     if (winner_index >= 0 && tie_count == 1) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("method-match"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("match"));
-        explain_dict_set(decision, interp, "winner-index", make_int(interp, (long)winner_index));
-        explain_dict_set(decision, interp, "best-score", make_int(interp, best_score));
-        explain_dict_set(decision, interp, "tie-count", make_int(interp, (long)tie_count));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("method-match"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("match"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "winner-index", make_int(interp, (long)winner_index))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "best-score", make_int(interp, best_score))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "tie-count", make_int(interp, (long)tie_count))) return err;
     } else if (winner_index >= 0 && tie_count > 1) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ambiguous"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("ambiguous-equal-specificity"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
-        explain_dict_set(decision, interp, "winner-index", make_nil(interp));
-        explain_dict_set(decision, interp, "best-score", make_int(interp, best_score));
-        explain_dict_set(decision, interp, "tie-count", make_int(interp, (long)tie_count));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ambiguous"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("ambiguous-equal-specificity"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "winner-index", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "best-score", make_int(interp, best_score))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "tie-count", make_int(interp, (long)tie_count))) return err;
     } else if (mt.fallback != null) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("fallback"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("fallback"));
-        explain_dict_set(decision, interp, "winner-index", make_nil(interp));
-        explain_dict_set(decision, interp, "best-score", make_nil(interp));
-        explain_dict_set(decision, interp, "tie-count", make_int(interp, 0));
-        explain_dict_set(decision, interp, "fallback-source", explain_method_source(interp, mt.fallback));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("ok"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("fallback"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("fallback"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "winner-index", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "best-score", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "tie-count", make_int(interp, 0))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "fallback-source", explain_method_source(interp, mt.fallback))) return err;
     } else {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("no-match"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("no-matching-method"));
-        explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"));
-        explain_dict_set(decision, interp, "winner-index", make_nil(interp));
-        explain_dict_set(decision, interp, "best-score", make_nil(interp));
-        explain_dict_set(decision, interp, "tie-count", make_int(interp, 0));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("no-match"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("no-matching-method"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "outcome", interp.symbols.intern("abort"))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "winner-index", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "best-score", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(decision, interp, "tie-count", make_int(interp, 0))) return err;
     }
 
     return out;
@@ -182,14 +186,17 @@ fn Value* explain_dispatch_result_from_thunk(Interp* interp, Value* thunk_value)
     Value* input_form = expr_to_value(target, interp);
 
     if (target == null || target.tag != E_CALL) {
-        Value* out = make_hashmap(interp, 16);
-        Value* decision = make_hashmap(interp, 16);
-        Value* trace = make_hashmap(interp, 16);
-        explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace);
-        explain_init_dispatch_decision_shape(interp, decision);
-        explain_init_dispatch_trace_shape(interp, trace);
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-call"));
+        Value* out = explain_make_dict(interp, 16);
+        if (out == null || out.tag != HASHMAP) return out;
+        Value* decision = explain_make_dict(interp, 16);
+        if (decision == null || decision.tag != HASHMAP) return decision;
+        Value* trace = explain_make_dict(interp, 16);
+        if (trace == null || trace.tag != HASHMAP) return trace;
+        if (Value* err = explain_init_common_output(interp, out, interp.symbols.intern("dispatch"), input_form, decision, trace)) return err;
+        if (Value* err = explain_init_dispatch_decision_shape(interp, decision)) return err;
+        if (Value* err = explain_init_dispatch_trace_shape(interp, trace)) return err;
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("dispatch-target-not-call"))) return err;
         return out;
     }
 

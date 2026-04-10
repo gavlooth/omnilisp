@@ -129,16 +129,17 @@ fn SymbolId explain_effect_handler_outcome_symbol(Expr* clause_body, Interp* int
 }
 
 fn Value* explain_effect_clause_source(Interp* interp, Expr* clause_body) {
-    Value* source = make_hashmap(interp, 6);
+    Value* source = explain_make_dict(interp, 6);
+    if (source == null || source.tag != HASHMAP) return source;
     if (clause_body == null) {
-        explain_dict_set_symbol(source, interp, "kind", interp.symbols.intern("unknown"));
-        explain_dict_set(source, interp, "line", make_nil(interp));
-        explain_dict_set(source, interp, "column", make_nil(interp));
+        if (Value* err = explain_dict_set_symbol(source, interp, "kind", interp.symbols.intern("unknown"))) return err;
+        if (Value* err = explain_dict_set(source, interp, "line", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(source, interp, "column", make_nil(interp))) return err;
         return source;
     }
-    explain_dict_set_symbol(source, interp, "kind", interp.symbols.intern("clause"));
-    explain_dict_set(source, interp, "line", make_int(interp, (long)clause_body.loc_line));
-    explain_dict_set(source, interp, "column", make_int(interp, (long)clause_body.loc_column));
+    if (Value* err = explain_dict_set_symbol(source, interp, "kind", interp.symbols.intern("clause"))) return err;
+    if (Value* err = explain_dict_set(source, interp, "line", make_int(interp, (long)clause_body.loc_line))) return err;
+    if (Value* err = explain_dict_set(source, interp, "column", make_int(interp, (long)clause_body.loc_column))) return err;
     return source;
 }
 
@@ -163,28 +164,30 @@ fn Value* explain_effect_continuation_lookup(Env* target_env, Interp* interp) {
     return k_val;
 }
 
-fn void explain_init_effect_decision_shape(Interp* interp, Value* decision) {
-    explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("pending"));
-    explain_dict_set(decision, interp, "outcome", make_nil(interp));
-    explain_dict_set(decision, interp, "handler-index", make_nil(interp));
-    explain_dict_set(decision, interp, "search-order", make_nil(interp));
-    explain_dict_set(decision, interp, "clause-index", make_nil(interp));
-    explain_dict_set(decision, interp, "match-tag", make_nil(interp));
-    explain_dict_set(decision, interp, "strict-handler-index", make_nil(interp));
-    explain_dict_set(decision, interp, "fast-path-index", make_nil(interp));
-    explain_dict_set(decision, interp, "fast-path-primitive", make_nil(interp));
-    explain_dict_set(decision, interp, "arg-name", make_nil(interp));
-    explain_dict_set(decision, interp, "continuation-name", make_nil(interp));
-    explain_dict_set(decision, interp, "debug_message", make_nil(interp));
+fn Value* explain_init_effect_decision_shape(Interp* interp, Value* decision) {
+    if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("pending"))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "outcome", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "handler-index", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "search-order", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "clause-index", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "match-tag", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "strict-handler-index", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "fast-path-index", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "fast-path-primitive", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "arg-name", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "continuation-name", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(decision, interp, "debug_message", make_nil(interp))) return err;
+    return null;
 }
 
-fn void explain_init_effect_trace_shape(Interp* interp, Value* trace) {
-    explain_dict_set(trace, interp, "effect-tag", make_nil(interp));
-    explain_dict_set(trace, interp, "arg-type", make_nil(interp));
-    explain_dict_set(trace, interp, "handler-count", make_nil(interp));
-    explain_dict_set(trace, interp, "searched-handlers", make_nil(interp));
-    explain_dict_set(trace, interp, "stack-context-active", make_nil(interp));
-    explain_dict_set(trace, interp, "has-continuation-binding", make_nil(interp));
-    explain_dict_set(trace, interp, "effect-continuation", make_nil(interp));
-    explain_dict_set(trace, interp, "debug_message", make_nil(interp));
+fn Value* explain_init_effect_trace_shape(Interp* interp, Value* trace) {
+    if (Value* err = explain_dict_set(trace, interp, "effect-tag", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "arg-type", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "handler-count", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "searched-handlers", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "stack-context-active", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "has-continuation-binding", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "effect-continuation", make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(trace, interp, "debug_message", make_nil(interp))) return err;
+    return null;
 }

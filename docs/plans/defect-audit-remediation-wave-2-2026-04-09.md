@@ -461,3 +461,25 @@ Progress update (2026-04-09):
   - open:
     - `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010`
     - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`
+
+- landed the next collection-constructor migration slice on schema explain:
+  - `src/lisp/schema_explain_payload_helpers.c3`
+  - `src/lisp/schema_explain_helpers.c3`
+  - `src/lisp/schema_explain_effect.c3`
+  - `src/lisp/schema_explain_effect_result_payload.c3`
+  - `src/lisp/schema_explain_effect_runtime.c3`
+  - `src/lisp/schema_explain_effect_helpers.c3`
+- shipped behavior:
+  - schema explain payload maps now use checked construction and checked
+    insertion through one explicit `"schema explain: out of memory"` contract.
+  - dispatch explain, effect explain, and helper payload/source maps now fail
+    closed instead of dereferencing unchecked `make_hashmap(...)` results.
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=134 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=134 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010`
+  - leave only:
+    - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`

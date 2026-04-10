@@ -1,5 +1,27 @@
 ## 2026-04-10
 
+- Closed the schema-explain payload-builder slice of the internal collection
+  constructor migration:
+  - `src/lisp/schema_explain_payload_helpers.c3` now centralizes checked map
+    construction and checked `explain_dict_set*` insertion under one explicit
+    `"schema explain: out of memory"` contract.
+  - `src/lisp/schema_explain_helpers.c3`,
+    `src/lisp/schema_explain_effect.c3`,
+    `src/lisp/schema_explain_effect_result_payload.c3`,
+    `src/lisp/schema_explain_effect_runtime.c3`, and
+    `src/lisp/schema_explain_effect_helpers.c3`
+    now route entrypoint/result/candidate/source payload maps through that
+    checked contract instead of dereferencing unchecked `make_hashmap(...)`
+    results.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves
+    dispatch explain, effect explain, and helper payload-map construction all
+    fail closed on forced hashmap allocation failure.
+  - residual unchecked collection-constructor work is now narrower again:
+    - remaining runtime/status payload builders only
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=134 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=134 fail=0`
+
 - Closed the data-format bridge slice of internal collection-constructor OOM
   hardening:
   - `src/lisp/json.c3` now routes object/array construction through checked

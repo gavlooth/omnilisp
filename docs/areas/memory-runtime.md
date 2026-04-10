@@ -356,3 +356,8 @@ for future concurrency ownership evolution.
   family:
   - schema explain payload-map builders
   - remaining runtime/status payload builders
+- The schema-explain family is now closed too:
+  - explain entrypoint/result/candidate/source payload maps now use checked map
+    construction and checked insertion through one explicit OOM contract.
+- The only remaining unchecked collection-constructor migration lane is now the
+  runtime/status payload-builder family.

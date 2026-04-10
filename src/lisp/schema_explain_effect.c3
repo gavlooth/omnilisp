@@ -13,16 +13,19 @@ fn Value* explain_effect_result_from_thunk(Interp* interp, Value* thunk_value) {
     Env* target_env = thunk.env != null ? thunk.env : interp.global_env;
     Value* input_form = expr_to_value(target, interp);
 
-    Value* out = make_hashmap(interp, 16);
-    Value* decision = make_hashmap(interp, 16);
-    Value* trace = make_hashmap(interp, 16);
-    explain_init_common_output(interp, out, interp.sym_effect, input_form, decision, trace);
-    explain_init_effect_decision_shape(interp, decision);
-    explain_init_effect_trace_shape(interp, trace);
+    Value* out = explain_make_dict(interp, 16);
+    if (out == null || out.tag != HASHMAP) return out;
+    Value* decision = explain_make_dict(interp, 16);
+    if (decision == null || decision.tag != HASHMAP) return decision;
+    Value* trace = explain_make_dict(interp, 16);
+    if (trace == null || trace.tag != HASHMAP) return trace;
+    if (Value* err = explain_init_common_output(interp, out, interp.sym_effect, input_form, decision, trace)) return err;
+    if (Value* err = explain_init_effect_decision_shape(interp, decision)) return err;
+    if (Value* err = explain_init_effect_trace_shape(interp, trace)) return err;
 
     if (target == null) {
-        explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
-        explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("effect-target-null"));
+        if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"))) return err;
+        if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("effect-target-null"))) return err;
         return out;
     }
 
@@ -36,7 +39,7 @@ fn Value* explain_effect_result_from_thunk(Interp* interp, Value* thunk_value) {
         return explain_effect_result_from_resolve(interp, target_env, out, decision, trace);
     }
 
-    explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"));
-    explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("effect-target-not-signal-or-resolve"));
+    if (Value* err = explain_dict_set_symbol(out, interp, "status", interp.symbols.intern("unsupported-form"))) return err;
+    if (Value* err = explain_dict_set_symbol(decision, interp, "reason", interp.symbols.intern("effect-target-not-signal-or-resolve"))) return err;
     return out;
 }
