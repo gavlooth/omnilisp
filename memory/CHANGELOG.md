@@ -11556,6 +11556,13 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=173 fail=0`
+- 2026-04-10 (deduce row key wrapper allocation fail-closed follow-up):
+  - deduce relation row materialization now rejects root wrapper allocation
+    failure while building cached column-key symbols instead of dereferencing a
+    null root wrapper.
+  - validation:
+    - `c3c build`
+    - bounded `deduce`: `pass=329 fail=0`
 ## 2026-04-10
 
 - Scheduler completion publication now distinguishes legitimate user `ERROR`

@@ -61,6 +61,10 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
 
     for (usz i = 0; i < rel.col_count; i++) {
         Value* key = boundary_alloc_value_in_root(interp);
+        if (key == null) {
+            mem::free(key_values);
+            return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+        }
         key.tag = SYMBOL;
         key.sym_val = rel.columns[i];
         key_values[i] = key;

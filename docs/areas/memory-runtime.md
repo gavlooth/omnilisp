@@ -641,3 +641,7 @@ for future concurrency ownership evolution.
   wrapper allocation fails, and coroutine escape promotion now rejects
   escape-wrapper allocation failure explicitly before mutating source
   ownership.
+- Deduce row materialization now applies the same wrapper-allocation rule:
+  cached relation column-key symbol materialization rejects root wrapper
+  allocation failure explicitly instead of dereferencing a null root wrapper
+  during lazy key-cache creation.

@@ -1100,3 +1100,13 @@ Progress update (2026-04-09):
   - bounded `memory-lifetime-smoke`: green (`pass=173 fail=0`)
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed deduce row key wrapper allocation drift:
+  - `src/lisp/deduce_relation_row_materialization.c3`
+  - `src/lisp/tests_deduce_query_scan_groups.c3`
+- shipped behavior:
+  - deduce relation row materialization now fails closed if root wrapper
+    allocation fails while building cached column-key symbols
+- validation status:
+  - bounded `deduce`: green (`pass=329 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`

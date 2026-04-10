@@ -119,7 +119,7 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
         return;
     }
 
-    if (deduce_test_prepare_relation_handle(
+    Relation* scan_oom_rel = deduce_test_prepare_relation_handle(
         interp,
         "(block "
         "  (define scan-oom-db (deduce 'open 'memory)) "
@@ -128,7 +128,8 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
         ")",
         "[FAIL] deduce 'scan column-key-value oom propagation (failed to prepare relation)",
         fail
-    ) == null) return;
+    );
+    if (scan_oom_rel == null) return;
 
     bool saved_force_column_key_values_oom = g_deduce_force_column_key_values_oom;
     g_deduce_force_column_key_values_oom = true;
@@ -143,6 +144,28 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
     } else {
         io::printn("[FAIL] deduce 'scan propagates column-key-value oom");
         (*fail)++;
+    }
+
+    {
+        int saved_force_alloc = g_boundary_force_alloc_value_fail_nth;
+        usz created = 0;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* key_alloc_fail = deduce_relation_ensure_column_key_values(scan_oom_rel, interp, &created);
+        g_boundary_force_alloc_value_fail_nth = saved_force_alloc;
+
+        bool ok = key_alloc_fail != null &&
+            key_alloc_fail.tag == ERROR &&
+            key_alloc_fail.str_chars != null &&
+            str_starts_with(key_alloc_fail.str_chars[:key_alloc_fail.str_len], "deduce-query: out of memory") &&
+            created == 0 &&
+            scan_oom_rel.column_key_values == null;
+        if (ok) {
+            emit_pass_literal("[PASS] deduce 'scan column-key symbol alloc fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce 'scan column-key symbol alloc fails closed");
+            (*fail)++;
+        }
     }
 
     Relation* range_oom_rel = deduce_test_prepare_relation_handle(
