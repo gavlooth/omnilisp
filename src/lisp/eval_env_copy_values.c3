@@ -143,14 +143,11 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
 
     Value* inner = val.iterator_val;
     if (inner != null && inner.tag == CLOSURE) {
-        if (copy_env_invalid_closure_alias(inner, interp)) return null;
-        if (inner.closure_val.env_scope != null) {
-            Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
-            if (cloned == null || cloned.tag != CLOSURE) {
-                copy_env_invariant_fail("copy_env_clone_iterator_if_needed: expected cloned closure payload");
-            }
-            inner = cloned;
+        Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
+        if (cloned == null || cloned.tag != CLOSURE) {
+            return null;
         }
+        inner = cloned;
     } else if (inner != null && inner.tag == PARTIAL_PRIM) {
         Value* copied_inner = copy_env_value_fast(inner, interp);
         if (copied_inner == null || copied_inner.tag != PARTIAL_PRIM) {

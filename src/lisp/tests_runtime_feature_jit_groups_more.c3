@@ -644,6 +644,96 @@ fn void run_jit_policy_closure_method_iterator_boundary_test(Interp* interp, int
     );
 }
 
+fn void run_jit_policy_rec_closure_type_sig_copy_failure_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: detached recursive closure publication fails closed if
+    // type-signature cloning into the detached env scope fails.
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    main::ScopeRegion* source = main::scope_create(saved_scope);
+    if (source == null) {
+        io::printn("[FAIL] jit policy: rec closure type signature copy failure returns null");
+        (*fail)++;
+        return;
+    }
+
+    SymbolId rec_sym = interp.symbols.intern("__jit_policy_rec_type_sig");
+    Value* placeholder = null;
+    main::ScopeRegion* detached_env_scope = null;
+    Value* closure = null;
+    MethodSignature* sig = null;
+
+    interp.current_scope = source;
+    Env* captured_env = make_env(interp, interp.global_env);
+    if (captured_env != null) {
+        placeholder = make_nil(interp);
+        env_define_with_barrier(captured_env, rec_sym, placeholder, interp);
+        closure = make_env_scope_closure_for_test(interp, captured_env, &detached_env_scope);
+    }
+    if (closure != null) {
+        sig = (MethodSignature*)source.alloc(MethodSignature.sizeof);
+        if (sig != null && method_signature_alloc_arrays_in_scope(sig, source, 1, 0)) {
+            sig.param_types[0] = interp.tid_Integer;
+            sig.param_type_vars[0] = (SymbolId)0;
+            sig.has_val_literal[0] = false;
+            sig.val_literals[0].tag = NIL;
+            sig.val_literals[0].int_value = 0;
+            sig.val_literals[0].sym_value = 0;
+            closure.closure_val.has_typed_params = true;
+            closure.closure_val.type_sig = sig;
+        } else {
+            sig = null;
+        }
+    }
+
+    Value* binding_before = closure != null && closure.closure_val.env != null
+        ? closure.closure_val.env.lookup(rec_sym)
+        : null;
+    g_method_signature_scope_copy_call_count = 0;
+    g_method_signature_force_scope_copy_fail_on_call = 1;
+    Value* published = closure != null ? jit_patch_rec_closure(closure, null, rec_sym, interp) : null;
+    g_method_signature_force_scope_copy_fail_on_call = 0;
+    Value* binding_after = closure != null && closure.closure_val.env != null
+        ? closure.closure_val.env.lookup(rec_sym)
+        : null;
+
+    bool setup_ok = captured_env != null &&
+                    closure != null &&
+                    closure.tag == CLOSURE &&
+                    closure.closure_val != null &&
+                    detached_env_scope != null &&
+                    closure.closure_val.env_scope == detached_env_scope &&
+                    sig != null &&
+                    closure.closure_val.type_sig == sig &&
+                    binding_before != null &&
+                    binding_before.tag == NIL;
+    bool fail_closed_ok = published == null &&
+                          g_method_signature_scope_copy_call_count == 1 &&
+                          binding_after == binding_before &&
+                          binding_after != null &&
+                          binding_after.tag == NIL &&
+                          closure.closure_val.type_sig == sig;
+    int scope_copy_calls = (int)g_method_signature_scope_copy_call_count;
+    g_method_signature_scope_copy_call_count = 0;
+
+    interp.current_scope = saved_scope;
+    main::scope_release(source);
+
+    bool ok = setup_ok && fail_closed_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: rec closure type signature copy failure returns null");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: rec closure type signature copy failure returns null (setup_ok=%s fail_closed_ok=%s call_count=%d published=%s binding_after=%s)",
+            setup_ok ? "yes" : "no",
+            fail_closed_ok ? "yes" : "no",
+            scope_copy_calls,
+            published == null ? "null" : "non-null",
+            binding_after == null ? "null" : (binding_after.tag == NIL ? "nil" : "non-nil")
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pass, int* fail) {
     // Regression: stdlib-loaded typed method redefinition must still tear down
     // cleanly after interpreter destroy.
@@ -884,6 +974,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("iterator-array-thunk-boundary", &run_jit_policy_iterator_array_thunk_boundary_test, interp, pass, fail);
         run_jit_policy_case("tco-cons-iterator-edge-copy", &run_jit_policy_tco_cons_iterator_edge_copy_test, interp, pass, fail);
         run_jit_policy_case("closure-method-iterator-boundary", &run_jit_policy_closure_method_iterator_boundary_test, interp, pass, fail);
+        run_jit_policy_case("rec-closure-type-sig-copy-failure", &run_jit_policy_rec_closure_type_sig_copy_failure_test, interp, pass, fail);
         run_jit_policy_case("stdlib-teardown-redefinition", &run_jit_policy_stdlib_teardown_redefinition_test, interp, pass, fail);
     }
 

@@ -4,6 +4,8 @@ import main;
 
 usz g_method_signature_heap_copy_call_count = 0;
 usz g_method_signature_force_heap_copy_fail_on_call = 0;
+usz g_method_signature_scope_copy_call_count = 0;
+usz g_method_signature_force_scope_copy_fail_on_call = 0;
 
 fn void method_signature_init_empty(MethodSignature* sig) {
     sig.param_types = null;
@@ -42,6 +44,12 @@ fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::Scope
 }
 
 fn bool method_signature_copy_to_scope(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
+    g_method_signature_scope_copy_call_count++;
+    if (g_method_signature_force_scope_copy_fail_on_call != 0 &&
+        g_method_signature_scope_copy_call_count == g_method_signature_force_scope_copy_fail_on_call) {
+        method_signature_init_empty(dst);
+        return false;
+    }
     if (!method_signature_alloc_arrays_in_scope(dst, scope, src.param_count, src.constraint_count)) return false;
     for (usz i = 0; i < src.param_count; i++) {
         dst.param_types[i] = src.param_types[i];

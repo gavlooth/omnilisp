@@ -370,6 +370,95 @@ fn void run_memory_lifetime_env_copy_rejects_cross_scope_undelimited_alias_test(
     }
 }
 
+fn void run_memory_lifetime_env_copy_clones_global_iterator_closure_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: iterator payload closures that are safe undelimited global-env
+    // clones follow the same env-copy contract as plain closures.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy clones global iterator closure payload");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId iter_sym = interp.symbols.intern("__copy_env_global_iterator");
+
+        interp.current_scope = source;
+        Value* source_closure = make_closure_no_param(interp, null, interp.global_env);
+        Value* source_iter = source_closure != null ? make_iterator(interp, source_closure) : null;
+        Env* source_frame = make_env(interp, interp.global_env);
+        if (source_frame != null && source_iter != null) {
+            env_define_with_barrier(source_frame, iter_sym, source_iter, interp);
+        }
+
+        BoundaryEnvCopyResult copied = boundary_copy_env_to_target_scope_checked(source_frame, interp, target);
+        Value* copied_iter = boundary_env_copy_result_ok(copied) && copied.env != null
+            ? copied.env.lookup(iter_sym)
+            : null;
+        Value* copied_inner = copied_iter != null && copied_iter.tag == ITERATOR
+            ? copied_iter.iterator_val
+            : null;
+
+        bool setup_ok = source_frame != null &&
+                        source_closure != null &&
+                        source_closure.tag == CLOSURE &&
+                        source_closure.closure_val != null &&
+                        source_closure.closure_val.env == interp.global_env &&
+                        source_closure.closure_val.env_scope == null &&
+                        source_iter != null;
+        bool copied_ok = boundary_env_copy_result_ok(copied) &&
+                         copied.env != null &&
+                         copied_iter != null &&
+                         copied_iter.tag == ITERATOR &&
+                         copied_iter != source_iter &&
+                         copied_inner != null &&
+                         copied_inner.tag == CLOSURE &&
+                         copied_inner != source_closure &&
+                         copied_inner.closure_val != null &&
+                         copied_inner.closure_val.env == interp.global_env &&
+                         copied_inner.closure_val.env_scope == null &&
+                         main::is_in_scope((void*)copied_iter, target) &&
+                         main::is_in_scope((void*)copied_inner, target);
+
+        main::scope_release(source);
+        Value* copied_after_release = copied.env != null ? copied.env.lookup(iter_sym) : null;
+        Value* copied_inner_after_release = copied_after_release != null && copied_after_release.tag == ITERATOR
+            ? copied_after_release.iterator_val
+            : null;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+
+        bool post_release_ok = copied_after_release != null &&
+                               copied_after_release.tag == ITERATOR &&
+                               copied_inner_after_release != null &&
+                               copied_inner_after_release.tag == CLOSURE &&
+                               copied_inner_after_release.closure_val != null &&
+                               copied_inner_after_release.closure_val.env == interp.global_env &&
+                               copied_inner_after_release.closure_val.env_scope == null;
+        bool ok = setup_ok && copied_ok && post_release_ok;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy clones global iterator closure payload");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy clones global iterator closure payload (setup_ok=%s copied_ok=%s post_release_ok=%s fault=%s depth=%d)",
+                setup_ok ? "yes" : "no",
+                copied_ok ? "yes" : "no",
+                post_release_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                (long)copied.depth
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_transactional_binding_rollback_test(Interp* interp, int* pass, int* fail) {
     // Invariant: mid-frame env-copy failure rolls back already materialized
     // target-scope wrapper retain side effects (closure/iterator/instance).
@@ -570,6 +659,7 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_stale_generation_persistent_parent_rewrite_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rejects_undelimited_closure_alias_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rejects_cross_scope_undelimited_alias_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_clones_global_iterator_closure_test(interp, pass, fail);
     run_memory_lifetime_env_copy_transactional_binding_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(interp, pass, fail);
 }

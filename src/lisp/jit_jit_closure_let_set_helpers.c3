@@ -33,6 +33,7 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
 
 fn Value* jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value, SymbolId name) {
     main::ScopeRegion* env_scope = actual_value.closure_val.env_scope;
+    MethodSignature* src_sig = actual_value.closure_val.type_sig;
 
     Value* self_ref = boundary_alloc_value_in_scope(interp, env_scope);
     if (self_ref == null) return null;
@@ -53,11 +54,12 @@ fn Value* jit_patch_rec_closure_in_env_scope(Interp* interp, Value* actual_value
         copied_closure.params = null;
     }
 
-    if (copied_closure.type_sig != null) {
+    copied_closure.type_sig = null;
+    if (src_sig != null) {
         copied_closure.type_sig = (MethodSignature*)env_scope.alloc(MethodSignature.sizeof);
         if (copied_closure.type_sig == null ||
-            !method_signature_copy_to_scope(copied_closure.type_sig, actual_value.closure_val.type_sig, env_scope)) {
-            copied_closure.type_sig = null;
+            !method_signature_copy_to_scope(copied_closure.type_sig, src_sig, env_scope)) {
+            return null;
         }
     }
 

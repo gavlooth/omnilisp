@@ -1,7 +1,7 @@
 # Memory and Runtime
 
 Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)
-As of: 2026-04-09
+As of: 2026-04-10
 
 ## Canonical Sources
 
@@ -42,8 +42,15 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 80/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 84/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
+- Env-copy iterator payloads now route closure thunks through the same safe
+  undelimited global-env clone helper as plain closure bindings, so iterator
+  wrappers no longer fail closed more aggressively than the underlying closure
+  contract.
+- Detached recursive closure publication now fails closed if typed
+  method-signature cloning into the detached env scope fails; it no longer
+  silently publishes a downgraded closure with `type_sig = null`.
 - Session 44 docs closure artifact is published:
   - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md` defines boundary invariants contract and residual risk list.
 - Memory/ownership test policy is split into explicit lanes:

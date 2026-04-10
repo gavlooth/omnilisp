@@ -1,3 +1,24 @@
+## 2026-04-10
+
+- Closed two post-`478bc24` boundary follow-ups:
+  - `src/lisp/eval_env_copy_values.c3` now routes iterator closure payloads
+    through the same safe undelimited clone helper as plain closure env-copy,
+    so iterators over global-env closures no longer fail closed more
+    aggressively than the underlying closure contract.
+  - `src/lisp/jit_jit_closure_support.c3` now exposes a scope-copy failure
+    seam for method-signature cloning, and
+    `src/lisp/jit_jit_closure_let_set_helpers.c3` now fails closed if detached
+    env-scope recursive closure publication cannot copy its typed signature
+    instead of silently publishing a downgraded closure with `type_sig = null`.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now covers
+    iterator payload closure cloning for safe undelimited global-env captures.
+  - `src/lisp/tests_runtime_feature_jit_groups_more.c3` now covers recursive
+    detached closure publication under forced signature-copy failure.
+  - validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=rec-closure-type-sig-copy-failure ./build/main --test-suite lisp` -> `pass=1 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=84 fail=0`
+
 ## 2026-04-09
 
 - Closed the advanced recursive-closure and generated-source regression slice:

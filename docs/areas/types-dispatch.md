@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)
-As of: 2026-04-09
+As of: 2026-04-10
 
 ## Canonical Sources
 
@@ -20,6 +20,9 @@ As of: 2026-04-09
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.
+- Detached recursive closure publication now fails closed if typed
+  method-signature cloning into a detached env scope fails; typed closures no
+  longer silently degrade to `type_sig = null` during JIT recursive patching.
 - Explainability tooling is implemented with canonical selector syntax and deterministic structured output (`explain 'dispatch`, `explain 'effect`).
 - Backend parity audit (`L4.1`, 2026-03-09) is complete and documented below.
 - Backend parity implementation bridge (`L4.2`, 2026-03-09) is landed:
