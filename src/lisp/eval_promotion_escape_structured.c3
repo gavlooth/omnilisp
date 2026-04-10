@@ -243,6 +243,7 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
     while (true) {
         Value* promoted_car = promote_to_escape(current_old.cons_val.car, interp);
         if (current_old.cons_val.car != null && (promoted_car == null || is_error(promoted_car))) {
+            boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
             return promoted_car == null
                 ? raise_error(interp, "boundary: failed to promote cons car during escape promotion")
                 : promoted_car;
@@ -250,9 +251,17 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
         if (head == null) {
             head = interp.alloc_value_escape();
             if (head == null) {
+                boundary_cleanup_materialized_value(
+                    current_old.cons_val.car,
+                    promoted_car,
+                    interp.current_scope,
+                    true
+                );
                 return raise_error(interp, "boundary: failed to allocate cons escape copy");
             }
             head.tag = CONS;
+            head.cons_val.car = null;
+            head.cons_val.cdr = null;
             current_new = head;
         }
         current_new.cons_val.car = promoted_car;
@@ -262,15 +271,19 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
             if (!promote_escape_can_mutate(v, ctx)) return v;
             Value* next_new = interp.alloc_value_escape();
             if (next_new == null) {
+                boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
                 return raise_error(interp, "boundary: failed to allocate cons escape tail");
             }
             next_new.tag = CONS;
+            next_new.cons_val.car = null;
+            next_new.cons_val.cdr = null;
             current_new.cons_val.cdr = next_new;
             current_new = next_new;
             current_old = old_cdr;
         } else {
             Value* promoted_cdr = promote_to_escape(old_cdr, interp);
             if (old_cdr != null && (promoted_cdr == null || is_error(promoted_cdr))) {
+                boundary_cleanup_materialized_value(v, head, interp.current_scope, true);
                 return promoted_cdr == null
                     ? raise_error(interp, "boundary: failed to promote cons cdr during escape promotion")
                     : promoted_cdr;

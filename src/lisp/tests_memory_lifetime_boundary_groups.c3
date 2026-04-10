@@ -1321,6 +1321,87 @@ fn void run_memory_lifetime_partial_boundary_copy_transactional_cleanup_test(Int
     }
 }
 
+fn void run_memory_lifetime_cons_boundary_copy_transactional_cleanup_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: cons-boundary copy rolls back already-copied child retains
+    // when a later cdr copy fails.
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved);
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        if (target == null || foreign == null) {
+            if (foreign != null) main::scope_release(foreign);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: cons boundary copy transactional cleanup");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__boundary_cons_txn_payload");
+
+        interp.current_scope = foreign;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 615), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        }
+
+        Value* opaque = interp.alloc_value();
+        Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+        int* opaque_payload = (int*)mem::malloc(int.sizeof);
+        bool opaque_ok = opaque != null && opaque_prim != null && opaque_payload != null;
+        if (opaque_ok) {
+            *opaque_prim = {};
+            *opaque_payload = 615;
+            opaque.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            opaque_prim.name[0] = 'c';
+            opaque_prim.name[1] = 0;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 615;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.prim_val = opaque_prim;
+        }
+
+        Value* cons = make_cons(interp, shared_closure, opaque);
+        bool setup_ok = shared_closure != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        opaque_ok &&
+                        cons != null &&
+                        cons.tag == CONS;
+
+        interp.current_scope = target;
+        interp.releasing_scope = foreign;
+        BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+        Value* copied = setup_ok ? copy_to_parent_with_fault(cons, interp, &copy_fault) : null;
+        int closure_rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+
+        interp.releasing_scope = null;
+        interp.current_scope = saved;
+        main::scope_release(foreign);
+        main::scope_release(target);
+
+        bool fault_ok = copied == null &&
+                        copy_fault == BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
+        bool rollback_ok = closure_rc_after_fail == 1;
+        bool ok = setup_ok && fault_ok && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: cons boundary copy transactional cleanup");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: cons boundary copy transactional cleanup (setup_ok=%s fault=%s closure_rc=%d)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_copy_fault_name(copy_fault),
+                closure_rc_after_fail
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_nested_partial_iterator_boundary_cleanup_test(Interp* interp, int* pass, int* fail) {
     // Invariant: shared-wrapper rollback recursively unwinds nested
     // PARTIAL_PRIM / ITERATOR payload retains before returning a boundary fault.

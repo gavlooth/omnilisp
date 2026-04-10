@@ -1,5 +1,26 @@
 ## 2026-04-10
 
+- Closed a direct `CONS` rollback symmetry gap in boundary copy and ESCAPE promotion:
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now treats iterative
+    `CONS` copy as transactional: newly allocated spine cells are initialized
+    to null edges, and any already-copied car/cdr payloads are unwound through
+    `boundary_cleanup_materialized_value(...)` if a later cdr copy or spine
+    allocation fails.
+  - `src/lisp/eval_promotion_escape_structured.c3` now applies the same
+    rollback rule to iterative ESCAPE-lane `CONS` promotion, so promoted car
+    retains are not left live until target teardown when a later cdr promotion
+    or tail-cell allocation fails.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves direct
+    `CONS` boundary copy immediately unwinds a copied detached-closure car when
+    the cdr fails with an opaque primitive payload fault.
+  - `src/lisp/tests_memory_lifetime_groups.c3` now proves the same invariant
+    for direct ESCAPE `CONS` promotion.
+  - validation:
+    - `c3c build`
+    - `c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=102 fail=0`
+    - `scripts/check_status_consistency.sh`
+
 - Closed a destination-commit promotion-context drift and a nested wrapper
   rollback symmetry gap:
   - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` now threads the
