@@ -24,7 +24,11 @@ fn Value* scheduler_domain_consume_sendable_int(SchedulerDomain* domain, long va
 
 fn Value* scheduler_project_shared_to_local_value(SharedHandle** handle_ref, Interp* interp) {
     if (handle_ref == null || *handle_ref == null) {
-        return make_string(interp, "");
+        return scheduler_raise(
+            interp,
+            "scheduler/shared-missing-handle",
+            "scheduler: missing shared payload handle"
+        );
     }
 
     SharedHandle* handle = *handle_ref;
@@ -35,7 +39,11 @@ fn Value* scheduler_project_shared_to_local_value(SharedHandle** handle_ref, Int
             if (!scheduler_take_shared_bytes_owned(handle, &owned, &len)) {
                 scheduler_release_shared(handle);
                 *handle_ref = null;
-                return make_string(interp, "");
+                return scheduler_raise(
+                    interp,
+                    "scheduler/shared-materialize-failed",
+                    "scheduler: failed to materialize shared payload"
+                );
             }
 
             scheduler_release_shared(handle);

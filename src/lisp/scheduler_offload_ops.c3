@@ -5,8 +5,8 @@ import std::io;
 fn bool scheduler_offload_read_file(SharedHandle* path_blob, OffloadCompletion* completion) {
     char[] path = "";
     if (!scheduler_project_shared(path_blob, &path)) {
-        completion.kind = OFFLOAD_RES_NIL;
-        return true;
+        scheduler_set_offload_error(completion, "offload read-file: missing/invalid path");
+        return false;
     }
 
     char* content_buf = null;
@@ -168,9 +168,8 @@ fn bool scheduler_offload_write_file(SharedHandle* payload_blob, OffloadCompleti
 fn bool scheduler_offload_file_exists(SharedHandle* path_blob, OffloadCompletion* completion) {
     char[] path = "";
     if (!scheduler_project_shared(path_blob, &path)) {
-        completion.kind = OFFLOAD_RES_INT;
-        completion.int_result = scheduler_domain_publish_sendable_int(scheduler_primary_domain(), 0);
-        return true;
+        scheduler_set_offload_error(completion, "offload file-exists: missing/invalid path");
+        return false;
     }
 
     ulong size_out = 0;

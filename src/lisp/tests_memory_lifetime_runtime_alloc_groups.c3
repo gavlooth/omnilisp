@@ -113,6 +113,40 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        SharedHandle* missing = null;
+        Value* projected = scheduler_project_shared_to_local_value(&missing, interp);
+
+        OffloadCompletion read_completion = {};
+        bool read_ok = scheduler_offload_read_file(null, &read_completion);
+        OffloadCompletion exists_completion = {};
+        bool exists_ok = scheduler_offload_file_exists(null, &exists_completion);
+
+        bool ok =
+            projected != null &&
+            projected.tag == ERROR &&
+            !read_ok &&
+            read_completion.kind == OFFLOAD_RES_ERROR &&
+            !exists_ok &&
+            exists_completion.kind == OFFLOAD_RES_ERROR;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: scheduler shared/offload projection faults fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: scheduler shared/offload projection faults fail closed (projected_tag=%d read_ok=%s read_kind=%d exists_ok=%s exists_kind=%d)",
+                projected != null ? (int)projected.tag : -1,
+                read_ok ? "yes" : "no",
+                (int)read_completion.kind,
+                exists_ok ? "yes" : "no",
+                (int)exists_completion.kind);
+            (*fail)++;
+        }
+
+        if (read_completion.error_msg != null) mem::free(read_completion.error_msg);
+        if (exists_completion.error_msg != null) mem::free(exists_completion.error_msg);
+    }
+
+    {
         MethodSignature sig = {
             .param_count = 1,
         };

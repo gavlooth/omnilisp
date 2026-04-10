@@ -481,3 +481,15 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
     -> `pass=155 fail=0`
+
+- Scheduler shared/offload projection now fails closed too:
+  - `scheduler_project_shared_to_local_value(...)` now returns scheduler
+    `ERROR`s for missing or unmaterializable shared handles instead of empty
+    strings.
+  - `scheduler_offload_read_file(...)` and
+    `scheduler_offload_file_exists(...)` now return offload error completion
+    state for missing/invalid projected path payloads instead of synthetic
+    success values.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=156 fail=0`

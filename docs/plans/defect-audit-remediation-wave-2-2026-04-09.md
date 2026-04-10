@@ -774,3 +774,20 @@ Progress update (2026-04-09):
 - backlog shaping after this slice:
   - close `AUDIT-CONS-ESCAPE-PROMOTION-FAILCLOSED-023`
   - actionable backlog remains `0`
+
+- landed the scheduler shared/offload projection follow-up:
+  - `src/lisp/scheduler_state_shared_handles.c3`
+  - `src/lisp/scheduler_offload_ops.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - missing/unmaterializable shared payload handles now stay visible as
+    scheduler errors instead of becoming empty-string success values.
+  - offload `read-file` / `file-exists` path projection faults now become
+    `OFFLOAD_RES_ERROR` instead of synthetic `nil` / `0` results.
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=156 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-SCHEDULER-SHARED-PROJECTION-FAILCLOSED-024`
+  - actionable backlog remains `0`

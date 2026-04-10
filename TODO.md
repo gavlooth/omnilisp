@@ -22,6 +22,26 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-SCHEDULER-SHARED-PROJECTION-FAILCLOSED-024` make scheduler
+  shared-handle and offload-path projection fail closed instead of publishing
+  empty-string or false-success results
+  - closure evidence:
+    - `src/lisp/scheduler_state_shared_handles.c3`
+      now makes `scheduler_project_shared_to_local_value(...)` return
+      scheduler `ERROR`s for missing handle refs and shared-payload
+      materialization failure instead of an empty string.
+    - `src/lisp/scheduler_offload_ops.c3`
+      now makes `scheduler_offload_read_file(...)` and
+      `scheduler_offload_file_exists(...)` report `OFFLOAD_RES_ERROR` for
+      missing/invalid projected path payloads instead of synthesizing
+      `nil`/`0` success results.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins both the direct shared-handle projection failure and the
+      offload-path projection failure family.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-CONS-ESCAPE-PROMOTION-FAILCLOSED-023` make escape-lane cons
   publication fail closed when string/error promotion cannot actually move the
   field into the ESCAPE lane

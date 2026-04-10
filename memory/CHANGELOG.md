@@ -11280,3 +11280,15 @@ Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](
   - validation:
     - `c3c build`
     - bounded `memory-lifetime-smoke`: `pass=155 fail=0`
+- 2026-04-10 (scheduler shared/offload projection fail-closed follow-up):
+  - shared-handle projection no longer maps missing/unmaterializable shared
+    payloads to empty-string success values.
+  - offload path projection no longer maps missing/invalid shared path payloads
+    to synthetic `nil` / `0` business results for `read-file` and
+    `file-exists`.
+  - shipped consequence:
+    - scheduler shared/offload projection faults now stay visible as typed
+      scheduler/offload errors instead of being normalized into valid data.
+  - validation:
+    - `c3c build`
+    - bounded `memory-lifetime-smoke`: `pass=156 fail=0`
