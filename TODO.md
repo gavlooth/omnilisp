@@ -18,20 +18,33 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-HASHMAP-CALLERS-012` migrate the remaining direct `make_hashmap(...)` caller family onto checked constructor or explicit fail-closed contracts
+- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B` normalize the remaining already-guarded `make_hashmap(...)` caller family onto checked constructors or a shared fail-closed helper contract
   - scope:
     - deduce payload/result builders
     - deduce runtime helper state maps
     - unify/deduce row materialization helpers
   - why this remains open:
-    - `make_hashmap(...)` still has a broad direct-caller family
-    - many callsites already guard `tag` / `hashmap_val`, but the family has
-      not been fully normalized onto `make_hashmap_checked(...)` or a shared
-      helper contract yet
-    - this is now separate from the closed runtime/status payload and AOT
-      bridge slices
+    - the direct crashable caller class is now closed separately
+    - the remaining family already guards `tag` / `hashmap_val`, but it still
+      depends on repeated ad-hoc raw-constructor checks instead of one checked
+      constructor or shared helper contract
+    - this is now strictly a normalization and consistency lane, not the same
+      immediate crash class that `deduce 'match` used to have
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-HASHMAP-CRASHERS-012A` close the direct raw-hashmap caller class that still dereferenced payloads without constructor checks
+  - closure evidence:
+    - `src/lisp/unify_match_helpers.c3` now routes `build_result_dict(...)`
+      through checked hashmap construction and checked insertion, and returns
+      `deduce/match-out-of-memory` on constructor or insertion failure.
+    - `src/lisp/unify_scan_helpers.c3` now propagates that builder `ERROR`
+      directly instead of embedding it into a successful result list.
+    - `src/lisp/tests_deduce_query_groups.c3` now proves `deduce 'match`
+      propagates result-dict constructor OOM directly.
+    - the residual raw-hashmap backlog is now just the already-guarded
+      normalization family:
+      - `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B`
 
 - [x] `AUDIT-COLLECTION-CONSTRUCTOR-RAW-ARRAY-AOT-011A` close raw array constructor and AOT dict payload fail-closed gaps
   - closure evidence:

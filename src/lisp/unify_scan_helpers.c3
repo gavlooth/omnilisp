@@ -118,6 +118,10 @@ fn Value* deduce_match_scan_relation_in_txn(
                 );
             }
             Value* result_dict = build_result_dict(&bindings, null, interp);
+            if (result_dict != null && result_dict.tag == ERROR) {
+                bindings_deinit(&bindings);
+                return result_dict;
+            }
             result_rev = make_cons(interp, result_dict, result_rev);
         }
         bindings_deinit(&bindings);
@@ -155,6 +159,10 @@ fn Value* deduce_match_scan_relation(
                 );
             }
             Value* result_dict = build_result_dict(&bindings, null, interp);
+            if (result_dict != null && result_dict.tag == ERROR) {
+                bindings_deinit(&bindings);
+                return result_dict;
+            }
             result_rev = make_cons(interp, result_dict, result_rev);
         }
         bindings_deinit(&bindings);

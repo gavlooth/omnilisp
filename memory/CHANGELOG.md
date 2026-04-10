@@ -1,5 +1,21 @@
 ## 2026-04-10
 
+- Closed the direct-crash raw-hashmap caller slice of the internal
+  collection-constructor hardening pass:
+  - `src/lisp/unify_match_helpers.c3` now routes `build_result_dict(...)`
+    through checked hashmap construction and checked insertion, and fails with
+    `deduce/match-out-of-memory` instead of dereferencing `dict.hashmap_val`
+    from an unchecked raw constructor result.
+  - `src/lisp/unify_scan_helpers.c3` now propagates that builder `ERROR`
+    directly instead of consing it into a successful match-result list.
+  - `src/lisp/tests_deduce_query_groups.c3` now pins the
+    `deduce 'match` result-dict constructor OOM seam directly.
+  - the raw-hashmap backlog is now split by real risk boundary:
+    - direct crashable callers are closed
+    - the remaining open lane is only the already-guarded normalization family
+  - validation:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp'`
+
 - Closed the raw-array constructor and AOT dict payload slice of the internal
   collection-constructor hardening pass:
   - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`

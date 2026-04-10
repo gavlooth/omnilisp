@@ -146,7 +146,10 @@ fn void? match_clause_against_tuple(
 fn Value* build_result_dict(Bindings* bindings, Value* projection, Interp* interp) {
     usz binding_count = bindings.entries.len();
     uint dict_capacity = bindings_result_dict_capacity(binding_count);
-    Value* dict = make_hashmap(interp, dict_capacity);
+    Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-match: out of memory");
+    if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
+        return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
+    }
 
     if (projection == null || projection.tag == NIL) {
         // Return all bindings
@@ -160,9 +163,14 @@ fn Value* build_result_dict(Bindings* bindings, Value* projection, Interp* inter
                 stripped = bindings.entries[i].name;
             }
             Value* key = interp.alloc_value();
+            if (key == null) {
+                return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
+            }
             key.tag = SYMBOL;
             key.sym_val = stripped;
-            hashmap_set(dict.hashmap_val, key, bindings.entries[i].value, interp);
+            if (!hashmap_set_checked(dict.hashmap_val, key, bindings.entries[i].value, interp)) {
+                return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
+            }
         }
     } else {
         // Return only projected variables
@@ -180,9 +188,14 @@ fn Value* build_result_dict(Bindings* bindings, Value* projection, Interp* inter
                         stripped = pvar.sym_val;
                     }
                     Value* key = interp.alloc_value();
+                    if (key == null) {
+                        return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
+                    }
                     key.tag = SYMBOL;
                     key.sym_val = stripped;
-                    hashmap_set(dict.hashmap_val, key, val, interp);
+                    if (!hashmap_set_checked(dict.hashmap_val, key, val, interp)) {
+                        return deduce_raise(interp, "deduce/match-out-of-memory", "deduce-match: out of memory");
+                    }
                 }
             }
             proj = cdr(proj);

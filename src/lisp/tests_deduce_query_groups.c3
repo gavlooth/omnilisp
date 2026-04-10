@@ -248,6 +248,32 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
     }
 
     {
+        bool saved_hashmap_struct_fail = g_hashmap_force_struct_alloc_fail;
+        g_hashmap_force_struct_alloc_fail = true;
+        EvalResult r = run(
+            "(handle (deduce 'match person '(person ?name ?age)) "
+            "  (raise payload "
+            "    (if (dict? payload) "
+            "        (symbol->string (ref payload 'code)) "
+            "        \"deduce/match-out-of-memory\")))",
+            interp
+        );
+        g_hashmap_force_struct_alloc_fail = saved_hashmap_struct_fail;
+
+        bool ok =
+            !r.error.has_error &&
+            is_string(r.value) &&
+            deduce_name_equals(r.value.str_chars[:r.value.str_len], "deduce/match-out-of-memory");
+        if (ok) {
+            emit_pass_literal("[PASS] deduce 'match propagates result-dict constructor oom");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] deduce 'match propagates result-dict constructor oom");
+            (*fail)++;
+        }
+    }
+
+    {
         EvalResult open = run("(deduce 'open 'memory)", interp);
         if (open.error.has_error || open.value == null || open.value.tag != FFI_HANDLE || open.value.ffi_val == null) {
             io::printn("[FAIL] deduce 'match preserves >512 results (open)");

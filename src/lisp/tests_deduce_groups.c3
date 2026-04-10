@@ -482,7 +482,7 @@ fn void run_deduce_crud_example_flow_test(Interp* interp, int* pass, int* fail) 
         "(block "
         "  (load \"examples/deduce_crud_server.omni\") "
         "  (let (create1 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "
-        "        create2 (pipeline/result->response (repo/create {'id 101 'name \"paper\" 'qty 3})) "
+        "        create2 (pipeline/result->response (repo/create {'id 101 'name \"paper-dup\" 'qty 3})) "
         "        existing (repo/get-by-id 101) "
         "        missing (repo/get-by-id 9999)) "
         "    (and (= create1.status \"ok\") "

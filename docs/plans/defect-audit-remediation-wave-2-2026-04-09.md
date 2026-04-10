@@ -40,6 +40,18 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The direct-crash raw-hashmap caller slice is now also closed:
+  - `src/lisp/unify_match_helpers.c3` now routes `build_result_dict(...)`
+    through checked hashmap construction and checked insertion, and raises
+    `deduce/match-out-of-memory` instead of dereferencing an unchecked raw
+    constructor result.
+  - `src/lisp/unify_scan_helpers.c3` now propagates that builder `ERROR`
+    directly instead of embedding it into a successful result list.
+  - `src/lisp/tests_deduce_query_groups.c3` now pins the
+    `deduce 'match` result-dict constructor OOM seam directly.
+  - the residual raw-hashmap lane is now narrower again:
+    - `AUDIT-COLLECTION-CONSTRUCTOR-GUARDED-HASHMAP-CALLERS-012B`
+
 - The raw-array constructor and AOT dict payload slice is now also closed:
   - `src/lisp/value_predicates_accessors_basic.c3` now routes `make_array(...)`
     through the checked array constructor path.
