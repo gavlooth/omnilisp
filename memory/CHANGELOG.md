@@ -1,5 +1,22 @@
 ## 2026-04-10
 
+- Closed a shared-wrapper cleanup symmetry follow-up:
+  - `src/lisp/eval_promotion_root_clones.c3` now makes
+    `boundary_cleanup_materialized_value(...)` recurse through copied nested
+    `CONS`, `ARRAY`, `HASHMAP` / `SET`, and `METHOD_TABLE` children before
+    destroying the outer copied wrapper.
+  - ordinary boundary-copy, ESCAPE-promotion, and root-store clone partial
+    cleanup paths all share that helper, so late failure in a copied shared
+    wrapper no longer leaves nested copied closure retains live when the copied
+    child itself was wrapped in a copied `CONS`.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` and
+    `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` now strengthen the
+    existing partial-cleanup regressions by forcing the retained closure through
+    a copied `CONS` shell before the later opaque primitive failure.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=92 fail=0`
+
 - Closed an env-copy rollback follow-up for nested copied bindings:
   - `src/lisp/eval_env_copy_frame_helpers.c3` now recursively unwinds copied
     nested `CONS`, `ARRAY`, `HASHMAP` / `SET`, and `METHOD_TABLE` children

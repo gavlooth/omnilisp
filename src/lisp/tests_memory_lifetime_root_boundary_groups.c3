@@ -404,6 +404,8 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
         main::ScopeRegion* closure_env_scope = null;
         Value* shared_closure =
             captured_env != null ? make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope) : null;
+        Value* shared_cons =
+            shared_closure != null ? make_cons(interp, shared_closure, make_nil(interp)) : null;
 
         Value* opaque = interp.alloc_value();
         opaque.tag = PRIMITIVE;
@@ -450,7 +452,7 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
             (*fail)++;
             return;
         }
-        array_payload.items[0] = shared_closure;
+        array_payload.items[0] = shared_cons;
         array_payload.items[1] = opaque;
         array_src.array_val = array_payload;
 
@@ -488,6 +490,9 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
         hashmap_src.hashmap_val = hashmap_payload;
 
         bool setup_ok = shared_closure != null &&
+                        shared_cons != null &&
+                        shared_cons.tag == CONS &&
+                        shared_cons.cons_val.car == shared_closure &&
                         closure_env_scope != null &&
                         closure_env_scope.refcount == 1 &&
                         opaque.prim_val != null &&

@@ -1279,6 +1279,8 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
         main::ScopeRegion* closure_env_scope = null;
         Value* shared_closure =
             captured_env != null ? make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope) : null;
+        Value* shared_cons =
+            shared_closure != null ? make_cons(interp, shared_closure, make_nil(interp)) : null;
         Value* opaque = interp.alloc_value();
         opaque.tag = PRIMITIVE;
         main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
@@ -1304,7 +1306,7 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
         opaque.prim_val = opaque_prim;
 
         Value* src_array = null;
-        if (shared_closure != null) {
+        if (shared_cons != null) {
             src_array = interp.alloc_value();
             if (src_array != null) {
                 src_array.tag = ARRAY;
@@ -1315,7 +1317,7 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
                     src_array_payload.length = 2;
                     src_array_payload.items = (Value**)mem::malloc(Value*.sizeof * src_array_payload.capacity);
                     if (src_array_payload.items != null) {
-                        src_array_payload.items[0] = shared_closure;
+                        src_array_payload.items[0] = shared_cons;
                         src_array_payload.items[1] = opaque;
                         src_array.array_val = src_array_payload;
                     } else {
@@ -1329,6 +1331,9 @@ fn void run_memory_lifetime_shared_wrapper_partial_cleanup_test(Interp* interp, 
         }
 
         bool setup_ok = shared_closure != null &&
+                        shared_cons != null &&
+                        shared_cons.tag == CONS &&
+                        shared_cons.cons_val.car == shared_closure &&
                         closure_env_scope != null &&
                         closure_env_scope.refcount == 1 &&
                         opaque != null &&

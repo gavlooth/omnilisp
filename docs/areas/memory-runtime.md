@@ -31,6 +31,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   `METHOD_TABLE` now unwind already-copied child ownership side effects before
   freeing the partially built heap wrapper, so failed late-element copy does
   not leak retained closure env scopes or other copied child resources.
+- That cleanup path now also descends through copied nested `CONS` shells, so
+  partial cleanup remains correct even when the already-copied retained child
+  was itself wrapped in another copied structured value before the later
+  failure.
 - The same late-abort cleanup contract now also holds for root-store
   `ARRAY` / `HASHMAP` / `SET` clone routing, not just ordinary boundary copy
   and ESCAPE promotion.
