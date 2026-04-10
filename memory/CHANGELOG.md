@@ -1,5 +1,39 @@
 ## 2026-04-10
 
+- Closed the normal-teardown and allocation-failure symmetry gaps for
+  boundary-owned `CONTINUATION` wrappers:
+  - `src/lisp/value_constructors_lifecycle.c3` now releases retained
+    handle-state on normal scope teardown when a copied/promoted continuation
+    wrapper carries `continuation_boundary_owned`.
+  - `src/lisp/eval_promotion_copy_route_helpers.c3` and
+    `src/lisp/eval_promotion_escape_leaf.c3` now:
+    - register dtors for successful copied/promoted continuation wrappers that
+      actually introduced the retained handle-state ref, and
+    - immediately release that retained handle-state ref if wrapper
+      allocation fails after the retain step.
+  - `src/lisp/eval_env_copy_frame_helpers.c3` and
+    `src/lisp/eval_promotion_root_clones.c3` now tombstone those copied
+    wrapper dtors before manual rollback cleanup, so abandoned continuation
+    wrappers unwind exactly once.
+  - `src/lisp/jit_jit_runtime_effects.c3` now decrements
+    `HandleEffectState.continuation_refcount` during `resolve` only when the
+    resolved continuation actually owned the retained handle-state ref, so one
+    unretained continuation can no longer consume another continuation’s
+    shared-state retain.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now proves:
+    - successful boundary-owned continuation wrappers release their retained
+      handle-state ref on normal target-scope teardown,
+    - boundary copy allocation failure after the retain step releases
+      immediately, and
+    - ESCAPE promotion allocation failure after the retain step releases
+      immediately.
+  - validation:
+    - `rm -rf build/obj/linux-x64 build/main && c3c build`
+    - `rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=118 fail=0`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-interp-lifetime,continuation-teardown,shared-handle-state-teardown,cross-interp-continuation-guard,escaped-handle-continuation-guard,side-effect-escaped-handle-continuation-guard ./build/main --test-suite lisp'` -> `6 passed, 0 failed`
+    - `scripts/check_status_consistency.sh`
+
 - Closed a continuation rollback symmetry gap in boundary/env-copy cleanup:
   - `src/lisp/eval_promotion_copy_route_helpers.c3` and
     `src/lisp/eval_promotion_escape_leaf.c3` now mark copied/promoted

@@ -573,6 +573,8 @@ fn void run_memory_lifetime_root_fallback_tests(Interp* interp, int* pass, int* 
     run_memory_lifetime_partial_boundary_copy_transactional_cleanup_test(interp, pass, fail);
     run_memory_lifetime_nested_partial_iterator_boundary_cleanup_test(interp, pass, fail);
     run_memory_lifetime_continuation_boundary_partial_cleanup_test(interp, pass, fail);
+    run_memory_lifetime_continuation_boundary_teardown_test(interp, pass, fail);
+    run_memory_lifetime_continuation_boundary_alloc_failure_tests(interp, pass, fail);
     run_memory_lifetime_splice_legality_explicit_reasons_test(interp, pass, fail);
     run_memory_lifetime_resume_missing_yield_scope_gate_test(interp, pass, fail);
 }

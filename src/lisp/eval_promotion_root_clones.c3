@@ -41,7 +41,6 @@ fn void boundary_cancel_materialized_dtor(
     bool escape_lane
 ) @inline {
     if (copied == null || target_scope == null) return;
-    if (copied.tag == CONTINUATION && copied.continuation_boundary_owned) return;
     if (copied.tag == CLOSURE) {
         if (escape_lane) {
             main::scope_cancel_dtor_escape(target_scope, (void*)copied, &scope_dtor_closure);
@@ -241,8 +240,8 @@ fn void boundary_cleanup_materialized_value(
         return;
     }
     if (copied.tag == CONTINUATION && copied.continuation_boundary_owned) {
-        continuation_release_handle_state_for_boundary(copied.cont_val);
-        copied.continuation_boundary_owned = false;
+        boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
+        scope_dtor_value((void*)copied);
         return;
     }
     boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);

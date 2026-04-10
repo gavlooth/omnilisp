@@ -85,6 +85,14 @@ Post-wave follow-up (2026-04-10):
     `src/lisp/tests_memory_lifetime_boundary_groups.c3` and
     `src/lisp/tests_memory_lifetime_root_boundary_groups.c3`.
 - No live backlog items remain from this audit wave.
+- A new adjacent follow-up lane was identified during continuation ownership
+  validation:
+  - the continuation/effect-handle lifetime hardening itself is green and the
+    continuation-focused `jit-policy` subset passes,
+  - but the broad `OMNI_LISP_TEST_SLICE=jit-policy` container run still exits
+    `139` outside that narrowed continuation subset,
+  - so the continuation batch is shipped and the remaining full-slice crash is
+    tracked separately in `TODO.md` as a distinct post-wave audit lane.
 
 ## Objective
 

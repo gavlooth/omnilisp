@@ -6,6 +6,7 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     Continuation* k = null;
     Value* validation_err = jit_resolve_validate_input(interp, k_val, &k);
     if (validation_err != null) return validation_err;
+    bool had_retained = k.handle_retained;
 
     // Reinstall effect handler copy from when the signal occurred
     HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
@@ -29,7 +30,7 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
         jit_resolve_pop_handler_copy(interp, hstate);
         interp_clear_resume_value(interp);
-        if (hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        if (had_retained && hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
         jit_resolve_destroy_ctx(interp, target_ctx);
         if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {
             handle_effect_state_release(hstate);
@@ -55,7 +56,7 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
             "resolve: continuation suspended again outside an active handle"
         );
         interp_clear_resume_value(interp);
-        if (hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        if (had_retained && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
         jit_resolve_destroy_ctx(interp, target_ctx);
         if (hstate.continuation_refcount == 0) {
             handle_effect_state_release(hstate);
@@ -68,13 +69,13 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
         // suspended context alive so the next clause can wrap it in a fresh
         // continuation and let the enclosing handle loop keep dispatching.
         interp_clear_resume_value(interp);
-        if (hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
+        if (had_retained && hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
         return make_nil(interp);
     }
     Value* result = jit_resolve_finish_result(interp, target_ctx, hstate);
 
     // Single-shot: invalidate continuation
-    if (hstate != null) {
+    if (had_retained && hstate != null) {
         if (hstate.continuation_refcount > 0) hstate.continuation_refcount--;
     }
     if (hstate != null && !hstate.frame_active && hstate.continuation_refcount == 0) {

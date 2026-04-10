@@ -70,6 +70,11 @@ fn void scope_dtor_value(void* ptr) {
                 }
                 v.coroutine_val = null;
             }
+        case CONTINUATION:
+            if (v.continuation_boundary_owned && v.cont_val != null) {
+                continuation_release_handle_state_for_boundary(v.cont_val);
+                v.continuation_boundary_owned = false;
+            }
         case VOID:
             break;
         // CONTINUATION lifetime remains managed by reset/shift/handle paths.

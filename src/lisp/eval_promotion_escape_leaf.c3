@@ -3,6 +3,7 @@ module lisp;
 import main;
 
 bool g_boundary_force_escape_string_or_error_promotion_alloc_fail = false;
+bool g_boundary_force_escape_continuation_wrapper_alloc_fail = false;
 
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
@@ -181,10 +182,21 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
         }
         retained_now = continuation_retain_handle_state_for_boundary(v.cont_val);
     }
-    Value* result = interp.alloc_value_escape();
+    Value* result = g_boundary_force_escape_continuation_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value_escape();
+    if (result == null) {
+        if (retained_now) {
+            continuation_release_handle_state_for_boundary(v.cont_val);
+        }
+        return raise_error(interp, "boundary: failed to allocate continuation escape copy");
+    }
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
     result.continuation_boundary_owned = retained_now;
+    if (retained_now) {
+        main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_value);
+    }
     return result;
 }
 

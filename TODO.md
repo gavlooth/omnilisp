@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -18,7 +18,15 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- None.
+- [ ] `AUDIT-JIT-POLICY-FULL-SLICE-006` isolate and close the remaining non-continuation `jit-policy` slice crash
+  - evidence:
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp'` still exits `139`
+    - the narrowed continuation-focused subset passes:
+      - `OMNI_JIT_POLICY_FILTER=multi-interp-lifetime,continuation-teardown,shared-handle-state-teardown,cross-interp-continuation-guard,escaped-handle-continuation-guard,side-effect-escaped-handle-continuation-guard`
+  - closure target:
+    - identify the specific remaining `jit-policy` case outside the continuation subset that crashes,
+    - land a focused fix or explicitly split further if it is an unrelated validation/configuration issue,
+    - restore a clean bounded `OMNI_LISP_TEST_SLICE=jit-policy` container run.
 
 ## Recently Closed
 

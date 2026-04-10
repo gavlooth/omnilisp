@@ -3,6 +3,8 @@ module lisp;
 import std::core::mem;
 import main;
 
+bool g_boundary_force_copy_continuation_wrapper_alloc_fail = false;
+
 fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault_out = null) {
     Value* first_arg = copy_to_parent_with_fault(v.partial_val.first_arg, interp, fault_out);
     if (v.partial_val.first_arg != null && (first_arg == null || is_error(first_arg))) {
@@ -320,10 +322,21 @@ fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
         }
         retained_now = continuation_retain_handle_state_for_boundary(v.cont_val);
     }
-    Value* result = interp.alloc_value();
+    Value* result = g_boundary_force_copy_continuation_wrapper_alloc_fail
+        ? null
+        : interp.alloc_value();
+    if (result == null) {
+        if (retained_now) {
+            continuation_release_handle_state_for_boundary(v.cont_val);
+        }
+        return raise_error(interp, "boundary: failed to allocate continuation copy value");
+    }
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
     result.continuation_boundary_owned = retained_now;
+    if (retained_now) {
+        main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    }
     return result;
 }
 

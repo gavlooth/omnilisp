@@ -64,6 +64,17 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   handle-state for boundary escape, and env-copy/partial-cleanup rollback uses
   that marker to release the retained handle-state immediately when the copied
   wrapper is abandoned.
+- The same continuation ownership contract now covers successful teardown and
+  post-retain allocation failure as well:
+  - boundary-owned continuation wrappers register normal scope dtors when they
+    actually introduced the retain,
+  - normal target-scope teardown releases that retain exactly once, and
+  - copy / ESCAPE allocation failure after the retain step now releases
+    immediately instead of depending on a wrapper that never got materialized.
+- `jit_resolve_value(...)` now decrements shared continuation handle-state
+  refcount only when the resolved continuation actually owned the retained
+  slot, so shared handle-state continuations no longer consume each other’s
+  retains during `resolve`.
 - Fast reuse for target-chain shared wrappers now walks nested `ARRAY`,
   `HASHMAP` / `SET`, and `METHOD_TABLE` payload edges before returning wrapper
   identity, so target-chain reuse no longer aliases a wrapper whose nested
@@ -132,7 +143,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 106/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 118/0`).
+- Latest continuation-focused JIT evidence:
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_JIT_POLICY_FILTER=multi-interp-lifetime,continuation-teardown,shared-handle-state-teardown,cross-interp-continuation-guard,escaped-handle-continuation-guard,side-effect-escaped-handle-continuation-guard ./build/main --test-suite lisp'` passed (`6 passed, 0 failed`).
+  - The broad `jit-policy` slice still needs a separate audit lane; see `TODO.md`.
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator
