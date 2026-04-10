@@ -29,6 +29,33 @@ fn Value* boundary_destination_promote_routed_escape(
     return boundary_promote_to_escape(routed, interp);
 }
 
+fn Value* boundary_destination_bubble_child_fault(
+    Value* source_child,
+    Value* promoted_child,
+    Value* fallback_value,
+    Interp* interp,
+    main::ScopeRegion* target_scope,
+    PromotionContext* ctx = null
+) {
+    if (source_child == null || source_child.tag == ERROR) return null;
+    if (promoted_child == null || promoted_child.tag != ERROR) return null;
+
+    Value* destination_error = boundary_build_destination_error_escape(
+        promoted_child,
+        interp,
+        target_scope,
+        ctx
+    );
+    if (destination_error != null &&
+        destination_error.tag == ERROR &&
+        destination_error.scope_gen == target_scope.escape_generation) {
+        return destination_error;
+    }
+
+    boundary_mark_active_promotion_ctx_aborted(interp, ctx);
+    return fallback_value;
+}
+
 fn bool boundary_destination_iterator_inner_needs_detach(
     Value* inner,
     main::ScopeRegion* target_scope

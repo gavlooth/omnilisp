@@ -1,5 +1,24 @@
 ## 2026-04-10
 
+- Closed a destination-escape commit fail-closed follow-up for nested boundary
+  faults:
+  - `src/lisp/eval_boundary_commit_escape_cons.c3` and
+    `src/lisp/eval_boundary_commit_escape_wrappers.c3` now bubble
+    boundary-generated nested child-copy errors back out as top-level commit
+    errors instead of rebuilding `CONS` / `PARTIAL_PRIM` / `ITERATOR` wrappers
+    with embedded `ERROR` children.
+  - `src/lisp/eval_boundary_commit_destination.c3` now classifies those
+    builder-returned top-level errors as destination error promotion rather
+    than pretending a structured destination build succeeded.
+  - `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3` now
+    includes focused regressions proving nested opaque primitive faults fail
+    closed for destination-built `CONS`, `PARTIAL_PRIM`, and `ITERATOR`
+    commit paths.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=87 fail=0`
+    - `scripts/check_status_consistency.sh` -> pass
+
 - Closed the root-store shared-wrapper partial-cleanup follow-up:
   - `src/lisp/eval_promotion_root_clone_basic.c3` now routes late-failure
     `ARRAY` and `HASHMAP` / `SET` clone aborts through the same shared partial

@@ -18,6 +18,8 @@ fn Value* boundary_build_destination_cons_escape(
 ) {
     if (list.tag != CONS) return list;
     if (ctx != null && ctx.aborted) return list;
+    PromotionMemoEntry* saved_memo_head = ctx != null ? ctx.memo_head : null;
+    defer if (ctx != null) ctx.memo_head = saved_memo_head;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -36,8 +38,9 @@ fn Value* boundary_build_destination_cons_escape(
     Value* current_old = list;
 
     while (true) {
+        Value* old_car = current_old.cons_val.car;
         Value* routed_car = boundary_copy_to_parent_site_ctx(
-            current_old.cons_val.car,
+            old_car,
             interp,
             COPY_SITE_CONS_BARRIER_CAR,
             ctx
@@ -48,6 +51,17 @@ fn Value* boundary_build_destination_cons_escape(
             build_scope,
             ctx
         );
+        Value* car_fault = boundary_destination_bubble_child_fault(
+            old_car,
+            current_new.cons_val.car,
+            list,
+            interp,
+            target_scope,
+            ctx
+        );
+        if (car_fault != null) {
+            return car_fault;
+        }
         if (ctx != null && ctx.aborted) return list;
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.car, build_scope),
@@ -80,6 +94,17 @@ fn Value* boundary_build_destination_cons_escape(
             build_scope,
             ctx
         );
+        Value* cdr_fault = boundary_destination_bubble_child_fault(
+            old_cdr,
+            current_new.cons_val.cdr,
+            list,
+            interp,
+            target_scope,
+            ctx
+        );
+        if (cdr_fault != null) {
+            return cdr_fault;
+        }
         if (ctx != null && ctx.aborted) return list;
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.cdr, build_scope),

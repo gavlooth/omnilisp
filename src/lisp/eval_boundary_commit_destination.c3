@@ -9,6 +9,16 @@ struct BoundaryCommitDestinationPromotion {
     bool committed;
 }
 
+fn bool boundary_commit_destination_promoted_error(
+    Value* value,
+    main::ScopeRegion* target_scope
+) @inline {
+    return value != null &&
+        value.tag == ERROR &&
+        target_scope != null &&
+        value.scope_gen == target_scope.escape_generation;
+}
+
 fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
     Value* result,
     Interp* interp,
@@ -54,6 +64,13 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             active_ctx
         );
         if (!active_ctx.aborted &&
+            boundary_commit_destination_promoted_error(destination_cons, target_scope)) {
+            promotion.value = destination_cons;
+            promotion.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
+            promotion.committed = true;
+            return promotion;
+        }
+        if (!active_ctx.aborted &&
             destination_cons != null &&
             destination_cons != result &&
             destination_cons.scope_gen == target_scope.escape_generation) {
@@ -75,6 +92,13 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             active_ctx
         );
         if (!active_ctx.aborted &&
+            boundary_commit_destination_promoted_error(destination_partial, target_scope)) {
+            promotion.value = destination_partial;
+            promotion.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
+            promotion.committed = true;
+            return promotion;
+        }
+        if (!active_ctx.aborted &&
             destination_partial != null &&
             destination_partial != result &&
             destination_partial.scope_gen == target_scope.escape_generation) {
@@ -95,6 +119,13 @@ fn BoundaryCommitDestinationPromotion boundary_commit_try_destination_promotion(
             releasing_scope,
             active_ctx
         );
+        if (!active_ctx.aborted &&
+            boundary_commit_destination_promoted_error(destination_iterator, target_scope)) {
+            promotion.value = destination_iterator;
+            promotion.outcome = BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED;
+            promotion.committed = true;
+            return promotion;
+        }
         if (!active_ctx.aborted &&
             destination_iterator != null &&
             destination_iterator != result &&

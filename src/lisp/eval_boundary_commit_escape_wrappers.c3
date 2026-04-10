@@ -18,6 +18,8 @@ fn Value* boundary_build_destination_partial_escape(
 ) {
     if (partial.tag != PARTIAL_PRIM) return partial;
     if (ctx != null && ctx.aborted) return partial;
+    PromotionMemoEntry* saved_memo_head = ctx != null ? ctx.memo_head : null;
+    defer if (ctx != null) ctx.memo_head = saved_memo_head;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -58,6 +60,17 @@ fn Value* boundary_build_destination_partial_escape(
             escaped_first.scope_gen != target_scope.escape_generation) {
             escaped_first.scope_gen = target_scope.escape_generation;
         }
+        Value* first_fault = boundary_destination_bubble_child_fault(
+            partial.partial_val.first_arg,
+            escaped_first,
+            partial,
+            interp,
+            target_scope,
+            ctx
+        );
+        if (first_fault != null) {
+            return first_fault;
+        }
     }
     if (ctx != null && ctx.aborted) return partial;
     assert(
@@ -92,6 +105,17 @@ fn Value* boundary_build_destination_partial_escape(
         if (escaped_second != null &&
             escaped_second.scope_gen != target_scope.escape_generation) {
             escaped_second.scope_gen = target_scope.escape_generation;
+        }
+        Value* second_fault = boundary_destination_bubble_child_fault(
+            partial.partial_val.second_arg,
+            escaped_second,
+            partial,
+            interp,
+            target_scope,
+            ctx
+        );
+        if (second_fault != null) {
+            return second_fault;
         }
     }
     if (ctx != null && ctx.aborted) return partial;
@@ -129,6 +153,8 @@ fn Value* boundary_build_destination_iterator_escape(
 ) {
     if (iterator.tag != ITERATOR) return iterator;
     if (ctx != null && ctx.aborted) return iterator;
+    PromotionMemoEntry* saved_memo_head = ctx != null ? ctx.memo_head : null;
+    defer if (ctx != null) ctx.memo_head = saved_memo_head;
 
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
@@ -159,6 +185,17 @@ fn Value* boundary_build_destination_iterator_escape(
         build_scope,
         ctx
     );
+    Value* inner_fault = boundary_destination_bubble_child_fault(
+        iterator.iterator_val,
+        escaped_inner,
+        iterator,
+        interp,
+        target_scope,
+        ctx
+    );
+    if (inner_fault != null) {
+        return inner_fault;
+    }
     if (ctx != null && ctx.aborted) return iterator;
     if (escaped_inner != null &&
         boundary_ptr_in_scope((void*)escaped_inner, build_scope) &&

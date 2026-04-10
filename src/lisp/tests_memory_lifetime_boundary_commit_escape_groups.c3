@@ -6,6 +6,133 @@ import main;
 fn void run_memory_lifetime_boundary_commit_escape_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_commit_escape_primary_tests(interp, pass, fail);
 
+    // Invariant: destination-built structured wrappers fail closed when a
+    // nested boundary child copy raises an opaque-primitive fault.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        main::ScopeRegion* foreign_scope = main::scope_create(root_scope);
+        if (target_scope == null || releasing_scope == null || foreign_scope == null) {
+            if (foreign_scope != null) main::scope_release(foreign_scope);
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape destination nested fault fail-closed");
+            (*fail)++;
+        } else {
+            interp.current_scope = foreign_scope;
+            Value* opaque = interp.alloc_value();
+            opaque.tag = PRIMITIVE;
+            main::scope_register_dtor(foreign_scope, (void*)opaque, &scope_dtor_value);
+            Primitive* opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            int* opaque_payload = (int*)mem::malloc(int.sizeof);
+            bool setup_ok = opaque_prim != null && opaque_payload != null;
+            if (!setup_ok) {
+                if (opaque_prim != null) mem::free(opaque_prim);
+                if (opaque_payload != null) mem::free(opaque_payload);
+            } else {
+                *opaque_prim = {};
+                *opaque_payload = 1401;
+                opaque_prim.name[0] = 'c';
+                opaque_prim.name[1] = 0;
+                opaque_prim.arity = 1;
+                opaque_prim.tag = 1401;
+                opaque_prim.user_data = (void*)opaque_payload;
+                opaque.prim_val = opaque_prim;
+            }
+
+            Value* cons = null;
+            Value* partial = null;
+            Value* iter = null;
+            if (setup_ok) {
+                interp.current_scope = releasing_scope;
+                partial = interp.alloc_value();
+                partial.tag = PARTIAL_PRIM;
+                partial.partial_val.func = &prim_add;
+                partial.partial_val.remaining = 1;
+                partial.partial_val.first_arg = opaque;
+                partial.partial_val.second_arg = make_int(interp, 44);
+                iter = make_iterator(interp, partial);
+                cons = make_cons(interp, iter, make_nil(interp));
+                setup_ok = cons != null && partial != null && iter != null;
+            }
+
+            BoundaryCommitEscapeResult committed_cons = {};
+            BoundaryCommitEscapeResult committed_partial = {};
+            BoundaryCommitEscapeResult committed_iter = {};
+            if (setup_ok) {
+                PromotionContext ctx = {};
+                boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+                committed_cons = boundary_commit_escape(
+                    cons,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                committed_partial = boundary_commit_escape(
+                    partial,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                committed_iter = boundary_commit_escape(
+                    iter,
+                    interp,
+                    target_scope,
+                    releasing_scope,
+                    &ctx
+                );
+                boundary_promotion_context_end(interp, &ctx);
+            }
+
+            bool cons_ok = setup_ok &&
+                committed_cons.value != null &&
+                committed_cons.value.tag == ERROR &&
+                committed_cons.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                !committed_cons.releasing_scope_spliced &&
+                !committed_cons.reused_in_target_chain &&
+                main::is_in_scope((void*)committed_cons.value, target_scope);
+            bool partial_ok = setup_ok &&
+                committed_partial.value != null &&
+                committed_partial.value.tag == ERROR &&
+                committed_partial.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                !committed_partial.releasing_scope_spliced &&
+                !committed_partial.reused_in_target_chain &&
+                main::is_in_scope((void*)committed_partial.value, target_scope);
+            bool iter_ok = setup_ok &&
+                committed_iter.value != null &&
+                committed_iter.value.tag == ERROR &&
+                committed_iter.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                !committed_iter.releasing_scope_spliced &&
+                !committed_iter.reused_in_target_chain &&
+                main::is_in_scope((void*)committed_iter.value, target_scope);
+
+            interp.current_scope = root_scope;
+            main::scope_release(foreign_scope);
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+
+            if (cons_ok && partial_ok && iter_ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape destination nested fault fail-closed");
+                (*pass)++;
+            } else {
+                io::printfn(
+                    "[FAIL] lifetime: boundary_commit_escape destination nested fault fail-closed (setup_ok=%s cons_tag=%d cons_outcome=%d partial_tag=%d partial_outcome=%d iter_tag=%d iter_outcome=%d)",
+                    setup_ok ? "yes" : "no",
+                    committed_cons.value != null ? (int)committed_cons.value.tag : -1,
+                    (int)committed_cons.outcome,
+                    committed_partial.value != null ? (int)committed_partial.value.tag : -1,
+                    (int)committed_partial.outcome,
+                    committed_iter.value != null ? (int)committed_iter.value.tag : -1,
+                    (int)committed_iter.outcome
+                );
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: mixed/uncertain provenance can commit through destination ESCAPE
     // promotion before falling back to deep boundary copy.
     {
