@@ -193,14 +193,18 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
                 part = make_string(interp, args[0].str_chars[start:part_len]);
             }
             if (part != null && part.tag == ERROR) return part;
-            parts = make_cons(interp, part, parts);
+            Value* next = make_cons_or_error(interp, part, parts, "string-split: failed to allocate result list");
+            if (next == null || next.tag == ERROR) return next;
+            parts = next;
             start = i + 1;
         }
     }
 
     Value* result = make_nil(interp);
     while (is_cons(parts)) {
-        result = make_cons(interp, parts.cons_val.car, result);
+        Value* next = make_cons_or_error(interp, parts.cons_val.car, result, "string-split: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
         parts = parts.cons_val.cdr;
     }
     return result;

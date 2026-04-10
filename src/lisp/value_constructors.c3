@@ -10,6 +10,7 @@ import main;
 
 bool g_warned_primitive_name_truncation = false;
 int g_value_force_make_error_chars_alloc_fail_nth = 0;
+int g_value_force_make_cons_or_error_alloc_fail_nth = 0;
 int g_value_force_make_list1_alloc_fail_nth = 0;
 int g_value_force_make_list2_alloc_fail_nth = 0;
 
@@ -29,6 +30,12 @@ fn bool make_list1_should_force_alloc_fail() @inline {
     if (g_value_force_make_list1_alloc_fail_nth <= 0) return false;
     g_value_force_make_list1_alloc_fail_nth--;
     return g_value_force_make_list1_alloc_fail_nth == 0;
+}
+
+fn bool make_cons_or_error_should_force_alloc_fail() @inline {
+    if (g_value_force_make_cons_or_error_alloc_fail_nth <= 0) return false;
+    g_value_force_make_cons_or_error_alloc_fail_nth--;
+    return g_value_force_make_cons_or_error_alloc_fail_nth == 0;
 }
 
 fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arity) {
@@ -177,6 +184,15 @@ fn Value* make_list1_or_error(Interp* interp, Value* first, char[] message) {
     if (make_list1_should_force_alloc_fail()) return make_error(interp, message);
 
     Value* out = make_cons(interp, first, make_nil(interp));
+    if (out == null) return make_error(interp, message);
+    if (out.tag == ERROR) return out;
+    return out;
+}
+
+fn Value* make_cons_or_error(Interp* interp, Value* car, Value* cdr, char[] message) {
+    if (make_cons_or_error_should_force_alloc_fail()) return make_error(interp, message);
+
+    Value* out = make_cons(interp, car, cdr);
     if (out == null) return make_error(interp, message);
     if (out.tag == ERROR) return out;
     return out;

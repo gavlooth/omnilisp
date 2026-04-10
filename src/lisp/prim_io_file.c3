@@ -135,14 +135,18 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
             }
             Value* line = make_string(interp, content[start:line_len]);
             if (line != null && line.tag == ERROR) return line;
-            lines = make_cons(interp, line, lines);
+            Value* next = make_cons_or_error(interp, line, lines, "read-lines: failed to allocate result list");
+            if (next == null || next.tag == ERROR) return next;
+            lines = next;
             start = i + 1;
         }
     }
 
     Value* result = make_nil(interp);
     while (is_cons(lines)) {
-        result = make_cons(interp, lines.cons_val.car, result);
+        Value* next = make_cons_or_error(interp, lines.cons_val.car, result, "read-lines: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
         lines = lines.cons_val.cdr;
     }
     return result;

@@ -22,6 +22,29 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-RUNTIME-LIST-MATERIALIZATION-FAILCLOSED-035` make helper-owned
+  list materializers fail closed instead of continuing after cons-constructor
+  faults
+  - closure evidence:
+    - `src/lisp/value_constructors.c3`
+      now exposes a shared `make_cons_or_error(...)` helper with a narrow
+      nth-failure seam for deterministic runtime list-builder tests.
+    - `src/lisp/prim_string_transform.c3`
+      now makes `string-split` reject internal result-list construction
+      failure instead of continuing with partial/null list state.
+    - `src/lisp/prim_io_file.c3`
+      now makes `read-lines` reject internal result-list construction failure
+      instead of continuing with partial/null list state.
+    - `src/lisp/prim_collection_hashmap_key_helpers.c3`
+      now makes `keys` / `values` canonical list assembly fail closed in both
+      sorted and fallback paths instead of reusing raw `make_cons(...)`.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now directly pins string-split and hashmap key/value list allocation
+      failure in the bounded runtime alloc lane.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-JIT-HELPER-ARG-CONSTRUCTION-FAILCLOSED-034` make JIT helper
   arg-list and variadic rest-list construction fail closed instead of passing
   raw cons-constructor faults into normal dispatch/binding flows

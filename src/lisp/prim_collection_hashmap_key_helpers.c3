@@ -209,7 +209,10 @@ fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
         // Fallback under allocation pressure.
         Value* fallback = make_nil(interp);
         for (uint i = 0; i < map.capacity; i++) {
-            if (map.entries[i].key != null) fallback = make_cons(interp, map.entries[i].key, fallback);
+            if (map.entries[i].key == null) continue;
+            Value* next = make_cons_or_error(interp, map.entries[i].key, fallback, "keys: failed to allocate result list");
+            if (next == null || next.tag == ERROR) return next;
+            fallback = next;
         }
         return fallback;
     }
@@ -218,7 +221,9 @@ fn Value* hashmap_keys_list_canonical(HashMap* map, Interp* interp) {
     Value* result = make_nil(interp);
     for (isz i = (isz)slots.len - 1; i >= 0; i--) {
         uint slot = slots[(usz)i];
-        result = make_cons(interp, map.entries[slot].key, result);
+        Value* next = make_cons_or_error(interp, map.entries[slot].key, result, "keys: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
     }
     return result;
 }
@@ -231,7 +236,10 @@ fn Value* hashmap_values_list_canonical(HashMap* map, Interp* interp) {
         // Fallback under allocation pressure.
         Value* fallback = make_nil(interp);
         for (uint i = 0; i < map.capacity; i++) {
-            if (map.entries[i].key != null) fallback = make_cons(interp, map.entries[i].value, fallback);
+            if (map.entries[i].key == null) continue;
+            Value* next = make_cons_or_error(interp, map.entries[i].value, fallback, "values: failed to allocate result list");
+            if (next == null || next.tag == ERROR) return next;
+            fallback = next;
         }
         return fallback;
     }
@@ -240,7 +248,9 @@ fn Value* hashmap_values_list_canonical(HashMap* map, Interp* interp) {
     Value* result = make_nil(interp);
     for (isz i = (isz)slots.len - 1; i >= 0; i--) {
         uint slot = slots[(usz)i];
-        result = make_cons(interp, map.entries[slot].value, result);
+        Value* next = make_cons_or_error(interp, map.entries[slot].value, result, "values: failed to allocate result list");
+        if (next == null || next.tag == ERROR) return next;
+        result = next;
     }
     return result;
 }

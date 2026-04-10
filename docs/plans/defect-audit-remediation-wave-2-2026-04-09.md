@@ -626,6 +626,26 @@ Progress update (2026-04-09):
 
 ## Post-Wave Follow-Up (2026-04-10)
 
+- landed the runtime helper list-materialization fail-closed follow-up:
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/prim_string_transform.c3`
+  - `src/lisp/prim_io_file.c3`
+  - `src/lisp/prim_collection_hashmap_key_helpers.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- shipped behavior:
+  - one shared `make_cons_or_error(...)` helper now covers helper-owned runtime
+    list builders with a deterministic nth-failure seam.
+  - `string-split`, `read-lines`, and canonical `keys` / `values` list
+    assembly now fail closed instead of continuing after cons-constructor
+    faults.
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=162 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-RUNTIME-LIST-MATERIALIZATION-FAILCLOSED-035`
+  - actionable backlog remains `0`
+
 - landed the JIT helper arg-construction fail-closed follow-up:
   - `src/lisp/value_constructors.c3`
   - `src/lisp/jit_jit_apply_helpers.c3`

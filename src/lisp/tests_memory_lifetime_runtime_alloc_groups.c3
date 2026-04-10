@@ -67,6 +67,67 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[2] split_args = {
+            make_string(interp, "a,b"),
+            make_string(interp, ",")
+        };
+
+        int saved_cons_fail = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        Value* split_fail = prim_string_split(split_args[0:2], null, interp);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_cons_fail;
+
+        bool ok = runtime_alloc_error_matches(split_fail, "string-split: failed to allocate result list");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: string split list construction fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: string split list construction fails closed (msg=%s)",
+                runtime_alloc_error_text(split_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        Value* key_a = make_symbol(interp, interp.symbols.intern("a"));
+        Value* key_b = make_symbol(interp, interp.symbols.intern("b"));
+        Value* map_value = make_hashmap_checked(interp, 4, "test: failed to allocate hashmap");
+        bool setup_ok = map_value != null && map_value.tag == HASHMAP;
+        if (setup_ok) {
+            setup_ok =
+                hashmap_set_checked(map_value.hashmap_val, key_a, make_int(interp, 1), interp) &&
+                hashmap_set_checked(map_value.hashmap_val, key_b, make_int(interp, 2), interp);
+        }
+
+        Value* keys_fail = null;
+        Value* values_fail = null;
+        int saved_cons_fail = g_value_force_make_cons_or_error_alloc_fail_nth;
+        if (setup_ok) {
+            g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+            keys_fail = prim_keys((Value*[]){ map_value }, null, interp);
+            g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+            values_fail = prim_values((Value*[]){ map_value }, null, interp);
+        }
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_cons_fail;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(keys_fail, "keys: failed to allocate result list") &&
+            runtime_alloc_error_matches(values_fail, "values: failed to allocate result list");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: hashmap key/value list construction fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: hashmap key/value list construction fails closed (setup_ok=%s keys=%s values=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(keys_fail),
+                runtime_alloc_error_text(values_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         Value* proc_argv =
             make_cons(interp,
                 make_string(interp, "-c"),

@@ -362,6 +362,18 @@ for future concurrency ownership evolution.
   sequencing while further shared-object consolidation proceeds.
 ## 2026-04-10 follow-up
 
+- Runtime helper-owned list builders now fail closed on cons-constructor
+  faults:
+  - `src/lisp/prim_string_transform.c3`
+    now rejects `string-split` internal result-list construction failure.
+  - `src/lisp/prim_io_file.c3`
+    now rejects `read-lines` internal result-list construction failure.
+  - `src/lisp/prim_collection_hashmap_key_helpers.c3`
+    now makes `keys` / `values` canonical list assembly fail closed in both
+    sorted and fallback paths.
+- Latest bounded evidence for that lane:
+  - bounded `memory-lifetime-smoke`: `pass=162 fail=0`
+
 - JIT helper arg construction now fails closed in the remaining helper-owned
   list-materialization paths:
   - `src/lisp/jit_jit_apply_helpers.c3` and
