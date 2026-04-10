@@ -483,10 +483,18 @@ fn void run_memory_lifetime_root_boundary_shared_wrapper_partial_cleanup_test(In
             hashmap_payload.entries[i].key = null;
             hashmap_payload.entries[i].value = null;
         }
-        Value* hashmap_key = make_int(interp, 13);
-        uint hashmap_idx = hash_value(hashmap_key) & hashmap_payload.mask;
-        hashmap_payload.entries[hashmap_idx].key = hashmap_key;
-        hashmap_payload.entries[hashmap_idx].value = opaque;
+        Value* hashmap_key_good = make_int(interp, 13);
+        Value* hashmap_key_bad = make_int(interp, 14);
+        uint hashmap_idx_good = hash_value(hashmap_key_good) & hashmap_payload.mask;
+        uint hashmap_idx_bad = hash_value(hashmap_key_bad) & hashmap_payload.mask;
+        if (hashmap_idx_bad == hashmap_idx_good) {
+            hashmap_idx_bad = (hashmap_idx_bad + 1) & hashmap_payload.mask;
+        }
+        hashmap_payload.count = 2;
+        hashmap_payload.entries[hashmap_idx_good].key = hashmap_key_good;
+        hashmap_payload.entries[hashmap_idx_good].value = shared_cons;
+        hashmap_payload.entries[hashmap_idx_bad].key = hashmap_key_bad;
+        hashmap_payload.entries[hashmap_idx_bad].value = opaque;
         hashmap_src.hashmap_val = hashmap_payload;
 
         bool setup_ok = shared_closure != null &&
