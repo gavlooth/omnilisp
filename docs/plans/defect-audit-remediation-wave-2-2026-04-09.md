@@ -38,6 +38,22 @@ Post-wave follow-up (2026-04-09, late pass):
     heap signatures on abort.
   - `TODO.md` is back to zero live items for this audit wave.
 
+Post-wave follow-up (2026-04-10):
+
+- Additional boundary/env-copy hardening landed:
+  - `src/lisp/eval_promotion_context.c3` now fails closed if memo-entry
+    allocation itself fails, instead of dereferencing a null `PromotionMemoEntry`.
+  - `src/lisp/eval_env_copy_values.c3` and
+    `src/lisp/eval_env_copy_frame_helpers.c3` now unwind iterator payload
+    materialization when iterator wrapper construction fails mid-copy, including
+    iterator payloads backed by copied `PARTIAL_PRIM` values.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now covers the
+    iterator-wrapper failure rollback lane directly.
+- New focused audit findings remain open and were promoted back into live
+  backlog items:
+  - `AUDIT-BOUNDARY-DESTINATION-MEMO-004`
+  - `AUDIT-BOUNDARY-PROVENANCE-WRAPPER-004`
+
 ## Objective
 
 Address the concrete defects found in the 2026-04-09 multi-lane audit without

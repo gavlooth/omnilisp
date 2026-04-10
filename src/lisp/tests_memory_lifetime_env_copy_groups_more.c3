@@ -644,6 +644,91 @@ fn void run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_
     }
 }
 
+fn void run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: iterator env-copy self-cleans any already-copied inner payload
+    // when the outer iterator wrapper cannot be materialized.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: env-copy iterator wrapper failure rollback");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__copy_env_iterator_wrapper_fail_payload");
+        SymbolId iter_sym = interp.symbols.intern("__copy_env_iterator_wrapper_fail_iter");
+
+        interp.current_scope = source;
+        Env* captured_env = make_env(interp, interp.global_env);
+        main::ScopeRegion* closure_env_scope = null;
+        Value* shared_closure = null;
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, payload_sym, make_int(interp, 777), interp);
+            shared_closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        }
+
+        Value* partial = null;
+        Value* iter_wrapper = null;
+        Env* frame = make_env(interp, interp.global_env);
+        bool setup_ok = frame != null &&
+                        shared_closure != null &&
+                        shared_closure.tag == CLOSURE &&
+                        shared_closure.closure_val != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1;
+        if (setup_ok) {
+            partial = interp.alloc_value();
+            partial.tag = PARTIAL_PRIM;
+            partial.partial_val.func = &prim_add;
+            partial.partial_val.remaining = 1;
+            partial.partial_val.first_arg = shared_closure;
+            partial.partial_val.second_arg = make_int(interp, 778);
+            iter_wrapper = make_iterator(interp, partial);
+            setup_ok = partial != null && iter_wrapper != null;
+        }
+        if (setup_ok) {
+            env_define_with_barrier(frame, iter_sym, iter_wrapper, interp);
+        }
+
+        bool saved_force = g_copy_env_force_iterator_wrapper_alloc_fail;
+        g_copy_env_force_iterator_wrapper_alloc_fail = true;
+        BoundaryEnvCopyResult copied =
+            setup_ok ? boundary_copy_env_to_target_scope_checked(frame, interp, target)
+                     : boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, 0);
+        g_copy_env_force_iterator_wrapper_alloc_fail = saved_force;
+
+        int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
+        bool fault_ok = copied.env == null &&
+                        copied.fault_code == BOUNDARY_ENV_COPY_FAULT_BINDING_VALUE_COPY &&
+                        copied.depth == 0;
+        bool rollback_ok = rc_after_fail == 1 &&
+                           closure_env_lookup_int(shared_closure, payload_sym, 777);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        bool ok = setup_ok && fault_ok && rollback_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env-copy iterator wrapper failure rollback");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env-copy iterator wrapper failure rollback (setup_ok=%s fault=%s rc_after_fail=%d rollback_ok=%s)",
+                setup_ok ? "yes" : "no",
+                (ZString)boundary_env_copy_fault_name(copied.fault_code),
+                rc_after_fail,
+                rollback_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_copy_parent_closure_env_scope_retain_test(interp, pass, fail);
     run_memory_lifetime_env_copy_nested_closure_retain_test(interp, pass, fail);
@@ -662,4 +747,5 @@ fn void run_memory_lifetime_env_copy_escape_mode_tests(Interp* interp, int* pass
     run_memory_lifetime_env_copy_clones_global_iterator_closure_test(interp, pass, fail);
     run_memory_lifetime_env_copy_transactional_binding_rollback_test(interp, pass, fail);
     run_memory_lifetime_env_copy_rollback_preserves_shared_iterator_payload_test(interp, pass, fail);
+    run_memory_lifetime_env_copy_iterator_wrapper_failure_rollback_test(interp, pass, fail);
 }

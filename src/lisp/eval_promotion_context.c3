@@ -116,6 +116,13 @@ fn void promotion_context_remember(PromotionContext* ctx, Value* src, Value* dst
     if (ctx == null || src == null || dst == null || interp == null || interp.current_scope == null) return;
     if (ctx.aborted) return;
     PromotionMemoEntry* e = (PromotionMemoEntry*)interp.current_scope.alloc(PromotionMemoEntry.sizeof);
+    if (e == null) {
+        ctx.aborted = true;
+        if (ctx.abort_reason == PROMOTION_ABORT_NONE) {
+            ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        }
+        return;
+    }
     e.src = src;
     e.dst = dst;
     e.next = ctx.memo_head;

@@ -2,6 +2,8 @@ module lisp;
 
 import main;
 
+bool g_copy_env_force_iterator_wrapper_alloc_fail = false;
+
 fn void copy_env_invariant_fail(char[] msg) @noinline {
     boundary_invariant_fail("copy-env", msg);
 }
@@ -142,6 +144,7 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
     if (wrapper_in_target && payload_alias_safe) return val;
 
     Value* inner = val.iterator_val;
+    Value* source_inner = inner;
     if (inner != null && inner.tag == CLOSURE) {
         Value* cloned = copy_env_clone_closure_if_needed(inner, interp);
         if (cloned == null || cloned.tag != CLOSURE) {
@@ -161,6 +164,10 @@ fn Value* copy_env_clone_iterator_if_needed(Value* val, Interp* interp) {
         return null;
     }
 
+    if (g_copy_env_force_iterator_wrapper_alloc_fail) {
+        copy_env_rollback_materialized_value(source_inner, inner, interp.current_scope);
+        return null;
+    }
     Value* iter_result = interp.alloc_value();
     iter_result.tag = ITERATOR;
     iter_result.iterator_val = inner;

@@ -38,6 +38,10 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   nested child copy faults: `CONS`, `PARTIAL_PRIM`, and `ITERATOR` destination
   builds bubble those faults back out as top-level error commits instead of
   rebuilding wrappers that contain embedded boundary `ERROR` children.
+- Env-copy iterator rollback now unwinds already-copied iterator payloads even
+  when the payload was materialized as a copied `PARTIAL_PRIM`, so wrapper
+  construction failure does not leave nested closure retains live in the target
+  scope.
 - Splice legality checks are reason-coded (`BoundaryScopeTransferReason`) and enforced through `boundary_check_scope_transfer(...)`.
 - `ScopeRegion` escape splice uses O(1) tail-link concatenation (`escape_chunks_tail`, `escape_dtors_tail`) with consistency assertions.
 - Boundary guard scripts exist and are wired:
@@ -49,12 +53,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `scripts/check_jit_env_scope_guards.sh`
 - Verification status for the already-closed hardening profile remains current:
   - `c3c build` passed.
-  - bounded `memory-lifetime-smoke` passed at `pass=87 fail=0`.
+  - bounded `memory-lifetime-smoke` passed at `pass=88 fail=0`.
   - `rm -rf build/obj/linux-x64 build/main && mkdir -p build/obj/linux-x64/tmp_c_compile && c3c build --sanitize=address` passed.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 87/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 88/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator

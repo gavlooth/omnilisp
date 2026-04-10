@@ -98,8 +98,9 @@ fn void copy_env_rollback_iterator_payload(
 ) @inline {
     if (!copy_env_iterator_payload_was_materialized(src, copied, target_scope)) return;
     Value* inner = copied.iterator_val;
-    if (inner == null || inner.tag != CLOSURE) return;
-    scope_dtor_closure((void*)inner);
+    Value* src_inner = src.iterator_val;
+    if (src_inner == null || inner == null) return;
+    copy_env_rollback_materialized_value(src_inner, inner, target_scope);
 }
 
 fn void copy_env_rollback_materialized_value(
@@ -110,6 +111,25 @@ fn void copy_env_rollback_materialized_value(
     if (!copy_env_is_materialized_target_value(src, copied, target_scope)) return;
     // Roll back nested closure-retain side effects produced by iterator-copy.
     copy_env_rollback_iterator_payload(src, copied, target_scope);
+    if (src != null &&
+        copied != null &&
+        src.tag == PARTIAL_PRIM &&
+        copied.tag == PARTIAL_PRIM) {
+        copy_env_rollback_materialized_value(
+            src.partial_val.first_arg,
+            copied.partial_val.first_arg,
+            target_scope
+        );
+        if (src.partial_val.second_arg != src.partial_val.first_arg ||
+            copied.partial_val.second_arg != copied.partial_val.first_arg) {
+            copy_env_rollback_materialized_value(
+                src.partial_val.second_arg,
+                copied.partial_val.second_arg,
+                target_scope
+            );
+        }
+        return;
+    }
     if (copied.tag == CLOSURE) {
         scope_dtor_closure((void*)copied);
         return;

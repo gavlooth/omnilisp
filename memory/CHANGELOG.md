@@ -1,5 +1,18 @@
 ## 2026-04-10
 
+- Closed a promotion-context/env-copy follow-up in the boundary hardening lane:
+  - `src/lisp/eval_promotion_context.c3` now treats memo-entry allocation
+    failure as a fail-closed promotion-context abort instead of dereferencing a
+    null memo node.
+  - `src/lisp/eval_env_copy_values.c3` and
+    `src/lisp/eval_env_copy_frame_helpers.c3` now self-clean and rollback
+    iterator payload materializations when the outer iterator wrapper cannot be
+    produced, including iterator payloads backed by copied `PARTIAL_PRIM`
+    values.
+  - `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3` now proves
+    iterator wrapper allocation failure does not leak an already-copied inner
+    payload retain.
+
 - Closed a destination-escape commit fail-closed follow-up for nested boundary
   faults:
   - `src/lisp/eval_boundary_commit_escape_cons.c3` and

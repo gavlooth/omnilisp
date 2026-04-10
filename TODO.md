@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 0
+Current actionable count: 2
 
 Completed backlog snapshots:
 
@@ -18,7 +18,22 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- None.
+- [ ] `AUDIT-BOUNDARY-DESTINATION-MEMO-004` define correct promotion-context memo semantics for destination builders
+  - problem:
+    - destination ESCAPE builders currently save/restore `ctx.memo_head` to avoid leaving memo nodes allocated in temporary build-scope TEMP memory reachable after abort.
+    - that also means builder-local memoization is intentionally discarded after the builder returns, and the exact intended same-epoch aliasing contract for destination-builder work is still not explicit or regression-pinned.
+  - required closure:
+    - decide whether nested destination-builder memo entries must survive for later same-epoch reuse,
+    - if yes, preserve them without pointing `ctx.memo_head` at TEMP-only build-scope allocations,
+    - add a focused regression that proves the chosen aliasing contract.
+
+- [ ] `AUDIT-BOUNDARY-PROVENANCE-WRAPPER-004` re-audit target-chain wrapper reuse for nested child-owned payloads
+  - problem:
+    - the focused boundary audit found that the fast reuse classifier still does not walk `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE` payload graphs before treating an already-target-chain wrapper as reusable.
+    - the post-commit graph audit can detect those violations after the fact, but the reuse classifier itself may still admit aliasing paths that should fail closed or force copy.
+  - required closure:
+    - make the provenance/reuse classifier agree with the existing graph-audit ownership model for shared wrappers,
+    - add focused regressions for a target-chain wrapper whose nested payload still points into the releasing scope.
 
 
 ## Recently Closed
