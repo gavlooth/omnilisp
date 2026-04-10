@@ -30,7 +30,8 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
     }
     if (omni_yyjson_is_arr(val) != 0) {
         usz count = omni_yyjson_arr_size(val);
-        Value* arr = make_array(interp, count);
+        Value* arr = make_array_checked(interp, count, "json-parse: out of memory");
+        if (arr == null || arr.tag != ARRAY) return arr;
         if (count == 0) return arr;
         YyjsonArrIter* iter = omni_yyjson_arr_iter_new(val);
         if (iter == null) return make_nil(interp);
@@ -39,14 +40,18 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
             YyjsonVal* elem = omni_yyjson_arr_iter_next(iter);
             if (elem == null) return make_nil(interp);
             Value* v = json_val_to_omni(elem, interp);
-            arr.array_val.items[i] = boundary_promote_to_root(v, interp);
+            if (v != null && v.tag == ERROR) return v;
+            Value* promoted = boundary_promote_to_root(v, interp);
+            if (promoted == null) return raise_error(interp, "json-parse: out of memory");
+            arr.array_val.items[i] = promoted;
             arr.array_val.length++;
         }
         return arr;
     }
     if (omni_yyjson_is_obj(val) != 0) {
         usz count = omni_yyjson_obj_size(val);
-        Value* dict = make_hashmap(interp, (uint)(count < 8 ? 8 : count * 2));
+        Value* dict = make_hashmap_checked(interp, (uint)(count < 8 ? 8 : count * 2), "json-parse: out of memory");
+        if (dict == null || dict.tag != HASHMAP) return dict;
         if (count == 0) return dict;
         YyjsonObjIter* iter = omni_yyjson_obj_iter_new(val);
         if (iter == null) return make_nil(interp);
@@ -61,7 +66,13 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
             usz klen = omni_yyjson_get_len(key);
             Value* key_val = make_string(interp, ks[:klen]);
             Value* val_v = json_val_to_omni(v, interp);
-            hashmap_set(dict.hashmap_val, key_val, val_v, interp);
+            if ((key_val != null && key_val.tag == ERROR) ||
+                (val_v != null && val_v.tag == ERROR)) {
+                return key_val != null && key_val.tag == ERROR ? key_val : val_v;
+            }
+            if (!hashmap_set_checked(dict.hashmap_val, key_val, val_v, interp)) {
+                return raise_error(interp, "json-parse: out of memory");
+            }
         }
         return dict;
     }

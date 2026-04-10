@@ -346,3 +346,13 @@ for future concurrency ownership evolution.
 - The remaining open runtime memory item is now broader constructor-callsite
   migration from unchecked `make_array(...)` / `make_hashmap(...)` users rather
   than the shared constructor substrate itself.
+- The data-format bridge slice of that migration is now closed:
+  - JSON and TOML recursive decode paths now use checked `ARRAY` / `HASHMAP`
+    constructors plus checked hashmap insertion,
+  - CSV row/result construction now uses checked array constructors, and
+  - nested conversion errors in JSON/TOML no longer get embedded into partial
+    collections.
+- The residual runtime constructor migration is now split by real callsite
+  family:
+  - schema explain payload-map builders
+  - remaining runtime/status payload builders

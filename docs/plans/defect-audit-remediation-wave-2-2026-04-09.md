@@ -439,3 +439,25 @@ Progress update (2026-04-09):
   - close `AUDIT-RUNTIME-CONSTRUCTOR-OOM-SUBSTRATE-008`
   - open `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` for the broader
     internal `make_array(...)` / `make_hashmap(...)` caller migration
+
+- landed the first internal constructor-callsite migration slice on the
+  data-format bridges:
+  - `src/lisp/json.c3`
+  - `src/lisp/primitives_toml_bridge.c3`
+  - `src/lisp/primitives_data_formats_csv_parse.c3`
+- shipped behavior:
+  - JSON/TOML object and array decode now use checked collection constructors
+    plus checked hashmap insertion.
+  - CSV parser row/result construction now uses checked array constructors.
+  - nested conversion failures in JSON/TOML now propagate as ordinary `ERROR`
+    values instead of being embedded into partial collections.
+  - direct regressions landed in:
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+- validation status:
+  - bounded `memory-lifetime-smoke`: green (`pass=133 fail=0`)
+  - bounded ASAN `memory-lifetime-smoke`: green (`pass=133 fail=0`)
+- backlog shaping after this slice:
+  - close `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009`
+  - open:
+    - `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010`
+    - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`

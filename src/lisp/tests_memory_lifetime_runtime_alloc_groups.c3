@@ -158,6 +158,48 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[1] json_obj_args = { make_string(interp, "{\"a\":1}") };
+        Value*[1] json_nested_args = { make_string(interp, "{\"a\":[1]}") };
+        Value*[1] toml_table_args = { make_string(interp, "a = 1\n") };
+        Value*[1] toml_nested_args = { make_string(interp, "a = [1]\n") };
+        Value*[1] csv_args = { make_string(interp, "") };
+
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        bool saved_array_items_fail = g_value_force_make_array_items_alloc_fail;
+
+        g_hashmap_force_struct_alloc_fail = true;
+        Value* json_obj_fail = prim_json_parse(json_obj_args[0:1], null, interp);
+        Value* toml_table_fail = prim_toml_parse(toml_table_args[0:1], null, interp);
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        g_value_force_make_array_items_alloc_fail = true;
+        Value* json_nested_fail = prim_json_parse(json_nested_args[0:1], null, interp);
+        Value* toml_nested_fail = prim_toml_parse(toml_nested_args[0:1], null, interp);
+        Value* csv_fail = prim_csv_parse(csv_args[0:1], null, interp);
+        g_value_force_make_array_items_alloc_fail = saved_array_items_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(json_obj_fail, "json-parse: out of memory") &&
+            runtime_alloc_error_matches(json_nested_fail, "json-parse: out of memory") &&
+            runtime_alloc_error_matches(toml_table_fail, "toml-parse: out of memory") &&
+            runtime_alloc_error_matches(toml_nested_fail, "toml-parse: out of memory") &&
+            runtime_alloc_error_matches(csv_fail, "csv-parse: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: data-format constructor alloc failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: data-format constructor alloc failures fail closed (json_obj=%s json_nested=%s toml_table=%s toml_nested=%s csv=%s)",
+                runtime_alloc_error_text(json_obj_fail),
+                runtime_alloc_error_text(json_nested_fail),
+                runtime_alloc_error_text(toml_table_fail),
+                runtime_alloc_error_text(toml_nested_fail),
+                runtime_alloc_error_text(csv_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool saved_partial_force = g_iterator_force_partial_alloc_fail;
         g_iterator_force_partial_alloc_fail = true;
         Value* iterator_fail = iterator_from_list_value(make_nil(interp), interp);

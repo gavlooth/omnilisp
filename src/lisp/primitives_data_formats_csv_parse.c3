@@ -63,11 +63,16 @@ fn bool csv_array_push(Value* arr_v, Value* val, Interp* interp) {
 
 fn Value* csv_row_push_field(Value* row, CsvFieldBuf* field, Interp* interp) {
     Value* cell = make_string(interp, field.data[:field.len]);
+    if (cell != null && cell.tag == ERROR) return cell;
     if (!csv_array_push(row, cell, interp)) {
         return raise_error(interp, "csv-parse: out of memory");
     }
     csv_field_clear(field);
     return null;
+}
+
+fn Value* csv_make_row(Interp* interp) @inline {
+    return make_array_checked(interp, 4, "csv-parse: out of memory");
 }
 
 fn Value* csv_rows_push_row(Value* rows, Value* row, Interp* interp) {
@@ -109,10 +114,12 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
     }
 
     char[] src = args[0].str_chars[:args[0].str_len];
-    if (src.len == 0) return make_array(interp, 0);
+    if (src.len == 0) return make_array_checked(interp, 0, "csv-parse: out of memory");
 
-    Value* rows = make_array(interp, 4);
-    Value* row = make_array(interp, 4);
+    Value* rows = make_array_checked(interp, 4, "csv-parse: out of memory");
+    if (rows == null || rows.tag != ARRAY) return rows;
+    Value* row = csv_make_row(interp);
+    if (row == null || row.tag != ARRAY) return row;
 
     CsvFieldBuf field;
     if (!csv_field_init(&field, 32)) {
@@ -156,7 +163,8 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 if (Value* err = csv_flush_field(row, &field, interp)) return err;
 
                 if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
-                row = make_array(interp, 4);
+                row = csv_make_row(interp);
+                if (row == null || row.tag != ARRAY) return row;
 
                 if (ch == '\r' && next == '\n') {
                     i += 2;
@@ -200,7 +208,8 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                     if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
                 }
 
-                row = make_array(interp, 4);
+                row = csv_make_row(interp);
+                if (row == null || row.tag != ARRAY) return row;
                 i += 2;
                 continue;
             }
@@ -209,7 +218,8 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 if (row.array_val.length > 0) {
                     if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
                 }
-                row = make_array(interp, 4);
+                row = csv_make_row(interp);
+                if (row == null || row.tag != ARRAY) return row;
                 i++;
                 continue;
             }
@@ -226,7 +236,8 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 if (Value* err = csv_rows_push_row(rows, row, interp)) return err;
             }
 
-            row = make_array(interp, 4);
+            row = csv_make_row(interp);
+            if (row == null || row.tag != ARRAY) return row;
             i++;
             continue;
         }

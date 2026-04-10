@@ -5,7 +5,7 @@ Last condensed: 2026-04-09
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 1
+Current actionable count: 2
 
 Completed backlog snapshots:
 
@@ -18,29 +18,64 @@ Use this file only for still-open work.
 
 ## Live Queue
 
-- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` migrate remaining internal collection constructor callsites onto checked OOM contracts
+- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010` migrate schema explain payload builders onto checked collection-constructor OOM contracts
   - problem:
-    - the runtime helper and language-facing collection surfaces are now
-      fail-closed, but many internal helpers still call legacy unchecked
-      `make_array(...)` / `make_hashmap(...)` directly and then immediately
-      dereference payload fields.
-    - representative remaining users include:
-      - `src/lisp/json.c3`
-      - `src/lisp/primitives_data_formats_csv_parse.c3`
-      - `src/lisp/primitives_toml_bridge.c3`
-      - schema/deduce payload builders and related metadata helpers
-    - this means collection-construction OOM behavior is no longer crashing in
-      the live iterator/error and language-facing ctor paths, but broad
-      internal collection payload construction still needs staged migration.
+    - the data-format bridge lane is now fail-closed, but schema explain still
+      constructs multiple payload maps with unchecked `make_hashmap(...)` and
+      then immediately writes through `hashmap_val`.
+    - concrete audited entrypoints and helpers include:
+      - `src/lisp/schema_explain_helpers.c3`
+      - `src/lisp/schema_explain_effect.c3`
+      - `src/lisp/schema_explain_effect_result_payload.c3`
+      - `src/lisp/schema_explain_effect_runtime.c3`
+      - `src/lisp/schema_explain_payload_helpers.c3`
+    - this means explain/trace payload construction can still crash on
+      constructor OOM instead of failing closed as an ordinary runtime error.
   - required closure:
-    - define the canonical checked constructor contract for internal collection
-      payload builders
-    - migrate the remaining high-risk callsites in coherent slices instead of
-      one umbrella patch
-    - keep bounded `memory-lifetime-smoke` and targeted feature slices green as
-      the migration expands
+    - move the schema explain map constructors onto checked helpers
+    - fail closed on checked `hashmap_set(...)` / grow failures in this lane
+    - add deterministic regressions for explain payload-map allocation failure
+    - keep bounded `memory-lifetime-smoke` green
+
+- [ ] `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011` migrate remaining runtime/status payload builders off unchecked collection constructors
+  - problem:
+    - after the data-format slice, there are still runtime-executed payload
+      builders that call unchecked `make_array(...)` / `make_hashmap(...)`
+      directly and then dereference or mutate the payload immediately.
+    - representative remaining users include:
+      - `src/lisp/async_process_signal_dns_process.c3`
+      - `src/lisp/prim_io_fs_handles.c3`
+      - `src/lisp/eval_dispatch_error_payloads.c3`
+      - `src/lisp/primitives_meta_types_ctor_helpers.c3`
+      - `src/lisp/async_process_spawn.c3`
+    - these are no longer mixed together with data-format parsing, so they need
+      their own staged migration lane.
+  - required closure:
+    - split the remaining runtime payload/status helpers into coherent
+      subfamilies if needed
+    - migrate each family onto checked constructors with explicit OOM behavior
+    - add focused regressions instead of relying only on the broad smoke slice
 
 ## Recently Closed
+
+- [x] `AUDIT-COLLECTION-CONSTRUCTOR-CALLSITE-MIGRATION-009` close the data-format bridge slice of internal collection-constructor OOM hardening and split the residual backlog by real callsite family
+  - closure evidence:
+    - `src/lisp/json.c3` and `src/lisp/primitives_toml_bridge.c3` now use
+      checked `ARRAY` / `HASHMAP` constructors plus checked hashmap insertion
+      in their recursive decode paths.
+    - nested conversion `ERROR`s in those files now propagate directly instead
+      of being embedded into partial arrays/dicts.
+    - `src/lisp/primitives_data_formats_csv_parse.c3` now uses checked row and
+      result-array constructors and propagates constructor/cell materialization
+      errors directly.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now proves JSON,
+      TOML, and CSV constructor OOM paths fail closed.
+    - the broad umbrella item is now split into:
+      - `AUDIT-COLLECTION-CONSTRUCTOR-SCHEMA-EXPLAIN-010`
+      - `AUDIT-COLLECTION-CONSTRUCTOR-RUNTIME-PAYLOADS-011`
+    - validation:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=133 fail=0`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build --sanitize=address && env ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:symbolize=0 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` -> `pass=133 fail=0`
 
 - [x] `AUDIT-ITERATOR-TAIL-ERROR-PROPAGATION-008` stop iterator tail-construction faults from degrading into silent truncation
   - closure evidence:

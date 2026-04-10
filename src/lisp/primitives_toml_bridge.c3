@@ -149,17 +149,22 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
                 : make_symbol(interp, interp.sym_false);
         case TOML_ARRAY: {
             usz count = (usz)omni_toml_datum_array_size(datum);
-            Value* arr = make_array(interp, count);
+            Value* arr = make_array_checked(interp, count, "toml-parse: out of memory");
+            if (arr == null || arr.tag != ARRAY) return arr;
             for (usz i = 0; i < count; i++) {
                 Value* v = toml_datum_to_omni(omni_toml_datum_array_elem(datum, (int)i), interp);
-                arr.array_val.items[i] = boundary_promote_to_root(v, interp);
+                if (v != null && v.tag == ERROR) return v;
+                Value* promoted = boundary_promote_to_root(v, interp);
+                if (promoted == null) return raise_error(interp, "toml-parse: out of memory");
+                arr.array_val.items[i] = promoted;
                 arr.array_val.length++;
             }
             return arr;
         }
         case TOML_TABLE: {
             usz count = (usz)omni_toml_datum_table_size(datum);
-            Value* dict = make_hashmap(interp, (uint)(count < 8 ? 8 : count * 2));
+            Value* dict = make_hashmap_checked(interp, (uint)(count < 8 ? 8 : count * 2), "toml-parse: out of memory");
+            if (dict == null || dict.tag != HASHMAP) return dict;
             for (usz i = 0; i < count; i++) {
                 char* key = omni_toml_datum_table_key(datum, (int)i);
                 int key_len = omni_toml_datum_table_key_len(datum, (int)i);
@@ -169,7 +174,13 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
                 }
                 Value* key_v = make_string(interp, key[:(usz)key_len]);
                 Value* v = toml_datum_to_omni(omni_toml_datum_table_value(datum, (int)i), interp);
-                hashmap_set(dict.hashmap_val, key_v, v, interp);
+                if ((key_v != null && key_v.tag == ERROR) ||
+                    (v != null && v.tag == ERROR)) {
+                    return key_v != null && key_v.tag == ERROR ? key_v : v;
+                }
+                if (!hashmap_set_checked(dict.hashmap_val, key_v, v, interp)) {
+                    return raise_error(interp, "toml-parse: out of memory");
+                }
             }
             return dict;
         }
