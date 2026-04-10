@@ -134,6 +134,7 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
                 line_len--;
             }
             Value* line = make_string(interp, content[start:line_len]);
+            if (line != null && line.tag == ERROR) return line;
             lines = make_cons(interp, line, lines);
             start = i + 1;
         }

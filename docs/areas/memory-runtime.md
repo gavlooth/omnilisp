@@ -143,6 +143,12 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - so schema-explain payload builders now return the existing
     `"schema explain: out of memory"` error instead of hard-aborting on an
     internal cons allocation failure.
+- Pure string/list materializers now fail closed on `make_string(...)` too:
+  - `string-upcase` / `string-downcase` no longer mutate a constructor
+    `ERROR` result,
+  - `string->list`, `string-split`, `string-graphemes`, and `read-lines`
+    now propagate per-element string-construction failure directly instead of
+    returning successful lists that embed `ERROR` values as ordinary items.
 - The staged internal collection-constructor OOM migration is now closed
   across the live runtime-facing families:
   - shared constructor substrate,

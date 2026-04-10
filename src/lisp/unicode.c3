@@ -64,7 +64,9 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
         if (prev_cp >= 0 && utf8proc_grapheme_break_stateful(prev_cp, cp, &state)) {
             // Grapheme boundary — emit cluster
             if (cluster_count < 512) {
-                clusters[cluster_count++] = make_string(interp, src[cluster_start..pos - 1]);
+                Value* cluster = make_string(interp, src[cluster_start..pos - 1]);
+                if (cluster != null && cluster.tag == ERROR) return cluster;
+                clusters[cluster_count++] = cluster;
             }
             cluster_start = pos;
         }
@@ -75,7 +77,9 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
 
     // Last cluster
     if (cluster_start < src.len && cluster_count < 512) {
-        clusters[cluster_count++] = make_string(interp, src[cluster_start..]);
+        Value* cluster = make_string(interp, src[cluster_start..]);
+        if (cluster != null && cluster.tag == ERROR) return cluster;
+        clusters[cluster_count++] = cluster;
     }
 
     // Build list in reverse

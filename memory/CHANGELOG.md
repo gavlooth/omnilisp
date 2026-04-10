@@ -1,5 +1,29 @@
 ## 2026-04-10
 
+- Closed the string/list materializer fail-open lane:
+  - `src/lisp/prim_string_transform.c3`
+    now makes `string-upcase` and `string-downcase` return string-constructor
+    `ERROR`s directly instead of mutating a non-STRING result, and
+    `string-split` now propagates per-part `make_string(...)` failure instead
+    of embedding it into a successful list.
+  - `src/lisp/prim_string_ops.c3`
+    now makes `string->list` propagate per-character `make_string(...)`
+    failure directly instead of consing an `ERROR` value into a normal list.
+  - `src/lisp/unicode.c3`
+    now makes `string-graphemes` propagate grapheme-cluster string materialization
+    failure directly instead of storing `ERROR` values into the cluster array
+    and later returning a successful list containing them.
+  - `src/lisp/prim_io_file.c3`
+    now makes `read-lines` propagate per-line `make_string(...)` failure
+    directly instead of embedding it into the intermediate line list.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins `string-upcase`, `string-downcase`, `string->list`,
+    `string-split`, and `string-graphemes` under forced string-wrapper
+    allocation failure.
+  - validation:
+    - `c3c build`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed the schema-explain list-builder fail-closed lane:
   - `src/lisp/schema_explain_payload_helpers.c3`
     now routes list accumulation and list reversal through one checked

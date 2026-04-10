@@ -22,6 +22,32 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-STRING-LIST-MATERIALIZERS-016` make pure string/list helper
+  surfaces fail closed on per-element string wrapper allocation failure
+  - closure evidence:
+    - `src/lisp/prim_string_transform.c3`
+      now makes `string-upcase` / `string-downcase` return constructor
+      `ERROR`s directly and makes `string-split` propagate per-part
+      string-allocation failure.
+    - `src/lisp/prim_string_ops.c3`
+      now makes `string->list` propagate per-character string wrapper
+      allocation failure instead of embedding an `ERROR` into a successful
+      list.
+    - `src/lisp/unicode.c3`
+      now makes `string-graphemes` propagate grapheme-cluster string
+      construction failure directly instead of storing `ERROR` values in the
+      cluster array/list.
+    - `src/lisp/prim_io_file.c3`
+      now makes `read-lines` propagate per-line string-construction failure
+      directly.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+      now pins `string-upcase`, `string-downcase`, `string->list`,
+      `string-split`, and `string-graphemes` under forced
+      `make_string(...)` allocation failure.
+    - validation:
+      - `c3c build`
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - [x] `AUDIT-SCHEMA-EXPLAIN-LIST-BUILDERS-015` make schema-explain list
   assembly fail closed instead of hard-aborting on internal cons allocation
   failure

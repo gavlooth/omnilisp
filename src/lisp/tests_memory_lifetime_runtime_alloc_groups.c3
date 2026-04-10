@@ -787,6 +787,52 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value*[1] upcase_args = { make_string(interp, "abc") };
+        Value*[1] downcase_args = { make_string(interp, "ABC") };
+        Value*[1] to_list_args = { make_string(interp, "abc") };
+        Value*[2] split_args = { make_string(interp, "a,b"), make_string(interp, ",") };
+        Value*[1] grapheme_args = { make_string(interp, "abc") };
+
+        bool setup_ok =
+            upcase_args[0] != null && upcase_args[0].tag == STRING &&
+            downcase_args[0] != null && downcase_args[0].tag == STRING &&
+            to_list_args[0] != null && to_list_args[0].tag == STRING &&
+            split_args[0] != null && split_args[0].tag == STRING &&
+            split_args[1] != null && split_args[1].tag == STRING &&
+            grapheme_args[0] != null && grapheme_args[0].tag == STRING;
+
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        Value* upcase_fail = setup_ok ? prim_string_upcase(upcase_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* downcase_fail = setup_ok ? prim_string_downcase(downcase_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* to_list_fail = setup_ok ? prim_string_to_list(to_list_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* split_fail = setup_ok ? prim_string_split(split_args[0:2], null, interp) : raise_error(interp, "setup failed");
+        Value* grapheme_fail = setup_ok ? prim_string_graphemes(grapheme_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        g_value_force_make_string_alloc_fail = saved_force;
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(upcase_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(downcase_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(to_list_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(split_fail, "out of memory while allocating string") &&
+            runtime_alloc_error_matches(grapheme_fail, "out of memory while allocating string");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: string list materializers fail closed on string wrapper alloc");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: string list materializers fail closed on string wrapper alloc (setup_ok=%s upcase=%s downcase=%s to_list=%s split=%s grapheme=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(upcase_fail),
+                runtime_alloc_error_text(downcase_fail),
+                runtime_alloc_error_text(to_list_fail),
+                runtime_alloc_error_text(split_fail),
+                runtime_alloc_error_text(grapheme_fail));
+            (*fail)++;
+        }
+    }
+
+    {
         bool first_ok = false;
         bool second_ok = false;
         bool third_ok = false;

@@ -167,6 +167,7 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
         usz off = offsets[(usz)i];
         usz clen = cp_lens[(usz)i];
         Value* char_str = make_string(interp, bytes[off:clen]);
+        if (char_str != null && char_str.tag == ERROR) return char_str;
         result = make_cons(interp, char_str, result);
     }
     return result;

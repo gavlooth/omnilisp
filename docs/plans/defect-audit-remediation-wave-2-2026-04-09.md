@@ -40,6 +40,28 @@ Post-wave follow-up (2026-04-09, late pass):
 
 Post-wave follow-up (2026-04-10):
 
+- The pure string/list materializer follow-up is now also closed:
+  - `src/lisp/prim_string_transform.c3`
+    now makes `string-upcase` / `string-downcase` return string-constructor
+    `ERROR`s directly and makes `string-split` propagate per-part string
+    allocation failure directly.
+  - `src/lisp/prim_string_ops.c3`
+    now makes `string->list` fail closed on per-character string wrapper
+    allocation instead of returning a list containing an `ERROR`.
+  - `src/lisp/unicode.c3`
+    now makes `string-graphemes` fail closed on grapheme-cluster string
+    materialization instead of storing `ERROR` values in the cluster list.
+  - `src/lisp/prim_io_file.c3`
+    now makes `read-lines` propagate per-line string materialization failure
+    directly.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+    now pins the pure string/list helper seam under forced
+    `make_string(...)` allocation failure.
+  - validation:
+    - `c3c build`
+    - bounded memory smoke:
+      - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - The schema-explain list-builder follow-up is now also closed:
   - `src/lisp/schema_explain_payload_helpers.c3`
     now routes list accumulation and reversal through a checked

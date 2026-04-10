@@ -34,6 +34,7 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
+    if (result != null && result.tag == ERROR) return result;
     for (usz i = 0; i < result.str_len; i++) {
         char c = result.str_chars[i];
         if (c >= 'a' && c <= 'z') {
@@ -53,6 +54,7 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
     }
 
     Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
+    if (result != null && result.tag == ERROR) return result;
     for (usz i = 0; i < result.str_len; i++) {
         char c = result.str_chars[i];
         if (c >= 'A' && c <= 'Z') {
@@ -190,6 +192,7 @@ fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
             } else {
                 part = make_string(interp, args[0].str_chars[start:part_len]);
             }
+            if (part != null && part.tag == ERROR) return part;
             parts = make_cons(interp, part, parts);
             start = i + 1;
         }
