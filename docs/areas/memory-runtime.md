@@ -79,6 +79,11 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   as copy-required, aligning the JIT lane with the normal boundary/env-copy
   rule that disjoint `ARRAY` / `HASHMAP` / `SET` / `METHOD_TABLE` / similar
   wrappers are not reused by identity.
+- The TCO recycle fast-reset gate now walks nested graph payloads
+  transitively before calling `scope_reset_temp_lane(...)`, so an owner-scope
+  or target-chain wrapper that still points into the recycle-scope TEMP lane
+  can no longer survive an in-place reset merely because the outer wrapper
+  shell itself lives outside TEMP.
 - Destination-builder memo entries are now explicitly treated as temporary
   build-scope state: nested child routing may memoize within one builder
   invocation, but those memo nodes are discarded when the builder returns or
@@ -99,7 +104,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1678/0`, `compiler: 85/0`).
   - `scripts/run_boundary_hardening.sh` passed end-to-end (Stage 0 through Stage 8, including Stage 4 ASAN with leak detection enabled).
 - Latest boundary smoke regression evidence:
-  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 92/0`).
+  - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'` passed (`unified: 93/0`).
 - Boundary return-path telemetry now reports zero copy fallback pressure in both profiles (`copy_fallback_total=0` in normal and ASAN boundary hardening runs).
 - Env-copy iterator payloads now route closure thunks through the same safe
   undelimited global-env clone helper as plain closure bindings, so iterator

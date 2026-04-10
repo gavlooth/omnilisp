@@ -1,5 +1,29 @@
 ## 2026-04-10
 
+- Closed a TCO recycle TEMP-graph detection drift:
+  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer treats
+    “graph-carrying wrapper itself is outside TEMP” as sufficient for the
+    recycle fast-reset gate.
+  - `env_chain_has_graph_binding_values_in_temp_scope(...)` now walks nested
+    `CONS`, `ARRAY`, `HASHMAP` / `SET`, `CLOSURE`, `PARTIAL_PRIM`,
+    `METHOD_TABLE`, `MODULE`, `ITERATOR`, and `INSTANCE` edges transitively,
+    with bounded cycle-aware visited sets, and it fails closed by reporting
+    “unsafe, do not fast-reset” on scan overflow.
+  - this closes the case where `runtime_prepare_tco_recycle_env(...)` could
+    call `scope_reset_temp_lane(...)` even though an owner-scope or
+    target-chain wrapper binding still pointed transitively into the recycle
+    scope TEMP lane.
+  - `src/lisp/tests_memory_lifetime_tco_budget_groups.c3` now includes a
+    focused manual regression proving a TCO recycle-scope nested `CONS` inside
+    an owner-scope `ARRAY` binding forces scope replacement and env-copy
+    instead of in-place TEMP reset, and
+    `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` wires that probe
+    into the bounded smoke lane.
+  - validation:
+    - `c3c build`
+    - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+    - `scripts/run_validation_container.sh bash -lc 'rm -rf build/obj/linux-x64 build/main && c3c build && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`
+
 - Closed a JIT TCO nested-alias reuse hole for partial wrappers:
   - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` no longer treats
     “wrapper already in the target chain” as sufficient to skip copying during

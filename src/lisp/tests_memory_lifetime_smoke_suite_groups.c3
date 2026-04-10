@@ -20,6 +20,7 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_txn_protocol_tests(interp, pass, fail);
     run_memory_lifetime_run_program_boundary_state_test(interp, pass, fail);
     run_memory_lifetime_run_program_error_boundary_state_test(interp, pass, fail);
+    run_memory_lifetime_tco_nested_temp_graph_recycle_guard_test(interp, pass, fail);
     run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(interp, pass, fail);
     run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(interp, pass, fail);
     run_memory_lifetime_method_table_abort_cleanup_test(interp, pass, fail);
