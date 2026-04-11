@@ -1,5 +1,22 @@
 ## 2026-04-11
 
+- Hardened the runtime `eval` data-to-expression conversion path for malformed
+  special forms:
+  - `if`, `quote`, `define`, `set!`, `checkpoint`, `capture`, quasiquote,
+    `unquote`, `unquote-splicing`, and `signal` now enforce structural arity
+    during value-to-expression reconstruction instead of defaulting missing
+    operands to `nil` or ignoring extras.
+  - `define`, two-operand `set!`, `capture`, and `signal` now reject non-symbol
+    names/tags instead of coercing them to symbol id `0`.
+  - Multi-argument `set!` data forms now lower through normal call dispatch,
+    matching the parser's generic collection setter shape.
+  - Added eval regressions for malformed special-form cases and generic
+    multi-argument `set!` lowering in the advanced stdlib numeric
+    introspection group.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=265 fail=0`
+
 - Fixed tail multi-argument calls carrying error-valued arguments through
   ESCAPE-lane cons promotion:
   - `make_cons` now distinguishes successful promotion of first-class `ERROR`

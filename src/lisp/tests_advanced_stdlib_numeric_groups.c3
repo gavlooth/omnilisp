@@ -372,6 +372,24 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
             "value->expr: expected expression form to be a proper list", pass, fail);
         test_error_contains(interp, "eval rejects improper lambda params", "(eval (list 'lambda (cons 'x 'y) 'x))",
             "value->expr: expected lambda parameters to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects short if form", "(eval '(if true 1))",
+            "value->expr: if expects exactly 3 arguments", pass, fail);
+        test_error_contains(interp, "eval rejects long if form", "(eval '(if true 1 2 3))",
+            "value->expr: if expects exactly 3 arguments", pass, fail);
+        test_error_contains(interp, "eval rejects long quote form", "(eval '(quote a b))",
+            "value->expr: quote expects exactly 1 argument", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol define name", "(eval '(define 42 \"x\"))",
+            "value->expr: define name must be a symbol", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol set name", "(eval '(set! 42 1))",
+            "value->expr: set! name must be a symbol", pass, fail);
+        test_eq(interp, "eval lowers generic set call", "(block (define eval-set-d (Dictionary 'a 1)) (eval '(set! eval-set-d 'b 2)) (ref eval-set-d 'b))",
+            2, pass, fail);
+        test_error_contains(interp, "eval rejects long checkpoint form", "(eval '(checkpoint 1 2))",
+            "value->expr: checkpoint expects exactly 1 argument", pass, fail);
+        test_error_contains(interp, "eval rejects long capture form", "(eval '(capture k 1 2))",
+            "value->expr: capture expects continuation name and body", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol signal tag", "(eval '(signal 42 1))",
+            "value->expr: signal tag must be a symbol", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco apply");
         test_eq(interp, "apply +", "(apply + (quote (1 2)))", 3, pass, fail);
         test_error_contains(interp, "apply rejects non-list args", "(apply + 1)",

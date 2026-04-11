@@ -21,12 +21,17 @@ queue; this file is supporting context for why the queue is ordered this way.
   preserves first-class `ERROR` values instead of confusing successful error
   value promotion with promotion failure, and `append` preserves the original
   improper-list error from `reverse`.
+- Eval data-to-expression fail-closed arity/name slice: malformed special-form
+  data for `if`, `quote`, `define`, `set!`, `checkpoint`, `capture`,
+  quasiquote/unquote forms, and `signal` now reports structural conversion
+  errors instead of defaulting missing operands, truncating extras, or coercing
+  non-symbol names/tags to symbol id `0`.
 
 ## Current Plan
 
-1. Fix `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096`, starting with
-   non-symbol heads/tags and exact special-form arity, then lambda/let
-   multi-body parity and `macroexpand` failure surfacing.
+1. Continue `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` by preserving
+   lambda/let multi-body parity through explicit `block` lowering, then make
+   `macroexpand` surface structural conversion failures.
 2. Normalize list walker improper-list behavior under
    `AUDIT-LIST-WALKER-IMPROPER-LIST-092`, preferably through shared traversal
    helpers instead of one-off guards.

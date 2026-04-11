@@ -25,10 +25,15 @@ Use this file only for still-open work.
     `val_to_sym`, `set!` trailing arguments, fail-open arity for several
     special forms, lambda/let multi-body truncation, and `macroexpand`
     fallback masking.
-  - next step: align `eval` conversion with parser fail-closed semantics:
-    reject malformed heads/tags, enforce exact special-form arity, preserve
-    multi-body forms through explicit `block` lowering where parser-equivalent,
-    and make `macroexpand` surface structural conversion failures.
+  - progress note: 2026-04-11 slice made value-to-expression conversion
+    fail closed for malformed `if`, `quote`, `define`, `set!`, `checkpoint`,
+    `capture`, quasiquote/unquote forms, and `signal`; non-symbol
+    define/set/signal names no longer coerce to symbol id `0`, and generic
+    multi-arg `set!` data forms lower through normal call dispatch.
+  - next step: finish parser parity by preserving lambda/let multi-body forms
+    through explicit `block` lowering where parser-equivalent, then make
+    `macroexpand` surface structural conversion failures instead of returning
+    the original malformed form.
 
 - [ ] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
   the language spec
