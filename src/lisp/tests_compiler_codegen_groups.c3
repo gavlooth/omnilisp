@@ -403,17 +403,17 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: List", "[FAIL] Compiler: List", pass, fail);
     }
-    // 58ab. Dictionary constructor compiles
+    // 58ab. Dictionary constructors compile through normal callable dispatch.
     {
         char[] code = compile_to_c3("(Dictionary 'a 1 'b 2)", interp);
-        bool ok = compiler_code_contains_all(code, {"aot::dict_from_args("})
-            && compiler_code_contains_none(code, {"unsupported"});
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi("})
+            && compiler_code_contains_none(code, {"aot::dict_from_args(", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: Dictionary", "[FAIL] Compiler: Dictionary", pass, fail);
     }
     {
         char[] code = compile_to_c3("(Dict 'a 1 'b 2)", interp);
-        bool ok = compiler_code_contains_all(code, {"aot::dict_from_args("})
-            && compiler_code_contains_none(code, {"unsupported"});
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi("})
+            && compiler_code_contains_none(code, {"aot::dict_from_args(", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: Dict", "[FAIL] Compiler: Dict", pass, fail);
     }
     // 58bb. TimePoint constructor compiles

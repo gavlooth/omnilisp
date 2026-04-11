@@ -59,9 +59,7 @@ fn usz Compiler.compile_list_or_dict_call_flat(Compiler* self, Expr* expr, bool 
 }
 
 fn bool Compiler.tail_call_requires_non_tail_path(Compiler* self, Expr* expr) {
-    return self.call_head_is(expr, "list")
-        || self.call_head_is(expr, "Dictionary")
-        || self.call_head_is(expr, "Dict");
+    return false;
 }
 
 fn usz Compiler.compile_zero_arg_tail_call(Compiler* self, Expr* expr) {

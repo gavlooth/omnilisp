@@ -72,12 +72,28 @@ fn void run_compiler_group_path_notation_tests(Interp* interp, usz* pass, usz* f
     }
 }
 
+fn void run_compiler_group_constructor_dispatch_shadowing_tests(Interp* interp, usz* pass, usz* fail) {
+    {
+        char[] code = compile_to_c3("(let (list (lambda (a b) a)) (list 1 2))", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: shadowed list uses call dispatch", "[FAIL] Compiler: shadowed list uses call dispatch", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(let (Dictionary (lambda (a b) a)) (Dictionary 1 2))", interp);
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi"})
+            && compiler_code_contains_none(code, {"aot::dict_from_args", "unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: shadowed Dictionary uses call dispatch", "[FAIL] Compiler: shadowed Dictionary uses call dispatch", pass, fail);
+    }
+}
+
 fn void run_compiler_group_set_path_tests(Interp* interp, usz* pass_out, usz* fail_out) {
     usz pass = 0;
     usz fail = 0;
     run_compiler_group_set_mutation_tests(interp, &pass, &fail);
     run_compiler_group_dot_index_tests(interp, &pass, &fail);
     run_compiler_group_path_notation_tests(interp, &pass, &fail);
+    run_compiler_group_constructor_dispatch_shadowing_tests(interp, &pass, &fail);
     *pass_out += pass;
     *fail_out += fail;
 }

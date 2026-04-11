@@ -1,5 +1,14 @@
 ## 2026-04-11
 
+- Removed name-only AOT list/dictionary constructor fast paths found by the
+  constructor/dispatch audit:
+  - AOT call lowering now routes `list`, `Dictionary`, and `Dict` through the
+    normal callable dispatch path instead of bypassing bindings by symbol name.
+  - Added compiler regressions for shadowed `list` and `Dictionary` bindings.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `compiler` slice: `pass=196 fail=0`
+
 - Fixed fixed-arity primitive fallback calls ignoring trailing arguments:
   - Shared multi-argument primitive application now rejects extra or missing
     arguments for primitives registered with fixed arity, while preserving
