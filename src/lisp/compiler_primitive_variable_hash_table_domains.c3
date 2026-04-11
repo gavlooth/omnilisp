@@ -56,7 +56,6 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("string-titlecase"), "aot::lookup_prim(\"string-titlecase\")");
     prim_hash_insert(st.intern("string-trim"), "aot::lookup_prim(\"string-trim\")");
     prim_hash_insert(st.intern("string->number"), "aot::lookup_prim(\"string->number\")");
-    prim_hash_insert(st.intern("number->string"), "aot::lookup_prim(\"number->string\")");
     prim_hash_insert(st.intern("string-contains?"), "aot::lookup_prim(\"string-contains?\")");
 
     // Type predicates

@@ -28,7 +28,7 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
 
     self.lexer.advance();  // consume '('
     if (self.lexer.current.type != T_SYMBOL ||
-        (uint)self.get_current_symbol() != (uint)self.interp.symbols.intern("syntax-match")) {
+        !parser_symbol_is(self, self.get_current_symbol(), "syntax-match")) {
         self.set_error(
             "macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))"
         );
@@ -37,7 +37,7 @@ fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     if (!self.parse_macro_syntax_match_body(&clauses)) return null;
 
     if (clauses.len() > 0) {
-        e.define_macro.clauses = (MacroClause*)self.alloc_ast_bytes(MacroClause.sizeof * clauses.len(), "out of memory while parsing macro clauses");
+        e.define_macro.clauses = (MacroClause*)self.alloc_ast_array_bytes(MacroClause.sizeof, clauses.len(), "out of memory while parsing macro clauses");
         if (e.define_macro.clauses == null) return null;
         for (usz i = 0; i < clauses.len(); i++) e.define_macro.clauses[i] = clauses[i];
         e.define_macro.clause_count = clauses.len();
@@ -75,11 +75,11 @@ fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation,
         return self.parse_defeffect(e);
     }
 
-    if ((uint)annotation == (uint)self.interp.symbols.intern("relation")) {
+    if (parser_symbol_is(self, annotation, "relation")) {
         return self.parse_define_relation_attr(e, attrs);
     }
 
-    if ((uint)annotation == (uint)self.interp.symbols.intern("schema")) {
+    if (parser_symbol_is(self, annotation, "schema")) {
         return self.parse_define_schema_attr(e);
     }
 

@@ -9,9 +9,15 @@ fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int t
     if (out == null || out.tag != HASHMAP) {
         return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: out of memory");
     }
-    Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
-    Value* exit_key = make_symbol(interp, interp.symbols.intern("exit-code"));
-    Value* sig_key = make_symbol(interp, interp.symbols.intern("term-signal"));
+    SymbolId pid_sym = interp.symbols.intern("pid");
+    SymbolId exit_sym = interp.symbols.intern("exit-code");
+    SymbolId sig_sym = interp.symbols.intern("term-signal");
+    if (pid_sym == INVALID_SYMBOL_ID || exit_sym == INVALID_SYMBOL_ID || sig_sym == INVALID_SYMBOL_ID) {
+        return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: failed to intern result keys");
+    }
+    Value* pid_key = make_symbol(interp, pid_sym);
+    Value* exit_key = make_symbol(interp, exit_sym);
+    Value* sig_key = make_symbol(interp, sig_sym);
     if (!hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
         !hashmap_set_checked(out.hashmap_val, exit_key, make_int(interp, exit_code), interp) ||
         !hashmap_set_checked(out.hashmap_val, sig_key, make_int(interp, term_signal), interp)) {
@@ -99,8 +105,13 @@ fn Value* prim_process_kill(Value*[] args, Env* env, Interp* interp) {
     }
     defer process_handle_end_use(ph);
 
-    int sig = (int)sig_v.int_val;
-    if (sig <= 0) sig = SIGKILL_VAL;
+    int sig = SIGKILL_VAL;
+    if (sig_v.int_val > 0) {
+        if (sig_v.int_val > (long)int.max) {
+            return io_raise(interp, "io/process-kill-invalid-sig", "process-kill: sig is out of range");
+        }
+        sig = (int)sig_v.int_val;
+    }
     int kill_status = omni_uv_process_kill(ph.uv_process, sig);
     if (kill_status < 0) {
         return io_raise(interp, "io/process-kill-failed", "process-kill: kill failed");

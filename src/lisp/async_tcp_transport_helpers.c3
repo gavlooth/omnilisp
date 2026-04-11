@@ -94,9 +94,12 @@ fn int tcp_accept_fd(int listener_fd) {
     return c_accept(listener_fd, null, null);
 }
 
-fn void parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms) {
+fn Value* parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms, Interp* interp) {
     *max_bytes = 4096;
     if (args.len >= 2 && is_int(args[1])) {
+        if (args[1].int_val <= 0) {
+            return io_raise(interp, "io/tcp-read-max-bytes-invalid", "tcp-read: max-bytes must be > 0");
+        }
         *max_bytes = (usz)args[1].int_val;
         if (*max_bytes > 65536) *max_bytes = 65536;
     }
@@ -105,6 +108,7 @@ fn void parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms) 
         *timeout_ms = args[2].int_val;
         if (*timeout_ms < 0) *timeout_ms = -1;
     }
+    return null;
 }
 
 fn Value* dns_result_to_ip_string(Interp* interp, void* result) {

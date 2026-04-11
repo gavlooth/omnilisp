@@ -258,7 +258,7 @@ fn void run_deduce_match_tests(Interp* interp, int* pass, int* fail) {
             "(handle (deduce 'match person '(person ?name ?age)) "
             "  (raise payload "
             "    (if (dict? payload) "
-            "        (symbol->string (ref payload 'code)) "
+            "        (String (ref payload 'code)) "
             "        \"deduce/match-out-of-memory\")))",
             interp
         );

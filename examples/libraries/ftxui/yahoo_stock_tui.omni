@@ -42,7 +42,7 @@
           (_ (Err "empty close series")))))))
 
 (define (stock/normalize-series series)
-  (map (lambda (x) (exact->inexact x)) (filter number? series)))
+  (map (lambda (x) (Double x)) (filter number? series)))
 
 (define (stock/load-series symbol range interval)
   (let (path (format "/v8/finance/chart/%s?range=%s&interval=%s&includePrePost=false"

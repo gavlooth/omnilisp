@@ -201,8 +201,8 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
-        if (is_string(elem) && elem.str_len > 0) {
-            ds.append_char(elem.str_chars[0]);
+        if (is_string(elem)) {
+            ds.append_string((String)elem.str_chars[:elem.str_len]);
         }
     }
     if (!is_nil(list)) {

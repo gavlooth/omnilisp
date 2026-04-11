@@ -38,8 +38,13 @@ fn Expr* Parser.parse_pipe(Parser* self) {
     for (usz i = 0; i < steps.len(); i++) {
         Expr* step = steps[i];
         if (step.tag == E_CALL) {
+            if (step.call.arg_count == usz.max) {
+                steps.free();
+                self.set_error("pipe call argument count overflow");
+                return null;
+            }
             usz new_count = step.call.arg_count + 1;
-            Expr** new_args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * new_count, "out of memory while growing pipe call arguments");
+            Expr** new_args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, new_count, "out of memory while growing pipe call arguments");
             if (new_args == null) { steps.free(); return null; }
             for (usz j = 0; j < step.call.arg_count; j++) { new_args[j] = step.call.args[j]; }
             new_args[step.call.arg_count] = acc;

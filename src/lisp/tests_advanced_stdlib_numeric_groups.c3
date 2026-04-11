@@ -106,8 +106,8 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_truthy(interp, "assert! false raises canonical payload",
         "(let (payload (handle (assert! (= 1 2) \"fail\") (raise msg msg))) "
         "  (and (dict? payload) "
-        "       (and (= (symbol->string (ref payload 'domain)) \"stdlib\") "
-        "            (and (= (symbol->string (ref payload 'code)) \"stdlib/assert-failed\") "
+        "       (and (= (String (ref payload 'domain)) \"stdlib\") "
+        "            (and (= (String (ref payload 'code)) \"stdlib/assert-failed\") "
         "                 (= (ref payload 'message) \"fail\")))))",
         pass, fail);
     test_eq(interp, "map+filter+foldl", "(foldl + 0 (filter (lambda (x) (> x 3)) (map (lambda (x) (* x 2)) (quote (1 2 3 4 5)))))", 28, pass, fail);
@@ -132,34 +132,34 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_truthy(interp, "<= float", "(<= 1.5 1.5)", pass, fail);
     test_truthy(interp, ">= float", "(>= 2.0 1.5)", pass, fail);
     test_double(interp, "unary neg float", "(- 0 3.14)", -3.14, pass, fail);
-    test_double(interp, "exact->inexact", "(exact->inexact 5)", 5.0, pass, fail);
-    test_eq(interp, "inexact->exact", "(inexact->exact 3.7)", 3, pass, fail);
-    test_eq(interp, "inexact->exact negative truncates toward zero", "(inexact->exact -3.7)", -3, pass, fail);
+    test_double(interp, "Double", "(Double 5)", 5.0, pass, fail);
+    test_eq(interp, "Integer", "(Integer 3.7)", 3, pass, fail);
+    test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
     test_double(interp, "string->number float", "(string->number \"3.14\")", 3.14, pass, fail);
     test_double(interp, "string->number exp", "(string->number \"1.5e2\")", 150.0, pass, fail);
     test_nil(interp, "string->number integer overflow => nil", "(string->number \"9223372036854775808\")", pass, fail);
     test_nil(interp, "string->number integer underflow => nil", "(string->number \"-9223372036854775809\")", pass, fail);
     test_str_val(interp, "Integer ctor overflow payload code",
-        "(handle (Integer \"9223372036854775808\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer \"9223372036854775808\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "Integer ctor underflow payload code",
-        "(handle (Integer \"-9223372036854775809\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer \"-9223372036854775809\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "Integer ctor huge-double payload code",
-        "(handle (Integer (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp, "inexact->exact huge-double payload code",
-        "(handle (inexact->exact (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+    test_str_val(interp, "Integer huge-double payload code",
+        "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str(interp, "number->string double", "(number->string 3.14)", pass, fail);
-    test_str_val(interp, "number->string invalid arg payload domain",
-        "(handle (number->string 'bad) (raise msg (symbol->string (ref msg 'domain))))",
+    test_str(interp, "String double", "(String 3.14)", pass, fail);
+    test_str_val(interp, "String invalid arg payload domain",
+        "(handle (String nil) (raise msg (String (ref msg 'domain))))",
         "type", pass, fail);
-    test_str_val(interp, "number->string invalid arg payload code",
-        "(handle (number->string 'bad) (raise msg (symbol->string (ref msg 'code))))",
+    test_str_val(interp, "String invalid arg payload code",
+        "(handle (String nil) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "read-string parse failure payload code",
-        "(handle (read-string \"(+ 1\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (read-string \"(+ 1\") (raise msg (String (ref msg 'code))))",
         "runtime/read-string-failed", pass, fail);
 
     // === MATH LIBRARY TESTS (Phase 2) ===
@@ -215,30 +215,30 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_eq(interp, "empty Array", "(length (Array))", 0, pass, fail);
 
     // === SET TESTS (Phase 9) ===
-    test_eq(interp, "set-size", "(set-size (Set 1 2 3))", 3, pass, fail);
+    test_eq(interp, "length", "(length (Set 1 2 3))", 3, pass, fail);
     test_eq(interp, "set length", "(length (Set 1 2 3))", 3, pass, fail);
     test_truthy(interp, "set-contains?", "(set-contains? (Set 1 2 3) 2)", pass, fail);
     test_nil(interp, "set-contains? miss", "(set-contains? (Set 1 2 3) 5)", pass, fail);
     setup(interp, "(define test-set (Set 1 2))");
     test_tag_interp(interp, "set-add returns void", "(set-add test-set 3)", VOID, pass, fail);
-    test_eq(interp, "set-add", "(set-size test-set)", 3, pass, fail);
+    test_eq(interp, "set-add", "(length test-set)", 3, pass, fail);
     test_truthy(interp, "set-add contains", "(set-contains? test-set 3)", pass, fail);
     test_tag_interp(interp, "set-remove returns void", "(set-remove test-set 2)", VOID, pass, fail);
-    test_eq(interp, "set-remove", "(set-size test-set)", 2, pass, fail);
+    test_eq(interp, "set-remove", "(length test-set)", 2, pass, fail);
     test_nil(interp, "set-remove gone", "(set-contains? test-set 2)", pass, fail);
-    test_eq(interp, "set dedup", "(set-size (Set 1 1 2 2 3))", 3, pass, fail);
-    test_truthy(interp, "set->list canonical order",
-        "(= (set->list (Set 3 1 2 2)) '(1 2 3))", pass, fail);
-    test_truthy(interp, "set->list canonical after mutations",
-        "(let (s (Set 5 1 3)) (block (set-add s 4) (set-remove s 3) (= (set->list s) '(1 4 5))))", pass, fail);
+    test_eq(interp, "set dedup", "(length (Set 1 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "List canonical order",
+        "(= (List (Set 3 1 2 2)) '(1 2 3))", pass, fail);
+    test_truthy(interp, "List canonical after mutations",
+        "(let (s (Set 5 1 3)) (block (set-add s 4) (set-remove s 3) (= (List s) '(1 4 5))))", pass, fail);
     test_truthy(interp, "set type-of is Set", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
 
     // === CONVENIENCE TESTS (Phase 12) ===
     test_eq(interp, "read-string", "(read-string \"(+ 1 2)\")", 3, pass, fail);
-    test_truthy(interp, "symbol->string", "(= (symbol->string 'hello) \"hello\")", pass, fail);
-    test_truthy(interp, "string->symbol", "(= (string->symbol \"abc\") 'abc)", pass, fail);
-    test_str_val(interp, "string->symbol invalid arg payload code",
-        "(handle (string->symbol 42) (raise msg (symbol->string (ref msg 'code))))",
+    test_truthy(interp, "String", "(= (String 'hello) \"hello\")", pass, fail);
+    test_truthy(interp, "Symbol", "(= (Symbol \"abc\") 'abc)", pass, fail);
+    test_str_val(interp, "Symbol invalid arg payload code",
+        "(handle (Symbol 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
 }
 
@@ -300,6 +300,16 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_nil(interp, "even? 3", "(even? 3)", pass, fail);
     test_truthy(interp, "odd? 3", "(odd? 3)", pass, fail);
     test_nil(interp, "odd? 4", "(odd? 4)", pass, fail);
+    test_error_contains(interp, "abs long min overflow",
+        "(abs (Integer \"-9223372036854775808\"))", "abs: integer overflow", pass, fail);
+    test_error_contains(interp, "divide long min by negative one overflow",
+        "(/ (Integer \"-9223372036854775808\") -1)", "/: integer overflow", pass, fail);
+    test_error_contains(interp, "mod long min by negative one overflow",
+        "(% (Integer \"-9223372036854775808\") -1)", "%: integer overflow", pass, fail);
+    test_error_contains(interp, "gcd long min overflow",
+        "(gcd (Integer \"-9223372036854775808\") 2)", "gcd: integer overflow", pass, fail);
+    test_error_contains(interp, "lcm long min overflow",
+        "(lcm (Integer \"-9223372036854775808\") 2)", "lcm: integer overflow", pass, fail);
 
     // === FORMAT & DISPLAY TESTS (Phase 5) ===
     test_str_val(interp, "cl-format ~a", "(cl-format \"~a\" 42)", "42", pass, fail);
@@ -321,6 +331,10 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_str_val(interp, "format %%", "(format \"100%%\")", "100%", pass, fail);
     test_str_val(interp, "format mixed", "(format \"%s is %d\" \"x\" 42)", "x is 42", pass, fail);
     test_str_val(interp, "format %b zero", "(format \"%b\" 0)", "0", pass, fail);
+    test_error_contains(interp, "format %b long min overflow",
+        "(format \"%b\" (Integer \"-9223372036854775808\"))", "format: %b integer overflow", pass, fail);
+    test_error_contains(interp, "format width overflow",
+        "(format \"%2147483648s\" 1)", "format: width or precision too large", pass, fail);
     test_str_val(interp, "format %d neg", "(format \"%d\" -7)", "-7", pass, fail);
     test_str_val(interp, "format %.0f", "(format \"%.0f\" 3.7)", "3", pass, fail);
 }
@@ -347,6 +361,8 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         test_truthy(interp, "bound? Dict shorthand", "(bound? 'Dict)", pass, fail);
         test_nil(interp, "bound? dictionary removed", "(bound? 'dictionary)", pass, fail);
         test_nil(interp, "bound? dict removed", "(bound? 'dict)", pass, fail);
+        test_truthy(interp, "bound? String canonical", "(bound? 'String)", pass, fail);
+        test_nil(interp, "bound? number->string removed", "(bound? 'number->string)", pass, fail);
         test_truthy(interp, "bound? Array canonical", "(bound? 'Array)", pass, fail);
         test_nil(interp, "bound? array removed", "(bound? 'array)", pass, fail);
         test_truthy(interp, "bound? Coroutine canonical", "(bound? 'Coroutine)", pass, fail);

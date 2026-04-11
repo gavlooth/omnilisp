@@ -116,9 +116,10 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     SymbolId db_name = (*attrs)[1];
     bool materialized_view = false;
     SymbolId materialized_refresh_policy = 0;
-    SymbolId sym_materialized = self.interp.symbols.intern("materialized");
-    SymbolId sym_manual = self.interp.symbols.intern("manual");
-    SymbolId sym_on_read = self.interp.symbols.intern("on-read");
+    SymbolId sym_materialized = self.intern_or_error("materialized", "relation definition: failed to intern materialized attribute");
+    SymbolId sym_manual = self.intern_or_error("manual", "relation definition: failed to intern materialized refresh policy");
+    SymbolId sym_on_read = self.intern_or_error("on-read", "relation definition: failed to intern materialized refresh policy");
+    if (self.has_error) return null;
     for (usz i = 2; i < attrs.len(); i++) {
         SymbolId attr = (*attrs)[i];
         if ((uint)attr == (uint)sym_materialized) {
@@ -145,11 +146,12 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
 
     SymbolId key_col = 0;
     SymbolId index_col = 0;
-    SymbolId sym_key = self.interp.symbols.intern("key");
-    SymbolId sym_unique = self.interp.symbols.intern("unique");
-    SymbolId sym_index = self.interp.symbols.intern("index");
-    SymbolId sym_ref = self.interp.symbols.intern("ref");
-    SymbolId sym_check = self.interp.symbols.intern("check");
+    SymbolId sym_key = self.intern_or_error("key", "relation definition: failed to intern column role");
+    SymbolId sym_unique = self.intern_or_error("unique", "relation definition: failed to intern column role");
+    SymbolId sym_index = self.intern_or_error("index", "relation definition: failed to intern column role");
+    SymbolId sym_ref = self.intern_or_error("ref", "relation definition: failed to intern column role");
+    SymbolId sym_check = self.intern_or_error("check", "relation definition: failed to intern column role");
+    if (self.has_error) return null;
 
     if (self.lexer.current.type != T_SYMBOL) {
         self.set_error("expected relation name");

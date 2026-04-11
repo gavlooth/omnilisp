@@ -20,12 +20,23 @@ fn Value* jit_signal_call_fast_path_primitive_list_preserving_error(Interp* inte
     usz argc = 0;
     Value* curr = arg_list;
     while (curr != null && curr.tag == CONS) {
+        if (argc == usz.max) {
+            return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+        }
         argc++;
         curr = curr.cons_val.cdr;
     }
     // stdlib wrappers often encode fixed-arity payloads as dotted cons spines.
-    if (curr != null && curr.tag != NIL) argc++;
+    if (curr != null && curr.tag != NIL) {
+        if (argc == usz.max) {
+            return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+        }
+        argc++;
+    }
 
+    if (argc > usz.max / Value*.sizeof) {
+        return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+    }
     Value** argv = argc > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * argc) : null;
     if (argc > 0 && argv == null) {
         return runtime_effects_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");

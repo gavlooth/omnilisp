@@ -161,10 +161,10 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "                      (has? payload 'data))))))",
         pass, fail);
     test_str_val(interp, "try canonical payload domain",
-        "(try (lambda (xx) (resolve 42)) (lambda (payload) (symbol->string (ref payload 'domain))))",
+        "(try (lambda (xx) (resolve 42)) (lambda (payload) (String (ref payload 'domain))))",
         "runtime", pass, fail);
     test_str_val(interp, "try canonical payload code",
-        "(try (lambda (xx) (resolve 42)) (lambda (payload) (symbol->string (ref payload 'code))))",
+        "(try (lambda (xx) (resolve 42)) (lambda (payload) (String (ref payload 'code))))",
         "runtime/invalid-continuation", pass, fail);
     test_str_val(interp, "try canonical payload message",
         "(try (lambda (xx) (resolve 42)) (lambda (payload) (ref payload 'message)))",

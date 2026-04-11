@@ -25,7 +25,9 @@ fn bool ui_ftxui_str_eq(char[] left, char[] right) @inline {
 fn bool ui_ftxui_push_heap_ptr(UiFtxuiRunState* state, void* ptr) {
     if (ptr == null) return true;
     if (state.heap_ptr_count == state.heap_ptr_capacity) {
+        if (state.heap_ptr_capacity > usz.max / 2) return false;
         usz new_cap = state.heap_ptr_capacity == 0 ? 8 : state.heap_ptr_capacity * 2;
+        if (new_cap > usz.max / void*.sizeof) return false;
         void** grown = (void**)mem::realloc(state.heap_ptrs, void*.sizeof * new_cap);
         if (grown == null) return false;
         state.heap_ptrs = grown;
@@ -38,7 +40,9 @@ fn bool ui_ftxui_push_heap_ptr(UiFtxuiRunState* state, void* ptr) {
 fn bool ui_ftxui_push_component(UiFtxuiRunState* state, OmniFtxuiComponent* component) {
     if (component == null) return true;
     if (state.component_count == state.component_capacity) {
+        if (state.component_capacity > usz.max / 2) return false;
         usz new_cap = state.component_capacity == 0 ? 8 : state.component_capacity * 2;
+        if (new_cap > usz.max / OmniFtxuiComponent*.sizeof) return false;
         OmniFtxuiComponent** grown =
             (OmniFtxuiComponent**)mem::realloc(state.components, OmniFtxuiComponent*.sizeof * new_cap);
         if (grown == null) return false;
@@ -109,7 +113,9 @@ fn Value* ui_ftxui_track_heap_or_oom(UiFtxuiRunState* state, void* ptr, Interp* 
 
 fn Value* ui_ftxui_dict_get(Value* dict, char[] key, Interp* interp) {
     if (!is_dict(dict)) return null;
-    return hashmap_get(dict.hashmap_val, make_symbol(interp, interp.symbols.intern(key)));
+    SymbolId key_sym = interp.symbols.intern(key);
+    if (key_sym == INVALID_SYMBOL_ID) return null;
+    return hashmap_get(dict.hashmap_val, make_symbol(interp, key_sym));
 }
 
 fn char[] ui_ftxui_kind_name(Value* kind_value, Interp* interp) {
@@ -143,6 +149,7 @@ fn Value* ui_ftxui_collect_number_sequence(
     } else if (is_cons(seq)) {
         Value* cur = seq;
         while (is_cons(cur)) {
+            if (count == usz.max) return raise_error(interp, message);
             count++;
             cur = cdr(cur);
         }
@@ -152,6 +159,7 @@ fn Value* ui_ftxui_collect_number_sequence(
     }
 
     if (count == 0) return raise_error(interp, "ui-ftxui: graph requires at least one numeric sample");
+    if (count > usz.max / double.sizeof) return raise_error(interp, "ui-ftxui: graph series too large");
 
     double* values = (double*)mem::malloc(double.sizeof * count);
     if (values == null) return raise_error(interp, "ui-ftxui: out of memory allocating graph series");

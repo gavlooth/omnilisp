@@ -27,6 +27,9 @@ fn Value* check_lambda_call_boundary(Closure* closure, Value*[] args, usz provid
         if (args.len <= DISPATCH_INLINE_ARG_CAPACITY) {
             arg_types = arg_types_inline[:args.len];
         } else {
+            if (args.len > usz.max / TypeId.sizeof) {
+                return raise_error(interp, "lambda type check: out of memory");
+            }
             arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
             if (arg_types_storage == null) {
                 return raise_error(interp, "lambda type check: out of memory");
@@ -61,6 +64,9 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
         if (args.len <= DISPATCH_INLINE_ARG_CAPACITY) {
             arg_types = arg_types_inline[:args.len];
         } else {
+            if (args.len > usz.max / TypeId.sizeof) {
+                return raise_error(interp, "method dispatch: out of memory");
+            }
             arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * args.len);
             if (arg_types_storage == null) {
                 return raise_error(interp, "method dispatch: out of memory");

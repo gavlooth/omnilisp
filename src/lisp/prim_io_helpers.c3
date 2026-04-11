@@ -114,6 +114,7 @@ fn bool io_input_state_append(InterpInputState* state, char[] text) {
     defer state.mu.unlock();
 
     if (state.closed) return false;
+    if (state.len > usz.max - text.len) return false;
     usz needed = state.len + text.len;
     if (!io_input_state_ensure_capacity_locked(state, needed)) return false;
     mem::copy(state.buf + state.len, text.ptr, text.len);

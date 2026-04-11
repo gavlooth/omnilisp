@@ -79,8 +79,10 @@ fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* in
                     if (inferred != bound && !interp.types.is_subtype(inferred, bound)) {
                         char[128] ebuf;
                         char[] param_name = interp.symbols.get_name(param);
-                        char[] bound_name = interp.symbols.get_name(interp.types.types[(usz)bound].name);
-                        char[] actual_name = interp.symbols.get_name(interp.types.types[(usz)inferred].name);
+                        TypeInfo* bound_info = interp.types.get(bound);
+                        TypeInfo* inferred_info = interp.types.get(inferred);
+                        char[] bound_name = bound_info != null ? interp.symbols.get_name(bound_info.name) : "<invalid-type-id>";
+                        char[] actual_name = inferred_info != null ? interp.symbols.get_name(inferred_info.name) : "<invalid-type-id>";
                         char[] emsg;
                         if (try formatted = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
                             (ZString)param_name, (ZString)bound_name, (ZString)actual_name)) {

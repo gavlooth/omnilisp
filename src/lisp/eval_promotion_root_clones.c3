@@ -388,6 +388,10 @@ fn Value* root_store_clone_method_table_to_scope(
     dst_mt.fallback = null;
 
     if (dst_mt.capacity > 0) {
+        if (dst_mt.capacity > usz.max / MethodEntry.sizeof) {
+            mem::free(dst_mt);
+            return null;
+        }
         dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
         if (dst_mt.entries == null) {
             mem::free(dst_mt);

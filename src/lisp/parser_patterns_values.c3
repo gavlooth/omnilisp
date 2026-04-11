@@ -40,8 +40,9 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
         p.elem_count = elems.len();
         p.elements = null;
         if (p.elem_count > 0) {
-            p.elements = (Pattern**)self.alloc_ast_bytes(
-                Pattern*.sizeof * p.elem_count,
+            p.elements = (Pattern**)self.alloc_ast_array_bytes(
+                Pattern*.sizeof,
+                p.elem_count,
                 "out of memory while allocating sequence pattern"
             );
             if (p.elements == null) { elems.free(); return null; }
@@ -60,8 +61,9 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     p.elem_count = elems.len();
     p.elements = null;
     if (p.elem_count > 0) {
-        p.elements = (Pattern**)self.alloc_ast_bytes(
-            Pattern*.sizeof * p.elem_count,
+        p.elements = (Pattern**)self.alloc_ast_array_bytes(
+            Pattern*.sizeof,
+            p.elem_count,
             "out of memory while allocating sequence pattern"
         );
         if (p.elements == null) { elems.free(); return null; }
@@ -105,8 +107,9 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     p.dict_key_count = keys.len();
     p.dict_keys = null;
     if (p.dict_key_count > 0) {
-        p.dict_keys = (SymbolId*)self.alloc_ast_bytes(
-            SymbolId.sizeof * p.dict_key_count,
+        p.dict_keys = (SymbolId*)self.alloc_ast_array_bytes(
+            SymbolId.sizeof,
+            p.dict_key_count,
             "out of memory while allocating dict pattern keys"
         );
         if (p.dict_keys == null) { keys.free(); return null; }
@@ -120,7 +123,8 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
 
 fn Pattern* Parser.parse_symbol_pattern(Parser* self) {
     SymbolId sym = self.get_current_symbol();
-    SymbolId sym_nil = self.interp.symbols.intern("nil");
+    SymbolId sym_nil = self.intern_or_error("nil", "parser: failed to intern nil pattern symbol");
+    if (sym_nil == INVALID_SYMBOL_ID) return null;
 
     Pattern* p = self.alloc_pattern();
     if (p == null) return null;

@@ -24,6 +24,8 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_str_val(interp, "utf8 substring", "(substring \"caf\xc3\xa9\" 0 3)", "caf", pass, fail);
     test_str_val(interp, "utf8 substring mid", "(substring \"h\xc3\xa9llo\" 1 3)", "\xc3\xa9l", pass, fail);
     test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
+    test_str_val(interp, "list->string preserves multibyte chars",
+        "(list->string (list \"\xc3\xa9\" \"x\"))", "\xc3\xa9x", pass, fail);
     test_error_contains(interp, "list->string rejects improper list tail",
         "(list->string (cons \"a\" 2))", "list->string: expected a proper list", pass, fail);
 }
@@ -63,7 +65,7 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
     test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
-    test_eq(interp, "Set ctor dedup", "(set-size (Set 1 2 2 3))", 3, pass, fail);
+    test_eq(interp, "Set ctor dedup", "(length (Set 1 2 2 3))", 3, pass, fail);
     test_truthy(interp, "Iterator ctor from list type", "(= (type-of (Iterator '(1 2 3))) 'Iterator)", pass, fail);
     test_truthy(interp, "Coroutine ctor type",
         "(= (type-of (Coroutine (lambda () 1))) 'Coroutine)", pass, fail);
@@ -78,51 +80,51 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_eq(interp, "ctor boundary iterator explicit Iterator conversion", "(ctor-only-iter (Iterator [1 2 3]))", 33, pass, fail);
     test_str_val(interp,
         "Integer ctor invalid string payload code",
-        "(handle (Integer \"abc\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer \"abc\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Double ctor invalid string payload code",
-        "(handle (Double \"abc\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Double \"abc\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "String ctor invalid payload code",
-        "(handle (String nil) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (String nil) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Symbol ctor invalid payload code",
-        "(handle (Symbol 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Symbol 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Dictionary ctor odd-arity payload code",
-        "(handle (Dictionary 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Dictionary 'a) (raise msg (String (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
         "Dict shorthand odd-arity payload code",
-        "(handle (Dict 'a) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Dict 'a) (raise msg (String (ref msg 'code))))",
         "type/arity", pass, fail);
     test_str_val(interp,
         "Nil ctor invalid payload code",
-        "(handle (Nil 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Nil 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Void ctor invalid payload code",
-        "(handle (Void 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Void 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Closure ctor invalid payload code",
-        "(handle (Closure 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Closure 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Iterator ctor invalid payload code",
-        "(handle (Iterator 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Iterator 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "__make-iterator internal helper invalid payload code",
-        "(handle (__make-iterator 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (__make-iterator 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_truthy(interp,
         "Coroutine ctor invalid payload code",
-        "(= (handle (Coroutine 42) (raise msg (symbol->string (ref msg 'code)))) "
+        "(= (handle (Coroutine 42) (raise msg (String (ref msg 'code)))) "
         "   \"type/arg-mismatch\")",
         pass, fail);
 }
@@ -314,91 +316,91 @@ fn void run_advanced_effect_continuation_tests(Interp* interp, int* pass, int* f
     test_tag(interp, "resolve outside handler payload tag", "(handle (resolve 42) (raise msg msg))", HASHMAP, pass, fail);
     test_str_val(interp,
         "resolve outside handler payload domain",
-        "(handle (resolve 42) (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (resolve 42) (raise msg (String (ref msg 'domain))))",
         "runtime", pass, fail);
     test_str_val(interp,
         "resolve outside handler payload code",
-        "(handle (resolve 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (resolve 42) (raise msg (String (ref msg 'code))))",
         "runtime/invalid-continuation", pass, fail);
     test_str_val(interp,
         "capture outside checkpoint payload code",
-        "(handle (capture k 1) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (capture k 1) (raise msg (String (ref msg 'code))))",
         "runtime/capture-outside-checkpoint", pass, fail);
     test_str_val(interp,
         "effect arg mismatch payload code",
-        "(handle (signal io/read-file 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (signal io/read-file 42) (raise msg (String (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
     test_str_val(interp,
         "unhandled effect payload code",
-        "(handle (signal no-handler 1) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (signal no-handler 1) (raise msg (String (ref msg 'code))))",
         "runtime/unhandled-effect", pass, fail);
     test_str_val(interp,
         "scheduler offload payload domain",
-        "(handle (offload 'nope 1) (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (offload 'nope 1) (raise msg (String (ref msg 'domain))))",
         "scheduler", pass, fail);
     test_str_val(interp,
         "scheduler offload payload code",
-        "(handle (offload 'nope 1) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (offload 'nope 1) (raise msg (String (ref msg 'code))))",
         "scheduler/offload-unsupported-op", pass, fail);
     test_str_val(interp,
         "scheduler offload cpu-only payload code",
-        "(handle (offload 'http-get \"https://example.com\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (offload 'http-get \"https://example.com\") (raise msg (String (ref msg 'code))))",
         "scheduler/offload-op-cpu-only", pass, fail);
     test_str_val(interp,
         "scheduler join-timeout payload code",
-        "(handle (block (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (block (define t-sched-timeout (thread-spawn 'sleep-ms 20)) (thread-join-timeout t-sched-timeout 0)) (raise msg (String (ref msg 'code))))",
         "scheduler/thread-join-timeout", pass, fail);
     test_str_val(interp,
         "io tcp-connect payload domain",
-        "(handle (tcp-connect 42 80) (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (tcp-connect 42 80) (raise msg (String (ref msg 'domain))))",
         "io", pass, fail);
     test_str_val(interp,
         "io tcp-connect payload code",
-        "(handle (tcp-connect 42 80) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tcp-connect 42 80) (raise msg (String (ref msg 'code))))",
         "io/tcp-connect-host-not-string", pass, fail);
     test_str_val(interp,
         "io tcp-listen payload code",
-        "(handle (tcp-listen \"bad-host\" 0) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tcp-listen \"bad-host\" 0) (raise msg (String (ref msg 'code))))",
         "io/tcp-listen-fiber-required", pass, fail);
     test_str_val(interp,
         "io dns-resolve payload code",
-        "(await (spawn (lambda () (handle (dns-resolve \"bad host\") (raise msg (symbol->string (ref msg 'code)))))))",
+        "(await (spawn (lambda () (handle (dns-resolve \"bad host\") (raise msg (String (ref msg 'code)))))))",
         "io/dns-resolve-resolution-failed", pass, fail);
     test_str_val(interp,
         "deduce dispatch payload domain",
-        "(handle (deduce 123) (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (deduce 123) (raise msg (String (ref msg 'domain))))",
         "deduce", pass, fail);
     test_str_val(interp,
         "deduce dispatch payload code",
-        "(handle (deduce 123) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (deduce 123) (raise msg (String (ref msg 'code))))",
         "deduce/dispatch-command-not-symbol", pass, fail);
     test_str_val(interp,
         "deduce open payload code",
-        "(handle (deduce 'open 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (deduce 'open 42) (raise msg (String (ref msg 'code))))",
         "deduce/open-path-not-string-or-memory", pass, fail);
     test_str_val(interp,
         "deduce query payload code",
-        "(handle (deduce 'query) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (deduce 'query) (raise msg (String (ref msg 'code))))",
         "deduce/query-expected-relation-filter", pass, fail);
     test_str_val(interp,
         "regex re-match payload domain",
-        "(handle (re-match 42 \"x\") (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (re-match 42 \"x\") (raise msg (String (ref msg 'domain))))",
         "regex", pass, fail);
     test_str_val(interp,
         "regex re-match payload code",
-        "(handle (re-match 42 \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-match 42 \"x\") (raise msg (String (ref msg 'code))))",
         "regex/re-match-pattern-not-string", pass, fail);
     test_str_val(interp,
         "parser pika-parse payload domain",
-        "(handle (pika/parse 42 \"x\") (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (pika/parse 42 \"x\") (raise msg (String (ref msg 'domain))))",
         "parser", pass, fail);
     test_str_val(interp,
         "parser pika-parse payload code",
-        "(handle (pika/parse 42 \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/parse 42 \"x\") (raise msg (String (ref msg 'code))))",
         "parser/parse-grammar-not-symbol", pass, fail);
     test_str_val(interp,
         "parser pika-grammar payload code",
-        "(handle (pika/grammar 'g-parser-bad '(rule start (nope \"a\"))) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/grammar 'g-parser-bad '(rule start (nope \"a\"))) (raise msg (String (ref msg 'code))))",
         "parser/grammar-unknown-operator", pass, fail);
 
     test_eq(interp, "multi-capture sum", "(checkpoint (+ (capture k1 (k1 10)) (capture k2 (k2 20))))", 30, pass, fail);

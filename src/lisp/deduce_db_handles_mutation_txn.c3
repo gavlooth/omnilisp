@@ -72,8 +72,9 @@ fn bool deduce_txn_log_insert(DeduceTxn* txn, Relation* rel, void* key_data, usz
     if (g_deduce_force_txn_mutation_log_fail) return false;
     DeduceTxnMutationEntry* entry = deduce_txn_lookup_or_add_mutation_entry(txn, rel);
     if (entry == null) return false;
+    if (!deduce_delta_set_append_encoded_tuple(&entry.inserted_tuples, key_data, key_len)) return false;
     if (entry.inserted_count < ulong.max) entry.inserted_count++;
-    return deduce_delta_set_append_encoded_tuple(&entry.inserted_tuples, key_data, key_len);
+    return true;
 }
 
 fn bool deduce_txn_log_delete(DeduceTxn* txn, Relation* rel) {

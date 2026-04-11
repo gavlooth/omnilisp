@@ -17,6 +17,10 @@ fn void Compiler.init(Compiler* self, Interp* interp) {
     self.error_message = "";
     self.output.init(mem, 8192);
     init_prim_hash(interp);
+    if (g_prim_hash_init_failed) {
+        self.set_compile_error("compiler: failed to initialize primitive hash table");
+        return;
+    }
     self.compiled_module_count = 0;
     self.compiled_module_capacity = 16;
     usz registry_bytes = 0;

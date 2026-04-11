@@ -7,6 +7,21 @@ bool g_hashmap_force_struct_alloc_fail = false;
 bool g_hashmap_force_entries_alloc_fail = false;
 bool g_hashmap_force_grow_entries_alloc_fail = false;
 
+fn bool hashmap_is_pow2(uint value) @inline {
+    return value != 0 && (value & (value - 1)) == 0;
+}
+
+fn bool hashmap_normalize_capacity(uint requested, uint* out) @inline {
+    if (out == null || requested == 0) return false;
+    uint capacity = 1;
+    while (capacity < requested) {
+        if (capacity > uint.max / (uint)2) return false;
+        capacity *= 2;
+    }
+    *out = capacity;
+    return true;
+}
+
 // Collection primitives: length + hashmap/dict core.
 fn Value* dict_ctor_type_raise(Interp* interp, char[] code, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", code, message, null);
@@ -31,11 +46,13 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 
     // Array length
     if (is_array(args[0])) {
+        if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: array backing storage is missing");
         return make_int(interp, (long)args[0].array_val.length);
     }
 
     // Dictionary / Set count
     if (is_hashmap_backed(args[0])) {
+        if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: dict/set backing storage is missing");
         return make_int(interp, (long)args[0].hashmap_val.count);
     }
 
@@ -59,6 +76,8 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 
 fn HashEntry* hashmap_alloc_entries(uint capacity, bool force_fail = false) @inline {
     if (force_fail) return null;
+    if (!hashmap_is_pow2(capacity)) return null;
+    if ((usz)capacity > usz.max / HashEntry.sizeof) return null;
     HashEntry* entries = (HashEntry*)mem::malloc(HashEntry.sizeof * capacity);
     if (entries == null) return null;
     for (uint i = 0; i < capacity; i++) {
@@ -69,6 +88,7 @@ fn HashEntry* hashmap_alloc_entries(uint capacity, bool force_fail = false) @inl
 }
 
 fn HashMap* hashmap_new_checked(uint capacity, Interp* interp) {
+    if (!hashmap_normalize_capacity(capacity, &capacity)) return null;
     HashMap* map = g_hashmap_force_struct_alloc_fail
         ? null
         : (HashMap*)mem::malloc(HashMap.sizeof);
@@ -88,6 +108,12 @@ fn HashMap* hashmap_new(uint capacity, Interp* interp) {
     return hashmap_new_checked(capacity, interp);
 }
 
+fn void hashmap_free_payload(HashMap* map) {
+    if (map == null) return;
+    if (map.entries != null) mem::free(map.entries);
+    mem::free(map);
+}
+
 fn Value* hashmap_get(HashMap* map, Value* key) {
     uint h = hash_value(key) & map.mask;
     for (uint i = 0; i < map.capacity; i++) {
@@ -100,7 +126,8 @@ fn Value* hashmap_get(HashMap* map, Value* key) {
 }
 
 fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Interp* interp) {
-    if (map.count * 10 >= map.capacity * 7) {
+    if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
+    if ((usz)map.count * (usz)10 >= (usz)map.capacity * (usz)7) {
         if (!hashmap_grow_checked(map, interp)) return false;
     }
 
@@ -134,8 +161,10 @@ fn bool hashmap_set_symbol(HashMap* map, SymbolId key, Value* value, Interp* int
 }
 
 fn bool hashmap_grow_checked(HashMap* map, Interp* interp) {
+    if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
     uint old_cap = map.capacity;
     HashEntry* old_entries = map.entries;
+    if (old_cap == 0 || old_cap > uint.max / (uint)2) return false;
     uint new_cap = old_cap * 2;
     uint new_mask = new_cap - 1;
 
@@ -171,8 +200,9 @@ fn bool hashmap_grow(HashMap* map, Interp* interp) {
 }
 
 fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* interp) {
+    if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
     // Grow at 70% load
-    if (map.count * 10 >= map.capacity * 7) {
+    if ((usz)map.count * (usz)10 >= (usz)map.capacity * (usz)7) {
         if (!hashmap_grow_checked(map, interp)) return false;
     }
 
@@ -240,17 +270,23 @@ fn bool hashmap_remove(HashMap* map, Value* key) {
     return false;
 }
 
-fn Value* make_hashmap_checked(Interp* interp, uint capacity, char[] oom_message) {
+fn Value* make_hashmap_no_raise(Interp* interp, uint capacity) {
+    HashMap* map = hashmap_new_checked(capacity, interp);
+    if (map == null) return null;
+
     Value* v = boundary_alloc_value_in_root(interp, true);
     if (v == null) {
-        return dict_ctor_runtime_raise(interp, oom_message);
+        hashmap_free_payload(map);
+        return null;
     }
     v.tag = HASHMAP;
-    v.hashmap_val = hashmap_new_checked(capacity, interp);
-    if (v.hashmap_val == null) {
-        v.tag = NIL;
-        return dict_ctor_runtime_raise(interp, oom_message);
-    }
+    v.hashmap_val = map;
+    return v;
+}
+
+fn Value* make_hashmap_checked(Interp* interp, uint capacity, char[] oom_message) {
+    Value* v = make_hashmap_no_raise(interp, capacity);
+    if (v == null) return dict_ctor_runtime_raise(interp, oom_message);
     return v;
 }
 
@@ -265,15 +301,35 @@ fn Value* make_set_checked(Interp* interp, uint capacity, char[] oom_message) {
 }
 
 // Dictionary primitives
+fn bool dict_initial_capacity_for_arg_count(usz arg_count, uint* out) {
+    if (out == null) return false;
+    if (arg_count > usz.max / (usz)2) return false;
+    usz required = arg_count * (usz)2;
+    if (required < (usz)16) required = (usz)16;
+    if (required > (usz)uint.max) return false;
+
+    uint cap = 16;
+    while ((usz)cap < required) {
+        if (cap > uint.max / (uint)2) return false;
+        cap *= 2;
+    }
+    *out = cap;
+    return true;
+}
+
 fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
     if (args.len % 2 != 0) {
         return dict_ctor_type_raise(interp, "type/arity", "Dictionary: expected even number of key/value arguments");
     }
     uint cap = 16;
-    while (cap < (uint)args.len * 2) cap *= 2;
+    if (!dict_initial_capacity_for_arg_count(args.len, &cap)) {
+        return dict_ctor_runtime_raise(interp, "Dictionary: out of memory");
+    }
     Value* v = make_hashmap_checked(interp, cap, "Dictionary: out of memory");
     if (v == null || v.tag != HASHMAP) return v;
     for (usz i = 0; i < args.len; i += 2) {
+        if (args[i] != null && args[i].tag == ERROR) return args[i];
+        if (args[i + 1] != null && args[i + 1].tag == ERROR) return args[i + 1];
         if (!hashmap_set_checked(v.hashmap_val, args[i], args[i + 1], interp)) {
             return dict_ctor_runtime_raise(interp, "Dictionary: out of memory while growing backing storage");
         }
@@ -284,6 +340,7 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
     if (args[0].tag != HASHMAP) return raise_error(interp, "set!: generic form expects array or dict target");
+    if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: dict backing storage is missing");
     if (!hashmap_set(args[0].hashmap_val, args[1], args[2], interp)) {
         return raise_error_with_payload_names(
             interp,

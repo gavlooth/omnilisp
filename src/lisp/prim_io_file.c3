@@ -40,7 +40,17 @@ fn Value* prim_write_file(Value*[] args, Env* env, Interp* interp) {
     char[] path = args[0].str_chars[:args[0].str_len];
     char[] content = args[1].str_chars[:args[1].str_len];
 
-    usz payload_len = path.len + 1 + content.len;
+    if (path.len > usz.max - (usz)1) {
+        return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
+    }
+    usz payload_len = path.len + 1;
+    if (content.len > usz.max - payload_len) {
+        return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
+    }
+    payload_len += content.len;
+    if (payload_len == usz.max) {
+        return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
+    }
     char* payload = (char*)mem::malloc(payload_len + 1);
     if (payload == null) return io_file_raise(interp, "io/write-file-out-of-memory", "write-file: out of memory");
     for (usz i = 0; i < path.len; i++) payload[i] = path[i];

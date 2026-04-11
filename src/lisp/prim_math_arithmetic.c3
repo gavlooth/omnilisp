@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import std::math;
 
 const double MATH_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
 const double MATH_INT_MAX_DOUBLE = (double)long.max;
@@ -41,7 +42,9 @@ fn Value* prim_add(Value*[] args, Env* env, Interp* interp) {
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) + to_double(args[1]));
     }
-    return make_int(interp, args[0].int_val + args[1].int_val);
+    long result = 0;
+    if (math::overflow_add(args[0].int_val, args[1].int_val, &result)) return raise_error(interp, "+: integer overflow");
+    return make_int(interp, result);
 }
 
 fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
@@ -49,6 +52,7 @@ fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 1) {
         if (!is_number(args[0])) return primitive_arg_type_raise(interp, "-", 0, "number", args[0]);
         if (is_double(args[0])) return make_double(interp, -args[0].double_val);
+        if (args[0].int_val == long.min) return raise_error(interp, "-: integer overflow");
         return make_int(interp, -args[0].int_val);
     }
     if (!is_number(args[0])) return primitive_arg_type_raise(interp, "-", 0, "number", args[0]);
@@ -56,7 +60,9 @@ fn Value* prim_sub(Value*[] args, Env* env, Interp* interp) {
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) - to_double(args[1]));
     }
-    return make_int(interp, args[0].int_val - args[1].int_val);
+    long result = 0;
+    if (math::overflow_sub(args[0].int_val, args[1].int_val, &result)) return raise_error(interp, "-: integer overflow");
+    return make_int(interp, result);
 }
 
 fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
@@ -66,7 +72,9 @@ fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
     if (is_double(args[0]) || is_double(args[1])) {
         return make_double(interp, to_double(args[0]) * to_double(args[1]));
     }
-    return make_int(interp, args[0].int_val * args[1].int_val);
+    long result = 0;
+    if (math::overflow_mul(args[0].int_val, args[1].int_val, &result)) return raise_error(interp, "*: integer overflow");
+    return make_int(interp, result);
 }
 
 fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
@@ -80,6 +88,7 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     }
     long b = args[1].int_val;
     if (b == 0) return raise_error(interp, "/: division by zero");
+    if (args[0].int_val == long.min && b == -1) return raise_error(interp, "/: integer overflow");
     return make_int(interp, args[0].int_val / b);
 }
 
@@ -90,5 +99,6 @@ fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
     long a = args[0].int_val;
     long b = args[1].int_val;
     if (b == 0) return raise_error(interp, "%: division by zero");
+    if (a == long.min && b == -1) return raise_error(interp, "%: integer overflow");
     return make_int(interp, a % b);
 }

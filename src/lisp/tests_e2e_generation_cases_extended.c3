@@ -55,10 +55,10 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "dict keys", "(length (keys (Dictionary 1 10 2 20)))" },
     { "dict canonical keys", "(keys (Dictionary 'b 2 'a 1 'c 3))" },
     { "dict canonical values", "(values (Dictionary 'b 2 'a 1 'c 3))" },
-    { "set canonical list", "(set->list (Set 3 1 2 2))" },
+    { "set canonical list", "(List (Set 3 1 2 2))" },
 
     // string-contains?, string-index-of, string-replace, char-at,
-    // string-repeat, symbol->string, string->symbol — not mapped in compiler
+    // and string-repeat are not mapped in this extended compiler path.
 
     // === String operations (extended) ===
     { "string-upcase", `(string-upcase "hello")` },
@@ -163,7 +163,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "round down", "(round 3.4)" },
     { "truncate pos", "(truncate 3.9)" },
     { "truncate neg", "(truncate -3.9)" },
-    // inexact->exact, symbol->string, and pow are still not mapped in the AOT e2e compiler path.
+    // pow and this overflow shape are still not mapped in the AOT e2e compiler path.
     { "string->number int overflow type", "(type-of (string->number \"9223372036854775808\"))" },
     { "sqrt 4", "(sqrt 4)" },
     { "sqrt 9", "(sqrt 9)" },

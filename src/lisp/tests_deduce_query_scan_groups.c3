@@ -134,7 +134,7 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
     bool saved_force_column_key_values_oom = g_deduce_force_column_key_values_oom;
     g_deduce_force_column_key_values_oom = true;
     EvalResult scan_oom = run(
-        "(handle (deduce 'scan scan_oom_person) (raise payload (symbol->string (ref payload 'code))))",
+        "(handle (deduce 'scan scan_oom_person) (raise payload (String (ref payload 'code))))",
         interp
     );
     g_deduce_force_column_key_values_oom = saved_force_column_key_values_oom;
@@ -185,7 +185,7 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
     g_deduce_force_row_dict_oom = true;
     EvalResult range_oom = run(
         "(handle (deduce 'scan-range scan_range_oom_person '(\"Bob\" 30 \"b@x\") '(\"Bob\" 30 \"b@x\")) "
-        "  (raise payload (symbol->string (ref payload 'code))))",
+        "  (raise payload (String (ref payload 'code))))",
         interp
     );
     g_deduce_force_row_dict_oom = saved_force_row_dict_oom;

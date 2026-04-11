@@ -163,6 +163,7 @@ fn bool strval_append_padded(StringVal* sv, char[] s, int width, int precision, 
     if (has_precision && precision >= 0 && (usz)precision < content.len) {
         content = content[:(usz)precision];
     }
+    if (content.len > (usz)int.max) return false;
     int content_len = (int)content.len;
     int pad = 0;
     if (width > content_len) pad = width - content_len;
@@ -183,6 +184,7 @@ fn bool strval_append_padded(StringVal* sv, char[] s, int width, int precision, 
 
 // Helper: append numeric string with width padding (no precision truncation)
 fn bool strval_append_num_padded(StringVal* sv, char[] s, int width, bool left_align) {
+    if (s.len > (usz)int.max) return false;
     int content_len = (int)s.len;
     int pad = 0;
     if (width > content_len) pad = width - content_len;

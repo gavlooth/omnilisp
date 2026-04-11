@@ -134,7 +134,10 @@ fn Value* deduce_aggregate_group_find_or_add(
         }
     }
 
-    Value* cap_err = deduce_aggregate_groups_ensure_capacity(groups, groups.count + 1, interp);
+    if (groups.count == usz.max) {
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    Value* cap_err = deduce_aggregate_groups_ensure_capacity(groups, groups.count + (usz)1, interp);
     if (cap_err != null) return cap_err;
 
     DeduceAggregateGroup* group = &groups.entries[groups.count];
@@ -150,6 +153,13 @@ fn Value* deduce_aggregate_group_find_or_add(
     group.key_len = encoded_key_len;
 
     if (sig.head_term_count > 0) {
+        if (sig.head_term_count > usz.max / Value*.sizeof ||
+            sig.head_term_count > usz.max / DeduceAggregateTermState.sizeof) {
+            if (group.key_bytes != null) mem::free(group.key_bytes);
+            group.key_bytes = null;
+            group.key_len = 0;
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
         group.head_values = (Value**)mem::malloc(Value*.sizeof * sig.head_term_count);
         if (group.head_values == null) {
             if (group.key_bytes != null) mem::free(group.key_bytes);

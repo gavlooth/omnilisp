@@ -241,9 +241,9 @@ struct Interp {
 fn void Interp.init(Interp* self) {
     runtime_attach_interp(self);
     interp_init_runtime_state(self);
-    interp_init_core_symbols(self);
-    interp_init_type_symbols(self);
-    interp_init_misc_symbols(self);
+    assert(interp_init_core_symbols(self), "interp core symbol init failed");
+    assert(interp_init_type_symbols(self), "interp type symbol init failed");
+    assert(interp_init_misc_symbols(self), "interp misc symbol init failed");
     self.types.init();
     interp_init_module_state(self);
     interp_init_runtime_flags(self);

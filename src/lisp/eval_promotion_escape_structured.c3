@@ -6,15 +6,20 @@ import main;
 fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
     if (dst == null || src == null || scope == null) return false;
     method_signature_init_empty(dst);
-    dst.param_count = src.param_count;
-    dst.constraint_count = src.constraint_count;
 
     if (src.param_count > 0) {
+        if (src.param_count > usz.max / TypeId.sizeof ||
+            src.param_count > usz.max / SymbolId.sizeof ||
+            src.param_count > usz.max / ValueLiteralKey.sizeof ||
+            src.param_count > usz.max / bool.sizeof) {
+            return false;
+        }
         dst.param_types = (TypeId*)scope.alloc_escape(TypeId.sizeof * src.param_count);
         dst.param_type_vars = (SymbolId*)scope.alloc_escape(SymbolId.sizeof * src.param_count);
         dst.val_literals = (ValueLiteralKey*)scope.alloc_escape(ValueLiteralKey.sizeof * src.param_count);
         dst.has_val_literal = (bool*)scope.alloc_escape(bool.sizeof * src.param_count);
         if (dst.param_types == null || dst.param_type_vars == null || dst.val_literals == null || dst.has_val_literal == null) {
+            method_signature_init_empty(dst);
             return false;
         }
         for (usz i = 0; i < src.param_count; i++) {
@@ -26,13 +31,22 @@ fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* s
     }
 
     if (src.constraint_count > 0) {
+        if (src.constraint_count > usz.max / MethodConstraint.sizeof) {
+            method_signature_init_empty(dst);
+            return false;
+        }
         dst.constraints = (MethodConstraint*)scope.alloc_escape(MethodConstraint.sizeof * src.constraint_count);
-        if (dst.constraints == null) return false;
+        if (dst.constraints == null) {
+            method_signature_init_empty(dst);
+            return false;
+        }
         for (usz i = 0; i < src.constraint_count; i++) {
             dst.constraints[i] = src.constraints[i];
         }
     }
 
+    dst.param_count = src.param_count;
+    dst.constraint_count = src.constraint_count;
     return true;
 }
 
@@ -62,6 +76,10 @@ fn Value* promote_escape_array_shared_wrapper(Value* v, Interp* interp, Promotio
 
     dst_arr.capacity = cap;
     dst_arr.length = src_arr.length;
+    if (cap > usz.max / Value*.sizeof) {
+        mem::free(dst_arr);
+        return raise_error(interp, "boundary: failed to allocate array escape copy");
+    }
     dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
     if (dst_arr.items == null) {
         mem::free(dst_arr);
@@ -115,6 +133,10 @@ fn Value* promote_escape_hashmap_backed_shared_wrapper(Value* v, Interp* interp,
     dst_map.entries = null;
 
     if (src_map.capacity > 0) {
+        if ((usz)src_map.capacity > usz.max / HashEntry.sizeof) {
+            mem::free(dst_map);
+            return raise_error(interp, "boundary: failed to allocate hashmap escape copy");
+        }
         dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
         if (dst_map.entries == null) {
             mem::free(dst_map);
@@ -185,6 +207,10 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
     dst_mt.fallback = null;
 
     if (dst_mt.capacity > 0) {
+        if (dst_mt.capacity > usz.max / MethodEntry.sizeof) {
+            mem::free(dst_mt);
+            return raise_error(interp, "boundary: failed to allocate method table escape copy");
+        }
         dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
         if (dst_mt.entries == null) {
             mem::free(dst_mt);
@@ -320,10 +346,6 @@ fn Value* promote_escape_cons(Value* v, Interp* interp, PromotionContext* ctx) {
 
 fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
-    Value* result = boundary_alloc_value_in_current_escape(interp);
-    if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate closure escape copy");
-    }
     Closure* cloned = (Closure*)interp.current_scope.alloc_escape(Closure.sizeof);
     if (cloned == null) {
         if (ctx != null) {
@@ -338,6 +360,13 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
     cloned.type_sig = null;
 
     if (v.closure_val.param_count > 0) {
+        if (v.closure_val.param_count > usz.max / SymbolId.sizeof) {
+            if (ctx != null) {
+                ctx.aborted = true;
+                ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+            }
+            return raise_error(interp, "boundary: failed to allocate closure params during escape promotion");
+        }
         cloned.params = (SymbolId*)interp.current_scope.alloc_escape(SymbolId.sizeof * v.closure_val.param_count);
         if (cloned.params == null) {
             if (ctx != null) {
@@ -390,6 +419,19 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         cloned.env_scope = null;
     } else if (cloned.env_scope != null) {
         main::scope_retain(cloned.env_scope);
+    }
+
+    Value* result = boundary_alloc_value_in_current_escape(interp);
+    if (result == null) {
+        if (ctx != null) {
+            ctx.aborted = true;
+            ctx.abort_reason = PROMOTION_ABORT_BUDGET_EXHAUSTED;
+        }
+        if (cloned.env_scope != null) {
+            main::scope_release(cloned.env_scope);
+            cloned.env_scope = null;
+        }
+        return raise_error(interp, "boundary: failed to allocate closure escape copy");
     }
     result.tag = CLOSURE;
     result.closure_val = cloned;

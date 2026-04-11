@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
+#include <limits>
 #include <memory>
 #include <new>
 #include <string>
@@ -43,13 +45,13 @@ struct omni_ftxui_element_t {
 };
 
 struct omni_ftxui_component_t {
-    explicit omni_ftxui_component_t(ftxui::Component c) : component(std::move(c)) {}
-    ftxui::Component component;
+    explicit omni_ftxui_component_t(ftxui::Component c) : keep_alive(), component(std::move(c)) {}
     std::vector<std::shared_ptr<void>> keep_alive;
+    ftxui::Component component;
 };
 
 struct omni_ftxui_screen_t {
-    std::unique_ptr<ftxui::ScreenInteractive> screen;
+    std::shared_ptr<ftxui::ScreenInteractive> screen;
 };
 
 struct omni_ftxui_table_t {
@@ -86,7 +88,11 @@ inline bool validate_sized_abi(uint32_t size, uint32_t abi, uint32_t expected) {
 inline omni_ftxui_status ctx_fail(omni_ftxui_context_t* ctx, omni_ftxui_status code, const char* message) {
     if (ctx != nullptr) {
         ctx->last_error_code = code;
-        ctx->last_error_message = message ? message : "";
+        try {
+            ctx->last_error_message = message ? message : "";
+        } catch (...) {
+            ctx->last_error_message.clear();
+        }
     }
     return code;
 }
@@ -95,6 +101,24 @@ inline void ctx_clear(omni_ftxui_context_t* ctx) {
     if (ctx == nullptr) return;
     ctx->last_error_code = OMNI_FTXUI_STATUS_OK;
     ctx->last_error_message.clear();
+}
+
+template <typename Fn>
+inline omni_ftxui_status status_try(
+    omni_ftxui_context_t* ctx,
+    const char* out_of_memory_message,
+    const char* exception_message,
+    Fn&& fn
+) {
+    try {
+        return fn();
+    } catch (const std::bad_alloc&) {
+        return ctx_fail(ctx, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, out_of_memory_message);
+    } catch (const std::exception&) {
+        return ctx_fail(ctx, OMNI_FTXUI_STATUS_INTERNAL_ERROR, exception_message);
+    } catch (...) {
+        return ctx_fail(ctx, OMNI_FTXUI_STATUS_INTERNAL_ERROR, exception_message);
+    }
 }
 
 #if OMNI_FTXUI_HAS_BACKEND
@@ -224,8 +248,19 @@ inline std::vector<int> call_graph_callback(
     std::vector<int> values(static_cast<size_t>(width), 0);
     if (graph_cb == nullptr) return values;
 
-    omni_ftxui_status status =
-        graph_cb(user_data, context, static_cast<int32_t>(width), static_cast<int32_t>(height), values.data());
+    omni_ftxui_status status = OMNI_FTXUI_STATUS_OK;
+    try {
+        status = graph_cb(user_data, context, static_cast<int32_t>(width), static_cast<int32_t>(height), values.data());
+    } catch (const std::bad_alloc&) {
+        ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "graph callback: out of memory");
+        return values;
+    } catch (const std::exception&) {
+        ctx_fail(context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "graph callback: exception");
+        return values;
+    } catch (...) {
+        ctx_fail(context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "graph callback: unknown exception");
+        return values;
+    }
     if (status != OMNI_FTXUI_STATUS_OK && context != nullptr && context->last_error_code == OMNI_FTXUI_STATUS_OK) {
         ctx_fail(context, status, "graph callback failed");
     }
@@ -302,11 +337,17 @@ const char* omni_ftxui_status_name(omni_ftxui_status status) {
 
 omni_ftxui_status omni_ftxui_context_create(omni_ftxui_context_t** out_context) {
     if (out_context == nullptr) return OMNI_FTXUI_STATUS_INVALID_ARGUMENT;
-    auto* ctx = new (std::nothrow) omni_ftxui_context_t();
-    if (ctx == nullptr) return OMNI_FTXUI_STATUS_OUT_OF_MEMORY;
-    ctx->last_error_code = OMNI_FTXUI_STATUS_OK;
-    *out_context = ctx;
-    return OMNI_FTXUI_STATUS_OK;
+    try {
+        auto* ctx = new (std::nothrow) omni_ftxui_context_t();
+        if (ctx == nullptr) return OMNI_FTXUI_STATUS_OUT_OF_MEMORY;
+        ctx->last_error_code = OMNI_FTXUI_STATUS_OK;
+        *out_context = ctx;
+        return OMNI_FTXUI_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return OMNI_FTXUI_STATUS_OUT_OF_MEMORY;
+    } catch (...) {
+        return OMNI_FTXUI_STATUS_INTERNAL_ERROR;
+    }
 }
 
 void omni_ftxui_context_destroy(omni_ftxui_context_t* context) {
@@ -343,6 +384,7 @@ omni_ftxui_status omni_ftxui_event_create(
     (void)out_event;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "event_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "event_create: out of memory", "event_create: exception", [&]() -> omni_ftxui_status {
     ftxui::Event event = ftxui::Event::Custom;
     switch (spec->kind) {
         case OMNI_FTXUI_EVENT_CUSTOM: event = ftxui::Event::Custom; break;
@@ -382,6 +424,7 @@ omni_ftxui_status omni_ftxui_event_create(
     *out_event = evt;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -403,6 +446,7 @@ omni_ftxui_status omni_ftxui_screen_create(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_create: out of memory", "screen_create: exception", [&]() -> omni_ftxui_status {
     if (options->handle_piped_input) {
         return ctx_fail(
             context,
@@ -411,7 +455,7 @@ omni_ftxui_status omni_ftxui_screen_create(
         );
     }
 
-    std::unique_ptr<ftxui::ScreenInteractive> screen;
+    std::shared_ptr<ftxui::ScreenInteractive> screen;
     switch (options->mode) {
         case OMNI_FTXUI_SCREEN_FULLSCREEN:
             screen.reset(new ftxui::ScreenInteractive(ftxui::ScreenInteractive::Fullscreen()));
@@ -440,6 +484,7 @@ omni_ftxui_status omni_ftxui_screen_create(
     *out_screen = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -458,9 +503,11 @@ omni_ftxui_status omni_ftxui_screen_loop(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_loop: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_loop: out of memory", "screen_loop: exception", [&]() -> omni_ftxui_status {
     screen->screen->Loop(root->component);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -475,9 +522,11 @@ omni_ftxui_status omni_ftxui_screen_post_event(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_post_event: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_post_event: out of memory", "screen_post_event: exception", [&]() -> omni_ftxui_status {
     screen->screen->PostEvent(event->event);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -486,9 +535,11 @@ omni_ftxui_status omni_ftxui_screen_exit(omni_ftxui_context_t* context, omni_ftx
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_exit: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_exit: out of memory", "screen_exit: exception", [&]() -> omni_ftxui_status {
     screen->screen->Exit();
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -502,9 +553,11 @@ omni_ftxui_status omni_ftxui_screen_request_animation_frame(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_request_animation_frame: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_request_animation_frame: out of memory", "screen_request_animation_frame: exception", [&]() -> omni_ftxui_status {
     screen->screen->RequestAnimationFrame();
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -518,9 +571,11 @@ omni_ftxui_status omni_ftxui_screen_set_track_mouse(
     (void)enabled;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_set_track_mouse: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_set_track_mouse: out of memory", "screen_set_track_mouse: exception", [&]() -> omni_ftxui_status {
     screen->screen->TrackMouse(enabled);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -536,6 +591,7 @@ omni_ftxui_status omni_ftxui_screen_set_handle_piped_input(
     (void)enabled;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "screen_set_handle_piped_input: FTXUI backend unavailable");
 #else
+    return status_try(context, "screen_set_handle_piped_input: out of memory", "screen_set_handle_piped_input: exception", [&]() -> omni_ftxui_status {
     if (enabled) {
         return ctx_fail(
             context,
@@ -545,6 +601,7 @@ omni_ftxui_status omni_ftxui_screen_set_handle_piped_input(
     }
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -557,11 +614,13 @@ omni_ftxui_status omni_ftxui_app_create(
     if (screen == nullptr || root == nullptr || out_app == nullptr) {
         return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "app_create: null argument");
     }
+    return status_try(context, "app_create: out of memory", "app_create: exception", [&]() -> omni_ftxui_status {
     auto* app = new (std::nothrow) omni_ftxui_app_t{screen, root};
     if (app == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "app_create: allocation failed");
     *out_app = app;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 }
 
 void omni_ftxui_app_destroy(omni_ftxui_app_t* app) {
@@ -570,12 +629,16 @@ void omni_ftxui_app_destroy(omni_ftxui_app_t* app) {
 
 omni_ftxui_status omni_ftxui_app_run(omni_ftxui_context_t* context, omni_ftxui_app_t* app) {
     if (app == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "app_run: null app");
+    return status_try(context, "app_run: out of memory", "app_run: exception", [&]() -> omni_ftxui_status {
     return omni_ftxui_screen_loop(context, app->screen, app->root);
+    });
 }
 
 omni_ftxui_status omni_ftxui_app_exit(omni_ftxui_context_t* context, omni_ftxui_app_t* app) {
     if (app == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "app_exit: null app");
+    return status_try(context, "app_exit: out of memory", "app_exit: exception", [&]() -> omni_ftxui_status {
     return omni_ftxui_screen_exit(context, app->screen);
+    });
 }
 
 omni_ftxui_status omni_ftxui_app_post_event(
@@ -584,7 +647,9 @@ omni_ftxui_status omni_ftxui_app_post_event(
     const omni_ftxui_event_t* event
 ) {
     if (app == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "app_post_event: null app");
+    return status_try(context, "app_post_event: out of memory", "app_post_event: exception", [&]() -> omni_ftxui_status {
     return omni_ftxui_screen_post_event(context, app->screen, event);
+    });
 }
 
 omni_ftxui_status omni_ftxui_element_create(
@@ -600,11 +665,15 @@ omni_ftxui_status omni_ftxui_element_create(
     if (!validate_sized_abi(options->size, options->abi_version, sizeof(omni_ftxui_element_create_options))) {
         return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_create: invalid option ABI");
     }
+    if (child_count > 0 && children == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_create: nonzero child_count with null children");
+    }
 #if !OMNI_FTXUI_HAS_BACKEND
     (void)children;
     (void)child_count;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "element_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "element_create: out of memory", "element_create: exception", [&]() -> omni_ftxui_status {
     ftxui::Element result;
     const char* text = options->text ? options->text : "";
     const ftxui::Elements elems = copy_children(children, child_count);
@@ -660,7 +729,11 @@ omni_ftxui_status omni_ftxui_element_create(
             if (options->table_rows == 0 || options->table_cols == 0) {
                 return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_create: table requires positive rows/cols");
             }
-            if (options->table_rows * options->table_cols != elems.size()) {
+            if (options->table_cols > std::numeric_limits<size_t>::max() / options->table_rows) {
+                return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_create: table rows*cols overflow");
+            }
+            size_t table_cell_count = options->table_rows * options->table_cols;
+            if (table_cell_count != elems.size()) {
                 return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "element_create: table rows*cols must match child_count");
             }
             std::vector<std::vector<ftxui::Element>> rows;
@@ -692,6 +765,7 @@ omni_ftxui_status omni_ftxui_element_create(
     *out_element = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -709,6 +783,7 @@ omni_ftxui_status omni_ftxui_element_graph_from_series(
     (void)value_count;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "element_graph_from_series: FTXUI backend unavailable");
 #else
+    return status_try(context, "element_graph_from_series: out of memory", "element_graph_from_series: exception", [&]() -> omni_ftxui_status {
     auto series = std::make_shared<std::vector<double>>(values, values + value_count);
     auto* out = make_element(ftxui::graph([series](int width, int height) {
         return graph_values_from_series(series, width, height);
@@ -719,6 +794,7 @@ omni_ftxui_status omni_ftxui_element_graph_from_series(
     *out_element = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -741,6 +817,7 @@ omni_ftxui_status omni_ftxui_element_apply_decorator(
     (void)options;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "element_apply_decorator: FTXUI backend unavailable");
 #else
+    return status_try(context, "element_apply_decorator: out of memory", "element_apply_decorator: exception", [&]() -> omni_ftxui_status {
     switch (options->kind) {
         case OMNI_FTXUI_DECORATOR_BORDER: element->element |= ftxui::border; break;
         case OMNI_FTXUI_DECORATOR_BORDER_LIGHT: element->element |= ftxui::borderLight; break;
@@ -811,6 +888,7 @@ omni_ftxui_status omni_ftxui_element_apply_decorator(
     }
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -827,11 +905,15 @@ omni_ftxui_status omni_ftxui_component_create(
     if (!validate_sized_abi(options->size, options->abi_version, sizeof(omni_ftxui_component_create_options))) {
         return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "component_create: invalid option ABI");
     }
+    if (child_count > 0 && children == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "component_create: nonzero child_count with null children");
+    }
 #if !OMNI_FTXUI_HAS_BACKEND
     (void)children;
     (void)child_count;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_create: out of memory", "component_create: exception", [&]() -> omni_ftxui_status {
     ftxui::Component component;
     switch (options->kind) {
         case OMNI_FTXUI_COMPONENT_CONTAINER_HORIZONTAL:
@@ -1056,6 +1138,7 @@ omni_ftxui_status omni_ftxui_component_create(
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1074,10 +1157,12 @@ omni_ftxui_status omni_ftxui_component_add_child(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_add_child: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_add_child: out of memory", "component_add_child: exception", [&]() -> omni_ftxui_status {
     parent->component->Add(child->component);
     component_retain_keep_alive(parent, child);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1091,9 +1176,11 @@ omni_ftxui_status omni_ftxui_component_take_focus(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_take_focus: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_take_focus: out of memory", "component_take_focus: exception", [&]() -> omni_ftxui_status {
     component->component->TakeFocus();
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1115,6 +1202,7 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_wrap_renderer: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_wrap_renderer: out of memory", "component_wrap_renderer: exception", [&]() -> omni_ftxui_status {
     struct RenderState {
         omni_ftxui_context_t* context;
         omni_ftxui_render_callback_fn callback;
@@ -1127,7 +1215,19 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
 
     auto wrapped = ftxui::Renderer(base->component, [state] {
         omni_ftxui_element_t* out = nullptr;
-        omni_ftxui_status r = state->callback(state->user_data, state->context, &out);
+        omni_ftxui_status r = OMNI_FTXUI_STATUS_OK;
+        try {
+            r = state->callback(state->user_data, state->context, &out);
+        } catch (const std::bad_alloc&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "render callback: out of memory");
+            return ftxui::text("");
+        } catch (const std::exception&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "render callback: exception");
+            return ftxui::text("");
+        } catch (...) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "render callback: unknown exception");
+            return ftxui::text("");
+        }
         if (r != OMNI_FTXUI_STATUS_OK || out == nullptr) return ftxui::text("");
         return out->element;
     });
@@ -1138,6 +1238,7 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1159,6 +1260,7 @@ omni_ftxui_status omni_ftxui_component_wrap_event_handler(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_wrap_event_handler: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_wrap_event_handler: out of memory", "component_wrap_event_handler: exception", [&]() -> omni_ftxui_status {
     struct EventState {
         omni_ftxui_context_t* context;
         omni_ftxui_event_callback_fn callback;
@@ -1170,9 +1272,20 @@ omni_ftxui_status omni_ftxui_component_wrap_event_handler(
     state->user_data = callbacks->user_data;
 
     auto wrapped = ftxui::CatchEvent(base->component, [state](ftxui::Event e) {
-        omni_ftxui_event_t event(std::move(e));
-        int handled = state->callback(state->user_data, state->context, &event);
-        return handled != 0;
+        try {
+            omni_ftxui_event_t event(std::move(e));
+            int handled = state->callback(state->user_data, state->context, &event);
+            return handled != 0;
+        } catch (const std::bad_alloc&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "event callback: out of memory");
+            return false;
+        } catch (const std::exception&) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "event callback: exception");
+            return false;
+        } catch (...) {
+            ctx_fail(state->context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "event callback: unknown exception");
+            return false;
+        }
     });
     auto* out = make_component(std::move(wrapped));
     if (out == nullptr) {
@@ -1183,6 +1296,7 @@ omni_ftxui_status omni_ftxui_component_wrap_event_handler(
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1197,6 +1311,7 @@ omni_ftxui_status omni_ftxui_component_from_element(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_from_element: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_from_element: out of memory", "component_from_element: exception", [&]() -> omni_ftxui_status {
     auto rendered = element->element;
     auto component = ftxui::Renderer([rendered] { return rendered; });
     auto* out = make_component(std::move(component));
@@ -1204,6 +1319,7 @@ omni_ftxui_status omni_ftxui_component_from_element(
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1219,26 +1335,44 @@ omni_ftxui_status omni_ftxui_component_wrap_quit_keys(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_wrap_quit_keys: FTXUI backend unavailable");
 #else
-    auto wrapped = ftxui::CatchEvent(base->component, [screen](ftxui::Event e) {
-        if (e == ftxui::Event::Escape) {
-            screen->screen->ExitLoopClosure()();
-            return true;
-        }
-        if (e.is_character()) {
-            std::string ch = e.character();
-            if (ch == "q" || ch == "Q") {
-                screen->screen->ExitLoopClosure()();
+    return status_try(context, "component_wrap_quit_keys: out of memory", "component_wrap_quit_keys: exception", [&]() -> omni_ftxui_status {
+    auto screen_ref = screen->screen;
+    if (!screen_ref) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "component_wrap_quit_keys: invalid screen");
+    }
+    auto wrapped = ftxui::CatchEvent(base->component, [screen_ref, context](ftxui::Event e) {
+        try {
+            if (e == ftxui::Event::Escape) {
+                screen_ref->ExitLoopClosure()();
                 return true;
             }
+            if (e.is_character()) {
+                std::string ch = e.character();
+                if (ch == "q" || ch == "Q") {
+                    screen_ref->ExitLoopClosure()();
+                    return true;
+                }
+            }
+            return false;
+        } catch (const std::bad_alloc&) {
+            ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "quit-key wrapper: out of memory");
+            return false;
+        } catch (const std::exception&) {
+            ctx_fail(context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "quit-key wrapper: exception");
+            return false;
+        } catch (...) {
+            ctx_fail(context, OMNI_FTXUI_STATUS_INTERNAL_ERROR, "quit-key wrapper: unknown exception");
+            return false;
         }
-        return false;
     });
     auto* out = make_component(std::move(wrapped));
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "component_wrap_quit_keys: allocation failed");
     component_retain_keep_alive(out, base);
+    out->keep_alive.push_back(screen_ref);
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1254,6 +1388,7 @@ omni_ftxui_status omni_ftxui_component_wrap_maybe(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "component_wrap_maybe: FTXUI backend unavailable");
 #else
+    return status_try(context, "component_wrap_maybe: out of memory", "component_wrap_maybe: exception", [&]() -> omni_ftxui_status {
     auto wrapped = ftxui::Maybe(base->component, visible_ptr);
     auto* out = make_component(std::move(wrapped));
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "component_wrap_maybe: allocation failed");
@@ -1261,6 +1396,7 @@ omni_ftxui_status omni_ftxui_component_wrap_maybe(
     *out_component = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1281,6 +1417,7 @@ omni_ftxui_status omni_ftxui_table_create(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_create: out of memory", "table_create: exception", [&]() -> omni_ftxui_status {
     auto* table = new (std::nothrow) omni_ftxui_table_t();
     if (table == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "table_create: allocation failed");
 
@@ -1297,6 +1434,7 @@ omni_ftxui_status omni_ftxui_table_create(
     *out_table = table;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1314,9 +1452,11 @@ omni_ftxui_status omni_ftxui_table_select_all(
     (void)border;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_select_all: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_select_all: out of memory", "table_select_all: exception", [&]() -> omni_ftxui_status {
     table->table->SelectAll().Border(map_border_style(border));
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1327,14 +1467,19 @@ omni_ftxui_status omni_ftxui_table_select_row(
     omni_ftxui_border_style border
 ) {
     if (table == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_row: null table");
+    if (row > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_row: row out of int range");
+    }
 #if !OMNI_FTXUI_HAS_BACKEND
     (void)row;
     (void)border;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_select_row: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_select_row: out of memory", "table_select_row: exception", [&]() -> omni_ftxui_status {
     table->table->SelectRow(static_cast<int>(row)).Border(map_border_style(border));
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1345,14 +1490,19 @@ omni_ftxui_status omni_ftxui_table_select_column(
     omni_ftxui_border_style border
 ) {
     if (table == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_column: null table");
+    if (column > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_column: column out of int range");
+    }
 #if !OMNI_FTXUI_HAS_BACKEND
     (void)column;
     (void)border;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_select_column: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_select_column: out of memory", "table_select_column: exception", [&]() -> omni_ftxui_status {
     table->table->SelectColumn(static_cast<int>(column)).Border(map_border_style(border));
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1364,15 +1514,21 @@ omni_ftxui_status omni_ftxui_table_select_cell(
     omni_ftxui_border_style border
 ) {
     if (table == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_cell: null table");
+    if (row > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        column > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "table_select_cell: row/column out of int range");
+    }
 #if !OMNI_FTXUI_HAS_BACKEND
     (void)row;
     (void)column;
     (void)border;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_select_cell: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_select_cell: out of memory", "table_select_cell: exception", [&]() -> omni_ftxui_status {
     table->table->SelectCell(static_cast<int>(row), static_cast<int>(column)).Border(map_border_style(border));
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1387,11 +1543,13 @@ omni_ftxui_status omni_ftxui_table_render(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "table_render: FTXUI backend unavailable");
 #else
+    return status_try(context, "table_render: out of memory", "table_render: exception", [&]() -> omni_ftxui_status {
     auto* out = make_element(table->table->Render());
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "table_render: allocation failed");
     *out_element = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1412,11 +1570,13 @@ omni_ftxui_status omni_ftxui_canvas_create(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_create: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_create: out of memory", "canvas_create: exception", [&]() -> omni_ftxui_status {
     auto* out = new (std::nothrow) omni_ftxui_canvas_t(options->width, options->height);
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "canvas_create: allocation failed");
     *out_canvas = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1439,9 +1599,11 @@ omni_ftxui_status omni_ftxui_canvas_draw_text(
     (void)y;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_draw_text: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_draw_text: out of memory", "canvas_draw_text: exception", [&]() -> omni_ftxui_status {
     canvas->canvas->DrawText(x, y, text);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1457,9 +1619,11 @@ omni_ftxui_status omni_ftxui_canvas_draw_point_on(
     (void)y;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_draw_point_on: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_draw_point_on: out of memory", "canvas_draw_point_on: exception", [&]() -> omni_ftxui_status {
     canvas->canvas->DrawPointOn(x, y);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1475,9 +1639,11 @@ omni_ftxui_status omni_ftxui_canvas_draw_point_off(
     (void)y;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_draw_point_off: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_draw_point_off: out of memory", "canvas_draw_point_off: exception", [&]() -> omni_ftxui_status {
     canvas->canvas->DrawPointOff(x, y);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1497,9 +1663,11 @@ omni_ftxui_status omni_ftxui_canvas_draw_line(
     (void)y2;
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_draw_line: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_draw_line: out of memory", "canvas_draw_line: exception", [&]() -> omni_ftxui_status {
     canvas->canvas->DrawPointLine(x1, y1, x2, y2);
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 
@@ -1514,11 +1682,13 @@ omni_ftxui_status omni_ftxui_canvas_render(
 #if !OMNI_FTXUI_HAS_BACKEND
     return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "canvas_render: FTXUI backend unavailable");
 #else
+    return status_try(context, "canvas_render: out of memory", "canvas_render: exception", [&]() -> omni_ftxui_status {
     auto* out = make_element(ftxui::canvas(*canvas->canvas));
     if (out == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "canvas_render: allocation failed");
     *out_element = out;
     ctx_clear(context);
     return OMNI_FTXUI_STATUS_OK;
+    });
 #endif
 }
 

@@ -26,7 +26,7 @@ fn void run_basic_intro_tests(Interp* interp, int* pass, int* fail) {
 
     // Print (interp only, side effect)
     test_truthy_interp(interp, "println side effect capture",
-        "(= (symbol->string (handle (block (println (quote hello)) nil) (io/println x x))) \"hello\")",
+        "(= (String (handle (block (println (quote hello)) nil) (io/println x x))) \"hello\")",
         pass, fail);
 
     // Source location tracking

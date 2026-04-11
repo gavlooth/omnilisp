@@ -370,6 +370,38 @@ fn void run_advanced_parser_module_edge_tests(Interp* interp, int* pass, int* fa
 
 fn void run_advanced_runtime_import_path_edge_tests(Interp* interp, int* pass, int* fail) {
     {
+        // Regression: module export growth must fail closed and preserve
+        // existing exports when the replacement table cannot be allocated.
+        Module mod = {};
+        mod.export_capacity = 1;
+        mod.export_count = 1;
+        mod.exports = jit_alloc_module_exports(1);
+        bool ok = mod.exports != null;
+        if (ok) {
+            mod.exports[0] = interp.symbols.intern("module-export-growth-existing");
+            SymbolId* original_exports = mod.exports;
+            bool saved_force = g_jit_force_module_export_alloc_fail;
+            g_jit_force_module_export_alloc_fail = true;
+            bool appended = module_append_export(&mod, interp.symbols.intern("module-export-growth-next"));
+            g_jit_force_module_export_alloc_fail = saved_force;
+            ok = !appended &&
+                 mod.exports == original_exports &&
+                 mod.export_capacity == 1 &&
+                 mod.export_count == 1 &&
+                 mod.exports[0] == interp.symbols.intern("module-export-growth-existing");
+        }
+        if (mod.exports != null) mem::free(mod.exports);
+
+        if (ok) {
+            emit_pass_literal("[PASS] runtime module export growth allocation failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] runtime module export growth allocation failure fails closed");
+            (*fail)++;
+        }
+    }
+
+    {
         // Regression: checked import path resolution must fail closed on truncation.
         char[8] short_buf;
         usz short_len = 0;

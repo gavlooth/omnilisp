@@ -3,7 +3,8 @@ module lisp;
 import std::collections::list;
 
 fn bool parser_symbol_is(Parser* self, SymbolId sym, char[] text) @inline {
-    return (uint)sym == (uint)self.interp.symbols.intern(text);
+    SymbolId expected = self.intern_or_error(text, "parser: failed to intern comparison symbol");
+    return expected != INVALID_SYMBOL_ID && (uint)sym == (uint)expected;
 }
 
 fn bool parser_is_nil_datum(Value* v) @inline {

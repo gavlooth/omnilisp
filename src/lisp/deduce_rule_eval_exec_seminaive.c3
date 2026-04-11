@@ -17,7 +17,10 @@ fn Value* deduce_seminaive_build_proof_key(
         return null;
     }
 
-    usz proof_value_count = 1 + var_bound.len * 2;
+    if (var_bound.len > (usz.max - (usz)1) / (usz)2) {
+        return deduce_raise(exec.interp, "deduce/analyze-invalid-state", "deduce/analyze: proof key is too large");
+    }
+    usz proof_value_count = (usz)1 + var_bound.len * (usz)2;
     Value*[] proof_values = mem::new_array(Value*, proof_value_count);
     if (proof_values.ptr == null && proof_value_count > 0) {
         return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");

@@ -49,7 +49,8 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
     if (self.lexer.current.type == T_STRING) {
         ann.val_literal.tag = STRING;
         ann.val_literal.int_value = 0;
-        ann.val_literal.sym_value = self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+        ann.val_literal.sym_value = self.intern_or_error(self.lexer.current.text[:self.lexer.current.text_len], "failed to intern Value literal annotation");
+        if (ann.val_literal.sym_value == INVALID_SYMBOL_ID) return false;
         ann.has_val_literal = true;
         self.lexer.advance();
         return true;
@@ -93,7 +94,7 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
 
 fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, List{SymbolId}* params) {
     if (params.len() == 0) return true;
-    ann.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * params.len(), "out of memory while parsing type annotation");
+    ann.params = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, params.len(), "out of memory while parsing type annotation");
     if (ann.params == null) return false;
     ann.param_count = params.len();
     for (usz i = 0; i < params.len(); i++) ann.params[i] = (*params)[i];
@@ -102,7 +103,7 @@ fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, Li
 
 fn bool Parser.type_annotation_copy_meta(Parser* self, TypeAnnotation* ann, List{MetaEntry}* meta) {
     if (meta.len() == 0) return true;
-    ann.meta = (MetaEntry*)self.alloc_ast_bytes(MetaEntry.sizeof * meta.len(), "out of memory while parsing metadata dict");
+    ann.meta = (MetaEntry*)self.alloc_ast_array_bytes(MetaEntry.sizeof, meta.len(), "out of memory while parsing metadata dict");
     if (ann.meta == null) return false;
     ann.meta_count = meta.len();
     for (usz i = 0; i < meta.len(); i++) ann.meta[i] = (*meta)[i];

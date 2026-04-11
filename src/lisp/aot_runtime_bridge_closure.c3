@@ -50,6 +50,14 @@ fn lisp::Value* aot_make_error_best_effort(lisp::Interp* interp, char[] message)
     return active_interp != null ? lisp::make_error(active_interp, message) : null;
 }
 
+fn bool aot_intern_checked(lisp::Interp* interp, char[] name, lisp::SymbolId* out) @inline {
+    if (interp == null || out == null || name.ptr == null) return false;
+    lisp::SymbolId sid = interp.symbols.intern(name);
+    if (sid == lisp::INVALID_SYMBOL_ID) return false;
+    *out = sid;
+    return true;
+}
+
 fn lisp::Value* aot_make_single_arg_list(lisp::Interp* interp, lisp::Value* arg) @inline {
     if (g_aot_force_invoke_variadic_arg_list_alloc_fail) return null;
     if (interp == null) return null;

@@ -6,7 +6,8 @@ import lisp;
 fn lisp::Value* lookup_prim(char[] name) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot lookup-prim: runtime interpreter unavailable");
-    lisp::SymbolId sid = interp.symbols.intern(name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot lookup-prim: invalid or uninternable symbol");
     lisp::Value* v = interp.global_env.lookup(sid);
     if (v != null) return v;
     return lisp::make_nil(interp);
@@ -15,14 +16,16 @@ fn lisp::Value* lookup_prim(char[] name) {
 fn void define_var(char[] name, lisp::Value* val) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return;
-    lisp::SymbolId sid = interp.symbols.intern(name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return;
     lisp::env_define_with_barrier(interp.global_env, sid, val, interp);
 }
 
 fn lisp::Value* lookup_var(char[] name) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot lookup-var: runtime interpreter unavailable");
-    lisp::SymbolId sid = interp.symbols.intern(name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return aot_make_error_best_effort(interp, "aot lookup-var: invalid or uninternable symbol");
     lisp::Value* v = interp.global_env.lookup(sid);
     return v != null ? v : lisp::make_nil(interp);
 }
@@ -33,7 +36,9 @@ fn lisp::Value* import_module(char[] name, char[] path, bool has_path, bool impo
 
     lisp::Expr expr;
     expr.tag = lisp::ExprTag.E_IMPORT;
-    expr.import_expr.name = interp.symbols.intern(name);
+    if (!aot_intern_checked(interp, name, &expr.import_expr.name)) {
+        return aot_make_error_best_effort(interp, "aot import: invalid or uninternable module name");
+    }
     expr.import_expr.has_path = has_path;
     expr.import_expr.path = has_path ? path.ptr : null;
     expr.import_expr.path_len = has_path ? path.len : 0;
@@ -96,7 +101,10 @@ fn lisp::Value* field_access(lisp::Value* current, lisp::Value* field_name) {
             return aot_make_error_best_effort(interp, "aot field_access: field name must be string or symbol");
     }
 
-    lisp::SymbolId key = interp.symbols.intern(field_text);
+    lisp::SymbolId key = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, field_text, &key)) {
+        return aot_make_error_best_effort(interp, "aot field_access: invalid or uninternable field name");
+    }
     lisp::EvalResult step = lisp::eval_path_step(current, key, interp);
     if (step.error.has_error) {
         return aot_make_error_best_effort(interp, step.error.message[:256]);
@@ -107,7 +115,8 @@ fn lisp::Value* field_access(lisp::Value* current, lisp::Value* field_name) {
 fn void set_var(char[] name, lisp::Value* val) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return;
-    lisp::SymbolId sid = interp.symbols.intern(name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return;
     if (!lisp::env_set_with_barrier_checked(interp.global_env, sid, val, interp)) return;
 }
 
@@ -116,6 +125,9 @@ fn lisp::Value* explain_dispatch(char[] source, lisp::Value* callee, lisp::Value
     if (interp == null) return aot_make_error_best_effort(null, "aot explain-dispatch: runtime interpreter unavailable");
     if (argc < 0) return aot_make_error_best_effort(interp, "aot explain-dispatch: negative arg count");
     usz arg_count = (usz)argc;
+    if (arg_count > usz.max / lisp::Value*.sizeof) {
+        return aot_make_error_best_effort(interp, "aot explain-dispatch: out of memory");
+    }
     lisp::Value** storage = arg_count > 0
         ? (lisp::Value**)mem::malloc(lisp::Value*.sizeof * arg_count)
         : null;
@@ -141,10 +153,14 @@ fn lisp::Value* explain_dispatch(char[] source, lisp::Value* callee, lisp::Value
 fn lisp::Value* explain_effect_signal(char[] source, char[] effect_name, lisp::Value* arg) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot explain-effect-signal: runtime interpreter unavailable");
+    lisp::SymbolId effect_sym = (lisp::SymbolId)0;
+    if (!aot_symbol_from_text_checked(effect_name, &effect_sym)) {
+        return aot_make_error_best_effort(interp, "aot explain-effect-signal: invalid or uninternable effect name");
+    }
     return lisp::explain_effect_result_from_compiled_signal(
         interp,
         source,
-        aot_symbol_from_text(effect_name),
+        effect_sym,
         arg
     );
 }

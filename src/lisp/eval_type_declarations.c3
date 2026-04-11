@@ -10,6 +10,7 @@ fn bool eval_type_info_copy_symbol_array(SymbolId** out, SymbolId* src, usz coun
         *out = null;
         return true;
     }
+    if (count > usz.max / SymbolId.sizeof) return false;
     SymbolId* buf = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
     if (buf == null) return false;
     for (usz i = 0; i < count; i++) buf[i] = src[i];
@@ -22,6 +23,7 @@ fn bool eval_type_info_alloc_fields(TypeInfo* info, usz count) {
         info.fields = null;
         return true;
     }
+    if (count > usz.max / TypeFieldInfo.sizeof) return false;
     info.fields = (TypeFieldInfo*)mem::malloc(TypeFieldInfo.sizeof * count);
     return info.fields != null;
 }
@@ -31,14 +33,22 @@ fn bool eval_type_info_alloc_constraints(TypeInfo* info, usz count) {
         info.constraints = null;
         return true;
     }
+    if (count > usz.max / MethodConstraint.sizeof) return false;
     info.constraints = (MethodConstraint*)mem::malloc(MethodConstraint.sizeof * count);
     return info.constraints != null;
 }
 
-fn usz eval_deftype_constraint_capacity(ExprDefType* dt) {
+fn bool eval_deftype_constraint_capacity(ExprDefType* dt, usz* out) {
+    if (out == null) return false;
+    *out = 0;
     usz count = 0;
-    for (usz i = 0; i < dt.field_count; i++) count += dt.fields[i].type_ann.meta_count;
-    return count;
+    for (usz i = 0; i < dt.field_count; i++) {
+        usz meta_count = dt.fields[i].type_ann.meta_count;
+        if (meta_count > usz.max - count) return false;
+        count += meta_count;
+    }
+    *out = count;
+    return true;
 }
 
 fn bool eval_type_info_copy_union_variants(TypeInfo* info, UnionVariant* src, usz count) {
@@ -46,6 +56,7 @@ fn bool eval_type_info_copy_union_variants(TypeInfo* info, UnionVariant* src, us
         info.variants = null;
         return true;
     }
+    if (count > usz.max / UnionVariant.sizeof) return false;
     info.variants = (UnionVariant*)mem::malloc(UnionVariant.sizeof * count);
     if (info.variants == null) return false;
     for (usz i = 0; i < count; i++) {
@@ -149,7 +160,12 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
         if (info.type_params != null) mem::free(info.type_params);
         return eval_error("out of memory while registering type");
     }
-    usz constraint_capacity = eval_deftype_constraint_capacity(dt);
+    usz constraint_capacity = 0;
+    if (!eval_deftype_constraint_capacity(dt, &constraint_capacity)) {
+        if (info.fields != null) mem::free(info.fields);
+        if (info.type_params != null) mem::free(info.type_params);
+        return eval_error("out of memory while registering type");
+    }
     if (!eval_type_info_alloc_constraints(&info, constraint_capacity)) {
         if (info.fields != null) mem::free(info.fields);
         if (info.type_params != null) mem::free(info.type_params);
@@ -160,25 +176,40 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     eval_deftype_copy_fields(&info, dt, interp);
 
     // Register in type registry
+    TypeId existing_type_id = interp.types.lookup(dt.name, &interp.symbols);
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        type_registry_destroy_type_info(&info);
+        return eval_error("out of memory while registering type");
+    }
 
     // Create constructor primitive in root_scope (lives permanently in global env)
+    if (dt.field_count > (usz)int.max) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("type constructor arity exceeds supported limit");
+    }
     char[] name_str = interp.symbols.get_name(dt.name);
     Value* constructor = make_primitive(interp, name_str, &prim_type_constructor, (int)dt.field_count);
     if (constructor == null) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
         return eval_error("out of memory while registering type");
     }
     constructor.prim_val.tag = (int)type_id;
 
-    // Define constructor in global env
-    if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
-        return eval_error("out of memory while registering type");
-    }
-
     // Also make type info available as a value
     Value* type_val = interp.alloc_value();
+    if (type_val == null) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while registering type");
+    }
     type_val.tag = TYPE_INFO;
     type_val.type_info_val = &interp.types.types[(usz)type_id];
+
+    // Define constructor in global env
+    if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while registering type");
+    }
 
     return eval_ok(constructor);
 }

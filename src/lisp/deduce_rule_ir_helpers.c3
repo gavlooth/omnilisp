@@ -100,6 +100,9 @@ fn Value* deduce_rule_parse_atom(
     }
 
     if (term_count > 0) {
+        if (term_count > usz.max / DeduceRuleTerm.sizeof) {
+            return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
+        }
         out.terms = (DeduceRuleTerm*)mem::malloc(DeduceRuleTerm.sizeof * term_count);
         if (out.terms == null) {
             return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");

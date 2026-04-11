@@ -1,7 +1,7 @@
 ;; analytics.omni — Portfolio analytics with sets, zips, and collection HOFs
 ;;
 ;; Idioms demonstrated:
-;;   set-add / set-contains? / set-remove / set-size / set->list — set operations
+;;   set-add / set-contains? / set-remove / length / List — set operations
 ;;   zip              — pair historical vs current prices
 ;;   flatten          — flatten nested sector groupings
 ;;   find             — first matching element
@@ -42,7 +42,7 @@
 
 ;; (analytics/unique-symbols) — return the current watchlist as a list.
 (define (analytics/unique-symbols)
-  (set->list watchlist))
+  (List watchlist))
 
 ;; ── Price comparison via zip ────────────────────────────────────────────────
 

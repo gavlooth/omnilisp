@@ -151,8 +151,14 @@ fn Value* prim_zlib_decompress(Value*[] args, Env* env, Interp* interp) {
         // fault: lisp::EXPECTED_INT
         if (!is_int(args[1])) return compression_type_raise(interp, "type/arg-mismatch", "zlib-decompress: expected integer original-size");
         if (args[1].int_val <= 0) return compression_type_raise(interp, "type/arg-mismatch", "zlib-decompress: original-size must be > 0");
+        if (args[1].int_val > (long)(usz.max / (usz)4)) {
+            return compression_type_raise(interp, "type/arg-mismatch", "zlib-decompress: original-size is too large");
+        }
         try_size = (usz)args[1].int_val;
     } else {
+        if (src.len > usz.max / (usz)4) {
+            return compression_runtime_raise(interp, "runtime/zlib-size-limit", "zlib-decompress: input too large");
+        }
         try_size = src.len * 4;
         if (try_size < 256) try_size = 256;
     }
@@ -176,6 +182,9 @@ fn Value* prim_zlib_decompress(Value*[] args, Env* env, Interp* interp) {
         mem::free(out_buf);
 
         if (status == 3) {  // INSUFFICIENT_SPACE
+            if (try_size > usz.max / (usz)4) {
+                return compression_runtime_raise(interp, "runtime/zlib-size-limit", "zlib-decompress: decompressed data too large");
+            }
             try_size *= 4;
             continue;
         }

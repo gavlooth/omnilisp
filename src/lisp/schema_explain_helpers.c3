@@ -17,6 +17,10 @@ fn bool explain_eval_call_target(
     *args_out = {};
     *args_storage_out = null;
     if (arg_count > 0) {
+        if (arg_count > usz.max / Value*.sizeof) {
+            *callee_out = raise_error(interp, "explain dispatch: out of memory");
+            return false;
+        }
         Value** storage = (Value**)mem::malloc(Value*.sizeof * arg_count);
         if (storage == null) {
             *callee_out = raise_error(interp, "explain dispatch: out of memory");
@@ -61,6 +65,9 @@ fn Value* explain_dispatch_result_from_evaluated_call(
     TypeId[] arg_types = {};
     TypeId* arg_types_storage = null;
     if (call_args.len > 0) {
+        if (call_args.len > usz.max / TypeId.sizeof) {
+            return raise_error(interp, "explain dispatch: out of memory");
+        }
         arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * call_args.len);
         if (arg_types_storage == null) {
             return raise_error(interp, "explain dispatch: out of memory");

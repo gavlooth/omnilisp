@@ -55,6 +55,12 @@ fn lisp::SymbolId aot_symbol_from_text(char[] text) @inline {
     return g_aot_interp.symbols.intern(text);
 }
 
+fn bool aot_symbol_from_text_checked(char[] text, lisp::SymbolId* out) @inline {
+    if (out == null) return false;
+    *out = aot_symbol_from_text(text);
+    return *out != lisp::INVALID_SYMBOL_ID;
+}
+
 fn lisp::Value* count_arg_list(lisp::Value* arg_list, usz* count_out) {
     if (count_out == null) return make_error("aot lambda apply: missing arg count destination");
     *count_out = 0;
@@ -94,7 +100,8 @@ fn lisp::Value* make_double(double d) @inline { return lisp::make_double(g_aot_i
 fn lisp::Value* make_string(char[] s) @inline { return lisp::make_string(g_aot_interp, s); }
 fn lisp::Value* make_error(char[] message) @inline { return lisp::make_error(g_aot_interp, message); }
 fn lisp::Value* make_symbol(char[] s) @inline {
-    lisp::SymbolId sid = g_aot_interp.symbols.intern(s);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_symbol_from_text_checked(s, &sid)) return lisp::make_error(g_aot_interp, "aot make-symbol: invalid or uninternable symbol");
     return lisp::make_symbol(g_aot_interp, sid);
 }
 fn lisp::Value* make_time_point(int kind, int year, int month, int day, int hour, int minute, int second, int microsecond, int tz_offset) @inline {

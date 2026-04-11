@@ -48,7 +48,7 @@ fn Expr* Parser.parse_qq_list_form(Parser* self) {
     e.call.arg_count = qq_args.len();
     e.call.args = null;
     if (qq_args.len() > 0) {
-        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * qq_args.len(), "out of memory while allocating quasiquote call arguments");
+        e.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, qq_args.len(), "out of memory while allocating quasiquote call arguments");
         if (e.call.args == null) { qq_args.free(); return null; }
     }
     for (usz i = 0; i < qq_args.len(); i++) { e.call.args[i] = qq_args[i]; }

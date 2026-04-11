@@ -28,6 +28,7 @@ fn bool register_language_constants(Interp* interp) {
     if (!env_define_with_barrier_checked(interp.global_env, interp.sym_true, true_val, interp)) return false;
     if (!env_define_with_barrier_checked(interp.global_env, interp.sym_false, false_val, interp)) return false;
     SymbolId sym_nil = interp.symbols.intern("nil");
+    if (sym_nil == INVALID_SYMBOL_ID) return false;
     return env_define_with_barrier_checked(interp.global_env, sym_nil, nil_val, interp);
 }
 

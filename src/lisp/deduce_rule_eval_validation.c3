@@ -134,6 +134,9 @@ fn Value* deduce_rule_validate_stratification(DeduceDb* db, DeduceRuleIr* candid
 
     usz n = graph.predicates.len;
     if (n == 0) return null;
+    if (n > usz.max / n) {
+        return deduce_raise(interp, "deduce/rule-invalid-state", "deduce-rule!: dependency graph is too large");
+    }
 
     bool[] reach = mem::new_array(bool, n * n);
     if (reach.ptr == null) {

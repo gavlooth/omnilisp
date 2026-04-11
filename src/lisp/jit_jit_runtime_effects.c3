@@ -10,6 +10,14 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
 
     // Reinstall effect handler copy from when the signal occurred
     HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
+    if (k.handle_state != null && hstate == null) {
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/out-of-memory",
+            "resolve: failed to grow handler stack"
+        );
+    }
     main::StackCtx* target_ctx = k.ctx;
 
     // Consume one-shot continuation before resuming, so re-entrant use from
@@ -28,6 +36,7 @@ fn Value* jit_resolve_value(Interp* interp, Value* k_val, Value* val) {
     main::StackContext parent_ctx;
     main::stack_ctx_resume(target_ctx, &parent_ctx);
     if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
+        restore_interp_state_preserve_raise(interp, &saved);
         jit_resolve_pop_handler_copy(interp, hstate);
         interp_clear_resume_value(interp);
         if (had_retained && hstate != null && hstate.continuation_refcount > 0) hstate.continuation_refcount--;
@@ -107,6 +116,15 @@ fn Value* jit_apply_handle_continuation_value(Interp* interp, Value* k_val, Valu
     }
 
     HandleEffectState* hstate = jit_resolve_push_handler_copy(interp, k);
+    if (k.handle_state != null && hstate == null) {
+        jit_resolve_destroy_ctx(interp, target_ctx);
+        return raise_error_with_payload_names(
+            interp,
+            "runtime",
+            "runtime/out-of-memory",
+            "continuation: failed to grow handler stack"
+        );
+    }
 
     SavedInterpState saved;
     save_interp_state(interp, &saved);
@@ -115,6 +133,7 @@ fn Value* jit_apply_handle_continuation_value(Interp* interp, Value* k_val, Valu
     main::StackContext parent_ctx;
     main::stack_ctx_resume(target_ctx, &parent_ctx);
     if (!jit_continuation_drive_blocked_fiber(target_ctx, interp, &parent_ctx)) {
+        restore_interp_state_preserve_raise(interp, &saved);
         jit_resolve_pop_handler_copy(interp, hstate);
         interp_clear_resume_value(interp);
         jit_resolve_destroy_ctx(interp, target_ctx);

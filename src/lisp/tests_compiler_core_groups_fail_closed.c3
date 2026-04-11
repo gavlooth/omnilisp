@@ -403,6 +403,38 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
     }
 
     {
+        char[SYMBOL_MAX_NAME_LEN + 1] too_long_symbol;
+        for (usz i = 0; i < too_long_symbol.len; i++) too_long_symbol[i] = 'a';
+        char[] err = "";
+        char[] code = compile_to_c3(too_long_symbol[..], interp, &err);
+        bool ok = code.len == 0 && str_contains(err, "failed to intern symbol");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parser symbol interning fails closed on overlong symbol"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parser symbol interning fails closed on overlong symbol"); }
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+        compiler.emit_int(long.min);
+        char[] code = compiler.get_output();
+        bool ok = code.len > 0 && str_contains(code, "-9223372036854775808");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: emit_int preserves long.min without overflow"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: emit_int preserves long.min without overflow"); }
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+        compiler.emit_usz(usz.max);
+        char[] code = compiler.get_output();
+        bool ok = code.len > 0 && str_contains(code, "18446744073709551615");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: emit_usz preserves max-width usz values"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: emit_usz preserves max-width usz values"); }
+    }
+
+    {
         List{Expr*} exprs = parse_program("1 2.[", interp);
         defer exprs.free();
         bool ok = exprs.len() == 0;

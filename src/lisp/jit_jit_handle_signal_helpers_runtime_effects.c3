@@ -21,13 +21,24 @@ fn Value* call_fast_path_primitive_list_preserving_error(Value* fp_prim, Value* 
     usz argc = 0;
     Value* curr = arg_list;
     while (curr != null && curr.tag == CONS) {
+        if (argc == usz.max) {
+            return runtime_effect_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+        }
         argc++;
         curr = curr.cons_val.cdr;
     }
     // stdlib wrappers often pass cons spines with a final non-list tail:
     // (cons a b) for binary calls, (cons a (cons b c)) for ternary calls.
-    if (curr != null && curr.tag != NIL) argc++;
+    if (curr != null && curr.tag != NIL) {
+        if (argc == usz.max) {
+            return runtime_effect_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+        }
+        argc++;
+    }
 
+    if (argc > usz.max / Value*.sizeof) {
+        return runtime_effect_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
+    }
     Value** argv = argc > 0 ? (Value**)interp.current_scope.alloc(Value*.sizeof * argc) : null;
     if (argc > 0 && argv == null) {
         return runtime_effect_raise(interp, "runtime/fast-path-out-of-memory", "effect fast path: out of memory while staging args");
@@ -72,10 +83,13 @@ fn Value* jit_unhandled_effect_error(SymbolId tag, Value* arg_v, Interp* interp)
         umsg = "unhandled effect";
     }
 
-    Value* data = make_hashmap(interp, 8);
+    Value* data = make_hashmap_no_raise(interp, 8);
     if (data != null && data.tag == HASHMAP && data.hashmap_val != null) {
         SymbolId key_tag = interp.symbols.intern("tag");
         SymbolId key_arg_type = interp.symbols.intern("arg-type");
+        if (key_tag == INVALID_SYMBOL_ID || key_arg_type == INVALID_SYMBOL_ID) {
+            return make_error(interp, "runtime effect payload: out of memory");
+        }
         if (!hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_tag), make_symbol(interp, tag), interp) ||
             !hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_arg_type), make_symbol(interp, value_type_name(arg_v, interp)), interp)) {
             return make_error(interp, "runtime effect payload: out of memory");

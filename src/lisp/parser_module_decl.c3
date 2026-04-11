@@ -6,12 +6,17 @@ fn bool parser_module_ensure_export_capacity(Parser* self, ExprModule* module_ex
         self.set_error("out of memory while growing module export list");
         return false;
     }
-    usz new_cap = module_expr.export_capacity * 2;
-    if (new_cap <= module_expr.export_capacity) {
+    if (module_expr.export_capacity > usz.max / 2) {
         self.set_error("module export list is too large");
         return false;
     }
-    SymbolId* new_exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing module export list");
+    usz new_cap = module_expr.export_capacity * 2;
+    usz export_bytes = 0;
+    if (!lisp_checked_mul_usz(SymbolId.sizeof, new_cap, &export_bytes)) {
+        self.set_error("out of memory while growing module export list");
+        return false;
+    }
+    SymbolId* new_exports = (SymbolId*)self.alloc_ast_bytes(export_bytes, "out of memory while growing module export list");
     if (new_exports == null) return false;
     for (usz i = 0; i < module_expr.export_count; i++) {
         new_exports[i] = module_expr.exports[i];
@@ -27,12 +32,17 @@ fn bool parser_module_ensure_body_capacity(Parser* self, ExprModule* module_expr
         self.set_error("out of memory while growing module body");
         return false;
     }
-    usz new_cap = module_expr.body_capacity * 2;
-    if (new_cap <= module_expr.body_capacity) {
+    if (module_expr.body_capacity > usz.max / 2) {
         self.set_error("module body is too large");
         return false;
     }
-    Expr** new_body = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * new_cap, "out of memory while growing module body");
+    usz new_cap = module_expr.body_capacity * 2;
+    usz body_bytes = 0;
+    if (!lisp_checked_mul_usz(Expr*.sizeof, new_cap, &body_bytes)) {
+        self.set_error("out of memory while growing module body");
+        return false;
+    }
+    Expr** new_body = (Expr**)self.alloc_ast_bytes(body_bytes, "out of memory while growing module body");
     if (new_body == null) return false;
     for (usz i = 0; i < module_expr.body_count; i++) {
         new_body[i] = module_expr.body[i];
@@ -54,11 +64,11 @@ fn Expr* Parser.alloc_module_expr(Parser* self, SymbolId name) {
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
     e.module_expr.export_capacity = 32;
-    e.module_expr.exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * 32, "out of memory while allocating module export list");
+    e.module_expr.exports = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, 32, "out of memory while allocating module export list");
     if (e.module_expr.exports == null) return null;
     e.module_expr.body_count = 0;
     e.module_expr.body_capacity = 32;
-    e.module_expr.body = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 32, "out of memory while allocating module body");
+    e.module_expr.body = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, 32, "out of memory while allocating module body");
     if (e.module_expr.body == null) return null;
     return e;
 }

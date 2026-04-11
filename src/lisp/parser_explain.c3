@@ -9,7 +9,8 @@ fn bool parse_explain_selector_symbol(Parser* self, Expr* selector_expr, SymbolI
 
     *quoted_symbol_out = true;
     SymbolId selector = datum.sym_val;
-    SymbolId dispatch_sym = self.interp.symbols.intern("dispatch");
+    SymbolId dispatch_sym = self.intern_or_error("dispatch", "explain: failed to intern dispatch selector");
+    if (dispatch_sym == INVALID_SYMBOL_ID) return false;
     if ((uint)selector == (uint)dispatch_sym || (uint)selector == (uint)self.interp.sym_effect) {
         *selector_out = selector;
         return true;
@@ -65,7 +66,8 @@ fn Expr* Parser.parse_explain(Parser* self) {
     Expr* explain_fn = self.alloc_expr();
     if (explain_fn == null) return null;
     explain_fn.tag = E_VAR;
-    explain_fn.var_expr.name = self.interp.symbols.intern("explain");
+    explain_fn.var_expr.name = self.intern_or_error("explain", "explain: failed to intern explain function name");
+    if (explain_fn.var_expr.name == INVALID_SYMBOL_ID) return null;
     explain_fn.loc_line = call_expr.loc_line;
     explain_fn.loc_column = call_expr.loc_column;
 
@@ -74,7 +76,7 @@ fn Expr* Parser.parse_explain(Parser* self) {
     if (call_expr.call == null) return null;
     call_expr.call.func = explain_fn;
     call_expr.call.arg_count = 2;
-    call_expr.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 2, "out of memory while allocating explain call args");
+    call_expr.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, 2, "out of memory while allocating explain call args");
     if (call_expr.call.args == null) return null;
     call_expr.call.args[0] = selector_expr;
     call_expr.call.args[1] = thunk_expr;

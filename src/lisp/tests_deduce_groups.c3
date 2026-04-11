@@ -271,14 +271,14 @@ fn void run_deduce_relation_open_commit_failure_test(Interp* interp, int* pass, 
     g_deduce_force_relation_open_commit_fail = true;
     EvalResult open_named_result = run(
         "(handle (deduce 'open-named (deduce 'open 'memory) 'force_commit_fail \"force_commit_fail\" 'name) "
-        "  (raise payload (symbol->string (ref payload 'code))))",
+        "  (raise payload (String (ref payload 'code))))",
         interp
     );
     EvalResult define_relation_result = run(
         "(handle (block "
         "    (define db-force-commit-fail (deduce 'open 'memory)) "
         "    (__define-relation db-force-commit-fail 'force_commit_fail_rel 'name)) "
-        "  (raise payload (symbol->string (ref payload 'code))))",
+        "  (raise payload (String (ref payload 'code))))",
         interp
     );
     g_deduce_force_relation_open_commit_fail = saved_force_commit_fail;
@@ -323,7 +323,7 @@ fn void run_deduce_non_transaction_mutation_post_commit_atomic_surface_test(Inte
     g_deduce_force_materialized_meta_persist_fail = true;
     EvalResult r = run(
         "(block "
-        "  (define mutation-result (handle (deduce 'fact! rel-post-commit-atomic 7) (raise payload (symbol->string (ref payload 'code))))) "
+        "  (define mutation-result (handle (deduce 'fact! rel-post-commit-atomic 7) (raise payload (String (ref payload 'code))))) "
         "  (and (void? mutation-result) (= (deduce 'count rel-post-commit-atomic) 1)))",
         interp
     );
@@ -354,7 +354,7 @@ fn void run_deduce_transaction_mutation_log_failure_bookkeeping_test(Interp* int
         "  (define rel-txn-log-fail (deduce 'open-named db-txn-log-fail 'txn_log_fail \"txn_log_fail\" 'id)) "
         "  (define tx-txn-log-fail (deduce 'block db-txn-log-fail)) "
         "  (deduce 'fact! tx-txn-log-fail rel-txn-log-fail 1) "
-        "  (define commit-result (handle (deduce 'commit tx-txn-log-fail) (raise payload (symbol->string (ref payload 'code))))) "
+        "  (define commit-result (handle (deduce 'commit tx-txn-log-fail) (raise payload (String (ref payload 'code))))) "
         "  (define analyzed (deduce 'analyze db-txn-log-fail)) "
         "  (and (void? commit-result) "
         "       (= (deduce 'count rel-txn-log-fail) 1) "

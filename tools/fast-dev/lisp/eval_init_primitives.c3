@@ -32,7 +32,7 @@ fn void register_language_constants(Interp* interp) {
 }
 
 fn void register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 45;
+    const DISPATCHED_PRIM_COUNT = 43;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -61,10 +61,10 @@ fn void register_dispatched_primitives(Interp* interp) {
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
         // Callable type symbols / constructors
-        { "Integer", &prim_ctor_int, 1 }, { "Int", &prim_ctor_int, 1 },
+        { "Integer", &prim_ctor_int, 1 },
         { "Double", &prim_ctor_double, 1 },
         { "String", &prim_ctor_string, 1 }, { "Symbol", &prim_ctor_symbol, 1 },
-        { "Boolean", &prim_ctor_bool, 1 }, { "Bool", &prim_ctor_bool, 1 },
+        { "Boolean", &prim_ctor_bool, 1 },
         { "Nil", &prim_ctor_nil, 1 }, { "Void", &prim_ctor_void, -1 },
         { "Closure", &prim_ctor_closure, 1 }, { "Iterator", &prim_ctor_iterator, 1 },
     };
@@ -115,14 +115,9 @@ fn void register_regular_primitives_core(Interp* interp) {
         { "fs-write", &prim_fs_write, 2 }, { "fs-close", &prim_fs_close, 1 },
         { "fs-stat", &prim_fs_stat, 1 }, { "fs-readdir", &prim_fs_readdir, 1 },
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
-        { "filesystem-open", &prim_fs_open, -1 }, { "filesystem-read", &prim_fs_read, 2 },
-        { "filesystem-write", &prim_fs_write, 2 }, { "filesystem-close", &prim_fs_close, 1 },
-        { "filesystem-stat", &prim_fs_stat, 1 }, { "filesystem-read-directory", &prim_fs_readdir, 1 },
-        { "filesystem-rename", &prim_fs_rename, 2 }, { "filesystem-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
-        { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
-        { "exact->inexact", &prim_exact_to_inexact, 1 }, { "inexact->exact", &prim_inexact_to_exact, 1 },
+        { "string->number", &prim_string_to_number, 1 },
         // Gensym
         { "gensym", &prim_gensym, 0 },
         // Dictionary
@@ -159,10 +154,8 @@ fn void register_regular_primitives_collections(Interp* interp) {
         { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
         { "set-remove", &prim_set_remove, 2 }, { "set-contains?", &prim_set_contains, 2 },
-        { "set-size", &prim_set_size, 1 }, { "set->list", &prim_set_to_list, 1 },
         // Additional I/O and convenience
-        { "read-string", &prim_read_string, 1 }, { "string->symbol", &prim_string_to_symbol, 1 },
-        { "symbol->string", &prim_symbol_to_string, 1 },
+        { "read-string", &prim_read_string, 1 },
         // Type system
         { "^", &prim_ctor_type_apply, 2 },
         { "type-of", &prim_type_of, 1 },

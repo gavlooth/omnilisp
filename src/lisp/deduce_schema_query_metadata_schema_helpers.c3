@@ -88,18 +88,28 @@ fn Value* deduce_materialized_stale_reason_value(
     Interp* interp
 ) {
     if (interp == null) return null;
+    SymbolId value = INVALID_SYMBOL_ID;
     switch (reason) {
         case DEDUCE_MATERIALIZED_STALE_NONE:
             return make_nil(interp);
         case DEDUCE_MATERIALIZED_STALE_NEVER_REFRESHED:
-            return make_symbol(interp, interp.symbols.intern("never-refreshed"));
+            value = interp.symbols.intern("never-refreshed");
+            break;
         case DEDUCE_MATERIALIZED_STALE_RULE_SET_CHANGE:
-            return make_symbol(interp, interp.symbols.intern("rule-set-change"));
+            value = interp.symbols.intern("rule-set-change");
+            break;
         case DEDUCE_MATERIALIZED_STALE_DEPENDENCY_DIRTY:
-            return make_symbol(interp, interp.symbols.intern("dependency-dirty"));
+            value = interp.symbols.intern("dependency-dirty");
+            break;
         case DEDUCE_MATERIALIZED_STALE_FULL_RECOMPUTE_REQUIRED:
-            return make_symbol(interp, interp.symbols.intern("full-recompute-required"));
+            value = interp.symbols.intern("full-recompute-required");
+            break;
     }
+    if (value == INVALID_SYMBOL_ID) {
+        return deduce_raise(interp, "deduce/metadata-out-of-memory",
+            "deduce: failed to intern materialized stale reason");
+    }
+    return make_symbol(interp, value);
 }
 
 fn Value* deduce_materialized_stale_value(

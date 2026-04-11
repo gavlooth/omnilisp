@@ -136,7 +136,7 @@ fn Expr* Parser.parse_block(Parser* self) {
         e.block = (ExprBlock*)self.alloc_ast_bytes(ExprBlock.sizeof, "out of memory while allocating block expression");
         if (e.block == null) { items.free(); return null; }
         e.block.expr_count = items.len();
-        e.block.exprs = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * items.len(), "out of memory while allocating block expressions");
+        e.block.exprs = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, items.len(), "out of memory while allocating block expressions");
         if (e.block.exprs == null && items.len() > 0) { items.free(); return null; }
         for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
         items.free();

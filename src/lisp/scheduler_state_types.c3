@@ -43,6 +43,7 @@ struct Scheduler {
     types::Atomic{usz} wakeup_enqueue_failures;
     types::Atomic{usz} reliable_wakeup_enqueues;
     types::Atomic{usz} readable_signal_coalesces;
+    types::Atomic{usz} writable_signal_coalesces;
 }
 
 struct SchedulerDomain {

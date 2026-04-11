@@ -30,12 +30,21 @@ fn Value* prim_tcp_listen(Value*[] args, Env* env, Interp* interp) {
     int backlog = 128;
     if (backlog_v != null) {
         if (!is_int(backlog_v)) return io_raise(interp, "io/tcp-listen-backlog-not-integer", "tcp-listen: backlog must be an integer");
-        backlog = (int)backlog_v.int_val;
-        if (backlog < 1) backlog = 1;
-        if (backlog > 1024) backlog = 1024;
+        long raw_backlog = backlog_v.int_val;
+        if (raw_backlog < 1) {
+            backlog = 1;
+        } else if (raw_backlog > 1024) {
+            backlog = 1024;
+        } else {
+            backlog = (int)raw_backlog;
+        }
     }
 
-    int port = (int)port_v.int_val;
+    long raw_port = port_v.int_val;
+    if (raw_port < 0 || raw_port > 65535) {
+        return io_raise(interp, "io/tcp-listen-invalid-port", "tcp-listen: port must be between 0 and 65535");
+    }
+    int port = (int)raw_port;
 
     if (!scheduler_is_running_fiber_context()) {
         return tcp_raise_fiber_required(interp, "tcp-listen", "io/tcp-listen-fiber-required");
@@ -143,6 +152,7 @@ fn Value* tcp_accept_with_libuv(TcpHandle* listener, Interp* interp) {
     }
 
     if (!pending.active || !pending.completed) {
+        scheduler_close_pending_tcp_accept(fiber_id);
         return io_raise(
             interp,
             "io/tcp-accept-resumed-before-completion",

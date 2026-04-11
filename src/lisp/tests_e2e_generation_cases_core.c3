@@ -103,7 +103,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "string-length", `(string-length "hello world")` },
     { "string-append", `(string-append "hello" " world")` },
     // substring skipped: 3-arg function not yet supported in compiler runtime
-    { "number->string", `(number->string 42)` },
+    { "String", `(String 42)` },
     { "string->number", `(string->number "42")` },
     { "Integer ctor double", "(Integer 3.9)" },
     { "Integer shorthand ctor double", "(Integer 3.9)" },
@@ -297,7 +297,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "string-length 1", `(string-length "a")` },
     { "string-append empty", `(string-append "" "abc")` },
     { "string->number neg", `(string->number "-7")` },
-    { "number->string 0", `(number->string 0)` },
+    { "String 0", `(String 0)` },
 
     // === Float edge cases ===
     { "float neg", "-2.5" },

@@ -73,15 +73,23 @@ fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
         return io_fs_raise(interp, "io/fs-open-expected-path-flags", "fs-open: expected (fs-open path flags [mode])");
     }
 
+    if (flags_v.int_val < 0 || flags_v.int_val > (long)int.max) {
+        return io_fs_raise(interp, "io/fs-open-flags-out-of-range", "fs-open: flags out of range");
+    }
+    int flags = (int)flags_v.int_val;
+
     int mode = 420;
     if (mode_v != null) {
         if (!is_int(mode_v)) {
             return io_fs_raise(interp, "io/fs-open-mode-not-integer", "fs-open: mode must be an integer");
         }
+        if (mode_v.int_val < 0 || mode_v.int_val > (long)int.max) {
+            return io_fs_raise(interp, "io/fs-open-mode-out-of-range", "fs-open: mode out of range");
+        }
         mode = (int)mode_v.int_val;
     }
 
-    int fd = fs_uv_open((ZString)path_v.str_chars, (int)flags_v.int_val, mode);
+    int fd = fs_uv_open((ZString)path_v.str_chars, flags, mode);
     if (fd < 0) {
         return io_fs_raise(interp, "io/fs-open-failed", "fs-open: open failed");
     }

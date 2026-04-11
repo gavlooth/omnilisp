@@ -5,16 +5,26 @@ fn Value* deduce_integrity_violation_class_value(
     Interp* interp
 ) {
     if (interp == null) return null;
+    SymbolId value = INVALID_SYMBOL_ID;
     switch (violation_class) {
         case DEDUCE_INTEGRITY_VIOLATION_KEY:
-            return make_symbol(interp, interp.symbols.intern("key"));
+            value = interp.symbols.intern("key");
+            break;
         case DEDUCE_INTEGRITY_VIOLATION_UNIQUE:
-            return make_symbol(interp, interp.symbols.intern("unique"));
+            value = interp.symbols.intern("unique");
+            break;
         case DEDUCE_INTEGRITY_VIOLATION_REFERENCE:
-            return make_symbol(interp, interp.symbols.intern("reference"));
+            value = interp.symbols.intern("reference");
+            break;
         case DEDUCE_INTEGRITY_VIOLATION_CHECK:
-            return make_symbol(interp, interp.symbols.intern("check"));
+            value = interp.symbols.intern("check");
+            break;
     }
+    if (value == INVALID_SYMBOL_ID) {
+        return deduce_raise(interp, "deduce/integrity-history-out-of-memory",
+            "deduce: failed to intern integrity violation class");
+    }
+    return make_symbol(interp, value);
 }
 
 fn Value* deduce_integrity_violation_history_payload(
@@ -45,6 +55,7 @@ fn Value* deduce_integrity_violation_history_payload(
         if (Value* err = explain_dict_set(entry, interp, "violation-class",
                 deduce_integrity_violation_class_value(entry_data.violation_class, interp))) return err;
         list = make_cons(interp, entry, list);
+        if (list == null || list.tag == ERROR) return list;
     }
     return list;
 }

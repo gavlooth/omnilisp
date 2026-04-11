@@ -92,7 +92,7 @@ fn Pattern* Parser.parse_paren_pattern(Parser* self) {
         subs.push(self.parse_pattern());
     }
     p.ctor_sub_count = subs.len();
-    p.ctor_sub_patterns = (Pattern**)self.alloc_ast_bytes(Pattern*.sizeof * subs.len(), "out of memory while allocating constructor pattern arguments");
+    p.ctor_sub_patterns = (Pattern**)self.alloc_ast_array_bytes(Pattern*.sizeof, subs.len(), "out of memory while allocating constructor pattern arguments");
     if (p.ctor_sub_patterns == null && subs.len() > 0) { subs.free(); return null; }
     for (usz i = 0; i < subs.len(); i++) { p.ctor_sub_patterns[i] = subs[i]; }
     subs.free();

@@ -70,7 +70,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         EvalResult r = run(
             "(let loop (i 0 ok true) "
             "  (if (= i 40) ok "
-            "      (let (p (string-append \"(\" (number->string i) \"|x)\") "
+            "      (let (p (string-append \"(\" (String i) \"|x)\") "
             "            m (re-fullmatch p \"x\")) "
             "        (loop (+ i 1) (and ok (and m (= m \"x\")))))))",
             interp
@@ -88,7 +88,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         EvalResult r = run(
             "(let loop (i 0 ok true) "
             "  (if (= i 180) ok "
-            "      (let (p (string-append \"(\" (number->string i) \"|x)\") "
+            "      (let (p (string-append \"(\" (String i) \"|x)\") "
             "            m (re-fullmatch p \"x\")) "
             "        (loop (+ i 1) (and ok (and m (= m \"x\")))))))",
             interp
@@ -140,63 +140,63 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
 
     // Regex: strict grammar validation
     test_str_val(interp, "re-fullmatch unmatched close paren raises",
-        "(handle (re-fullmatch \"a)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch unmatched open paren raises",
-        "(handle (re-fullmatch \"(ab\" \"ab\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"(ab\" \"ab\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch leading quantifier raises",
-        "(handle (re-fullmatch \"*a\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"*a\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch trailing quantifier raises",
-        "(handle (re-fullmatch \"a**\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a**\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch unknown group type raises",
-        "(handle (re-fullmatch \"(?q)a\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"(?q)a\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch malformed bounded quantifier missing min raises",
-        "(handle (re-fullmatch \"a{,2}\" \"aa\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a{,2}\" \"aa\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch malformed bounded quantifier upper raises",
-        "(handle (re-fullmatch \"a{2,x}\" \"aa\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a{2,x}\" \"aa\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_tag(interp, "re-fullmatch supports bounded quantifier >4096",
         "(re-fullmatch \"a{1,5000}\" \"a\")", STRING, pass, fail);
     test_str_val(interp, "re-fullmatch bounded quantifier overflow upper raises",
-        "(handle (re-fullmatch \"a{1,2147483648}\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a{1,2147483648}\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch bounded quantifier overflow lower raises",
-        "(handle (re-fullmatch \"a{2147483648}\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a{2147483648}\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch descending bounded quantifier raises",
-        "(handle (re-fullmatch \"a{3,2}\" \"aaa\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a{3,2}\" \"aaa\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch empty char class raises",
-        "(handle (re-fullmatch \"[]\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"[]\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch invalid class range raises",
-        "(handle (re-fullmatch \"[z-a]\" \"z\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"[z-a]\" \"z\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch trailing escape raises",
-        "(handle (re-fullmatch \"\\\\\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"\\\\\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-fullmatch trailing token after end anchor raises",
-        "(handle (re-fullmatch \"a$)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-fullmatch \"a$)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-fullmatch-invalid-pattern", pass, fail);
     test_str_val(interp, "re-match malformed pattern raises",
-        "(handle (re-match \"a)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-match \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-match-invalid-pattern", pass, fail);
     test_str_val(interp, "re-find-all malformed pattern raises",
-        "(handle (re-find-all \"a)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-find-all \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-find-all-invalid-pattern", pass, fail);
     test_str_val(interp, "re-replace malformed pattern raises",
-        "(handle (re-replace \"a)\" \"x\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-replace \"a)\" \"x\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-replace-invalid-pattern", pass, fail);
     test_str_val(interp, "re-match-pos malformed pattern raises",
-        "(handle (re-match-pos \"a)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-match-pos \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-match-pos-invalid-pattern", pass, fail);
     test_str_val(interp, "re-find-all-pos malformed pattern raises",
-        "(handle (re-find-all-pos \"a)\" \"a\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (re-find-all-pos \"a)\" \"a\") (raise msg (String (ref msg 'code))))",
         "regex/re-find-all-pos-invalid-pattern", pass, fail);
 
     // Pika grammar: seed/epsilon edge + unreachable-rule pruning
@@ -234,7 +234,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "  (pika/parse 'g-scan-many \"abcdefghi\"))",
         CONS, pass, fail);
     test_str_val(interp, "pika/parse-lisp grammar drift fails closed",
-        "(handle (pika/parse-lisp \"#_(+ 1 2) 3\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/parse-lisp \"#_(+ 1 2) 3\") (raise msg (String (ref msg 'code))))",
         "parser/parse-lisp-grammar-drift", pass, fail);
     test_tag(interp, "pika/parse-lisp canonical postfix index accepted",
         "(pika/parse-lisp \"a.[0]\")",
@@ -243,7 +243,7 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(pika/parse-lisp \"a[0]\")",
         NIL, pass, fail);
     test_str_val(interp, "pika/parse-lisp utf8 symbol drift fails closed",
-        "(handle (pika/parse-lisp \"\xce\xbb\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/parse-lisp \"\xce\xbb\") (raise msg (String (ref msg 'code))))",
         "parser/parse-lisp-grammar-drift", pass, fail);
     test_eq(interp, "pika/eval-lisp literal",
         "(pika/eval-lisp \"42\")",
@@ -252,13 +252,13 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
         "(pika/eval-lisp \"(+ 1 2)\")",
         3, pass, fail);
     test_str_val(interp, "pika/eval-lisp grammar drift fails closed",
-        "(handle (pika/eval-lisp \"#_(+ 1 2) 3\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/eval-lisp \"#_(+ 1 2) 3\") (raise msg (String (ref msg 'code))))",
         "parser/eval-lisp-grammar-drift", pass, fail);
     test_str_val(interp, "pika/eval-lisp invalid input raises",
-        "(handle (pika/eval-lisp \"(\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/eval-lisp \"(\") (raise msg (String (ref msg 'code))))",
         "parser/eval-lisp-invalid-input", pass, fail);
     test_str_val(interp, "pika/eval-lisp type mismatch raises",
-        "(handle (pika/eval-lisp 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (pika/eval-lisp 42) (raise msg (String (ref msg 'code))))",
         "parser/eval-lisp-input-not-string", pass, fail);
     {
         pika::RuleBuilder rb = pika::rb_new();

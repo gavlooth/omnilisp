@@ -167,6 +167,6 @@ fn void boundary_destination_build_scope_commit(
     if (build_scope_io == null) return;
     main::ScopeRegion* build_scope = *build_scope_io;
     if (build_scope == null || target_scope == null) return;
-    main::scope_splice_escapes(target_scope, build_scope);
+    boundary_destination_build_scope_splice(target_scope, build_scope);
     *build_scope_io = null;
 }

@@ -92,7 +92,8 @@ fn TypeAnnotation Parser.parse_type_annotation(Parser* self) {
     if (self.lexer.current.text_len > 1) {
         // Form 1: ^TypeName — strip leading ^, intern rest as base_type
         ann.has_annotation = true;
-        ann.base_type = self.interp.symbols.intern(self.lexer.current.text[1..self.lexer.current.text_len - 1]);
+        ann.base_type = self.intern_or_error(self.lexer.current.text[1..self.lexer.current.text_len - 1], "failed to intern type annotation");
+        if (ann.base_type == INVALID_SYMBOL_ID) return ann;
         self.lexer.advance();
         return ann;
     }

@@ -28,7 +28,9 @@ fn Expr* Parser.parse_quasiquote_like_form(Parser* self, SymbolId head) {
 
 fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matched) {
     *matched = true;
-    if ((uint)head == (uint)self.interp.symbols.intern("^")) return self.parse_constructor_type_application();
+    SymbolId type_apply_sym = self.intern_or_error("^", "parser: failed to intern constructor type application symbol");
+    if (type_apply_sym == INVALID_SYMBOL_ID) return null;
+    if ((uint)head == (uint)type_apply_sym) return self.parse_constructor_type_application();
     if (self.is_lambda_head_symbol(head)) return self.parse_lambda();
     if ((uint)head == (uint)self.interp.sym_if) return self.parse_if();
     if ((uint)head == (uint)self.interp.sym_let) return self.parse_let();
@@ -39,7 +41,9 @@ fn Expr* Parser.parse_symbol_head_form(Parser* self, SymbolId head, bool* matche
     if ((uint)head == (uint)self.interp.sym_signal) return self.parse_perform();
     if ((uint)head == (uint)self.interp.sym_handle) return self.parse_handle();
     if ((uint)head == (uint)self.interp.sym_resolve) return self.parse_resolve();
-    if ((uint)head == (uint)self.interp.symbols.intern("explain")) return self.parse_explain();
+    SymbolId explain_sym = self.intern_or_error("explain", "parser: failed to intern explain symbol");
+    if (explain_sym == INVALID_SYMBOL_ID) return null;
+    if ((uint)head == (uint)explain_sym) return self.parse_explain();
     if ((uint)head == (uint)self.interp.sym_with_continuation) return self.parse_with_continuation();
     if ((uint)head == (uint)self.interp.sym_match) return self.parse_match();
     if ((uint)head == (uint)self.interp.sym_and) return self.parse_and();

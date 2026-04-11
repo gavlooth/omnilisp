@@ -141,8 +141,14 @@ fn Env* make_env(Interp* interp, Env* parent) {
  */
 fn bool Env.build_hash_table(Env* self) {
     // Determine capacity (next power of 2 >= 2 * count)
+    if (self.binding_count > usz.max / (usz)2) return false;
+    usz min_cap = self.binding_count * (usz)2;
     usz cap = 32;
-    while (cap < self.binding_count * 2) cap *= 2;
+    while (cap < min_cap) {
+        if (cap > usz.max / (usz)2) return false;
+        cap *= (usz)2;
+    }
+    if (cap > usz.max / EnvHashEntry.sizeof) return false;
 
     EnvHashEntry* new_hash_table = g_env_force_hash_alloc_oom
         ? null
@@ -186,6 +192,7 @@ fn bool Env.build_hash_table(Env* self) {
  */
 <* @require self.hash_table != null : "hash_lookup called without hash table" *>
 fn usz Env.hash_lookup(Env* self, SymbolId name) {
+    if (name == INVALID_SYMBOL_ID) return ~(usz)0;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
     for (;;) {
@@ -201,6 +208,7 @@ fn usz Env.hash_lookup(Env* self, SymbolId name) {
  */
 <* @require self.hash_table != null : "hash_insert called without hash table" *>
 fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
+    if (name == INVALID_SYMBOL_ID) return;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
     while (self.hash_table[slot].key != ENV_HASH_EMPTY && self.hash_table[slot].key != name) {

@@ -67,7 +67,7 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
         "  (handle (ambi-payload 1 1) "
         "    (raise payload "
         "      (let (d (ref payload 'data)) "
-        "        (and (= (symbol->string (ref payload 'code)) \"type/dispatch-ambiguous\") "
+        "        (and (= (String (ref payload 'code)) \"type/dispatch-ambiguous\") "
         "             (and (= (ref d 'reason) 'ambiguous-equal-specificity) "
         "                  (and (= (ref d 'method) 'ambi-payload) "
         "                       (and (= (ref d 'arg-count) 2) "

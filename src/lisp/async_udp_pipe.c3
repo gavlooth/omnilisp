@@ -84,6 +84,7 @@ fn Value* prim_pipe_connect(Value*[] args, Env* env, Interp* interp) {
         pending.request_token == 0 ||
         pending.req_handle == null ||
         pending.tcp_handle == null) {
+        scheduler_close_pending_tcp_connect(fiber_id);
         return io_raise(
             interp,
             "io/pipe-connect-resumed-before-completion",

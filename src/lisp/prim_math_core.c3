@@ -122,6 +122,7 @@ fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
     if (!is_number(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
     if (is_double(args[0])) return make_double(interp, c_fabs(args[0].double_val));
     long n = args[0].int_val;
+    if (n == long.min) return raise_error(interp, "abs: integer overflow");
     return make_int(interp, n < 0 ? -n : n);
 }
 
@@ -152,6 +153,7 @@ fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
     if (!is_int(args[0])) return primitive_arg_type_raise(interp, "gcd", 0, "integer", args[0]);
     if (!is_int(args[1])) return primitive_arg_type_raise(interp, "gcd", 1, "integer", args[1]);
     long a = args[0].int_val; long b = args[1].int_val;
+    if (a == long.min || b == long.min) return raise_error(interp, "gcd: integer overflow");
     if (a < 0) { a = -a; }
     if (b < 0) { b = -b; }
     while (b != 0) { long t = b; b = a % b; a = t; }
@@ -164,11 +166,15 @@ fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
     if (!is_int(args[1])) return primitive_arg_type_raise(interp, "lcm", 1, "integer", args[1]);
     long a = args[0].int_val; long b = args[1].int_val;
     if (a == 0 || b == 0) return make_int(interp, 0);
+    if (a == long.min || b == long.min) return raise_error(interp, "lcm: integer overflow");
     if (a < 0) { a = -a; }
     if (b < 0) { b = -b; }
     long ga = a; long gb = b;
     while (gb != 0) { long t = gb; gb = ga % gb; ga = t; }
-    return make_int(interp, (a / ga) * b);
+    long factor = a / ga;
+    long result = 0;
+    if (math::overflow_mul(factor, b, &result)) return raise_error(interp, "lcm: integer overflow");
+    return make_int(interp, result);
 }
 
 fn Value* prim_bitwise_and(Value*[] args, Env* env, Interp* interp) {

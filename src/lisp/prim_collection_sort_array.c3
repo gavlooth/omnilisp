@@ -149,6 +149,7 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return raise_error(interp, "set!: expected array target, integer index, value");
+    if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: array backing storage is missing");
     long idx = args[1].int_val;
     long alen = (long)args[0].array_val.length;
     if (idx < 0) idx += alen;
@@ -161,12 +162,14 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_array_length(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array-length: expected array");
+    if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "array-length: array backing storage is missing");
     return make_int(interp, (long)args[0].array_val.length);
 }
 
 fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array->list: expected array");
     Array* vec = args[0].array_val;
+    if (vec == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "array->list: array backing storage is missing");
     Value* result = make_nil(interp);
     for (isz i = (isz)vec.length - 1; i >= 0; i--) {
         Value* next = make_cons(interp, vec.items[(usz)i], result);
@@ -203,8 +206,15 @@ fn Value* prim_is_array(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2 || !is_array(args[0])) return raise_error(interp, "push!: expected array and value");
     Array* vec = args[0].array_val;
+    if (vec == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "push!: array backing storage is missing");
     if (vec.length >= vec.capacity) {
+        if (vec.capacity == 0 || vec.capacity > usz.max / (usz)2) {
+            return raise_error(interp, "push!: array backing storage out of memory");
+        }
         usz new_cap = vec.capacity * 2;
+        if (new_cap > usz.max / Value*.sizeof) {
+            return raise_error(interp, "push!: array backing storage out of memory");
+        }
         Value** new_items = g_array_push_force_grow_alloc_fail
             ? null
             : (Value**)mem::malloc(Value*.sizeof * new_cap);

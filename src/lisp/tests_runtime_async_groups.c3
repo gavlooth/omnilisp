@@ -121,7 +121,7 @@ fn void run_async_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "pipe connect/listen in fiber via libuv bridge",
         "(block "
         "  (define pf (spawn (lambda () "
-        "    (define p (string-append \"/tmp/omni_pipe_async_\" (number->string (% (time-ms) 1000000)) \".sock\")) "
+        "    (define p (string-append \"/tmp/omni_pipe_async_\" (String (% (time-ms) 1000000)) \".sock\")) "
         "    (define listener (pipe-listen p)) "
         "    (define client (pipe-connect p)) "
         "    (define server (tcp-accept listener)) "

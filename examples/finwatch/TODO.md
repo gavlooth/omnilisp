@@ -96,8 +96,8 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 
 ### Conversion functions
 - [x] `string->number`                  — parse number from string (smoke_test.omni)
-- [x] `number->string`                  — format number as string (smoke_test.omni)
-- [x] `symbol->string`                  — convert symbol to string (types.omni)
+- [x] `String`                  — format number as string (smoke_test.omni)
+- [x] `String`                  — convert symbol to string (types.omni)
 
 ### I/O + effects
 - [x] `handle` / `raise`                — per-connection error boundary (server.omni)

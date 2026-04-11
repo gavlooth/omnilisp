@@ -2,9 +2,22 @@ module lisp;
 
 extern fn int c_getrandom(void* buf, usz buflen, uint flags) @extern("getrandom");
 
+fn bool math_fill_random_bytes(void* buf, usz len) {
+    char* bytes = (char*)buf;
+    usz off = 0;
+    while (off < len) {
+        int n = c_getrandom(bytes + off, len - off, 0);
+        if (n <= 0) return false;
+        off += (usz)n;
+    }
+    return true;
+}
+
 fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
     ulong buf;
-    c_getrandom(&buf, 8, 0);
+    if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
+        return raise_error(interp, "random: failed to read random bytes");
+    }
     // Convert to double in [0, 1): mask to 52 bits, divide by 2^52
     ulong mantissa = buf & 0x000F_FFFF_FFFF_FFFF;
     double val = (double)mantissa / 4503599627370496.0;  // 2^52
@@ -24,7 +37,9 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
     if (n <= 0) return make_int(interp, 0);
 
     ulong buf;
-    c_getrandom(&buf, 8, 0);
+    if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
+        return raise_error(interp, "random-int: failed to read random bytes");
+    }
     long result = (long)(buf % (ulong)n);
     return make_int(interp, result);
 }

@@ -65,6 +65,8 @@ fn Value* deduce_rule_register_finalize_install(
     Value*[] body_term_literals,
     Interp* interp
 ) {
+    usz rule_start = db.rule_signature_count;
+    usz schema_start = db.relation_schema_count;
     DeduceRuleRegisterStatus register_status =
         deduce_db_add_rule_signature(
             db,
@@ -91,10 +93,20 @@ fn Value* deduce_rule_register_finalize_install(
         return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
     }
     Value* materialized_err = deduce_db_note_rule_signature_install(db, interp);
-    if (materialized_err != null) return materialized_err;
+    if (materialized_err != null) {
+        deduce_db_rollback_rule_signature_restore(db, rule_start, schema_start);
+        return materialized_err;
+    }
     Value* persist_err = deduce_db_persist_rule_catalog(db, interp);
-    if (persist_err != null) return persist_err;
+    if (persist_err != null) {
+        deduce_db_rollback_rule_signature_restore(db, rule_start, schema_start);
+        return persist_err;
+    }
     Value* persist_signatures_err = deduce_db_persist_rule_signatures(db, interp);
-    if (persist_signatures_err != null) return persist_signatures_err;
+    if (persist_signatures_err != null) {
+        deduce_db_rollback_rule_signature_restore(db, rule_start, schema_start);
+        (void)deduce_db_persist_rule_catalog(db, interp);
+        return persist_signatures_err;
+    }
     return make_void(interp);
 }

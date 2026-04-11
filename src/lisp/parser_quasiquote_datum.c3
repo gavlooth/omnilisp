@@ -22,7 +22,7 @@ fn Expr* Parser.parse_qq_template(Parser* self) {
         case T_LPAREN:
             return self.parse_qq_list_form();
         case T_UNDERSCORE:
-            return self.parse_qq_var_symbol(self.interp.symbols.intern("_"));
+            return self.parse_qq_var_symbol(self.intern_or_error("_", "parser: failed to intern quasiquote underscore symbol"));
         default:
             self.set_error("unexpected token in quasiquote template");
             return null;

@@ -132,6 +132,9 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
             ds.append_string((String)elem.str_chars[:elem.str_len]);
         }
     }
+    if (!is_nil(list)) {
+        return raise_error(interp, "string-join: expected proper list");
+    }
 
     return make_string(interp, ds.str_view());
 }

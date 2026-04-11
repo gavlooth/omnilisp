@@ -33,6 +33,12 @@ fn MethodTable* alloc_empty_method_table_bootstrap(SymbolId sym, Value* fallback
     return mt;
 }
 
+fn void free_empty_method_table_bootstrap(MethodTable* mt) {
+    if (mt == null) return;
+    if (mt.entries != null) mem::free(mt.entries);
+    mem::free(mt);
+}
+
 fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
     if (interp == null) return false;
     if (interp.global_env == null) return false;
@@ -45,10 +51,18 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
     if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
-    if (mt_val == null) return false;
+    if (mt_val == null) {
+        free_empty_method_table_bootstrap(mt);
+        return false;
+    }
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
-    return env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp)) {
+        free_empty_method_table_bootstrap(mt);
+        mt_val.method_table_val = null;
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -78,7 +92,7 @@ fn bool register_builtin_types(Interp* interp) {
         info.variants = null;
         info.variant_count = 0;
         info.alias_target = INVALID_TYPE_ID;
-        interp.types.register_type(info, &interp.symbols);
+        if (interp.types.register_type(info, &interp.symbols) == INVALID_TYPE_ID) return false;
     }
 
     // Register abstract types: Number, Collection
@@ -96,10 +110,10 @@ fn bool register_builtin_types(Interp* interp) {
     abs_info.alias_target = INVALID_TYPE_ID;
 
     abs_info.name = interp.sym_Number;
-    interp.types.register_type(abs_info, &interp.symbols);
+    if (interp.types.register_type(abs_info, &interp.symbols) == INVALID_TYPE_ID) return false;
 
     abs_info.name = interp.sym_Collection;
-    interp.types.register_type(abs_info, &interp.symbols);
+    if (interp.types.register_type(abs_info, &interp.symbols) == INVALID_TYPE_ID) return false;
 
     // Cache TypeIds for O(1) dispatch lookups
     interp.tid_Integer = interp.types.lookup(interp.sym_Integer, &interp.symbols);
@@ -120,6 +134,17 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
     interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
     interp.tid_Coroutine = interp.types.lookup(interp.sym_Coroutine, &interp.symbols);
+    if (interp.tid_Integer == INVALID_TYPE_ID || interp.tid_Double == INVALID_TYPE_ID ||
+        interp.tid_String == INVALID_TYPE_ID || interp.tid_Symbol == INVALID_TYPE_ID ||
+        interp.tid_List == INVALID_TYPE_ID || interp.tid_Boolean == INVALID_TYPE_ID ||
+        interp.tid_Nil == INVALID_TYPE_ID || interp.tid_Void == INVALID_TYPE_ID ||
+        interp.tid_Closure == INVALID_TYPE_ID || interp.tid_Array == INVALID_TYPE_ID ||
+        interp.tid_Dictionary == INVALID_TYPE_ID || interp.tid_Set == INVALID_TYPE_ID ||
+        interp.tid_Any == INVALID_TYPE_ID || interp.tid_Number == INVALID_TYPE_ID ||
+        interp.tid_Collection == INVALID_TYPE_ID || interp.tid_Iterator == INVALID_TYPE_ID ||
+        interp.tid_TimePoint == INVALID_TYPE_ID || interp.tid_Coroutine == INVALID_TYPE_ID) {
+        return false;
+    }
 
     // Set parent chains: Integer/Double → Number, List/Array/Dictionary/Set → Collection,
     // Nil → List, and standalone runtime leaf types under Any.
@@ -166,7 +191,7 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case TIME_POINT:return interp.tid_TimePoint;
         case COROUTINE: return interp.tid_Coroutine;
         case INSTANCE:
-            if (v.instance_val != null) return v.instance_val.type_id;
+            if (v.instance_val != null && interp.types.get(v.instance_val.type_id) != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
         default:
             return INVALID_TYPE_ID;

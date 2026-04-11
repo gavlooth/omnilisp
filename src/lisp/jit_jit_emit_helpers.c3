@@ -125,9 +125,9 @@ fn bool emit_build_locals_env(void* s, Interp* interp, JitLocals* locals) {
             _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_R1, (long)JIT_FP, (long)locals.locals[i].stack_offset);
             // Call jit_env_reparent(env=R1, new_parent=V2)
             emit_call_2(s, (void*)&jit_env_reparent, JIT_R1, JIT_V2);
-            // After reparenting, reload the Env* from stack into V2
-            // (R1 may be clobbered by finishi, so reload from stack)
-            _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V2, (long)JIT_FP, (long)locals.locals[i].stack_offset);
+            // If box allocation failed, the helper keeps the parent chain valid
+            // so closure capture fails closed instead of retaining a null env.
+            _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
         } else {
             // Non-mutable local: extend env with current stack value
             _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_R1, (long)JIT_FP, (long)locals.locals[i].stack_offset);

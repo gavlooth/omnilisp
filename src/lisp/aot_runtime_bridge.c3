@@ -67,7 +67,9 @@ fn lisp::Value* dict_from_args(lisp::Value* arg_list) {
 fn lisp::Value* index(lisp::Value* collection, lisp::Value* idx) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot index: runtime interpreter unavailable");
-    lisp::Value* ref_fn = interp.global_env.lookup(interp.symbols.intern("ref"));
+    lisp::SymbolId ref_sym = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, "ref", &ref_sym)) return aot_make_error_best_effort(interp, "aot index: invalid or uninternable ref symbol");
+    lisp::Value* ref_fn = interp.global_env.lookup(ref_sym);
     if (ref_fn == null) return lisp::raise_error(interp, "ref: primitive not found");
     lisp::Value* args = lisp::make_nil(interp);
     args = lisp::make_cons(interp, idx, args);

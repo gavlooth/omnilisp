@@ -4,7 +4,7 @@ module lisp;
 // Tuple encoding: Values → bytes for LMDB storage
 // ============================================================
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
-// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(2 byte id), 5=time-point(1 kind byte + 8 ints LE)
+// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(4 byte id), 5=time-point(1 kind byte + 8 ints LE)
 fn usz write_i32_le(char* buf, usz pos, int value) {
     buf[pos++] = (char)(value & 0xFF);
     buf[pos++] = (char)((value >> 8) & 0xFF);
@@ -50,11 +50,14 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             buf[pos++] = (char)((slen >> 8) & 0xFF);
             for (usz j = 0; j < slen; j++) buf[pos++] = v.str_chars[j];
         } else if (v.tag == SYMBOL) {
-            if (pos + 3 > buf_size) return WRITE_FAILED~;
+            if (v.sym_val == INVALID_SYMBOL_ID) return WRITE_FAILED~;
+            if (pos + 5 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 4;
             uint sid = (uint)v.sym_val;
             buf[pos++] = (char)(sid & 0xFF);
             buf[pos++] = (char)((sid >> 8) & 0xFF);
+            buf[pos++] = (char)((sid >> 16) & 0xFF);
+            buf[pos++] = (char)((sid >> 24) & 0xFF);
         } else if (v.tag == TIME_POINT) {
             if (pos + 34 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 5;
@@ -77,6 +80,7 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
 
 // Decode a tuple from bytes back to Values
 fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
+    if (interp == null) return READ_FAILED~;
     usz pos = 0;
     usz count = 0;
     while (pos < buf_size && count < out.len) {
@@ -104,10 +108,15 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             out[count++] = make_string(interp, buf[pos..pos + slen - 1]);
             pos += slen;
         } else if (tag == 4) {
-            if (pos + 2 > buf_size) return READ_FAILED~;
-            uint sid = (uint)(char)buf[pos] | ((uint)(char)buf[pos + 1] << 8);
-            pos += 2;
+            if (pos + 4 > buf_size) return READ_FAILED~;
+            uint sid = ((uint)buf[pos] & 0xFF) |
+                (((uint)buf[pos + 1] & 0xFF) << 8) |
+                (((uint)buf[pos + 2] & 0xFF) << 16) |
+                (((uint)buf[pos + 3] & 0xFF) << 24);
+            pos += 4;
+            if (sid == (uint)INVALID_SYMBOL_ID || (usz)sid >= interp.symbols.count) return READ_FAILED~;
             Value* v = interp.alloc_value();
+            if (v == null) return READ_FAILED~;
             v.tag = SYMBOL;
             v.sym_val = (SymbolId)sid;
             out[count++] = v;

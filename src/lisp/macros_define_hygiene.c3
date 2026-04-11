@@ -9,6 +9,7 @@ fn bool macro_def_copy_clauses(MacroDef* out, MacroClause* src, usz count) {
         out.clause_count = 0;
         return true;
     }
+    if (count > usz.max / MacroClause.sizeof) return false;
     out.clauses = (MacroClause*)mem::malloc(MacroClause.sizeof * count);
     if (out.clauses == null) return false;
     for (usz i = 0; i < count; i++) out.clauses[i] = src[i];
@@ -22,6 +23,7 @@ fn bool macro_def_copy_captured_bindings(MacroDef* out, List{CapturedBinding}* b
         out.captured_count = 0;
         return true;
     }
+    if (bindings.len() > usz.max / CapturedBinding.sizeof) return false;
     out.captured_bindings = (CapturedBinding*)mem::malloc(CapturedBinding.sizeof * bindings.len());
     if (out.captured_bindings == null) return false;
     for (usz i = 0; i < bindings.len(); i++) out.captured_bindings[i] = (*bindings)[i];
@@ -158,7 +160,10 @@ fn EvalResult eval_define_macro(Expr* expr, Env* env, Interp* interp) {
         return eval_ok(make_nil(interp));
     }
 
-    if (interp.macro_count >= interp.macro_capacity) interp.grow_macro_table();
+    if (interp.macro_count >= interp.macro_capacity && !interp.grow_macro_table()) {
+        macro_def_destroy(&new_def);
+        return eval_error("define-macro: out of memory while growing macro table");
+    }
     macro_idx = interp.macro_count;
     interp.macro_table[macro_idx] = new_def;
     interp.macro_count++;

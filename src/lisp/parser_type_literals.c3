@@ -37,7 +37,8 @@ fn Expr* Parser.parse_constructor_type_application(Parser* self) {
     Expr* type_apply_fn = self.alloc_expr();
     if (type_apply_fn == null) return null;
     type_apply_fn.tag = E_VAR;
-    type_apply_fn.var_expr.name = self.interp.symbols.intern("^");
+    type_apply_fn.var_expr.name = self.intern_or_error("^", "^: failed to intern constructor dispatch symbol");
+    if (type_apply_fn.var_expr.name == INVALID_SYMBOL_ID) return null;
     type_apply_fn.loc_line = call_expr.loc_line;
     type_apply_fn.loc_column = call_expr.loc_column;
 
@@ -46,7 +47,7 @@ fn Expr* Parser.parse_constructor_type_application(Parser* self) {
     if (call_expr.call == null) return null;
     call_expr.call.func = type_apply_fn;
     call_expr.call.arg_count = 2;
-    call_expr.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 2, "out of memory while allocating constructor type application arguments");
+    call_expr.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, 2, "out of memory while allocating constructor type application arguments");
     if (call_expr.call.args == null) return null;
     call_expr.call.args[0] = type_form_expr;
     call_expr.call.args[1] = target_expr;

@@ -14,7 +14,10 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
     if (binding_name.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: binding name must not be empty");
     if (soname.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: soname must not be empty");
 
-    lisp::SymbolId binding_sid = interp.symbols.intern(binding_name);
+    lisp::SymbolId binding_sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, binding_name, &binding_sid)) {
+        return aot_make_error_best_effort(interp, "aot ffi lib: invalid or uninternable binding name");
+    }
     lisp::Value* existing = interp.global_env.lookup(binding_sid);
     if (existing != null) {
         if (existing.tag != lisp::ValueTag.FFI_HANDLE || existing.ffi_val == null) {

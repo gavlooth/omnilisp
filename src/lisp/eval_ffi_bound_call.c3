@@ -208,6 +208,10 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     if (Value* err = ffi_resolve_bound_fn(bound, interp)) return err;
     if (bound.is_unavailable || bound.fn_ptr == null) return raise_error(interp, "ffi: symbol unavailable");
 
+    if (bound.param_count > (usz)int.max || args.len > (usz)int.max) {
+        return raise_error(interp, "ffi: argument count exceeds supported arity");
+    }
+
     // Validate arg count
     if (args.len != bound.param_count) {
         char[256] ebuf;
@@ -229,6 +233,12 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     void** arg_values = null;
 
     if (bound.param_count > 0) {
+        if (bound.param_count > usz.max / long.sizeof
+            || bound.param_count > usz.max / double.sizeof
+            || bound.param_count > usz.max / uptr.sizeof
+            || bound.param_count > usz.max / int.sizeof) {
+            return raise_error(interp, "ffi: argument storage size overflow");
+        }
         int_store = (long*)interp.current_scope.alloc(long.sizeof * bound.param_count);
         dbl_store = (double*)interp.current_scope.alloc(double.sizeof * bound.param_count);
         ptr_store = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);

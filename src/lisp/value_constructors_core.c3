@@ -18,6 +18,16 @@ fn void* value_alloc_closure_payload(main::ScopeRegion* scope, usz size) @inline
 // SECTION 2: VALUE CONSTRUCTORS (Core Surface)
 // =============================================================================
 
+fn Value* make_string_alloc_error(Interp* interp) {
+    Value* fail = interp.alloc_value();
+    fail.tag = ERROR;
+    char[] msg = "out of memory while allocating string";
+    fail.str_chars = (char*)msg.ptr;
+    fail.str_len = msg.len;
+    fail.string_heap_owned = false;
+    return fail;
+}
+
 <* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
     Value* v = interp.alloc_value();
@@ -51,19 +61,14 @@ fn Value* make_double(Interp* interp, double d) @inline {
 <* @ensure return != null *>
 fn Value* make_string(Interp* interp, char[] str) {
     usz len = str.len;
+    if (len == usz.max) return make_string_alloc_error(interp);
     usz cap = len + 1;
     if (cap < 32) cap = 32;  // minimum allocation
     char* chars = g_value_force_make_string_alloc_fail
         ? null
         : (char*)mem::malloc(cap);
     if (chars == null) {
-        Value* fail = interp.alloc_value();
-        fail.tag = ERROR;
-        char[] msg = "out of memory while allocating string";
-        fail.str_chars = (char*)msg.ptr;
-        fail.str_len = msg.len;
-        fail.string_heap_owned = false;
-        return fail;
+        return make_string_alloc_error(interp);
     }
 
     Value* v = interp.alloc_value();
@@ -83,6 +88,10 @@ fn Value* make_string(Interp* interp, char[] str) {
 <* @ensure return != null *>
 fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
     if (owned_chars == null) return make_string(interp, "");
+    if (len == usz.max) {
+        mem::free(owned_chars);
+        return make_string_alloc_error(interp);
+    }
 
     Value* v = interp.alloc_value();
     v.tag = STRING;
@@ -103,6 +112,15 @@ fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
+fn bool make_cons_escape_identity_promotion_ok(Interp* interp, Value* original, Value* promoted) @inline {
+    if (original == null || promoted == null || original != promoted) return true;
+    if (original.scope_gen == interp.current_scope.escape_generation) return true;
+    if (original.scope_gen != interp.current_scope.generation) {
+        return boundary_ptr_in_target_scope_chain_with_hint((void*)original, interp, original.scope_gen);
+    }
+    return false;
+}
+
 <* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     // Dual-lane path: if cdr is already in current scope's ESCAPE lane,
@@ -121,8 +139,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
             if (promoted_car.tag == ERROR) return promoted_car;
-            bool string_like_car = car.tag == STRING || car.tag == ERROR;
-            if (string_like_car && promoted_car == car) {
+            if (!make_cons_escape_identity_promotion_ok(interp, car, promoted_car)) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
         }
@@ -150,8 +167,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 );
                 return promoted_cdr;
             }
-            bool string_like_cdr = cdr.tag == STRING || cdr.tag == ERROR;
-            if (string_like_cdr && promoted_cdr == cdr) {
+            if (!make_cons_escape_identity_promotion_ok(interp, cdr, promoted_cdr)) {
                 boundary_cleanup_materialized_value(
                     car,
                     promoted_car,

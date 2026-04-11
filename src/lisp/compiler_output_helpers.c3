@@ -55,34 +55,37 @@ fn void Compiler.emit_newline(Compiler* self) {
     self.emit_char('\n');
 }
 
-fn void Compiler.emit_int(Compiler* self, long n) {
-    // Convert integer to string manually
+fn void Compiler.emit_ulong(Compiler* self, ulong n) {
     if (n == 0) {
         self.emit_char('0');
         return;
     }
 
-    bool negative = n < 0;
-    if (negative) {
-        self.emit_char('-');
-        n = -n;
-    }
-
     char[32] buf;
     usz pos = 0;
     while (n > 0 && pos < 31) {
-        buf[pos++] = (char)('0' + (n % 10));
-        n /= 10;
+        buf[pos++] = (char)('0' + (long)(n % (ulong)10));
+        n /= (ulong)10;
     }
 
-    // Reverse
     for (isz i = (isz)pos - 1; i >= 0; i--) {
         self.emit_char(buf[(usz)i]);
     }
 }
 
+fn void Compiler.emit_int(Compiler* self, long n) {
+    bool negative = n < 0;
+    if (negative) {
+        self.emit_char('-');
+        ulong mag = n == long.min ? (ulong)long.max + (ulong)1 : (ulong)(-n);
+        self.emit_ulong(mag);
+        return;
+    }
+    self.emit_ulong((ulong)n);
+}
+
 fn void Compiler.emit_usz(Compiler* self, usz n) {
-    self.emit_int((long)n);
+    self.emit_ulong((ulong)n);
 }
 
 fn char[] Compiler.get_output(Compiler* self) {

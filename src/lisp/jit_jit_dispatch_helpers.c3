@@ -4,6 +4,10 @@ fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, 
     if (collection.tag != INSTANCE) return false;
 
     SymbolId ref_sym = interp.symbols.intern("ref");
+    if (ref_sym == INVALID_SYMBOL_ID) {
+        *out = raise_error(interp, "ref: failed to intern dispatch symbol");
+        return true;
+    }
     Value* ref_fn = interp.global_env.lookup(ref_sym);
     if (ref_fn == null || ref_fn.tag != METHOD_TABLE) return false;
     Value* args = make_list2_or_error(interp, collection, index, "ref: failed to construct argument list");

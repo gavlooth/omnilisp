@@ -54,6 +54,7 @@ fn void close_fs_like_handle(Value* v, Interp* interp) {
 }
 
 fn char* copy_to_heap_c_string(char[] src) {
+    if (src.len == usz.max) return null;
     usz cap = src.len + 1;
     char* out = (char*)mem::malloc(cap);
     if (out == null) return null;
@@ -81,7 +82,9 @@ fn Value* value_to_process_handle_arg(Value* v, Interp* interp) {
     if (v == null) return null;
     if (ffi_handle_name_equals(v, "process-handle")) return v;
     if (v.tag == HASHMAP && v.hashmap_val != null) {
-        Value* handle_key = make_symbol(interp, interp.symbols.intern("handle"));
+        SymbolId handle_sym = interp.symbols.intern("handle");
+        if (handle_sym == INVALID_SYMBOL_ID) return null;
+        Value* handle_key = make_symbol(interp, handle_sym);
         return hashmap_get(v.hashmap_val, handle_key);
     }
     return null;
@@ -105,6 +108,7 @@ fn Value* collect_string_sequence(
     } else if (is_cons(seq)) {
         Value* cur = seq;
         while (is_cons(cur)) {
+            if (count == usz.max) return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
             count++;
             cur = cdr(cur);
         }
@@ -114,6 +118,9 @@ fn Value* collect_string_sequence(
     }
 
     if (count == 0) return null;
+    if (count > usz.max / char*.sizeof) {
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
 
     char** items = (char**)mem::malloc(char*.sizeof * count);
     if (items == null) {

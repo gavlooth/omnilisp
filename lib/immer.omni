@@ -1,20 +1,21 @@
 ;;; immer.omni - Persistent data structures via Immer FFI
 ;;;
-;;; This library provides Clojure-compatible persistent immutable
-;;; data structures backed by Immer C++ library.
+;;; This library provides persistent immutable data structures backed by the
+;;; Immer C++ library.
 ;;;
 ;;; Usage:
 ;;;   (load "lib/immer.omni")
-;;;   (define v (vector 1 2 3))
-;;;   (define v2 (conj v 4))
-;;;   (nth v2 0)  ; => 1
+;;;   (define a (persistent-array 1 2 3))
+;;;   (define a2 (persistent-array-push a 4))
+;;;   (persistent-array-ref a2 0)  ; => 1
 ;;;
 ;;; All operations return NEW collections (originals unchanged).
 ;;; Structural sharing makes this efficient.
 
 ;;; ========== FFI Declarations ==========
 
-;; Vector operations
+;; Underlying Immer vector operations. The Omni-facing surface below uses
+;; array naming to avoid introducing a second collection vocabulary.
 (ffi-declare "void*" "immer_vector_empty")
 (ffi-declare "void*" "immer_vector_push" "void*" "void*")
 (ffi-declare "void*" "immer_vector_set" "void*" "int" "void*")
@@ -42,122 +43,122 @@
 (ffi-declare "int" "immer_set_count" "void*")
 (ffi-declare "void" "immer_set_free" "void*")
 
-;;; ========== Vector API ==========
+;;; ========== Persistent Array API ==========
 
-;; Create a vector from arguments
-;; (vector 1 2 3) => [1 2 3]
-(define (vector . args)
-  (define (build-vec v items)
+;; Create a persistent array from arguments
+;; (persistent-array 1 2 3) => persistent array of 1, 2, 3
+(define (persistent-array . args)
+  (define (build-array v items)
     (if (null? items)
         v
-        (build-vec (ffi "immer_vector_push" v (car items))
-                   (cdr items))))
-  (build-vec (ffi "immer_vector_empty") args))
+        (build-array (ffi "immer_vector_push" v (car items))
+                     (cdr items))))
+  (build-array (ffi "immer_vector_empty") args))
 
 ;; TESTED - tests/test_immer_nth.lisp
 ;; Get element at index
-;; (nth v 0) => first element
-(define (nth v idx)
+;; (persistent-array-ref v 0) => first element
+(define (persistent-array-ref v idx)
   (ffi "immer_vector_get" v idx))
 
 ;; TESTED - tests/test_vector_nth_or.lisp
 ;; Get element at index with default
-;; (nth v 10 :not-found) => :not-found if out of bounds
-(define (nth-or v idx default)
+;; (persistent-array-ref-or v 10 :not-found) => :not-found if out of bounds
+(define (persistent-array-ref-or v idx default)
   (let [result (ffi "immer_vector_get" v idx)]
     (if (null? result) default result)))
 
-;; Get vector size
-(define (vector-count v)
+;; Get persistent array size
+(define (persistent-array-count v)
   (ffi "immer_vector_size" v))
 
 ;; TESTED - tests/test_vector_push.lisp
-;; Add element to end (returns new vector)
-(define (vector-push v elem)
+;; Add element to end (returns new persistent array)
+(define (persistent-array-push v elem)
   (ffi "immer_vector_push" v elem))
 
 ;; TESTED - tests/test_vector_assoc.lisp
-;; Set element at index (returns new vector)
-(define (vector-assoc v idx elem)
+;; Set element at index (returns new persistent array)
+(define (persistent-array-set v idx elem)
   (ffi "immer_vector_set" v idx elem))
 
-;; Remove last element (returns new vector)
-(define (vector-pop v)
+;; Remove last element (returns new persistent array)
+(define (persistent-array-pop v)
   (ffi "immer_vector_pop" v))
 
 ;; Take first n elements
-(define (vector-take v n)
+(define (persistent-array-take v n)
   (ffi "immer_vector_take" v n))
 
 ;; Drop first n elements
-(define (vector-drop v n)
+(define (persistent-array-drop v n)
   (ffi "immer_vector_drop" v n))
 
 ;; Get first element
-(define (vector-first v)
-  (if (= (vector-count v) 0)
+(define (persistent-array-first v)
+  (if (= (persistent-array-count v) 0)
       nil
-      (nth v 0)))
+      (persistent-array-ref v 0)))
 
 ;; Get rest (all but first)
-(define (vector-rest v)
-  (vector-drop v 1))
+(define (persistent-array-rest v)
+  (persistent-array-drop v 1))
 
 ;; Check if empty
-(define (vector-empty? v)
-  (= (vector-count v) 0))
+(define (persistent-array-empty? v)
+  (= (persistent-array-count v) 0))
 
-;;; ========== Map API ==========
+;;; ========== Persistent Dictionary API ==========
 
-;; Create a hash-map from key-value pairs
-;; (hash-map k1 v1 k2 v2) => {k1 v1, k2 v2}
-(define (hash-map . args)
-  (define (build-map m pairs)
+;; Create a persistent dictionary from key-value pairs
+;; (persistent-dictionary k1 v1 k2 v2) => persistent dictionary
+(define (persistent-dictionary . args)
+  (define (build-dictionary m pairs)
     (if (null? pairs)
         m
         (if (null? (cdr pairs))
             m  ; Odd number of args, ignore last
-            (build-map (ffi "immer_map_assoc" m (car pairs) (car (cdr pairs)))
-                       (cdr (cdr pairs))))))
-  (build-map (ffi "immer_map_empty") args))
+            (build-dictionary (ffi "immer_map_assoc" m (car pairs) (car (cdr pairs)))
+                              (cdr (cdr pairs))))))
+  (build-dictionary (ffi "immer_map_empty") args))
 
 ;; Get value for key
-;; (get m key) => value or nil
-(define (get m key)
+;; (persistent-dictionary-ref m key) => value or nil
+(define (persistent-dictionary-ref m key)
   (ffi "immer_map_get" m key nil))
 
 ;; Get value for key with default
-;; (get m key default) => value or default
-(define (get-or m key default)
+;; (persistent-dictionary-ref-or m key default) => value or default
+(define (persistent-dictionary-ref-or m key default)
   (ffi "immer_map_get" m key default))
 
 ;; Associate key with value (returns new map)
-;; (assoc m key val) => new map with key->val
-(define (assoc m key val)
+;; (persistent-dictionary-set m key val) => new persistent dictionary
+(define (persistent-dictionary-set m key val)
   (ffi "immer_map_assoc" m key val))
 
 ;; Remove key (returns new map)
-;; (dissoc m key) => new map without key
-(define (dissoc m key)
+;; (persistent-dictionary-remove m key) => new persistent dictionary without key
+(define (persistent-dictionary-remove m key)
   (ffi "immer_map_dissoc" m key))
 
 ;; Check if key exists
-(define (contains? m key)
+(define (persistent-dictionary-contains? m key)
   (= (ffi "immer_map_contains" m key) 1))
 
-;; Get map size
-(define (map-count m)
+;; Get persistent dictionary size
+(define (persistent-dictionary-count m)
   (ffi "immer_map_count" m))
 
 ;; Check if empty
-(define (map-empty? m)
-  (= (map-count m) 0))
+(define (persistent-dictionary-empty? m)
+  (= (persistent-dictionary-count m) 0))
 
 ;;; ========== Set API ==========
 
-;; Create a hash-set from elements
-;; (hash-set a b c) => #{a b c}
-(define (hash-set . args)
+;; Create a persistent set from elements
+;; (persistent-set a b c) => persistent set of a, b, c
+(define (persistent-set . args)
   (define (build-set s items)
     (if (null? items)
         s
@@ -166,60 +167,35 @@
   (build-set (ffi "immer_set_empty") args))
 
 ;; Add element (returns new set)
-(define (set-conj s elem)
+(define (persistent-set-add s elem)
   (ffi "immer_set_conj" s elem))
 
 ;; Remove element (returns new set)
-(define (set-disj s elem)
+(define (persistent-set-remove s elem)
   (ffi "immer_set_disj" s elem))
 
 ;; Check if element exists
-(define (set-contains? s elem)
+(define (persistent-set-contains? s elem)
   (= (ffi "immer_set_contains" s elem) 1))
 
 ;; Get set size
-(define (set-count s)
+(define (persistent-set-count s)
   (ffi "immer_set_count" s))
 
 ;; Check if empty
-(define (set-empty? s)
-  (= (set-count s) 0))
-
-;;; ========== Collection Utilities ==========
-
-;; Generic count for vectors, maps, and sets
-(define (count coll)
-  (match Void
-    ((? (vector? coll)) (vector-count coll))
-    ((? (hash-map? coll)) (map-count coll))
-    ((? (hash-set? coll)) (set-count coll))
-    (_ 0)))
-
-;; Generic conj for vectors, maps, and sets
-(define (conj coll elem)
-  (match Void
-    ((? (vector? coll)) (vector-push coll elem))
-    ((? (hash-set? coll)) (set-conj coll elem))
-    (_ coll)))
-
-;; Generic into for building collections from other collections
-(define (into to from)
-  (define (build result source)
-    (if (null? source)
-        result
-        (build (conj result (car source)) (cdr source))))
-  (build to (seq from)))
+(define (persistent-set-empty? s)
+  (= (persistent-set-count s) 0))
 
 ;;; ========== Keyword Functions ==========
 
 ;; Create a keyword from a string
 ;; (keyword "name") => :name
 (define (keyword name)
-  (string->symbol (string-append ":" name)))
+  (Symbol (string-append ":" name)))
 
 ;; Check if value is a keyword (colon-quoted symbol)
 (define (keyword? x)
   (and (symbol? x)
-       (let [s (symbol->string x)]
+       (let [s (String x)]
          (and (> (string-length s) 0)
               (eq? (string-ref s 0) #\:)))))

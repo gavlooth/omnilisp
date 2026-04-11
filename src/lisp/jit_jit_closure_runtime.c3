@@ -91,6 +91,11 @@ fn bool jit_delay_force_promise_env_matches(Interp* interp, Env* env) {
     SymbolId thunk_sym = interp.symbols.intern("thunk");
     SymbolId result_sym = interp.symbols.intern("result");
     SymbolId forced_sym = interp.symbols.intern("forced");
+    if (thunk_sym == INVALID_SYMBOL_ID ||
+        result_sym == INVALID_SYMBOL_ID ||
+        forced_sym == INVALID_SYMBOL_ID) {
+        return false;
+    }
     return env.lookup(thunk_sym) != null &&
         env.lookup(result_sym) != null &&
         env.lookup(forced_sym) != null;

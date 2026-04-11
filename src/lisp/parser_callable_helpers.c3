@@ -26,7 +26,7 @@ fn Expr* Parser.parse_implicit_block(Parser* self) {
     block_e.block = (ExprBlock*)self.alloc_ast_bytes(ExprBlock.sizeof, "out of memory while allocating implicit block");
     if (block_e.block == null) { items.free(); return null; }
     block_e.block.expr_count = items.len();
-    block_e.block.exprs = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * items.len(), "out of memory while allocating implicit block expressions");
+    block_e.block.exprs = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, items.len(), "out of memory while allocating implicit block expressions");
     if (block_e.block.exprs == null && items.len() > 0) { items.free(); return null; }
     for (usz i = 0; i < items.len(); i++) { block_e.block.exprs[i] = items[i]; }
     items.free();
@@ -65,7 +65,7 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
     e.lambda.param_count = param_count;
     e.lambda.params = null;
     if (param_count > 0) {
-        e.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating lambda parameters");
+        e.lambda.params = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, param_count, "out of memory while allocating lambda parameters");
         if (e.lambda.params == null) return;
         for (usz i = 0; i < param_count; i++) {
             e.lambda.params[i] = params[i];
@@ -76,7 +76,7 @@ fn void Parser.finalize_lambda_expr(Parser* self, Expr* e, List{SymbolId} params
     e.lambda.has_typed_params = has_any_typed;
     e.lambda.param_annotations = null;
     if (has_any_typed && param_count > 0) {
-        e.lambda.param_annotations = (TypeAnnotation*)self.alloc_ast_bytes(TypeAnnotation.sizeof * param_count, "out of memory while allocating lambda parameter annotations");
+        e.lambda.param_annotations = (TypeAnnotation*)self.alloc_ast_array_bytes(TypeAnnotation.sizeof, param_count, "out of memory while allocating lambda parameter annotations");
         if (e.lambda.param_annotations == null) return;
         for (usz i = 0; i < param_count; i++) {
             e.lambda.param_annotations[i] = param_anns[i];

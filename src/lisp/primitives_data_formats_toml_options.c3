@@ -65,6 +65,9 @@ fn Value* parse_toml_parse_options(Value* options, TomlParseOptions* opts, Inter
 
         cur = next;
     }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "toml-parse: options must be a proper list");
+    }
 
     return null;
 }

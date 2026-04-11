@@ -8,8 +8,14 @@ bool g_deduce_force_column_key_values_oom = false;
 fn uint deduce_relation_row_dict_capacity(Relation* rel) {
     uint dict_capacity = 8;
     if (rel == null) return dict_capacity;
-    uint needed_capacity = (uint)(rel.col_count * 2);
-    while (dict_capacity < needed_capacity) dict_capacity *= 2;
+    if (rel.col_count > (usz)uint.max / (usz)2) return uint.max;
+    usz needed = rel.col_count * (usz)2;
+    if (needed > (usz)uint.max) return uint.max;
+    uint needed_capacity = (uint)needed;
+    while (dict_capacity < needed_capacity) {
+        if (dict_capacity > uint.max / (uint)2) return uint.max;
+        dict_capacity *= (uint)2;
+    }
     return dict_capacity;
 }
 
@@ -51,6 +57,9 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count == 0) return null;
     if (rel.column_key_values != null) return null;
 
+    if (rel.col_count > usz.max / Value*.sizeof) {
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+    }
     Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
     if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
         key_values = null;

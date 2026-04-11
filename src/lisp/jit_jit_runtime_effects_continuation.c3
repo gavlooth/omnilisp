@@ -96,7 +96,7 @@ fn Value* jit_resolve_validate_input(Interp* interp, Value* k_val, Continuation*
 fn HandleEffectState* jit_resolve_push_handler_copy(Interp* interp, Continuation* k) {
     HandleEffectState* hstate = (HandleEffectState*)k.handle_state;
     if (hstate != null) {
-        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) return null;
         interp.handler_stack[interp.handler_count] = hstate.handler_copy;
         interp.handler_stack[interp.handler_count].effect_state = hstate;
         interp.handler_count++;

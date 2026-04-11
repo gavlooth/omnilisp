@@ -118,6 +118,9 @@ fn Value* deduce_naive_materialize_aggregate_groups(
 
     usz tuple_count = exec.aggregate_groups.count;
     if (tuple_count == 0) return null;
+    if (tuple_count > usz.max / DeduceEncodedTuple.sizeof) {
+        return deduce_raise(exec.interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
 
     DeduceEncodedTuple* tuples = (DeduceEncodedTuple*)mem::malloc(DeduceEncodedTuple.sizeof * tuple_count);
     if (tuples == null) {

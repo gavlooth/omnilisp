@@ -92,6 +92,11 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
 
     dst_arr.capacity = cap;
     dst_arr.length = src_arr.length;
+    if (cap > usz.max / Value*.sizeof) {
+        mem::free(dst_arr);
+        if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+    }
     dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
     if (dst_arr.items == null) {
         mem::free(dst_arr);
@@ -154,6 +159,11 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     dst_map.entries = null;
 
     if (src_map.capacity > 0) {
+        if ((usz)src_map.capacity > usz.max / HashEntry.sizeof) {
+            mem::free(dst_map);
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+        }
         dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
         if (dst_map.entries == null) {
             mem::free(dst_map);
@@ -238,6 +248,11 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     dst_mt.fallback = null;
 
     if (dst_mt.capacity > 0) {
+        if (dst_mt.capacity > usz.max / MethodEntry.sizeof) {
+            mem::free(dst_mt);
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+        }
         dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
         if (dst_mt.entries == null) {
             mem::free(dst_mt);

@@ -1,6 +1,31 @@
 module lisp;
 
 import main;
+import std::core::mem;
+
+const usz BOUNDARY_ALIAS_MAX_VISITS = 2048;
+const usz BOUNDARY_ALIAS_MAX_DEPTH = 128;
+const usz BOUNDARY_ALIAS_SEEN_FAST_CAPACITY = 256;
+const usz BOUNDARY_ALIAS_SEEN_FAST_MASK = BOUNDARY_ALIAS_SEEN_FAST_CAPACITY - 1;
+const usz BOUNDARY_ALIAS_STACK_MIN_HEADROOM = 64 * 1024;
+const usz BOUNDARY_ALIAS_REACH_MAX_NODES = 2048;
+
+struct BoundaryAliasVisit {
+    Value* value;
+    usz depth;
+}
+
+struct BoundaryAliasSeenFastSet {
+    ushort[BOUNDARY_ALIAS_SEEN_FAST_CAPACITY] slots;
+    bool saturated;
+}
+
+struct BoundaryAliasReachScan {
+    Value*[BOUNDARY_ALIAS_REACH_MAX_NODES] value_stack;
+    Value*[BOUNDARY_ALIAS_REACH_MAX_NODES] seen_values;
+    Env*[BOUNDARY_ALIAS_REACH_MAX_NODES] env_stack;
+    Env*[BOUNDARY_ALIAS_REACH_MAX_NODES] seen_envs;
+}
 
 <*
 @require interp != null : "boundary_value_in_releasing_scope: null interp"
@@ -10,101 +35,514 @@ fn bool boundary_value_in_releasing_scope(Value* v, Interp* interp) @inline {
     return boundary_ptr_in_scope((void*)v, interp.releasing_scope);
 }
 
-fn bool boundary_graph_child_alias_unsafe_for_reuse(Value* child, Interp* interp, usz depth) @inline {
-    if (child == null || interp == null) return false;
-    if (boundary_value_in_releasing_scope(child, interp)) return true;
-    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)child, interp, child.scope_gen)) return true;
-    return boundary_graph_alias_unsafe_for_reuse(child, interp, depth + 1);
-}
-
-fn bool boundary_array_payload_alias_unsafe_for_reuse(Value* array_v, Interp* interp, usz depth) {
-    if (array_v == null || array_v.tag != ARRAY || array_v.array_val == null) return false;
-    Array* arr = array_v.array_val;
-    for (usz i = 0; i < arr.length; i++) {
-        if (boundary_graph_child_alias_unsafe_for_reuse(arr.items[i], interp, depth)) return true;
+fn bool boundary_alias_value_seen(Value** seen, usz seen_len, Value* value) @inline {
+    for (usz i = 0; i < seen_len; i++) {
+        if (seen[i] == value) return true;
     }
     return false;
 }
 
-fn bool boundary_hashmap_payload_alias_unsafe_for_reuse(Value* map_v, Interp* interp, usz depth) {
-    if (map_v == null || (map_v.tag != HASHMAP && map_v.tag != SET) || map_v.hashmap_val == null) return false;
-    HashMap* map = map_v.hashmap_val;
-    if (map.entries == null) return false;
-
-    for (uint i = 0; i < map.capacity; i++) {
-        Value* key = map.entries[i].key;
-        if (key == null) continue;
-        if (boundary_graph_child_alias_unsafe_for_reuse(key, interp, depth)) return true;
-        if (map_v.tag == HASHMAP &&
-            boundary_graph_child_alias_unsafe_for_reuse(map.entries[i].value, interp, depth)) {
-            return true;
-        }
-    }
-    return false;
+fn usz boundary_alias_value_seen_hash(Value* value) @inline {
+    usz h = (usz)value;
+    return h ^ (h >> 4) ^ (h >> 12);
 }
 
-fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp* interp, usz depth) {
-    if (mt_v == null || mt_v.tag != METHOD_TABLE || mt_v.method_table_val == null) return false;
-    MethodTable* mt = mt_v.method_table_val;
-    for (usz i = 0; i < mt.entry_count; i++) {
-        if (boundary_graph_child_alias_unsafe_for_reuse(mt.entries[i].implementation, interp, depth)) {
-            return true;
+fn bool boundary_alias_value_seen_fast(
+    BoundaryAliasSeenFastSet* fast_set,
+    Value** seen,
+    usz seen_len,
+    Value* value
+) @inline {
+    if (fast_set == null || fast_set.saturated) return boundary_alias_value_seen(seen, seen_len, value);
+
+    usz slot = boundary_alias_value_seen_hash(value) & BOUNDARY_ALIAS_SEEN_FAST_MASK;
+    for (usz probe = 0; probe < BOUNDARY_ALIAS_SEEN_FAST_CAPACITY; probe++) {
+        ushort encoded = fast_set.slots[slot];
+        if (encoded == 0) return false;
+
+        usz idx = (usz)encoded - 1;
+        if (idx >= seen_len) {
+            fast_set.saturated = true;
+            return boundary_alias_value_seen(seen, seen_len, value);
         }
-    }
-    return boundary_graph_child_alias_unsafe_for_reuse(mt.fallback, interp, depth);
-}
-
-fn bool boundary_cons_payload_alias_unsafe_for_reuse(Value* cons_v, Interp* interp, usz depth) {
-    if (cons_v == null || cons_v.tag != CONS) return false;
-
-    Value* current = cons_v;
-    usz cur_depth = depth;
-    while (current != null && current.tag == CONS) {
-        if (cur_depth >= 128) return true;
-
-        Value* car = current.cons_val.car;
-        if (car != null) {
-            if (car.tag == CONS && boundary_value_in_releasing_scope(car, interp)) return true;
-            if (boundary_graph_alias_unsafe_for_reuse(car, interp, cur_depth + 1)) return true;
-        }
-
-        Value* cdr = current.cons_val.cdr;
-        if (cdr == null) return false;
-        if (cdr.tag != CONS) {
-            return boundary_graph_alias_unsafe_for_reuse(cdr, interp, cur_depth + 1);
-        }
-        if (boundary_value_in_releasing_scope(cdr, interp)) return true;
-
-        current = cdr;
-        cur_depth++;
+        if (seen[idx] == value) return true;
+        slot = (slot + 1) & BOUNDARY_ALIAS_SEEN_FAST_MASK;
     }
 
-    return false;
+    fast_set.saturated = true;
+    return boundary_alias_value_seen(seen, seen_len, value);
 }
 
-fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) {
-    if (v == null || interp == null) return false;
-    if (depth >= 128) return true;
+fn void boundary_alias_seen_fast_record(
+    BoundaryAliasSeenFastSet* fast_set,
+    Value** seen,
+    usz seen_len,
+    usz index,
+    Value* value
+) @inline {
+    if (fast_set == null || fast_set.saturated) return;
+    if (index > (usz)ushort.max - 1) {
+        fast_set.saturated = true;
+        return;
+    }
 
-    switch (v.tag) {
+    usz slot = boundary_alias_value_seen_hash(value) & BOUNDARY_ALIAS_SEEN_FAST_MASK;
+    for (usz probe = 0; probe < BOUNDARY_ALIAS_SEEN_FAST_CAPACITY; probe++) {
+        ushort encoded = fast_set.slots[slot];
+        if (encoded == 0) {
+            fast_set.slots[slot] = (ushort)(index + 1);
+            return;
+        }
+
+        usz idx = (usz)encoded - 1;
+        if (idx >= seen_len) {
+            fast_set.saturated = true;
+            return;
+        }
+        if (seen[idx] == value) return;
+        slot = (slot + 1) & BOUNDARY_ALIAS_SEEN_FAST_MASK;
+    }
+
+    fast_set.saturated = true;
+}
+
+fn bool boundary_alias_value_has_child_payload(Value* value) @inline {
+    if (value == null) return false;
+    switch (value.tag) {
         case CLOSURE:
-            return boundary_closure_alias_unsafe_for_reuse(v, interp);
         case PARTIAL_PRIM:
-            return boundary_partial_payload_alias_unsafe_for_reuse(v, interp);
         case ITERATOR:
-            return boundary_iterator_payload_alias_unsafe_for_reuse(v, interp);
         case CONS:
-            return boundary_cons_payload_alias_unsafe_for_reuse(v, interp, depth);
         case ARRAY:
-            return boundary_array_payload_alias_unsafe_for_reuse(v, interp, depth);
         case HASHMAP:
         case SET:
-            return boundary_hashmap_payload_alias_unsafe_for_reuse(v, interp, depth);
         case METHOD_TABLE:
-            return boundary_method_table_payload_alias_unsafe_for_reuse(v, interp, depth);
+        case INSTANCE:
+        case MODULE:
+            return true;
         default:
             return false;
     }
+}
+
+fn bool boundary_alias_reach_value_seen(Value** seen, usz seen_len, Value* value) @inline {
+    for (usz i = 0; i < seen_len; i++) {
+        if (seen[i] == value) return true;
+    }
+    return false;
+}
+
+fn bool boundary_alias_reach_env_seen(Env** seen, usz seen_len, Env* env) @inline {
+    for (usz i = 0; i < seen_len; i++) {
+        if (seen[i] == env) return true;
+    }
+    return false;
+}
+
+fn bool boundary_alias_reach_push_value(Value** stack, usz* stack_len, Value* value) @inline {
+    if (value == null) return true;
+    if (*stack_len >= BOUNDARY_ALIAS_REACH_MAX_NODES) return false;
+    stack[*stack_len] = value;
+    (*stack_len)++;
+    return true;
+}
+
+fn bool boundary_alias_reach_push_env(Env** stack, usz* stack_len, Env* env) @inline {
+    if (env == null) return true;
+    if (*stack_len >= BOUNDARY_ALIAS_REACH_MAX_NODES) return false;
+    stack[*stack_len] = env;
+    (*stack_len)++;
+    return true;
+}
+
+fn bool boundary_alias_graph_reaches_scope(Value* root, main::ScopeRegion* scope, Env* stop_at) @noinline {
+    if (root == null || scope == null) return false;
+
+    BoundaryAliasReachScan* scan = (BoundaryAliasReachScan*)mem::malloc(BoundaryAliasReachScan.sizeof);
+    if (scan == null) return true;
+    defer mem::free(scan);
+
+    usz value_stack_len = 0;
+    usz seen_value_len = 0;
+    usz env_stack_len = 0;
+    usz seen_env_len = 0;
+
+    if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, root)) return true;
+
+    while (value_stack_len > 0 || env_stack_len > 0) {
+        while (value_stack_len > 0) {
+            Value* cur = scan.value_stack[--value_stack_len];
+            if (cur == null) continue;
+            if (boundary_alias_reach_value_seen(&scan.seen_values[0], seen_value_len, cur)) continue;
+            if (seen_value_len >= BOUNDARY_ALIAS_REACH_MAX_NODES) return true;
+            scan.seen_values[seen_value_len++] = cur;
+
+            if (boundary_ptr_in_scope((void*)cur, scope) ||
+                cur.scope_gen == scope.generation ||
+                cur.scope_gen == scope.escape_generation) {
+                return true;
+            }
+
+            switch (cur.tag) {
+                case CONS:
+                    if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.car) ||
+                        !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.cdr)) {
+                        return true;
+                    }
+                    break;
+                case ARRAY:
+                    if (cur.array_val != null) {
+                        for (usz i = 0; i < cur.array_val.length; i++) {
+                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.array_val.items[i])) {
+                                return true;
+                            }
+                        }
+                    }
+                    break;
+                case HASHMAP:
+                case SET:
+                    if (cur.hashmap_val != null && cur.hashmap_val.entries != null) {
+                        HashMap* map = cur.hashmap_val;
+                        for (uint i = 0; i < map.capacity; i++) {
+                            Value* key = map.entries[i].key;
+                            if (key == null) continue;
+                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, key)) {
+                                return true;
+                            }
+                            if (cur.tag == HASHMAP &&
+                                !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, map.entries[i].value)) {
+                                return true;
+                            }
+                        }
+                    }
+                    break;
+                case CLOSURE:
+                    if (cur.closure_val != null) {
+                        if (boundary_ptr_in_scope((void*)cur.closure_val, scope) ||
+                            cur.closure_val.scope_gen == scope.generation ||
+                            cur.closure_val.scope_gen == scope.escape_generation) {
+                            return true;
+                        }
+                        if (!boundary_alias_reach_push_env(&scan.env_stack[0], &env_stack_len, cur.closure_val.env)) {
+                            return true;
+                        }
+                    }
+                    break;
+                case PARTIAL_PRIM:
+                    if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.partial_val.first_arg) ||
+                        !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.partial_val.second_arg)) {
+                        return true;
+                    }
+                    break;
+                case METHOD_TABLE:
+                    if (cur.method_table_val != null) {
+                        MethodTable* mt = cur.method_table_val;
+                        for (usz i = 0; i < mt.entry_count; i++) {
+                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, mt.entries[i].implementation)) {
+                                return true;
+                            }
+                        }
+                        if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, mt.fallback)) {
+                            return true;
+                        }
+                    }
+                    break;
+                case MODULE:
+                    if (cur.module_val != null &&
+                        !boundary_alias_reach_push_env(&scan.env_stack[0], &env_stack_len, cur.module_val.env)) {
+                        return true;
+                    }
+                    break;
+                case ITERATOR:
+                    if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.iterator_val)) {
+                        return true;
+                    }
+                    break;
+                case INSTANCE:
+                    if (cur.instance_val != null && cur.instance_val.fields != null) {
+                        if (boundary_ptr_in_scope((void*)cur.instance_val, scope) ||
+                            boundary_ptr_in_scope((void*)cur.instance_val.fields, scope)) {
+                            return true;
+                        }
+                        for (usz i = 0; i < cur.instance_val.field_count; i++) {
+                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, &cur.instance_val.fields[i])) {
+                                return true;
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        while (env_stack_len > 0) {
+            Env* env = scan.env_stack[--env_stack_len];
+            if (env == null || env == stop_at) continue;
+            if (boundary_alias_reach_env_seen(&scan.seen_envs[0], seen_env_len, env)) continue;
+            if (seen_env_len >= BOUNDARY_ALIAS_REACH_MAX_NODES) return true;
+            scan.seen_envs[seen_env_len++] = env;
+
+            if (!env.is_root_persistent_box() &&
+                (boundary_ptr_in_scope((void*)env, scope) ||
+                 env.scope_gen == scope.generation ||
+                 env.scope_gen == scope.escape_generation)) {
+                return true;
+            }
+            if (!boundary_alias_reach_push_env(&scan.env_stack[0], &env_stack_len, env.parent)) {
+                return true;
+            }
+            for (usz i = 0; i < env.binding_count; i++) {
+                if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, env.bindings[i].value)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+fn bool boundary_alias_push_visit(
+    BoundaryAliasVisit* stack,
+    usz* stack_len,
+    Value** seen,
+    usz* seen_len,
+    BoundaryAliasSeenFastSet* fast_set,
+    Value* value,
+    usz depth
+) @inline {
+    if (value == null) return false;
+    if (!boundary_alias_value_has_child_payload(value)) return false;
+    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
+    if (boundary_alias_value_seen_fast(fast_set, seen, *seen_len, value)) return false;
+    if (*seen_len >= BOUNDARY_ALIAS_MAX_VISITS) return true;
+    usz seen_index = *seen_len;
+    seen[seen_index] = value;
+    (*seen_len)++;
+    boundary_alias_seen_fast_record(fast_set, seen, *seen_len, seen_index, value);
+    if (*stack_len >= BOUNDARY_ALIAS_MAX_VISITS) return true;
+    stack[*stack_len] = { .value = value, .depth = depth };
+    (*stack_len)++;
+    return false;
+}
+
+fn bool boundary_alias_push_child(
+    BoundaryAliasVisit* stack,
+    usz* stack_len,
+    Value** seen,
+    usz* seen_len,
+    BoundaryAliasSeenFastSet* fast_set,
+    Value* child,
+    Interp* interp,
+    usz depth
+) @inline {
+    if (child == null || interp == null) return false;
+    if (boundary_value_in_releasing_scope(child, interp)) return true;
+    if (!boundary_ptr_in_target_scope_chain_with_hint((void*)child, interp, child.scope_gen)) return true;
+    return boundary_alias_push_visit(stack, stack_len, seen, seen_len, fast_set, child, depth + 1);
+}
+
+fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) @noinline {
+    if (v == null || interp == null) return false;
+    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
+    if (!boundary_alias_value_has_child_payload(v)) return false;
+    if (!main::stack_has_apply_headroom(BOUNDARY_ALIAS_STACK_MIN_HEADROOM)) return true;
+
+    return boundary_graph_alias_unsafe_for_reuse_walk(v, interp, depth);
+}
+
+fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz depth) @noinline {
+    BoundaryAliasVisit[BOUNDARY_ALIAS_MAX_VISITS] stack = {};
+    Value*[BOUNDARY_ALIAS_MAX_VISITS] seen = {};
+    BoundaryAliasSeenFastSet fast_set = {};
+    usz stack_len = 0;
+    usz seen_len = 0;
+    if (boundary_alias_push_visit(&stack[0], &stack_len, &seen[0], &seen_len, &fast_set, v, depth)) return true;
+
+    while (stack_len > 0) {
+        BoundaryAliasVisit visit = stack[--stack_len];
+        Value* cur = visit.value;
+        usz cur_depth = visit.depth;
+        if (cur == null) continue;
+        if (cur_depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
+
+        switch (cur.tag) {
+            case CLOSURE:
+                if (boundary_closure_alias_unsafe_for_reuse(cur, interp)) return true;
+                break;
+            case PARTIAL_PRIM:
+                if (cur.partial_val.first_arg != null &&
+                    boundary_alias_push_child(
+                        &stack[0],
+                        &stack_len,
+                        &seen[0],
+                        &seen_len,
+                        &fast_set,
+                        cur.partial_val.first_arg,
+                        interp,
+                        cur_depth
+                    )) {
+                    return true;
+                }
+                if (cur.partial_val.second_arg != null &&
+                    boundary_alias_push_child(
+                        &stack[0],
+                        &stack_len,
+                        &seen[0],
+                        &seen_len,
+                        &fast_set,
+                        cur.partial_val.second_arg,
+                        interp,
+                        cur_depth
+                    )) {
+                    return true;
+                }
+                break;
+            case ITERATOR:
+                if (cur.iterator_val != null &&
+                    boundary_alias_push_child(
+                        &stack[0],
+                        &stack_len,
+                        &seen[0],
+                        &seen_len,
+                        &fast_set,
+                        cur.iterator_val,
+                        interp,
+                        cur_depth
+                    )) {
+                    return true;
+                }
+                break;
+            case CONS:
+                Value* current = cur;
+                usz list_depth = cur_depth;
+                while (current != null && current.tag == CONS) {
+                    if (list_depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
+
+                    Value* car = current.cons_val.car;
+                    if (car != null) {
+                        if (car.tag == CONS && boundary_value_in_releasing_scope(car, interp)) return true;
+                        if (boundary_alias_push_visit(
+                            &stack[0],
+                            &stack_len,
+                            &seen[0],
+                            &seen_len,
+                            &fast_set,
+                            car,
+                            list_depth + 1
+                        )) {
+                            return true;
+                        }
+                    }
+
+                    Value* cdr = current.cons_val.cdr;
+                    if (cdr == null) break;
+                    if (cdr.tag != CONS) {
+                        if (boundary_alias_push_visit(
+                            &stack[0],
+                            &stack_len,
+                            &seen[0],
+                            &seen_len,
+                            &fast_set,
+                            cdr,
+                            list_depth + 1
+                        )) {
+                            return true;
+                        }
+                        break;
+                    }
+                    if (boundary_value_in_releasing_scope(cdr, interp)) return true;
+
+                    current = cdr;
+                    list_depth++;
+                }
+                break;
+            case ARRAY:
+                if (cur.array_val != null) {
+                    Array* arr = cur.array_val;
+                    for (usz i = 0; i < arr.length; i++) {
+                        if (boundary_alias_push_child(
+                            &stack[0],
+                            &stack_len,
+                            &seen[0],
+                            &seen_len,
+                            &fast_set,
+                            arr.items[i],
+                            interp,
+                            cur_depth
+                        )) {
+                            return true;
+                        }
+                    }
+                }
+                break;
+            case HASHMAP:
+            case SET:
+                if (cur.hashmap_val != null && cur.hashmap_val.entries != null) {
+                    HashMap* map = cur.hashmap_val;
+                    for (uint i = 0; i < map.capacity; i++) {
+                        Value* key = map.entries[i].key;
+                        if (key == null) continue;
+                        if (boundary_alias_push_child(&stack[0], &stack_len, &seen[0], &seen_len, &fast_set, key, interp, cur_depth)) {
+                            return true;
+                        }
+                        if (cur.tag == HASHMAP &&
+                            boundary_alias_push_child(
+                                &stack[0],
+                                &stack_len,
+                                &seen[0],
+                                &seen_len,
+                                &fast_set,
+                                map.entries[i].value,
+                                interp,
+                                cur_depth
+                            )) {
+                            return true;
+                        }
+                    }
+                }
+                break;
+            case METHOD_TABLE:
+                if (cur.method_table_val != null) {
+                    MethodTable* mt = cur.method_table_val;
+                    for (usz i = 0; i < mt.entry_count; i++) {
+                        if (boundary_alias_push_child(
+                            &stack[0],
+                            &stack_len,
+                            &seen[0],
+                            &seen_len,
+                            &fast_set,
+                            mt.entries[i].implementation,
+                            interp,
+                            cur_depth
+                        )) {
+                            return true;
+                        }
+                    }
+                    if (boundary_alias_push_child(
+                        &stack[0],
+                        &stack_len,
+                        &seen[0],
+                        &seen_len,
+                        &fast_set,
+                        mt.fallback,
+                        interp,
+                        cur_depth
+                    )) {
+                        return true;
+                    }
+                }
+                break;
+            case MODULE:
+            case INSTANCE:
+                if (boundary_alias_graph_reaches_scope(cur, interp.releasing_scope, interp.global_env)) return true;
+                break;
+            default:
+                break;
+        }
+    }
+    return false;
 }
 
 <*

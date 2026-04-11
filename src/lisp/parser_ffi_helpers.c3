@@ -97,6 +97,10 @@ fn bool Parser.ensure_ffi_param_capacity(Parser* self, ExprFfiFn* ffi, usz neede
 
 fn bool Parser.parse_ffi_typed_params(Parser* self, ExprFfiFn* ffi) {
     while (self.lexer.current.type == T_LPAREN && !self.has_error) {
+        if (ffi.param_count == usz.max) {
+            self.set_error("FFI parameter count overflow");
+            return false;
+        }
         if (!self.ensure_ffi_param_capacity(ffi, ffi.param_count + 1)) return false;
         self.lexer.advance();  // consume '('
 

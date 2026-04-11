@@ -483,6 +483,11 @@ omni_ftxui_status omni_ftxui_component_from_element(
     omni_ftxui_element_t* element,
     omni_ftxui_component_t** out_component
 );
+/*
+ * The quit-key wrapper retains the screen's underlying loop object until the
+ * returned component is destroyed, so callers may destroy the screen handle
+ * after wrapping without leaving the wrapper with a dangling screen pointer.
+ */
 omni_ftxui_status omni_ftxui_component_wrap_quit_keys(
     omni_ftxui_context_t* context,
     omni_ftxui_screen_t* screen,

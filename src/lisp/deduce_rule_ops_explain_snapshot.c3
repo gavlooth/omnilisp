@@ -54,9 +54,9 @@ fn Value* deduce_explain_build_snapshot(
     if (Value* err = explain_dict_set(out, interp, "naive-recursive-aggregate-mixed-routed-to-seminaive", metadata.naive_recursive_mixed_aggregate_routed ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-component-id", metadata.goal_directed_component_id >= 0 ? make_int(interp, (long)metadata.goal_directed_component_id) : make_nil(interp))) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-eligible", metadata.goal_directed_eligible ? make_symbol(interp, interp.sym_true) : make_nil(interp))) return err;
-    if (Value* err = explain_dict_set(out, interp, "goal-directed-shape", metadata.goal_directed_eligible ? make_symbol(interp, interp.symbols.intern("positive-recursive-closure")) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-shape", metadata.goal_directed_eligible ? deduce_explain_goal_directed_symbol(interp, "positive-recursive-closure") : make_nil(interp))) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-blockers", metadata.goal_directed_blockers)) return err;
-    if (Value* err = explain_dict_set(out, interp, "goal-directed-execution-path", metadata.goal_directed_eligible ? make_symbol(interp, interp.symbols.intern("selected-component-closure")) : make_nil(interp))) return err;
+    if (Value* err = explain_dict_set(out, interp, "goal-directed-execution-path", metadata.goal_directed_eligible ? deduce_explain_goal_directed_symbol(interp, "selected-component-closure") : make_nil(interp))) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-selected-components", metadata.goal_directed_selected_components)) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-selected-predicates", metadata.goal_directed_selected_predicates)) return err;
     if (Value* err = explain_dict_set(out, interp, "goal-directed-demand-bound-head-positions", demand_bound_head_positions)) return err;

@@ -124,6 +124,10 @@ fn bool copy_parent_clone_closure_payload(
     result.closure_val.scope_gen = interp.current_scope.generation;
 
     if (src.closure_val.param_count > 0) {
+        if (src.closure_val.param_count > usz.max / SymbolId.sizeof) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return false;
+        }
         result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * src.closure_val.param_count);
         if (result.closure_val.params == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;

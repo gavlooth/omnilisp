@@ -47,8 +47,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
-        { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
-        { "exact->inexact", &prim_exact_to_inexact, 1 }, { "inexact->exact", &prim_inexact_to_exact, 1 },
+        { "string->number", &prim_string_to_number, 1 },
         // Gensym
         { "gensym", &prim_gensym, 0 },
         // Dictionary
@@ -85,10 +84,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
         { "set-remove", &prim_set_remove, 2 }, { "set-contains?", &prim_set_contains, 2 },
-        { "set-size", &prim_set_size, 1 }, { "set->list", &prim_set_to_list, 1 },
         // Additional I/O and convenience
-        { "read-string", &prim_read_string, 1 }, { "string->symbol", &prim_string_to_symbol, 1 },
-        { "symbol->string", &prim_symbol_to_string, 1 },
+        { "read-string", &prim_read_string, 1 },
         // Type system
         { "^", &prim_ctor_type_apply, 2 },
         { "type-of", &prim_type_of, 1 },

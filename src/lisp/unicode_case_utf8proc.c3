@@ -31,14 +31,23 @@ const int UTF8PROC_STRIPMARK = (1 << 13);
 // NFKC = COMPOSE | COMPAT | STABLE, NFKD = DECOMPOSE | COMPAT | STABLE
 
 fn bool ensure_utf8_buf_capacity(char** buf, usz* cap, usz required) {
+    if (buf == null || cap == null) return false;
     if (required <= *cap) return true;
-    usz new_cap = *cap;
-    while (new_cap < required) new_cap *= 2;
+    usz new_cap = *cap > 0 ? *cap : 16;
+    while (new_cap < required) {
+        if (new_cap > usz.max / (usz)2) return false;
+        new_cap *= 2;
+    }
     char* grown = (char*)mem::realloc(*buf, new_cap);
     if (grown == null) return false;
     *buf = grown;
     *cap = new_cap;
     return true;
+}
+
+fn bool ensure_utf8_buf_capacity_for_append(char** buf, usz* cap, usz out, usz extra) {
+    if (out > usz.max - extra) return false;
+    return ensure_utf8_buf_capacity(buf, cap, out + extra);
 }
 
 fn bool unicode_is_word_codepoint(int cp) {

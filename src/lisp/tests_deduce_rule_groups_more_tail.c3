@@ -137,7 +137,7 @@ fn bool deduce_rule_test_capture_recursive_limit_code(
         return false;
     }
 
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) return false;
     SymbolId[1] handler_tags = { interp.sym_raise };
     EffectHandler handler = {
         .tags = &handler_tags[0],
@@ -265,7 +265,7 @@ fn bool deduce_rule_test_capture_recursive_limit_message_contains(
         return false;
     }
 
-    if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+    if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) return false;
     SymbolId[1] handler_tags = { interp.sym_raise };
     EffectHandler handler = {
         .tags = &handler_tags[0],

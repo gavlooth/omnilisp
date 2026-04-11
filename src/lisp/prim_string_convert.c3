@@ -200,7 +200,7 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "number->string: expected number");
+    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "String: expected number");
     char[64] buf;
     if (is_double(args[0])) {
         return make_string(interp, double_to_string(args[0].double_val, &buf));
@@ -209,13 +209,13 @@ fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "exact->inexact: expected number");
+    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "Double: expected number");
     return make_double(interp, to_double(args[0]));
 }
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "inexact->exact: expected number");
-    return conversion_int_from_double_or_raise(interp, to_double(args[0]), "inexact->exact: expected finite number in Integer range");
+    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "Integer: expected number");
+    return conversion_int_from_double_or_raise(interp, to_double(args[0]), "Integer: expected finite number in Integer range");
 }
 
 fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
@@ -227,13 +227,16 @@ fn Value* prim_read_string(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_string_to_symbol(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return conversion_type_raise(interp, "string->symbol: expected string");
+    if (args.len < 1 || args[0].tag != STRING) return conversion_type_raise(interp, "Symbol: expected string");
     SymbolId sym = interp.symbols.intern(args[0].str_chars[:args[0].str_len]);
+    if (sym == INVALID_SYMBOL_ID) {
+        return conversion_runtime_raise(interp, "runtime/out-of-memory", "Symbol: failed to intern symbol");
+    }
     return make_symbol(interp, sym);
 }
 
 fn Value* prim_symbol_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_symbol(args[0])) return conversion_type_raise(interp, "symbol->string: expected symbol");
+    if (args.len < 1 || !is_symbol(args[0])) return conversion_type_raise(interp, "String: expected symbol");
     char[] name = interp.symbols.get_name(args[0].sym_val);
     return make_string(interp, name);
 }

@@ -52,7 +52,7 @@ fn void run_deduce_key_integrity_fact_tests(Interp* interp, int* pass, int* fail
             "    (handle (deduce 'fact! rel-key-conflict-oom 1 \"Bob\") "
             "      (raise payload "
             "        (if (dict? payload) "
-            "            (symbol->string (ref payload 'code)) "
+            "            (String (ref payload 'code)) "
             "            \"deduce/integrity-key-conflict\")))) "
             "  (cons code (cons (deduce 'count rel-key-conflict-oom) nil)))",
             interp

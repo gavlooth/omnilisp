@@ -346,12 +346,12 @@ fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pas
         compiler_test_finish_bool(ok, "Compiler: string->number", "[FAIL] Compiler: string->number", pass, fail);
     }
 
-    // 53. number->string compiles
+    // 53. String compiles
     {
-        char[] code = compile_to_c3("(number->string 42)", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"number->string\")"})
+        char[] code = compile_to_c3("(String 42)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"String\")"})
             && compiler_code_contains_none(code, {"unsupported"});
-        compiler_test_finish_bool(ok, "Compiler: number->string", "[FAIL] Compiler: number->string", pass, fail);
+        compiler_test_finish_bool(ok, "Compiler: String", "[FAIL] Compiler: String", pass, fail);
     }
 
     // 54. gensym compiles

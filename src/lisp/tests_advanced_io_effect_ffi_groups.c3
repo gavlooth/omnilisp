@@ -181,10 +181,16 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
     test_truthy_interp(interp, "fs-readdir returns array",
         "(array? (fs-readdir \"/tmp\"))", pass, fail);
+    test_error_contains(interp, "fs-open rejects flags out of range",
+        "(fs-open \"/tmp/omni_fs_bad_flags.txt\" 9223372036854775807)",
+        "flags out of range", pass, fail);
+    test_error_contains(interp, "fs-open rejects mode out of range",
+        "(fs-open \"/tmp/omni_fs_bad_mode.txt\" 0 9223372036854775807)",
+        "mode out of range", pass, fail);
 
     test_str_val(interp, "transmission-control alias payload code",
         "(handle (tcp-connect 42 80) "
-        "  (raise msg (symbol->string (ref msg 'code))))",
+        "  (raise msg (String (ref msg 'code))))",
         "io/tcp-connect-host-not-string", pass, fail);
 
     test_tag_interp(interp, "user-datagram alias socket create/close",
@@ -199,7 +205,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
 
     test_str_val(interp, "tls-connect alias payload code",
         "(handle (tls-connect nil \"localhost\" true) "
-        "  (raise msg (symbol->string (ref msg 'code))))",
+        "  (raise msg (String (ref msg 'code))))",
         "io/tls-connect-invalid-tcp-handle", pass, fail);
 
     test_truthy_interp(interp, "fs stat returns dict",
@@ -289,7 +295,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
     test_str_interp(interp, "pipe loopback roundtrip",
         "(block "
         "(define f (spawn (lambda () "
-        "  (define p (string-append \"/tmp/omni_pipe_\" (number->string (% (time-ms) 1000000)) \".sock\")) "
+        "  (define p (string-append \"/tmp/omni_pipe_\" (String (% (time-ms) 1000000)) \".sock\")) "
         "  (define listener (pipe-listen p)) "
         "  (define client (pipe-connect p)) "
         "  (define server (tcp-accept listener)) "

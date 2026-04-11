@@ -49,34 +49,71 @@ fn usz type_registry_symbol_hash(SymbolTable* syms, SymbolId id) @inline {
 fn void TypeRegistry.init(TypeRegistry* self) {
     self.capacity = TYPE_INITIAL_CAPACITY;
     self.type_count = 0;
+    self.types = null;
+    self.type_hash_index = null;
+    if (self.capacity == 0 || self.capacity > usz.max / TypeInfo.sizeof) {
+        self.capacity = 0;
+        self.hash_capacity = 0;
+        return;
+    }
     self.types = (TypeInfo*)mem::malloc(TypeInfo.sizeof * self.capacity);
+    if (self.types == null) {
+        self.capacity = 0;
+        self.hash_capacity = 0;
+        return;
+    }
+    if (self.capacity > usz.max / (usz)2) {
+        mem::free(self.types);
+        self.types = null;
+        self.capacity = 0;
+        self.hash_capacity = 0;
+        return;
+    }
     self.hash_capacity = self.capacity * 2;
+    if (self.hash_capacity == 0 || self.hash_capacity > usz.max / TypeId.sizeof) {
+        mem::free(self.types);
+        self.types = null;
+        self.capacity = 0;
+        self.hash_capacity = 0;
+        return;
+    }
     self.type_hash_index = (TypeId*)mem::malloc(TypeId.sizeof * self.hash_capacity);
+    if (self.type_hash_index == null) {
+        mem::free(self.types);
+        self.types = null;
+        self.capacity = 0;
+        self.hash_capacity = 0;
+        return;
+    }
     for (usz i = 0; i < self.hash_capacity; i++) {
         self.type_hash_index[i] = INVALID_TYPE_ID;
     }
 }
 
-fn void TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
+fn bool TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
+    if (self == null || self.types == null || self.type_hash_index == null) return false;
+    if (self.capacity == 0 || self.capacity > usz.max / (usz)2) return false;
     usz new_cap = self.capacity * 2;
-    TypeInfo* new_types = (TypeInfo*)mem::malloc(TypeInfo.sizeof * new_cap);
-    for (usz i = 0; i < self.type_count; i++) new_types[i] = self.types[i];
-    mem::free(self.types);
-    self.types = new_types;
-    self.capacity = new_cap;
-
-    // Rebuild hash table at 2x new capacity
+    if (new_cap > usz.max / (usz)2) return false;
     usz new_hash_cap = new_cap * 2;
+    if (new_cap > usz.max / TypeInfo.sizeof) return false;
+    if (new_hash_cap > usz.max / TypeId.sizeof) return false;
+
+    TypeInfo* new_types = (TypeInfo*)mem::malloc(TypeInfo.sizeof * new_cap);
+    if (new_types == null) return false;
     TypeId* new_hash = (TypeId*)mem::malloc(TypeId.sizeof * new_hash_cap);
+    if (new_hash == null) {
+        mem::free(new_types);
+        return false;
+    }
+
+    for (usz i = 0; i < self.type_count; i++) new_types[i] = self.types[i];
     for (usz i = 0; i < new_hash_cap; i++) new_hash[i] = INVALID_TYPE_ID;
-    mem::free(self.type_hash_index);
-    self.type_hash_index = new_hash;
-    self.hash_capacity = new_hash_cap;
 
     usz mask = new_hash_cap - 1;
     for (usz i = 0; i < self.type_count; i++) {
-        if (!type_registry_symbol_hashable(syms, self.types[i].name)) continue;
-        usz h = type_registry_symbol_hash(syms, self.types[i].name);
+        if (!type_registry_symbol_hashable(syms, new_types[i].name)) continue;
+        usz h = type_registry_symbol_hash(syms, new_types[i].name);
         for (usz probe = 0; probe < new_hash_cap; probe++) {
             usz slot = (h + probe) & mask;
             if (new_hash[slot] == INVALID_TYPE_ID) {
@@ -85,6 +122,14 @@ fn void TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
             }
         }
     }
+
+    mem::free(self.types);
+    mem::free(self.type_hash_index);
+    self.types = new_types;
+    self.capacity = new_cap;
+    self.type_hash_index = new_hash;
+    self.hash_capacity = new_hash_cap;
+    return true;
 }
 
 fn void TypeRegistry.destroy(TypeRegistry* self) {
@@ -96,6 +141,9 @@ fn void TypeRegistry.destroy(TypeRegistry* self) {
 }
 
 fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTable* syms) {
+    if (self == null || self.types == null || self.type_hash_index == null) return INVALID_TYPE_ID;
+    if (self.capacity == 0 || self.hash_capacity == 0) return INVALID_TYPE_ID;
+
     // If a type with this name already exists, update it in-place and return the existing TypeId.
     // This ensures idempotent re-registration (e.g., from (load ...) re-evaluating define forms).
     if (type_registry_symbol_hashable(syms, info.name)) {
@@ -108,8 +156,9 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
     }
 
     if (self.type_count >= self.capacity) {
-        self.grow(syms);
+        if (!self.grow(syms)) return INVALID_TYPE_ID;
     }
+    if (self.type_count >= (usz)INVALID_TYPE_ID) return INVALID_TYPE_ID;
     TypeId id = (TypeId)self.type_count;
     self.types[self.type_count] = info;
     self.type_count++;
@@ -126,6 +175,36 @@ fn TypeId TypeRegistry.register_type(TypeRegistry* self, TypeInfo info, SymbolTa
         }
     }
     return id;
+}
+
+fn void TypeRegistry.rebuild_hash(TypeRegistry* self, SymbolTable* syms) {
+    if (self == null || syms == null || self.types == null || self.type_hash_index == null) return;
+    if (self.hash_capacity == 0) return;
+    for (usz i = 0; i < self.hash_capacity; i++) self.type_hash_index[i] = INVALID_TYPE_ID;
+
+    usz mask = self.hash_capacity - 1;
+    for (usz i = 0; i < self.type_count; i++) {
+        if (!type_registry_symbol_hashable(syms, self.types[i].name)) continue;
+        usz h = type_registry_symbol_hash(syms, self.types[i].name);
+        for (usz probe = 0; probe < self.hash_capacity; probe++) {
+            usz slot = (h + probe) & mask;
+            if (self.type_hash_index[slot] == INVALID_TYPE_ID) {
+                self.type_hash_index[slot] = (TypeId)i;
+                break;
+            }
+        }
+    }
+}
+
+fn void TypeRegistry.rollback_recent_new_type(TypeRegistry* self, TypeId id, SymbolTable* syms) {
+    if (self == null || syms == null || self.types == null || self.type_hash_index == null) return;
+    if (id == INVALID_TYPE_ID || self.type_count == 0) return;
+    if ((usz)id + (usz)1 != self.type_count) return;
+
+    type_registry_destroy_type_info(&self.types[(usz)id]);
+    self.types[(usz)id] = {};
+    self.type_count--;
+    self.rebuild_hash(syms);
 }
 
 fn TypeId TypeRegistry.lookup(TypeRegistry* self, SymbolId name, SymbolTable* syms) {

@@ -40,6 +40,7 @@ fn bool jit_method_sigs_equal(MethodSignature* a, MethodSignature* b) @inline {
 }
 
 fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature* new_sig, Value* impl) {
+    if (mt == null || new_sig == null || impl == null) return false;
     // Replace existing entry with same signature (idempotent re-define).
     for (usz i = 0; i < mt.entry_count; i++) {
         if (jit_method_sigs_equal(&mt.entries[i].sig, new_sig)) {
@@ -48,7 +49,9 @@ fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature*
         }
     }
     if (mt.entry_count >= mt.capacity) {
-        usz new_cap = mt.capacity * 2;
+        if (mt.capacity > 0 && mt.capacity > usz.max / 2) return false;
+        usz new_cap = mt.capacity > 0 ? mt.capacity * 2 : METHOD_INITIAL_CAPACITY;
+        if (new_cap > usz.max / MethodEntry.sizeof) return false;
         MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
         if (new_entries == null) return false;
         for (usz ei = 0; ei < mt.entry_count; ei++) new_entries[ei] = mt.entries[ei];
@@ -70,11 +73,13 @@ fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature*
 }
 
 fn bool jit_method_table_append_entry(MethodTable* mt, Value* impl) {
+    if (impl == null || impl.closure_val == null) return false;
     MethodSignature* new_sig = impl.closure_val.type_sig;
     return jit_method_table_append_entry_with_sig(mt, new_sig, impl);
 }
 
 fn MethodTable* jit_new_method_table_with_sig(SymbolId name, MethodSignature* sig, Value* impl, Value* fallback) {
+    if (sig == null || impl == null) return null;
     MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     if (mt == null) return null;
     mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
@@ -100,6 +105,7 @@ fn MethodTable* jit_new_method_table(SymbolId name, Value* impl, Value* fallback
 }
 
 fn Value* jit_eval_define_typed_callable(Interp* interp, SymbolId name, Value* stored_val, MethodSignature* sig) {
+    if (stored_val == null || sig == null) return raise_error(interp, "jit: failed to promote typed method implementation");
     Value* existing = interp.global_env.lookup(name);
     if (existing != null && existing.tag == METHOD_TABLE) {
         if (!jit_method_table_append_entry_with_sig(existing.method_table_val, sig, stored_val)) {
@@ -134,6 +140,7 @@ fn Value* jit_eval_define(Interp* interp, SymbolId name, Value* value) {
         interp,
         COPY_SITE_JIT_EVAL_DEFINE
     );
+    if (stored_val == null) return raise_error(interp, "jit: failed to promote defined value");
     if (stored_val != null && stored_val.tag == ERROR) return stored_val;
 
     // Check for typed closure → method table dispatch

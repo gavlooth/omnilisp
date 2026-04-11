@@ -2,6 +2,13 @@ module lisp;
 
 import main;
 
+fn void boundary_destination_build_scope_splice(
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* build_scope
+) @inline {
+    main::scope_splice_escapes(target_scope, build_scope);
+}
+
 <*
 @require error_value != null : "boundary_build_destination_error_escape: null error value"
 @require interp != null : "boundary_build_destination_error_escape: null interp"
@@ -33,6 +40,7 @@ fn Value* boundary_build_destination_error_escape(
     result.tag = ERROR;
 
     usz len = error_value.str_len;
+    if (len == usz.max) return error_value;
     usz cap = len + 1;
     if (cap < 32) cap = 32;
     result.str_chars = g_boundary_force_destination_error_escape_alloc_fail

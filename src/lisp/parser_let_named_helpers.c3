@@ -21,7 +21,7 @@ fn Expr* Parser.build_named_let_call(Parser* self, Expr* e, SymbolId loop_name, 
     call_expr.call.arg_count = arg_count;
     call_expr.call.args = null;
     if (arg_count > 0) {
-        call_expr.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * arg_count, "out of memory while allocating named let call arguments");
+        call_expr.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, arg_count, "out of memory while allocating named let call arguments");
         if (call_expr.call.args == null) return null;
     }
     for (usz i = 0; i < arg_count; i++) {

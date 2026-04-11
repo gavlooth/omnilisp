@@ -118,7 +118,7 @@
 (let (pipe-ok
       (block
         (define pf (spawn (lambda ()
-          (define p (string-append "/tmp/finwatch_pipe_" (number->string (% (time-ms) 1000000)) ".sock"))
+          (define p (string-append "/tmp/finwatch_pipe_" (String (% (time-ms) 1000000)) ".sock"))
           (define listener (pipe-listen p))
           (define client (pipe-connect p))
           (define server (tcp-accept listener))
@@ -208,10 +208,10 @@
 (println (format "Timestamp alias: %s" (is? 100 'Integer)))
 (println (format "Price alias: %s" (is? 3.14 'Double)))
 
-;; string->number / number->string / symbol->string
+;; string->number / String
 (println (format "string->number: %s" (string->number "42")))
-(println (format "number->string: %s" (number->string 99)))
-(println (format "symbol->string: %s" (symbol->string 'hello)))
+(println (format "String: %s" (String 99)))
+(println (format "String: %s" (String 'hello)))
 
 ;; import (sym 'as alias) — types.omni uses (Quote 'as MQuote)
 (println (format "to-json via import 'as: %s" (json-emit (to-json (Quote "TEST" 1.0 0)))))

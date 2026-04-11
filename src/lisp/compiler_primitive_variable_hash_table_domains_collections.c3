@@ -14,8 +14,6 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("set-add"), "aot::lookup_prim(\"set-add\")");
     prim_hash_insert(st.intern("set-remove"), "aot::lookup_prim(\"set-remove\")");
     prim_hash_insert(st.intern("set-contains?"), "aot::lookup_prim(\"set-contains?\")");
-    prim_hash_insert(st.intern("set-size"), "aot::lookup_prim(\"set-size\")");
-    prim_hash_insert(st.intern("set->list"), "aot::lookup_prim(\"set->list\")");
     prim_hash_insert(st.intern("ref"), "aot::lookup_prim(\"ref\")");
     prim_hash_insert(st.intern("set!"), "aot::lookup_prim(\"set!\")");
     prim_hash_insert(st.intern("keys"), "aot::lookup_prim(\"keys\")");

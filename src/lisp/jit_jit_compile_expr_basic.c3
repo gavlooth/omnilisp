@@ -30,7 +30,7 @@ fn void? jit_compile_var(void* s, Expr* expr, Interp* interp, JitLocals* locals)
             if (locals.locals[i - 1].is_mutable) {
                 // Mutable local: stack slot holds Env* (the box). Lookup value in it.
                 _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)locals.locals[i - 1].stack_offset);
-                emit_call_2i(s, (void*)&jit_env_lookup_local, JIT_V1, (long)sym_id);
+                emit_call_3i(s, (void*)&jit_env_lookup_local, JIT_V0, (long)sym_id, JIT_V1);
                 return;
             }
             // Non-mutable: load value directly from stack slot

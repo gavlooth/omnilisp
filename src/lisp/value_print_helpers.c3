@@ -125,6 +125,10 @@ fn void print_closure_value(Value* v, SymbolTable* syms) {
 
 fn void print_hashmap_value(Value* v, SymbolTable* syms) {
     io::print("{");
+    if (v.hashmap_val == null) {
+        io::print("}");
+        return;
+    }
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -140,6 +144,10 @@ fn void print_hashmap_value(Value* v, SymbolTable* syms) {
 
 fn void print_set_value(Value* v, SymbolTable* syms) {
     io::print("(Set");
+    if (v.hashmap_val == null) {
+        io::print(")");
+        return;
+    }
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {

@@ -16,7 +16,7 @@ fn void run_http_request_fiber_path_test(Interp* interp, int* pass, int* fail) {
         "      (tcp-write c \"HTTP/1.1 201 Created\\r\\nContent-Length: 3\\r\\nConnection: close\\r\\n\\r\\nyes\") "
         "      (tcp-close c)))) "
         "    (define cf (spawn (lambda () "
-        "      (http-request \"GET\" (string-append \"http://127.0.0.1:\" (number->string p) \"/q\") \"\" \"\")))) "
+        "      (http-request \"GET\" (string-append \"http://127.0.0.1:\" (String p) \"/q\") \"\" \"\")))) "
         "    (define res (await cf)) "
         "    (await sf) "
         "    (tcp-close listener) "
@@ -34,8 +34,8 @@ fn void run_http_crud_duplicate_post_reject_test(Interp* interp, int* pass, int*
         "  (define r2 (pipeline/result->response (pipeline/execute {'method \"POST\" 'path \"/items\" 'body {'id item-id 'name \"race-dup\" 'qty 2}}))) "
         "  (define matches (deduce 'query items (lambda (row) (= (ref row 'id) item-id)))) "
         "  {'count (length matches) "
-        "   'r1-status r1.status 'r1-error r1.error "
-        "   'r2-status r2.status 'r2-error r2.error})",
+        "   'r1-status (ref r1 'status) 'r1-error (ref r1 'error) "
+        "   'r2-status (ref r2 'status) 'r2-error (ref r2 'error)})",
         interp
     );
 
@@ -287,7 +287,7 @@ fn void run_http_tests(Interp* interp, int* pass, int* fail) {
         "      (try (lambda (ignored) (tcp-read-timeout c 1000)) (lambda (e) \"\")) "
         "      (tcp-write c \"HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\nConnection: close\\r\\n\\r\\nok\") "
         "      (tcp-close c)))) "
-        "    (define cf (spawn (lambda () (http-get (string-append \"http://127.0.0.1:\" (number->string p) \"/\"))))) "
+        "    (define cf (spawn (lambda () (http-get (string-append \"http://127.0.0.1:\" (String p) \"/\"))))) "
         "    (define res (await cf)) "
         "    (await sf) "
         "    (tcp-close listener) "

@@ -73,7 +73,14 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
     }
     defer free_heap_c_string_items(env_items, env_item_count);
 
-    char** argv_ptrs = (char**)mem::malloc(char*.sizeof * (argv_item_count + 2));
+    if (argv_item_count > usz.max - (usz)2) {
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
+    usz argv_ptr_count = argv_item_count + (usz)2;
+    if (argv_ptr_count > usz.max / char*.sizeof) {
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
+    char** argv_ptrs = (char**)mem::malloc(char*.sizeof * argv_ptr_count);
     if (argv_ptrs == null) {
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
@@ -86,7 +93,14 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
 
     char** env_ptrs = null;
     if (has_env_override) {
-        env_ptrs = (char**)mem::malloc(char*.sizeof * (env_item_count + 1));
+        if (env_item_count == usz.max) {
+            return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        }
+        usz env_ptr_count = env_item_count + (usz)1;
+        if (env_ptr_count > usz.max / char*.sizeof) {
+            return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        }
+        env_ptrs = (char**)mem::malloc(char*.sizeof * env_ptr_count);
         if (env_ptrs == null) {
             return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
         }
@@ -168,11 +182,27 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
         if (ph != null) close_process_handle(ph);
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
-    Value* handle_key = make_symbol(interp, interp.symbols.intern("handle"));
-    Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
-    Value* stdin_key = make_symbol(interp, interp.symbols.intern("stdin"));
-    Value* stdout_key = make_symbol(interp, interp.symbols.intern("stdout"));
-    Value* stderr_key = make_symbol(interp, interp.symbols.intern("stderr"));
+    SymbolId handle_sym = interp.symbols.intern("handle");
+    SymbolId pid_sym = interp.symbols.intern("pid");
+    SymbolId stdin_sym = interp.symbols.intern("stdin");
+    SymbolId stdout_sym = interp.symbols.intern("stdout");
+    SymbolId stderr_sym = interp.symbols.intern("stderr");
+    if (handle_sym == INVALID_SYMBOL_ID ||
+        pid_sym == INVALID_SYMBOL_ID ||
+        stdin_sym == INVALID_SYMBOL_ID ||
+        stdout_sym == INVALID_SYMBOL_ID ||
+        stderr_sym == INVALID_SYMBOL_ID) {
+        close_fs_like_handle(stdin_h, interp);
+        close_fs_like_handle(stdout_h, interp);
+        close_fs_like_handle(stderr_h, interp);
+        if (ph != null) close_process_handle(ph);
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: failed to intern result keys");
+    }
+    Value* handle_key = make_symbol(interp, handle_sym);
+    Value* pid_key = make_symbol(interp, pid_sym);
+    Value* stdin_key = make_symbol(interp, stdin_sym);
+    Value* stdout_key = make_symbol(interp, stdout_sym);
+    Value* stderr_key = make_symbol(interp, stderr_sym);
     if (!hashmap_set_checked(out.hashmap_val, handle_key, proc_handle_v, interp) ||
         !hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
         !hashmap_set_checked(out.hashmap_val, stdin_key, stdin_h, interp) ||

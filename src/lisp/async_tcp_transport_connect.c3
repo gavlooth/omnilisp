@@ -14,7 +14,11 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::EXPECTED_INT
     if (!is_int(args[1])) return io_raise(interp, "io/tcp-connect-port-not-integer", "tcp-connect: port must be an integer");
 
-    int port = (int)args[1].int_val;
+    long raw_port = args[1].int_val;
+    if (raw_port < 0 || raw_port > 65535) {
+        return io_raise(interp, "io/tcp-connect-invalid-port", "tcp-connect: port must be between 0 and 65535");
+    }
+    int port = (int)raw_port;
 
     if (!scheduler_is_running_fiber_context()) {
         return tcp_raise_fiber_required(interp, "tcp-connect", "io/tcp-connect-fiber-required");
@@ -99,6 +103,7 @@ fn Value* prim_tcp_connect(Value*[] args, Env* env, Interp* interp) {
         pending.request_token == 0 ||
         pending.req_handle == null ||
         pending.tcp_handle == null) {
+        scheduler_close_pending_tcp_connect(fiber_id);
         return io_raise(
             interp,
             "io/tcp-connect-resumed-before-completion",

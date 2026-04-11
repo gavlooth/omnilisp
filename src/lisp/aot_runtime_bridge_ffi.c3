@@ -22,7 +22,10 @@ fn lisp::Value* ffi_declare_fn(
     if (param_count > 0 && param_type_tags == null) return aot_make_error_best_effort(interp, "aot ffi λ: missing parameter ABI tags");
     if (param_count > (usz)int.max) return aot_make_error_best_effort(interp, "aot ffi λ: parameter count exceeds supported arity");
 
-    lisp::SymbolId lib_sid = interp.symbols.intern(lib_name);
+    lisp::SymbolId lib_sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, lib_name, &lib_sid)) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable library binding name");
+    }
     lisp::Value* lib_val = interp.global_env.lookup(lib_sid);
     if (lib_val == null || lib_val.tag != lisp::ValueTag.FFI_HANDLE || lib_val.ffi_val == null) {
         if (required_symbol) {
@@ -55,7 +58,11 @@ fn lisp::Value* ffi_declare_fn(
         unavailable.c_name = null;
         unavailable.c_name_len = 0;
         prim.prim_val.user_data = (void*)unavailable;
-        lisp::SymbolId fn_sid = interp.symbols.intern(omni_fn_name);
+        lisp::SymbolId fn_sid = (lisp::SymbolId)0;
+        if (!aot_intern_checked(interp, omni_fn_name, &fn_sid)) {
+            aot_ffi_free_bound(unavailable);
+            return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable function binding name");
+        }
         if (!lisp::env_define_with_barrier_checked(interp.global_env, fn_sid, prim, interp)) {
             aot_ffi_free_bound(unavailable);
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while registering unavailable primitive");
@@ -159,7 +166,11 @@ fn lisp::Value* ffi_declare_fn(
     }
     prim.prim_val.user_data = (void*)bound;
 
-    lisp::SymbolId fn_sid = interp.symbols.intern(omni_fn_name);
+    lisp::SymbolId fn_sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, omni_fn_name, &fn_sid)) {
+        aot_ffi_free_bound(bound);
+        return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable function binding name");
+    }
     if (!lisp::env_define_with_barrier_checked(interp.global_env, fn_sid, prim, interp)) {
         aot_ffi_free_bound(bound);
         return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while registering bound function");

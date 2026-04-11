@@ -13,18 +13,21 @@ struct PrintBuf {
 }
 
 fn void PrintBuf.append_str(PrintBuf* self, char[] s) {
+    if (self == null || self.buf == null || self.capacity == 0) return;
     for (usz i = 0; i < s.len && self.pos < self.capacity - 1; i++) {
         self.buf[self.pos++] = s[i];
     }
 }
 
 fn void PrintBuf.append_char(PrintBuf* self, char c) {
+    if (self == null || self.buf == null || self.capacity == 0) return;
     if (self.pos < self.capacity - 1) {
         self.buf[self.pos++] = c;
     }
 }
 
 fn void PrintBuf.append_zstr(PrintBuf* self, ZString zs) {
+    if (self == null || self.buf == null || self.capacity == 0 || zs == null) return;
     char* p = (char*)zs;
     while (*p != 0 && self.pos < self.capacity - 1) {
         self.buf[self.pos++] = *p;
@@ -69,6 +72,10 @@ fn void print_closure_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 
 fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char('{');
+    if (v.hashmap_val == null) {
+        pb.append_char('}');
+        return;
+    }
     uint hprinted = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -84,6 +91,10 @@ fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 
 fn void print_set_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_str("(Set");
+    if (v.hashmap_val == null) {
+        pb.append_char(')');
+        return;
+    }
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
             pb.append_char(' ');
@@ -258,6 +269,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 }
 
 fn usz print_value_to_buf(Value* v, SymbolTable* syms, char* buf, usz buf_size) {
+    if (buf == null || buf_size == 0) return 0;
     PrintBuf pb;
     pb.buf = buf;
     pb.pos = 0;

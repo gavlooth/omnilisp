@@ -3,6 +3,10 @@ module lisp;
 import std::collections::list;
 
 fn Expr* parser_relation_symbol_literal(Parser* self, SymbolId sym) {
+    if (sym == INVALID_SYMBOL_ID) {
+        self.set_error("relation definition: invalid symbol");
+        return null;
+    }
     Expr* e = self.alloc_expr();
     if (e == null) return null;
     e.tag = E_LIT;
@@ -13,11 +17,33 @@ fn Expr* parser_relation_symbol_literal(Parser* self, SymbolId sym) {
 }
 
 fn Expr* parser_relation_var_ref(Parser* self, SymbolId sym) {
+    if (sym == INVALID_SYMBOL_ID) {
+        self.set_error("relation definition: invalid variable symbol");
+        return null;
+    }
     Expr* e = self.alloc_expr();
     if (e == null) return null;
     e.tag = E_VAR;
     e.var_expr.name = sym;
     return e;
+}
+
+fn bool parser_relation_add_count(Parser* self, usz* total, usz add, char[] message) {
+    if (add > usz.max - *total) {
+        self.set_error(message);
+        return false;
+    }
+    *total += add;
+    return true;
+}
+
+fn bool parser_relation_mul_count(Parser* self, usz count, usz factor, usz* out, char[] message) {
+    if (factor != 0 && count > usz.max / factor) {
+        self.set_error(message);
+        return false;
+    }
+    *out = count * factor;
+    return true;
 }
 
 fn Expr* Parser.build_define_relation_call(
@@ -34,27 +60,38 @@ fn Expr* Parser.build_define_relation_call(
     SymbolId index_col
 ) {
     usz col_count = col_names.len();
-    SymbolId sym_role_key = self.interp.symbols.intern("__relation-role-key");
-    SymbolId sym_role_unique = self.interp.symbols.intern("__relation-role-unique");
-    SymbolId sym_role_index = self.interp.symbols.intern("__relation-role-index");
-    SymbolId sym_role_ref = self.interp.symbols.intern("__relation-role-ref");
-    SymbolId sym_role_check = self.interp.symbols.intern("__relation-role-check");
-    SymbolId sym_role_materialized = self.interp.symbols.intern("__relation-role-materialized");
-    SymbolId sym_role_materialized_manual = self.interp.symbols.intern("__relation-role-materialized-manual");
-    SymbolId sym_role_materialized_on_read = self.interp.symbols.intern("__relation-role-materialized-on-read");
+    SymbolId sym_role_key = self.intern_or_error("__relation-role-key", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_unique = self.intern_or_error("__relation-role-unique", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_index = self.intern_or_error("__relation-role-index", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_ref = self.intern_or_error("__relation-role-ref", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_check = self.intern_or_error("__relation-role-check", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_materialized = self.intern_or_error("__relation-role-materialized", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_materialized_manual = self.intern_or_error("__relation-role-materialized-manual", "relation definition: failed to intern role symbol");
+    SymbolId sym_role_materialized_on_read = self.intern_or_error("__relation-role-materialized-on-read", "relation definition: failed to intern role symbol");
+    if (self.has_error) return null;
     usz role_arg_count = 0;
-    if (materialized_view) role_arg_count++;
-    if (materialized_refresh_policy != (SymbolId)0) role_arg_count++;
-    if (key_col != (SymbolId)0) role_arg_count++;
-    role_arg_count += unique_cols != null ? unique_cols.len() : 0;
-    role_arg_count += reference_constraints != null ? reference_constraints.len() * 3 : 0;
-    role_arg_count += check_constraints != null ? check_constraints.len() * 2 : 0;
-    if (index_col != (SymbolId)0) role_arg_count++;
-    usz total_args = 2 + col_count + role_arg_count;
-    Expr* func = parser_relation_var_ref(self, self.interp.symbols.intern("__define-relation"));
+    if (materialized_view && !parser_relation_add_count(self, &role_arg_count, 1, "relation definition argument count overflow")) return null;
+    if (materialized_refresh_policy != (SymbolId)0 && !parser_relation_add_count(self, &role_arg_count, 1, "relation definition argument count overflow")) return null;
+    if (key_col != (SymbolId)0 && !parser_relation_add_count(self, &role_arg_count, 1, "relation definition argument count overflow")) return null;
+    if (unique_cols != null && !parser_relation_add_count(self, &role_arg_count, unique_cols.len(), "relation definition argument count overflow")) return null;
+    if (reference_constraints != null) {
+        usz ref_arg_count = 0;
+        if (!parser_relation_mul_count(self, reference_constraints.len(), (usz)3, &ref_arg_count, "relation definition argument count overflow")) return null;
+        if (!parser_relation_add_count(self, &role_arg_count, ref_arg_count, "relation definition argument count overflow")) return null;
+    }
+    if (check_constraints != null) {
+        usz check_arg_count = 0;
+        if (!parser_relation_mul_count(self, check_constraints.len(), (usz)2, &check_arg_count, "relation definition argument count overflow")) return null;
+        if (!parser_relation_add_count(self, &role_arg_count, check_arg_count, "relation definition argument count overflow")) return null;
+    }
+    if (index_col != (SymbolId)0 && !parser_relation_add_count(self, &role_arg_count, 1, "relation definition argument count overflow")) return null;
+    usz total_args = 2;
+    if (!parser_relation_add_count(self, &total_args, col_count, "relation definition argument count overflow")) return null;
+    if (!parser_relation_add_count(self, &total_args, role_arg_count, "relation definition argument count overflow")) return null;
+    Expr* func = parser_relation_var_ref(self, self.intern_or_error("__define-relation", "relation definition: failed to intern helper name"));
     if (func == null) return null;
 
-    Expr** call_args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * total_args, "out of memory while allocating relation definition arguments");
+    Expr** call_args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, total_args, "out of memory while allocating relation definition arguments");
     if (call_args == null && total_args > 0) return null;
 
     call_args[0] = parser_relation_var_ref(self, db_name);
@@ -70,11 +107,12 @@ fn Expr* Parser.build_define_relation_call(
         arg_index++;
         if (materialized_refresh_policy != (SymbolId)0) {
             SymbolId refresh_sym =
-                materialized_refresh_policy == self.interp.symbols.intern("manual")
+                materialized_refresh_policy == self.intern_or_error("manual", "relation definition: failed to intern refresh policy")
                     ? sym_role_materialized_manual
-                    : materialized_refresh_policy == self.interp.symbols.intern("on-read")
+                    : materialized_refresh_policy == self.intern_or_error("on-read", "relation definition: failed to intern refresh policy")
                         ? sym_role_materialized_on_read
                         : materialized_refresh_policy;
+            if (self.has_error) return null;
             call_args[arg_index] = parser_relation_symbol_literal(self, refresh_sym);
             if (call_args[arg_index] == null) return null;
             arg_index++;

@@ -9,6 +9,9 @@ bool g_boundary_force_escape_coroutine_wrapper_alloc_fail = false;
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
     usz len = v.str_len;
+    if (len == usz.max) {
+        return raise_error(interp, "boundary: string/error escape copy is too large");
+    }
     usz cap = len + 1;
     if (cap < 32) cap = 32;
     char* chars = g_boundary_force_escape_string_or_error_promotion_alloc_fail

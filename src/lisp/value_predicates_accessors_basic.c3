@@ -41,7 +41,8 @@ fn bool is_cons(Value* v) @inline {
 }
 
 fn bool primitive_name_equals(Value* v, char[] expected) @inline {
-    if (v == null || v.tag != PRIMITIVE) return false;
+    if (v == null || v.tag != PRIMITIVE || v.prim_val == null) return false;
+    if (expected.len >= 64) return false;
     for (usz i = 0; i < expected.len; i++) {
         char actual = v.prim_val.name[i];
         if (actual == 0 || actual != expected[i]) return false;
@@ -133,33 +134,35 @@ fn bool is_hashmap_backed(Value* v) @inline {
 }
 
 fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    if (v == null) {
-        return raise_error(interp, oom_message);
-    }
-    v.tag = ARRAY;
-
     Array* arr = g_value_force_make_array_struct_alloc_fail
         ? null
         : (Array*)mem::malloc(Array.sizeof);
     if (arr == null) {
-        v.tag = NIL;
-        v.array_val = null;
         return raise_error(interp, oom_message);
     }
 
     arr.capacity = capacity < 4 ? 4 : capacity;
     arr.length = 0;
+    if (arr.capacity > usz.max / Value*.sizeof) {
+        mem::free(arr);
+        return raise_error(interp, oom_message);
+    }
     arr.items = g_value_force_make_array_items_alloc_fail
         ? null
         : (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     if (arr.items == null) {
         mem::free(arr);
-        v.tag = NIL;
-        v.array_val = null;
         return raise_error(interp, oom_message);
     }
 
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        mem::free(arr.items);
+        mem::free(arr);
+        return raise_error(interp, oom_message);
+    }
+
+    v.tag = ARRAY;
     v.array_val = arr;
     return v;
 }
@@ -169,13 +172,22 @@ fn Value* make_array(Interp* interp, usz capacity) {
 }
 
 fn Value* make_module(Interp* interp, Module* mod) {
+    if (interp == null || interp.root_scope == null || mod == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-module", "module: invalid module value");
+    }
+    Module* stable_mod = (Module*)interp.root_scope.alloc(Module.sizeof);
+    if (stable_mod == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "module: failed to allocate module descriptor");
+    }
+    *stable_mod = *mod;
+
     // Allocate Value in root_scope so it persists across scope releases.
     Value* v = boundary_alloc_value_in_root(interp);
     if (v == null) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "module: failed to allocate module value");
     }
     v.tag = MODULE;
-    v.module_val = mod;
+    v.module_val = stable_mod;
     return v;
 }
 

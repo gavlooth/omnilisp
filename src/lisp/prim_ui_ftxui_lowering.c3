@@ -119,6 +119,7 @@ fn Value* ui_ftxui_lower_node(
         );
         if (items_err != null) return items_err;
         if (items == null || item_count == 0) return raise_error(interp, "ui-ftxui: menu requires at least one item");
+        if (item_count > (usz)int.max) return raise_error(interp, "ui-ftxui: menu has too many items");
         defer free_heap_c_string_items(items, item_count);
 
         int* selected_index = (int*)mem::malloc(int.sizeof);
@@ -138,10 +139,10 @@ fn Value* ui_ftxui_lower_node(
                 }
             } else if (is_cons(items_value)) {
                 Value* cur = items_value;
-                int idx = 0;
+                usz idx = 0;
                 while (is_cons(cur)) {
                     if (values_equal(car(cur), selected_key)) {
-                        *selected_index = idx;
+                        *selected_index = (int)idx;
                         break;
                     }
                     idx++;

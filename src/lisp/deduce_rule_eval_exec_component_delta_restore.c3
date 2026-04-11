@@ -68,6 +68,10 @@ fn Value* deduce_component_delta_payload_deserialize(
     }
 
     if (entry_count > 0) {
+        if ((usz)entry_count > usz.max / DeduceSerializedComponentDeltaEntry.sizeof) {
+            return deduce_raise(interp, "deduce/parallel-invalid-component-delta-payload",
+                "deduce/parallel: malformed component delta payload");
+        }
         out.entries = (DeduceSerializedComponentDeltaEntry*)mem::malloc(
             DeduceSerializedComponentDeltaEntry.sizeof * entry_count
         );

@@ -147,15 +147,18 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
     return jit_apply_multi_args(interp, func, arg_list, arg_count);
 }
 
-fn Value* jit_env_lookup_local(Env* env, uint sym_id) {
+fn Value* jit_env_lookup_local(Interp* interp, uint sym_id, Env* env) {
+    if (env == null) return raise_error(interp, "jit: missing mutable local binding");
     SymbolId name = (SymbolId)sym_id;
     Value* v = env.lookup(name);
     if (v != null) return v;
-    return null;
+    return raise_error(interp, "jit: missing mutable local binding");
 }
 
-fn void jit_env_reparent(Env* env, Env* new_parent) {
+fn Env* jit_env_reparent(Env* env, Env* new_parent) {
+    if (env == null) return new_parent;
     env.parent = new_parent;
+    return env;
 }
 
 fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {

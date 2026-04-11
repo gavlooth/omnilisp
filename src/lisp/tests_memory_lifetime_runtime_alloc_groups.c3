@@ -95,6 +95,24 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* prim = interp.alloc_value();
+        if (prim != null) {
+            prim.tag = PRIMITIVE;
+            prim.prim_val = null;
+        }
+        bool ok = prim != null &&
+            !primitive_name_equals(prim, "aot-closure") &&
+            !primitive_name_equals(prim, "this-name-is-longer-than-the-primitive-name-backing-store-and-must-not-read-past-it");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: primitive name predicate handles null and long names");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: primitive name predicate handles null and long names");
+            (*fail)++;
+        }
+    }
+
+    {
         usz root_before = interp.root_scope.alloc_count;
         int saved_force = g_value_force_make_primitive_payload_alloc_fail_nth;
         g_value_force_make_primitive_payload_alloc_fail_nth = 1;
@@ -415,7 +433,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             ? explain_dispatch_result_from_evaluated_call(interp, make_nil(interp), callee, no_args)
             : raise_error(interp, "setup failed");
 
-        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) setup_ok = false;
         if (setup_ok) {
             interp.handler_stack[interp.handler_count++] = handler;
             g_schema_explain_force_cons_alloc_fail_nth = 1;
@@ -505,6 +523,132 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(runtime_effect_fail),
                 runtime_alloc_error_text(ambiguous_fail),
                 ctor_data == null ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        usz saved_handler_count = interp.handler_count;
+        bool setup_ok = interp.handler_count < interp.handler_capacity || interp.grow_handler_stack();
+        SymbolId[1] handler_tags = { interp.sym_raise };
+        EffectHandler handler = {
+            .tags = &handler_tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = null,
+        };
+
+        Value* ctor_data = null;
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        if (setup_ok) {
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.handler_stack[interp.handler_count++] = handler;
+            g_hashmap_force_struct_alloc_fail = true;
+            ctor_data = ctor_mismatch_data(
+                interp,
+                interp.symbols.intern("Box"),
+                make_cons(interp, make_symbol(interp, interp.sym_Integer), make_nil(interp)),
+                make_nil(interp),
+                false,
+                0,
+                null);
+            g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+            interp.handler_count = saved_handler_count;
+        }
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = setup_ok &&
+                  ctor_data == null &&
+                  !interp.flags.raise_pending &&
+                  interp.raise_payload == null &&
+                  interp.raise_msg_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ctor mismatch payload allocation failure does not preseed raise");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ctor mismatch payload allocation failure does not preseed raise (setup_ok=%s ctor_null=%s pending=%s)",
+                setup_ok ? "yes" : "no",
+                ctor_data == null ? "yes" : "no",
+                interp.flags.raise_pending ? "yes" : "no");
+            interp.handler_count = saved_handler_count;
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            (*fail)++;
+        }
+    }
+
+    {
+        usz saved_handler_count = interp.handler_count;
+        bool setup_ok = interp.handler_count < interp.handler_capacity || interp.grow_handler_stack();
+        SymbolId[1] handler_tags = { interp.sym_raise };
+        EffectHandler handler = {
+            .tags = &handler_tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = null,
+        };
+
+        SymbolId rel_sym = interp.symbols.intern("integrity-audit-rel");
+        SymbolId col_sym = interp.symbols.intern("id");
+        SymbolId[1] columns = { col_sym };
+        Relation rel = {};
+        rel.name = rel_sym;
+        rel.columns = &columns[0];
+        rel.col_count = 1;
+        rel.key_col = col_sym;
+
+        Value*[1] attempted = { make_int(interp, 1) };
+        Value*[1] existing = { make_int(interp, 2) };
+        Value* integrity_data = null;
+        Value* iteration_data = null;
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        if (setup_ok) {
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.handler_stack[interp.handler_count++] = handler;
+            g_hashmap_force_struct_alloc_fail = true;
+            integrity_data = deduce_build_key_integrity_payload(&rel, attempted[..], existing[..], 0, interp);
+            iteration_data = deduce_analyze_iteration_limit_payload(interp, 1, 32);
+            g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+            interp.handler_count = saved_handler_count;
+        }
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = setup_ok &&
+                  integrity_data == null &&
+                  iteration_data == null &&
+                  !interp.flags.raise_pending &&
+                  interp.raise_payload == null &&
+                  interp.raise_msg_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: deduce optional payload allocation failures do not preseed raise");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: deduce optional payload allocation failures do not preseed raise (setup_ok=%s integrity_null=%s iteration_null=%s pending=%s)",
+                setup_ok ? "yes" : "no",
+                integrity_data == null ? "yes" : "no",
+                iteration_data == null ? "yes" : "no",
+                interp.flags.raise_pending ? "yes" : "no");
+            interp.handler_count = saved_handler_count;
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
             (*fail)++;
         }
     }
@@ -1150,6 +1294,183 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             (*fail)++;
         }
         if (foreign != null) main::scope_release(foreign);
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        SymbolId type_sym = interp.symbols.intern("__JitFieldBoundaryBox");
+        SymbolId field_sym = interp.symbols.intern("slot");
+        TypeFieldInfo* type_fields = (TypeFieldInfo*)mem::malloc(TypeFieldInfo.sizeof);
+        bool setup_ok = foreign != null &&
+            type_sym != INVALID_SYMBOL_ID &&
+            field_sym != INVALID_SYMBOL_ID &&
+            type_fields != null;
+
+        TypeId type_id = INVALID_TYPE_ID;
+        if (setup_ok) {
+            type_fields[0] = {
+                .name = field_sym,
+                .field_type = INVALID_TYPE_ID,
+                .annotation_sym = INVALID_SYMBOL_ID,
+            };
+            TypeInfo info = {
+                .name = type_sym,
+                .kind = TK_CONCRETE,
+                .parent = INVALID_TYPE_ID,
+                .fields = type_fields,
+                .field_count = 1,
+                .type_params = null,
+                .type_param_count = 0,
+                .constraints = null,
+                .constraint_count = 0,
+                .variants = null,
+                .variant_count = 0,
+                .alias_target = INVALID_TYPE_ID,
+            };
+            type_id = interp.types.register_type(info, &interp.symbols);
+            setup_ok = type_id != INVALID_TYPE_ID;
+            if (!setup_ok && type_fields != null) {
+                mem::free(type_fields);
+                type_fields = null;
+            }
+        }
+
+        Value* initial = setup_ok ? make_int(interp, 1) : null;
+        Value*[1] fields = { initial };
+        Value* inst = setup_ok ? make_instance(interp, type_id, &fields[0], 1) : null;
+        setup_ok = setup_ok &&
+            inst != null &&
+            inst.tag == INSTANCE &&
+            inst.instance_val != null &&
+            inst.instance_val.fields != null;
+
+        int* opaque_payload = null;
+        Value* opaque = null;
+        Primitive* opaque_prim = null;
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            opaque_payload = (int*)interp.current_scope.alloc(int.sizeof);
+            opaque = interp.alloc_value();
+            if (opaque != null) {
+                opaque.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            }
+            setup_ok = opaque_payload != null && opaque != null;
+        }
+
+        if (setup_ok) {
+            opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            setup_ok = opaque_prim != null;
+        }
+
+        if (setup_ok) {
+            *opaque_payload = 719;
+            *opaque_prim = {};
+            opaque_prim.name[0] = 'f';
+            opaque_prim.name[1] = 0;
+            opaque_prim.func = &prim_add;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 719;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.prim_val = opaque_prim;
+        }
+
+        Value* set_fail = null;
+        if (setup_ok) {
+            set_fail = jit_set_path_mutate_instance(inst, field_sym, opaque, interp);
+        } else {
+            set_fail = raise_error(interp, "setup failed");
+        }
+        interp.current_scope = saved;
+
+        bool field_intact = inst != null &&
+            inst.tag == INSTANCE &&
+            inst.instance_val != null &&
+            inst.instance_val.fields != null &&
+            inst.instance_val.fields[0].tag == INT &&
+            inst.instance_val.fields[0].int_val == 1;
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(set_fail, "boundary: refusing primitive copy with opaque user_data") &&
+            field_intact;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: JIT instance field write fails closed on boundary promotion faults");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: JIT instance field write fails closed on boundary promotion faults (setup_ok=%s set=%s field_intact=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(set_fail),
+                field_intact ? "yes" : "no");
+            (*fail)++;
+        }
+
+        if (foreign != null) main::scope_release(foreign);
+    }
+
+    {
+        SymbolId export_sym = interp.symbols.intern("__module_growth_value");
+        SymbolId first_name = interp.symbols.intern("__module_growth_first");
+        Module* first = first_name != INVALID_SYMBOL_ID
+            ? jit_create_file_module(first_name, "/tmp/omni-module-growth-first.omni", interp)
+            : null;
+        bool setup_ok = export_sym != INVALID_SYMBOL_ID &&
+            first != null &&
+            first.env != null &&
+            module_append_export(first, export_sym) &&
+            env_define_with_barrier_result(first.env, export_sym, make_int(interp, 42), interp) == null;
+        if (setup_ok) first.loaded = true;
+
+        Module* table_before = interp.modules;
+        usz initial_capacity = interp.module_capacity;
+        Value* mod_val = setup_ok ? make_module(interp, first) : null;
+        setup_ok = setup_ok &&
+            mod_val != null &&
+            mod_val.tag == MODULE &&
+            mod_val.module_val != null;
+
+        usz target_count = initial_capacity + 2;
+        for (usz i = 0; setup_ok && interp.module_count < target_count; i++) {
+            char[80] name_buf;
+            if (try char[] name = io::bprintf(
+                &name_buf,
+                "__module_growth_extra_%d_%d",
+                (int)initial_capacity,
+                (int)i
+            )) {
+                SymbolId name_sym = interp.symbols.intern(name);
+                Module* extra = name_sym != INVALID_SYMBOL_ID
+                    ? jit_create_file_module(name_sym, "/tmp/omni-module-growth-extra.omni", interp)
+                    : null;
+                setup_ok = extra != null;
+                if (setup_ok) extra.loaded = true;
+            } else {
+                setup_ok = false;
+            }
+        }
+
+        bool grew = table_before != null &&
+            interp.modules != null &&
+            interp.modules != table_before &&
+            interp.module_capacity > initial_capacity;
+        EvalResult step = setup_ok ? eval_path_step(mod_val, export_sym, interp) : eval_error("setup failed");
+        bool ok = setup_ok &&
+            grew &&
+            !step.error.has_error &&
+            step.value != null &&
+            step.value.tag == INT &&
+            step.value.int_val == 42;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: module values survive module table growth");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: module values survive module table growth (setup_ok=%s grew=%s value_ok=%s)",
+                setup_ok ? "yes" : "no",
+                grew ? "yes" : "no",
+                step.value != null && step.value.tag == INT && step.value.int_val == 42 ? "yes" : "no");
+            (*fail)++;
+        }
     }
 
     {

@@ -100,6 +100,11 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
         return result;
     }
 
+    // Single set arg -> deterministic canonical list of set elements.
+    if (args.len == 1 && args[0].tag == SET) {
+        return prim_set_to_list(args, env, interp);
+    }
+
     Value* result = make_nil(interp);
     for (isz i = (isz)args.len - 1; i >= 0; i--) {
         result = make_cons_or_error(interp, args[(usz)i], result, "list: failed to allocate result list");

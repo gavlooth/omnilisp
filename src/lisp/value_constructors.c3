@@ -244,13 +244,20 @@ fn Value* make_raise_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = make_hashmap(interp, 8);
+    if (interp == null || domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) return null;
+    Value* payload = make_hashmap_no_raise(interp, 8);
     if (payload == null || payload.tag != HASHMAP || payload.hashmap_val == null) return null;
 
     SymbolId key_code = interp.symbols.intern("code");
     SymbolId key_message = interp.symbols.intern("message");
     SymbolId key_domain = interp.symbols.intern("domain");
     SymbolId key_data = interp.symbols.intern("data");
+    if (key_code == INVALID_SYMBOL_ID ||
+        key_message == INVALID_SYMBOL_ID ||
+        key_domain == INVALID_SYMBOL_ID ||
+        key_data == INVALID_SYMBOL_ID) {
+        return null;
+    }
 
     Value* code_key = make_symbol(interp, key_code);
     Value* message_key = make_symbol(interp, key_message);
@@ -283,6 +290,7 @@ fn Value* make_raise_payload_names(
 ) @inline {
     SymbolId domain_sym = interp.symbols.intern(domain_name);
     SymbolId code_sym = interp.symbols.intern(code_name);
+    if (domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) return null;
     return make_raise_payload(interp, domain_sym, code_sym, message, data);
 }
 
@@ -354,6 +362,9 @@ fn Value* raise_error_with_payload_names(
 ) @inline {
     SymbolId domain_sym = interp.symbols.intern(domain_name);
     SymbolId code_sym = interp.symbols.intern(code_name);
+    if (domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) {
+        return raise_error_pending_impl(interp, message, null, true);
+    }
     return raise_error_with_payload(interp, domain_sym, code_sym, message, data);
 }
 

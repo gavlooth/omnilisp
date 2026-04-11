@@ -92,6 +92,9 @@ fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args
         if (col == null || col.tag != SYMBOL) {
             return deduce_raise(interp, "deduce/define-relation-column-not-symbol", "__define-relation: column arguments must be symbols");
         }
+        if (rel.col_count == usz.max) {
+            return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
+        }
         if (!deduce_relation_ensure_column_capacity(rel, rel.col_count + 1)) {
             return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
         }

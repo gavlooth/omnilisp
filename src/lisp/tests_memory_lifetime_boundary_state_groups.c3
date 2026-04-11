@@ -217,3 +217,140 @@ fn void run_memory_lifetime_boundary_scope_interleaving_test(Interp* interp, int
         }
     }
 }
+
+fn void run_memory_lifetime_boundary_nested_effect_payload_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: boundary provenance checks must handle nested dict/list payloads
+    // returned through an effect handler without recursive stack overflow.
+    test_truthy(interp, "lifetime: boundary nested effect payload graph",
+        "(block "
+        "  (define sample-view "
+        "    {'kind 'window "
+        "     'props {} "
+        "     'children (list {'kind 'vbox "
+        "                      'props {} "
+        "                      'children (list {'kind 'graph "
+        "                                       'props {'series (list 0 1)} "
+        "                                       'children nil})})}) "
+        "  (define captured "
+        "    (let (events nil) "
+        "      (handle "
+        "        (block (signal render sample-view) (reverse events)) "
+        "        (render view "
+        "          (set! events (cons {'tag 'render 'arg view} events)) "
+        "          (resolve nil))))) "
+        "  (= (ref (ref captured 0) 'tag) 'render))",
+        pass,
+        fail);
+}
+
+fn void run_memory_lifetime_boundary_wide_scalar_payload_test(Interp* interp, int* pass, int* fail) {
+    // Scalar leaves should not consume alias traversal slots; only values with
+    // child payloads need worklist/seen tracking.
+    usz count = BOUNDARY_ALIAS_MAX_VISITS + 8;
+    Value* arr = make_array_checked(interp, count, "wide scalar payload: array allocation failed");
+    if (arr == null || arr.tag == ERROR || arr.array_val == null) {
+        io::printn("[FAIL] lifetime: boundary wide scalar payload reuse");
+        (*fail)++;
+        return;
+    }
+
+    for (usz i = 0; i < count; i++) {
+        arr.array_val.items[i] = make_int(interp, (long)i);
+        arr.array_val.length++;
+    }
+
+    bool unsafe = boundary_graph_alias_unsafe_for_reuse(arr, interp);
+    if (!unsafe) {
+        emit_pass_literal("[PASS] lifetime: boundary wide scalar payload reuse");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: boundary wide scalar payload reuse");
+        (*fail)++;
+    }
+}
+
+fn void run_memory_lifetime_boundary_shared_composite_cycle_payload_test(Interp* interp, int* pass, int* fail) {
+    // Repeated composite aliases should not consume visit slots, and a
+    // root/shared cycle must be recognized through exact identity tracking.
+    usz count = BOUNDARY_ALIAS_MAX_VISITS + 8;
+    Value* root = make_array_checked(interp, count, "shared composite payload: root allocation failed");
+    Value* shared = make_array_checked(interp, 1, "shared composite payload: shared allocation failed");
+    if (root == null || root.tag == ERROR || root.array_val == null ||
+        shared == null || shared.tag == ERROR || shared.array_val == null) {
+        io::printn("[FAIL] lifetime: boundary shared composite cycle payload reuse");
+        (*fail)++;
+        return;
+    }
+
+    shared.array_val.items[0] = root;
+    shared.array_val.length++;
+    for (usz i = 0; i < count; i++) {
+        root.array_val.items[i] = shared;
+        root.array_val.length++;
+    }
+
+    bool unsafe = boundary_graph_alias_unsafe_for_reuse(root, interp);
+    if (!unsafe) {
+        emit_pass_literal("[PASS] lifetime: boundary shared composite cycle payload reuse");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: boundary shared composite cycle payload reuse");
+        (*fail)++;
+    }
+}
+
+fn void run_memory_lifetime_boundary_instance_payload_alias_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: instance wrappers can live in a surviving scope while their
+    // field graph still carries stale releasing-scope payloads after mutation
+    // or malformed construction. Alias reuse must reject that graph.
+    main::ScopeRegion* saved = interp.current_scope;
+    main::ScopeRegion* target = main::scope_create(saved);
+    main::ScopeRegion* releasing = target != null ? main::scope_create(target) : null;
+    if (target == null || releasing == null) {
+        if (releasing != null) main::scope_release(releasing);
+        if (target != null) main::scope_release(target);
+        io::printn("[FAIL] lifetime: boundary instance payload alias rejected");
+        (*fail)++;
+        return;
+    }
+
+    interp.current_scope = target;
+    Value* field_seed = make_int(interp, 1);
+    Value*[1] fields = { field_seed };
+    Value* inst = make_instance(interp, (TypeId)1, &fields[0], 1);
+
+    interp.current_scope = releasing;
+    Value* stale_payload = make_array_checked(interp, 1, "instance payload alias: stale payload allocation failed");
+    if (stale_payload != null && stale_payload.tag == ARRAY && stale_payload.array_val != null) {
+        stale_payload.array_val.items[0] = make_int(interp, 99);
+        stale_payload.array_val.length++;
+    }
+
+    bool setup_ok = inst != null &&
+                    inst.tag == INSTANCE &&
+                    inst.instance_val != null &&
+                    inst.instance_val.fields != null &&
+                    stale_payload != null &&
+                    stale_payload.tag == ARRAY &&
+                    stale_payload.array_val != null;
+    if (setup_ok) {
+        inst.instance_val.fields[0] = *stale_payload;
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+    }
+
+    bool unsafe = setup_ok && boundary_graph_alias_unsafe_for_reuse(inst, interp);
+
+    interp.releasing_scope = null;
+    interp.current_scope = saved;
+    main::scope_release(releasing);
+    main::scope_release(target);
+
+    if (unsafe) {
+        emit_pass_literal("[PASS] lifetime: boundary instance payload alias rejected");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: boundary instance payload alias rejected");
+        (*fail)++;
+    }
+}

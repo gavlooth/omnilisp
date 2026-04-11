@@ -19,6 +19,7 @@ fn usz* deduce_rule_head_demand_copy_bound_positions(
     if (out_count != null) *out_count = 0;
     ulong count = deduce_rule_head_demand_bound_count(head_demand);
     if (count == 0) return null;
+    if (count > (ulong)usz.max || (usz)count > usz.max / usz.sizeof) return null;
 
     usz* positions = (usz*)mem::malloc(usz.sizeof * (usz)count);
     if (positions == null) return null;
@@ -26,6 +27,7 @@ fn usz* deduce_rule_head_demand_copy_bound_positions(
     usz write_index = 0;
     for (usz i = 0; i < head_demand.term_count; i++) {
         if (!head_demand.term_bound[i]) continue;
+        if (write_index >= (usz)count) break;
         positions[write_index++] = i;
     }
     if (out_count != null) *out_count = count;

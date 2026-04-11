@@ -77,15 +77,26 @@ fn bool scheduler_build_atomic_temp_path(
 
     char[64] suffix_buf;
     char[] suffix = "";
-    uint unique_lo = (uint)unique_id;
-    if (try char[] formatted = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), unique_lo)) {
+    if (unique_id > (usz)long.max) {
+        scheduler_set_offload_error(completion, "offload write-file: temp path id overflow");
+        return false;
+    }
+    if (try char[] formatted = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), (long)unique_id)) {
         suffix = formatted;
     } else {
         scheduler_set_offload_error(completion, "offload write-file: temp path formatting failed");
         return false;
     }
 
+    if (path.len > usz.max - suffix.len) {
+        scheduler_set_offload_error(completion, "offload write-file: out of memory");
+        return false;
+    }
     usz temp_len = path.len + suffix.len;
+    if (temp_len == usz.max) {
+        scheduler_set_offload_error(completion, "offload write-file: out of memory");
+        return false;
+    }
     char* temp_heap = (char*)mem::malloc(temp_len + 1);
     if (temp_heap == null) {
         scheduler_set_offload_error(completion, "offload write-file: out of memory");

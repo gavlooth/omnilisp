@@ -3,13 +3,22 @@ module lisp;
 import std::collections::list;
 import main;
 
+fn void* macro_ast_array_alloc(Interp* interp, usz elem_size, usz count) {
+    if (count == 0) return null;
+    if (elem_size > usz.max / count) return null;
+    return ast_arena_alloc(&interp.ast_arena, elem_size * count);
+}
+
 fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
     Expr* e = interp.alloc_expr();
+    if (e == null) return null;
     e.tag = E_LAMBDA;
     e.lambda = (ExprLambda*)ast_arena_alloc(&interp.ast_arena, ExprLambda.sizeof);
+    if (e.lambda == null) return make_error_expr(interp, "macro expansion failed to allocate lambda");
     e.lambda.param = param;
     e.lambda.param_count = 1;
-    e.lambda.params = (SymbolId*)ast_arena_alloc(&interp.ast_arena, SymbolId.sizeof);
+    e.lambda.params = (SymbolId*)macro_ast_array_alloc(interp, SymbolId.sizeof, 1);
+    if (e.lambda.params == null) return make_error_expr(interp, "macro expansion failed to allocate lambda parameters");
     e.lambda.params[0] = param;
     e.lambda.has_rest = false;
     e.lambda.rest_param = 0;
@@ -21,8 +30,10 @@ fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
 
 fn Expr* make_nullary_lambda_expr(Interp* interp, Expr* body) {
     Expr* e = interp.alloc_expr();
+    if (e == null) return null;
     e.tag = E_LAMBDA;
     e.lambda = (ExprLambda*)ast_arena_alloc(&interp.ast_arena, ExprLambda.sizeof);
+    if (e.lambda == null) return make_error_expr(interp, "macro expansion failed to allocate lambda");
     e.lambda.param = (SymbolId)0xFFFFFFFF;
     e.lambda.param_count = 0;
     e.lambda.params = null;
@@ -113,6 +124,10 @@ fn Expr* vte_let(Value* rest, Interp* interp) {
     Expr* inner = body;
     for (usz i = names.len(); i > 0; i--) {
         Expr* e = interp.alloc_expr();
+        if (e == null) {
+            names.free(); inits.free();
+            return make_error_expr(interp, "macro expansion failed to allocate let expression");
+        }
         e.tag = E_LET;
         e.let_expr.name = names[i - 1];
         e.let_expr.init = value_to_expr(inits[i - 1], interp);
@@ -131,10 +146,22 @@ fn Expr* vte_begin(Value* rest, Interp* interp) {
         rest = rest.cons_val.cdr;
     }
     Expr* e = interp.alloc_expr();
+    if (e == null) {
+        items.free();
+        return make_error_expr(interp, "macro expansion failed to allocate block");
+    }
     e.tag = E_BLOCK;
     e.block = (ExprBlock*)ast_arena_alloc(&interp.ast_arena, ExprBlock.sizeof);
+    if (e.block == null) {
+        items.free();
+        return make_error_expr(interp, "macro expansion failed to allocate block");
+    }
     e.block.expr_count = items.len();
-    e.block.exprs = (Expr**)ast_arena_alloc(&interp.ast_arena, Expr*.sizeof * items.len());
+    e.block.exprs = (Expr**)macro_ast_array_alloc(interp, Expr*.sizeof, items.len());
+    if (items.len() > 0 && e.block.exprs == null) {
+        items.free();
+        return make_error_expr(interp, "macro expansion failed to allocate block expressions");
+    }
     for (usz i = 0; i < items.len(); i++) { e.block.exprs[i] = items[i]; }
     items.free();
     return e;
@@ -152,11 +179,23 @@ fn Expr* vte_call(Value* val, Interp* interp) {
         rest = rest.cons_val.cdr;
     }
     Expr* e = interp.alloc_expr();
+    if (e == null) {
+        args.free();
+        return make_error_expr(interp, "macro expansion failed to allocate call");
+    }
     e.tag = E_CALL;
     e.call = (ExprCall*)ast_arena_alloc(&interp.ast_arena, ExprCall.sizeof);
+    if (e.call == null) {
+        args.free();
+        return make_error_expr(interp, "macro expansion failed to allocate call");
+    }
     e.call.func = func_e;
     e.call.arg_count = args.len();
-    e.call.args = (Expr**)ast_arena_alloc(&interp.ast_arena, Expr*.sizeof * args.len());
+    e.call.args = (Expr**)macro_ast_array_alloc(interp, Expr*.sizeof, args.len());
+    if (args.len() > 0 && e.call.args == null) {
+        args.free();
+        return make_error_expr(interp, "macro expansion failed to allocate call arguments");
+    }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
     args.free();
     return e;

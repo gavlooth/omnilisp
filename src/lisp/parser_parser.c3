@@ -49,6 +49,13 @@ fn void Parser.set_error(Parser* self, char[] msg) {
     self.error_msg_len = len;
 }
 
+fn SymbolId Parser.intern_or_error(Parser* self, char[] name, char[] err_msg) {
+    if (self.has_error) return INVALID_SYMBOL_ID;
+    SymbolId sym = self.interp.symbols.intern(name);
+    if (sym == INVALID_SYMBOL_ID) self.set_error(err_msg);
+    return sym;
+}
+
 /**
  * Expect a token type, or set a parse error.
  */
@@ -84,6 +91,14 @@ fn void* Parser.alloc_ast_bytes(Parser* self, usz size, char[] err_msg) {
     return ptr;
 }
 
+fn void* Parser.alloc_ast_array_bytes(Parser* self, usz elem_size, usz count, char[] err_msg) {
+    if (count != 0 && elem_size > usz.max / count) {
+        self.set_error(err_msg);
+        return null;
+    }
+    return self.alloc_ast_bytes(elem_size * count, err_msg);
+}
+
 fn Expr* Parser.alloc_expr(Parser* self) {
     if (self.has_error) return null;
     if (g_parser_force_ast_expr_alloc_fail) {
@@ -117,5 +132,9 @@ fn Expr* Parser.alloc_expr_here(Parser* self) {
  * Get interned symbol from current token text.
  */
 fn SymbolId Parser.get_current_symbol(Parser* self) {
-    return self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+    SymbolId sym = self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+    if (sym == INVALID_SYMBOL_ID) {
+        self.set_error("parser: failed to intern symbol");
+    }
+    return sym;
 }

@@ -50,7 +50,7 @@ fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* pa
     lambda_expr.loc_column = e.loc_column;
     lambda_expr.lambda.param = (*params)[0];
     lambda_expr.lambda.param_count = param_count;
-    lambda_expr.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating named let parameters");
+    lambda_expr.lambda.params = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, param_count, "out of memory while allocating named let parameters");
     if (lambda_expr.lambda.params == null && param_count > 0) return null;
     for (usz i = 0; i < param_count; i++) {
         lambda_expr.lambda.params[i] = (*params)[i];

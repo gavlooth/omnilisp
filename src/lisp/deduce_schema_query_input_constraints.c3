@@ -8,7 +8,7 @@ fn Value* deduce_relation_note_unique_column(Relation* rel, SymbolId col, Interp
             return null;
         }
     }
-    if (!deduce_relation_ensure_unique_column_capacity(rel, rel.unique_col_count + 1)) {
+    if (rel.unique_col_count == usz.max || !deduce_relation_ensure_unique_column_capacity(rel, rel.unique_col_count + 1)) {
         return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     rel.unique_cols[rel.unique_col_count++] = col;
@@ -32,7 +32,7 @@ fn Value* deduce_relation_note_reference_constraint(
         rel.reference_constraints[i].target_column = target_column;
         return null;
     }
-    if (!deduce_relation_ensure_reference_constraint_capacity(rel, rel.reference_constraint_count + 1)) {
+    if (rel.reference_constraint_count == usz.max || !deduce_relation_ensure_reference_constraint_capacity(rel, rel.reference_constraint_count + 1)) {
         return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     rel.reference_constraints[rel.reference_constraint_count++] = {
@@ -55,7 +55,7 @@ fn Value* deduce_relation_note_check_constraint(
         rel.check_constraints[i].predicate = predicate;
         return null;
     }
-    if (!deduce_relation_ensure_check_constraint_capacity(rel, rel.check_constraint_count + 1)) {
+    if (rel.check_constraint_count == usz.max || !deduce_relation_ensure_check_constraint_capacity(rel, rel.check_constraint_count + 1)) {
         return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     rel.check_constraints[rel.check_constraint_count++] = {

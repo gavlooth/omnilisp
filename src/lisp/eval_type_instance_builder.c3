@@ -34,6 +34,8 @@ fn BoundaryCopyResult eval_copy_value_into_scope_site(
 
 fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scope,
     TypeId type_id, Value** fields, usz field_count) {
+    if (field_count != 0 && field_count > usz.max / Value.sizeof) return null;
+
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
 
@@ -41,12 +43,20 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
     if (owner_scope == null) return null;
 
     Instance* inst = (Instance*)owner_scope.alloc(Instance.sizeof);
+    if (inst == null) {
+        main::scope_release(owner_scope);
+        return null;
+    }
     inst.owner_scope = owner_scope;
     inst.type_id = type_id;
     inst.field_count = field_count;
     inst.fields = field_count > 0 ? (Value*)owner_scope.alloc(Value.sizeof * field_count) : null;
     inst.type_arg_count = 0;
     inst.type_args = null;
+    if (field_count > 0 && inst.fields == null) {
+        main::scope_release(owner_scope);
+        return null;
+    }
 
     for (usz i = 0; i < field_count; i++) {
         inst.fields[i] = {};

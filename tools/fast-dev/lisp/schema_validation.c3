@@ -12,7 +12,7 @@ module lisp;
 //   '(and s1 s2), '(or s1 s2), '(not s), '(maybe s)
 //   '(> n), '(< n), '(>= n), '(<= n), '(= v)
 //   '(re pattern)
-//   '(map (name schema) ...), '(vector-of schema), '(tuple s1 s2 ...)
+//   '(map (name schema) ...), '(array-of schema), '(tuple s1 s2 ...)
 //   '(enum v1 v2 ...)
 // ============================================================
 
@@ -28,7 +28,7 @@ struct SchemaTagSet {
     SymbolId s_eq;
     SymbolId s_re;
     SymbolId s_map;
-    SymbolId s_vector_of;
+    SymbolId s_array_of;
     SymbolId s_tuple;
     SymbolId s_enum;
 }
@@ -46,7 +46,7 @@ fn SchemaTagSet schema_make_tag_set(Interp* interp) {
     tags.s_eq = interp.symbols.intern("=");
     tags.s_re = interp.symbols.intern("re");
     tags.s_map = interp.symbols.intern("map");
-    tags.s_vector_of = interp.symbols.intern("vector-of");
+    tags.s_array_of = interp.symbols.intern("array-of");
     tags.s_tuple = interp.symbols.intern("tuple");
     tags.s_enum = interp.symbols.intern("enum");
     return tags;
@@ -152,7 +152,7 @@ fn bool schema_check_map_clause(Value* schema, Value* val, Interp* interp) {
     return true;
 }
 
-fn bool schema_check_vector_of_clause(Value* schema, Value* val, Interp* interp) {
+fn bool schema_check_array_of_clause(Value* schema, Value* val, Interp* interp) {
     if (val == null || val.tag != ARRAY) return false;
     Value* elem_schema = car(cdr(schema));
     for (usz i = 0; i < val.array_val.length; i++) {
@@ -211,7 +211,7 @@ fn bool schema_check(Value* schema, Value* val, Interp* interp) {
         if (tag_sym == tags.s_eq) return schema_check_equal_clause(schema, val);
         if (tag_sym == tags.s_re) return schema_check_regex_clause(schema, val, interp);
         if (tag_sym == tags.s_map) return schema_check_map_clause(schema, val, interp);
-        if (tag_sym == tags.s_vector_of) return schema_check_vector_of_clause(schema, val, interp);
+        if (tag_sym == tags.s_array_of) return schema_check_array_of_clause(schema, val, interp);
         if (tag_sym == tags.s_tuple) return schema_check_tuple_clause(schema, val, interp);
         if (tag_sym == tags.s_enum) return schema_check_enum_clause(schema, val);
     }

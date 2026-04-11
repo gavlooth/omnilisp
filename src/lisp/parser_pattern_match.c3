@@ -47,7 +47,7 @@ fn Expr* Parser.parse_match(Parser* self) {
     }
 
     e.match.clause_count = match_clauses.len();
-    e.match.clauses = (MatchClause*)self.alloc_ast_bytes(MatchClause.sizeof * match_clauses.len(), "out of memory while allocating match clauses");
+    e.match.clauses = (MatchClause*)self.alloc_ast_array_bytes(MatchClause.sizeof, match_clauses.len(), "out of memory while allocating match clauses");
     if (e.match.clauses == null && match_clauses.len() > 0) { match_clauses.free(); return null; }
     for (usz i = 0; i < match_clauses.len(); i++) { e.match.clauses[i] = match_clauses[i]; }
     match_clauses.free();
