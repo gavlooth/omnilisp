@@ -4,7 +4,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
     PrimReg[] core_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
-        { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 },
+        { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list?", &prim_is_list, 1 },
         { "List", &prim_list, -1 }, // Canonical constructor/conversion surface.
         { "list", &prim_list, -1 }, // Public Lisp-style helper.
         // Boolean

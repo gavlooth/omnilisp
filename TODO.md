@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 9
+Current actionable count: 8
 
 Completed backlog snapshots:
 
@@ -35,16 +35,6 @@ Use this file only for still-open work.
     operations on strings; then align docs, tests, and implementation so
     constructor/dispatch usage does not expose two unmarked string indexing
     models.
-
-- [ ] `AUDIT-LIST-PREDICATE-CONTRACT-093` reconcile `list?` proper-list
-  semantics with the stdlib implementation
-  - audit finding: docs describe `list?` as proper-list recognition, but the
-    stdlib currently defines it as `(or (null? x) (pair? x))`, while a
-    stricter `prim_is_list` implementation exists but is not registered as the
-    public predicate.
-  - next step: choose the canonical contract, then either register/use the
-    strict implementation or update docs/tests to explicitly say `list?`
-    accepts any pair/improper list.
 
 - [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
   scientific-computing surface
@@ -103,6 +93,20 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-LIST-PREDICATE-CONTRACT-093` reconcile `list?` proper-list
+  semantics with the stdlib implementation
+  - closure evidence:
+    - registered the existing strict `prim_is_list` primitive as public `list?`.
+    - removed the stdlib override that treated every pair as a list.
+    - added regressions proving `(list? (cons 1 2))` is false.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `basic` slice: `pass=142 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `advanced-type-dispatch-mutation-chain` subgroup:
+      `pass=237 fail=0`
 
 - [x] `AUDIT-LIST-WALKER-IMPROPER-LIST-092` normalize improper-list handling
   across public list walkers

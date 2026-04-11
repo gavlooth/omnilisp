@@ -37,19 +37,21 @@ queue; this file is supporting context for why the queue is ordered this way.
   `map`, `filter`, `foldl`, `foldr`, `append`, `for-each`, `nth`, `flatten`,
   `partition`, and `remove` via `filter`; nested improper lists in `flatten`
   also fail coherently.
+- `list?` proper-list contract: the public predicate now uses the existing
+  strict primitive implementation, and the broader stdlib pair alias has been
+  removed so improper lists return false.
 
 ## Current Plan
 
-1. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
-   explicit, so `list?` can be made consistent with the selected proper-list
-   contract.
-2. Resolve documentation/product-contract issues that should not be guessed in
+1. Resolve documentation/product-contract issues that should not be guessed in
    code: `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` and
    `AUDIT-CONS-REF-SPEC-PARITY-095`.
-3. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+2. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and
    `AUDIT-LIST-HELPER-ALIAS-086`.
+3. Keep new implementation work sliced and committed separately after each
+   audited fix, with TODO entries closed only after targeted validation.
 
 ## Validation Policy
 

@@ -319,6 +319,7 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_truthy(interp, "list? yes", "(list? (quote (1 2 3)))", pass, fail);
     test_truthy(interp, "list? nil", "(list? nil)", pass, fail);
     test_nil(interp, "list? int", "(list? 42)", pass, fail);
+    test_nil(interp, "list? improper list", "(list? (cons 1 2))", pass, fail);
     test_truthy(interp, "procedure? lambda", "(procedure? (lambda (x) x))", pass, fail);
     test_truthy(interp, "procedure? prim", "(procedure? +)", pass, fail);
     test_nil(interp, "procedure? int", "(procedure? 42)", pass, fail);

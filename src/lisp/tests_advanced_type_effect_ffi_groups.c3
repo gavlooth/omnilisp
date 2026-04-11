@@ -100,6 +100,7 @@ fn void run_advanced_consolidation_predicate_equivalence_tests(Interp* interp, i
     test_truthy_interp(interp, "list? positive", "(list? '(1 2))", pass, fail);
     test_truthy_interp(interp, "list? nil", "(list? nil)", pass, fail);
     test_nil_interp(interp, "list? int", "(list? 42)", pass, fail);
+    test_nil_interp(interp, "list? improper list", "(list? (cons 1 2))", pass, fail);
     test_truthy_interp(interp, "closure? positive", "(closure? (lambda (x) x))", pass, fail);
     test_nil_interp(interp, "closure? int", "(closure? 42)", pass, fail);
     test_truthy_interp(interp, "array? positive", "(array? [1 2])", pass, fail);

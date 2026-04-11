@@ -117,7 +117,6 @@
 (define (symbol? x) (is? x 'Symbol))
 (define (boolean? x) (or (= x true) (= x false)))
 (define (bool? x) (boolean? x))
-(define (list? x) (or (null? x) (pair? x)))
 (define (closure? x) (is? x 'Closure))
 (define (array? x) (is? x 'Array))
 (define (dict? x) (is? x 'Dictionary))

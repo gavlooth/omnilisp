@@ -1,5 +1,19 @@
 ## 2026-04-11
 
+- Aligned `list?` with the documented proper-list contract:
+  - Registered the existing strict `prim_is_list` implementation as the public
+    `list?` predicate and removed the stdlib override that treated any pair,
+    including improper lists, as a list.
+  - Added predicate regressions for improper lists in the advanced stdlib and
+    type/effect predicate groups.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `basic` slice: `pass=142 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `advanced-type-dispatch-mutation-chain` subgroup:
+      `pass=237 fail=0`
+
 - Completed public stdlib list-walker improper-list normalization:
   - Added a private stdlib proper-list guard and applied it to the audited
     public list walkers: `map`, `filter`, `foldl`, `foldr`, `append`, `take`,
