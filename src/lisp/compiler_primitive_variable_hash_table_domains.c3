@@ -48,6 +48,11 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("substring"), "aot::lookup_prim(\"substring\")");
     prim_hash_insert(st.intern("string-split"), "aot::lookup_prim(\"string-split\")");
     prim_hash_insert(st.intern("string-length"), "aot::lookup_prim(\"string-length\")");
+    prim_hash_insert(st.intern("string-byte-length"), "aot::lookup_prim(\"string-byte-length\")");
+    prim_hash_insert(st.intern("string-index-of"), "aot::lookup_prim(\"string-index-of\")");
+    prim_hash_insert(st.intern("string-replace"), "aot::lookup_prim(\"string-replace\")");
+    prim_hash_insert(st.intern("char-at"), "aot::lookup_prim(\"char-at\")");
+    prim_hash_insert(st.intern("string-repeat"), "aot::lookup_prim(\"string-repeat\")");
     prim_hash_insert(st.intern("string-upcase"), "aot::lookup_prim(\"string-upcase\")");
     prim_hash_insert(st.intern("string-downcase"), "aot::lookup_prim(\"string-downcase\")");
     prim_hash_insert(st.intern("string-casefold"), "aot::lookup_prim(\"string-casefold\")");
@@ -55,6 +60,15 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("string-trim"), "aot::lookup_prim(\"string-trim\")");
     prim_hash_insert(st.intern("parse-number"), "aot::lookup_prim(\"parse-number\")");
     prim_hash_insert(st.intern("string-contains?"), "aot::lookup_prim(\"string-contains?\")");
+    prim_hash_insert(st.intern("procedure?"), "aot::lookup_prim(\"procedure?\")");
+    prim_hash_insert(st.intern("format"), "aot::lookup_prim(\"format\")");
+    prim_hash_insert(st.intern("cl-format"), "aot::lookup_prim(\"cl-format\")");
+    prim_hash_insert(st.intern("string-normalize"), "aot::lookup_prim(\"string-normalize\")");
+    prim_hash_insert(st.intern("string-graphemes"), "aot::lookup_prim(\"string-graphemes\")");
+    prim_hash_insert(st.intern("string-codepoints"), "aot::lookup_prim(\"string-codepoints\")");
+    prim_hash_insert(st.intern("char-category"), "aot::lookup_prim(\"char-category\")");
+    prim_hash_insert(st.intern("char-width"), "aot::lookup_prim(\"char-width\")");
+    prim_hash_insert(st.intern("char-property"), "aot::lookup_prim(\"char-property\")");
 
     // Type predicates
     prim_hash_insert(st.intern("string?"), "aot::lookup_prim(\"string?\")");
@@ -104,9 +118,39 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
     prim_hash_insert(st.intern("load"), "aot::lookup_prim(\"load\")");
     prim_hash_insert(st.intern("apply"), "aot::lookup_prim(\"apply\")");
+    prim_hash_insert(st.intern("macroexpand"), "aot::lookup_prim(\"macroexpand\")");
+    prim_hash_insert(st.intern("eval"), "aot::lookup_prim(\"eval\")");
+    prim_hash_insert(st.intern("bound?"), "aot::lookup_prim(\"bound?\")");
     prim_hash_insert(st.intern("error"), "aot::lookup_prim(\"error\")");
     prim_hash_insert(st.intern("error?"), "aot::lookup_prim(\"error?\")");
     prim_hash_insert(st.intern("error-message"), "aot::lookup_prim(\"error-message\")");
+    prim_hash_insert(st.intern("read-string"), "aot::lookup_prim(\"read-string\")");
+    prim_hash_insert(st.intern("unsafe-free!"), "aot::lookup_prim(\"unsafe-free!\")");
+    prim_hash_insert(st.intern("shell"), "aot::lookup_prim(\"shell\")");
+    prim_hash_insert(st.intern("random"), "aot::lookup_prim(\"random\")");
+    prim_hash_insert(st.intern("random-int"), "aot::lookup_prim(\"random-int\")");
+    prim_hash_insert(st.intern("getenv"), "aot::lookup_prim(\"getenv\")");
+    prim_hash_insert(st.intern("time"), "aot::lookup_prim(\"time\")");
+    prim_hash_insert(st.intern("time-ms"), "aot::lookup_prim(\"time-ms\")");
+    prim_hash_insert(st.intern("exit"), "aot::lookup_prim(\"exit\")");
+    prim_hash_insert(st.intern("sleep"), "aot::lookup_prim(\"sleep\")");
+    prim_hash_insert(st.intern("gzip"), "aot::lookup_prim(\"gzip\")");
+    prim_hash_insert(st.intern("gunzip"), "aot::lookup_prim(\"gunzip\")");
+    prim_hash_insert(st.intern("deflate"), "aot::lookup_prim(\"deflate\")");
+    prim_hash_insert(st.intern("inflate"), "aot::lookup_prim(\"inflate\")");
+    prim_hash_insert(st.intern("zlib-compress"), "aot::lookup_prim(\"zlib-compress\")");
+    prim_hash_insert(st.intern("zlib-decompress"), "aot::lookup_prim(\"zlib-decompress\")");
+    prim_hash_insert(st.intern("adler32"), "aot::lookup_prim(\"adler32\")");
+    prim_hash_insert(st.intern("crc32"), "aot::lookup_prim(\"crc32\")");
+    prim_hash_insert(st.intern("validate"), "aot::lookup_prim(\"validate\")");
+    prim_hash_insert(st.intern("spawn"), "aot::lookup_prim(\"spawn\")");
+    prim_hash_insert(st.intern("await"), "aot::lookup_prim(\"await\")");
+    prim_hash_insert(st.intern("run-fibers"), "aot::lookup_prim(\"run-fibers\")");
+    prim_hash_insert(st.intern("fiber-cancel"), "aot::lookup_prim(\"fiber-cancel\")");
+    prim_hash_insert(st.intern("atomic"), "aot::lookup_prim(\"atomic\")");
+    prim_hash_insert(st.intern("atomic-add!"), "aot::lookup_prim(\"atomic-add!\")");
+    prim_hash_insert(st.intern("atomic-read"), "aot::lookup_prim(\"atomic-read\")");
+    prim_hash_insert(st.intern("atomic-cas!"), "aot::lookup_prim(\"atomic-cas!\")");
     prim_hash_insert(st.intern("explain"), "aot::lookup_prim(\"explain\")");
     prim_hash_insert(st.intern("schema-explain"), "aot::lookup_prim(\"schema-explain\")");
 }

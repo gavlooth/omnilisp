@@ -63,6 +63,10 @@ queue; this file is supporting context for why the queue is ordered this way.
   preserving the existing non-value `Pointer` and `__ui-ftxui-run` exceptions;
   this closes a broader drift class where hash-only runtime primitives could be
   captured as C3 locals inside lambdas.
+- `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099`: completed public runtime
+  primitive coverage in the compiler primitive hash table, resized the table to
+  preserve a safe load factor, and added closure-capture regression coverage for
+  representative math, string, and collection primitives.
 
 ## Current Plan
 

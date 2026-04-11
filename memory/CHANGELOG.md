@@ -1,5 +1,22 @@
 ## 2026-04-11
 
+- Closed `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099`:
+  - Completed public runtime primitive value-position coverage in the compiler
+    primitive hash table so public primitives are lowered through
+    `aot::lookup_prim(...)` instead of drifting into closure-captured C3 local
+    identifiers.
+  - Increased the primitive hash table size to keep the now-complete registry
+    load comfortably below 50% and updated the stale sizing comment.
+  - Extended the closure-capture regression to cover the broader primitive
+    families that were previously underrepresented: math (`sin`), string
+    utilities (`string-byte-length`), and collection helpers (`sort-by`).
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - audit script: `hash entries=195`, `focus missing public-ish hash entries=0`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - Closed `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098`:
   - Replaced the duplicated compiler free-variable/delegation primitive-name
     arrays with a shared hash-backed classifier, making the compiler primitive

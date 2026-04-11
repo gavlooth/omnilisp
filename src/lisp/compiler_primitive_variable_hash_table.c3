@@ -7,7 +7,7 @@ import main;
 // SECTION 1b: PRIMITIVE VARIABLE HASH TABLE
 // =============================================================================
 
-const usz PRIM_HASH_SIZE = 256;  // Power of 2, > 2*87
+const usz PRIM_HASH_SIZE = 512;  // Power of 2, keeps current primitive load comfortably below 50%
 struct PrimHashEntry {
     SymbolId key;
     char[]   emit;

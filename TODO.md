@@ -58,6 +58,22 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099` complete compiler
+  primitive hash coverage for public runtime primitives
+  - closure evidence:
+    - public runtime primitive value references now have compiler primitive hash
+      entries, reducing the public-ish missing-hash audit set to zero.
+    - the primitive hash table was resized from 256 to 512 to preserve a safe
+      load factor after expanding coverage to 195 entries.
+    - regression coverage now verifies `sin`, `string-byte-length`, and
+      `sort-by` are looked up as primitives, not captured as C3 locals.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - audit script: `hash entries=195`, `focus missing public-ish hash entries=0`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - [x] `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098` consolidate compiler
   primitive classification around the primitive hash table
   - closure evidence:

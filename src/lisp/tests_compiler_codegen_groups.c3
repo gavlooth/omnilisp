@@ -131,9 +131,9 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
 
     // 44d. Registered primitives in stdlib/user lambdas are looked up, not captured as C3 locals.
     {
-        char[] code = compile_to_c3("(let (f (lambda (x) (block (error? x) Dict json-parse))) f)", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"error?\")", "lookup_prim(\"Dict\")", "lookup_prim(\"json-parse\")"})
-            && compiler_code_contains_none(code, {"captured_error", "captured_error_p", "captured_Dict", "captured_json_parse", " = error;", " = error_p;", " = Dict;", " = json_parse;"});
+        char[] code = compile_to_c3("(let (f (lambda (x) (block (error? x) Dict json-parse sin string-byte-length sort-by))) f)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"error?\")", "lookup_prim(\"Dict\")", "lookup_prim(\"json-parse\")", "lookup_prim(\"sin\")", "lookup_prim(\"string-byte-length\")", "lookup_prim(\"sort-by\")"})
+            && compiler_code_contains_none(code, {"captured_error", "captured_error_p", "captured_Dict", "captured_json_parse", "captured_sin", "captured_string_byte_length", "captured_sort_by", " = error;", " = error_p;", " = Dict;", " = json_parse;", " = sin;", " = string_byte_length;", " = sort_by;"});
         compiler_test_finish_bool(
             ok,
             "Compiler: runtime primitives are not closure captures",
