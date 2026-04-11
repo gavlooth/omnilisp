@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 6
+Current actionable count: 12
 
 Completed backlog snapshots:
 
@@ -17,6 +17,68 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
+
+- [ ] `AUDIT-NAMED-LET-INIT-ERROR-PROPAGATION-097` preserve initializer
+  errors through named `let`
+  - audit finding: `(let loop (xs (reverse (cons 1 2)) acc '(3)) xs)`
+    masks the original `__reverse-list: expected a proper list` error as
+    `arg list too short`, which also affects `append` on improper left input.
+  - next step: harden named-`let` lowering/evaluation so binding initializer
+    errors short-circuit with their original payload/message before the loop
+    closure is invoked; add regressions for single- and multi-binding named
+    `let` initializer errors.
+
+- [ ] `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` harden the runtime `eval`
+  data-to-expression conversion path
+  - audit finding: malformed eval-data special forms can be accepted or
+    truncated outside the parser path, including non-symbol heads/tags via
+    `val_to_sym`, `set!` trailing arguments, fail-open arity for several
+    special forms, lambda/let multi-body truncation, and `macroexpand`
+    fallback masking.
+  - next step: align `eval` conversion with parser fail-closed semantics:
+    reject malformed heads/tags, enforce exact special-form arity, preserve
+    multi-body forms through explicit `block` lowering where parser-equivalent,
+    and make `macroexpand` surface structural conversion failures.
+
+- [ ] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
+  the language spec
+  - audit finding: runtime `ref` on cons cells supports dotted-tail addressing
+    and negative indexes more broadly than the public spec table currently
+    documents.
+  - next step: decide whether this is the intended generic sequence contract;
+    then either update `docs/LANGUAGE_SPEC.md` and reference docs, or narrow
+    runtime behavior and keep regressions for the chosen boundary.
+
+- [ ] `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` decide byte versus codepoint
+  semantics for generic string `length` and `ref`
+  - audit finding: generic `length`/`ref` on strings are byte-oriented, while
+    `string-length`/`char-at` are codepoint-oriented.
+  - next step: make a product-level contract decision for generic sequence
+    operations on strings; then align docs, tests, and implementation so
+    constructor/dispatch usage does not expose two unmarked string indexing
+    models.
+
+- [ ] `AUDIT-LIST-PREDICATE-CONTRACT-093` reconcile `list?` proper-list
+  semantics with the stdlib implementation
+  - audit finding: docs describe `list?` as proper-list recognition, but the
+    stdlib currently defines it as `(or (null? x) (pair? x))`, while a
+    stricter `prim_is_list` implementation exists but is not registered as the
+    public predicate.
+  - next step: choose the canonical contract, then either register/use the
+    strict implementation or update docs/tests to explicitly say `list?`
+    accepts any pair/improper list.
+
+- [ ] `AUDIT-LIST-WALKER-IMPROPER-LIST-092` normalize improper-list handling
+  across public list walkers
+  - audit finding: `reverse` now rejects dotted tails, but other public list
+    walkers in `stdlib/stdlib.lisp` still need a systematic pass for dotted
+    tail behavior (`map`, `filter`, `foldl`, `foldr`, `append`, `take`,
+    `drop`, `zip`, `for-each`, `any?`, `every?`, `flatten`, and related
+    helpers).
+  - next step: define a shared proper-list guard or traversal helper where
+    practical, apply it top-down to list walkers, and add targeted regressions
+    for improper-list rejection versus explicitly supported cons/dotted-tail
+    behavior.
 
 - [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
   scientific-computing surface

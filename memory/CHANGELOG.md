@@ -1,5 +1,17 @@
 ## 2026-04-11
 
+- Fixed `reverse` on improper lists found by the collection walker audit:
+  - `__reverse-list` now rejects dotted tails instead of silently truncating
+    them, preventing `append` from losing left-side tail data through `reverse`.
+  - Added advanced stdlib regressions for `reverse` proper-list rejection and
+    `append` improper-left fail-closed behavior. A follow-up item tracks named
+    `let` preserving initializer error payloads instead of masking them as an
+    argument-list failure.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct `reverse`/`append` improper-list probes
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=256 fail=0`
+
 - Removed name-only AOT list/dictionary constructor fast paths found by the
   constructor/dispatch audit:
   - AOT call lowering now routes `list`, `Dictionary`, and `Dict` through the

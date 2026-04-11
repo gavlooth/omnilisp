@@ -183,6 +183,7 @@ fn Value* dispatch_reverse_list(Value* list, Interp* interp) {
         out = make_cons(interp, cur.cons_val.car, out);
         cur = cur.cons_val.cdr;
     }
+    if (!is_nil(cur)) return raise_error(interp, "__reverse-list: expected a proper list");
     return out;
 }
 
