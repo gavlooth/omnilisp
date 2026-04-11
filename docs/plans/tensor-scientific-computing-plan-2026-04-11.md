@@ -44,6 +44,15 @@ There is also an older exploratory `examples/scicomp_demo.omni` surface using
 prototype vocabulary. It must be migrated, quarantined, or deleted when the
 new tensor surface lands.
 
+Name collision note:
+
+- Deduce already has the namespaced command `deduce/materialize!` and the
+  relation attribute `[relation ... materialized]`.
+- Tensor `materialize` is a different concept: it turns a tensor expression
+  into concrete tensor storage, optionally into an existing destination tensor.
+- Do not rename or fold the Deduce materialized-view command into this tensor
+  operation.
+
 ## Locked Naming Decisions
 
 ### `Tensor`
@@ -191,7 +200,7 @@ Non-goals for the first implementation:
 - no Julia dotted operator syntax,
 - no implicit numeric widening in method dispatch,
 - no automatic `(* tensor tensor)` semantics for general tensors,
-- no GPU backend,
+- no GPU execution or storage backend in the core MVP,
 - no autodiff,
 - no sparse tensor backend,
 - no view mutation semantics until slicing/view policy is explicit,
@@ -414,10 +423,57 @@ Storage and backend policy:
 - MVP uses native contiguous CPU `Double` storage.
 - Strides should be present in the metadata early, even if all MVP tensors are
   contiguous. This avoids painting slicing/views into a corner.
-- BLAS integration is a later optimization for rank-2 `Double` contractions
-  with compatible layout.
-- Sparse/GPU backends are deferred storage strategies behind `Tensor`, not
+- The core implementation owns the semantic fallback for `map`, `contract`,
+  and `materialize`; it must not require BLAS, LAPACK, CUDA, or cuBLAS to be
+  present for correctness.
+- BLAS/LAPACK/CUDA/cuBLAS integrations are optional backend optimizations, not
   separate first-surface types.
+- Sparse and GPU storage strategies are deferred behind `Tensor`; they must not
+  introduce user-facing `SparseTensor` or `GpuTensor` as the first canonical
+  surface.
+
+Library and backend layering:
+
+- Core runtime owns:
+  - `Tensor` value representation,
+  - dtype, shape, rank, total length, and `ref`,
+  - tensor-expression protocol,
+  - `map`, `contract`, and `materialize` semantics,
+  - pure CPU fallback kernels,
+  - deterministic diagnostics and scope/region lifetime behavior.
+- A later `tensor` library may own conveniences such as `sum`, `mean`,
+  `reshape`, `transpose`, `permute`, `dot`, and `outer`.
+- Optional backend modules may provide acceleration:
+  - `tensor/blas` for BLAS-backed dense CPU kernels,
+  - `tensor/lapack` for decomposition and solve routines,
+  - `tensor/cuda` for CUDA device storage policy,
+  - `tensor/cublas` for cuBLAS-backed dense GPU kernels.
+- Backend modules optimize execution; they do not change `Tensor`, `map`,
+  `contract`, or `materialize` semantics.
+- The canonical user-facing contraction stays `contract`. Do not expose
+  `blas-matmul`, `cublas-contract`, or similar backend-flavored names as the
+  normal mathematical surface. Low-level backend escape hatches may exist only
+  inside backend modules if a concrete need appears.
+- Backend dispatch should happen at the materialization/evaluation boundary,
+  especially for `(materialize (contract ...) out)` and
+  `(materialize (map ...) out)`.
+- GPU/CUDA support should require explicit device movement in its first design.
+  Do not introduce implicit CPU-GPU transfer in ordinary `map`, `contract`, or
+  `materialize`.
+
+Candidate later device/backend introspection forms:
+
+```lisp
+(to-device x 'cuda)
+(to-device x 'cpu)
+(device x)
+
+(tensor-backends)
+(tensor-use-backend! 'blas)
+(tensor-backend x)
+```
+
+These names are candidates, not locked first-surface decisions.
 
 ### Refinement
 
@@ -470,17 +526,32 @@ Rollout slices:
    - Add trailing singleton expansion if the owner approves the exact rule.
    - Keep shape errors deterministic and payloaded.
 
-9. `TENSOR-080` BLAS-backed rank-2 contraction
-   - Use FFI/native library path only after the pure fallback behavior is
-     stable.
-   - Keep fallback available for validation and portability.
+9. `TENSOR-080` Tensor library facade and backend boundary
+   - Decide the import/module path for the high-level tensor library.
+   - Keep backend-specific names out of the public semantic surface.
+   - Document that `contract` and `materialize` are the semantic hooks that
+     backend optimizations must preserve.
 
-10. `TENSOR-090` Example migration
-   - Replace or quarantine `examples/scicomp_demo.omni`.
-   - Remove `vec-*`, `mat-*`, and `mat-mul` as canonical examples.
-   - Add a `Tensor` example that uses `map`, `contract`, and `materialize`.
+10. `TENSOR-090` BLAS/LAPACK backend design and rank-2 contraction
+    - Use FFI/native library paths only after the pure fallback behavior is
+      stable.
+    - Keep fallback available for validation and portability.
+    - Treat BLAS-backed matrix product as an optimization of
+      `(materialize (contract a b [1] [0]) out)`, not as a new canonical
+      `matmul` operation.
 
-11. `TENSOR-100` Autodiff design note
+11. `TENSOR-100` CUDA/cuBLAS backend design
+    - Require explicit host/device movement in the design.
+    - Keep GPU storage behind `Tensor` rather than introducing a first-surface
+      GPU tensor type.
+    - Keep GPU-heavy validation on the bounded container path.
+
+12. `TENSOR-110` Example migration
+    - Replace or quarantine `examples/scicomp_demo.omni`.
+    - Remove `vec-*`, `mat-*`, and `mat-mul` as canonical examples.
+    - Add a `Tensor` example that uses `map`, `contract`, and `materialize`.
+
+13. `TENSOR-120` Autodiff design note
     - Design AD around differentiable tensor operations, not arbitrary Omni
       execution.
     - Treat `map` and `contract` as the first differentiable primitive family.
@@ -570,10 +641,15 @@ Test gates:
   - tensor materialized across scope boundaries,
   - tensor destruction path under normal and ASAN builds,
   - no hidden per-type refcount ownership path.
-- Backend parity:
+- Execution parity:
   - interpreter behavior first,
   - JIT behavior after interpreter is green,
   - AOT/compiler e2e rows after primitive/codegen hooks exist.
+- Optional backend parity, when those backends land:
+  - BLAS rank-2 contraction matches pure fallback,
+  - LAPACK library routines document their pure fallback or dependency policy,
+  - CUDA/cuBLAS paths require explicit device movement,
+  - disabled or missing backend dependencies fail or fall back deterministically.
 
 Validation guidance:
 
@@ -593,8 +669,8 @@ Validation guidance:
 - Slicing and views with explicit copy/view mutation policy.
 - `Complex` dtype.
 - fixed-width numeric dtypes.
-- BLAS/LAPACK acceleration.
-- GPU storage backend.
+- BLAS/LAPACK backend modules and kernel selection.
+- CUDA/cuBLAS storage/backend modules with explicit host/device movement.
 - autodiff over differentiable tensor primitives.
 
 ## First User-Facing Example Target
