@@ -1,5 +1,20 @@
 ## 2026-04-11
 
+- Fixed fixed-arity primitive fallback calls ignoring trailing arguments:
+  - Shared multi-argument primitive application now rejects extra or missing
+    arguments for primitives registered with fixed arity, while preserving
+    explicit variadic primitives registered with arity `-1`.
+  - Added regressions for arithmetic, constructor, and generic collection calls
+    that previously consumed only the first registered arguments.
+  - Updated stale destructuring examples to use explicit binary arithmetic
+    nesting.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for fixed-arity rejection and variadic `string-append`
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=254 fail=0`
+    - bounded `advanced-collections-module` subgroup: `pass=139 fail=0`
+    - bounded `compiler` slice: `pass=194 fail=0`
+
 - Aligned `length` with dotted cons `ref` behavior found during the
   cons-chain walker audit:
   - Dotted terminal tails now count as addressable sequence elements, matching

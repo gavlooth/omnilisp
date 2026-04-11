@@ -126,6 +126,8 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "float/int", "(/ 1.0 3)", 0.333333, pass, fail);
     test_double(interp, "float-float", "(- 5.5 2.5)", 3.0, pass, fail);
     test_eq(interp, "int+int stays int", "(+ 1 2)", 3, pass, fail);
+    test_error_contains(interp, "+ rejects trailing arg", "(+ 10 20 30)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "* rejects trailing arg", "(* 2 3 4)", "arity mismatch", pass, fail);
     test_truthy(interp, "< int float", "(< 1 2.5)", pass, fail);
     test_truthy(interp, "> float int", "(> 3.5 2)", pass, fail);
     test_truthy(interp, "= int float", "(= 1 1.0)", pass, fail);
@@ -152,6 +154,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str(interp, "String double", "(String 3.14)", pass, fail);
+    test_error_contains(interp, "String rejects trailing arg", "(String 42 99)", "arity mismatch", pass, fail);
     test_str_val(interp, "String invalid arg payload domain",
         "(handle (String nil) (raise msg (String (ref msg 'domain))))",
         "type", pass, fail);

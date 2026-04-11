@@ -109,6 +109,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "length list", "(length '(1 2 3 4))", 4, pass, fail);
     test_eq(interp, "length dotted cons", "(length (cons 1 2))", 2, pass, fail);
     test_eq(interp, "length dotted cons chain", "(length (cons 1 (cons 2 3)))", 3, pass, fail);
+    test_error_contains(interp, "length rejects trailing arg", "(length [1 2] 99)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "ref rejects trailing arg", "(ref [10 20] 0 99)", "arity mismatch", pass, fail);
     // push!
     setup(interp, "(define ga [1 2])");
     test_tag_interp(interp, "push! returns void", "(push! ga 3)", VOID, pass, fail);

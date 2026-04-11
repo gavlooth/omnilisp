@@ -123,6 +123,12 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
 fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
     interp.constructor_type_id = func.prim_val.tag;
     interp.prim_user_data = func.prim_val.user_data;
+    int arity = func.prim_val.arity;
+    if (arity >= 0 && arg_count != (usz)arity) {
+        char[128] buf;
+        usz len = format_arity_error(&buf, (usz)arity, arg_count);
+        return raise_error(interp, buf[:len]);
+    }
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
     if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
     Value* curr = arg_list;
