@@ -1,5 +1,15 @@
 ## 2026-04-11
 
+- Fixed negative `ref` indexing on dotted cons pairs found during the
+  cons-chain walker audit:
+  - Dotted terminal tails now participate in the negative-index length used by
+    `ref`, matching the existing positive `(ref (cons a b) 1)` pair behavior.
+  - Added a regression in the advanced collections generic operations group.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct `ref` probes for dotted pair negative indexing
+    - bounded `advanced-collections-module` subgroup: `pass=135 fail=0`
+
 - Fixed Pika grammar start-rule selection found while reconciling the reference
   docs with the live grammar surface:
   - Forward-reference placeholders can no longer become the grammar start rule

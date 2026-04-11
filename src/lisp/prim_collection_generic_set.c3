@@ -59,6 +59,7 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
             long len = 0;
             Value* c = coll;
             while (is_cons(c)) { len++; c = c.cons_val.cdr; }
+            if (!is_nil(c)) len++;
             idx += len;
             if (idx < 0) {
                 *out = raise_error(interp, "ref: list index out of bounds");

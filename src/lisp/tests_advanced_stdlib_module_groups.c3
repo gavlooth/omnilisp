@@ -78,6 +78,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     // ref - cons
     test_eq(interp, "ref cons car", "(ref (cons 10 20) 0)", 10, pass, fail);
     test_eq(interp, "ref cons cdr", "(ref (cons 10 20) 1)", 20, pass, fail);
+    test_eq(interp, "ref cons negative cdr", "(ref (cons 10 20) -1)", 20, pass, fail);
     // ref - string
     test_eq(interp, "ref string", "(ref \"hello\" 0)", 104, pass, fail);
     // negative indexing (Python-style: -1 = last, -2 = second-to-last)
