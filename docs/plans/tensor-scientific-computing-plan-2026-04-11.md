@@ -18,7 +18,7 @@ The chosen direction is:
 - `map` is extended through dispatch for elementwise tensor operations and
   broadcasting.
 - `contract` is the canonical tensor contraction operation.
-- `overwrite` is the canonical destination-storage replacement operation.
+- `materialize` is the canonical tensor-expression-to-storage boundary.
 
 This plan records the naming decisions, semantic contracts, rollout slices,
 test gates, and deferred work before runtime implementation starts.
@@ -65,8 +65,8 @@ Contract:
 - `Tensor` is computational, not a promise of full coordinate-transform tensor
   algebra.
 - The first surface means: dtype, shape, rank, homogeneous numeric storage,
-  indexing, elementwise operations, contraction, reductions, and explicit
-  destination overwrite.
+  indexing, elementwise expressions, contraction expressions, reductions, and
+  explicit materialization into storage.
 
 ### `Array`
 
@@ -92,7 +92,10 @@ Canonical forms:
 
 Contract:
 
-- For tensors, `map` returns a new `Tensor`.
+- For tensors, `map` produces a tensor-shaped expression.
+- A first implementation may represent that expression as an eagerly
+  materialized `Tensor`; the user-facing contract still treats it as a tensor
+  expression.
 - Tensor `map` may accept one or more tensor/scalar inputs.
 - Scalar arguments broadcast over tensor arguments.
 - First implementation should support scalar broadcast and exact-shape
@@ -124,6 +127,7 @@ Multi-axis form:
 
 Rules:
 
+- `contract` produces a tensor-shaped expression.
 - axis lists must have equal length.
 - each axis must be in range for its tensor.
 - dimensions for paired axes must match.
@@ -131,33 +135,37 @@ Rules:
   non-contracted axes from the right tensor, preserving source order.
 - no implicit default contraction is provided for general tensors.
 
-### `overwrite`
+### `materialize`
 
-Use `overwrite` as the canonical destination-storage replacement operation.
+Use `materialize` as the canonical tensor-expression-to-storage boundary.
 
 Canonical forms:
 
 ```lisp
-(overwrite out (map + a b))
-(overwrite x (map sqrt x))
-(overwrite c (contract a b [1] [0]))
-(overwrite x 0.0)
-(overwrite out src)
+(materialize (map + a b))
+(materialize (map sqrt x) x)
+(materialize (contract a b [1] [0]) c)
+(materialize 0.0 x)
+(materialize src out)
 ```
 
 Contract:
 
-- `overwrite` requires an existing mutable destination tensor.
-- The old destination contents are replaced.
-- If the source is a scalar, every element of the destination is set to that
-  scalar, subject to dtype policy.
-- If the source is a tensor, shape and dtype compatibility are required.
-- If the source is a tensor expression, the first implementation may evaluate
+- `(materialize expr)` returns a concrete `Tensor`.
+- `(materialize expr out)` writes the expression into existing mutable tensor
+  `out` and returns `out`.
+- A concrete `Tensor` satisfies the tensor-expression protocol.
+- If `expr` is already a concrete tensor and no destination is provided,
+  `materialize` may return the tensor unchanged.
+- If `expr` is a scalar, a destination tensor is required; every element of the
+  destination is set to that scalar, subject to dtype policy.
+- If `expr` is a tensor and a destination is provided, shape and dtype
+  compatibility are required.
+- If `expr` is a lazy tensor expression, the first implementation may evaluate
   it into a temporary tensor and copy it into the destination.
 - Later compiler/JIT optimization may fuse recognized `map` and `contract`
   expressions into destination storage, but fusion is an optimization, not the
   user-visible semantic contract.
-- `overwrite` returns `Void`.
 - Unsafe aliasing must either use a scratch tensor or raise a deterministic
   diagnostic.
 
@@ -175,8 +183,8 @@ Rejected as canonical:
 - `map-into`: technically clear, but awkward to read and too tied to `map`.
 - `compute`: too broad.
 - `assign`: too vague and too close to binding/update semantics.
-- `copy` / `fill` as peers to `overwrite`: too close to each other; they may
-  exist later only as convenience wrappers over `overwrite`.
+- `copy` / `fill` as peers to `materialize`: too close to each other; they may
+  exist later only as convenience wrappers over `materialize`.
 
 Non-goals for the first implementation:
 
@@ -266,7 +274,7 @@ Diagnostic target:
 Acceptance:
 
 - `Tensor` constructor success and failure behavior is documented.
-- `map`, `contract`, and `overwrite` have deterministic shape/dtype/aliasing
+- `map`, `contract`, and `materialize` have deterministic shape/dtype/aliasing
   rules.
 - The old `vec-*` / `mat-*` exploratory example is not presented as the
   canonical surface.
@@ -297,13 +305,13 @@ Tensor `map`:
 map(f, inputs...):
   classify inputs as tensors or scalars
   determine broadcast result shape
-  allocate result tensor with dtype policy
-  for every result logical index:
-    gather scalar/tensor input values under broadcast rules
-    call f
-    coerce result into result dtype
-    store unboxed result
-  return result tensor
+  create a tensor expression that records:
+    function f
+    input expressions/scalars
+    result shape
+    result dtype policy
+  first implementation may eagerly materialize this expression
+  return tensor expression
 ```
 
 Tensor `contract`:
@@ -314,33 +322,42 @@ contract(a, b, left_axes, right_axes):
   validate axes are unique, in range, and same count
   validate paired contracted dimensions match
   compute result shape from non-contracted axes
-  allocate result tensor
-  for every result index:
-    sum over contracted index space:
-      load a value
-      load b value
-      accumulate product
-    store accumulator
-  return result tensor
+  create a tensor expression that records:
+    left expression
+    right expression
+    contraction axes
+    result shape
+    result dtype policy
+  first implementation may eagerly materialize this expression
+  return tensor expression
 ```
 
-`overwrite`:
+`materialize`:
 
 ```text
-overwrite(dest, source):
-  validate dest is mutable Tensor
+materialize(source, maybe_dest):
+  if maybe_dest is omitted:
+    if source is concrete Tensor:
+      return source
+    if source is tensor expression:
+      allocate a concrete Tensor for source shape/dtype
+      evaluate expression into the new Tensor
+      return Tensor
+    otherwise:
+      raise tensor/dtype-mismatch or type/arg-mismatch
+
+  validate maybe_dest is mutable Tensor
   if source is scalar:
-    coerce scalar to dest dtype
-    fill dest storage
-    return Void
-  if source is Tensor:
+    coerce scalar to maybe_dest dtype
+    fill maybe_dest storage
+    return maybe_dest
+  if source is Tensor or tensor expression:
     validate shape compatibility
     validate dtype compatibility or explicit conversion policy
     handle aliasing
-    copy/coerce source storage into dest
-    return Void
-  otherwise:
-    raise tensor/dtype-mismatch or type/arg-mismatch
+    evaluate/copy source into maybe_dest
+    return maybe_dest
+  raise tensor/dtype-mismatch or type/arg-mismatch
 ```
 
 ### Architecture
@@ -349,6 +366,9 @@ Runtime value model:
 
 - Add a native `Tensor` runtime value representation rather than modeling
   tensors as `Array` of boxed values.
+- Add a tensor-expression protocol. A concrete `Tensor` participates in that
+  protocol; lazy `map`/`contract` expression values can be added behind the
+  same surface.
 - Prefer a heap-backed `TensorVal` payload owned by the current scope/region
   wrapper destructor path.
 - Keep the ownership authority in scope/region retain/release machinery.
@@ -386,7 +406,7 @@ Likely code ownership:
 - compiler/JIT/AOT:
   - direct primitive calls first,
   - compiler parity cases after interpreter behavior is green,
-  - fusion for `(overwrite out (map ...))` and `(overwrite out (contract ...))`
+  - fusion for `(materialize (map ...) out)` and `(materialize (contract ...) out)`
     only after allocation semantics are correct.
 
 Storage and backend policy:
@@ -410,46 +430,57 @@ Rollout slices:
 2. `TENSOR-010` Runtime representation
    - Add native Tensor payload, destructor, printing, `tensor?`, `dtype`,
      `shape`, `rank`, and `length`.
-   - No `map`, `contract`, or `overwrite` yet.
+   - No `map`, `contract`, or `materialize` yet.
 
 3. `TENSOR-020` Constructor and indexing
    - Implement `(Tensor Double shape data-or-scalar)`.
    - Implement `(ref tensor index-array)`.
    - Keep variadic tensor `ref` deferred.
 
-4. `TENSOR-030` Elementwise `map`
+4. `TENSOR-030` Tensor-expression protocol and `materialize`
+   - Treat concrete `Tensor` as a tensor expression.
+   - Implement `(materialize expr)`.
+   - Implement `(materialize expr out)`.
+   - Implement scalar-to-destination fill through `(materialize scalar out)`.
+   - No lazy expression fusion is required yet.
+
+5. `TENSOR-040` Elementwise `map`
    - Implement unary tensor `map`.
    - Implement tensor-scalar `map`.
    - Implement exact-shape tensor-tensor `map`.
+   - The first slice may return eager concrete tensors while preserving the
+     tensor-expression contract.
    - Defer singleton-axis broadcast until after exact-shape coverage is green.
 
-5. `TENSOR-040` `contract`
+6. `TENSOR-050` `contract`
    - Implement pure C3 fallback contraction for `Double`.
    - Support one or more axis pairs.
+   - The first slice may return eager concrete tensors while preserving the
+     tensor-expression contract.
    - Add rank-2 matrix-product examples through `contract`.
 
-6. `TENSOR-050` `overwrite`
-   - Implement scalar fill overwrite.
-   - Implement tensor-to-tensor overwrite.
-   - Support `(overwrite out (map ...))` and `(overwrite out (contract ...))`
-     as ordinary evaluated-source semantics first.
+7. `TENSOR-060` Destination materialization and expression fusion
+   - Optimize `(materialize (map ...) out)` and
+     `(materialize (contract ...) out)` when the expression representation
+     exists.
+   - Keep ordinary eager-source copy semantics as the fallback.
    - Add aliasing tests and diagnostics.
 
-7. `TENSOR-060` Broadcasting extension
+8. `TENSOR-070` Broadcasting extension
    - Add trailing singleton expansion if the owner approves the exact rule.
    - Keep shape errors deterministic and payloaded.
 
-8. `TENSOR-070` BLAS-backed rank-2 contraction
+9. `TENSOR-080` BLAS-backed rank-2 contraction
    - Use FFI/native library path only after the pure fallback behavior is
      stable.
    - Keep fallback available for validation and portability.
 
-9. `TENSOR-080` Example migration
+10. `TENSOR-090` Example migration
    - Replace or quarantine `examples/scicomp_demo.omni`.
    - Remove `vec-*`, `mat-*`, and `mat-mul` as canonical examples.
-   - Add a `Tensor` example that uses `map`, `contract`, and `overwrite`.
+   - Add a `Tensor` example that uses `map`, `contract`, and `materialize`.
 
-10. `TENSOR-090` Autodiff design note
+11. `TENSOR-100` Autodiff design note
     - Design AD around differentiable tensor operations, not arbitrary Omni
       execution.
     - Treat `map` and `contract` as the first differentiable primitive family.
@@ -462,9 +493,9 @@ First implementation decisions:
   constructor surface.
 - Tensor `map` result dtype is the dtype of the first tensor input in the first
   slice. Explicit conversion can be expressed as another mapped operation.
-- `overwrite` requires exact dtype compatibility in the first slice. Explicit
-  conversion must happen before overwrite.
-- Singleton-axis broadcasting is deferred to `TENSOR-060`; the first `map`
+- Destination `materialize` requires exact dtype compatibility in the first
+  slice. Explicit conversion must happen before materialization.
+- Singleton-axis broadcasting is deferred to `TENSOR-070`; the first `map`
   slice supports scalar broadcast and exact-shape tensor-tensor inputs.
 - `length` for `Tensor` means total element count.
 
@@ -478,7 +509,7 @@ Documentation gates:
   - tensor `ref`,
   - tensor `map`,
   - `contract`,
-  - `overwrite`,
+  - `materialize`,
   - diagnostic codes.
 - `docs/type-system-syntax.md` documents how `Tensor` participates in type
   annotations and dispatch once the implementation supports it.
@@ -521,11 +552,14 @@ Test gates:
   - axis length mismatch,
   - axis out of range,
   - contracted dimension mismatch.
-- `overwrite`:
-  - scalar fill,
-  - tensor copy,
-  - overwrite from `map`,
-  - overwrite from `contract`,
+- `materialize`:
+  - allocate concrete tensor from concrete tensor source,
+  - allocate concrete tensor from `map`,
+  - allocate concrete tensor from `contract`,
+  - materialize scalar into destination,
+  - materialize tensor into destination,
+  - materialize `map` into destination,
+  - materialize `contract` into destination,
   - destination shape mismatch,
   - dtype mismatch,
   - safe self-update,
@@ -533,7 +567,7 @@ Test gates:
 - Memory/lifetime:
   - tensor returned across a function boundary,
   - tensor captured in closure env,
-  - tensor overwritten across scope boundaries,
+  - tensor materialized across scope boundaries,
   - tensor destruction path under normal and ASAN builds,
   - no hidden per-type refcount ownership path.
 - Backend parity:
@@ -579,10 +613,10 @@ Validation guidance:
 
 (define c (Tensor Double [2 2] 0.0))
 
-(overwrite c (contract a b [1] [0]))
+(materialize (contract a b [1] [0]) c)
 
-(define shifted (map + c 1.0))
-(define squared (map * shifted shifted))
+(define shifted (materialize (map + c 1.0)))
+(define squared (materialize (map * shifted shifted)))
 ```
 
 This is the intended mental model:
@@ -590,4 +624,5 @@ This is the intended mental model:
 - `Tensor` is the object.
 - `map` is elementwise/broadcast computation.
 - `contract` is tensor algebra.
-- `overwrite` is explicit destination mutation.
+- `materialize` is the expression-to-storage boundary, with optional
+  destination reuse.
