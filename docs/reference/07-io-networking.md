@@ -66,10 +66,9 @@ deterministic `io/*-fiber-required` errors.
 ## 22. Networking
 
 Naming policy for public wrappers:
-- Current spellings in docs/examples: `fs-*`, `tcp-*`, `udp-*`,
+- Canonical spellings in docs/examples: `fs-*`, `tcp-*`, `udp-*`,
   `dns-resolve`, and `tls-*`.
-- Stdlib still exports `filesystem-*` compatibility aliases for the
-  filesystem wrapper family while `AUDIT-FILESYSTEM-SURFACE-087` remains open.
+- Long-form filesystem compatibility aliases are not exported.
 
 ### TCP
 

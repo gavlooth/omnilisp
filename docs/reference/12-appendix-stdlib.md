@@ -122,11 +122,6 @@ These redefine I/O to go through effects (fast path when no handler):
 `tls-close`,
 `http-get`, `http-request`
 
-Compatibility aliases are also exported for the unresolved filesystem surface:
-- filesystem wrappers: `filesystem-open`, `filesystem-read`,
-  `filesystem-write`, `filesystem-close`, `filesystem-stat`,
-  `filesystem-read-directory`, `filesystem-rename`, `filesystem-unlink`
-
 ### Type Predicates (Stdlib-Defined)
 
 `int?`, `double?`, `number?`, `string?`, `symbol?`, `boolean?`, `list?`,

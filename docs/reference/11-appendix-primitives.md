@@ -150,10 +150,8 @@ These support user extension via method tables.
 | `fs-rename` | 2 | Rename/move file |
 | `fs-unlink` | 1 | Remove file path |
 
-Stdlib compatibility aliases map `filesystem-open`, `filesystem-read`,
-`filesystem-write`, `filesystem-close`, `filesystem-stat`,
-`filesystem-read-directory`, `filesystem-rename`, and `filesystem-unlink`
-to this `fs-*` family; raw primitive registration remains `fs-*`.
+`fs-*` is the canonical filesystem family; long-form compatibility aliases are
+not exported.
 
 **String:**
 

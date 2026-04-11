@@ -346,8 +346,7 @@
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
-;; Current filesystem wrapper family is `fs-*`; `filesystem-*` aliases remain
-;; exported pending AUDIT-FILESYSTEM-SURFACE-087.
+;; Canonical filesystem wrapper family is `fs-*`.
 (define fs-open (lambda (path flags .. rest) (signal io/fs-open (cons path (cons flags rest)))))
 (define fs-read (lambda (handle n) (signal io/fs-read (cons handle n))))
 (define fs-write (lambda (handle data) (signal io/fs-write (cons handle data))))
@@ -356,14 +355,6 @@
 (define fs-readdir (lambda (path) (signal io/fs-readdir path)))
 (define fs-rename (lambda (src dst) (signal io/fs-rename (cons src dst))))
 (define fs-unlink (lambda (path) (signal io/fs-unlink path)))
-(define filesystem-open fs-open)
-(define filesystem-read fs-read)
-(define filesystem-write fs-write)
-(define filesystem-close fs-close)
-(define filesystem-stat fs-stat)
-(define filesystem-read-directory fs-readdir)
-(define filesystem-rename fs-rename)
-(define filesystem-unlink fs-unlink)
 (define (tcp-connect (^String host) (^Integer port)) (signal io/tcp-connect (cons host port)))
 ;; Keep untyped fallback so invalid args still flow through io/tcp-connect canonical payload errors.
 (define (tcp-connect host port) (signal io/tcp-connect (cons host port)))

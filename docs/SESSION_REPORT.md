@@ -617,7 +617,7 @@
     and `tcp-*`/`udp-*`/`dns-resolve`/`tls-*` surfaces.
   - Deleted the `eval_serialized_expr(...)` AOT debug bridge.
   - Updated tests and docs to use canonical spellings and removed the stale
-    `filesystem-read-directory` test path.
+    long-form filesystem test path.
   - Scrubbed remaining explicit migration wording from archival plan notes and
     changelog slices so the repository history now records the removals as
     one-way contract changes rather than support promises.

@@ -67,12 +67,14 @@ queue; this file is supporting context for why the queue is ordered this way.
   primitive coverage in the compiler primitive hash table, resized the table to
   preserve a safe load factor, and added closure-capture regression coverage for
   representative math, string, and collection primitives.
+- `AUDIT-FILESYSTEM-SURFACE-087`: selected `fs-*` as the canonical
+  filesystem wrapper family and removed the remaining stdlib `filesystem-*`
+  aliases; runtime, compiler, docs, and tests now agree on the same surface.
 
 ## Current Plan
 
 1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
-   `AUDIT-LIST-HELPER-ALIAS-086`, `AUDIT-FILESYSTEM-SURFACE-087`, and
-   `AUDIT-IMMER-PERSISTENT-DISPATCH-088`.
+   `AUDIT-LIST-HELPER-ALIAS-086` and `AUDIT-IMMER-PERSISTENT-DISPATCH-088`.
 2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
 3. Re-run broader Docker validation when a change crosses runtime memory,

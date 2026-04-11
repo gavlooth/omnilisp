@@ -166,11 +166,11 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "s)",
         pass, fail);
 
-    test_str_interp(interp, "fs-* alias roundtrip read/write",
+    test_str_interp(interp, "fs-* second roundtrip read/write",
         "(block "
-        "(define p \"/tmp/omni_filesystem_alias_roundtrip.txt\") "
+        "(define p \"/tmp/omni_fs_second_roundtrip.txt\") "
         "(define h (fs-open p 577 420)) "
-        "(fs-write h \"alias-ok\") "
+        "(fs-write h \"fs-ok\") "
         "(fs-close h) "
         "(define r (fs-open p 0)) "
         "(define s (fs-read r 32)) "
@@ -178,6 +178,8 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(fs-unlink p) "
         "s)",
         pass, fail);
+    test_nil_interp(interp, "filesystem-open alias removed", "(bound? 'filesystem-open)", pass, fail);
+    test_nil_interp(interp, "filesystem-read-directory alias removed", "(bound? 'filesystem-read-directory)", pass, fail);
 
     test_truthy_interp(interp, "fs-readdir returns array",
         "(array? (fs-readdir \"/tmp\"))", pass, fail);

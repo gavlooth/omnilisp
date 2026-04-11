@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 4
+Current actionable count: 3
 
 Completed backlog snapshots:
 
@@ -36,27 +36,35 @@ Use this file only for still-open work.
     live uses to `List`, remove the primitive registration/compiler map entry,
     and update docs/tests.
 
-- [ ] `AUDIT-FILESYSTEM-SURFACE-087` reconcile `fs-*` versus `filesystem-*`
-  naming across runtime and stdlib
-  - audit finding: fast-dev duplicate `filesystem-*` primitive aliases were
-    removed, but `stdlib/stdlib.lisp` still exports `filesystem-*` aliases for
-    the `fs-*` primitive family.
-  - docs note: 2026-04-11 follow-up corrected docs/comments to reflect the
-    current `fs-*` runtime/wrapper family and `filesystem-*` stdlib
-    compatibility aliases; the product naming decision remains open.
-  - next step: decide which family is canonical, then update stdlib, docs, and
-    fast-dev/main registration consistently.
-
-- [ ] `AUDIT-IMMER-PERSISTENT-DISPATCH-088` add typed wrappers or remove the
-  generic persistent-collection dispatch idea from `lib/immer.omni`
-  - audit finding: the broken generic `count`/`conj`/`into` facade was removed
-    because current opaque FFI handles have no defined
-    `persistent-array?`/`persistent-dictionary?`/`persistent-set?` predicates.
-  - next step: either introduce explicit typed wrapper values with predicates
-    and multiple-dispatch methods, or keep only the explicit
-    `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
+- [ ] `AUDIT-IMMER-PERSISTENT-DISPATCH-088` harden persistent collection
+  wrappers before adding generic dispatch
+  - audit finding: `persistent-dictionary` silently ignores an odd trailing
+    argument, unlike canonical `Dictionary` even key/value arity.
+  - audit finding: persistent collection wrappers pass raw opaque handles into
+    a C++ bridge that uses unchecked `static_cast` by target operation family.
+  - audit finding: no `persistent-array?`/`persistent-dictionary?`/
+    `persistent-set?` predicates or runtime wrapper values exist, so generic
+    `count`/`conj`/`into` dispatch remains unsound today.
+  - next step: first fail closed for odd dictionary arity and wrong-handle
+    operation calls, then either introduce typed wrapper values/predicates for
+    multiple dispatch or keep only explicit `persistent-array`,
+    `persistent-dictionary`, and `persistent-set` APIs.
 
 ## Recently Closed
+
+- [x] `AUDIT-FILESYSTEM-SURFACE-087` canonicalize filesystem wrappers on
+  `fs-*`
+  - closure evidence:
+    - stdlib no longer exports `filesystem-*` compatibility aliases.
+    - runtime, compiler primitive hash entries, docs, and tests now agree on
+      the canonical `fs-*` wrapper family.
+    - regression coverage verifies representative long-form filesystem aliases
+      are unbound.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `advanced-effect-union-limit` subgroup: `pass=65 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
 
 - [x] `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099` complete compiler
   primitive hash coverage for public runtime primitives

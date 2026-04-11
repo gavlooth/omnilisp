@@ -1,5 +1,18 @@
 ## 2026-04-11
 
+- Closed `AUDIT-FILESYSTEM-SURFACE-087`:
+  - Selected `fs-*` as the canonical filesystem wrapper/primitive family and
+    removed the remaining stdlib `filesystem-*` compatibility aliases.
+  - Added regression coverage that verifies removed long-form filesystem aliases
+    are no longer bound while the canonical `fs-*` roundtrip still works.
+  - Updated reference docs and the audit plan so the filesystem surface is no
+    longer described as pending or compatibility-backed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `advanced-effect-union-limit` subgroup: `pass=65 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - Closed `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099`:
   - Completed public runtime primitive value-position coverage in the compiler
     primitive hash table so public primitives are lowered through
