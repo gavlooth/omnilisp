@@ -1,5 +1,18 @@
 ## 2026-04-11
 
+- Normalized the first short-circuit/partial-success list walkers for improper
+  list input:
+  - Added a private stdlib proper-list guard and applied it to `take`, `drop`,
+    `zip`, `any?`, `every?`, and `find` so improper lists fail coherently
+    instead of returning partial results or false-positive truthy values.
+  - Mirrored the guard and protected definitions in the compiler stdlib prelude
+    for the overlapping walker set.
+  - Added regressions for the prior partial-success and short-circuit cases in
+    the advanced stdlib numeric collection coverage.
+  - validation:
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=275 fail=0`
+    - bounded `compiler` slice: `pass=196 fail=0`
+
 - Completed the runtime `eval` data-to-expression fail-closed lane:
   - Lambda and let data forms now preserve parser-equivalent implicit block
     bodies instead of truncating to the first body form.

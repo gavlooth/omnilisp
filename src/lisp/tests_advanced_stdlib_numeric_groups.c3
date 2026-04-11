@@ -93,6 +93,10 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "zip first car", "(car (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 1, pass, fail);
     test_eq(interp, "zip first cdr", "(cdr (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 4, pass, fail);
     test_eq(interp, "zip unequal", "(length (zip (quote (1 2)) (quote (4 5 6))))", 2, pass, fail);
+    test_error_contains(interp, "take rejects improper list", "(take 1 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "drop rejects improper list", "(drop 0 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "zip rejects improper left list", "(zip (cons 1 2) '(3))", "proper list", pass, fail);
+    test_error_contains(interp, "zip rejects improper right list", "(zip '(1) (cons 3 4))", "proper list", pass, fail);
     test_eq(interp, "range length", "(length (range 5))", 5, pass, fail);
     test_eq(interp, "range car", "(car (range 5))", 0, pass, fail);
     test_nil(interp, "range 0", "(range 0)", pass, fail);
@@ -101,6 +105,8 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_nil(interp, "any? not found", "(any? (lambda (x) (= x 99)) (quote (1 2 3 4)))", pass, fail);
     test_truthy(interp, "every? all", "(every? (lambda (x) (> x 0)) (quote (1 2 3 4)))", pass, fail);
     test_nil(interp, "every? not all", "(every? (lambda (x) (> x 2)) (quote (1 2 3 4)))", pass, fail);
+    test_error_contains(interp, "any? rejects improper list before truthy tail", "(any? (lambda (x) false) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "every? rejects improper list before early false", "(every? (lambda (x) false) (cons 1 2))", "proper list", pass, fail);
     test_truthy(interp, "every? empty", "(every? (lambda (x) (> x 0)) nil)", pass, fail);
     test_eq(interp, "try/raise catch payload data", "(try (lambda (xx) (+ 1 (signal raise 42))) (lambda (payload) (ref payload 'data)))", 42, pass, fail);
     test_eq(interp, "try no error", "(try (lambda (xx) (+ 1 2)) (lambda (msg) msg))", 3, pass, fail);
@@ -276,6 +282,7 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "remove", "(length (remove (lambda (x) (= x 3)) (quote (1 2 3 4 5))))", 4, pass, fail);
     test_eq(interp, "find found", "(find (lambda (x) (= x 3)) (quote (1 2 3 4 5)))", 3, pass, fail);
     test_nil(interp, "find not found", "(find (lambda (x) (= x 99)) (quote (1 2 3)))", pass, fail);
+    test_error_contains(interp, "find rejects improper list before early match", "(find odd? (cons 1 2))", "proper list", pass, fail);
 }
 
 fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* pass, int* fail) {

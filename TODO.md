@@ -53,10 +53,13 @@ Use this file only for still-open work.
     tail behavior (`map`, `filter`, `foldl`, `foldr`, `append`, `take`,
     `drop`, `zip`, `for-each`, `any?`, `every?`, `flatten`, and related
     helpers).
-  - next step: define a shared proper-list guard or traversal helper where
-    practical, apply it top-down to list walkers, and add targeted regressions
-    for improper-list rejection versus explicitly supported cons/dotted-tail
-    behavior.
+  - progress note: 2026-04-11 slice added a private proper-list guard and
+    applied it to `take`, `drop`, `zip`, `any?`, `every?`, and `find`, covering
+    the highest-risk partial-success and short-circuit false-positive cases.
+  - next step: apply the same guard to remaining ad-hoc walkers (`map`,
+    `filter`, `foldl`, `foldr`, `for-each`, `flatten`, `partition`, `remove`,
+    `nth`, and any related helpers) and keep targeted improper-list
+    regressions for each normalized boundary.
 
 - [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
   scientific-computing surface

@@ -30,6 +30,9 @@ queue; this file is supporting context for why the queue is ordered this way.
   now preserve parser-equivalent implicit block bodies, and `macroexpand` now
   surfaces structural conversion failures for malformed cons forms instead of
   returning the original malformed form.
+- List-walker partial-success slice: a private stdlib proper-list guard now
+  protects `take`, `drop`, `zip`, `any?`, `every?`, and `find`, including the
+  compiler prelude variants where those functions are present.
 
 ## Current Plan
 

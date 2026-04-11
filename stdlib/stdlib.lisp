@@ -136,6 +136,10 @@
 ;; Higher-Order Functions (multi-arg, dispatched on collection type)
 ;; =========================================================================
 
+;; private list-walker guard: public list walkers are proper-list-only.
+(define (__proper-list? xs) (let loop (cur xs) (if (null? cur) true (if (pair? cur) (loop (cdr cur)) nil))))
+(define (__require-proper-list xs name) (if (__proper-list? xs) nil (error (string-append name ": expected a proper list"))))
+
 ;; reverse: (reverse lst) — must be defined before map/filter (they depend on it)
 (define (reverse (^List lst)) (__reverse-list lst))
 (define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (block (push! result (ref arr j)) (loop j)))))))
@@ -191,15 +195,15 @@
 (define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
 
 ;; take: (take n coll) — first n elements (shape-preserving)
-(define (take n (^List lst)) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+(define (take n (^List lst)) (let (bad (__require-proper-list lst "take")) (if (error? bad) bad (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))))
 (define (take n (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (or (= i n) (= i len)) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; drop: (drop n coll) — skip first n elements (shape-preserving)
-(define (drop n (^List lst)) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+(define (drop n (^List lst)) (let (bad (__require-proper-list lst "drop")) (if (error? bad) bad (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))))
 (define (drop n (^Array arr)) (let (len (length arr) result []) (let loop (i n) (if (>= i len) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; zip: (zip a b) — zip two collections
-(define (zip (^List a) (^List b)) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+(define (zip (^List a) (^List b)) (let (bad-a (__require-proper-list a "zip")) (if (error? bad-a) bad-a (let (bad-b (__require-proper-list b "zip")) (if (error? bad-b) bad-b (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))))))
 (define (zip (^Array a) (^Array b)) (let (la (length a) lb (length b) result []) (let loop (i 0) (if (or (= i la) (= i lb)) result (block (push! result (cons (ref a i) (ref b i))) (loop (+ i 1)))))))
 
 ;; range: (range n) — list from 0 to n-1 (iterative, builds in reverse)
@@ -210,11 +214,11 @@
 (define (for-each (^Closure f)) (lambda (lst) (for-each f lst)))
 
 ;; any?: (any? pred lst) — true if pred is truthy for any element
-(define (any? pred (^List lst)) (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
+(define (any? pred (^List lst)) (let (bad (__require-proper-list lst "any?")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))))
 (define (any? (^Closure pred)) (lambda (lst) (any? pred lst)))
 
 ;; every?: (every? pred lst) — true if pred is truthy for all elements
-(define (every? pred (^List lst)) (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
+(define (every? pred (^List lst)) (let (bad (__require-proper-list lst "every?")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))))
 (define (every? (^Closure pred)) (lambda (lst) (every? pred lst)))
 
 ;; =========================================================================
@@ -279,7 +283,7 @@
 (define (remove pred lst) (filter (lambda (x) (not (pred x))) lst))
 
 ;; find: first element matching predicate, or nil
-(define (find pred lst) (let loop (l lst) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))
+(define (find pred lst) (let (bad (__require-proper-list lst "find")) (if (error? bad) bad (let loop (l lst) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))))
 
 ;; =========================================================================
 ;; Generators & Lazy Streams (using existing effects)
