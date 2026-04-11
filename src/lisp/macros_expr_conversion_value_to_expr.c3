@@ -30,6 +30,10 @@ fn Expr* value_to_expr(Value* val, Interp* interp) {
         return e;
     }
 
+    if (!is_list(val)) {
+        return make_error_expr(interp, "value->expr: expected expression form to be a proper list");
+    }
+
     Value* head = val.cons_val.car;
     if (head == null || head.tag != SYMBOL) return vte_call(val, interp);
 

@@ -361,6 +361,12 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         test_eq(interp, "eval literal", "(eval 42)", 42, pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-list");
         test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);
+        test_error_contains(interp, "eval rejects improper call form", "(eval (cons '+ (cons 1 2)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects improper and form", "(eval (cons 'and (cons true false)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects improper lambda params", "(eval (list 'lambda (cons 'x 'y) 'x))",
+            "value->expr: expected lambda parameters to be a proper list", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco apply");
         test_eq(interp, "apply +", "(apply + (quote (1 2)))", 3, pass, fail);
         test_error_contains(interp, "apply rejects non-list args", "(apply + 1)",

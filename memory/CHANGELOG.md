@@ -1,5 +1,19 @@
 ## 2026-04-11
 
+- Hardened `eval` value-to-expression conversion found during the
+  follow-up list-walker audit:
+  - `eval` now rejects improper list program forms before special-form or
+    call lowering can truncate dotted tails.
+  - Lambda parameter conversion now rejects non-symbol and improper parameter
+    lists instead of silently dropping malformed elements.
+  - `eval` now preserves the underlying runtime error message for these
+    conversion failures.
+  - Added regressions in the advanced stdlib introspection coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct eval checks for constructed improper call, `and`, and lambda-params forms
+    - bounded `advanced-stdlib-numeric-introspection-lazy-tco` subgroup: `pass=32 fail=0`
+
 - Hardened `apply` malformed-argument-list handling found during the
   follow-up list-walker audit:
   - `apply` now rejects non-list and improper-list argument inputs at the

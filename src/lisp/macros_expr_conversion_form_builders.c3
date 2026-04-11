@@ -54,10 +54,16 @@ fn Expr* vte_lambda(Value* rest, Interp* interp) {
     List{SymbolId} params;
     Value* p = params_list;
     while (is_cons(p)) {
-        if (p.cons_val.car != null && p.cons_val.car.tag == SYMBOL) {
-            params.push(p.cons_val.car.sym_val);
+        if (p.cons_val.car == null || p.cons_val.car.tag != SYMBOL) {
+            params.free();
+            return make_error_expr(interp, "value->expr: expected lambda parameters to be symbols");
         }
+        params.push(p.cons_val.car.sym_val);
         p = p.cons_val.cdr;
+    }
+    if (!is_nil(p)) {
+        params.free();
+        return make_error_expr(interp, "value->expr: expected lambda parameters to be a proper list");
     }
     usz param_count = params.len();
 

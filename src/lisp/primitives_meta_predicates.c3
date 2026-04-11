@@ -76,7 +76,7 @@ fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {
     Expr* expr = value_to_expr(args[0], interp);
     if (expr == null) return raise_error(interp, "eval: could not convert to expression");
     Value* result = runtime_eval_expr(expr, interp.global_env, interp);
-    if (result != null && result.tag == ERROR) return raise_error(interp, "eval: error during evaluation");
+    if (result != null && result.tag == ERROR) return raise_error(interp, result.str_chars[:result.str_len]);
     return result;
 }
 
