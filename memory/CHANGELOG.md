@@ -1,5 +1,18 @@
 ## 2026-04-11
 
+- Hardened Pika grammar clause validation found during the follow-up
+  list-walker audit:
+  - Grammar rule and clause forms now reject improper lists instead of
+    compiling only the cons-prefix shape.
+  - Unary grammar operators (`many`, `some`, `opt`, `not`, `and`, `scan`) now
+    enforce exact operand arity, and `end` enforces zero operands.
+  - Added regressions in the Pika runtime grammar coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct malformed Pika grammar checks for extra operands, improper clause
+      tails, extra rule fields, empty unary operators, and `end` operands
+    - bounded `pika` slice: `pass=89 fail=0`
+
 - Hardened sequence-pattern matching found during the follow-up list-walker
   audit:
   - Interpreted sequence patterns now match only arrays or proper lists, so

@@ -4,8 +4,8 @@ import lisp;
 
 fn bool compile_clause_many_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "many") && !str_eq_c(op_name, "*")) return false;
-    if (!lisp::is_cons(rest)) {
-        *out_idx = gc.rb.add("_eps", mk_epsilon());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: many expects exactly one operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     int child = compile_clause(gc, rest.cons_val.car);
@@ -15,8 +15,8 @@ fn bool compile_clause_many_op(GrammarCompiler* gc, char[] op_name, lisp::Value*
 
 fn bool compile_clause_some_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "some") && !str_eq_c(op_name, "+")) return false;
-    if (!lisp::is_cons(rest)) {
-        *out_idx = gc.rb.add("_fail", mk_fail());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: some expects exactly one operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     int child = compile_clause(gc, rest.cons_val.car);
@@ -26,8 +26,8 @@ fn bool compile_clause_some_op(GrammarCompiler* gc, char[] op_name, lisp::Value*
 
 fn bool compile_clause_opt_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "opt") && !str_eq_c(op_name, "?")) return false;
-    if (!lisp::is_cons(rest)) {
-        *out_idx = gc.rb.add("_eps", mk_epsilon());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: opt expects exactly one operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     int child = compile_clause(gc, rest.cons_val.car);
@@ -37,8 +37,13 @@ fn bool compile_clause_opt_op(GrammarCompiler* gc, char[] op_name, lisp::Value* 
 
 fn bool compile_clause_scan_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "scan")) return false;
-    if (!lisp::is_cons(rest) || !lisp::is_string(rest.cons_val.car)) {
-        *out_idx = gc.rb.add("_fail", mk_fail());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: scan expects exactly one string operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
+        return true;
+    }
+    if (!lisp::is_string(rest.cons_val.car)) {
+        gc_set_error(gc, "parser/grammar-arity", "pika/grammar: scan expects exactly one string operand");
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     lisp::Value* pattern_val = rest.cons_val.car;
@@ -53,8 +58,8 @@ fn bool compile_clause_scan_op(GrammarCompiler* gc, char[] op_name, lisp::Value*
 
 fn bool compile_clause_not_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "not") && !str_eq_c(op_name, "!")) return false;
-    if (!lisp::is_cons(rest)) {
-        *out_idx = gc.rb.add("_eps", mk_epsilon());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: not expects exactly one operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     int child = compile_clause(gc, rest.cons_val.car);
@@ -64,8 +69,8 @@ fn bool compile_clause_not_op(GrammarCompiler* gc, char[] op_name, lisp::Value* 
 
 fn bool compile_clause_and_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "and") && !str_eq_c(op_name, "&")) return false;
-    if (!lisp::is_cons(rest)) {
-        *out_idx = gc.rb.add("_eps", mk_epsilon());
+    if (!clause_rest_exact_arity(gc, rest, 1, "pika/grammar: and expects exactly one operand")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
         return true;
     }
     int child = compile_clause(gc, rest.cons_val.car);
@@ -73,8 +78,12 @@ fn bool compile_clause_and_op(GrammarCompiler* gc, char[] op_name, lisp::Value* 
     return true;
 }
 
-fn bool compile_clause_end_op(GrammarCompiler* gc, char[] op_name, int* out_idx) {
+fn bool compile_clause_end_op(GrammarCompiler* gc, char[] op_name, lisp::Value* rest, int* out_idx) {
     if (!str_eq_c(op_name, "end") && !str_eq_c(op_name, "$")) return false;
+    if (!clause_rest_exact_arity(gc, rest, 0, "pika/grammar: end expects no operands")) {
+        *out_idx = gc.rb.add("_err", mk_fail());
+        return true;
+    }
     *out_idx = gc.rb.add("_end", mk_end_of_input());
     return true;
 }
@@ -86,7 +95,7 @@ fn bool compile_clause_unary_op(GrammarCompiler* gc, char[] op_name, lisp::Value
     if (compile_clause_scan_op(gc, op_name, rest, out_idx)) return true;
     if (compile_clause_not_op(gc, op_name, rest, out_idx)) return true;
     if (compile_clause_and_op(gc, op_name, rest, out_idx)) return true;
-    return compile_clause_end_op(gc, op_name, out_idx);
+    return compile_clause_end_op(gc, op_name, rest, out_idx);
 }
 
 fn int compile_clause_list_operator(GrammarCompiler* gc, char[] op_name, lisp::Value* rest) {

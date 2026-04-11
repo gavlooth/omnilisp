@@ -9,6 +9,10 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
         gc_set_error(gc, "parser/grammar-rule-not-list", "pika/grammar: rule must be a list");
         return false;
     }
+    if (!lisp::is_list(rule_def)) {
+        gc_set_error(gc, "parser/grammar-rule-not-list", "pika/grammar: rule definition must be a proper list");
+        return false;
+    }
 
     lisp::Value* head = rule_def.cons_val.car;
     if (!lisp::is_symbol(head)) {
@@ -38,6 +42,10 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
     lisp::Value* clause_rest = rest.cons_val.cdr;
     if (!lisp::is_cons(clause_rest)) {
         gc_set_error(gc, "parser/grammar-rule-missing-clause", "pika/grammar: rule requires a clause");
+        return false;
+    }
+    if (!lisp::is_nil(clause_rest.cons_val.cdr)) {
+        gc_set_error(gc, "parser/grammar-rule-arity", "pika/grammar: rule expects exactly name and clause");
         return false;
     }
     *clause_out = clause_rest.cons_val.car;

@@ -224,6 +224,24 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "pika/grammar scan rejects invalid class",
         "(pika/grammar 'g-scan-bad '(rule start (scan \"[]\")))",
         "invalid scan pattern", pass, fail);
+    test_error_contains(interp, "pika/grammar many rejects extra operand",
+        "(pika/grammar 'g-many-extra '(rule start (many \"a\" \"b\")))",
+        "many expects exactly one operand", pass, fail);
+    test_error_contains(interp, "pika/grammar scan rejects extra operand",
+        "(pika/grammar 'g-scan-extra '(rule start (scan \"[a]\" \"b\")))",
+        "scan expects exactly one string operand", pass, fail);
+    test_error_contains(interp, "pika/grammar rejects improper clause operands",
+        "(pika/grammar 'g-improper (list 'rule 'start (cons 'many (cons \"a\" \"b\"))))",
+        "grammar clause must be a proper list", pass, fail);
+    test_error_contains(interp, "pika/grammar rejects extra rule fields",
+        "(pika/grammar 'g-rule-extra '(rule start \"a\" \"b\"))",
+        "rule expects exactly name and clause", pass, fail);
+    test_error_contains(interp, "pika/grammar rejects empty many",
+        "(pika/grammar 'g-many-empty '(rule start (many)))",
+        "many expects exactly one operand", pass, fail);
+    test_error_contains(interp, "pika/grammar end rejects operands",
+        "(pika/grammar 'g-end-extra '(rule start (end \"x\")))",
+        "end expects no operands", pass, fail);
     test_tag(interp, "pika/parse scan clauses beyond cap",
         "(block "
         "  (pika/grammar 'g-scan-many "
