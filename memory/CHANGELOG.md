@@ -1,5 +1,16 @@
 ## 2026-04-11
 
+- Hardened sequence-pattern matching found during the follow-up list-walker
+  audit:
+  - Interpreted sequence patterns now match only arrays or proper lists, so
+    improper cons chains and scalars no longer satisfy sequence patterns via
+    cons-prefix length truncation.
+  - Added regressions in the advanced core semantics match coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct match checks for improper single, improper rest, and scalar empty-sequence inputs
+    - bounded `advanced-core-semantics-match` subgroup: `pass=71 fail=0`
+
 - Hardened `eval` value-to-expression conversion found during the
   follow-up list-walker audit:
   - `eval` now rejects improper list program forms before special-form or

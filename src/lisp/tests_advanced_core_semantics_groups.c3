@@ -11,6 +11,9 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
     test_eq(interp, "match computed", "(match (+ 1 1) (1 10) (2 20) (3 30))", 20, pass, fail);
     test_eq(interp, "match [a b] => 30", "(match (quote (10 20)) ([a b] (+ a b)))", 30, pass, fail);
     test_eq(interp, "match [x] => 42", "(match (quote (42)) ([x] x))", 42, pass, fail);
+    test_eq(interp, "match rejects improper sequence input", "(match (cons 1 2) ([x] 1) (_ 0))", 0, pass, fail);
+    test_eq(interp, "match rejects improper rest sequence input", "(match (cons 1 2) ([x .. tail] 1) (_ 0))", 0, pass, fail);
+    test_eq(interp, "match rejects scalar empty sequence input", "(match 7 ([] 1) (_ 0))", 0, pass, fail);
     test_eq(interp, "match [a b c] product", "(match (quote (2 3 4)) ([a b c] (* a (* b c))))", 24, pass, fail);
     test_eq(interp, "match [h .. t] tail len", "(match (quote (1 2 3 4 5)) ([h .. t] (length t)))", 4, pass, fail);
     test_eq(interp, "match _ wildcard", "(match 42 (_ 0))", 0, pass, fail);

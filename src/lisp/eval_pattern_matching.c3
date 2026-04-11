@@ -105,6 +105,7 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
     if (val != null && val.tag == ARRAY && val.array_val != null) {
         list_len = val.array_val.length;
     } else {
+        if (!is_list(val)) return match_fail();
         list_len = get_list_length(val);
     }
 
