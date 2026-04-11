@@ -1,5 +1,15 @@
 ## 2026-04-11
 
+- Aligned `length` with dotted cons `ref` behavior found during the
+  cons-chain walker audit:
+  - Dotted terminal tails now count as addressable sequence elements, matching
+    positive and negative `ref` indexing on dotted cons chains.
+  - Added regressions in the advanced collections generic operations group.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct `length` probes for dotted cons chains
+    - bounded `advanced-collections-module` subgroup: `pass=137 fail=0`
+
 - Fixed negative `ref` indexing on dotted cons pairs found during the
   cons-chain walker audit:
   - Dotted terminal tails now participate in the negative-index length used by

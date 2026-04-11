@@ -67,6 +67,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
         count++;
         current = current.cons_val.cdr;
     }
+    if (!is_nil(current)) count++;
     return make_int(interp, count);
 }
 

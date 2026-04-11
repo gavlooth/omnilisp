@@ -107,6 +107,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "length dict", "(length {'a 1 'b 2})", 2, pass, fail);
     test_eq(interp, "length string", "(length \"hello\")", 5, pass, fail);
     test_eq(interp, "length list", "(length '(1 2 3 4))", 4, pass, fail);
+    test_eq(interp, "length dotted cons", "(length (cons 1 2))", 2, pass, fail);
+    test_eq(interp, "length dotted cons chain", "(length (cons 1 (cons 2 3)))", 3, pass, fail);
     // push!
     setup(interp, "(define ga [1 2])");
     test_tag_interp(interp, "push! returns void", "(push! ga 3)", VOID, pass, fail);
