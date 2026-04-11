@@ -208,8 +208,8 @@
 (println (format "Timestamp alias: %s" (is? 100 'Integer)))
 (println (format "Price alias: %s" (is? 3.14 'Double)))
 
-;; string->number / String
-(println (format "string->number: %s" (string->number "42")))
+;; parse-number / String
+(println (format "parse-number: %s" (parse-number "42")))
 (println (format "String: %s" (String 99)))
 (println (format "String: %s" (String 'hello)))
 

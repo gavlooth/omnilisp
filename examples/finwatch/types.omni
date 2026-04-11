@@ -6,7 +6,7 @@
 ;;   type-of          — runtime type tag inspection
 ;;   is?              — type predicate (checks type hierarchy)
 ;;   instance?        — check if value is a struct instance
-;;   string->number / String — conversion functions
+;;   parse-number / String — conversion functions
 ;;   import (sym 'as alias) — selective import with renaming
 
 (module types

@@ -29,9 +29,11 @@ As of: 2026-04-11
   - `List(String)` and `String(List)` are the canonical list/string
     conversion surfaces; public `string->list` / `list->string` aliases are no
     longer live.
-  - remaining surface decisions for `string->number` and lowercase `list` are
-    split into explicit `TODO.md` follow-ups instead of being kept as vague
-    naming debt.
+  - `parse-number` is the canonical permissive numeric parse API; public
+    `string->number` is no longer live, and `Number` remains a non-callable
+    abstract/meta type descriptor.
+  - the remaining surface decision for lowercase `list` is split into an
+    explicit `TODO.md` follow-up instead of being kept as vague naming debt.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.

@@ -164,7 +164,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "truncate pos", "(truncate 3.9)" },
     { "truncate neg", "(truncate -3.9)" },
     // pow and this overflow shape are still not mapped in the AOT e2e compiler path.
-    { "string->number int overflow type", "(type-of (string->number \"9223372036854775808\"))" },
+    { "parse-number int overflow type", "(type-of (parse-number \"9223372036854775808\"))" },
     { "sqrt 4", "(sqrt 4)" },
     { "sqrt 9", "(sqrt 9)" },
     { "even? yes", "(even? 4)" },

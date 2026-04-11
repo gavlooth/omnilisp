@@ -1,5 +1,27 @@
 ## 2026-04-11
 
+- Canonicalized permissive numeric parsing as `parse-number`:
+  - `parse-number` now replaces the public `string->number` arrow alias on the
+    runtime/compiler primitive surfaces.
+  - `Number` remains a non-callable abstract/meta type descriptor; permissive
+    maybe-valued parsing is intentionally not constructor semantics.
+  - Added `docs/plans/number-parse-surface-decision-2026-04-11.md` and
+    migrated live tests, docs, and examples to `parse-number`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `parse-number` int/double/nil results, removed
+      `string->number` binding, live `parse-number` binding, and non-callable
+      `Number`
+    - bounded `advanced-macro-hygiene-string-number` subgroup: `pass=9 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `compiler` slice: `pass=196 fail=0`
+    - `./build/main --check examples/deduce_crud_server.omni`
+    - `./build/main --check examples/finwatch/smoke_test.omni`
+    - broader Docker `scripts/run_e2e.sh` reached generated-source parity but
+      failed the generated C3 build on primitive capture names `error` /
+      `error?`; tracked as `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
+
 - Canonicalized list/string conversion through constructors:
   - `List(String)` is now the public string-to-list surface and returns a
     proper list of UTF-8 codepoint strings.

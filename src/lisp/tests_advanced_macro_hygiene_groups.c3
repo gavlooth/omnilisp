@@ -42,13 +42,13 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
 
 fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass, int* fail) {
     // String<->number
-    test_eq(interp, "string->number 42", "(string->number \"42\")", 42, pass, fail);
-    test_eq(interp, "string->number -7", "(string->number \"-7\")", -7, pass, fail);
-    test_nil(interp, "string->number abc => nil", "(string->number \"abc\")", pass, fail);
-    test_nil(interp, "string->number empty => nil", "(string->number \"\")", pass, fail);
-    test_eq(interp, "String round-trip 42", "(string->number (String 42))", 42, pass, fail);
-    test_eq(interp, "String round-trip 0", "(string->number (String 0))", 0, pass, fail);
-    test_eq(interp, "String round-trip -99", "(string->number (String -99))", -99, pass, fail);
+    test_eq(interp, "parse-number 42", "(parse-number \"42\")", 42, pass, fail);
+    test_eq(interp, "parse-number -7", "(parse-number \"-7\")", -7, pass, fail);
+    test_nil(interp, "parse-number abc => nil", "(parse-number \"abc\")", pass, fail);
+    test_nil(interp, "parse-number empty => nil", "(parse-number \"\")", pass, fail);
+    test_eq(interp, "String round-trip 42", "(parse-number (String 42))", 42, pass, fail);
+    test_eq(interp, "String round-trip 0", "(parse-number (String 0))", 0, pass, fail);
+    test_eq(interp, "String round-trip -99", "(parse-number (String -99))", -99, pass, fail);
 
     // Stack overflow / non-tail recursion headroom. Under ASAN the host-thread
     // interpreter stack burns much more space per recursive frame, so keep a

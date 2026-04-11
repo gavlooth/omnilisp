@@ -49,13 +49,18 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`: selected constructor-first
   list/string conversion, migrated public docs/tests to `List(String)` and
   `String(List)`, and removed public `string->list` / `list->string` aliases.
+- `AUDIT-NUMBER-PARSE-SURFACE-085`: selected `parse-number` as the canonical
+  permissive parse API, kept `Number` non-callable, and removed public
+  `string->number` registration/compiler-map surface.
 
 ## Current Plan
 
-1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
-   `AUDIT-NUMBER-PARSE-SURFACE-085` and
+1. Fix the e2e primitive capture sanitizer regression now tracked as
+   `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`, because it blocks the
+   broader Docker e2e gate.
+2. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-HELPER-ALIAS-086`.
-2. Keep new implementation work sliced and committed separately after each
+3. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
 
 ## Validation Policy

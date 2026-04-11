@@ -335,15 +335,15 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
 
 fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pass, usz* fail) {
     // =========================================================================
-    // Phase 4: Missing primitives
+    // Phase 4: Numeric parse primitives
     // =========================================================================
 
-    // 52. string->number compiles
+    // 52. parse-number compiles
     {
-        char[] code = compile_to_c3("(string->number \"42\")", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"string->number\")"})
+        char[] code = compile_to_c3("(parse-number \"42\")", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"parse-number\")"})
             && compiler_code_contains_none(code, {"unsupported"});
-        compiler_test_finish_bool(ok, "Compiler: string->number", "[FAIL] Compiler: string->number", pass, fail);
+        compiler_test_finish_bool(ok, "Compiler: parse-number", "[FAIL] Compiler: parse-number", pass, fail);
     }
 
     // 53. String compiles

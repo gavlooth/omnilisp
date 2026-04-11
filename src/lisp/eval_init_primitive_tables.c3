@@ -45,7 +45,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
-        { "string->number", &prim_string_to_number, 1 },
+        { "parse-number", &prim_string_to_number, 1 },
         // Gensym
         { "gensym", &prim_gensym, 0 },
         // Dictionary

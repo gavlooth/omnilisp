@@ -147,7 +147,7 @@
       (["GET" p]
         (match (string-split p "/")
           (["" "items" id]
-            (match (string->number id)
+            (match (parse-number id)
               (nil (Err "route not found"))
               (item-id
                 (match (repo/get-by-id item-id)

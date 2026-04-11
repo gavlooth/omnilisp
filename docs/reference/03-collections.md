@@ -167,8 +167,8 @@ arr.[-1]                ;; last element (negative indexing)
 ### Conversion
 
 ```lisp
-(string->number "42")       ;; => 42
-(string->number "3.14")     ;; => 3.14
+(parse-number "42")       ;; => 42
+(parse-number "3.14")     ;; => 3.14
 (String 42)         ;; => "42"
 (Symbol "foo")      ;; => foo (symbol)
 (String 'foo)       ;; => "foo"

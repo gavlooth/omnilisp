@@ -81,7 +81,7 @@ fn bool Compiler.is_builtin_primitive(Compiler* self, SymbolId sym) {
         "string?", "integer?", "int?", "symbol?",
         "closure?", "continuation?", "double?", "list?",
         "boolean?", "bool?", "number?",
-        "string->number",
+        "parse-number",
         "Integer", "Double", "String", "Symbol", "Pointer", "Boolean", "Nil", "Void", "Closure", "Iterator",
         "gensym", "load", "apply", "equal?",
         "Array",

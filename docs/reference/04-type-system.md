@@ -142,7 +142,7 @@ Numeric conversion contract:
 - `Integer` truncates finite doubles toward zero.
 - Narrowing must be finite and within `Integer` range; overflow/non-finite
   inputs raise `type/arg-mismatch`.
-- `string->number` returns `nil` for parse failure and integer
+- `parse-number` returns `nil` for parse failure and integer
   overflow/underflow.
 
 ### Type Introspection

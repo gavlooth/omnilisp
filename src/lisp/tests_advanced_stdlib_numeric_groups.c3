@@ -152,10 +152,10 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "Double", "(Double 5)", 5.0, pass, fail);
     test_eq(interp, "Integer", "(Integer 3.7)", 3, pass, fail);
     test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
-    test_double(interp, "string->number float", "(string->number \"3.14\")", 3.14, pass, fail);
-    test_double(interp, "string->number exp", "(string->number \"1.5e2\")", 150.0, pass, fail);
-    test_nil(interp, "string->number integer overflow => nil", "(string->number \"9223372036854775808\")", pass, fail);
-    test_nil(interp, "string->number integer underflow => nil", "(string->number \"-9223372036854775809\")", pass, fail);
+    test_double(interp, "parse-number float", "(parse-number \"3.14\")", 3.14, pass, fail);
+    test_double(interp, "parse-number exp", "(parse-number \"1.5e2\")", 150.0, pass, fail);
+    test_nil(interp, "parse-number integer overflow => nil", "(parse-number \"9223372036854775808\")", pass, fail);
+    test_nil(interp, "parse-number integer underflow => nil", "(parse-number \"-9223372036854775809\")", pass, fail);
     test_str_val(interp, "Integer ctor overflow payload code",
         "(handle (Integer \"9223372036854775808\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);

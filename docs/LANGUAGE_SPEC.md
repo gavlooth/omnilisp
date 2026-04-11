@@ -1199,7 +1199,7 @@ Set order contract:
 
 | Prim | Description |
 |------|-------------|
-| `string->number` | Parse string to number |
+| `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
 | `Double` | Canonical double constructor/coercion surface |
 | `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
@@ -1208,7 +1208,7 @@ Set order contract:
 Numeric conversion policy:
 - Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
-- `string->number` returns `nil` on parse failure or numeric overflow/underflow.
+- `parse-number` returns `nil` on parse failure or numeric overflow/underflow.
 - Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
 - Dispatch does not do implicit numeric widening; cross-numeric calls require explicit conversion.
 

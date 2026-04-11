@@ -193,8 +193,8 @@ that same runtime value.
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `string->number` | 1 | Parse number |
-| `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, and symbol conversion |
+| `parse-number` | 1 | Parse number |
+| `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
 | `Double` | 1 | Canonical double constructor/coercion surface |
 | `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
 | `Symbol` | 1 | Canonical symbol constructor/coercion surface |

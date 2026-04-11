@@ -95,7 +95,7 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `repeat`                          — infinite repetition iterator (smoke_test.omni)
 
 ### Conversion functions
-- [x] `string->number`                  — parse number from string (smoke_test.omni)
+- [x] `parse-number`                  — parse number from string (smoke_test.omni)
 - [x] `String`                  — format number as string (smoke_test.omni)
 - [x] `String`                  — convert symbol to string (types.omni)
 

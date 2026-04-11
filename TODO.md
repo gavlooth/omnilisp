@@ -27,14 +27,16 @@ Use this file only for still-open work.
     then proceed through constructor/indexing, tensor-expression/materialize,
     `map`, and `contract` only after each slice has targeted tests.
 
-- [ ] `AUDIT-NUMBER-PARSE-SURFACE-085` decide the canonical parse/coercion
-  surface for string-to-number
-  - audit finding: `string->number` remains public because it returns
-    `Integer`, `Double`, or `nil`, while `Integer` and `Double` constructors
-    are target-specific and raise on contract mismatch.
-  - next step: choose whether Omni wants a permissive parse API, a callable
-    `Number` constructor, or separate explicit parse names; then migrate tests,
-    docs, compiler maps, and examples accordingly.
+- [ ] `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096` fix generated
+  e2e C3 primitive capture name sanitization
+  - audit finding: Docker `scripts/run_e2e.sh` reaches generated-source parity
+    but fails the generated C3 build because stdlib closure capture data assigns
+    `error` / `error?` captures through unsanitized names (`error`, `error_p`)
+    instead of the mapped primitive variables.
+  - next step: inspect AOT free-variable capture emission for primitive symbols
+    with macro/conflicting C names and predicate punctuation; emit the resolved
+    primitive variable names in closure capture initializers, then run the
+    Docker-bound e2e gate.
 
 - [ ] `AUDIT-LIST-HELPER-ALIAS-086` resolve whether lowercase `list` remains an
   approved public constructor/helper exception
@@ -66,6 +68,31 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-NUMBER-PARSE-SURFACE-085` canonicalize permissive numeric parsing
+  as `parse-number`
+  - decision note: `docs/plans/number-parse-surface-decision-2026-04-11.md`
+    selects `parse-number` and keeps `Number` non-callable.
+  - closure evidence:
+    - public runtime/compiler primitive surfaces now register `parse-number`
+      instead of `string->number`.
+    - live tests, examples, and docs now use `parse-number`.
+    - `Number` remains an abstract/meta type descriptor for annotation and
+      dispatch, not a value-position constructor.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `parse-number` int/double/nil results, removed
+      `string->number` binding, live `parse-number` binding, and non-callable
+      `Number`
+    - bounded `advanced-macro-hygiene-string-number` subgroup: `pass=9 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `compiler` slice: `pass=196 fail=0`
+    - `./build/main --check examples/deduce_crud_server.omni`
+    - `./build/main --check examples/finwatch/smoke_test.omni`
+    - broader Docker `scripts/run_e2e.sh` reached generated-source parity but
+      failed the generated C3 build on primitive capture names `error` /
+      `error?`; tracked as `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
 
 - [x] `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084` canonicalize list/string
   conversion through constructors
