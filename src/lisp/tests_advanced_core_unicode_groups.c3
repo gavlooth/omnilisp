@@ -26,6 +26,8 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
     test_str_val(interp, "list->string preserves multibyte chars",
         "(list->string (list \"\xc3\xa9\" \"x\"))", "\xc3\xa9x", pass, fail);
+    test_error_contains(interp, "list->string rejects non-string element",
+        "(list->string (list \"a\" 1 \"b\"))", "list->string: expected string elements", pass, fail);
     test_error_contains(interp, "list->string rejects improper list tail",
         "(list->string (cons \"a\" 2))", "list->string: expected a proper list", pass, fail);
 }
@@ -62,6 +64,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Array ctor type", "(= (type-of (Array 1 2 3)) 'Array)", pass, fail);
     test_eq(interp, "Array ctor from list ref", "(ref (Array '(7 8 9)) 1)", 8, pass, fail);
     test_eq(interp, "Array ctor from iterator ref", "(ref (Array (Iterator [7 8 9])) 1)", 8, pass, fail);
+    test_error_contains(interp, "Array ctor rejects improper list tail",
+        "(Array (cons 1 2))", "Array: expected a proper list", pass, fail);
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
     test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);

@@ -1,5 +1,21 @@
 ## 2026-04-11
 
+- Hardened collection/string conversion fail-closed behavior found during the
+  follow-up constructor-surface audit:
+  - `list->string` now rejects non-string list elements instead of silently
+    dropping them from the output.
+  - `Array` conversion from a list now rejects improper list tails instead of
+    truncating at the first non-cons tail.
+  - `sort`, `sort-by`, and internal list-to-array conversion now reject
+    non-list/improper-list inputs instead of returning truncated data.
+  - Added regressions in the advanced core constructor/string and stdlib
+    sort coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-unicode-iterator` subgroup: `pass=132 fail=0`
+    - bounded `advanced-stdlib-numeric-array-set` subgroup: `pass=37 fail=0`
+    - bounded `advanced-stdlib-numeric-sort-bitwise-hof` subgroup: `pass=21 fail=0`
+
 - Fixed the repeatable Pika stress/cache slice failures at the shared runtime
   boundary:
   - The regex engine and cache passed direct large-pattern controls; the failing

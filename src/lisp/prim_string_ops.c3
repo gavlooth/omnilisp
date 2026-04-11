@@ -201,9 +201,10 @@ fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
-        if (is_string(elem)) {
-            ds.append_string((String)elem.str_chars[:elem.str_len]);
+        if (!is_string(elem)) {
+            return raise_error(interp, "list->string: expected string elements");
         }
+        ds.append_string((String)elem.str_chars[:elem.str_len]);
     }
     if (!is_nil(list)) {
         return raise_error(interp, "list->string: expected a proper list");

@@ -248,6 +248,14 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "sort length", "(length (sort (quote (5 3 1 4 2))))", 5, pass, fail);
     test_eq(interp, "sort last", "(car (cdr (cdr (sort (quote (3 1 2))))))", 3, pass, fail);
     test_eq(interp, "sort-by custom", "(car (sort-by (lambda (a) (lambda (b) (- a b))) (quote (3 1 2))))", 1, pass, fail);
+    test_error_contains(interp, "sort rejects non-list",
+        "(sort 42)", "sort: expected list argument", pass, fail);
+    test_error_contains(interp, "sort rejects improper list tail",
+        "(sort (cons 2 1))", "sort: expected a proper list", pass, fail);
+    test_error_contains(interp, "sort-by rejects non-list",
+        "(sort-by (lambda (a) (lambda (b) (- a b))) 42)", "sort-by: expected list argument", pass, fail);
+    test_error_contains(interp, "sort-by rejects improper list tail",
+        "(sort-by (lambda (a) (lambda (b) (- a b))) (cons 2 1))", "sort-by: expected a proper list", pass, fail);
     test_eq(interp, "bitwise-and", "(bitwise-and 12 10)", 8, pass, fail);
     test_eq(interp, "bitwise-or", "(bitwise-or 12 10)", 14, pass, fail);
     test_eq(interp, "bitwise-xor", "(bitwise-xor 12 10)", 6, pass, fail);

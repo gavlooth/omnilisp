@@ -16,6 +16,7 @@ fn Value* array_promote_or_error(Value* value, Interp* interp) @inline {
 fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "sort: expected list argument");
     if (is_nil(args[0])) return make_nil(interp);
+    if (!is_cons(args[0])) return raise_error(interp, "sort: expected list argument");
     // Convert list to array
     Value*[256] arr;
     usz len = 0;
@@ -24,6 +25,8 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
         arr[len++] = cur.cons_val.car;
         cur = cur.cons_val.cdr;
     }
+    if (is_cons(cur)) return raise_error(interp, "sort: list input too long");
+    if (!is_nil(cur)) return raise_error(interp, "sort: expected a proper list");
     // Insertion sort (stable)
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
@@ -67,6 +70,7 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return raise_error(interp, "sort-by: expected comparator and list");
     Value* cmp_fn = args[0];
     if (is_nil(args[1])) return make_nil(interp);
+    if (!is_cons(args[1])) return raise_error(interp, "sort-by: expected list argument");
     // Convert list to array
     Value*[256] arr;
     usz len = 0;
@@ -75,6 +79,8 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
         arr[len++] = cur.cons_val.car;
         cur = cur.cons_val.cdr;
     }
+    if (is_cons(cur)) return raise_error(interp, "sort-by: list input too long");
+    if (!is_nil(cur)) return raise_error(interp, "sort-by: expected a proper list");
     // Insertion sort with custom comparator
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
@@ -123,6 +129,12 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
         usz count = 0;
         Value* cur = args[0];
         while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
+        if (is_cons(cur)) {
+            return raise_error(interp, "Array: list input too long or cyclic");
+        }
+        if (!is_nil(cur)) {
+            return raise_error(interp, "Array: expected a proper list");
+        }
         Value* v = make_array(interp, count);
         if (v == null || v.tag != ARRAY || v.array_val == null) return v;
         cur = args[0];
@@ -181,10 +193,17 @@ fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "list->array: expected list");
+    if (!is_cons(args[0]) && !is_nil(args[0])) return raise_error(interp, "list->array: expected list");
     // Count elements
     usz count = 0;
     Value* cur = args[0];
     while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
+    if (is_cons(cur)) {
+        return raise_error(interp, "list->array: list input too long or cyclic");
+    }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "list->array: expected a proper list");
+    }
     Value* v = make_array(interp, count);
     if (v == null || v.tag != ARRAY || v.array_val == null) return v;
     cur = args[0];
