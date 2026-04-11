@@ -150,9 +150,10 @@ These support user extension via method tables.
 | `fs-rename` | 2 | Rename/move file |
 | `fs-unlink` | 1 | Remove file path |
 
-Compatibility shorthands (same behavior/arity):
-`fs-open`, `fs-read`, `fs-write`, `fs-close`, `fs-stat`, `fs-readdir`,
-`fs-rename`, and `fs-unlink`.
+Stdlib compatibility aliases map `filesystem-open`, `filesystem-read`,
+`filesystem-write`, `filesystem-close`, `filesystem-stat`,
+`filesystem-read-directory`, `filesystem-rename`, and `filesystem-unlink`
+to this `fs-*` family; raw primitive registration remains `fs-*`.
 
 **String:**
 

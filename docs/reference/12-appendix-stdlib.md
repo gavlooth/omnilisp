@@ -111,7 +111,7 @@ These redefine I/O to go through effects (fast path when no handler):
 `tcp-accept`, `tcp-read`,
 `tcp-write`, `tcp-close`,
 `udp-socket`, `udp-bind`, `udp-send`,
-`udp-receive`, `udp-close`,
+`udp-recv`, `udp-close`,
 `pipe-connect`, `pipe-listen`, `process-spawn`, `process-wait`,
 `process-kill`, `signal-handle`, `signal-unhandle`, `dns-resolve`, `async-sleep`,
 `offload`, `task-spawn`, `task-join`, `task-join-timeout`, `task-cancel`,
@@ -122,15 +122,10 @@ These redefine I/O to go through effects (fast path when no handler):
 `tls-close`,
 `http-get`, `http-request`
 
-Compatibility shorthands are also exported:
-- filesystem wrappers: `fs-open`, `fs-read`, `fs-write`, `fs-close`,
-  `fs-stat`, `fs-readdir`, `fs-rename`, `fs-unlink`
-- TCP wrappers: `tcp-connect`, `tcp-listen`, `tcp-accept`, `tcp-read`,
-  `tcp-write`, `tcp-close`
-- UDP wrappers: `udp-socket`, `udp-bind`, `udp-send`, `udp-recv`, `udp-close`
-- DNS wrapper: `dns-resolve`
-- TLS wrappers: `tls-connect`, `tls-server-wrap`, `tls-read`, `tls-write`,
-  `tls-close`
+Compatibility aliases are also exported for the unresolved filesystem surface:
+- filesystem wrappers: `filesystem-open`, `filesystem-read`,
+  `filesystem-write`, `filesystem-close`, `filesystem-stat`,
+  `filesystem-read-directory`, `filesystem-rename`, `filesystem-unlink`
 
 ### Type Predicates (Stdlib-Defined)
 

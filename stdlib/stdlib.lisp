@@ -340,8 +340,8 @@
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
-;; Canonical descriptive filesystem names remain exported (`filesystem-*`).
-;; `fs-*` spellings are retained.
+;; Current filesystem wrapper family is `fs-*`; `filesystem-*` aliases remain
+;; exported pending AUDIT-FILESYSTEM-SURFACE-087.
 (define fs-open (lambda (path flags .. rest) (signal io/fs-open (cons path (cons flags rest)))))
 (define fs-read (lambda (handle n) (signal io/fs-read (cons handle n))))
 (define fs-write (lambda (handle data) (signal io/fs-write (cons handle data))))

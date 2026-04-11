@@ -50,6 +50,9 @@ Use this file only for still-open work.
   - audit finding: fast-dev duplicate `filesystem-*` primitive aliases were
     removed, but `stdlib/stdlib.lisp` still exports `filesystem-*` aliases for
     the `fs-*` primitive family.
+  - docs note: 2026-04-11 follow-up corrected docs/comments to reflect the
+    current `fs-*` runtime/wrapper family and `filesystem-*` stdlib
+    compatibility aliases; the product naming decision remains open.
   - next step: decide which family is canonical, then update stdlib, docs, and
     fast-dev/main registration consistently.
 
