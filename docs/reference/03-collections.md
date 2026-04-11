@@ -84,8 +84,8 @@ These work across collection types:
 
 | Operation | Lists | Arrays | Dicts | Strings |
 |-----------|-------|--------|-------|---------|
-| `ref` | by index | by index | by key | char at index |
-| `length` | count | count | count | char count |
+| `ref` | by index across cons chains | by index | by key | char at index |
+| `length` | count; dotted terminal tails count as one element | count | count | char count |
 | `push!` | — | append | — | — |
 
 ### Access Syntax
@@ -95,6 +95,9 @@ Omni keeps related but distinct access operations:
 - `expr.name` is a distinct path-step operation (module/instance/dict-symbol/cons step semantics).
 - `expr.[key]` is postfix dynamic/index access syntax aligned with `ref` collection lookup semantics.
 - `(ref coll key)` is the canonical dynamic collection lookup operation.
+- For cons/list chains, `ref` supports positive and negative indexes across the
+  full chain. A non-`nil` dotted terminal tail is the final indexable element,
+  and `length` counts it as one element.
 
 Examples:
 

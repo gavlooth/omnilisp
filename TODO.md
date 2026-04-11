@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 8
+Current actionable count: 7
 
 Completed backlog snapshots:
 
@@ -17,15 +17,6 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
-
-- [ ] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
-  the language spec
-  - audit finding: runtime `ref` on cons cells supports dotted-tail addressing
-    and negative indexes more broadly than the public spec table currently
-    documents.
-  - next step: decide whether this is the intended generic sequence contract;
-    then either update `docs/LANGUAGE_SPEC.md` and reference docs, or narrow
-    runtime behavior and keep regressions for the chosen boundary.
 
 - [ ] `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` decide byte versus codepoint
   semantics for generic string `length` and `ref`
@@ -93,6 +84,17 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
+  the language spec
+  - closure evidence:
+    - kept the existing tested runtime behavior as the contract rather than
+      narrowing `ref` on cons cells back to pair-only `0`/`1` access.
+    - updated `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`, and
+      `docs/reference/11-appendix-primitives.md` to document cons/list chain
+      indexing, negative indexes, and dotted terminal tail length/indexing.
+  - validation:
+    - bounded `advanced-collections-module` subgroup: `pass=139 fail=0`
 
 - [x] `AUDIT-LIST-PREDICATE-CONTRACT-093` reconcile `list?` proper-list
   semantics with the stdlib implementation

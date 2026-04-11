@@ -40,12 +40,14 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `list?` proper-list contract: the public predicate now uses the existing
   strict primitive implementation, and the broader stdlib pair alias has been
   removed so improper lists return false.
+- `AUDIT-CONS-REF-SPEC-PARITY-095`: documented the existing tested cons/list
+  sequence contract for `ref` and `length`, including negative indexes and
+  dotted terminal tails.
 
 ## Current Plan
 
-1. Resolve documentation/product-contract issues that should not be guessed in
-   code: `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` and
-   `AUDIT-CONS-REF-SPEC-PARITY-095`.
+1. Resolve the remaining string product-contract issue:
+   `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094`.
 2. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and

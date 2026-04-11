@@ -79,8 +79,8 @@ These support user extension via method tables.
 | `>` | 2 | Comparison |
 | `<=` | 2 | Comparison |
 | `>=` | 2 | Comparison |
-| `length` | 1 | Collection |
-| `ref` | 2 | Collection |
+| `length` | 1 | Collection size; cons/list dotted terminal tails count as one element |
+| `ref` | 2 | Collection lookup; cons/list chains support positive and negative indexes |
 | `push!` | 2 | Collection |
 | `keys` | 1 | Collection |
 | `values` | 1 | Collection |

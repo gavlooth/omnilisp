@@ -1141,7 +1141,7 @@ Canonical constructor surface is `Array`.
 
 | Prim | Arity | Description | Supported types |
 |------|-------|-------------|-----------------|
-| `ref` | 2 | Lookup by key/index | Array (int), Dictionary (any key type), cons (0=car, 1=cdr), string (char) |
+| `ref` | 2 | Lookup by key/index | Array (int), Dictionary (any key type), cons/list chain (int), string (char) |
 | `push!` | 2 | Append element | Array |
 | `keys` | 1 | List of keys | Dictionary |
 | `values` | 1 | List of values | Dictionary |
@@ -1149,6 +1149,10 @@ Canonical constructor surface is `Array`.
 | `remove!` | 2 | Remove by key | Dictionary |
 
 Note: `length` (Section 7.3) is also generic — works on lists, arrays, dicts, and strings.
+
+For cons/list chains, `ref` indexes across the full cons chain and supports
+negative indexes. A non-`nil` dotted terminal tail is addressable as the final
+element, and `length` counts it as one terminal element.
 Iteration order contract:
 - `keys` and `values` use the same canonical key order.
 - Canonical key order is deterministic by key type/value (for common key kinds:

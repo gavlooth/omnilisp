@@ -1,5 +1,14 @@
 ## 2026-04-11
 
+- Closed the cons/list `ref` specification parity audit:
+  - Updated the language spec and collection reference to document the
+    already-tested runtime contract for cons/list chains: positive and negative
+    indexing across the full cons chain, dotted terminal tails addressable as
+    the final element, and `length` counting a non-`nil` dotted tail as one
+    terminal element.
+  - validation:
+    - bounded `advanced-collections-module` subgroup: `pass=139 fail=0`
+
 - Aligned `list?` with the documented proper-list contract:
   - Registered the existing strict `prim_is_list` implementation as the public
     `list?` predicate and removed the stdlib override that treated any pair,
