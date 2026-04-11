@@ -104,6 +104,9 @@ fn void init_prim_hash_files_and_misc(SymbolTable* st) {
     prim_hash_insert(st.intern("gensym"), "aot::lookup_prim(\"gensym\")");
     prim_hash_insert(st.intern("load"), "aot::lookup_prim(\"load\")");
     prim_hash_insert(st.intern("apply"), "aot::lookup_prim(\"apply\")");
+    prim_hash_insert(st.intern("error"), "aot::lookup_prim(\"error\")");
+    prim_hash_insert(st.intern("error?"), "aot::lookup_prim(\"error?\")");
+    prim_hash_insert(st.intern("error-message"), "aot::lookup_prim(\"error-message\")");
     prim_hash_insert(st.intern("explain"), "aot::lookup_prim(\"explain\")");
     prim_hash_insert(st.intern("schema-explain"), "aot::lookup_prim(\"schema-explain\")");
 }

@@ -37,6 +37,9 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
     prim_hash_insert(st.intern("TimePoint"), "aot::lookup_prim(\"TimePoint\")");
     prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
+    prim_hash_insert(st.intern("is?"), "aot::lookup_prim(\"is?\")");
+    prim_hash_insert(st.intern("instance?"), "aot::lookup_prim(\"instance?\")");
+    prim_hash_insert(st.intern("type-args"), "aot::lookup_prim(\"type-args\")");
 
     // Math
     prim_hash_insert(st.intern("abs"), "aot::lookup_prim(\"abs\")");

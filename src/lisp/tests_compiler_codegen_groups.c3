@@ -129,7 +129,21 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44d. Cons patterns lower to explicit cons/car/cdr checks instead of matching unconditionally.
+    // 44d. Registered primitives in stdlib/user lambdas are looked up, not captured as C3 locals.
+    {
+        char[] code = compile_to_c3("(let (f (lambda (x) (error? x))) f)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"error?\")"})
+            && compiler_code_contains_none(code, {"captured_error", "captured_error_p", " = error;", " = error_p;"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: runtime primitives are not closure captures",
+            "[FAIL] Compiler: runtime primitives are not closure captures",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44e. Cons patterns lower to explicit cons/car/cdr checks instead of matching unconditionally.
     {
         char[] code = compile_to_c3("(match (cons 1 2) ((a . b) a) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::is_cons(", "aot::car(", "aot::cdr("})
@@ -143,7 +157,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44e. Sequence patterns lower through recursive seq helpers, not shallow list-only checks.
+    // 44f. Sequence patterns lower through recursive seq helpers, not shallow list-only checks.
     {
         char[] code = compile_to_c3("(match (Array 1 2) ([1 x] x) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::seq_length(", "aot::seq_nth(", "aot::values_equal("})
@@ -157,7 +171,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44f. Dict patterns lower through explicit dict helpers and symbol-key binding.
+    // 44g. Dict patterns lower through explicit dict helpers and symbol-key binding.
     {
         char[] code = compile_to_c3("(match (Dictionary 'name 7) ({name} name) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::is_dict(", "aot::dict_get_symbol("})
@@ -171,7 +185,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44g. Constructor/nullary-constructor patterns lower through typed instance helpers.
+    // 44h. Constructor/nullary-constructor patterns lower through typed instance helpers.
     {
         char[] code = compile_to_c3(
             "(define [union] Maybe None (Some Integer)) (match (Some 1) ((Some x) x) (None 0))",

@@ -47,6 +47,10 @@ fn Value* prim_coroutine_require_thunk(Value*[] args, Value** thunk_out, Interp*
 }
 
 fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
+    // AOT closures are primitive wrappers allocated in root_scope by aot::make_closure.
+    // They do not expose closure_val/body, so skip JIT expression warming for them.
+    if (is_aot_closure_wrapper(thunk)) return thunk;
+
     // Phase 4b: Promote thunk to root_scope so it survives call_scope release.
     // The coroutine may be resumed after the creating scope is freed.
     thunk = boundary_promote_to_root(thunk, interp);
@@ -65,7 +69,7 @@ fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
 fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Interp* interp) {
     if (thunk == null) return raise_error(interp, "coroutine: failed to promote thunk");
     if (thunk.tag == ERROR) return thunk;
-    if (thunk.tag != CLOSURE || thunk.closure_val == null) {
+    if (!is_closure(thunk)) {
         return raise_error(interp, "coroutine: failed to promote thunk");
     }
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);

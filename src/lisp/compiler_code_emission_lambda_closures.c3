@@ -50,7 +50,7 @@ fn void Compiler.emit_closure_capture_data(Compiler* self, LambdaDef* def, usz l
         self.emit("_closure_data.captured_");
         self.emit_symbol_name(def.captures[i]);
         self.emit(" = ");
-        self.emit_symbol_name(def.captures[i]);
+        self.emit_symbol_value_reference(def.captures[i]);
         self.emit(";\n");
     }
 }

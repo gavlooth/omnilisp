@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 5
+Current actionable count: 4
 
 Completed backlog snapshots:
 
@@ -26,17 +26,6 @@ Use this file only for still-open work.
   - next step: start with the plan's `TENSOR-010` runtime representation slice,
     then proceed through constructor/indexing, tensor-expression/materialize,
     `map`, and `contract` only after each slice has targeted tests.
-
-- [ ] `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096` fix generated
-  e2e C3 primitive capture name sanitization
-  - audit finding: Docker `scripts/run_e2e.sh` reaches generated-source parity
-    but fails the generated C3 build because stdlib closure capture data assigns
-    `error` / `error?` captures through unsanitized names (`error`, `error_p`)
-    instead of the mapped primitive variables.
-  - next step: inspect AOT free-variable capture emission for primitive symbols
-    with macro/conflicting C names and predicate punctuation; emit the resolved
-    primitive variable names in closure capture initializers, then run the
-    Docker-bound e2e gate.
 
 - [ ] `AUDIT-LIST-HELPER-ALIAS-086` resolve whether lowercase `list` remains an
   approved public constructor/helper exception
@@ -69,6 +58,22 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096` fix generated
+  e2e C3 primitive capture name sanitization
+  - closure evidence:
+    - shared compiler symbol-value emission now routes primitive references and
+      closure capture initializers through the same primitive-cache path.
+    - runtime primitives exposed by the e2e corpus now have compiler primitive,
+      free-variable, and hash-table coverage: `error`, `error?`,
+      `error-message`, `is?`, `instance?`, and `type-args`.
+    - AOT `Coroutine` now accepts `aot::make_closure` wrapper thunks without
+      inspecting JIT-only closure payload fields.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct `Coroutine` type probe returns `Coroutine`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - [x] `AUDIT-NUMBER-PARSE-SURFACE-085` canonicalize permissive numeric parsing
   as `parse-number`
   - decision note: `docs/plans/number-parse-surface-decision-2026-04-11.md`
@@ -92,7 +97,8 @@ Use this file only for still-open work.
     - `./build/main --check examples/finwatch/smoke_test.omni`
     - broader Docker `scripts/run_e2e.sh` reached generated-source parity but
       failed the generated C3 build on primitive capture names `error` /
-      `error?`; tracked as `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
+      `error?`; subsequently closed as
+      `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
 
 - [x] `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084` canonicalize list/string
   conversion through constructors

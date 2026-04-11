@@ -70,6 +70,8 @@ fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
         "parse-number",
         "Integer", "Double", "String", "Symbol", "Pointer", "Boolean", "Nil", "Void", "Closure", "Iterator",
         "gensym", "load", "apply", "equal?",
+        "error", "error?", "error-message",
+        "is?", "instance?", "type-args",
         "Array",
         "Dictionary", "dict?",
         "Set", "set-add", "set-remove", "set-contains?",

@@ -1,5 +1,23 @@
 ## 2026-04-11
 
+- Closed `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`:
+  - Added a shared compiler symbol-value emission helper so variable lowering
+    and closure capture initialization both route primitive symbols through the
+    registered primitive cache name instead of emitting raw C3 identifiers.
+  - Added missing compiler primitive/free-variable/hash coverage for runtime
+    primitives surfaced by the e2e corpus, including `error`, `error?`,
+    `error-message`, `is?`, `instance?`, and `type-args`.
+  - Preserved user binding shadowing by keeping primitive detection table-based,
+    not dynamic environment-based.
+  - Allowed `Coroutine` to accept AOT closure wrapper thunks by treating
+    `aot::make_closure` wrappers as root-lifetime closure thunks without
+    inspecting JIT-only `closure_val` fields.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probe: `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(type-of (Coroutine (lambda () 1)))'` -> `Coroutine`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - Canonicalized permissive numeric parsing as `parse-number`:
   - `parse-number` now replaces the public `string->number` arrow alias on the
     runtime/compiler primitive surfaces.
@@ -20,7 +38,8 @@
     - `./build/main --check examples/finwatch/smoke_test.omni`
     - broader Docker `scripts/run_e2e.sh` reached generated-source parity but
       failed the generated C3 build on primitive capture names `error` /
-      `error?`; tracked as `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
+      `error?`; subsequently closed as
+      `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`.
 
 - Canonicalized list/string conversion through constructors:
   - `List(String)` is now the public string-to-list surface and returns a

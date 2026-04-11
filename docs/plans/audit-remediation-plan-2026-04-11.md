@@ -52,16 +52,22 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `AUDIT-NUMBER-PARSE-SURFACE-085`: selected `parse-number` as the canonical
   permissive parse API, kept `Number` non-callable, and removed public
   `string->number` registration/compiler-map surface.
+- `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`: repaired generated C3
+  primitive capture emission, added the missing runtime primitive coverage to
+  compiler primitive/free-variable/hash tables, preserved user shadowing by
+  avoiding dynamic environment classification, and fixed AOT `Coroutine` thunk
+  parity for `aot::make_closure` wrappers; Docker `scripts/run_e2e.sh` now
+  passes all 404 generated tests.
 
 ## Current Plan
 
-1. Fix the e2e primitive capture sanitizer regression now tracked as
-   `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`, because it blocks the
-   broader Docker e2e gate.
-2. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
-   `AUDIT-LIST-HELPER-ALIAS-086`.
-3. Keep new implementation work sliced and committed separately after each
+1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+   `AUDIT-LIST-HELPER-ALIAS-086`, `AUDIT-FILESYSTEM-SURFACE-087`, and
+   `AUDIT-IMMER-PERSISTENT-DISPATCH-088`.
+2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
+3. Re-run broader Docker validation when a change crosses runtime memory,
+   evaluator, compiler, or large stdlib boundaries.
 
 ## Validation Policy
 
