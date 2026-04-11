@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 10
+Current actionable count: 9
 
 Completed backlog snapshots:
 
@@ -45,21 +45,6 @@ Use this file only for still-open work.
   - next step: choose the canonical contract, then either register/use the
     strict implementation or update docs/tests to explicitly say `list?`
     accepts any pair/improper list.
-
-- [ ] `AUDIT-LIST-WALKER-IMPROPER-LIST-092` normalize improper-list handling
-  across public list walkers
-  - audit finding: `reverse` now rejects dotted tails, but other public list
-    walkers in `stdlib/stdlib.lisp` still need a systematic pass for dotted
-    tail behavior (`map`, `filter`, `foldl`, `foldr`, `append`, `take`,
-    `drop`, `zip`, `for-each`, `any?`, `every?`, `flatten`, and related
-    helpers).
-  - progress note: 2026-04-11 slice added a private proper-list guard and
-    applied it to `take`, `drop`, `zip`, `any?`, `every?`, and `find`, covering
-    the highest-risk partial-success and short-circuit false-positive cases.
-  - next step: apply the same guard to remaining ad-hoc walkers (`map`,
-    `filter`, `foldl`, `foldr`, `for-each`, `flatten`, `partition`, `remove`,
-    `nth`, and any related helpers) and keep targeted improper-list
-    regressions for each normalized boundary.
 
 - [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
   scientific-computing surface
@@ -118,6 +103,27 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-LIST-WALKER-IMPROPER-LIST-092` normalize improper-list handling
+  across public list walkers
+  - closure evidence:
+    - added a private proper-list guard and applied it across the public stdlib
+      list walkers covered by the audit: `map`, `filter`, `foldl`, `foldr`,
+      `append`, `take`, `drop`, `zip`, `for-each`, `any?`, `every?`,
+      `flatten`, `partition`, `remove` via `filter`, `find`, and `nth`.
+    - mirrored the guard in the compiler stdlib prelude for the overlapping
+      walker definitions.
+    - guarded nested list traversal in `flatten` so improper inner lists no
+      longer fall through to low-level `car`/`cdr` failures.
+    - left pair/iterator protocols such as `stream-take` and iterator `drop`
+      outside this proper-list-only lane.
+  - validation:
+    - bounded `advanced-stdlib-numeric` subgroup after partial-success slice:
+      `pass=275 fail=0`
+    - bounded `compiler` slice after partial-success slice: `pass=196 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup after remaining walker slice:
+      `pass=285 fail=0`
+    - bounded `compiler` slice after remaining walker slice: `pass=196 fail=0`
 
 - [x] `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` harden the runtime `eval`
   data-to-expression conversion path

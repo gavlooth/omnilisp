@@ -1,17 +1,21 @@
 ## 2026-04-11
 
-- Normalized the first short-circuit/partial-success list walkers for improper
-  list input:
-  - Added a private stdlib proper-list guard and applied it to `take`, `drop`,
-    `zip`, `any?`, `every?`, and `find` so improper lists fail coherently
-    instead of returning partial results or false-positive truthy values.
+- Completed public stdlib list-walker improper-list normalization:
+  - Added a private stdlib proper-list guard and applied it to the audited
+    public list walkers: `map`, `filter`, `foldl`, `foldr`, `append`, `take`,
+    `drop`, `zip`, `for-each`, `any?`, `every?`, `flatten`, `partition`,
+    `remove` via `filter`, `find`, and `nth`.
   - Mirrored the guard and protected definitions in the compiler stdlib prelude
     for the overlapping walker set.
-  - Added regressions for the prior partial-success and short-circuit cases in
-    the advanced stdlib numeric collection coverage.
+  - Added regressions for partial-success, short-circuit false-positive, and
+    nested-`flatten` improper-list cases.
   - validation:
-    - bounded `advanced-stdlib-numeric` subgroup: `pass=275 fail=0`
-    - bounded `compiler` slice: `pass=196 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup after partial-success slice:
+      `pass=275 fail=0`
+    - bounded `compiler` slice after partial-success slice: `pass=196 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup after remaining walker slice:
+      `pass=285 fail=0`
+    - bounded `compiler` slice after remaining walker slice: `pass=196 fail=0`
 
 - Completed the runtime `eval` data-to-expression fail-closed lane:
   - Lambda and let data forms now preserve parser-equivalent implicit block

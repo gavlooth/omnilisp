@@ -70,6 +70,10 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "foldl product", "(foldl * 1 (quote (1 2 3 4)))", 24, pass, fail);
     test_eq(interp, "foldr cons len", "(length (foldr cons nil (quote (1 2 3))))", 3, pass, fail);
     test_eq(interp, "foldr cons car", "(car (foldr cons nil (quote (1 2 3))))", 1, pass, fail);
+    test_error_contains(interp, "map rejects improper list", "(map (lambda (x) x) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "filter rejects improper list", "(filter (lambda (x) true) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "foldl rejects improper list", "(foldl + 0 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "foldr rejects improper list", "(foldr cons nil (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "append length", "(length (append (quote (1 2)) (quote (3 4))))", 4, pass, fail);
     test_eq(interp, "append car", "(car (append (quote (1 2)) (quote (3 4))))", 1, pass, fail);
     test_eq(interp, "append nil left", "(car (append nil (quote (1 2))))", 1, pass, fail);
@@ -78,11 +82,13 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_nil(interp, "reverse nil", "(reverse nil)", pass, fail);
     test_error_contains(interp, "reverse rejects improper list", "(reverse (cons 1 2))", "proper list", pass, fail);
     test_error_contains(interp, "append rejects improper left list", "(append (cons 1 2) '(3))", "proper list", pass, fail);
+    test_error_contains(interp, "append rejects improper right list", "(append '(1) (cons 2 3))", "proper list", pass, fail);
     test_eq(interp, "compose *2.+1", "((compose (lambda (x) (* x 2)) (lambda (x) (+ x 1))) 3)", 8, pass, fail);
     test_eq(interp, "compose +1.*2", "((compose (lambda (x) (+ x 1)) (lambda (x) (* x 2))) 3)", 7, pass, fail);
     test_eq(interp, "id", "(id 42)", 42, pass, fail);
     test_eq(interp, "nth 0", "(nth 0 (quote (10 20 30 40)))", 10, pass, fail);
     test_eq(interp, "nth 2", "(nth 2 (quote (10 20 30 40)))", 30, pass, fail);
+    test_error_contains(interp, "nth rejects improper list", "(nth 0 (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "take length", "(length (take 3 (quote (1 2 3 4 5))))", 3, pass, fail);
     test_eq(interp, "take car", "(car (take 3 (quote (1 2 3 4 5))))", 1, pass, fail);
     test_nil(interp, "take 0", "(take 0 (quote (1 2 3)))", pass, fail);
@@ -101,6 +107,7 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "range car", "(car (range 5))", 0, pass, fail);
     test_nil(interp, "range 0", "(range 0)", pass, fail);
     test_nil(interp, "for-each", "(for-each (lambda (x) (+ x 1)) (quote (1 2 3)))", pass, fail);
+    test_error_contains(interp, "for-each rejects improper list", "(for-each (lambda (x) x) (cons 1 2))", "proper list", pass, fail);
     test_truthy(interp, "any? found", "(any? (lambda (x) (= x 3)) (quote (1 2 3 4)))", pass, fail);
     test_nil(interp, "any? not found", "(any? (lambda (x) (= x 99)) (quote (1 2 3 4)))", pass, fail);
     test_truthy(interp, "every? all", "(every? (lambda (x) (> x 0)) (quote (1 2 3 4)))", pass, fail);
@@ -279,6 +286,9 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "flatten car", "(car (flatten (quote ((1 2) (3)))))", 1, pass, fail);
     test_eq(interp, "partition yes", "(length (car (partition (lambda (x) (> x 3)) (quote (1 2 3 4 5)))))", 2, pass, fail);
     test_eq(interp, "partition no", "(length (cdr (partition (lambda (x) (> x 3)) (quote (1 2 3 4 5)))))", 3, pass, fail);
+    test_error_contains(interp, "flatten rejects improper outer list", "(flatten (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "flatten rejects improper nested list", "(flatten (list (cons 1 2)))", "proper list", pass, fail);
+    test_error_contains(interp, "partition rejects improper list", "(partition (lambda (x) true) (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "remove", "(length (remove (lambda (x) (= x 3)) (quote (1 2 3 4 5))))", 4, pass, fail);
     test_eq(interp, "find found", "(find (lambda (x) (= x 3)) (quote (1 2 3 4 5)))", 3, pass, fail);
     test_nil(interp, "find not found", "(find (lambda (x) (= x 99)) (quote (1 2 3)))", pass, fail);

@@ -146,13 +146,16 @@
 
 ;; map: (map f coll) — apply f to each element, return same collection type
 (define (map f (^List lst))
-  (let loop (xs lst acc nil)
-    (if (null? xs)
-        (reverse acc)
-        (let (mapped (f (car xs)))
-          (if (error? mapped)
-              mapped
-              (loop (cdr xs) (cons mapped acc)))))))
+  (let (bad (__require-proper-list lst "map"))
+    (if (error? bad)
+        bad
+        (let loop (xs lst acc nil)
+          (if (null? xs)
+              (reverse acc)
+              (let (mapped (f (car xs)))
+                (if (error? mapped)
+                    mapped
+                    (loop (cdr xs) (cons mapped acc)))))))))
 (define (map f (^Array arr))
   (let (len (length arr) result [])
     (let loop (i 0)
@@ -167,20 +170,20 @@
 (define (map (^Closure f)) (lambda (coll) (map f coll)))
 
 ;; filter: (filter pred coll) — keep elements where (pred x) is truthy
-(define (filter pred (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
+(define (filter pred (^List lst)) (let (bad (__require-proper-list lst "filter")) (if (error? bad) bad (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))))
 (define (filter pred (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (if (pred (ref arr i)) (block (push! result (ref arr i)) (loop (+ i 1))) (loop (+ i 1)))))))
 (define (filter (^Closure pred)) (lambda (coll) (filter pred coll)))
 
 ;; foldl: (foldl f acc coll) — left fold, f takes 2 args: (f acc x)
-(define (foldl f acc (^List lst)) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+(define (foldl f acc (^List lst)) (let (bad (__require-proper-list lst "foldl")) (if (error? bad) bad (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))))
 (define (foldl f acc (^Array arr)) (let (len (length arr)) (let loop (a acc i 0) (if (= i len) a (loop (f a (ref arr i)) (+ i 1))))))
 
 ;; foldr: (foldr f init coll) — right fold, f takes 2 args: (f x acc)
-(define (foldr f init (^List lst)) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
+(define (foldr f init (^List lst)) (let (bad (__require-proper-list lst "foldr")) (if (error? bad) bad (foldl (lambda (acc x) (f x acc)) init (reverse lst)))))
 (define (foldr f init (^Array arr)) (let (len (length arr)) (let loop (a init i len) (if (= i 0) a (let (j (- i 1)) (loop (f (ref arr j) a) j))))))
 
 ;; append: (append a b) — concatenate two lists
-(define (append a b) (let (xs (reverse a)) (if (error? xs) xs (let loop (xs xs acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))
+(define (append a b) (let (bad-b (__require-proper-list b "append")) (if (error? bad-b) bad-b (let (xs (reverse a)) (if (error? xs) xs (let loop (xs xs acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))))
 
 ;; compose: (compose f g) — function composition, returns (lambda (x) (f (g x)))
 (define (compose f g) (lambda (x) (f (g x))))
@@ -192,7 +195,7 @@
 (define (id x) x)
 
 ;; nth: (nth n lst) — get nth element (0-indexed)
-(define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
+(define (nth n lst) (let (bad (__require-proper-list lst "nth")) (if (error? bad) bad (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))))
 
 ;; take: (take n coll) — first n elements (shape-preserving)
 (define (take n (^List lst)) (let (bad (__require-proper-list lst "take")) (if (error? bad) bad (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))))
@@ -210,7 +213,7 @@
 (define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
 
 ;; for-each: (for-each f lst) — apply f to each element for side effects, return nil
-(define (for-each f (^List lst)) (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))
+(define (for-each f (^List lst)) (let (bad (__require-proper-list lst "for-each")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))))
 (define (for-each (^Closure f)) (lambda (lst) (for-each f lst)))
 
 ;; any?: (any? pred lst) — true if pred is truthy for any element
@@ -274,10 +277,10 @@
 ;; =========================================================================
 
 ;; flatten: flatten nested lists into a flat list
-(define (flatten lst) (let loop (l lst acc nil) (if (null? l) (reverse acc) (if (pair? (car l)) (loop (cdr l) (let loop2 (inner (car l) a acc) (if (null? inner) a (loop2 (cdr inner) (cons (car inner) a))))) (loop (cdr l) (cons (car l) acc))))))
+(define (flatten lst) (let (bad (__require-proper-list lst "flatten")) (if (error? bad) bad (let loop (l lst acc nil) (if (null? l) (reverse acc) (if (pair? (car l)) (let (inner-bad (__require-proper-list (car l) "flatten")) (if (error? inner-bad) inner-bad (loop (cdr l) (let loop2 (inner (car l) a acc) (if (null? inner) a (loop2 (cdr inner) (cons (car inner) a))))))) (loop (cdr l) (cons (car l) acc))))))))
 
 ;; partition: split list by predicate, returns (kept . rejected)
-(define (partition pred lst) (let loop (l lst yes nil no nil) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))
+(define (partition pred lst) (let (bad (__require-proper-list lst "partition")) (if (error? bad) bad (let loop (l lst yes nil no nil) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))))
 
 ;; remove: remove elements matching predicate (uses filter)
 (define (remove pred lst) (filter (lambda (x) (not (pred x))) lst))

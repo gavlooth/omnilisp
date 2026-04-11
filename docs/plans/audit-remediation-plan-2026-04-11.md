@@ -33,19 +33,20 @@ queue; this file is supporting context for why the queue is ordered this way.
 - List-walker partial-success slice: a private stdlib proper-list guard now
   protects `take`, `drop`, `zip`, `any?`, `every?`, and `find`, including the
   compiler prelude variants where those functions are present.
+- List-walker remaining public walkers slice: the same guard now protects
+  `map`, `filter`, `foldl`, `foldr`, `append`, `for-each`, `nth`, `flatten`,
+  `partition`, and `remove` via `filter`; nested improper lists in `flatten`
+  also fail coherently.
 
 ## Current Plan
 
-1. Normalize list walker improper-list behavior under
-   `AUDIT-LIST-WALKER-IMPROPER-LIST-092`, preferably through shared traversal
-   helpers instead of one-off guards.
-2. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
+1. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
    explicit, so `list?` can be made consistent with the selected proper-list
    contract.
-3. Resolve documentation/product-contract issues that should not be guessed in
+2. Resolve documentation/product-contract issues that should not be guessed in
    code: `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` and
    `AUDIT-CONS-REF-SPEC-PARITY-095`.
-4. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+3. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and
    `AUDIT-LIST-HELPER-ALIAS-086`.
