@@ -2088,7 +2088,8 @@ Progress update (2026-04-09):
       - string-to-number parse/coercion naming,
       - lowercase `list` helper policy,
       - `fs-*` versus `filesystem-*` naming,
-      - typed persistent Immer wrappers or explicit non-generic API,
+      - typed persistent Immer wrappers or explicit non-generic API
+        (later superseded by retiring the optional Immer bridge entirely),
       - repeated bounded `http` and `pika` slice failures.
     - validation:
       - host `c3c build --warn-deprecation=no`: green

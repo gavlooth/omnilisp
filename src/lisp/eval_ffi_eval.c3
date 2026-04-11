@@ -65,6 +65,57 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     return ffi_handle;
 }
 
+fn bool ffi_symbol_to_c_symbol_name(Interp* interp, SymbolId sym, char* out_name, usz out_cap, usz* out_len) {
+    if (sym == INVALID_SYMBOL_ID || out_name == null || out_cap == 0) return false;
+    char[] symbol_name = interp.symbols.get_name(sym);
+    if (symbol_name.len == 0 || symbol_name.len >= out_cap) return false;
+    for (usz i = 0; i < symbol_name.len; i++) {
+        out_name[i] = symbol_name[i] == '-' ? '_' : symbol_name[i];
+    }
+    out_name[symbol_name.len] = 0;
+    *out_len = symbol_name.len;
+    return true;
+}
+
+fn Value* ffi_resolve_return_handle_finalizer(FfiBoundFn* bound, FfiHandlePolicy* policy, Interp* interp) {
+    if (policy == null || !policy.is_foreign_handle || policy.ownership != FFI_HANDLE_OWNED) return null;
+    if (policy.finalizer_symbol == INVALID_SYMBOL_ID) {
+        return raise_error(interp, "ffi λ: owned ForeignHandle return requires a finalizer");
+    }
+    if (bound == null || bound.lib_handle == null) {
+        return raise_error(interp, "ffi λ: cannot resolve ForeignHandle finalizer without a library handle");
+    }
+
+    char[256] finalizer_name;
+    usz finalizer_len = 0;
+    if (!ffi_symbol_to_c_symbol_name(interp, policy.finalizer_symbol, &finalizer_name, 256, &finalizer_len)) {
+        return raise_error(interp, "ffi λ: invalid ForeignHandle finalizer symbol");
+    }
+
+    (void)dlerror();
+    void* finalizer_ptr = dlsym(bound.lib_handle, (ZString)&finalizer_name);
+    if (finalizer_ptr == null) {
+        char[256] ebuf;
+        char* dl_err = dlerror();
+        char[] finalizer_source_name = interp.symbols.get_name(policy.finalizer_symbol);
+        if (dl_err != null && dl_err[0] != 0) {
+            if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s': %s",
+                (ZString)finalizer_source_name, (ZString)dl_err)) {
+                return raise_error(interp, msg);
+            }
+            return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
+        }
+        if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s'",
+            (ZString)finalizer_source_name)) {
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
+    }
+
+    policy.finalizer = (FfiHandleFinalizer)finalizer_ptr;
+    return null;
+}
+
 
 // eval_ffi_fn — (define [ffi λ libname] (fname (^T arg)...) ^RetT)
 fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
@@ -135,24 +186,32 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.c_name_len = ff.c_name_len;
     bound.param_count = ff.param_count;
     bound.param_types = null;
+    bound.param_handle_policies = null;
+    bound.return_handle_policy = ffi_handle_policy_default();
     bound.is_variadic = ff.is_variadic;
 
     if (ff.param_count > 0) {
         bound.param_types = (FfiTypeTag*)interp.root_scope.alloc(FfiTypeTag.sizeof * ff.param_count);
-        if (bound.param_types == null) {
+        bound.param_handle_policies = (FfiHandlePolicy*)interp.root_scope.alloc(FfiHandlePolicy.sizeof * ff.param_count);
+        if (bound.param_types == null || bound.param_handle_policies == null) {
             return raise_error(interp, "ffi λ: out of memory for parameter metadata");
         }
         for (usz i = 0; i < ff.param_count; i++) {
-            if (!type_ann_to_ffi_tag(ff.param_types[i].base_type, interp, &bound.param_types[i])) {
-                return ffi_unsupported_type_annotation_error(interp, "parameter", ff.param_types[i].base_type);
+            if (!ffi_type_annotation_to_tag(&ff.param_types[i], interp,
+                &bound.param_types[i], &bound.param_handle_policies[i])) {
+                return ffi_unsupported_type_annotation_error(interp, "parameter", &ff.param_types[i]);
+            }
+            if (bound.param_handle_policies[i].ownership == FFI_HANDLE_OWNED) {
+                return raise_error(interp, "ffi λ: owned ForeignHandle parameter policy is not supported");
             }
         }
     }
 
     if (ff.has_return_type) {
-        if (!type_ann_to_ffi_tag(ff.return_type.base_type, interp, &bound.return_type)) {
-            return ffi_unsupported_type_annotation_error(interp, "return", ff.return_type.base_type);
+        if (!ffi_type_annotation_to_tag(&ff.return_type, interp, &bound.return_type, &bound.return_handle_policy)) {
+            return ffi_unsupported_type_annotation_error(interp, "return", &ff.return_type);
         }
+        if (Value* err = ffi_resolve_return_handle_finalizer(bound, &bound.return_handle_policy, interp)) return err;
         bound.has_return = true;
     } else {
         bound.return_type = FFI_TYPE_VOID;

@@ -99,7 +99,7 @@ struct Interp {
     // FFI annotation symbols and shared builtin type names
     SymbolId sym_ffi;       // "ffi" for [ffi ...] annotation
     SymbolId sym_lib;       // "lib" for [ffi lib]
-    SymbolId sym_Pointer;   // "Pointer" canonical FFI pointer annotation type
+    SymbolId sym_ForeignHandle; // "ForeignHandle" canonical FFI handle annotation type
     SymbolId sym_Void;      // "Void" for ^Void type and runtime Void value/type
 
     // Built-in type name symbols

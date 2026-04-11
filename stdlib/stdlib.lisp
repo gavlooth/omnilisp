@@ -373,8 +373,12 @@
 (define (pipe-connect (^String path)) (signal io/pipe-connect path))
 (define (pipe-listen (^String path)) (signal io/pipe-listen path))
 (define (process-spawn (^String cmd) args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
+;; Keep untyped fallback so invalid process payloads still flow through io/process-spawn canonical payload errors.
+(define (process-spawn cmd args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
 (define (process-wait handle) (signal io/process-wait handle))
 (define (process-kill handle (^Integer sig)) (signal io/process-kill (cons handle (cons sig nil))))
+;; Keep untyped fallback so invalid signal payloads still flow through io/process-kill canonical payload errors.
+(define (process-kill handle sig) (signal io/process-kill (cons handle (cons sig nil))))
 (define (signal-handle (^Integer sig) callback) (signal io/signal-handle (cons sig (cons callback nil))))
 (define (signal-unhandle handle) (signal io/signal-unhandle handle))
 (define (dns-resolve (^String host)) (signal io/dns-resolve host))

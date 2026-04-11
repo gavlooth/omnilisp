@@ -60,9 +60,23 @@ queue; this file is supporting context for why the queue is ordered this way.
   passes all 404 generated tests.
 - `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098`: consolidated compiler
   primitive/free-variable classification around the primitive hash table while
-  preserving the existing non-value `Pointer` and `__ui-ftxui-run` exceptions;
-  this closes a broader drift class where hash-only runtime primitives could be
-  captured as C3 locals inside lambdas.
+  preserving the existing non-value `ForeignHandle` and `__ui-ftxui-run`
+  exceptions; this closes a broader drift class where hash-only runtime
+  primitives could be captured as C3 locals inside lambdas.
+- `AUDIT-FFI-FOREIGN-HANDLE-SURFACE-103`: replaced the public FFI pointer
+  annotation surface with `^ForeignHandle`, and current-state docs/tracking
+  now describe pointer ABI values as `FFI_HANDLE`/`nil` only.
+- `AUDIT-FFI-FOREIGN-HANDLE-METADATA-104`: implemented the interpreter/JIT
+  ForeignHandle metadata dictionary policy so `^ForeignHandle` stays the simple
+  default and `^{'name File 'ownership owned 'finalizer fclose}` /
+  `^{'type ForeignHandle ...}` remain the accepted FFI-local refinements;
+  dictionary entries are quoted-symbol key/value pairs and Omni does not use
+  colon keywords.
+- `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105`: implemented AOT bridge policy
+  propagation for the current `ForeignHandle` metadata dictionary surface:
+  parameter descriptors preserve handle family/nullability, return descriptors
+  preserve handle name/ownership/finalizer, and owned handle parameter policy
+  rejects fail-closed.
 - `AUDIT-COMPILER-PRIMITIVE-HASH-COVERAGE-099`: completed public runtime
   primitive coverage in the compiler primitive hash table, resized the table to
   preserve a safe load factor, and added closure-capture regression coverage for
@@ -70,11 +84,29 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `AUDIT-FILESYSTEM-SURFACE-087`: selected `fs-*` as the canonical
   filesystem wrapper family and removed the remaining stdlib `filesystem-*`
   aliases; runtime, compiler, docs, and tests now agree on the same surface.
+- `AUDIT-PROCESS-WRAPPER-PAYLOAD-FALLBACK-100`: added untyped
+  `process-spawn` and `process-kill` stdlib fallbacks so invalid args preserve
+  canonical `io/process-*` payload errors instead of stopping at typed dispatch.
+- `AUDIT-LIST-HELPER-ALIAS-086`: kept `List` as the canonical
+  constructor/conversion surface and explicitly approved lowercase `list` as
+  an idiomatic public helper.
+- `AUDIT-IMMER-PERSISTENT-DISPATCH-088`: wrapped optional Immer persistent
+  collection handles in tagged Omni dictionaries, added persistent collection
+  predicates, and made odd `persistent-dictionary` constructor arity fail
+  closed instead of dropping the final key; this was later superseded by
+  retiring the optional Immer bridge entirely.
+- `AUDIT-LET-BRACKET-SHORTHAND-102`: removed legacy outer `let [...]`
+  shorthand from live library code, while leaving canonical destructuring
+  patterns such as `(let ([a b] [1 2]) ...)` intact.
+- `AUDIT-IMMER-FFI-COMPAT-101`: retired the unsupported optional Immer/C++
+  bridge instead of extending FFI around a non-core integration; deleted
+  `lib/immer.omni`, the `lib/immer/` bridge tree, and the obsolete
+  compatibility plan.
 
 ## Current Plan
 
-1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
-   `AUDIT-LIST-HELPER-ALIAS-086` and `AUDIT-IMMER-PERSISTENT-DISPATCH-088`.
+1. Continue the remaining scientific-computing surface lane already in
+   `TODO.md`: `LANG-TENSOR-SCIENTIFIC-SURFACE-091`.
 2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
 3. Re-run broader Docker validation when a change crosses runtime memory,

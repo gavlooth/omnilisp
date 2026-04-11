@@ -66,7 +66,7 @@ syntax such as `(Set 1 2 3)`.
 
 Naming policy for new code/examples:
 - prefer `List`, `Array`, and `Dictionary` as constructor/coercion surfaces
-- keep `list` as an idiomatic public helper
+- keep `list` as an approved idiomatic public helper
 
 Dictionary key policy:
 - symbols are preferred for internal language-owned maps (`'name`, `'code`)

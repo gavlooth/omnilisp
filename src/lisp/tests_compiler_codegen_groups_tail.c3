@@ -357,30 +357,30 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         bool has_raw_module = str_contains(generated, "(module ffi-bindgen-canonical-raw");
         bool has_integer = str_contains(generated, "(^Integer count)");
         bool has_const_string_param = str_contains(generated, "(^String name)");
-        bool has_buffer_pointer = str_contains(generated, "(^Pointer buffer)");
+        bool has_buffer_foreign_handle = str_contains(generated, "(^ForeignHandle buffer)");
         bool has_buffer_size_param = str_contains(generated, "(^Integer buffer_len)");
         bool has_string_input = str_contains(generated, "param name c-type=const char * role=string-input ownership=borrowed nullability=unknown teardown=none");
         bool has_string_buffer = str_contains(generated, "param buffer c-type=char * role=string-buffer ownership=borrowed nullability=unknown teardown=manual-review buffer-direction=inout size-param=buffer_len");
-        bool has_pointer = str_contains(generated, "(^Pointer opaque_handle)");
-        bool has_pointer_meta = str_contains(generated, "param opaque_handle c-type=void * role=opaque-pointer ownership=borrowed nullability=unknown teardown=none");
+        bool has_foreign_handle = str_contains(generated, "(^ForeignHandle opaque_handle)");
+        bool has_foreign_handle_meta = str_contains(generated, "param opaque_handle c-type=void * role=opaque-pointer ownership=borrowed nullability=unknown teardown=none");
         bool has_callback_meta = str_contains(generated, "param callback c-type=void (*)(int) role=callback ownership=borrowed nullability=unknown teardown=callback-unregister");
         bool has_function_shape = str_contains(generated, "bindgen-meta-record: function c-symbol=omni_bindgen_buffer omni-name=omni-bindgen-buffer");
-        bool has_param_shape = str_contains(generated, "bindgen-meta-record: param name=buffer c-type=char * ffi-type='ptr omni-type=Pointer role=string-buffer ownership=borrowed nullability=unknown teardown=manual-review buffer-direction=inout size-param=buffer_len");
+        bool has_param_shape = str_contains(generated, "bindgen-meta-record: param name=buffer c-type=char * ffi-type='ptr omni-type=ForeignHandle role=string-buffer ownership=borrowed nullability=unknown teardown=manual-review buffer-direction=inout size-param=buffer_len");
         bool has_return_shape = str_contains(generated, "bindgen-meta-record: return c-type=const char * ffi-type='string omni-type=String role=string-return ownership=borrowed nullability=unknown teardown=manual-review");
         bool has_fallback = str_contains(generated, "(define [ffi lambda _lib] (omni-bindgen-unnamed (^Integer arg0)) ^Integer)");
         bool has_void = str_contains(generated, ") ^Void)");
-        bool has_ret_pointer = str_contains(generated, ") ^Pointer)");
+        bool has_ret_foreign_handle = str_contains(generated, ") ^ForeignHandle)");
         bool has_ret_string_meta = str_contains(generated, "return c-type=const char * role=string-return ownership=borrowed nullability=unknown teardown=manual-review");
-        raw_ok = has_raw_module && has_integer && has_const_string_param && has_buffer_pointer &&
+        raw_ok = has_raw_module && has_integer && has_const_string_param && has_buffer_foreign_handle &&
             has_buffer_size_param &&
             has_string_input && has_string_buffer &&
-            has_pointer && has_pointer_meta && has_callback_meta && has_fallback &&
+            has_foreign_handle && has_foreign_handle_meta && has_callback_meta && has_fallback &&
             has_function_shape && has_param_shape && has_return_shape &&
-            has_void && has_ret_pointer && has_ret_string_meta;
+            has_void && has_ret_foreign_handle && has_ret_string_meta;
         compiler_test_finish_bool(
             raw_ok,
-            "Compiler: bindgen raw module preserves canonical names and metadata annotations",
-            "[FAIL] Compiler: bindgen raw module preserves canonical names and metadata annotations",
+            "Compiler: bindgen raw module preserves canonical foreign-handle names and metadata annotations",
+            "[FAIL] Compiler: bindgen raw module preserves canonical foreign-handle names and metadata annotations",
             &pass,
             &fail
         );
@@ -422,13 +422,13 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         bool has_opaque_return_manual_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-manual-review handle role ownership nullability teardown)");
         bool has_opaque_return_none_helper = str_contains(generated, "(define (bindgen-wrap-opaque-return-none handle role ownership nullability teardown)");
         bool flags_buffer_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-buffer — string return ownership/nullability is not automatic; mutable char* buffer direction/size must be wrapped explicitly.");
-        bool flags_pointer_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-void-ptr — opaque pointer ownership/lifetime must be reviewed.");
+        bool flags_foreign_handle_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-void-ptr — opaque pointer ownership/lifetime must be reviewed.");
         bool flags_callback_review = str_contains(generated, ";; REVIEW(bindgen): review omni-bindgen-callback — callback registration and teardown must be wrapped explicitly.");
-        bool wraps_buffer = str_contains(generated, "(define (omni-bindgen-buffer (^Pointer buffer) (^Integer buffer_len))");
-        bool wraps_pointer = str_contains(generated, "(define (omni-bindgen-void-ptr (^Pointer opaque_handle))");
-        bool wraps_callback = str_contains(generated, "(define (omni-bindgen-callback (^Pointer callback))");
+        bool wraps_buffer = str_contains(generated, "(define (omni-bindgen-buffer (^ForeignHandle buffer) (^Integer buffer_len))");
+        bool wraps_foreign_handle = str_contains(generated, "(define (omni-bindgen-void-ptr (^ForeignHandle opaque_handle))");
+        bool wraps_callback = str_contains(generated, "(define (omni-bindgen-callback (^ForeignHandle callback))");
         bool wraps_string_return = str_contains(generated, "(define (omni-bindgen-ret-string)");
-        bool wraps_pointer_return = str_contains(generated, "(define (omni-bindgen-ret-ptr)");
+        bool wraps_foreign_handle_return = str_contains(generated, "(define (omni-bindgen-ret-ptr)");
         bool wraps_buffer_result = str_contains(
             generated,
             "(let (buffer_input (bindgen-prepare-string-buffer buffer buffer_len \"string-buffer\" \"borrowed\" \"unknown\" \"manual-review\" \"inout\")"
@@ -441,13 +441,13 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
         );
         bool wraps_return_result = str_contains(generated, "(let (result (raw-omni-bindgen-ret-string)") &&
             str_contains(generated, "result_text result");
-        bool wraps_pointer_result = str_contains(generated, "(let (result (raw-omni-bindgen-ret-ptr)") &&
+        bool wraps_foreign_handle_result = str_contains(generated, "(let (result (raw-omni-bindgen-ret-ptr)") &&
             str_contains(generated, "result_handle result");
         bool binds_callback_handle = str_contains(generated, "(let (callback_handle (bindgen-register-callback callback \"callback\" \"borrowed\" \"unknown\" \"callback-unregister\"))\n");
-        bool binds_pointer_handle = str_contains(generated, "(let (opaque_handle_handle (bindgen-wrap-opaque-arg opaque_handle \"opaque-pointer\" \"borrowed\" \"unknown\" \"none\"))\n");
+        bool binds_foreign_handle_handle = str_contains(generated, "(let (opaque_handle_handle (bindgen-wrap-opaque-arg opaque_handle \"opaque-pointer\" \"borrowed\" \"unknown\" \"none\"))\n");
         bool has_buffer_body_note = str_contains(generated, "REVIEW: mutable char* buffers need explicit allocation, size, and output semantics.");
         bool has_callback_body_note = str_contains(generated, "REVIEW: confirm callback-handle registration/unregister policy matches the target subsystem contract.");
-        bool has_pointer_return_note = str_contains(generated, "REVIEW: wrap opaque returns in a handle/finalizer policy before exposing them broadly.");
+        bool has_foreign_handle_return_note = str_contains(generated, "REVIEW: wrap opaque returns in a handle/finalizer policy before exposing them broadly.");
         bool forwards_callback = str_contains(generated, "(raw-omni-bindgen-callback callback_handle)");
         bool wraps_borrowed_string_return_via_helper = str_contains(
             generated,
@@ -480,19 +480,19 @@ fn void run_compiler_group_bindgen_canonical_type_tests(Interp* _interp, usz* pa
                 registers_callback_via_uv_shim && unregisters_callback_via_uv_shim &&
                 has_string_return_borrowed_helper && has_string_return_unknown_helper &&
                 has_opaque_return_manual_helper && has_opaque_return_none_helper &&
-                flags_buffer_review && flags_pointer_review && flags_callback_review && wraps_buffer && wraps_pointer &&
+                flags_buffer_review && flags_foreign_handle_review && flags_callback_review && wraps_buffer && wraps_foreign_handle &&
                 wraps_callback && wraps_string_return && has_buffer_body_note &&
                 has_callback_body_note && forwards_callback &&
                 wraps_buffer_result && wraps_return_result &&
-                wraps_pointer_return && wraps_pointer_result && has_pointer_return_note &&
-                binds_callback_handle && binds_pointer_handle &&
+                wraps_foreign_handle_return && wraps_foreign_handle_result && has_foreign_handle_return_note &&
+                binds_callback_handle && binds_foreign_handle_handle &&
                 routes_buffer_through_helper && routes_callback_through_helper && routes_opaque_through_helper &&
                 wraps_borrowed_string_return_via_helper &&
                 wraps_unknown_string_return_via_helper &&
                 wraps_opaque_return_via_helper &&
                 emits_callback_cleanup,
-            "Compiler: bindgen facade module imports raw, scaffolds wrappers, and flags manual review",
-            "[FAIL] Compiler: bindgen facade module imports raw, scaffolds wrappers, and flags manual review",
+            "Compiler: bindgen facade module imports raw, scaffolds foreign-handle wrappers, and flags manual review",
+            "[FAIL] Compiler: bindgen facade module imports raw, scaffolds foreign-handle wrappers, and flags manual review",
             &pass,
             &fail
         );

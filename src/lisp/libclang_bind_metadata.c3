@@ -33,7 +33,7 @@ fn void bindgen_infer_metadata_for_type(char* c_type, char* omni_type, bool is_r
         return;
     }
 
-    if (cstr_eq(omni_type, "Pointer")) {
+    if (cstr_eq(omni_type, "ForeignHandle")) {
         *ownership = is_return ? BINDGEN_OWNERSHIP_UNKNOWN : BINDGEN_OWNERSHIP_BORROWED;
         *nullability = BINDGEN_NULLABILITY_UNKNOWN;
         *role = bindgen_type_is_callback(c_type) ? BINDGEN_ROLE_CALLBACK : BINDGEN_ROLE_OPAQUE_POINTER;

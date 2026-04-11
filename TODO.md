@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 3
+Current actionable count: 1
 
 Completed backlog snapshots:
 
@@ -27,30 +27,91 @@ Use this file only for still-open work.
     then proceed through constructor/indexing, tensor-expression/materialize,
     `map`, and `contract` only after each slice has targeted tests.
 
-- [ ] `AUDIT-LIST-HELPER-ALIAS-086` resolve whether lowercase `list` remains an
-  approved public constructor/helper exception
-  - audit finding: `list` duplicates the canonical `List` constructor and is
-    not currently listed with `Dict` as an approved shorthand exception, but
-    the language spec explicitly documents it as an idiomatic retained helper.
-  - next step: make a concrete owner/product decision; if not approved, migrate
-    live uses to `List`, remove the primitive registration/compiler map entry,
-    and update docs/tests.
-
-- [ ] `AUDIT-IMMER-PERSISTENT-DISPATCH-088` harden persistent collection
-  wrappers before adding generic dispatch
-  - audit finding: `persistent-dictionary` silently ignores an odd trailing
-    argument, unlike canonical `Dictionary` even key/value arity.
-  - audit finding: persistent collection wrappers pass raw opaque handles into
-    a C++ bridge that uses unchecked `static_cast` by target operation family.
-  - audit finding: no `persistent-array?`/`persistent-dictionary?`/
-    `persistent-set?` predicates or runtime wrapper values exist, so generic
-    `count`/`conj`/`into` dispatch remains unsound today.
-  - next step: first fail closed for odd dictionary arity and wrong-handle
-    operation calls, then either introduce typed wrapper values/predicates for
-    multiple dispatch or keep only explicit `persistent-array`,
-    `persistent-dictionary`, and `persistent-set` APIs.
-
 ## Recently Closed
+
+- [x] `AUDIT-IMMER-FFI-COMPAT-101` retire the optional Immer bridge instead
+  of extending FFI around it
+  - closure evidence:
+    - the owner clarified that C++/Immer support was not intended as core
+      language infrastructure.
+    - deleted the unsupported `lib/immer.omni` wrapper and the `lib/immer/`
+      C++ bridge tree, including the tracked nested `lib/immer/immer` gitlink.
+    - deleted the obsolete `docs/plans/immer-ffi-compat-plan-2026-04-11.md`
+      compatibility plan.
+    - no `^Value`, automatic value-handle, or pointer-only rewrite was added
+      for this legacy optional library.
+  - validation:
+    - active source/reference search confirms no supported surface references
+      remain outside historical TODO/changelog/plans.
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- [x] `AUDIT-LET-BRACKET-SHORTHAND-102` remove legacy outer `let [...]`
+  shorthand from live library code
+  - closure evidence:
+    - `lib/core.omni` macro expansions now emit flat-pair `let` and named
+      `let` binding lists.
+    - `lib/test-utils.omni` now uses flat-pair `let` binding syntax.
+    - the remaining `let [` text matches are only the syntax decision note and
+      the negative parser regression that verifies the shorthand is rejected.
+  - validation:
+    - `rg "\(let\s*\[" -n lib stdlib tests examples docs src` returns only
+      the syntax decision note and the negative parser regression.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --check lib/test-utils.omni`
+    - bounded `basic` slice: `pass=142 fail=0`
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- [x] `AUDIT-IMMER-PERSISTENT-DISPATCH-088` harden persistent collection
+  wrappers before adding generic dispatch
+  - closure evidence:
+    - `persistent-dictionary` now rejects odd key/value argument lists instead
+      of silently dropping the final key.
+    - persistent collection values are now tagged Omni wrapper dictionaries
+      around the raw bridge handle, and public operations unwrap by expected
+      family before calling the C++ bridge.
+    - `persistent-array?`, `persistent-dictionary?`, and `persistent-set?`
+      predicates now exist, while generic `count`/`conj`/`into` dispatch
+      remains intentionally frozen.
+    - residual runtime bridge compatibility is split into
+      `AUDIT-IMMER-FFI-COMPAT-101`.
+    - superseded by `AUDIT-IMMER-FFI-COMPAT-101`, which retires the optional
+      Immer bridge entirely instead of adding FFI machinery around it.
+  - historical validation before the bridge was retired:
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --check lib/immer.omni`
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - runtime preload remains blocked by `AUDIT-IMMER-FFI-COMPAT-101`
+      because `ffi-declare` is no longer bound.
+    - bridge build remains blocked locally: `make -C lib/immer test_bridge`
+      fails on missing `immer/flex_vector.hpp`.
+
+- [x] `AUDIT-LIST-HELPER-ALIAS-086` keep lowercase `list` as an approved public
+  helper
+  - closure evidence:
+    - `List` remains the canonical constructor/conversion surface.
+    - lowercase `list` is explicitly approved as an idiomatic Lisp
+      list-builder/conversion helper, not a new canonical constructor family.
+    - runtime primitive registration and compiler primitive hash coverage
+      already route `List` and `list` through the same implementation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- [x] `AUDIT-PROCESS-WRAPPER-PAYLOAD-FALLBACK-100` preserve process
+  runtime payload errors through stdlib wrappers
+  - closure evidence:
+    - `process-spawn` and `process-kill` now have untyped fallbacks after their
+      typed wrapper methods, matching the `tcp-*`, `offload`, and
+      `thread-spawn` pattern.
+    - invalid command and signal arguments now reach the runtime
+      `io/process-*` payload contracts instead of being intercepted by generic
+      typed dispatch.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `advanced-effect-union-limit` subgroup: `pass=67 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
 
 - [x] `AUDIT-FILESYSTEM-SURFACE-087` canonicalize filesystem wrappers on
   `fs-*`
@@ -87,8 +148,9 @@ Use this file only for still-open work.
   - closure evidence:
     - free-variable and delegation primitive checks now use one shared
       hash-backed classifier instead of duplicated hardcoded name arrays.
-    - legacy non-hash exceptions for `Pointer` and `__ui-ftxui-run` remain
-      excluded from closure capture without adding value-position lowering.
+    - legacy non-hash exceptions for `ForeignHandle` and `__ui-ftxui-run`
+      remain excluded from closure capture without adding value-position
+      lowering.
     - regression coverage now verifies hash-only primitives such as `Dict` and
       `json-parse` are looked up as primitives, not captured as C3 locals.
   - validation:
@@ -96,6 +158,64 @@ Use this file only for still-open work.
     - `git diff --check`
     - bounded `compiler` slice: `pass=197 fail=0`
     - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
+- [x] `AUDIT-FFI-FOREIGN-HANDLE-SURFACE-103` replace the public FFI pointer
+  annotation surface with `^ForeignHandle`
+  - closure evidence:
+    - `docs/LANGUAGE_SPEC.md` now documents `^ForeignHandle` as the pointer ABI
+      annotation and only accepts live `FFI_HANDLE` values or `nil`.
+    - `docs/reference/09-concurrency-ffi.md` now states that pointer-shaped C
+      values use `^ForeignHandle` rather than raw integer addresses.
+    - `docs/PROJECT_TOOLING.md` now maps non-string pointer-shaped bindings to
+      `^ForeignHandle` in bindgen output.
+    - runtime FFI call packing now rejects raw integer addresses for
+      pointer-ABI arguments and expects `nil` or live `FFI_HANDLE` values.
+    - non-null pointer-ABI returns now produce non-owning `FFI_HANDLE` values
+      instead of raw address integers.
+    - the audit/remediation and AOT runtime/linking notes now use
+      `ForeignHandle` instead of the stale `Pointer` exception wording where
+      current-state docs describe the live surface.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=43 fail=0`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - `git diff --check`
+
+- [x] `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105` carry `ForeignHandle`
+  metadata policy through the AOT runtime bridge
+  - closure evidence:
+    - AOT generated declarations now carry `ForeignHandle` policy descriptors
+      into `aot::ffi_declare_fn`.
+    - Parameter policy descriptors preserve handle family and nullability.
+    - Return policy descriptors preserve handle name, ownership, and finalizer
+      symbol, and the AOT bridge resolves owned-return finalizers before
+      installing the bound primitive.
+    - AOT lowering rejects owned `ForeignHandle` parameter policy fail-closed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=49 fail=0`
+    - bounded `compiler` slice: `pass=209 fail=0`
+    - `git diff --check`
+
+- [x] `AUDIT-FFI-FOREIGN-HANDLE-METADATA-104` implement the interpreter/JIT
+  ForeignHandle metadata dictionary policy
+  - closure evidence:
+    - `^ForeignHandle` remains the simple default foreign-handle annotation.
+    - FFI-local metadata dictionaries now accept the refinements:
+      `^{'name File 'ownership owned 'finalizer fclose}` implies
+      `ForeignHandle`, and the explicit `^{'type ForeignHandle ...}` form is
+      also accepted.
+    - runtime FFI now enforces handle family and non-null policy at call
+      packing, resolves owned return finalizers with `dlsym`, and wraps pointer
+      returns in named `FFI_HANDLE` boxes.
+    - FFI AST serialization now preserves metadata dictionary annotations for
+      compiler roundtrip coverage.
+    - AOT policy propagation was split into
+      `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105` and is now closed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=49 fail=0`
+    - bounded `compiler` slice: `pass=204 fail=0`
 
 - [x] `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096` fix generated
   e2e C3 primitive capture name sanitization

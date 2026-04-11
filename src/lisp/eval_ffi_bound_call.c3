@@ -2,11 +2,19 @@ module lisp;
 
 import std::io;
 
-fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, SymbolId base_type) {
+fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, TypeAnnotation* ann) {
     char[256] ebuf;
-    char[] type_name = interp.symbols.get_name(base_type);
+    char[] type_name = "metadata dictionary";
+    if (ann != null && !ann.is_dict) type_name = interp.symbols.get_name(ann.base_type);
     char[] msg;
-    if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
+    if (ann != null && ann.is_dict) {
+        if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation metadata dictionary",
+            (ZString)role)) {
+            msg = formatted;
+        } else {
+            msg = "ffi λ: unsupported type annotation";
+        }
+    } else if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
         (ZString)role, (ZString)type_name)) {
         msg = formatted;
     } else {
@@ -87,14 +95,43 @@ fn Value* ffi_arg_type_error(Interp* interp, usz arg_index, SymbolId expected_ty
 
 fn Value* ffi_null_handle_error(Interp* interp, usz arg_index) {
     char[256] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected live Pointer handle",
+    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected live ForeignHandle",
         (int)(arg_index + 1))) {
         return raise_error(interp, msg);
     }
-    return raise_error(interp, "ffi: expected live Pointer handle");
+    return raise_error(interp, "ffi: expected live ForeignHandle");
+}
+
+fn Value* ffi_non_null_handle_error(Interp* interp, usz arg_index) {
+    char[256] ebuf;
+    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected non-null ForeignHandle",
+        (int)(arg_index + 1))) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "ffi: expected non-null ForeignHandle");
+}
+
+fn Value* ffi_handle_name_error(Interp* interp, usz arg_index, SymbolId expected_name, FfiHandle* actual) {
+    char[256] ebuf;
+    char[] expected = interp.symbols.get_name(expected_name);
+    char[] actual_name = actual != null ? actual.lib_name[:actual.name_len] : "closed";
+    if (try char[] msg = io::bprintf(&ebuf,
+        "ffi: argument %d expected ForeignHandle %s, got %s",
+        (int)(arg_index + 1), (ZString)expected, (ZString)actual_name)) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "ffi: ForeignHandle name mismatch");
+}
+
+fn bool ffi_handle_name_matches(FfiHandle* handle, SymbolId expected_name, Interp* interp) {
+    if (expected_name == INVALID_SYMBOL_ID) return true;
+    if (handle == null) return false;
+    char[] expected = interp.symbols.get_name(expected_name);
+    return ffi_char_slice_equals(handle.lib_name[:handle.name_len], expected);
 }
 
 fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
+                            FfiHandlePolicy* policy,
                             long* int_slot, double* dbl_slot, void** ptr_slot,
                             int* out_arg_type, void** out_arg_value,
                             Interp* interp) {
@@ -129,16 +166,22 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
             return null;
         case FFI_TYPE_PTR:
             if (arg == null || arg.tag == NIL) {
+                if (policy != null && policy.is_foreign_handle
+                    && policy.nullability == FFI_HANDLE_NON_NULL) {
+                    return ffi_non_null_handle_error(interp, arg_index);
+                }
                 *ptr_slot = null;
-            } else if (arg.tag == INT) {
-                *ptr_slot = (void*)(uptr)arg.int_val;
             } else if (arg.tag == FFI_HANDLE) {
                 if (arg.ffi_val == null || arg.ffi_val.lib_handle == null) {
                     return ffi_null_handle_error(interp, arg_index);
                 }
+                if (policy != null && policy.is_foreign_handle
+                    && !ffi_handle_name_matches(arg.ffi_val, policy.name, interp)) {
+                    return ffi_handle_name_error(interp, arg_index, policy.name, arg.ffi_val);
+                }
                 *ptr_slot = arg.ffi_val.lib_handle;
             } else {
-                return ffi_arg_type_error(interp, arg_index, interp.sym_Pointer, arg);
+                return ffi_arg_type_error(interp, arg_index, interp.sym_ForeignHandle, arg);
             }
             *out_arg_type = (int)param_type;
             *out_arg_value = (void*)ptr_slot;
@@ -176,7 +219,8 @@ fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, double* r
     }
 }
 
-fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_dbl, void* ret_ptr, Interp* interp) {
+fn Value* ffi_return_value_for(FfiTypeTag return_type, FfiHandlePolicy* policy,
+                               long ret_int, double ret_dbl, void* ret_ptr, Interp* interp) {
     switch (return_type) {
         case FFI_TYPE_INT:
             return make_int(interp, ret_int);
@@ -186,6 +230,20 @@ fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_
         case FFI_TYPE_DOUBLE:
             return make_double(interp, ret_dbl);
         case FFI_TYPE_PTR:
+            if (ret_ptr == null) {
+                if (policy != null && policy.is_foreign_handle
+                    && policy.nullability == FFI_HANDLE_NON_NULL) {
+                    return raise_error(interp, "ffi: return expected non-null ForeignHandle");
+                }
+                return make_nil(interp);
+            }
+            char[] handle_name = "ffi-foreign-handle";
+            FfiHandleFinalizer finalizer = null;
+            if (policy != null && policy.is_foreign_handle) {
+                if (policy.name != INVALID_SYMBOL_ID) handle_name = interp.symbols.get_name(policy.name);
+                if (policy.ownership == FFI_HANDLE_OWNED) finalizer = policy.finalizer;
+            }
+            return make_ffi_handle_ex(interp, ret_ptr, handle_name, finalizer, false);
         case FFI_TYPE_STRING:
             if (ret_ptr == null) return make_nil(interp);
             return make_int(interp, (long)(uptr)ret_ptr);
@@ -250,7 +308,10 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     }
 
     for (usz i = 0; i < bound.param_count; i++) {
+        FfiHandlePolicy* policy = null;
+        if (bound.param_handle_policies != null) policy = &bound.param_handle_policies[i];
         if (Value* err = ffi_pack_call_arg(args[i], bound.param_types[i], i,
+            policy,
             &int_store[i], &dbl_store[i], &ptr_store[i],
             &arg_types[i], &arg_values[i], interp)) {
             return err;
@@ -268,5 +329,5 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
                            arg_types, arg_values, ret_type, ret_storage);
     if (rc != 0) return raise_error(interp, "ffi: libffi call failed");
 
-    return ffi_return_value_for(bound.return_type, ret_int, ret_dbl, ret_ptr, interp);
+    return ffi_return_value_for(bound.return_type, &bound.return_handle_policy, ret_int, ret_dbl, ret_ptr, interp);
 }

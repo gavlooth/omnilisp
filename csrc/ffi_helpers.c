@@ -9,7 +9,7 @@ enum {
     OMNI_FFI_VOID   = 0,
     OMNI_FFI_INT    = 1,
     OMNI_FFI_DOUBLE = 2,
-    OMNI_FFI_PTR    = 3,  // pointer (includes String, Ptr)
+    OMNI_FFI_PTR    = 3,  // foreign handle pointer ABI
     OMNI_FFI_BOOL   = 4,
     OMNI_FFI_STRING = 5,
 };

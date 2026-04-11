@@ -55,7 +55,7 @@ fn bool Compiler.is_compiler_builtin_symbol(Compiler* self, SymbolId sym) {
     // Non-value type annotation / legacy UI bridge entries that were historically
     // excluded from closure capture but do not have normal AOT value lowering.
     char[] name = self.interp.symbols.get_name(sym);
-    return self.str_eq(name, "Pointer") || self.str_eq(name, "__ui-ftxui-run");
+    return self.str_eq(name, "ForeignHandle") || self.str_eq(name, "__ui-ftxui-run");
 }
 
 fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {

@@ -15,6 +15,26 @@ enum FfiTypeTag : char {
     FFI_TYPE_STRING,
 }
 
+enum FfiHandleOwnership : char {
+    FFI_HANDLE_BORROWED,
+    FFI_HANDLE_OWNED,
+    FFI_HANDLE_MANUAL,
+}
+
+enum FfiHandleNullability : char {
+    FFI_HANDLE_NULLABLE,
+    FFI_HANDLE_NON_NULL,
+}
+
+struct FfiHandlePolicy {
+    bool is_foreign_handle;
+    SymbolId name;
+    FfiHandleOwnership ownership;
+    FfiHandleNullability nullability;
+    SymbolId finalizer_symbol;
+    FfiHandleFinalizer finalizer;
+}
+
 struct ExprFfiLib {
     SymbolId name;           // e.g. "libc"
     Expr* path_expr;         // string literal "libc.so.6"
@@ -44,7 +64,9 @@ struct FfiBoundFn {
     usz c_name_len;
     usz param_count;
     FfiTypeTag* param_types;
+    FfiHandlePolicy* param_handle_policies;
     FfiTypeTag return_type;
+    FfiHandlePolicy return_handle_policy;
     bool has_return;
     bool is_variadic;
     bool required_library;

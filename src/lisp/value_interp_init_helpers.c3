@@ -52,7 +52,7 @@ fn bool interp_init_type_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_effect, "effect") &&
         interp_init_symbol(self, &self.sym_ffi, "ffi") &&
         interp_init_symbol(self, &self.sym_lib, "lib") &&
-        interp_init_symbol(self, &self.sym_Pointer, "Pointer") &&
+        interp_init_symbol(self, &self.sym_ForeignHandle, "ForeignHandle") &&
         interp_init_symbol(self, &self.sym_Void, "Void") &&
         interp_init_symbol(self, &self.sym_Integer, "Integer") &&
         interp_init_symbol(self, &self.sym_Double, "Double") &&

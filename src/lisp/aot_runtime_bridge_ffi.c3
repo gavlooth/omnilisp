@@ -3,6 +3,54 @@ module lisp::aot;
 import std::io;
 import lisp;
 
+struct AotFfiHandlePolicySpec {
+    bool is_foreign_handle;
+    char[] name;
+    int ownership;
+    int nullability;
+    char[] finalizer;
+}
+
+fn lisp::Value* aot_ffi_policy_from_spec(
+    lisp::Interp* interp,
+    AotFfiHandlePolicySpec* spec,
+    lisp::FfiHandlePolicy* out_policy
+) {
+    *out_policy = lisp::ffi_handle_policy_default();
+    if (spec == null || !spec.is_foreign_handle) return null;
+
+    out_policy.is_foreign_handle = true;
+    if (spec.name.len > 0 && !aot_intern_checked(interp, spec.name, &out_policy.name)) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable ForeignHandle name");
+    }
+    switch (spec.ownership) {
+        case 0:
+            out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_BORROWED;
+        case 1:
+            out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_OWNED;
+        case 2:
+            out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_MANUAL;
+        default:
+            return aot_make_error_best_effort(interp, "aot ffi λ: invalid ForeignHandle ownership policy");
+    }
+    switch (spec.nullability) {
+        case 0:
+            out_policy.nullability = lisp::FfiHandleNullability.FFI_HANDLE_NULLABLE;
+        case 1:
+            out_policy.nullability = lisp::FfiHandleNullability.FFI_HANDLE_NON_NULL;
+        default:
+            return aot_make_error_best_effort(interp, "aot ffi λ: invalid ForeignHandle nullability policy");
+    }
+    if (spec.finalizer.len > 0 && !aot_intern_checked(interp, spec.finalizer, &out_policy.finalizer_symbol)) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable ForeignHandle finalizer");
+    }
+    if (out_policy.ownership == lisp::FfiHandleOwnership.FFI_HANDLE_OWNED
+        && out_policy.finalizer_symbol == lisp::INVALID_SYMBOL_ID) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: owned ForeignHandle return requires a finalizer");
+    }
+    return null;
+}
+
 fn lisp::Value* ffi_declare_fn(
     char[] lib_name,
     char[] omni_fn_name,
@@ -12,7 +60,9 @@ fn lisp::Value* ffi_declare_fn(
     bool has_return_type,
     int return_type_tag,
     bool eager_resolve = true,
-    bool required_symbol = true
+    bool required_symbol = true,
+    AotFfiHandlePolicySpec* param_handle_policies = null,
+    AotFfiHandlePolicySpec* return_handle_policy = null
 ) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot ffi λ: runtime interpreter unavailable");
@@ -49,7 +99,9 @@ fn lisp::Value* ffi_declare_fn(
         unavailable.lib_name_len = 0;
         unavailable.param_count = param_count;
         unavailable.param_types = null;
+        unavailable.param_handle_policies = null;
         unavailable.return_type = (lisp::FfiTypeTag)0;
+        unavailable.return_handle_policy = lisp::ffi_handle_policy_default();
         unavailable.has_return = false;
         unavailable.is_variadic = false;
         unavailable.required_library = false;
@@ -90,8 +142,10 @@ fn lisp::Value* ffi_declare_fn(
     }
     bound.param_count = param_count;
     bound.param_types = null;
+    bound.param_handle_policies = null;
     bound.has_return = false;
     bound.return_type = (lisp::FfiTypeTag)0;
+    bound.return_handle_policy = lisp::ffi_handle_policy_default();
     bound.is_variadic = false;
     bound.c_name = null;
     bound.c_name_len = c_symbol.len;
@@ -116,9 +170,16 @@ fn lisp::Value* ffi_declare_fn(
             return aot_make_error_best_effort(interp, "aot ffi λ: parameter ABI table size overflow");
         }
         bound.param_types = (lisp::FfiTypeTag*)interp.root_scope.alloc(lisp::FfiTypeTag.sizeof * param_count);
+        if (param_handle_policies != null) {
+            bound.param_handle_policies = (lisp::FfiHandlePolicy*)interp.root_scope.alloc(lisp::FfiHandlePolicy.sizeof * param_count);
+        }
         if (bound.param_types == null) {
             aot_ffi_free_bound(bound);
             return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while allocating parameter ABI tags");
+        }
+        if (param_handle_policies != null && bound.param_handle_policies == null) {
+            aot_ffi_free_bound(bound);
+            return aot_make_error_best_effort(interp, "aot ffi λ: out of memory while allocating parameter handle policies");
         }
         for (usz i = 0; i < param_count; i++) {
             lisp::FfiTypeTag tag;
@@ -133,6 +194,16 @@ fn lisp::Value* ffi_declare_fn(
                 return aot_make_error_best_effort(interp, "aot ffi λ: unsupported parameter ABI tag");
             }
             bound.param_types[i] = tag;
+            if (bound.param_handle_policies != null) {
+                if (lisp::Value* policy_error = aot_ffi_policy_from_spec(interp, &param_handle_policies[i], &bound.param_handle_policies[i])) {
+                    aot_ffi_free_bound(bound);
+                    return policy_error;
+                }
+                if (bound.param_handle_policies[i].ownership == lisp::FfiHandleOwnership.FFI_HANDLE_OWNED) {
+                    aot_ffi_free_bound(bound);
+                    return aot_make_error_best_effort(interp, "aot ffi λ: owned ForeignHandle parameter policy is not supported");
+                }
+            }
         }
     }
 
@@ -149,6 +220,16 @@ fn lisp::Value* ffi_declare_fn(
             return aot_make_error_best_effort(interp, "aot ffi λ: unsupported return ABI tag");
         }
         bound.return_type = ret_tag;
+        if (return_handle_policy != null) {
+            if (lisp::Value* policy_error = aot_ffi_policy_from_spec(interp, return_handle_policy, &bound.return_handle_policy)) {
+                aot_ffi_free_bound(bound);
+                return policy_error;
+            }
+            if (lisp::Value* finalizer_error = lisp::ffi_resolve_return_handle_finalizer(bound, &bound.return_handle_policy, interp)) {
+                aot_ffi_free_bound(bound);
+                return finalizer_error;
+            }
+        }
         bound.has_return = true;
     }
 

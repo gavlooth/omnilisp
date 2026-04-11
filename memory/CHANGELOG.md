@@ -1,5 +1,134 @@
 ## 2026-04-11
 
+- Closed `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105`:
+  - Added AOT bridge policy descriptors for generated declarative `ffi λ`
+    declarations.
+  - AOT generated code now emits `AotFfiHandlePolicySpec` arrays for
+    parameter handle policy and a return-policy descriptor when the source
+    annotation carries non-default `ForeignHandle` metadata.
+  - The AOT runtime bridge converts descriptors into `FfiHandlePolicy`,
+    preserves parameter handle family/nullability, preserves return handle
+    name/ownership/finalizer, resolves owned-return finalizers with `dlsym`,
+    and rejects owned handle parameter policies fail-closed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=49 fail=0`
+    - bounded `compiler` slice: `pass=209 fail=0`
+    - `git diff --check`
+
+- Closed `AUDIT-FFI-FOREIGN-HANDLE-METADATA-104`:
+  - Implemented the interpreter/JIT ForeignHandle metadata dictionary policy so
+    `^ForeignHandle` stays the simple default foreign-handle annotation while
+    FFI-local dictionaries can refine it.
+  - Accepted the FFI-local refinements:
+    `^{'name File 'ownership owned 'finalizer fclose}` implies
+    `ForeignHandle`, and explicit `^{'type ForeignHandle ...}` is also
+    accepted.
+  - Clarified that Omni dictionaries use quoted-symbol key/value pairs and do
+    not use colon keywords.
+  - Runtime FFI now enforces handle family and non-null policy at call packing,
+    resolves owned return finalizers with `dlsym`, and wraps pointer returns in
+    named `FFI_HANDLE` boxes.
+  - Added FFI AST serialization for declarative FFI forms so compiler
+    roundtrip coverage preserves the metadata dictionary spelling.
+  - Split AOT policy propagation into
+    `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105`; that follow-up is now closed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=49 fail=0`
+    - bounded `compiler` slice: `pass=204 fail=0`
+
+- Closed `AUDIT-FFI-FOREIGN-HANDLE-SURFACE-103`:
+  - Replaced the public FFI pointer annotation surface with `^ForeignHandle`
+    across runtime annotation mapping, bindgen output, compiler manifest text,
+    tests, current-state docs, and tracking notes.
+  - Documented `^ForeignHandle` as the pointer-ABI annotation that accepts
+    live `FFI_HANDLE` values or `nil`, not raw integer addresses.
+  - Removed raw integer address coercion from pointer-ABI call packing.
+  - Wrapped non-null pointer-ABI returns in non-owning `FFI_HANDLE` values
+    instead of exposing raw integer addresses.
+  - Updated bindgen-facing code/docs so pointer-shaped C values now map to
+    `^ForeignHandle`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-ffi-system` subgroup: `pass=43 fail=0`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - `git diff --check`
+
+- Closed `AUDIT-IMMER-FFI-COMPAT-101` by retiring the optional Immer bridge:
+  - Deleted the unsupported `lib/immer.omni` wrapper and the `lib/immer/`
+    C++ bridge tree, including the tracked nested `lib/immer/immer` gitlink.
+  - Deleted the obsolete `docs/plans/immer-ffi-compat-plan-2026-04-11.md`
+    compatibility plan.
+  - Recorded the owner decision that C++/Immer support is not core language
+    infrastructure, so no `^Value`, automatic value-handle, or pointer-only
+    FFI rewrite was added for this legacy optional library.
+  - validation:
+    - active source/reference search confirms no supported surface references
+      remain outside historical TODO/changelog/plans.
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Closed `AUDIT-PROCESS-WRAPPER-PAYLOAD-FALLBACK-100`:
+  - Added untyped stdlib fallbacks for `process-spawn` and `process-kill` so
+    invalid argument shapes still flow through the canonical `io/process-*`
+    payload error lane, matching the surrounding I/O wrapper pattern.
+  - Added regression coverage for invalid process command and signal arguments
+    to verify runtime payload codes instead of generic typed-dispatch failures.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `advanced-effect-union-limit` subgroup: `pass=67 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
+- Closed `AUDIT-LIST-HELPER-ALIAS-086`:
+  - Kept `List` as the canonical list constructor/conversion surface.
+  - Explicitly approved lowercase `list` as an idiomatic Lisp
+    list-builder/conversion helper rather than treating it as an unapproved
+    constructor alias.
+  - Runtime primitive registration and compiler primitive hash coverage already
+    route `List` and `list` through the same implementation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Closed `AUDIT-IMMER-PERSISTENT-DISPATCH-088`:
+  - Added tagged Omni wrapper dictionaries around optional Immer bridge
+    handles so public persistent collection operations unwrap by expected
+    family before calling the C++ bridge.
+  - Added `persistent-array?`, `persistent-dictionary?`, and
+    `persistent-set?` predicates while keeping generic `count`/`conj`/`into`
+    dispatch frozen.
+  - Made `persistent-dictionary` reject odd key/value argument lists instead of
+    silently dropping the final key.
+  - Split residual runtime bridge compatibility into
+    `AUDIT-IMMER-FFI-COMPAT-101` because `lib/immer.omni` still uses the
+    retired `ffi-declare` / `(ffi "...")` surface and current declarative FFI
+    cannot truthfully pass arbitrary Omni value payloads as `void*`.
+  - historical validation before the bridge was retired:
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --check lib/immer.omni`
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - runtime preload remains blocked by `AUDIT-IMMER-FFI-COMPAT-101`
+      because `ffi-declare` is no longer bound.
+    - local bridge build remains blocked on missing Immer headers:
+      `make -C lib/immer test_bridge` fails on `immer/flex_vector.hpp`.
+
+- Closed `AUDIT-LET-BRACKET-SHORTHAND-102`:
+  - Removed legacy outer `let [...]` shorthand from live library code.
+  - `lib/core.omni` macro expansions now emit flat-pair `let` and named `let`
+    binding lists.
+  - `lib/test-utils.omni` now uses flat-pair `let` binding syntax.
+  - The only remaining `let [` text matches are the syntax decision note and
+    the negative parser regression that verifies the shorthand is rejected.
+  - validation:
+    - `rg "\(let\s*\[" -n lib stdlib tests examples docs src` returns only
+      the syntax decision note and the negative parser regression.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --check lib/test-utils.omni`
+    - bounded `basic` slice: `pass=142 fail=0`
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
 - Closed `AUDIT-FILESYSTEM-SURFACE-087`:
   - Selected `fs-*` as the canonical filesystem wrapper/primitive family and
     removed the remaining stdlib `filesystem-*` compatibility aliases.
@@ -34,9 +163,9 @@
   - Replaced the duplicated compiler free-variable/delegation primitive-name
     arrays with a shared hash-backed classifier, making the compiler primitive
     hash table the single value-lowering source for primitive/literal symbols.
-  - Preserved legacy non-hash classification exceptions for `Pointer` and
-    `__ui-ftxui-run`, which were already excluded from closure capture but do
-    not have normal AOT value lowering entries.
+  - Preserved legacy non-hash classification exceptions for `ForeignHandle`
+    and `__ui-ftxui-run`, which were already excluded from closure capture but
+    do not have normal AOT value lowering entries.
   - Extended the closure-capture regression to cover hash-only primitives such
     as `Dict` and `json-parse`, preventing drift from reintroducing accidental
     captured C3 identifiers.

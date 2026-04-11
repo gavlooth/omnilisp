@@ -725,7 +725,7 @@ Canonical naming direction:
 - collection/time constructor policy:
   - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
   - allowed constructor shorthand: `Dict` for `Dictionary`
-  - retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
+  - approved retained public helper: `list` (idiomatic Lisp list builder/conversion helper)
 
 ### 4.1 Struct Types
 
@@ -1256,16 +1256,21 @@ Numeric conversion policy:
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer` → sint64, `^Double` → double, `^String`/`^Pointer` (preferred) → pointer, `^Void` → void, `^Boolean` → sint64
-- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
+- Type annotations: `^Integer` -> sint64, `^Double` -> double, `^String` -> pointer, `^ForeignHandle` -> pointer, `^Void` -> void, `^Boolean` -> sint64
+- `^ForeignHandle` is the simple default foreign-handle annotation. In `ffi λ`, FFI-local metadata dictionaries may refine it, for example `^{'name File 'ownership owned 'finalizer fclose}` implies `ForeignHandle`; the explicit `^{'type ForeignHandle ...}` form is also accepted. Dictionary entries are key/value pairs with quoted symbol keys; Omni does not use colon keywords.
+- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation level; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
 - Argument conversion is fail-closed:
   - `^Integer`: Omni `Integer` only
   - `^Double`: Omni `Double` or `Integer`
   - `^Boolean`: Omni `true` / `false` only
   - `^String`: Omni `String`, or `nil` for a null `char*`
-  - `^Pointer`: Omni `Integer` raw address, live `FFI_HANDLE`, or `nil` for null
+  - `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
+  - FFI-local metadata dictionaries in `ffi λ` use the same quoted-symbol key/value dictionary syntax as the rest of Omni; no colon keywords are used.
 - Declarative `variadic` bindings are currently rejected at definition time until the runtime carries explicit fixed/variadic metadata
-- Execution mode contract: declarative FFI is interpreter/JIT-only in the current shipped backend surface; AOT currently rejects declarative `ffi` forms
+- Execution mode contract: interpreter/JIT `ffi λ` enforces `ForeignHandle`
+  metadata dictionaries. AOT lowering carries the same policy into generated
+  declarations with per-parameter handle family/nullability descriptors and a
+  return handle name/ownership/finalizer descriptor.
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
 

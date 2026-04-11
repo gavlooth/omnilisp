@@ -12,7 +12,7 @@ fn char[] ffi_manifest_type_name(FfiTypeTag tag) {
         case FFI_TYPE_DOUBLE:
             return "Double";
         case FFI_TYPE_PTR:
-            return "Pointer";
+            return "ForeignHandle";
         case FFI_TYPE_BOOL:
             return "Boolean";
         case FFI_TYPE_STRING:
@@ -98,13 +98,17 @@ fn void Compiler.emit_ffi_manifest_fn_entry(Compiler* self, Expr* expr, bool* fi
     }
 
     int* param_tags = null;
+    FfiHandlePolicy* param_policies = null;
     int return_tag = 0;
+    FfiHandlePolicy return_policy = ffi_handle_policy_default();
     char[] lib_name = "";
     char[] fn_name = "";
     char[] c_symbol = "";
     usz param_count = 0;
-    if (!self.prepare_ffi_fn_call(expr, &param_tags, &return_tag, &lib_name, &fn_name, &c_symbol, &param_count)) {
+    if (!self.prepare_ffi_fn_call(expr, &param_tags, &param_policies, &return_tag, &return_policy,
+        &lib_name, &fn_name, &c_symbol, &param_count)) {
         if (param_tags != null) mem::free(param_tags);
+        if (param_policies != null) mem::free(param_policies);
         return;
     }
 
@@ -129,6 +133,7 @@ fn void Compiler.emit_ffi_manifest_fn_entry(Compiler* self, Expr* expr, bool* fi
     self.emit("\n      }");
 
     if (param_tags != null) mem::free(param_tags);
+    if (param_policies != null) mem::free(param_policies);
 }
 
 fn void Compiler.emit_ffi_contract_manifest(Compiler* self, List{Expr*}* exprs) {

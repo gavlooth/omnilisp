@@ -311,6 +311,15 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
         "(await f))",
         pass, fail);
 
+    test_str_val(interp, "process-spawn invalid cmd payload code",
+        "(handle (process-spawn 42 nil nil) "
+        "  (raise msg (String (ref msg 'code))))",
+        "io/process-spawn-cmd-not-string", pass, fail);
+    test_str_val(interp, "process-kill invalid sig payload code",
+        "(handle (process-kill nil \"TERM\") "
+        "  (raise msg (String (ref msg 'code))))",
+        "io/process-kill-sig-not-integer", pass, fail);
+
     test_truthy_interp(interp, "process spawn stdio + wait",
         "(block "
         "(define p (process-spawn \"/bin/sh\" [\"-c\" \"printf omni\"] nil)) "
@@ -474,14 +483,15 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     setup(interp, "(define [ffi λ libm] (ldexp (^Double x) (^Integer exp)) ^Double)");
     test_eq_double(interp, "ffi λ ldexp", "(ldexp 1.0 10)", 1024.0, pass, fail);
 
-    setup(interp, "(define [ffi λ libc] (strtol (^String s) (^Pointer endptr) (^Integer base)) ^Integer)");
-    test_eq(interp, "ffi λ strtol mixed scalar pointer", "(strtol \"12345\" nil 10)", 12345, pass, fail);
+    setup(interp, "(define [ffi λ libc] (strtol (^String s) (^ForeignHandle endptr) (^Integer base)) ^Integer)");
+    test_eq(interp, "ffi λ strtol mixed scalar foreign handle", "(strtol \"12345\" nil 10)", 12345, pass, fail);
 
-    // Void return (canonical pointer annotation)
-    setup(interp, "(define [ffi λ libc] (free (^Pointer p)))");
-    test_truthy(interp, "ffi λ free null (^Pointer)", "(= (type-of (free nil)) 'Void)", pass, fail);
-    setup(interp, "(define [ffi λ libc] (free (^Pointer p)))");
-    test_truthy(interp, "ffi λ free raw zero (^Pointer)", "(= (type-of (free 0)) 'Void)", pass, fail);
+    // Void return (canonical ForeignHandle annotation)
+    setup(interp, "(define [ffi λ libc] (free (^ForeignHandle p)))");
+    test_truthy(interp, "ffi λ free null (^ForeignHandle)", "(= (type-of (free nil)) 'Void)", pass, fail);
+    test_error_contains(interp, "ffi λ free rejects integer address (^ForeignHandle)",
+        "(free 0)",
+        "argument 1 expected ForeignHandle, got Integer", pass, fail);
 
     // Error cases
     test_error_contains(interp, "ffi λ strlen rejects non-string arg",
@@ -495,7 +505,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "argument 1 expected Double, got Boolean", pass, fail);
     test_error_contains(interp, "ffi λ free rejects string arg",
         "(free \"hello\")",
-        "argument 1 expected Pointer, got String", pass, fail);
+        "argument 1 expected ForeignHandle, got String", pass, fail);
     test_error_contains(interp, "ffi λ exact arity rejects extra args",
         "(getpid 1)",
         "arity mismatch: expected 0 argument(s), got 1", pass, fail);
@@ -515,6 +525,9 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi λ unsupported parameter annotation",
         "(block (define [ffi lib] bad-ffi-lib \"libc.so.6\") (define [ffi λ bad-ffi-lib] (strlen (^Symbol s)) ^Integer))",
         "unsupported parameter type annotation '^Symbol'", pass, fail);
+    test_error_contains(interp, "ffi λ legacy Pointer annotation is rejected",
+        "(block (define [ffi lib] bad-ffi-lib3 \"libc.so.6\") (define [ffi λ bad-ffi-lib3] (free (^Pointer p))))",
+        "unsupported parameter type annotation '^Pointer'", pass, fail);
     test_error_contains(interp, "ffi λ unsupported return annotation",
         "(block (define [ffi lib] bad-ffi-lib2 \"libc.so.6\") (define [ffi λ bad-ffi-lib2] (strlen (^String s)) ^Symbol))",
         "unsupported return type annotation '^Symbol'", pass, fail);
@@ -560,9 +573,36 @@ fn void run_advanced_ffi_system_long_symbol_tests(Interp* interp, int* pass, int
         pass, fail);
 }
 
+fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* interp, int* pass, int* fail) {
+    setup(interp, "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose})");
+    test_tag(interp, "ffi dict fopen return is foreign handle", "(fopen \"/etc/hosts\" \"r\")", FFI_HANDLE, pass, fail);
+
+    setup(interp, "(define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)))");
+    test_error_contains(interp, "ffi dict fclose rejects nil for non-null handle",
+        "(fclose nil)",
+        "expected non-null ForeignHandle", pass, fail);
+
+    setup(interp, "(block (define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose}) (define [ffi λ libc] (free (^{'name SqliteDb 'ownership borrowed 'nullability non-null} p))))");
+    test_error_contains(interp, "ffi dict wrong family is rejected",
+        "(block (define h (fopen \"/etc/hosts\" \"r\")) (free h))",
+        "expected ForeignHandle SqliteDb", pass, fail);
+
+    test_error_contains(interp, "ffi dict unknown key is rejected",
+        "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose 'bogus true})",
+        "unsupported return type annotation metadata dictionary", pass, fail);
+    test_error_contains(interp, "ffi dict invalid ownership value is rejected",
+        "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership lease 'finalizer fclose})",
+        "unsupported return type annotation metadata dictionary", pass, fail);
+    test_error_contains(interp, "ffi dict owned without finalizer is rejected",
+        "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned})",
+        "unsupported return type annotation metadata dictionary", pass, fail);
+}
+
 fn void run_advanced_ffi_system_tests(Interp* interp, int* pass, int* fail) {
     run_advanced_ffi_system_group("advanced-ffi-system-surface",
         &run_advanced_ffi_system_surface_tests, interp, pass, fail);
+    run_advanced_ffi_system_group("advanced-ffi-system-foreign-handle-metadata-dict",
+        &run_advanced_ffi_system_foreign_handle_metadata_dict_tests, interp, pass, fail);
     run_advanced_ffi_system_selected_exact_group("advanced-ffi-system-long-symbol",
         &run_advanced_ffi_system_long_symbol_tests, interp, pass, fail);
 }

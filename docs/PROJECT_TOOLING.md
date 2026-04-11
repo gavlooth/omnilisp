@@ -619,9 +619,10 @@ omni --bind                 # uses current directory
 ```
 
 Reads `omni.toml`, parses C headers using libclang, and writes Omni FFI modules to `lib/ffi/`. The generator now fails closed on overlong header paths and on header sets that exceed the current fixed parse scratch limit, instead of truncating the path or emitting a partial module.
-Generated modules use declarative `ffi` forms, so this output currently targets
-interpreter/JIT workflows; compiler/AOT currently rejects declarative `ffi`
-forms.
+Generated modules use declarative `ffi` forms. Interpreter/JIT enforces the
+current `ForeignHandle` metadata dictionary policy, and compiler/AOT lowering
+carries that policy into generated FFI declarations with handle descriptors for
+parameters and returns.
 
 **Requires:** libclang installed on the system (see [Dependencies](#dependencies) below).
 
@@ -1165,15 +1166,22 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 | `enum` types | `'int` | `^Integer` | Enums are integers |
 | `float`, `double` | `'double` | `^Double` | All floating-point types |
 | `const char *`, `char *` returns | `'string` | `^String` | Treated as string-shaped values; return ownership/nullability is still surfaced via metadata/comments |
-| mutable `char *` parameters | `'ptr` | `^Pointer` | Fail-closed default for in/out buffers; emitted metadata still marks these as `string-buffer` for facade scaffolding |
-| `void *`, other pointers | `'ptr` | `^Pointer` | Opaque handle as pointer-sized value (`^Pointer` shorthand supported) |
+| mutable `char *` parameters | `'ptr` | `^ForeignHandle` | Fail-closed default for in/out buffers; emitted metadata still marks these as `string-buffer` for facade scaffolding |
+| `void *`, other pointers | `'ptr` | `^ForeignHandle` | Opaque handle as pointer-sized value; when the handle family and teardown policy are known, bindgen may emit FFI-local metadata dictionaries such as `^{'name File 'ownership owned 'finalizer fclose}` |
 | `void` (return only) | `'void` | `^Void` | Returns the runtime `Void` singleton value |
+
+Use `^ForeignHandle` as the simple default for pointer-shaped C values. FFI-local
+metadata dictionaries may refine the policy in `ffi λ` position, for example
+`^{'name File 'ownership owned 'finalizer fclose}` implies `ForeignHandle`, and
+the explicit `^{'type ForeignHandle ...}` form is also accepted. Dictionary
+entries are key/value pairs with quoted symbol keys; Omni does not use colon
+keywords.
 
 ### Limitations
 
 - **Struct parameters/returns**: C functions that pass or return structs by value are rejected explicitly; `--bind` fails instead of emitting a pointer-coerced binding (the declarative `ffi` surface only ships scalar/pointer calls today)
 - **Variadic functions**: Skipped automatically (e.g., `printf`)
-- **Function pointers as parameters**: Mapped as `'ptr`/`^Pointer` (callback registration requires manual wrappers)
+- **Function pointers as parameters**: Mapped as `'ptr`/`^ForeignHandle` (callback registration requires manual wrappers; metadata dictionaries can still name the family and finalizer policy when available)
 - **Unsupported parameter metadata allocation**: `--bind` now fails closed if it cannot allocate parameter descriptors instead of silently emitting malformed zero-argument wrappers
 - **Macros**: `#define` constants and macro-functions are not parsed (libclang only sees declarations)
 
@@ -1246,8 +1254,8 @@ EOF
 cd calculator
 omni src/main.omni
 
-# AOT note: generated declarative ffi modules are currently interpreter/JIT-only.
-# `omni --build` rejects declarative ffi forms today.
+# AOT note: generated declarative ffi modules carry ABI tags and
+# ForeignHandle policy descriptors for parameters and returns.
 ```
 
 ---

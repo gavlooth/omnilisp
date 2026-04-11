@@ -46,6 +46,12 @@ fn void Compiler.serialize_expr_to_buf(Compiler* self, Expr* expr, List{char}* b
         case E_EXPORT_FROM:
             self.serialize_export_from_to_buf(expr, buf);
 
+        case E_FFI_LIB:
+            self.serialize_ffi_lib_to_buf(expr, buf);
+
+        case E_FFI_FN:
+            self.serialize_ffi_fn_to_buf(expr, buf);
+
         default:
             if (self.serialize_expr_specialized(expr, buf)) return;
             self.buf_append(buf, "nil");

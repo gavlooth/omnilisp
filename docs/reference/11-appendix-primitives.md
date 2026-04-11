@@ -115,7 +115,7 @@ These support user extension via method tables.
 | `List` | variadic | Canonical list constructor / conversion surface |
 | `null?` | 1 | Is nil? |
 | `pair?` | 1 | Is cons? |
-| `list` | variadic | Public helper for list construction/conversion |
+| `list` | variadic | Approved public helper for list construction/conversion |
 
 **Boolean:**
 

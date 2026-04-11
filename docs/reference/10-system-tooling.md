@@ -164,7 +164,7 @@ functions = ["sin", "cos", "sqrt"]
 2. Run `omni --bind myproject/`
 3. Generated raw modules and facade stubs appear in `lib/ffi/` when header parsing succeeds without overrunning the current fixed bind scratch limits
 4. Import with `(import "lib/ffi/math.omni")`
-5. Execution-mode note: generated modules are declarative FFI and therefore currently target interpreter/JIT workflows; AOT currently rejects declarative `ffi` forms
+5. Execution-mode note: generated modules are declarative FFI. Interpreter/JIT enforces `ForeignHandle` metadata dictionaries; AOT carries the same policy into generated FFI declarations with handle descriptors for parameters and returns.
 
 Requires libclang (only for `--bind`, not for running programs).
 

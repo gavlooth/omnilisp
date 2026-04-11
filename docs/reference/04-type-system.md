@@ -98,7 +98,7 @@ Alias policy is input-tolerant but output-canonical:
 Collection/time constructor naming policy:
 - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
 - allowed constructor shorthand: `Dict` for `Dictionary`
-- retained public helper: `list`
+- approved retained public helper: `list`
 
 Meta/abstract symbols `Any`, `Number`, and `Collection` remain annotation/dispatch
 surfaces and are also exposed as non-callable value-position type descriptors

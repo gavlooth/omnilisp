@@ -19,7 +19,16 @@ Implemented against this note so far:
 - explicit required-load policy emitted alongside AOT callsites,
 - optional-symbol fail-closed runtime handling,
 - compile mode emits an adjacent `*.ffi-manifest.json` contract sidecar for declarative FFI programs,
-- direct AOT compile/runtime coverage for supported scalar and pointer ABI tags.
+- direct AOT compile/runtime coverage for supported scalar and foreign-handle
+  ABI tags.
+- FFI-local metadata dictionaries for `ForeignHandle` annotations in the
+  interpreter/JIT path: `^ForeignHandle` remains the simple default,
+  `^{'name File 'ownership owned 'finalizer fclose}` implies `ForeignHandle`,
+  explicit `^{'type ForeignHandle ...}` is also accepted, and dictionary
+  entries are quoted-symbol key/value pairs rather than colon keywords.
+- The compiler parser/serializer preserves this dictionary spelling, and AOT
+  runtime declarations carry policy descriptors for parameter handle
+  family/nullability and return handle name/ownership/finalizer.
 
 ## AOT Lowering Semantics
 
@@ -33,7 +42,7 @@ For declarative forms:
 - `[ffi λ]` lowers to an AOT-generated callsite descriptor:
   - target library descriptor id,
   - symbol name,
-  - canonical ABI signature (`Integer`, `Double`, `String`, `Pointer`, `Boolean`, `Void`),
+  - canonical ABI signature (`Integer`, `Double`, `String`, `ForeignHandle`, `Boolean`, `Void`),
   - per-arg marshaling policy,
   - return marshaling policy.
 

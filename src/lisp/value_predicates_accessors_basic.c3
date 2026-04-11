@@ -102,7 +102,7 @@ fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_
         *out_tag = FFI_TYPE_STRING;
         return true;
     }
-    if (base_type == interp.sym_Pointer) {
+    if (base_type == interp.sym_ForeignHandle) {
         *out_tag = FFI_TYPE_PTR;
         return true;
     }
@@ -115,6 +115,116 @@ fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_
         return true;
     }
     return false;
+}
+
+fn bool ffi_char_slice_equals(char[] left, char[] right) @inline {
+    if (left.len != right.len) return false;
+    for (usz i = 0; i < left.len; i++) {
+        if (left[i] != right[i]) return false;
+    }
+    return true;
+}
+
+fn bool ffi_symbol_name_equals(SymbolId sym, Interp* interp, char[] expected) @inline {
+    return ffi_char_slice_equals(interp.symbols.get_name(sym), expected);
+}
+
+fn FfiHandlePolicy ffi_handle_policy_default() @inline {
+    FfiHandlePolicy policy = {};
+    policy.is_foreign_handle = false;
+    policy.name = INVALID_SYMBOL_ID;
+    policy.ownership = FFI_HANDLE_BORROWED;
+    policy.nullability = FFI_HANDLE_NULLABLE;
+    policy.finalizer_symbol = INVALID_SYMBOL_ID;
+    policy.finalizer = null;
+    return policy;
+}
+
+fn bool ffi_meta_key_is_handle_policy(SymbolId key, Interp* interp) @inline {
+    return ffi_symbol_name_equals(key, interp, "type")
+        || ffi_symbol_name_equals(key, interp, "name")
+        || ffi_symbol_name_equals(key, interp, "ownership")
+        || ffi_symbol_name_equals(key, interp, "finalizer")
+        || ffi_symbol_name_equals(key, interp, "nullability");
+}
+
+fn bool ffi_metadata_type_annotation_to_tag(TypeAnnotation* ann, Interp* interp,
+    FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
+    if (ann == null || !ann.is_dict) return false;
+
+    FfiHandlePolicy policy = ffi_handle_policy_default();
+    bool saw_handle_policy_key = false;
+    bool saw_type = false;
+    bool saw_ownership = false;
+    bool saw_finalizer = false;
+
+    for (usz i = 0; i < ann.meta_count; i++) {
+        MetaEntry* entry = &ann.meta[i];
+        for (usz j = 0; j < i; j++) {
+            if (ann.meta[j].key == entry.key) return false;
+        }
+
+        if (!ffi_meta_key_is_handle_policy(entry.key, interp)) return false;
+        saw_handle_policy_key = true;
+
+        if (ffi_symbol_name_equals(entry.key, interp, "type")) {
+            if (entry.is_int || entry.sym_value != interp.sym_ForeignHandle) return false;
+            saw_type = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "name")) {
+            if (entry.is_int) return false;
+            policy.name = entry.sym_value;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "ownership")) {
+            if (entry.is_int) return false;
+            if (ffi_symbol_name_equals(entry.sym_value, interp, "owned")) {
+                policy.ownership = FFI_HANDLE_OWNED;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "borrowed")) {
+                policy.ownership = FFI_HANDLE_BORROWED;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "manual")) {
+                policy.ownership = FFI_HANDLE_MANUAL;
+            } else {
+                return false;
+            }
+            saw_ownership = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "finalizer")) {
+            if (entry.is_int) return false;
+            policy.finalizer_symbol = entry.sym_value;
+            saw_finalizer = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "nullability")) {
+            if (entry.is_int) return false;
+            if (ffi_symbol_name_equals(entry.sym_value, interp, "nullable")) {
+                policy.nullability = FFI_HANDLE_NULLABLE;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "non-null")) {
+                policy.nullability = FFI_HANDLE_NON_NULL;
+            } else {
+                return false;
+            }
+        }
+    }
+
+    if (!saw_handle_policy_key && !saw_type) return false;
+    if (saw_finalizer && saw_ownership && policy.ownership != FFI_HANDLE_OWNED) return false;
+    if (saw_finalizer && !saw_ownership) policy.ownership = FFI_HANDLE_OWNED;
+    if (policy.ownership == FFI_HANDLE_OWNED && policy.finalizer_symbol == INVALID_SYMBOL_ID) return false;
+
+    policy.is_foreign_handle = true;
+    *out_tag = FFI_TYPE_PTR;
+    *out_policy = policy;
+    return true;
+}
+
+fn bool ffi_type_annotation_to_tag(TypeAnnotation* ann, Interp* interp,
+    FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
+    if (ann == null || !ann.has_annotation) return false;
+
+    FfiHandlePolicy policy = ffi_handle_policy_default();
+    if (ann.is_dict) {
+        return ffi_metadata_type_annotation_to_tag(ann, interp, out_tag, out_policy);
+    }
+
+    if (!type_ann_to_ffi_tag(ann.base_type, interp, out_tag)) return false;
+    if (*out_tag == FFI_TYPE_PTR) policy.is_foreign_handle = true;
+    *out_policy = policy;
+    return true;
 }
 
 fn bool is_array(Value* v) @inline {

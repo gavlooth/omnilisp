@@ -145,28 +145,38 @@ All concurrency primitives go through effects and can be intercepted.
 | `^Integer` | `int`, `long`, `size_t` | sint64 |
 | `^Double` | `double`, `float` | double |
 | `^String` | `char*` | pointer |
-| `^Pointer` | `void*` | pointer |
+| `^ForeignHandle` | `void*` | pointer |
 | `^Boolean` | `int` (0/1) | sint64 |
 | `^Void` | `void` | maps the C return to the runtime `Void` singleton value |
 | (none) | `void` return | use `^Void` when binding a function that returns C `void` |
 
-Use `^Pointer` in new bindings.
+Use `^ForeignHandle` as the simple default for pointer-shaped C values.
+In `ffi λ`, FFI-local metadata dictionaries may refine the handle policy:
+`^{'name File 'ownership owned 'finalizer fclose}` implies `ForeignHandle`, and
+the explicit `^{'type ForeignHandle ...}` form is also accepted. Dictionary
+entries are key/value pairs with quoted symbol keys; Omni does not use colon
+keywords.
 `ffi λ` currently accepts only the canonical annotations `^Integer`, `^Double`,
-`^String`, `^Pointer`, `^Boolean`, and `^Void`; unsupported annotations now
-raise a definition-time error instead of defaulting to pointer ABI metadata.
+`^String`, `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation
+level; unsupported annotations now raise a definition-time error instead of
+defaulting to pointer ABI metadata.
 Argument conversion is fail-closed:
 - `^Integer`: Omni `Integer` only
 - `^Double`: Omni `Double` or `Integer`
 - `^Boolean`: Omni `true` / `false` only
 - `^String`: Omni `String`, or `nil` for a null `char*`
-- `^Pointer`: Omni `Integer` raw address, live `FFI_HANDLE`, or `nil` for null
+- `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
+  - Metadata dictionaries in FFI position use the same quoted-symbol key/value
+    syntax as the rest of Omni.
 Declarative `variadic` bindings are rejected at definition time until the
 runtime carries truthful fixed/variadic metadata.
 `^Integer` and `^Boolean` are not accepted shorthand aliases in new surface text; use
 canonical integer/boolean annotations (`^Integer`, `^Boolean`) instead.
 Execution mode contract:
-- Declarative FFI is currently interpreter/JIT-only.
-- Compiler/AOT currently rejects declarative `ffi` forms.
+- Interpreter/JIT `ffi λ` enforces `ForeignHandle` metadata dictionaries.
+- AOT lowering carries `ForeignHandle` policy descriptors into generated
+  runtime declarations: parameters preserve handle family/nullability, and
+  returns preserve handle name/ownership/finalizer.
 
 ### Features
 

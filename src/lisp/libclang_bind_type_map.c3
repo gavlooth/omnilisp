@@ -51,14 +51,14 @@ fn bool map_c_type(LibclangHandle* h, CXType ty, bool is_return, char* ffi_out, 
         if (is_char_ptr) {
             if (!is_return && !is_const_char_ptr) {
                 copy_str("'ptr", ffi_out, buf_size);
-                copy_str("Pointer", omni_out, buf_size);
+                copy_str("ForeignHandle", omni_out, buf_size);
             } else {
                 copy_str("'string", ffi_out, buf_size);
                 copy_str("String", omni_out, buf_size);
             }
         } else {
             copy_str("'ptr", ffi_out, buf_size);
-            copy_str("Pointer", omni_out, buf_size);
+            copy_str("ForeignHandle", omni_out, buf_size);
         }
         return true;
     }

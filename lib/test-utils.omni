@@ -237,11 +237,11 @@
 ;; Test comparison result (for string-compare, etc.)
 (define (test-compare name expected actual)
   (set! test-count (+ test-count 1))
-  (let [matches (if (< expected 0)
+  (let (matches (if (< expected 0)
                     (< actual 0)
                     (if (> expected 0)
                         (> actual 0)
-                        (= actual 0)))]
+                        (= actual 0))))
     (if matches
         (do
           (set! pass-count (+ pass-count 1))

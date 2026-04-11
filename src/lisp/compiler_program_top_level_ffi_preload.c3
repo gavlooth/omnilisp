@@ -47,19 +47,37 @@ fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool li
     }
 
     int* param_tags = null;
+    FfiHandlePolicy* param_policies = null;
     int return_tag = 0;
+    FfiHandlePolicy return_policy = ffi_handle_policy_default();
     char[] lib_name = "";
     char[] fn_name = "";
     char[] c_symbol = "";
     usz param_count = 0;
-    if (!self.prepare_ffi_fn_call(expr, &param_tags, &return_tag, &lib_name, &fn_name, &c_symbol, &param_count)) {
+    if (!self.prepare_ffi_fn_call(expr, &param_tags, &param_policies, &return_tag, &return_policy,
+        &lib_name, &fn_name, &c_symbol, &param_count)) {
         if (param_tags != null) mem::free(param_tags);
+        if (param_policies != null) mem::free(param_policies);
         return;
     }
+    usz tags_id = self.next_result();
+    char[64] tags_name_buf;
+    char[] tags_name = compiler_format_generated_name_id(tags_name_buf[..], "_ffi_param_tags_", (long)tags_id);
+    usz policies_id = self.next_result();
+    char[64] param_policies_name_buf;
+    char[] param_policies_name = compiler_format_generated_name_id(param_policies_name_buf[..], "_ffi_param_policies_", (long)policies_id);
+    char[64] return_policy_name_buf;
+    char[] return_policy_name = compiler_format_generated_name_id(return_policy_name_buf[..], "_ffi_return_policy_", (long)policies_id);
+    bool emit_policy_specs = compiler_ffi_prepared_needs_aot_policy_specs(param_policies, param_count, &return_policy);
+
+    self.emit_ffi_fn_support_decls(param_tags, param_policies, param_count, &return_policy,
+        tags_name, param_policies_name, return_policy_name, emit_policy_specs);
     self.emit_indent();
-    self.emit_ffi_fn_call_prepared(lib_name, fn_name, c_symbol, param_tags, param_count, expr.ffi_fn.has_return_type, return_tag, true);
+    self.emit_ffi_fn_call_expr_prepared(lib_name, fn_name, c_symbol, tags_name, param_count,
+        expr.ffi_fn.has_return_type, return_tag, true, param_policies_name, return_policy_name, emit_policy_specs);
     self.emit(";\n");
     if (param_tags != null) mem::free(param_tags);
+    if (param_policies != null) mem::free(param_policies);
 }
 
 fn void Compiler.emit_ffi_startup_preload(Compiler* self, List{Expr*}* exprs) {
