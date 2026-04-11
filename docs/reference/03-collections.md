@@ -152,8 +152,8 @@ arr.[-1]                ;; last element (negative indexing)
 (string-split "a,b,c" ",")             ;; => ("a" "b" "c")
 (string-length "hello")                 ;; => 5
 (string-byte-length "héllo")             ;; => 6
-(string->list "abc")                    ;; => ("a" "b" "c")
-(list->string '("a" "b" "c"))          ;; => "abc"
+(List "abc")                            ;; => ("a" "b" "c")
+(String '("a" "b" "c"))                ;; => "abc"
 (string-upcase "hello")                 ;; => "HELLO"
 (string-downcase "HELLO")               ;; => "hello"
 (string-trim "  hello  ")               ;; => "hello"

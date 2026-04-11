@@ -48,8 +48,6 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("substring"), "aot::lookup_prim(\"substring\")");
     prim_hash_insert(st.intern("string-split"), "aot::lookup_prim(\"string-split\")");
     prim_hash_insert(st.intern("string-length"), "aot::lookup_prim(\"string-length\")");
-    prim_hash_insert(st.intern("string->list"), "aot::lookup_prim(\"string->list\")");
-    prim_hash_insert(st.intern("list->string"), "aot::lookup_prim(\"list->string\")");
     prim_hash_insert(st.intern("string-upcase"), "aot::lookup_prim(\"string-upcase\")");
     prim_hash_insert(st.intern("string-downcase"), "aot::lookup_prim(\"string-downcase\")");
     prim_hash_insert(st.intern("string-casefold"), "aot::lookup_prim(\"string-casefold\")");

@@ -164,8 +164,6 @@ to this `fs-*` family; raw primitive registration remains `fs-*`.
 | `string-split` | 2 | Split by delimiter |
 | `string-length` | 1 | Codepoint length |
 | `string-byte-length` | 1 | Byte length |
-| `string->list` | 1 | To list of chars |
-| `list->string` | 1 | List to string |
 | `string-trim` | 1 | Trim whitespace |
 | `string-index-of` | 2 | Find index |
 | `string-replace` | 3 | Replace occurrences |

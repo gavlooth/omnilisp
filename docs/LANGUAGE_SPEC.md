@@ -281,7 +281,7 @@ Pitfall:
 ; Symbols (identifiers)
 foo
 my-function
-string->list
+string-length
 null?
 
 ; Collection literals
@@ -1059,7 +1059,7 @@ Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` 
 
 I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). When no handler is installed, a fast path calls raw primitives directly (zero overhead). Custom handlers can intercept, suppress, or redirect I/O.
 
-### 7.6 String Operations (16)
+### 7.6 String Operations (14)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
@@ -1069,8 +1069,6 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `string-split` | 2 | Split by delimiter |
 | `string-length` | 1 | String length in UTF-8 codepoints |
 | `string-byte-length` | 1 | String length in bytes |
-| `string->list` | 1 | String to list of chars |
-| `list->string` | 1 | List to string |
 | `string-upcase` | 1 | Uppercase |
 | `string-downcase` | 1 | Lowercase |
 | `string-trim` | 1 | Trim whitespace |
@@ -1202,7 +1200,7 @@ Set order contract:
 | Prim | Description |
 |------|-------------|
 | `string->number` | Parse string to number |
-| `String` | Canonical string constructor/coercion surface; dispatches string, number, and symbol conversion |
+| `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
 | `Double` | Canonical double constructor/coercion surface |
 | `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
 | `Symbol` | Canonical symbol constructor/coercion surface |

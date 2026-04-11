@@ -125,15 +125,14 @@ fn Value* prim_string_byte_length(Value*[] args, Env* env, Interp* interp) {
 }
 
 /**
- * (string->list s) -> list of single-char strings
+ * List(String) helper: split a string into one-codepoint strings.
  */
-fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string->list: expected 1 argument");
-    if (!is_string(args[0])) {
-        return raise_error(interp, "string->list: expected string argument");
+fn Value* string_to_list_value(Value* arg, Interp* interp, char[] expected_msg, char[] alloc_msg) {
+    if (!is_string(arg)) {
+        return raise_error(interp, expected_msg);
     }
 
-    char[] bytes = args[0].str_chars[:args[0].str_len];
+    char[] bytes = arg.str_chars[:arg.str_len];
 
     // First pass: count codepoints
     usz cp_count = 0;
@@ -168,48 +167,59 @@ fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
         usz clen = cp_lens[(usz)i];
         Value* char_str = make_string(interp, bytes[off:clen]);
         if (char_str != null && char_str.tag == ERROR) return char_str;
-        result = make_cons_or_error(interp, char_str, result, "string->list: failed to allocate result list");
+        result = make_cons_or_error(interp, char_str, result, alloc_msg);
         if (result == null || result.tag == ERROR) return result;
     }
     return result;
 }
 
-/**
- * (list->string chars) -> string
- * Convert a list of single-character strings to a string
- */
-fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) {
-        return raise_error(interp, "list->string: expected 1 argument");
-    }
+fn Value* prim_string_to_list(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return raise_error(interp, "string->list: expected 1 argument");
+    return string_to_list_value(args[0], interp,
+        "string->list: expected string argument",
+        "string->list: failed to allocate result list");
+}
 
+/**
+ * String(List) helper: concatenate a proper list of string fragments.
+ */
+fn Value* list_to_string_value(Value* arg, Interp* interp, char[] expected_list_msg, char[] expected_elem_msg, char[] proper_list_msg) {
     // Allow nil to return empty string
-    if (is_nil(args[0])) {
+    if (is_nil(arg)) {
         return make_string(interp, "");
     }
 
-    if (!is_cons(args[0])) {
-        return raise_error(interp, "list->string: expected a list");
+    if (!is_cons(arg)) {
+        return raise_error(interp, expected_list_msg);
     }
 
     DString ds;
     ds.init(mem);
     defer ds.free();
 
-    Value* list = args[0];
+    Value* list = arg;
     while (is_cons(list)) {
         Value* elem = list.cons_val.car;
         list = list.cons_val.cdr;
 
         if (!is_string(elem)) {
-            return raise_error(interp, "list->string: expected string elements");
+            return raise_error(interp, expected_elem_msg);
         }
         ds.append_string((String)elem.str_chars[:elem.str_len]);
     }
     if (!is_nil(list)) {
-        return raise_error(interp, "list->string: expected a proper list");
+        return raise_error(interp, proper_list_msg);
     }
 
     return make_string(interp, ds.str_view());
 }
 
+fn Value* prim_list_to_string(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) {
+        return raise_error(interp, "list->string: expected 1 argument");
+    }
+    return list_to_string_value(args[0], interp,
+        "list->string: expected a list",
+        "list->string: expected string elements",
+        "list->string: expected a proper list");
+}

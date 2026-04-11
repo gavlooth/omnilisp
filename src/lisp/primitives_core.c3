@@ -89,6 +89,13 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
         return prim_collect(one[0:1], env, interp);
     }
 
+    // Single string arg -> split into codepoint strings.
+    if (args.len == 1 && is_string(args[0])) {
+        return string_to_list_value(args[0], interp,
+            "List: expected string argument",
+            "List: failed to allocate result list");
+    }
+
     // Single array arg → convert to list
     if (args.len == 1 && is_array(args[0])) {
         Array* arr = args[0].array_val;

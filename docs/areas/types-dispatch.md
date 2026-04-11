@@ -26,9 +26,12 @@ As of: 2026-04-11
     order, and `length` covers set cardinality.
   - schema validation uses `array-of` for array schemas; the former
     `vector-of` spelling is no longer live.
-  - remaining surface decisions for `string->list`, `list->string`,
-    `string->number`, and lowercase `list` are split into explicit `TODO.md`
-    follow-ups instead of being kept as vague naming debt.
+  - `List(String)` and `String(List)` are the canonical list/string
+    conversion surfaces; public `string->list` / `list->string` aliases are no
+    longer live.
+  - remaining surface decisions for `string->number` and lowercase `list` are
+    split into explicit `TODO.md` follow-ups instead of being kept as vague
+    naming debt.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.

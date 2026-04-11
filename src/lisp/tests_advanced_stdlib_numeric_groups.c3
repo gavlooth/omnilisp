@@ -170,11 +170,11 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "type/arg-mismatch", pass, fail);
     test_str(interp, "String double", "(String 3.14)", pass, fail);
     test_error_contains(interp, "String rejects trailing arg", "(String 42 99)", "arity mismatch", pass, fail);
-    test_str_val(interp, "String invalid arg payload domain",
-        "(handle (String nil) (raise msg (String (ref msg 'domain))))",
+    test_str_val(interp, "String invalid array payload domain",
+        "(handle (String [1]) (raise msg (String (ref msg 'domain))))",
         "type", pass, fail);
-    test_str_val(interp, "String invalid arg payload code",
-        "(handle (String nil) (raise msg (String (ref msg 'code))))",
+    test_str_val(interp, "String invalid array payload code",
+        "(handle (String [1]) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "read-string parse failure payload code",
         "(handle (read-string \"(+ 1\") (raise msg (String (ref msg 'code))))",

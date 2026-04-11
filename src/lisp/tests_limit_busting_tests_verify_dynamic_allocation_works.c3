@@ -90,8 +90,8 @@ fn void run_limit_busting_generated_form_tests(Interp* interp, int* pass, int* f
 }
 
 fn void run_limit_busting_string_tests(Interp* interp, int* pass, int* fail) {
-    test_eq(interp, "string->list >512 chars",
-        "(length (string->list (let loop (n 0 acc \"\") (if (>= n 600) acc (loop (+ n 1) (string-append acc \"a\"))))))",
+    test_eq(interp, "List(String) >512 chars",
+        "(length (List (let loop (n 0 acc \"\") (if (>= n 600) acc (loop (+ n 1) (string-append acc \"a\"))))))",
         600, pass, fail);
 
     test_eq(interp, "split >256 segments",

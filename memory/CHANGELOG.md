@@ -1,10 +1,29 @@
 ## 2026-04-11
 
+- Canonicalized list/string conversion through constructors:
+  - `List(String)` is now the public string-to-list surface and returns a
+    proper list of UTF-8 codepoint strings.
+  - `String(List)` is now the public list-to-string surface and concatenates a
+    proper list of string fragments; `String(nil)` returns the empty string.
+  - Removed public `string->list` and `list->string` primitive/compiler aliases;
+    internal helper wrappers remain for runtime allocation regressions.
+  - Added `docs/plans/list-string-constructor-decision-2026-04-11.md` and
+    migrated public docs/Lisp-level tests to constructor forms.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `List(String)`, `String(List)`, `String(nil)`,
+      non-string list element rejection, and removed public arrow bindings
+    - bounded `advanced-unicode-iterator` subgroup: `pass=138 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `limit-busting` slice: `pass=17 fail=0`
+    - bounded `compiler` slice: `pass=196 fail=0`
+
 - Aligned generic string sequence operations with codepoint semantics:
   - `length` on strings now returns UTF-8 codepoint count, matching
     `string-length`; byte count remains explicit via `string-byte-length`.
   - `ref` and postfix `.[index]` on strings now return a single-character string
-    by codepoint index, matching `char-at` and `string->list` element shape.
+    by codepoint index, matching `char-at` and `List(String)` element shape.
   - Added non-ASCII regressions for generic `length`, `ref`, and postfix string
     indexing.
   - validation:

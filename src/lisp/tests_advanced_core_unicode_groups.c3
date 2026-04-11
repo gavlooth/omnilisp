@@ -27,13 +27,16 @@ fn void run_advanced_unicode_lambda_utf8_tests(Interp* interp, int* pass, int* f
     test_str_val(interp, "utf8 char-at neg", "(char-at \"caf\xc3\xa9\" -1)", "\xc3\xa9", pass, fail);
     test_str_val(interp, "utf8 substring", "(substring \"caf\xc3\xa9\" 0 3)", "caf", pass, fail);
     test_str_val(interp, "utf8 substring mid", "(substring \"h\xc3\xa9llo\" 1 3)", "\xc3\xa9l", pass, fail);
-    test_eq(interp, "utf8 string->list len", "(length (string->list \"h\xc3\xa9llo\"))", 5, pass, fail);
-    test_str_val(interp, "list->string preserves multibyte chars",
-        "(list->string (list \"\xc3\xa9\" \"x\"))", "\xc3\xa9x", pass, fail);
-    test_error_contains(interp, "list->string rejects non-string element",
-        "(list->string (list \"a\" 1 \"b\"))", "list->string: expected string elements", pass, fail);
-    test_error_contains(interp, "list->string rejects improper list tail",
-        "(list->string (cons \"a\" 2))", "list->string: expected a proper list", pass, fail);
+    test_eq(interp, "utf8 List(String) len", "(length (List \"h\xc3\xa9llo\"))", 5, pass, fail);
+    test_str_val(interp, "utf8 List(String) element",
+        "(ref (List \"h\xc3\xa9llo\") 1)", "\xc3\xa9", pass, fail);
+    test_str_val(interp, "String(List) preserves multibyte fragments",
+        "(String (List \"\xc3\xa9\" \"x\"))", "\xc3\xa9x", pass, fail);
+    test_str_val(interp, "String(nil) is empty string", "(String nil)", "", pass, fail);
+    test_error_contains(interp, "String(List) rejects non-string element",
+        "(String (List \"a\" 1 \"b\"))", "String: expected string elements", pass, fail);
+    test_error_contains(interp, "String(List) rejects improper list tail",
+        "(String (cons \"a\" 2))", "String: expected a proper list", pass, fail);
 }
 
 fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int* pass, int* fail) {
@@ -95,8 +98,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Double \"abc\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
-        "String ctor invalid payload code",
-        "(handle (String nil) (raise msg (String (ref msg 'code))))",
+        "String ctor invalid array payload code",
+        "(handle (String [1]) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "Symbol ctor invalid payload code",

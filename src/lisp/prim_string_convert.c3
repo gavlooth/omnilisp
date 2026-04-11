@@ -66,16 +66,22 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return conversion_type_raise(interp, "String: expected string, number, or symbol");
+    if (args.len < 1) return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
 
     Value* arg = args[0];
-    if (arg == null || arg.tag == NIL) {
-        return conversion_type_raise(interp, "String: expected string, number, or symbol");
+    if (arg == null) {
+        return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
     }
     if (arg.tag == STRING) return arg;
     if (is_number(arg)) return prim_number_to_string(args, env, interp);
     if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
-    return conversion_type_raise(interp, "String: expected string, number, or symbol");
+    if (is_nil(arg) || is_cons(arg)) {
+        return list_to_string_value(arg, interp,
+            "String: expected list of strings",
+            "String: expected string elements",
+            "String: expected a proper list");
+    }
+    return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
 }
 
 fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {

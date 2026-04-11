@@ -18,8 +18,6 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "string-join", &prim_string_join, 2 },
         { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
         { "string-length", &prim_string_length, 1 }, { "string-byte-length", &prim_string_byte_length, 1 },
-        { "string->list", &prim_string_to_list, 1 },
-        { "list->string", &prim_list_to_string, 1 },
         { "string-trim", &prim_string_trim, 1 },
         { "continuation?", &prim_is_continuation, 1 },
         { "__iterator-from-list", &prim_iterator_from_list, 1 },

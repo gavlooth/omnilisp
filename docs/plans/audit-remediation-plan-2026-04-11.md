@@ -46,12 +46,14 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094`: aligned generic string `length`,
   `ref`, and postfix indexing with codepoint/character semantics;
   `string-byte-length` remains the explicit byte lane.
+- `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`: selected constructor-first
+  list/string conversion, migrated public docs/tests to `List(String)` and
+  `String(List)`, and removed public `string->list` / `list->string` aliases.
 
 ## Current Plan
 
 1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
-   `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
-   `AUDIT-NUMBER-PARSE-SURFACE-085`, and
+   `AUDIT-NUMBER-PARSE-SURFACE-085` and
    `AUDIT-LIST-HELPER-ALIAS-086`.
 2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.

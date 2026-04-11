@@ -284,7 +284,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - Pure string/list materializers now fail closed on `make_string(...)` too:
   - `string-upcase` / `string-downcase` no longer mutate a constructor
     `ERROR` result,
-  - `string->list`, `string-split`, `string-graphemes`, and `read-lines`
+  - `List(String)`, `string-split`, `string-graphemes`, and `read-lines`
     now propagate per-element string-construction failure directly instead of
     returning successful lists that embed `ERROR` values as ordinary items.
 - Top-level string-backed runtime payload/list helpers now follow the same
@@ -809,7 +809,7 @@ for future concurrency ownership evolution.
   `coroutine?` handles empty argument lists, and `make_coroutine(...)` rejects
   null stack contexts.
 - Generic list materializers touched in the runtime audit now use checked cons
-  construction for `string->list` and `list`, and JSON pointer lookup now
+  construction for `List(String)` and `list`, and JSON pointer lookup now
   propagates key string materialization failure instead of falling through to a
   different lookup mode.
 - `StringVal` capacity growth now computes the target size through checked

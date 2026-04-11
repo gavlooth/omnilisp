@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 6
+Current actionable count: 5
 
 Completed backlog snapshots:
 
@@ -26,15 +26,6 @@ Use this file only for still-open work.
   - next step: start with the plan's `TENSOR-010` runtime representation slice,
     then proceed through constructor/indexing, tensor-expression/materialize,
     `map`, and `contract` only after each slice has targeted tests.
-
-- [ ] `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084` decide and implement the
-  canonical list/string conversion contract
-  - audit finding: `string->list` and `list->string` still expose pair-specific
-    conversion names instead of constructor dispatch.
-  - next step: add a short decision note under `docs/plans/` choosing exact
-    `List(String)` and `String(List)` semantics, including char vs grapheme
-    behavior and how non-string list elements are handled; then implement and
-    remove the public arrow aliases if the chosen contract permits it.
 
 - [ ] `AUDIT-NUMBER-PARSE-SURFACE-085` decide the canonical parse/coercion
   surface for string-to-number
@@ -76,11 +67,34 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084` canonicalize list/string
+  conversion through constructors
+  - decision note: `docs/plans/list-string-constructor-decision-2026-04-11.md`
+    selects `List(String)` and `String(List)` as the canonical public surface.
+  - closure evidence:
+    - `List(String)` now reuses the UTF-8 codepoint splitter and returns a
+      proper list of one-codepoint strings.
+    - `String(List)` now concatenates proper lists of string fragments and
+      treats `nil` as the empty list / empty string.
+    - public `string->list` and `list->string` primitive/compiler aliases were
+      removed; internal C helpers remain for runtime implementation and memory
+      regression tests.
+    - docs and Lisp-level tests now use constructor forms.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `List(String)`, `String(List)`, `String(nil)`,
+      non-string list element rejection, and removed public arrow bindings
+    - bounded `advanced-unicode-iterator` subgroup: `pass=138 fail=0`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup:
+      `pass=61 fail=0`
+    - bounded `limit-busting` slice: `pass=17 fail=0`
+    - bounded `compiler` slice: `pass=196 fail=0`
+
 - [x] `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` decide byte versus codepoint
   semantics for generic string `length` and `ref`
   - closure evidence:
     - selected codepoint/character semantics for generic string sequence
-      operations to match `string-length`, `char-at`, and `string->list`.
+      operations to match `string-length`, `char-at`, and `List(String)`.
     - kept byte count explicit through `string-byte-length`.
     - changed generic `ref` and postfix `.[index]` on strings to return
       single-character strings instead of byte integers.
