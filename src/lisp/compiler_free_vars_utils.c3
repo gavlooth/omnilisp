@@ -49,52 +49,17 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
     }
 }
 
-fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
+fn bool Compiler.is_compiler_builtin_symbol(Compiler* self, SymbolId sym) {
+    if (prim_hash_lookup(sym).len > 0) return true;
+
+    // Non-value type annotation / legacy UI bridge entries that were historically
+    // excluded from closure capture but do not have normal AOT value lowering.
     char[] name = self.interp.symbols.get_name(sym);
+    return self.str_eq(name, "Pointer") || self.str_eq(name, "__ui-ftxui-run");
+}
 
-    // Check known primitives
-    char[][*] primitives = {
-        "+", "-", "*", "/", "%",
-        "=", "<", ">", "<=", ">=",
-        "cons", "car", "cdr", "null?", "pair?",
-        "List", "list", "length", "not",
-        "print", "println", "newline", "display",
-        "__ui-ftxui-run",
-        "string-append", "string-join", "substring",
-        "string-split", "string-length",
-        "string-upcase", "string-downcase", "string-casefold", "string-titlecase",
-        "string-trim", "string-contains?",
-        "string?", "integer?", "int?", "symbol?",
-        "closure?", "continuation?", "double?", "list?",
-        "boolean?", "bool?", "number?",
-        "parse-number",
-        "Integer", "Double", "String", "Symbol", "Pointer", "Boolean", "Nil", "Void", "Closure", "Iterator",
-        "gensym", "load", "apply", "equal?",
-        "error", "error?", "error-message",
-        "is?", "instance?", "type-args",
-        "Array",
-        "Dictionary", "dict?",
-        "Set", "set-add", "set-remove", "set-contains?",
-        "ref", "set!", "push!", "keys", "values", "has?", "remove!",
-        "iterator?", "__make-iterator", "next",
-        "Coroutine", "resume", "yield", "coroutine?",
-        "json-get",
-        "TimePoint", "time-point?",
-        "read-line", "read-file", "write-file", "file-exists?", "read-lines",
-        "fs-open", "fs-read", "fs-write", "fs-close",
-        "fs-stat", "fs-readdir", "fs-rename", "fs-unlink",
-        "type-of",
-        "abs", "min", "max", "floor", "ceiling", "round",
-        "truncate", "sqrt", "even?", "odd?", "zero?",
-        "positive?", "negative?", "gcd",
-        "bitwise-and", "bitwise-or", "bitwise-xor",
-        "bitwise-not", "lshift", "rshift",
-        "true", "false", "nil"
-    };
-
-    foreach (prim : primitives) {
-        if (self.str_eq(name, prim)) return true;
-    }
+fn bool Compiler.is_primitive(Compiler* self, SymbolId sym) {
+    if (self.is_compiler_builtin_symbol(sym)) return true;
 
     // Check if it's a defined global
     foreach (g : self.defined_globals) {

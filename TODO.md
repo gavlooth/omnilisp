@@ -58,6 +58,21 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098` consolidate compiler
+  primitive classification around the primitive hash table
+  - closure evidence:
+    - free-variable and delegation primitive checks now use one shared
+      hash-backed classifier instead of duplicated hardcoded name arrays.
+    - legacy non-hash exceptions for `Pointer` and `__ui-ftxui-run` remain
+      excluded from closure capture without adding value-position lowering.
+    - regression coverage now verifies hash-only primitives such as `Dict` and
+      `json-parse` are looked up as primitives, not captured as C3 locals.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - [x] `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096` fix generated
   e2e C3 primitive capture name sanitization
   - closure evidence:

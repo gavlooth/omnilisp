@@ -58,6 +58,11 @@ queue; this file is supporting context for why the queue is ordered this way.
   avoiding dynamic environment classification, and fixed AOT `Coroutine` thunk
   parity for `aot::make_closure` wrappers; Docker `scripts/run_e2e.sh` now
   passes all 404 generated tests.
+- `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098`: consolidated compiler
+  primitive/free-variable classification around the primitive hash table while
+  preserving the existing non-value `Pointer` and `__ui-ftxui-run` exceptions;
+  this closes a broader drift class where hash-only runtime primitives could be
+  captured as C3 locals inside lambdas.
 
 ## Current Plan
 

@@ -1,5 +1,21 @@
 ## 2026-04-11
 
+- Closed `AUDIT-COMPILER-PRIMITIVE-CLASSIFICATION-098`:
+  - Replaced the duplicated compiler free-variable/delegation primitive-name
+    arrays with a shared hash-backed classifier, making the compiler primitive
+    hash table the single value-lowering source for primitive/literal symbols.
+  - Preserved legacy non-hash classification exceptions for `Pointer` and
+    `__ui-ftxui-run`, which were already excluded from closure capture but do
+    not have normal AOT value lowering entries.
+  - Extended the closure-capture regression to cover hash-only primitives such
+    as `Dict` and `json-parse`, preventing drift from reintroducing accidental
+    captured C3 identifiers.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `git diff --check`
+    - bounded `compiler` slice: `pass=197 fail=0`
+    - Docker `scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed!`
+
 - Closed `AUDIT-E2E-PRIMITIVE-CAPTURE-SANITIZATION-096`:
   - Added a shared compiler symbol-value emission helper so variable lowering
     and closure capture initialization both route primitive symbols through the
