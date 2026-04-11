@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 12
+Current actionable count: 11
 
 Completed backlog snapshots:
 
@@ -17,16 +17,6 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
-
-- [ ] `AUDIT-NAMED-LET-INIT-ERROR-PROPAGATION-097` preserve initializer
-  errors through named `let`
-  - audit finding: `(let loop (xs (reverse (cons 1 2)) acc '(3)) xs)`
-    masks the original `__reverse-list: expected a proper list` error as
-    `arg list too short`, which also affects `append` on improper left input.
-  - next step: harden named-`let` lowering/evaluation so binding initializer
-    errors short-circuit with their original payload/message before the loop
-    closure is invoked; add regressions for single- and multi-binding named
-    `let` initializer errors.
 
 - [ ] `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` harden the runtime `eval`
   data-to-expression conversion path
@@ -137,6 +127,26 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-NAMED-LET-INIT-ERROR-PROPAGATION-097` preserve initializer
+  error values through named `let`/tail multi-argument calls
+  - closure evidence:
+    - `make_cons` now treats successfully ESCAPE-promoted `ERROR` values as
+      first-class cons elements instead of always interpreting an `ERROR` tag
+      result as promotion failure.
+    - `append` now checks the intermediate `(reverse a)` value before entering
+      its named-let loop, preserving the original proper-list error for
+      improper left input.
+    - added core regressions for tail multi-argument calls that ignore or
+      return an error-valued argument, plus the append improper-left regression.
+  - validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - host `c3c build --sanitize=address --warn-deprecation=no`: green
+    - direct tail multi-arg/append probes: green
+    - bounded `basic` slice: `pass=142 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=256 fail=0`
+    - bounded `tco-recycling` slice: `pass=11 fail=0`
+    - bounded `memory-lifetime-smoke` slice: `pass=201 fail=0`
 
 - [x] `AUDIT-PIKA-REGEX-STRESS-CACHE-090` fix repeatable bounded `pika` regex
   stress/cache failures

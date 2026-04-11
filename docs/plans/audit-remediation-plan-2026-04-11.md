@@ -17,25 +17,26 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `reverse` improper-list handling: `__reverse-list` now rejects dotted tails
   instead of silently truncating them; `append` no longer silently loses
   left-side dotted-tail data through `reverse`.
+- Tail multi-argument error-valued arguments: ESCAPE-lane cons promotion now
+  preserves first-class `ERROR` values instead of confusing successful error
+  value promotion with promotion failure, and `append` preserves the original
+  improper-list error from `reverse`.
 
 ## Current Plan
 
-1. Finish and commit the `reverse` improper-list fail-closed slice.
-2. Fix `AUDIT-NAMED-LET-INIT-ERROR-PROPAGATION-097`, because it can mask
-   more precise failures from list walkers and other initializer expressions.
-3. Fix `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096`, starting with
+1. Fix `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096`, starting with
    non-symbol heads/tags and exact special-form arity, then lambda/let
    multi-body parity and `macroexpand` failure surfacing.
-4. Normalize list walker improper-list behavior under
+2. Normalize list walker improper-list behavior under
    `AUDIT-LIST-WALKER-IMPROPER-LIST-092`, preferably through shared traversal
    helpers instead of one-off guards.
-5. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
+3. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
    explicit, so `list?` can be made consistent with the selected proper-list
    contract.
-6. Resolve documentation/product-contract issues that should not be guessed in
+4. Resolve documentation/product-contract issues that should not be guessed in
    code: `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` and
    `AUDIT-CONS-REF-SPEC-PARITY-095`.
-7. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+5. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and
    `AUDIT-LIST-HELPER-ALIAS-086`.

@@ -115,6 +115,12 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "named let bindings are sequential",
         "(let loop (x 1 y (+ x 2)) (+ x y))",
         4, pass, fail);
+    test_eq(interp, "tail multi-arg call can ignore error-valued argument",
+        "(let loop (x (reverse (cons 1 2)) y 7) y)",
+        7, pass, fail);
+    test_error_contains(interp, "tail multi-arg call preserves error-valued argument",
+        "(let loop (x (reverse (cons 1 2)) y 7) x)",
+        "proper list", pass, fail);
     test_error_contains(interp, "scheme let syntax rejected",
         "(let ((x 10) (y 20)) (+ x y))",
         "Scheme-style let bindings were removed; use flat pairs", pass, fail);

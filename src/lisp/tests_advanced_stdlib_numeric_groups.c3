@@ -77,7 +77,7 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "reverse length", "(length (reverse (quote (1 2 3))))", 3, pass, fail);
     test_nil(interp, "reverse nil", "(reverse nil)", pass, fail);
     test_error_contains(interp, "reverse rejects improper list", "(reverse (cons 1 2))", "proper list", pass, fail);
-    test_error_contains(interp, "append rejects improper left list", "(append (cons 1 2) '(3))", "arg list too short", pass, fail);
+    test_error_contains(interp, "append rejects improper left list", "(append (cons 1 2) '(3))", "proper list", pass, fail);
     test_eq(interp, "compose *2.+1", "((compose (lambda (x) (* x 2)) (lambda (x) (+ x 1))) 3)", 8, pass, fail);
     test_eq(interp, "compose +1.*2", "((compose (lambda (x) (+ x 1)) (lambda (x) (* x 2))) 3)", 7, pass, fail);
     test_eq(interp, "id", "(id 42)", 42, pass, fail);

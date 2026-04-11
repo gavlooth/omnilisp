@@ -176,7 +176,7 @@
 (define (foldr f init (^Array arr)) (let (len (length arr)) (let loop (a init i len) (if (= i 0) a (let (j (- i 1)) (loop (f (ref arr j) a) j))))))
 
 ;; append: (append a b) — concatenate two lists
-(define (append a b) (let loop (xs (reverse a) acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (append a b) (let (xs (reverse a)) (if (error? xs) xs (let loop (xs xs acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))
 
 ;; compose: (compose f g) — function composition, returns (lambda (x) (f (g x)))
 (define (compose f g) (lambda (x) (f (g x))))

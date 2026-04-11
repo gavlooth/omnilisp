@@ -121,6 +121,13 @@ fn bool make_cons_escape_identity_promotion_ok(Interp* interp, Value* original, 
     return false;
 }
 
+fn bool make_cons_promoted_error_value_ok(Interp* interp, Value* original, Value* promoted) @inline {
+    if (interp == null || original == null || promoted == null) return false;
+    if (original.tag != ERROR || promoted.tag != ERROR) return false;
+    if (promoted.scope_gen == interp.current_scope.escape_generation) return true;
+    return promoted == original && make_cons_escape_identity_promotion_ok(interp, original, promoted);
+}
+
 <* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     // Dual-lane path: if cdr is already in current scope's ESCAPE lane,
@@ -138,7 +145,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
             if (promoted_car == null) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
-            if (promoted_car.tag == ERROR) return promoted_car;
+            if (promoted_car.tag == ERROR && !make_cons_promoted_error_value_ok(interp, car, promoted_car)) return promoted_car;
             if (!make_cons_escape_identity_promotion_ok(interp, car, promoted_car)) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
@@ -158,7 +165,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 );
                 return raise_error(interp, "cons: failed to promote cdr to escape");
             }
-            if (promoted_cdr.tag == ERROR) {
+            if (promoted_cdr.tag == ERROR && !make_cons_promoted_error_value_ok(interp, cdr, promoted_cdr)) {
                 boundary_cleanup_materialized_value(
                     car,
                     promoted_car,

@@ -1,5 +1,23 @@
 ## 2026-04-11
 
+- Fixed tail multi-argument calls carrying error-valued arguments through
+  ESCAPE-lane cons promotion:
+  - `make_cons` now distinguishes successful promotion of first-class `ERROR`
+    values from promotion failures when building ESCAPE-lane cons cells.
+  - `append` now guards the intermediate `(reverse a)` result so improper left
+    lists preserve the original proper-list error instead of masking it as
+    `arg list too short`.
+  - Added core regressions for tail multi-argument named-let calls carrying
+    error-valued arguments and updated the append improper-left regression.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - direct tail multi-arg/append probes
+    - bounded `basic` slice: `pass=142 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=256 fail=0`
+    - bounded `tco-recycling` slice: `pass=11 fail=0`
+    - bounded `memory-lifetime-smoke` slice: `pass=201 fail=0`
+
 - Fixed `reverse` on improper lists found by the collection walker audit:
   - `__reverse-list` now rejects dotted tails instead of silently truncating
     them, preventing `append` from losing left-side tail data through `reverse`.

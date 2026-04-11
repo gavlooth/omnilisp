@@ -18,7 +18,7 @@ const char[] STDLIB_PRELUDE =
 (define (filter pred lst) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
 (define (foldl f acc lst) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
 (define (foldr f init lst) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
-(define (append a b) (let loop (xs (reverse a) acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (append a b) (let (xs (reverse a)) (if (error? xs) xs (let loop (xs xs acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))
 (define (compose f g) (lambda (x) (f (g x))))
 (define (id x) x)
 (define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
