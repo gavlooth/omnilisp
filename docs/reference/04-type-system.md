@@ -139,7 +139,7 @@ Collection constructors keep explicit behavior:
 
 Numeric conversion contract:
 
-- `Integer` and `inexact->exact` truncate toward zero.
+- `Integer` truncates finite doubles toward zero.
 - Narrowing must be finite and within `Integer` range; overflow/non-finite
   inputs raise `type/arg-mismatch`.
 - `string->number` returns `nil` for parse failure and integer

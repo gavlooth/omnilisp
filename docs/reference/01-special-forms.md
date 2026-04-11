@@ -257,7 +257,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 ```lisp
 ;; In let — keys become local bindings
 (let ({name age} {'name "Alice" 'age 30})
-  (string-append name " is " (number->string age)))
+  (string-append name " is " (String age)))
 ;; => "Alice is 30"
 
 ;; Missing keys become nil

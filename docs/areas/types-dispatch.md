@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)
-As of: 2026-04-10
+As of: 2026-04-11
 
 ## Canonical Sources
 
@@ -17,12 +17,27 @@ As of: 2026-04-10
 ## Current State
 
 - Language spec presents structural type system and multiple dispatch model.
+- Constructor/coercion surface cleanup is current as of 2026-04-11:
+  - `String`, `Symbol`, `Double`, and `Integer` are the canonical public
+    conversion constructors for former direct aliases `number->string`,
+    `symbol->string`, `string->symbol`, `exact->inexact`, and
+    `inexact->exact`.
+  - `List(Set ...)` now materializes set elements in deterministic canonical
+    order, and `length` covers set cardinality.
+  - schema validation uses `array-of` for array schemas; the former
+    `vector-of` spelling is no longer live.
+  - remaining surface decisions for `string->list`, `list->string`,
+    `string->number`, and lowercase `list` are split into explicit `TODO.md`
+    follow-ups instead of being kept as vague naming debt.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.
 - Detached recursive closure publication now fails closed if typed
   method-signature cloning into a detached env scope fails; typed closures no
   longer silently degrade to `type_sig = null` during JIT recursive patching.
+- AOT/JIT type-dispatch signature staging now rejects overflowing parameter,
+  constraint, dispatch temporary, and schema/AOT staging buffers before
+  publication or call bridging.
 - Explainability tooling is implemented with canonical selector syntax and deterministic structured output (`explain 'dispatch`, `explain 'effect`).
 - Backend parity audit (`L4.1`, 2026-03-09) is complete and documented below.
 - Backend parity implementation bridge (`L4.2`, 2026-03-09) is landed:
@@ -78,8 +93,8 @@ As of: 2026-04-10
     reaches the generated binary and diff stages instead of failing in Stage 1.
   - `src/lisp/tests_e2e_generation_cases_extended.c3` now prunes the e2e cases
     that still generate invalid AOT source because they depend on unsupported
-    compiler surfaces (`inexact->exact`, `symbol->string`, `pow`, formatted
-    ambiguity payloads, and top-level replay / command-predicate locals).
+    compiler surfaces (`pow`, formatted ambiguity payloads, and top-level
+    replay / command-predicate locals).
 - Final baseline cleanup update (2026-03-19):
   - `src/lisp/tests_e2e_generation_cases_core.c3` now removes the final tracked
     match/guard parity rows and effect/handle parity rows that

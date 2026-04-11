@@ -195,11 +195,10 @@ that same runtime value.
 | Name | Arity | Description |
 |------|-------|-------------|
 | `string->number` | 1 | Parse number |
-| `number->string` | 1 | Number to string |
-| `exact->inexact` | 1 | Integer to double |
-| `inexact->exact` | 1 | Double to int |
-| `string->symbol` | 1 | String to symbol |
-| `symbol->string` | 1 | Symbol to string |
+| `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, and symbol conversion |
+| `Double` | 1 | Canonical double constructor/coercion surface |
+| `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
+| `Symbol` | 1 | Canonical symbol constructor/coercion surface |
 
 Callable core type symbols also provide constructor/coercion surface here:
 `Integer`, `Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Boolean`, `Nil`,
@@ -245,8 +244,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |
 | `set-contains?` | 2 | Set membership |
-| `set-size` | 1 | Set cardinality |
-| `set->list` | 1 | Convert set to list |
+| `length` | 1 | Set cardinality |
+| `List` | 1 | Convert set to list |
 
 **Coroutines:**
 

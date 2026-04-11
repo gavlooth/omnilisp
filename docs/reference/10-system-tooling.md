@@ -14,12 +14,12 @@
 
 ;; Symbols
 (gensym)                     ;; => unique symbol
-(string->symbol "foo")       ;; => foo
-(symbol->string 'foo)        ;; => "foo"
+(Symbol "foo")       ;; => foo
+(String 'foo)        ;; => "foo"
 
 ;; Conversions
-(exact->inexact 42)          ;; => 42.0
-(inexact->exact 42.5)        ;; => 42
+(Double 42)          ;; => 42.0
+(Integer 42.5)        ;; => 42
 
 ;; Sorting
 (sort '(3 1 2))              ;; => (1 2 3)

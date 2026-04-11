@@ -78,11 +78,11 @@ one-to-one parity for every FTXUI feature family.
 | DOM core (`text`, `vtext`, `paragraph`, `separator`, `spinner`, `gauge`, layout boxes, `window`, `canvas`, `table`, `graph`) | Generic element builder | `omni_ftxui_element_create` | Implemented through versioned options, including graph callbacks |
 | Decorators / style chain | Generic decorator apply | `omni_ftxui_element_apply_decorator` | Implemented for current decorator enum set, including hyperlink and color-based selection decorators |
 | Component core widgets and containers | Generic component builder | `omni_ftxui_component_create` | Implemented for container/widget/window/modal/collapsible/hoverable/resizable-split families currently encoded in the enum set |
-| Callback wrappers | Wrapper helpers | `omni_ftxui_component_wrap_renderer`, `..._wrap_event_handler`, `..._wrap_maybe` | Implemented |
+| Callback wrappers | Wrapper helpers | `omni_ftxui_component_wrap_renderer`, `..._wrap_event_handler`, `..._wrap_maybe` | Implemented; callback exceptions are caught locally and mapped through the context error channel |
 | Static element-to-component bridge | Wrapper helper | `omni_ftxui_component_from_element` | Implemented for the first `ui.run` slice |
-| Built-in quit wrapper | Wrapper helper | `omni_ftxui_component_wrap_quit_keys` | Implemented so the first live demo can exit with `q` / `Esc` without C callbacks |
+| Built-in quit wrapper | Wrapper helper | `omni_ftxui_component_wrap_quit_keys` | Implemented so the first live demo can exit with `q` / `Esc` without C callbacks; the wrapper retains the screen loop object until the wrapped component is destroyed |
 | Table / canvas helpers | Opaque handles + render ops | `omni_ftxui_table_*`, `omni_ftxui_canvas_*` | Implemented |
-| Context / error channel | Opaque context + last-error helpers | `omni_ftxui_context_*`, `omni_ftxui_status_name` | Implemented |
+| Context / error channel | Opaque context + last-error helpers | `omni_ftxui_context_*`, `omni_ftxui_status_name` | Implemented; status-returning C ABI entrypoints use fail-closed exception guards around backend work |
 
 ## First High-Level Interpreter Slice
 

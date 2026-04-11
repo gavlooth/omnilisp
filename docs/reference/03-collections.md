@@ -56,8 +56,8 @@ Omni has three collection types plus sets.
 (set-add s 4)              ;; => Void (mutates set in place)
 (set-remove s 2)           ;; => Void (mutates set in place)
 (set-contains? s 1)        ;; => true
-(set-size s)               ;; => number of elements
-(set->list s)              ;; => canonical ordered list of set elements
+(length s)                 ;; => number of elements
+(List s)                   ;; => canonical ordered list of set elements
 ```
 
 Sets now have a distinct builtin `Set` runtime type symbol. `type-of` reports
@@ -75,7 +75,7 @@ Dictionary key policy:
 
 Ordering contract:
 - `keys` and `values` are deterministic and share the same canonical key order.
-- `set->list` is deterministic and uses canonical element order.
+- `List` is deterministic and uses canonical element order.
 - Treat dict/set literal insertion order as non-authoritative for iteration APIs.
 
 ### Generic Operations
@@ -165,9 +165,9 @@ arr.[-1]                ;; last element (negative indexing)
 ```lisp
 (string->number "42")       ;; => 42
 (string->number "3.14")     ;; => 3.14
-(number->string 42)         ;; => "42"
-(string->symbol "foo")      ;; => foo (symbol)
-(symbol->string 'foo)       ;; => "foo"
+(String 42)         ;; => "42"
+(Symbol "foo")      ;; => foo (symbol)
+(String 'foo)       ;; => "foo"
 ```
 
 ### Formatting

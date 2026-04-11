@@ -1163,11 +1163,11 @@ Iteration order contract:
 | `set-add` | 2 | Add element |
 | `set-remove` | 2 | Remove element |
 | `set-contains?` | 2 | Check membership |
-| `set-size` | 1 | Set cardinality |
-| `set->list` | 1 | Materialize set elements as list (canonical order) |
+| `length` | 1 | Set cardinality |
+| `List` | 1 | Materialize set elements as list (canonical order) |
 
 Set order contract:
-- `set->list` returns elements in deterministic canonical element order
+- `List` returns elements in deterministic canonical element order
   (same comparator family as dictionary keys).
 
 ### 7.14 Math Library (19)
@@ -1192,19 +1192,18 @@ Set order contract:
 | `bitwise-not` | Bitwise complement |
 | `lshift`, `rshift` | Bit shifting |
 
-### 7.16 Conversion (6)
+### 7.16 Conversion (5)
 
 | Prim | Description |
 |------|-------------|
 | `string->number` | Parse string to number |
-| `number->string` | Number to string |
-| `exact->inexact` | Integer to double |
-| `inexact->exact` | Double to int |
-| `string->symbol` | String to symbol |
-| `symbol->string` | Symbol to string |
+| `String` | Canonical string constructor/coercion surface; dispatches string, number, and symbol conversion |
+| `Double` | Canonical double constructor/coercion surface |
+| `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
+| `Symbol` | Canonical symbol constructor/coercion surface |
 
 Numeric conversion policy:
-- Narrowing to `Integer` (`Integer`, `inexact->exact`, `truncate`) truncates toward zero.
+- Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
 - `string->number` returns `nil` on parse failure or numeric overflow/underflow.
 - Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
@@ -1590,7 +1589,7 @@ Effect tags: `io/print`, `io/println`, `io/display`, `io/newline`, `io/read-line
 Effect handlers match on tag name only. For type-specific behavior, use dispatched functions inside the handler body — this reuses the existing MethodTable dispatch system rather than introducing a parallel matching mechanism:
 
 ```lisp
-(define (on-show (^Integer x)) (string-append "int: " (number->string x)))
+(define (on-show (^Integer x)) (string-append "int: " (String x)))
 (define (on-show (^String s)) (string-append "str: " s))
 
 (handle

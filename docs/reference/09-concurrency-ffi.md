@@ -214,6 +214,6 @@ Data-driven validation where schemas are plain Omni data.
 | `(> n)` / `(< n)` | Comparison | `'(> 0)` |
 | `(re pat)` | Regex match | `'(re "[a-z]+")` |
 | `(map ...)` | Dictionary schema | `'(map (name string))` |
-| `(vector-of s)` | Array schema | `'(vector-of int)` |
+| `(array-of s)` | Array schema | `'(array-of int)` |
 | `(tuple s1 s2)` | Fixed array | `'(tuple string int)` |
 | `(enum v1 v2)` | One of values | `'(enum "a" "b")` |

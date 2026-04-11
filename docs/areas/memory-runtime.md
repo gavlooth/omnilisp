@@ -1,7 +1,7 @@
 # Memory and Runtime
 
 Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)
-As of: 2026-04-10
+As of: 2026-04-11
 
 ## Canonical Sources
 
@@ -23,6 +23,84 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - `scope_adopt` is not present in current `src/` runtime callsites.
 - Scoped finalize unification is live via `boundary_finalize_scoped_result(...)`, and eval/JIT finalize flows share that helper.
 - Boundary state restore uses `BoundarySession` (`boundary_session_begin/end`) in audited helpers and regression probes.
+- Runtime intern and unhandled-effect payload guard cleanup is current as of
+  2026-04-11:
+  - `register_language_constants(...)` rejects failed `nil` symbol interning
+    before defining the language constant.
+  - JIT promise env matching treats failed env-tag interning as a non-match.
+  - unhandled-effect raise payload construction uses the non-raising hashmap
+    path and checks payload-key interning before publication.
+- Parser AST call-argument sizing now fails closed before precomputed
+  allocation sizes can wrap:
+  - relation definition role/constraint argument counts, generic call
+    argument arrays, FFI parameter counts, and selective import counts now
+    guard their count arithmetic before AST arena allocation or capacity
+    checks.
+  - validation: bounded compiler slice `pass=191 fail=0`; bounded deduce
+    slice `pass=330 fail=0`
+- Parser AST array allocation now has a shared overflow guard:
+  - `Parser.alloc_ast_array_bytes(...)` checks `elem_size * count` before arena
+    allocation, and dynamic parser array allocations for calls, literals,
+    patterns, type annotations, module bodies, lambda params, macro clauses,
+    blocks, and pipe rewrites now route through it.
+  - pipe rewrites also reject overflowing `arg_count + 1` before growth.
+  - validation: bounded compiler slice `pass=191 fail=0`; bounded deduce
+    slice `pass=330 fail=0`
+- AOT type-definition and runtime FFI staging paths now fail closed on
+  cleanup-state and allocation-size hazards:
+  - AOT type fields and union variants are initialized before later fallible
+    allocations can trigger deferred cleanup, and AOT field/variant/type-param
+    allocation sizes are checked before allocation.
+  - runtime FFI bound calls reject unsupported/narrowing argument counts and
+    overflowing libffi staging buffers before preparing call storage.
+  - validation: bounded compiler slice `pass=191 fail=0`; bounded
+    memory-lifetime smoke slice `pass=189 fail=0`
+- Deduce SCC and seminaive planning allocation bounds now fail closed:
+  - SCC and reachability square matrices, stratum relaxation bounds, proof-key
+    vectors, aggregate batch growth, decoded component-delta entries, and
+    relation schema `count + 1` capacity requests now guard arithmetic before
+    allocation or ensure-capacity dispatch.
+  - validation: bounded deduce slice `pass=330 fail=0`
+- Runtime promotion/copy allocation staging now rejects overflow and avoids
+  partially published failure state:
+  - boundary copy, ESCAPE promotion, root clone, env-copy, and sequence pattern
+    matching now guard array/hashmap/method-table/signature/binding/element
+    buffer sizes before allocation.
+  - method-signature escape copies reset staged state on dependent allocation
+    failure, env-copy allocates non-inline binding storage before publishing
+    the copied frame, and closure escape promotion delays result wrapper
+    publication until fallible clone/env work succeeds.
+  - validation: bounded memory-lifetime smoke slice `pass=189 fail=0`
+- Shared async string/array helper sizing now fails closed before allocation:
+  - shared blob copies, process argv/env string tables, TLS duplicate strings,
+    filesystem result array growth, and compression output buffers now guard
+    `len + 1`, `count * sizeof`, and capacity doubling arithmetic.
+  - validation: bounded async slice `pass=61 fail=0`; bounded scheduler slice
+    `pass=111 fail=0`
+- Async file I/O payload, temp-path, and read-buffer allocations now check
+  `len + 1` sizing before allocation:
+  - `write-file` internal offload payload construction rejects overflowing
+    path/content payload lengths.
+  - atomic temp-path construction rejects overflowing suffix addition.
+  - read-file scratch buffers reject max-sized `cap + 1` allocation requests.
+  - validation: bounded async slice `pass=61 fail=0`
+- Scheduler offload completion projection now returns directly per completion
+  kind, including `OFFLOAD_RES_NIL`, so async read-file/read-lines
+  missing-path cases remap nil offload results to I/O payload codes instead of
+  leaking `scheduler/offload-invalid-completion-kind`.
+  - validation: bounded async slice `pass=61 fail=0`
+- I/O and string-buffer growth paths now fail closed on overflow-before-
+  allocation and invalid capacity state:
+  - console capture/copy, input-state append, CSV field/row growth, REPL
+    session strings/capacity, and Unicode case-mapping append growth all use
+    checked sizing before mutating live buffers.
+  - validation notes from the latest pass:
+    - `c3c build --warn-deprecation=no`
+    - bounded unicode slice: `pass=25 fail=0`
+    - bounded data-format slice: `pass=59 fail=0`
+    - bounded async slice after scheduler nil-completion projection fix:
+      `pass=61 fail=0`
+    - bounded advanced unicode iterator group: `pass=129 fail=0`
 - Nested `CONS` / `PARTIAL_PRIM` / `ITERATOR` boundary-copy and ESCAPE
   promotion paths now fail closed when they encounter opaque primitive payload
   state transitively; they no longer silently embed null/error payloads into
@@ -177,6 +255,25 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   - `set!` on dictionary targets and `set-add` on sets now raise
     `runtime/out-of-memory` instead of returning `Void` after silently
     dropping the write.
+- Core symbol/type registry growth now fails closed on invalid sizing and
+  unavailable replacement allocation:
+  - symbol table and type registry init/grow paths now reject overflowed
+    table/hash byte-size arithmetic before allocation and avoid mutating live
+    table state until replacement storage is confirmed.
+- Match/gensym and collection grow helpers now gate invalid capacity state:
+  - match-result binding and gensym mapping growth now guard doubling and
+    `sizeof * capacity` overflow before replacing backing arrays,
+  - hashmap setters/growers now validate power-of-two capacity invariants
+    before probing/growing so invalid capacity state cannot silently corrupt
+    probe masking.
+- Deduce direct schema/rule mutation allocation sites now fail closed:
+  - rule-signature registration rejects overflowing count increments,
+    offset/count ranges, and direct metadata array allocation sizes before
+    copying,
+  - relation schema/index initialization rejects overflowing column/index
+    allocation sizes before publishing schema counts,
+  - transaction insert accounting increments only after tuple delta append
+    succeeds.
 - Schema-explain list assembly now fails closed too:
   - helper-level list accumulation and reversal for signature params,
     constraints, arg types, handler tag lists, and candidate lists now route
@@ -219,6 +316,21 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     now guard `sizeof * new_cap` before `malloc` / `realloc`,
   - source-dir vector growth in module setup rejects oversized capacities and
     length increments before allocation-size arithmetic can wrap.
+- Runtime module export publication now fails closed on export-table growth
+  failure:
+  - module export allocation/growth is routed through a checked helper with a
+    deterministic failure seam,
+  - re-export and implicit module definition export paths now propagate growth
+    failure instead of writing through a null replacement table,
+  - failed export growth preserves the previous export table and count.
+- The next overflow-hardening batch is closed:
+  - persisted deduce rule signature/catalog record sizing and restore cursor
+    movement now use checked add/mul/cursor helpers,
+  - AST arena alignment/chunk accounting and parser import/module/export
+    growth now fail closed before allocation-size arithmetic can wrap,
+  - JIT arg staging, effect handler clause arrays, handle-state snapshots,
+    interpreter macro/module/handler tables, env bindings, and method-table
+    growth now reject overflow before allocation or table mutation.
 - Collection/apply array helpers now fail closed on both constructor and
   boundary-promotion faults:
   - `array`, `list->array`, `set!` on arrays, `push!`, `collect`, and
@@ -371,9 +483,8 @@ Repro artifacts:
 6. Treat any new bounded `advanced`, `basic`, or `memory-lifetime-smoke` regression as a fresh blocker instead of reopening stale historical notes here.
 7. Keep runtime modularization queue updates in sync with `docs/plans/runtime-modularization-split-2026-03-11.md` and `memory/CHANGELOG.md` when deduce/runtime test splits land.
 8. Keep contributor guidance aligned with lane ownership: boundary/lifetime lanes stay container-bound, allocator lanes stay separate, and syntax/compiler-only work should not inherit memory lanes by convenience.
-9. Open follow-up blockers after the latest focused audit are explicit again in
-   `TODO.md`: direct destination-promotion context drift and partial-abort
-   wrapper-slot leaks are not closed by the current tree.
+9. Keep any future follow-up blocker explicit in `TODO.md`; the latest focused
+   audit wave is currently back to zero live items.
 
 ## Concurrency Boundary Plan Alignment
 
@@ -705,3 +816,269 @@ for future concurrency ownership evolution.
   overflow addition instead of a `usz.max` comparison, so `%s` display
   formatting for ordinary values such as `nil` and `Void` reaches the normal
   append/growth path.
+- Runtime allocation-size hardening continued on 2026-04-11:
+  - AOT bridge symbol interning and environment hash/define/set paths now reject
+    `INVALID_SYMBOL_ID` before lookup or mutation, so intern allocation failure
+    cannot alias env empty-slot sentinels.
+  - module load publication now rolls back failed module body/path/top-level
+    loads and rebuilds module hash state, preserving retry semantics after
+    failed imports.
+  - deduce persisted rule-catalog/signature restore now distinguishes missing
+    DBIs from other LMDB open errors, rejects invalid restored symbols, and
+    rolls back partially restored rule signatures/schemas.
+  - raise payload construction, method-table root cloning, and collection
+    primitives now fail closed on invalid symbol IDs, method-table allocation
+    overflow, or nullable array/dict/set backing storage.
+  - environment hash-table sizing, closure wrapper parameter copying, and async
+    process argv/env staging now reject overflowing allocation arithmetic before
+    allocating or publishing staged state.
+  - JIT effect handle/signal paths now guard clause and argument buffer sizes.
+  - deduce aggregate, relation materialization, rule IR, and goal-directed
+    read-tracking staging now guard derived buffer sizes and capacity
+    arithmetic before writes.
+  - AOT/JIT method-signature staging now guards parameter/constraint buffers and
+    publishes counts only after staged storage succeeds.
+  - deftype registration now rolls back a just-added type if constructor/global
+    binding/type-value publication fails after registry insertion.
+  - type-symbol and dispatched-primitive bootstrap now clean up empty heap
+    method-table payloads on root-wrapper/global binding publication failure.
+  - symbol/type registry insertion now rejects exhausted ID spaces before
+    narrowing counts, and failed just-added type rollback rebuilds the type hash
+    table so open-address probe chains remain sound.
+  - interpreter bootstrap symbols now fail fast on intern failure instead of
+    publishing invalid sentinel IDs into runtime state.
+  - Dictionary constructor staging now checks capacity arithmetic and allocates
+    hashmap payload storage before root-wrapper publication.
+  - unicode case mapping, read-file, console emit, and TLS offload cleanup now
+    reject or fail closed on API-width and initialization-state boundaries.
+  - macro/parser symbol paths now reject intern failure instead of propagating
+    invalid sentinel IDs, and macro expansion block/call AST builders now check
+    array-size multiplication and arena allocation before writing.
+  - numeric/string/data-format guard paths now reject signed overflow,
+    overflowing format widths/precisions, improper string/data-format list
+    tails, and failed RNG reads instead of truncating or using invalid state.
+  - async TCP read option parsing now rejects non-positive max byte counts, and
+    resumed-before-completion async cleanup paths close pending DNS/connect/
+    accept state before returning the invariant error.
+- Bounded validation after this slice:
+  - host `c3c build --warn-deprecation=no`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=compiler ...`
+    -> `pass=191 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=deduce ...`
+    -> `pass=330 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=189 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=async ...`
+    -> `pass=61 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=scheduler ...`
+    -> `pass=111 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=advanced ...`
+    -> `pass=1183 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=compiler ...`
+    -> `pass=191 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=deduce ...`
+    -> `pass=330 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=string-type ...`
+    -> `pass=40 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ...`
+    -> `pass=189 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=advanced ...`
+    with `OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator`
+    -> `pass=130 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=arithmetic-comparison ...`
+    -> `pass=45 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=string-type ...`
+    -> `pass=40 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=data-format ...`
+    -> `pass=62 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=advanced ...`
+    with `OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format`
+    -> `pass=59 fail=0`
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=advanced ...`
+    with `OMNI_ADVANCED_GROUP_FILTER=advanced-macro-hygiene`
+    -> `pass=82 fail=0`
+  - AOT generated type/type-spec and runtime helper paths now reject invalid
+    symbol IDs before publishing into type metadata, method signatures, match
+    constructor lookup, dictionary-key lookup, and effect explain payloads.
+  - compiled list helpers now reject negative indexes before unsigned
+    conversion.
+  - direct and buffered printing now handles nullable dictionary/set backing
+    storage, and buffered printing rejects null/zero-capacity buffers before
+    writing.
+  - constructor constraint diagnostics now use guarded type-registry lookups,
+    and instance type inference rejects invalid instance type IDs.
+  - deduce tuple storage now persists full-width 32-bit symbol IDs and rejects
+    invalid/out-of-range decoded symbol IDs.
+  - deduce metadata delete, DBI name/path allocation, relation schema
+    publication, and rule signature install paths now fail closed on DBI-open
+    errors, arithmetic overflow, and post-publication failures.
+  - validation:
+    - host `c3c build --warn-deprecation=no`
+    - bounded `compiler`: `pass=191 fail=0`
+    - bounded `deduce`: `pass=330 fail=0`
+    - bounded `advanced`: `pass=1183 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+  - parser/compiler and runtime boundary hardening now rejects invalid symbol
+    IDs before AST/runtime publication, checks synthetic AST wrapper
+    allocations before rewriting effect bodies, rejects macro splice improper
+    tails, guards boundary `len + 1` string/error copies, restores interpreter
+    state on JIT continuation yield failure, stages pending-raise state clear
+    after fallible setup, and rejects null non-empty runtime handle arrays.
+  - async/TLS hardening now closes pending offloads on TLS yield errors,
+    validates TCP/UDP ports and signal numbers before `int` narrowing, and
+    reports file-read close failure.
+  - validation:
+    - host `c3c build --warn-deprecation=no`
+    - bounded `compiler`: `pass=191 fail=0`
+    - bounded `async`: `pass=61 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+    - bounded `advanced` macro hygiene group: `pass=82 fail=0`
+  - schema/deduce payload publication now rejects failed symbol interning and
+    propagates concrete payload assembly errors instead of publishing invalid
+    symbols or returning partial/null payloads.
+  - checked array construction now stages payload allocation before root-wrapper
+    publication, and closure escape promotion now releases retained/detached
+    environment scopes if wrapper allocation fails.
+  - external boundary width guards now cover `exit`, `TimePoint`, Unicode
+    codepoint predicates, `fs-open`, `fs-stat`, `tcp-listen`, JSON pointer
+    symbol fallback, process-handle lookup, and zlib expansion sizes.
+  - validation:
+    - host `c3c build --warn-deprecation=no`
+    - bounded normal+ASAN `data-format`: `pass=64 fail=0`
+    - bounded normal+ASAN `unicode`: `pass=27 fail=0`
+    - bounded normal+ASAN `compression`: `pass=27 fail=0`
+    - bounded normal+ASAN `async`: `pass=65 fail=0`
+    - bounded normal+ASAN `compiler`: `pass=194 fail=0`
+    - bounded normal+ASAN `memory-lifetime-smoke`: `pass=190 fail=0`
+    - bounded normal `advanced`: `pass=1185 fail=0`
+    - bounded ASAN `advanced`: `pass=1172 fail=0`
+    - bounded normal+ASAN `deduce`: `pass=330 fail=0`
+  - FTXUI `smoke.omni` no longer crashes on nested `ui.graph` effect payloads:
+    boundary provenance now uses a bounded iterative alias-safety worklist
+    instead of recursive graph walking for nested arrays, dicts, sets, method
+    tables, partials, iterators, and cons payloads; scalar leaves are skipped
+    before consuming worklist/visited capacity so wide scalar-only payloads do
+    not fail closed as graph overflows.
+  - The same slice also hardened FTXUI helper allocations and teardown:
+    child pointer-array sizing, helper-array growth, and graph-series
+    allocation arithmetic are checked, oversized menu selected-index counts are
+    rejected before `int` narrowing, shim child/table selector inputs are
+    guarded before narrowing, shim `keep_alive` data now outlives component
+    teardown, and quit-key wrappers retain shared ownership of the screen loop
+    object instead of capturing a raw screen handle. Status-returning FTXUI C
+    ABI entrypoints now use fail-closed exception guards around backend work,
+    and deferred graph/render/event/quit callbacks catch callback exceptions
+    locally.
+  - validation:
+    - host `c3c build --warn-deprecation=no`
+    - host `scripts/run_ftxui_smoke.sh`
+    - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+      `pass=192 fail=0`
+  - Follow-up regression evidence on 2026-04-11:
+    - the smoke lane now also covers a shared composite cycle payload
+      regression, validating repeated composite alias traversal and cycle
+      identity tracking.
+    - boundary alias visited tracking now fronts the authoritative linear
+      `seen` list with a small bounded `ushort` index-table accelerator for
+      repeated composite alias checks.
+    - the accelerator saturates into the existing linear scan to preserve the
+      no-false-negative contract and fail-closed graph caps.
+    - scalar/non-graph roots now return before entering the large traversal
+      frame, and the large-array walker sits behind a small stack-headroom
+      wrapper that fails closed to copy-required if the current stack context is
+      too shallow.
+    - larger local pointer/index-table attempts regressed FTXUI smoke with a
+      `smoke.omni` boundary resolve stack overflow and were not kept; the
+      landed table stays deliberately small to fit the effect/FTXUI stack
+      budget.
+    - host `c3c build --warn-deprecation=no`: green
+    - host `scripts/run_ftxui_smoke.sh`: green
+    - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+      `pass=193 fail=0`
+  - Destination build-scope commit follow-up:
+    - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` no longer
+      calls `main::scope_splice_escapes(...)` directly.
+    - `boundary_destination_build_scope_splice(...)` in the allowlisted
+      boundary builder implementation file owns the single low-level splice
+      seam for destination `cons`, `partial`, `iterator`, and `error` wrapper
+      commits.
+    - validation: boundary facade usage, boundary change policy, status
+      consistency, `git diff --check`, and bounded normal+ASAN
+      `memory-lifetime-smoke` with FTXUI smoke enabled are green
+      (`pass=193 fail=0`).
+  - Boundary alias graph coverage follow-up:
+    - `INSTANCE` and `MODULE` are now treated as graph-bearing alias payloads,
+      using a heap-backed rare-path value/env reachability scan so the hot
+      alias walker stack frame does not grow.
+    - instance field and module/env graphs that still reach the releasing
+      scope now force copy-required classification instead of reuse.
+    - root-persistent env boxes are still traversed for parent/binding edges;
+      they are only excluded from direct temp-frame ownership checks.
+    - validation: host build, boundary facade usage, status consistency,
+      `git diff --check`, and bounded normal+ASAN `memory-lifetime-smoke` with
+      FTXUI smoke enabled are green (`pass=194 fail=0`).
+  - JIT/module value growth and promotion fail-closed follow-up:
+    - first-class `MODULE` values now hold root-scope descriptor snapshots
+      instead of raw pointers into the reallocating interpreter module table.
+    - module path access now fails closed when a module descriptor has invalid
+      export/env storage.
+    - JIT cons/instance field mutation and JIT/AOT method publication now
+      reject null promotion/copy results before mutating storage.
+    - validation: host build, boundary facade usage, boundary change policy,
+      status consistency, `git diff --check`, and bounded normal+ASAN
+      `memory-lifetime-smoke` with FTXUI smoke enabled are green
+      (`pass=196 fail=0`).
+  - TCO env-copy and recycle-hook fail-closed follow-up:
+    - TCO env-frame binding copy now uses checked boundary-copy results and
+      aborts the copied frame on copy faults, null results, or copied `ERROR`
+      values before binding poisoned state.
+    - TCO recycle preparation now preserves the previous `*env_io`, restores
+      the old call scope, releases the fresh scope, and returns an explicit
+      error when env-copy fails.
+    - the direct env-copy failure and recycle-hook state-restore regressions
+      are wired into the bounded smoke lane.
+    - validation: host build, boundary facade usage, boundary change policy,
+      status consistency, `git diff --check`, and bounded normal+ASAN
+      `memory-lifetime-smoke` with FTXUI smoke enabled are green
+      (`pass=198 fail=0`).
+  - JIT mutable-local, raise-payload, dispatch-payload, constructor-payload,
+    deduce-integrity payload, and goal-directed deduce diagnostic payload
+    fail-closed follow-up:
+    - mutable-local helper lookup now rejects null env boxes and missing
+      bindings with an explicit error instead of returning null into compiled
+      code paths.
+    - mutable-local env reparenting now returns the effective env, allowing
+      capture setup to preserve the checked helper result.
+    - handled raise payload construction now uses the non-raising checked
+      hashmap allocation path, so payload allocation failure cannot publish a
+      stale nested pending raise before the outer raise path reports the
+      intended construction error.
+    - optional dispatch diagnostic payload construction now uses the same
+      non-raising hashmap helper, preventing failed ancillary payload
+      allocation from pre-seeding `raise_pending` under an active handler.
+    - optional constructor mismatch diagnostic payload construction also uses
+      the non-raising hashmap helper and validates payload key interning before
+      constructing key symbols.
+    - optional deduce integrity/check-context diagnostic payload construction
+      now uses the non-raising hashmap helper and no-raise local setters, so
+      failed ancillary integrity payload allocation cannot pre-seed
+      `raise_pending` before the intended integrity violation raise.
+    - optional iteration-limit diagnostic payload construction also uses the
+      non-raising hashmap helper before the later iteration-limit raise.
+    - goal-directed selector analysis and selector/relation surface diagnostic
+      payload construction also uses the non-raising hashmap helper and local
+      checked insertion before publishing the existing deduce OOM fallback.
+    - goal-directed explain snapshot/component payloads now reject failed
+      payload-symbol interning before constructing payload `SYMBOL` values,
+      and why-result path dictionary lookup rejects invalid temporary key
+      symbols before probing.
+    - dispatch diagnostic payload insertion, process-spawn result maps, HTTP
+      response maps, and FTXUI dictionary lookup now also guard failed symbol
+      interning before constructing payload or lookup key symbols.
+    - validation: host build, boundary facade usage, boundary change policy,
+      status consistency, `git diff --check`, bounded normal `jit-policy` with
+      FTXUI smoke enabled (`pass=51 fail=0`), and bounded ASAN `jit-policy`
+      (`pass=50 fail=0`), plus bounded normal+ASAN `memory-lifetime-smoke`
+      with FTXUI smoke enabled (`pass=200 fail=0`) and bounded normal+ASAN
+      `deduce` slice (`pass=330 fail=0`), plus bounded normal+ASAN `async`
+      with FTXUI smoke enabled (`pass=65 fail=0`) are green.

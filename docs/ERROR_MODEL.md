@@ -42,7 +42,7 @@ This inventory is grouped by API family and current observed style.
 | I/O/network async | `tcp-*`, `dns-resolve`, `async-sleep` | canonical payloaded `raise` for core async primitives (`io/*`) | `src/lisp/async.c3` |
 | Effect runtime internals | `signal`, `resolve`, strict/unhandled paths | canonical payloaded `raise` (`runtime/*`) | `src/lisp/jit_jit_handle_signal.c3`, `src/lisp/jit_jit_runtime_effects.c3` |
 | Deduce relation/query | `__define-relation`, `deduce-query` family | canonical payloaded `raise` (`deduce/*`) | `src/lisp/deduce_schema_query.c3`, `src/lisp/deduce_relation_ops.c3`, `src/lisp/unify.c3` |
-| String/number conversion | `read-string`, `string->symbol`, `number->string` family | canonical payloaded `raise` (`type/arg-mismatch`, `runtime/read-string-failed`) | `src/lisp/prim_string_convert.c3` |
+| String/number conversion | `read-string`, `Symbol`, `String` constructor family | canonical payloaded `raise` (`type/arg-mismatch`, `runtime/read-string-failed`) | `src/lisp/prim_string_convert.c3` |
 | Compression | `gzip`, `gunzip`, `deflate`, `inflate` | canonical payloaded `raise` (`type/*`, `runtime/*`) | `src/lisp/compress.c3` |
 | Stdlib error conventions | `try`, `assert!` | canonical payload normalization in stdlib surface (`{ 'code 'message 'domain 'data }`) | `stdlib/stdlib.lisp` |
 
@@ -85,7 +85,7 @@ Status legend: `done`, `partial`, `missing`.
 | Scheduler runtime primitives | `runtime-io` | `done` | canonical payloaded `raise` in scheduler runtime paths | canonical payloaded `raise` | `offload`, `thread-*`, `spawn`/`await`, wakeup/tcp-read bridge migrated to `scheduler/*` |
 | Effect dispatcher internals | `runtime-core` | `done` | canonical payloaded `raise` across effect dispatch/handle/checkpoint/capture/fast-path internals | payloaded `raise` for programmer/recoverable paths | `jit_jit_handle_signal.c3`, `jit_jit_runtime_effects.c3`, and related continuation/effect compile helpers now avoid mixed string-only error constructors (`CP-06`) |
 | Deduce APIs | `deduce` | `done` | canonical payloaded `raise` with stable `deduce/*` codes for open/dispatch/relation/query/fact/retract/count/scan/scan-range/match/txn/clear/drop | canonical payloaded `raise` | deduce-family string raises removed from `deduce.c3`, `deduce_relation_ops.c3`, `deduce_schema_query.c3`, and `unify.c3` |
-| Conversion/compression primitives | `runtime-core` | `done` | canonical payloaded `raise` for conversion (`number->string`, `exact->inexact`, `inexact->exact`, `read-string`, `string->symbol`, `symbol->string`) and compression/checksum (`gzip`, `gunzip`, `deflate`, `inflate`, `zlib-*`, `adler32`, `crc32`) families | canonical payloaded `raise` | argument paths now emit `type/arity` / `type/arg-mismatch`; compression operational failures emit stable `runtime/*` codes with regression coverage for domain/code extraction |
+| Conversion/compression primitives | `runtime-core` | `done` | canonical payloaded `raise` for conversion (`String`, `Double`, `Integer`, `Symbol`, `read-string`) and compression/checksum (`gzip`, `gunzip`, `deflate`, `inflate`, `zlib-*`, `adler32`, `crc32`) families | canonical payloaded `raise` | argument paths now emit `type/arity` / `type/arg-mismatch`; compression operational failures emit stable `runtime/*` codes with regression coverage for domain/code extraction |
 | Absence APIs (`find`) | `stdlib` | `done` | `nil` for no result | keep as-is | contract-aligned already |
 
 ## 6. Domain and Code Normalization Baseline (P2.7)
