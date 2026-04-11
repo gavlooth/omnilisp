@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 11
+Current actionable count: 10
 
 Completed backlog snapshots:
 
@@ -17,23 +17,6 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
-
-- [ ] `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` harden the runtime `eval`
-  data-to-expression conversion path
-  - audit finding: malformed eval-data special forms can be accepted or
-    truncated outside the parser path, including non-symbol heads/tags via
-    `val_to_sym`, `set!` trailing arguments, fail-open arity for several
-    special forms, lambda/let multi-body truncation, and `macroexpand`
-    fallback masking.
-  - progress note: 2026-04-11 slice made value-to-expression conversion
-    fail closed for malformed `if`, `quote`, `define`, `set!`, `checkpoint`,
-    `capture`, quasiquote/unquote forms, and `signal`; non-symbol
-    define/set/signal names no longer coerce to symbol id `0`, and generic
-    multi-arg `set!` data forms lower through normal call dispatch.
-  - next step: finish parser parity by preserving lambda/let multi-body forms
-    through explicit `block` lowering where parser-equivalent, then make
-    `macroexpand` surface structural conversion failures instead of returning
-    the original malformed form.
 
 - [ ] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
   the language spec
@@ -132,6 +115,27 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` harden the runtime `eval`
+  data-to-expression conversion path
+  - closure evidence:
+    - value-to-expression conversion now enforces structural arity for malformed
+      special-form data instead of defaulting missing operands to `nil` or
+      ignoring extras.
+    - `define`, two-operand `set!`, `capture`, and `signal` now reject
+      non-symbol names/tags instead of coercing them to symbol id `0`.
+    - multi-argument `set!` data forms now lower through normal call dispatch,
+      preserving parser-equivalent generic collection setter behavior.
+    - lambda and let data forms now preserve parser-equivalent implicit block
+      bodies, and `macroexpand` now surfaces structural conversion errors for
+      malformed cons forms.
+    - added eval and macroexpand regressions in the advanced stdlib numeric
+      introspection group.
+  - validation:
+    - bounded `advanced-stdlib-numeric` subgroup after arity/name slice:
+      `pass=265 fail=0`
+    - bounded `advanced-stdlib-numeric` subgroup after block/macroexpand slice:
+      `pass=268 fail=0`
 
 - [x] `AUDIT-NAMED-LET-INIT-ERROR-PROPAGATION-097` preserve initializer
   error values through named `let`/tail multi-argument calls

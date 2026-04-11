@@ -1,5 +1,15 @@
 ## 2026-04-11
 
+- Completed the runtime `eval` data-to-expression fail-closed lane:
+  - Lambda and let data forms now preserve parser-equivalent implicit block
+    bodies instead of truncating to the first body form.
+  - `macroexpand` now surfaces structural conversion failures for malformed cons
+    forms instead of returning the original malformed form.
+  - Added eval regressions for lambda/let multi-body parity and macroexpand
+    conversion-failure surfacing.
+  - validation:
+    - bounded `advanced-stdlib-numeric` subgroup: `pass=268 fail=0`
+
 - Hardened the runtime `eval` data-to-expression conversion path for malformed
   special forms:
   - `if`, `quote`, `define`, `set!`, `checkpoint`, `capture`, quasiquote,

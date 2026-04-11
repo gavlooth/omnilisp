@@ -26,22 +26,23 @@ queue; this file is supporting context for why the queue is ordered this way.
   quasiquote/unquote forms, and `signal` now reports structural conversion
   errors instead of defaulting missing operands, truncating extras, or coercing
   non-symbol names/tags to symbol id `0`.
+- Eval data-to-expression block/macroexpand slice: lambda and let data forms
+  now preserve parser-equivalent implicit block bodies, and `macroexpand` now
+  surfaces structural conversion failures for malformed cons forms instead of
+  returning the original malformed form.
 
 ## Current Plan
 
-1. Continue `AUDIT-EVAL-VALUE-TO-EXPR-FAIL-CLOSED-096` by preserving
-   lambda/let multi-body parity through explicit `block` lowering, then make
-   `macroexpand` surface structural conversion failures.
-2. Normalize list walker improper-list behavior under
+1. Normalize list walker improper-list behavior under
    `AUDIT-LIST-WALKER-IMPROPER-LIST-092`, preferably through shared traversal
    helpers instead of one-off guards.
-3. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
+2. Resolve `AUDIT-LIST-PREDICATE-CONTRACT-093` after list walker behavior is
    explicit, so `list?` can be made consistent with the selected proper-list
    contract.
-4. Resolve documentation/product-contract issues that should not be guessed in
+3. Resolve documentation/product-contract issues that should not be guessed in
    code: `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` and
    `AUDIT-CONS-REF-SPEC-PARITY-095`.
-5. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+4. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and
    `AUDIT-LIST-HELPER-ALIAS-086`.

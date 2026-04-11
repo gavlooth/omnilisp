@@ -45,11 +45,17 @@ fn Expr* make_nullary_lambda_expr(Interp* interp, Expr* body) {
     return e;
 }
 
+fn Expr* vte_implicit_body(Value* rest, Interp* interp, char[] missing_msg) {
+    if (!is_cons(rest)) return make_error_expr(interp, missing_msg);
+    if (!is_cons(rest.cons_val.cdr)) return value_to_expr(rest.cons_val.car, interp);
+    return vte_begin(rest, interp);
+}
+
 fn Expr* vte_lambda(Value* rest, Interp* interp) {
-    if (!is_cons(rest)) return make_nil_expr(interp);
+    if (!is_cons(rest)) return make_error_expr(interp, "value->expr: lambda expects parameter list and body");
     Value* params_list = rest.cons_val.car;
     rest = rest.cons_val.cdr;
-    Expr* body = rest_car_expr(rest, interp);
+    Expr* body = vte_implicit_body(rest, interp, "value->expr: lambda expects body");
 
     List{SymbolId} params;
     Value* p = params_list;
@@ -89,7 +95,7 @@ fn Expr* vte_let(Value* rest, Interp* interp) {
     if (!is_cons(rest)) return make_error_expr(interp, "macro expansion emitted malformed let: expected bindings list and body");
     Value* bindings_list = rest.cons_val.car;
     rest = rest.cons_val.cdr;
-    Expr* body = rest_car_expr(rest, interp);
+    Expr* body = vte_implicit_body(rest, interp, "macro expansion emitted malformed let: expected body");
 
     char[] invalid_bindings_msg = "macro expansion emitted invalid let bindings; expected flat pairs: (let (x 1 y 2) ...)";
     if (!is_cons(bindings_list)) return make_error_expr(interp, invalid_bindings_msg);

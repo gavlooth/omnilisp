@@ -362,10 +362,16 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         setup(interp, "(define [macro] my-inc (syntax-match ([x] (template (+ (insert x) 1)))))");
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco macroexpand");
         test_truthy(interp, "macroexpand", "(pair? (macroexpand (quote (my-inc 5))))", pass, fail);
+        test_error_contains(interp, "macroexpand surfaces improper form conversion error", "(macroexpand (cons 'my-inc (cons 1 2)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-literal");
         test_eq(interp, "eval literal", "(eval 42)", 42, pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-list");
         test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);
+        test_eq(interp, "eval lambda preserves implicit block body", "((eval '(lambda (x) (set! x 2) x)) 1)",
+            2, pass, fail);
+        test_eq(interp, "eval let preserves implicit block body", "(eval '(let (x 1) (set! x 2) x))",
+            2, pass, fail);
         test_error_contains(interp, "eval rejects improper call form", "(eval (cons '+ (cons 1 2)))",
             "value->expr: expected expression form to be a proper list", pass, fail);
         test_error_contains(interp, "eval rejects improper and form", "(eval (cons 'and (cons true false)))",

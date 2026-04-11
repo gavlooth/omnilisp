@@ -63,6 +63,9 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     if (!is_cons(form)) return form; // not a macro call, return as-is
     Expr* call_expr = value_to_expr(form, interp);
     if (call_expr == null) return form;
+    if (call_expr.tag == E_LIT && call_expr.lit.value != null && call_expr.lit.value.tag == ERROR) {
+        return raise_error(interp, call_expr.lit.value.str_chars[:call_expr.lit.value.str_len]);
+    }
 
     EvalResult r;
     if (!try_expand_macro_call_expr(call_expr, interp, &r)) return form;
