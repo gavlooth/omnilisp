@@ -1059,7 +1059,7 @@ Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` 
 
 I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). When no handler is installed, a fast path calls raw primitives directly (zero overhead). Custom handlers can intercept, suppress, or redirect I/O.
 
-### 7.6 String Operations (15)
+### 7.6 String Operations (16)
 
 | Prim | Arity | Description |
 |------|-------|-------------|
@@ -1067,7 +1067,8 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `string-join` | 2 | Join list with separator |
 | `substring` | 3 | Extract substring (negative indices supported) |
 | `string-split` | 2 | Split by delimiter |
-| `string-length` | 1 | String length |
+| `string-length` | 1 | String length in UTF-8 codepoints |
+| `string-byte-length` | 1 | String length in bytes |
 | `string->list` | 1 | String to list of chars |
 | `list->string` | 1 | List to string |
 | `string-upcase` | 1 | Uppercase |

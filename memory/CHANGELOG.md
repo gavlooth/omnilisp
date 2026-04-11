@@ -1,5 +1,19 @@
 ## 2026-04-11
 
+- Aligned generic string sequence operations with codepoint semantics:
+  - `length` on strings now returns UTF-8 codepoint count, matching
+    `string-length`; byte count remains explicit via `string-byte-length`.
+  - `ref` and postfix `.[index]` on strings now return a single-character string
+    by codepoint index, matching `char-at` and `string->list` element shape.
+  - Added non-ASCII regressions for generic `length`, `ref`, and postfix string
+    indexing.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `length`, `string-length`, `string-byte-length`, `ref`,
+      `char-at`, and postfix `.[index]` on non-ASCII strings
+    - bounded `advanced-unicode-iterator` subgroup: `pass=136 fail=0`
+    - bounded `advanced-collections-module` subgroup: `pass=142 fail=0`
+
 - Closed the cons/list `ref` specification parity audit:
   - Updated the language spec and collection reference to document the
     already-tested runtime contract for cons/list chains: positive and negative

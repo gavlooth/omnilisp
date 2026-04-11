@@ -84,8 +84,8 @@ These work across collection types:
 
 | Operation | Lists | Arrays | Dicts | Strings |
 |-----------|-------|--------|-------|---------|
-| `ref` | by index across cons chains | by index | by key | char at index |
-| `length` | count; dotted terminal tails count as one element | count | count | char count |
+| `ref` | by index across cons chains | by index | by key | codepoint char at index |
+| `length` | count; dotted terminal tails count as one element | count | count | codepoint count |
 | `push!` | — | append | — | — |
 
 ### Access Syntax
@@ -151,6 +151,7 @@ arr.[-1]                ;; last element (negative indexing)
 (substring "hello" -3 -1)              ;; => "ll" (negative indices)
 (string-split "a,b,c" ",")             ;; => ("a" "b" "c")
 (string-length "hello")                 ;; => 5
+(string-byte-length "héllo")             ;; => 6
 (string->list "abc")                    ;; => ("a" "b" "c")
 (list->string '("a" "b" "c"))          ;; => "abc"
 (string-upcase "hello")                 ;; => "HELLO"

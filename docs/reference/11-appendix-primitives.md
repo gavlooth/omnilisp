@@ -162,7 +162,7 @@ to this `fs-*` family; raw primitive registration remains `fs-*`.
 | `string-join` | 2 | Join list with separator |
 | `substring` | 3 | Extract substring |
 | `string-split` | 2 | Split by delimiter |
-| `string-length` | 1 | Length |
+| `string-length` | 1 | Codepoint length |
 | `string-byte-length` | 1 | Byte length |
 | `string->list` | 1 | To list of chars |
 | `list->string` | 1 | List to string |

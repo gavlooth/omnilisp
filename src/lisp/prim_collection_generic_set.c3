@@ -87,24 +87,29 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
         return true;
     }
 
-    // String: (ref str idx) = byte as int — supports negative indexing
+    // String: codepoint-indexed character access. Use string-byte-length for bytes.
     if (coll.tag == STRING) {
         if (!is_int(key)) {
             *out = raise_error(interp, "ref: string requires int index");
             return true;
         }
-        if (coll.str_len > (usz)long.max) {
+        char[] bytes = coll.str_chars[:coll.str_len];
+        usz cp_count = utf8_strlen(bytes);
+        if (cp_count > (usz)long.max) {
             *out = raise_error(interp, "ref: string too large to index");
             return true;
         }
         long idx = key.int_val;
-        long slen = (long)coll.str_len;
+        long slen = (long)cp_count;
         if (idx < 0) idx += slen;
         if (idx < 0 || idx >= slen) {
             *out = raise_error(interp, "ref: string index out of bounds");
             return true;
         }
-        *out = make_int(interp, (long)coll.str_chars[(usz)idx]);
+        usz byte_off = utf8_byte_offset(bytes, (usz)idx);
+        usz cplen = utf8_codepoint_len(bytes[byte_off]);
+        if (byte_off + cplen > bytes.len) cplen = bytes.len - byte_off;
+        *out = make_string(interp, bytes[byte_off:cplen]);
         return true;
     }
 

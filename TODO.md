@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 7
+Current actionable count: 6
 
 Completed backlog snapshots:
 
@@ -17,15 +17,6 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
-
-- [ ] `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` decide byte versus codepoint
-  semantics for generic string `length` and `ref`
-  - audit finding: generic `length`/`ref` on strings are byte-oriented, while
-    `string-length`/`char-at` are codepoint-oriented.
-  - next step: make a product-level contract decision for generic sequence
-    operations on strings; then align docs, tests, and implementation so
-    constructor/dispatch usage does not expose two unmarked string indexing
-    models.
 
 - [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
   scientific-computing surface
@@ -84,6 +75,23 @@ Use this file only for still-open work.
     `persistent-array`/`persistent-dictionary`/`persistent-set` functions.
 
 ## Recently Closed
+
+- [x] `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094` decide byte versus codepoint
+  semantics for generic string `length` and `ref`
+  - closure evidence:
+    - selected codepoint/character semantics for generic string sequence
+      operations to match `string-length`, `char-at`, and `string->list`.
+    - kept byte count explicit through `string-byte-length`.
+    - changed generic `ref` and postfix `.[index]` on strings to return
+      single-character strings instead of byte integers.
+    - added non-ASCII regressions for generic `length`, `ref`, and postfix
+      indexing.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct probes for `length`, `string-length`, `string-byte-length`, `ref`,
+      `char-at`, and postfix `.[index]` on non-ASCII strings
+    - bounded `advanced-unicode-iterator` subgroup: `pass=136 fail=0`
+    - bounded `advanced-collections-module` subgroup: `pass=142 fail=0`
 
 - [x] `AUDIT-CONS-REF-SPEC-PARITY-095` reconcile cons/list `ref` behavior with
   the language spec

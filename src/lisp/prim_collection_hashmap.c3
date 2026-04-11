@@ -39,9 +39,9 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
         return make_int(interp, 0);
     }
 
-    // String length
+    // String length is codepoint-based; use string-byte-length for bytes.
     if (is_string(args[0])) {
-        return make_int(interp, (long)args[0].str_len);
+        return make_int(interp, (long)utf8_strlen(args[0].str_chars[:args[0].str_len]));
     }
 
     // Array length

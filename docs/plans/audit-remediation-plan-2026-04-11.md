@@ -43,16 +43,17 @@ queue; this file is supporting context for why the queue is ordered this way.
 - `AUDIT-CONS-REF-SPEC-PARITY-095`: documented the existing tested cons/list
   sequence contract for `ref` and `length`, including negative indexes and
   dotted terminal tails.
+- `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094`: aligned generic string `length`,
+  `ref`, and postfix indexing with codepoint/character semantics;
+  `string-byte-length` remains the explicit byte lane.
 
 ## Current Plan
 
-1. Resolve the remaining string product-contract issue:
-   `AUDIT-STRING-GENERIC-BYTE-CODEPOINT-094`.
-2. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
+1. Continue constructor/dispatch cleanup decisions already in `TODO.md`:
    `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084`,
    `AUDIT-NUMBER-PARSE-SURFACE-085`, and
    `AUDIT-LIST-HELPER-ALIAS-086`.
-3. Keep new implementation work sliced and committed separately after each
+2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
 
 ## Validation Policy

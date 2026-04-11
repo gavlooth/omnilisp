@@ -80,14 +80,14 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "ref cons cdr", "(ref (cons 10 20) 1)", 20, pass, fail);
     test_eq(interp, "ref cons negative cdr", "(ref (cons 10 20) -1)", 20, pass, fail);
     // ref - string
-    test_eq(interp, "ref string", "(ref \"hello\" 0)", 104, pass, fail);
+    test_str_val(interp, "ref string", "(ref \"hello\" 0)", "h", pass, fail);
     // negative indexing (Python-style: -1 = last, -2 = second-to-last)
     test_eq(interp, "ref array -1", "(ref [10 20 30] -1)", 30, pass, fail);
     test_eq(interp, "ref array -2", "(ref [10 20 30] -2)", 20, pass, fail);
     test_eq(interp, "ref array -3", "(ref [10 20 30] -3)", 10, pass, fail);
     test_error(interp, "ref array -4 oob", "(ref [10 20 30] -4)", pass, fail);
-    test_eq(interp, "ref string -1", "(ref \"hello\" -1)", 111, pass, fail);
-    test_eq(interp, "ref string -5", "(ref \"hello\" -5)", 104, pass, fail);
+    test_str_val(interp, "ref string -1", "(ref \"hello\" -1)", "o", pass, fail);
+    test_str_val(interp, "ref string -5", "(ref \"hello\" -5)", "h", pass, fail);
     test_error(interp, "ref string -6 oob", "(ref \"hello\" -6)", pass, fail);
     // ref on lists (walks cons chain, not just pair 0/1)
     test_eq(interp, "ref list 0", "(ref '(10 20 30) 0)", 10, pass, fail);
@@ -106,6 +106,9 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "length array", "(length [1 2 3])", 3, pass, fail);
     test_eq(interp, "length dict", "(length {'a 1 'b 2})", 2, pass, fail);
     test_eq(interp, "length string", "(length \"hello\")", 5, pass, fail);
+    test_eq(interp, "length utf8 string", "(length \"caf\xc3\xa9\")", 4, pass, fail);
+    test_str_val(interp, "ref utf8 string", "(ref \"caf\xc3\xa9\" 3)", "\xc3\xa9", pass, fail);
+    test_str_val(interp, ".[ ] utf8 string", "(let (s \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\") s.[1])", "\xe6\x9c\xac", pass, fail);
     test_eq(interp, "length list", "(length '(1 2 3 4))", 4, pass, fail);
     test_eq(interp, "length dotted cons", "(length (cons 1 2))", 2, pass, fail);
     test_eq(interp, "length dotted cons chain", "(length (cons 1 (cons 2 3)))", 3, pass, fail);
