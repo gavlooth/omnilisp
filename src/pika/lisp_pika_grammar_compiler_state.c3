@@ -12,6 +12,7 @@ struct GrammarCompiler {
     int* rule_indices;
     int rule_count;
     int rule_capacity;
+    int start_rule_index;
     bool has_error;
     char[] error_code;
     char[] error_message;
@@ -24,6 +25,7 @@ fn void GrammarCompiler.init(GrammarCompiler* self, lisp::Interp* interp) {
     self.rule_indices = null;
     self.rule_count = 0;
     self.rule_capacity = 0;
+    self.start_rule_index = -1;
     self.has_error = false;
     self.error_code = "";
     self.error_message = "";

@@ -56,6 +56,7 @@ fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::Symbol
     int existing = gc.find_rule(rule_name);
     if (existing >= 0) {
         gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
+        if (gc.start_rule_index < 0) gc.start_rule_index = existing;
         return;
     }
     char[] name_str = interp.symbols.get_name(rule_name);
@@ -64,18 +65,19 @@ fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::Symbol
     gc.rule_names[gc.rule_count] = rule_name;
     gc.rule_indices[gc.rule_count] = clause_idx;
     gc.rule_count++;
+    if (gc.start_rule_index < 0) gc.start_rule_index = clause_idx;
 }
 
 fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc) {
     if (gc.rb.len == 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
-    if (gc.rule_count == 0) {
+    if (gc.start_rule_index < 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
 
     String[] starts = mem::new_array(String, 1);
-    starts[0] = gc.rb.rules[gc.rule_indices[0]].name;
+    starts[0] = gc.rb.rules[gc.start_rule_index].name;
     Grammar grammar = make_grammar(starts, gc.rb.to_array());
     int start_clause = find_name_index(&grammar, starts[0]);
     if (start_clause < 0) {

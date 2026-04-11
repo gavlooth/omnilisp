@@ -1,5 +1,17 @@
 ## 2026-04-11
 
+- Fixed Pika grammar start-rule selection found while reconciling the reference
+  docs with the live grammar surface:
+  - Forward-reference placeholders can no longer become the grammar start rule
+    ahead of the first declared rule.
+  - Added a regression where the first declared rule references later `number`
+    and `op` rules before they are registered.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct Pika grammar probe for first-declared start rule with forward
+      `number` and `op` references
+    - bounded `pika` slice: `pass=90 fail=0`
+
 - Hardened Pika grammar clause validation found during the follow-up
   list-walker audit:
   - Grammar rule and clause forms now reject improper lists instead of

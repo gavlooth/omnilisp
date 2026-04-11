@@ -209,6 +209,13 @@ fn void run_pika_tests(Interp* interp, int* pass, int* fail) {
     test_tag(interp, "pika/parse reachable start still matches",
         "(block (pika/grammar 'g-start '(rule start \"a\") '(rule dead \"b\")) (pika/parse 'g-start \"a\"))",
         CONS, pass, fail);
+    test_str_val(interp, "pika/grammar start uses first declared rule with forward refs",
+        "(block (define g (pika/grammar 'g-forward-start "
+        "  '(rule start (seq number op number)) "
+        "  '(rule number (scan \"[0-9]+\")) "
+        "  '(rule op (first \"+\" \"-\" \"*\" \"/\")))) "
+        "  (String (car (pika/parse g \"1+2\"))))",
+        "start", pass, fail);
     test_tag(interp, "pika/parse scan clause basic",
         "(block (pika/grammar 'g-scan '(rule start (scan \"[a-z]+\"))) (pika/parse 'g-scan \"abc\"))",
         CONS, pass, fail);
