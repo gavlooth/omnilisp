@@ -282,6 +282,8 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_str(interp, "string-replace", "(string-replace \"hello world\" \"world\" \"there\")", pass, fail);
     test_str(interp, "char-at", "(char-at \"hello\" 1)", pass, fail);
     test_str(interp, "string-repeat", "(string-repeat \"ab\" 3)", pass, fail);
+    test_error_contains(interp, "string-join rejects non-string element",
+        "(string-join \",\" (quote (\"a\" 1 \"b\")))", "string-join: expected string elements", pass, fail);
 
     // === TYPE PREDICATE TESTS (Phase 5) ===
     test_truthy(interp, "double? yes", "(double? 3.14)", pass, fail);

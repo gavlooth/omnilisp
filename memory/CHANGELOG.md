@@ -1,5 +1,15 @@
 ## 2026-04-11
 
+- Hardened `string-join` malformed-element handling found during the
+  follow-up string conversion audit:
+  - `string-join` now rejects non-string list elements instead of
+    silently omitting them from the joined output.
+  - Added a regression in the advanced stdlib string/predicate/format
+    coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-stdlib-numeric-string-predicate-format` subgroup: `pass=60 fail=0`
+
 - Hardened collection/string conversion fail-closed behavior found during the
   follow-up constructor-surface audit:
   - `list->string` now rejects non-string list elements instead of silently
