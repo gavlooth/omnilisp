@@ -5,7 +5,7 @@ Last condensed: 2026-04-11
 This file is now the sole live backlog.
 List only still-open items here.
 
-Current actionable count: 5
+Current actionable count: 6
 
 Completed backlog snapshots:
 
@@ -17,6 +17,15 @@ Completed backlog snapshots:
 Use this file only for still-open work.
 
 ## Live Queue
+
+- [ ] `LANG-TENSOR-SCIENTIFIC-SURFACE-091` implement the canonical Tensor
+  scientific-computing surface
+  - design note: `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`
+    locks the proposed surface around `Tensor`, tensor-dispatched `map`,
+    `contract`, and `overwrite`.
+  - next step: start with the plan's `TENSOR-010` runtime representation slice,
+    then proceed through constructor/indexing, `map`, `contract`, and
+    `overwrite` only after each slice has targeted tests.
 
 - [ ] `AUDIT-LIST-STRING-CONSTRUCTOR-SURFACE-084` decide and implement the
   canonical list/string conversion contract
