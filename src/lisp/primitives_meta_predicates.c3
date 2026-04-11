@@ -84,12 +84,18 @@ fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return raise_error(interp, "apply: expected function and argument list");
     Value* func = args[0];
     Value* arg_list = args[1];
+    if (!is_cons(arg_list) && !is_nil(arg_list)) {
+        return raise_error(interp, "apply: expected argument list");
+    }
     // Count args
     usz arg_count = 0;
     Value* cur = arg_list;
     while (is_cons(cur)) {
         arg_count++;
         cur = cur.cons_val.cdr;
+    }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "apply: expected a proper argument list");
     }
     // Use multi-arg apply (handles multi-param closures, variadics, etc.)
     return jit_apply_multi_args(interp, func, arg_list, arg_count);

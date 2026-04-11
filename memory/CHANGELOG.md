@@ -1,5 +1,16 @@
 ## 2026-04-11
 
+- Hardened `apply` malformed-argument-list handling found during the
+  follow-up list-walker audit:
+  - `apply` now rejects non-list and improper-list argument inputs at the
+    primitive boundary instead of truncating dotted tails or treating scalar
+    inputs as zero-argument calls.
+  - Added regressions in the advanced stdlib introspection coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - direct eval checks for scalar and improper-list argument inputs
+    - bounded `advanced-stdlib-numeric-introspection-lazy-tco` subgroup: `pass=29 fail=0`
+
 - Hardened quasiquote splicing malformed-tail handling found during the
   follow-up list-walker audit:
   - JIT quasiquote `,@` expansion now rejects improper list splice

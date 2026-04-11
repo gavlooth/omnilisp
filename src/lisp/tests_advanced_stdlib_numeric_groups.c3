@@ -363,6 +363,10 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco apply");
         test_eq(interp, "apply +", "(apply + (quote (1 2)))", 3, pass, fail);
+        test_error_contains(interp, "apply rejects non-list args", "(apply + 1)",
+            "apply: expected argument list", pass, fail);
+        test_error_contains(interp, "apply rejects improper args", "(apply + (cons 1 2))",
+            "apply: expected a proper argument list", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-yes");
         test_truthy(interp, "bound? yes", "(bound? '+)", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-no");
