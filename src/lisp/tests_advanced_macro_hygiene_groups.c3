@@ -79,6 +79,9 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "quasiquote splice len", "(length `(a ,@qq-lst d))", 5, pass, fail);
     setup(interp, "(define qq-empty (list))");
     test_eq(interp, "quasiquote splice empty", "(length `(a ,@qq-empty b))", 2, pass, fail);
+    setup(interp, "(define qq-bad-tail (cons 1 2))");
+    test_error_contains(interp, "quasiquote splice rejects improper list",
+        "`(a ,@qq-bad-tail b)", ",@ value is not a proper list", pass, fail);
     test_eq(
         interp,
         "quasiquote wide list length",

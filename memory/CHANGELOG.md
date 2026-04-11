@@ -1,5 +1,15 @@
 ## 2026-04-11
 
+- Hardened quasiquote splicing malformed-tail handling found during the
+  follow-up list-walker audit:
+  - JIT quasiquote `,@` expansion now rejects improper list splice
+    values instead of dropping the non-list tail.
+  - Added a regression in the advanced macro-hygiene quasiquote
+    coverage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-macro-hygiene-quasi-pattern` subgroup: `pass=20 fail=0`
+
 - Hardened `string-join` malformed-element handling found during the
   follow-up string conversion audit:
   - `string-join` now rejects non-string list elements instead of

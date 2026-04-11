@@ -105,6 +105,9 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
                 if (is_cons(tmp)) {
                     return eval_error("quasiquote splice: too many items (max 64)");
                 }
+                if (!is_nil(tmp)) {
+                    return eval_error(",@ value is not a proper list");
+                }
                 for (usz j = item_count; j > 0; j--) {
                     EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
                     if (next.error.has_error) return next;
@@ -151,6 +154,9 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
                 }
                 if (is_cons(tmp)) {
                     return eval_error("quasiquote splice: too many items (max 64)");
+                }
+                if (!is_nil(tmp)) {
+                    return eval_error(",@ value is not a proper list");
                 }
                 for (usz j = item_count; j > 0; j--) {
                     EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
