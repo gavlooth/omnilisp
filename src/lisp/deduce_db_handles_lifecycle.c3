@@ -233,4 +233,5 @@ fn void deduce_db_finalizer(void* handle) {
         db.env = null;
         db.open = false;
     }
+    mem::free(db);
 }

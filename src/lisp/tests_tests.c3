@@ -237,6 +237,8 @@ fn void run_test_global_boundary_reset() {
     }
     jit_cache_clear();
     g_jit_pool_warned = false;
+    g_tensor_force_expr_edge_copy_fail_nth = 0;
+    g_tensor_force_expr_edge_escape_fail_nth = 0;
     pika::regex_cache_reset();
 }
 

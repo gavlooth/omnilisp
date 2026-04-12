@@ -196,8 +196,10 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "when false", "(when false 42)" },
     // Command-valued when predicates with nested define/set! still generate invalid AOT locals.
     { "when command Void predicate", "(let (e2e-void-when 0) (block (when (block 0 1) (set! e2e-void-when 9)) e2e-void-when))" },
+    { "when false skips set! side-effect", "(let (x 3) (block (when false (set! x 10)) x))" },
     { "unless true", "(unless true 42)" },
     { "unless false", "(unless false 42)" },
+    { "unless true skips set! side-effect", "(let (x 4) (block (unless true (set! x 20)) x))" },
 
     // === P3: Bitwise ops ===
     { "bitwise-and", "(bitwise-and 12 10)" },

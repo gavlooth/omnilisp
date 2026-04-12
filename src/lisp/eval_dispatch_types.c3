@@ -71,14 +71,14 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
  */
 fn bool register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[16] builtin_names = {
+    SymbolId[17] builtin_names = {
         interp.sym_Integer, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
         interp.sym_Nil, interp.sym_Void, interp.sym_Closure, interp.sym_Array,
         interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
-        interp.sym_TimePoint, interp.sym_Coroutine
+        interp.sym_TimePoint, interp.sym_Coroutine, interp.sym_Tensor
     };
-    for (usz i = 0; i < 16; i++) {
+    for (usz i = 0; i < 17; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -134,6 +134,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
     interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
     interp.tid_Coroutine = interp.types.lookup(interp.sym_Coroutine, &interp.symbols);
+    interp.tid_Tensor = interp.types.lookup(interp.sym_Tensor, &interp.symbols);
     if (interp.tid_Integer == INVALID_TYPE_ID || interp.tid_Double == INVALID_TYPE_ID ||
         interp.tid_String == INVALID_TYPE_ID || interp.tid_Symbol == INVALID_TYPE_ID ||
         interp.tid_List == INVALID_TYPE_ID || interp.tid_Boolean == INVALID_TYPE_ID ||
@@ -142,7 +143,8 @@ fn bool register_builtin_types(Interp* interp) {
         interp.tid_Dictionary == INVALID_TYPE_ID || interp.tid_Set == INVALID_TYPE_ID ||
         interp.tid_Any == INVALID_TYPE_ID || interp.tid_Number == INVALID_TYPE_ID ||
         interp.tid_Collection == INVALID_TYPE_ID || interp.tid_Iterator == INVALID_TYPE_ID ||
-        interp.tid_TimePoint == INVALID_TYPE_ID || interp.tid_Coroutine == INVALID_TYPE_ID) {
+        interp.tid_TimePoint == INVALID_TYPE_ID || interp.tid_Coroutine == INVALID_TYPE_ID ||
+        interp.tid_Tensor == INVALID_TYPE_ID) {
         return false;
     }
 
@@ -158,6 +160,7 @@ fn bool register_builtin_types(Interp* interp) {
     interp.types.types[(usz)interp.tid_Void].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_TimePoint].parent = interp.tid_Any;
     interp.types.types[(usz)interp.tid_Coroutine].parent = interp.tid_Any;
+    interp.types.types[(usz)interp.tid_Tensor].parent = interp.tid_Any;
 
     // Meta/abstract symbols are non-callable, but exposed as first-class
     // descriptor values for canonical printing/introspection surfaces.
@@ -190,6 +193,7 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case ITERATOR:  return interp.tid_Iterator;
         case TIME_POINT:return interp.tid_TimePoint;
         case COROUTINE: return interp.tid_Coroutine;
+        case TENSOR:    return interp.tid_Tensor;
         case INSTANCE:
             if (v.instance_val != null && interp.types.get(v.instance_val.type_id) != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
@@ -224,6 +228,7 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case ITERATOR:  return interp.sym_Iterator;
         case TIME_POINT:return interp.sym_TimePoint;
         case COROUTINE:  return interp.sym_Coroutine;
+        case TENSOR:    return interp.sym_Tensor;
         case INSTANCE:
             if (v.instance_val != null) {
                 TypeInfo* ti = interp.types.get(v.instance_val.type_id);

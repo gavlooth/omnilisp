@@ -19,6 +19,7 @@ fn void fs_handle_finalizer(void* handle) {
         fh.fd = -1;
         fh.open = false;
     }
+    mem::free(fh);
 }
 
 fn FsHandle* get_fs_handle(Value* v) {
@@ -26,10 +27,11 @@ fn FsHandle* get_fs_handle(Value* v) {
     return (FsHandle*)v.ffi_val.lib_handle;
 }
 
-fn Value* make_fs_handle(Interp* interp, int fd) {
+fn Value* make_fs_handle(Interp* interp, int fd, bool* trace_fd_closed = null) {
     FsHandle* fh = (FsHandle*)mem::malloc(FsHandle.sizeof);
     if (fh == null) {
         (void)fs_uv_close(fd);
+        if (trace_fd_closed != null) *trace_fd_closed = true;
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
     fh.fd = fd;
@@ -37,8 +39,7 @@ fn Value* make_fs_handle(Interp* interp, int fd) {
 
     Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false);
     if (v == null) {
-        (void)fs_uv_close(fd);
-        mem::free(fh);
+        if (trace_fd_closed != null) *trace_fd_closed = true;
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
     return v;

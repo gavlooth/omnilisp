@@ -158,7 +158,11 @@ struct FfiHandle {
     usz      name_len;
     uint     refcount;       // Shared ownership count for handle wrappers
     FfiHandleFinalizer finalizer;  // Optional payload cleanup callback
-    bool     free_lib_handle;         // Free lib_handle after finalizer when true
+    bool     free_lib_handle;         // Free payload when no finalizer owns release
+    FfiHandleOwnership ownership;     // Declared handle ownership contract
+    ForeignRuntimeKind runtime_kind;  // Common foreign runtime descriptor.
+    ForeignHandleKind  handle_kind;   // Library/module/callable/object/buffer/opaque.
+    uint     capabilities;            // FOREIGN_CAP_* bitset.
 }
 
 /**
@@ -177,4 +181,51 @@ struct Array {
     Value** items;     // malloc'd array of Value pointers
     usz length;
     usz capacity;
+}
+
+/**
+ * TensorDType — Native storage dtype for Tensor payloads.
+ */
+enum TensorDType : char {
+    TENSOR_DTYPE_DOUBLE,
+}
+
+/**
+ * TensorPayloadKind — Concrete storage or lazy expression node.
+ */
+enum TensorPayloadKind : char {
+    TENSOR_PAYLOAD_CONCRETE,
+    TENSOR_PAYLOAD_MAP,
+    TENSOR_PAYLOAD_CONTRACT,
+}
+
+/**
+ * TensorVal — Rank-polymorphic numeric aggregate payload.
+ *
+ * Concrete tensor payloads own native numeric storage. Lazy tensor-expression
+ * payloads keep the same dtype/shape metadata but hold Omni Value edges that
+ * must be copied/promoted with the surrounding region boundary.
+ */
+struct TensorVal {
+    TensorPayloadKind kind;
+    TensorDType dtype;
+    usz rank;
+    usz* shape;
+    usz* strides;
+    usz element_count;
+    usz byte_len;
+    void* data;
+    bool mutable;
+    bool is_view;
+    Value* map_func;
+    Value* map_left;
+    Value* map_right;
+    double map_left_scalar;
+    double map_right_scalar;
+    bool map_is_binary;
+    Value* contract_left;
+    Value* contract_right;
+    usz* contract_left_axes;
+    usz* contract_right_axes;
+    usz contract_axis_count;
 }

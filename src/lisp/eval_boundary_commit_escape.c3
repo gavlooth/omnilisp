@@ -24,7 +24,7 @@ fn BoundaryCommitEscapeResult boundary_commit_escape(
     };
     if (result == null) return committed;
     committed.outcome = BOUNDARY_COMMIT_PASSTHROUGH;
-    defer boundary_debug_graph_audit_committed_escape_root(committed, target_scope);
+    defer boundary_debug_graph_audit_committed_escape_root(committed, target_scope, releasing_scope, interp.global_env);
 
     BoundaryTxn txn = boundary_txn_begin(interp);
     defer boundary_txn_close(interp, &txn);

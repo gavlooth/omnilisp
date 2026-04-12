@@ -54,6 +54,7 @@ enum PromoteEscapeRoute : char {
     PE_ROUTE_INSTANCE,
     PE_ROUTE_FFI_HANDLE,
     PE_ROUTE_TIME_POINT,
+    PE_ROUTE_TENSOR,
 }
 
 fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
@@ -81,6 +82,8 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
             return PE_ROUTE_COROUTINE;
         case TIME_POINT:
             return PE_ROUTE_TIME_POINT;
+        case TENSOR:
+            return PE_ROUTE_TENSOR;
         case PRIMITIVE:
         case HASHMAP:
         case SET:
@@ -125,6 +128,8 @@ fn Value* promote_to_escape_by_route(
             return promote_escape_coroutine(v, interp, ctx);
         case PE_ROUTE_TIME_POINT:
             return promote_escape_time_point(v, interp, ctx);
+        case PE_ROUTE_TENSOR:
+            return promote_escape_tensor_shared_wrapper(v, interp, ctx);
         case PE_ROUTE_SHARED_WRAPPER:
             // Wrapper promotion into ESCAPE lane; backing data/ownership remains unchanged.
             return promote_escape_shared_wrapper(v, interp, ctx);

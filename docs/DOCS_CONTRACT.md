@@ -1,6 +1,6 @@
 # Omni Documentation Contract
 
-**Updated:** 2026-04-09
+**Updated:** 2026-04-11
 
 This file defines documentation authority, coverage boundaries, and verification
 anchors. Use it to decide which document is authoritative for each aspect of
@@ -28,6 +28,7 @@ Operational truth beats stale prose. Reference docs are not normative contracts.
 | Surface naming and alias policy | `docs/syntax-decision.md` | this file + `docs/SURFACE_COMPATIBILITY.md` | normative | parser diagnostics + canonical syntax tests under `tests/` |
 | Access and lookup syntax (`expr.name`, `expr.[key]`, `ref`) | `docs/LANGUAGE_SPEC.md` section 6 | `docs/reference/03-collections.md` | normative | parser + runtime access tests |
 | Collections and generic operations | `docs/reference/03-collections.md` | `docs/LANGUAGE_SPEC.md` sections 2/7 | operational | collection primitive tests |
+| Tensor scientific surface | `docs/LANGUAGE_SPEC.md` sections 2/7 | `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`, `docs/plans/tensor-scientific-computing-plan-2026-04-11.md` | operational + in-progress | `advanced-collections-module` tensor tests |
 | Multiple dispatch and types | `docs/LANGUAGE_SPEC.md` sections 4/5 | `docs/type-system-syntax.md`, `docs/areas/types-dispatch.md` | normative + operational | type/dispatch test groups |
 | Effects and handlers | `docs/EFFECTS_SEMANTICS.md` | `docs/EFFECTS_GUIDE.md`, `docs/LANGUAGE_SPEC.md` | normative + operational | effect runtime and language tests |
 | Delimited continuations | `docs/LANGUAGE_SPEC.md` section 9 | `docs/EFFECTS_SEMANTICS.md`, selected plans | normative + operational | continuation test groups |
@@ -37,9 +38,9 @@ Operational truth beats stale prose. Reference docs are not normative contracts.
 | Runtime ownership and memory lanes | `docs/areas/memory-runtime.md` | `memory/DESTINATION_ARENA_PLAN.md`, `memory/CHANGELOG.md` | operational + in-progress | memory-lifetime test lanes and container gates |
 | Compiler/parser refactor status | `docs/areas/compiler-parser-refactor.md` | `docs/plans/compiler-parser-refactor-plan.md` | in-progress | targeted compile/test lanes |
 | Deduce query/runtime semantics | `docs/deduce-datalog-spec.md` | `docs/areas/README.md`, related plans | operational + in-progress | deduce test slices and changelog entries |
-| FFI and callback model | `docs/plans/ffi-*.md` decision docs | `docs/reference/09-concurrency-ffi.md` | in-progress | targeted FFI build/test lanes |
+| FFI and callback model | `docs/LANGUAGE_SPEC.md` section 7.20 + `docs/plans/ffi-*.md` decision docs + `docs/plans/foreign-runtime-core-plan-2026-04-11.md` | `docs/reference/09-concurrency-ffi.md`, `docs/PROJECT_TOOLING.md`, `docs/areas/ffi-foreign-runtime.md` | operational + in-progress | targeted FFI build/test lanes |
 | Tooling, CLI, REPL workflow | `docs/PROJECT_TOOLING.md` | man pages + top-level `README.md` | operational | local/tooling scripts and validation gates |
-| Release and active work queue | `docs/RELEASE_STATUS.md` + `TODO.md` | `docs/areas/README.md`, `docs/plans/README.md` | operational | latest committed status/docs sweep |
+| Release and active work queue | `docs/RELEASE_STATUS.md` + `TODO.md` | `docs/areas/README.md`, `docs/areas/validation-status.md`, `docs/plans/README.md` | operational | latest committed status/docs sweep |
 
 ## 3. Document Roles
 

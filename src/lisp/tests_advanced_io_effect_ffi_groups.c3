@@ -1,8 +1,35 @@
 module lisp;
 
 import std::io;
+import std::core::mem;
 
 alias AdvancedFfiSystemGroupFn = fn void(Interp* interp, int* pass, int* fail);
+
+int g_double_release_finalizer_calls = 0;
+
+fn void ffi_double_release_test_finalizer(void* payload) {
+    g_double_release_finalizer_calls += 1;
+    if (payload != null) {
+        *(int*)payload = 0;
+    }
+}
+
+fn bool ffi_test_error_contains(Value* value, char[] needle) {
+    if (value == null || value.tag != ERROR || value.str_chars == null) return false;
+    char[] msg = value.str_chars[:value.str_len];
+    if (needle.len > msg.len) return false;
+    for (usz i = 0; i <= msg.len - needle.len; i++) {
+        bool match = true;
+        for (usz j = 0; j < needle.len; j++) {
+            if (msg[i + j] != needle[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
 
 fn bool advanced_group_filter_matches_selected_exact(char[] name) {
     char* filter = test_c_getenv("OMNI_ADVANCED_GROUP_FILTER");
@@ -274,6 +301,14 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
             (*fail)++;
         }
     }
+    test_error_contains(interp, "fs-close invalidates subsequent read",
+        "(block "
+        "(define p \"/tmp/omni_fs_close_invalidates_read.txt\") "
+        "(define h (fs-open p 577 420)) "
+        "(fs-write h \"x\") "
+        "(fs-close h) "
+        "(fs-read h 1))",
+        "fs-read: invalid or closed handle", pass, fail);
 
     test_tag_interp(interp, "udp socket create/close",
         "(block "
@@ -452,11 +487,111 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     // Library declaration
     setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
     test_tag(interp, "ffi lib handle", "libc", FFI_HANDLE, pass, fail);
+    test_truthy(interp, "foreign-describe uses array capabilities metadata",
+        "(let (m (foreign-describe libc)) "
+        "  (and (= (ref m 'type) 'ForeignHandle) "
+        "       (= (ref m 'runtime) 'c-abi) "
+        "       (= (ref m 'kind) 'library) "
+        "       (= (ref m 'name) \"libc.so.6\") "
+        "       (array? (ref m 'capabilities))"
+        "       (= (length (ref m 'capabilities)) 3)"
+        "       (= (ref (ref m 'capabilities) 0) 'load)"
+        "       (= (ref (ref m 'capabilities) 1) 'resolve)"
+        "       (= (ref (ref m 'capabilities) 2) 'reflect)))",
+        pass, fail);
+    test_error_contains(interp, "foreign-release rejects non-releasable library handle",
+        "(foreign-release libc)",
+        "handle is not releasable",
+        pass, fail);
+    {
+        bool saved_force = g_env_force_barrier_promote_failure;
+        g_env_force_barrier_promote_failure = true;
+        test_error_contains(interp, "ffi lib registration failure releases constructed wrapper",
+            "(define [ffi lib] ffi-lib-fail \"libc.so.6\")",
+            "ffi lib: out of memory",
+            pass, fail);
+        g_env_force_barrier_promote_failure = saved_force;
+    }
+    setup(interp, "(define [ffi lib] libc-recover \"libc.so.6\")");
+    test_tag(interp, "ffi lib registration still works after failed wrapper release",
+        "libc-recover", FFI_HANDLE, pass, fail);
 
     // Function bindings — integer functions
     setup(interp, "(define [ffi λ libc] (strlen (^String s)) ^Integer)");
     test_eq(interp, "ffi λ strlen", "(strlen \"hello\")", 5, pass, fail);
     test_eq(interp, "ffi λ strlen empty", "(strlen \"\")", 0, pass, fail);
+    test_truthy(interp, "foreign-describe FFI function signature metadata",
+        "(let (m (foreign-describe strlen)) "
+        "  (and (= (ref m 'type) 'ForeignCallable) "
+        "       (= (ref m 'runtime) 'c-abi) "
+        "       (= (ref m 'kind) 'function) "
+        "       (= (ref m 'name) \"strlen\") "
+        "       (= (ref m 'c-name) \"strlen\") "
+        "       (array? (ref m 'parameters)) "
+        "       (= (length (ref m 'parameters)) 1) "
+        "       (= (ref (ref (ref m 'parameters) 0) 'type) 'String) "
+        "       (= (ref (ref (ref m 'parameters) 0) 'abi-type) 'string) "
+        "       (= (ref (ref m 'returns) 'type) 'Integer) "
+        "       (= (ref (ref m 'returns) 'abi-type) 'int) "
+        "       (array? (ref m 'capabilities)) "
+        "       (= (length (ref m 'capabilities)) 2) "
+        "       (= (ref (ref m 'capabilities) 0) 'call) "
+        "       (= (ref (ref m 'capabilities) 1) 'reflect)))",
+        pass, fail);
+    test_truthy(interp, "foreign-describe FFI function signature metadata after call",
+        "(block "
+        "(strlen \"hello\") "
+        "(let (m (foreign-describe strlen)) "
+        "  (and (= (ref m 'type) 'ForeignCallable) "
+        "       (= (ref m 'runtime) 'c-abi) "
+        "       (= (ref m 'kind) 'function) "
+        "       (= (ref m 'name) \"strlen\") "
+        "       (= (ref m 'c-name) \"strlen\") "
+        "       (array? (ref m 'parameters)) "
+        "       (= (length (ref m 'parameters)) 1) "
+        "       (= (ref (ref (ref m 'parameters) 0) 'type) 'String) "
+        "       (= (ref (ref (ref m 'parameters) 0) 'abi-type) 'string) "
+        "       (= (ref (ref m 'returns) 'type) 'Integer) "
+        "       (= (ref (ref m 'returns) 'abi-type) 'int) "
+        "       (array? (ref m 'capabilities)) "
+        "       (= (length (ref m 'capabilities)) 2) "
+        "       (= (ref (ref m 'capabilities) 0) 'call) "
+        "       (= (ref (ref m 'capabilities) 1) 'reflect))))",
+        pass, fail);
+
+    setup(interp,
+        "(define [ffi module] libc-grouped \"libc.so.6\" "
+        "  (strlen (^String s)) ^Integer "
+        "  (abs (^Integer n)) ^Integer "
+        "  (fopen (^String path) (^String mode)) ^{'name File 'ownership owned 'finalizer fclose} "
+        "  (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)) ^Integer)");
+    test_eq(interp, "ffi module grouped strlen", "(strlen \"hello\")", 5, pass, fail);
+    test_eq(interp, "ffi module grouped abs", "(abs -7)", 7, pass, fail);
+    test_error_contains(interp, "ffi module grouped fclose rejects nil for non-null handle",
+        "(fclose nil)",
+        "expected non-null ForeignHandle",
+        pass, fail);
+    test_truthy(interp, "ffi module grouped foreign-describe callable metadata",
+        "(let (m (foreign-describe strlen)) "
+        "  (and (= (ref m 'type) 'ForeignCallable) "
+        "       (= (ref m 'runtime) 'c-abi) "
+        "       (= (ref m 'kind) 'function) "
+        "       (= (ref m 'name) \"strlen\") "
+        "       (= (ref m 'c-name) \"strlen\") "
+        "       (array? (ref m 'parameters)) "
+        "       (= (ref (ref m 'returns) 'type) 'Integer) "
+        "       (array? (ref m 'capabilities)) "
+        "       (= (length (ref m 'capabilities)) 2) "
+        "       (= (ref (ref m 'capabilities) 0) 'call) "
+        "       (= (ref (ref m 'capabilities) 1) 'reflect)))",
+        pass, fail);
+    test_truthy(interp, "ffi module grouped ForeignHandle return metadata",
+        "(let (r (ref (foreign-describe fopen) 'returns)) "
+        "  (and (= (ref r 'type) 'ForeignHandle) "
+        "       (= (ref r 'name) 'File) "
+        "       (= (ref r 'ownership) 'owned) "
+        "       (= (ref r 'finalizer) 'fclose)))",
+        pass, fail);
 
     setup(interp, "(define [ffi λ libc] (abs (^Integer n)) ^Integer)");
     test_eq(interp, "ffi λ abs", "(abs -42)", 42, pass, fail);
@@ -485,6 +620,10 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
 
     setup(interp, "(define [ffi λ libc] (strtol (^String s) (^ForeignHandle endptr) (^Integer base)) ^Integer)");
     test_eq(interp, "ffi λ strtol mixed scalar foreign handle", "(strtol \"12345\" nil 10)", 12345, pass, fail);
+
+    setup(interp, "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^String)");
+    test_str_val(interp, "ffi λ string return copies C string", "(strchr \"hello\" 101)", "ello", pass, fail);
+    test_nil(interp, "ffi λ string return null maps to nil", "(strchr \"hello\" 120)", pass, fail);
 
     // Void return (canonical ForeignHandle annotation)
     setup(interp, "(define [ffi λ libc] (free (^ForeignHandle p)))");
@@ -537,6 +676,9 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     test_error_contains(interp, "ffi λ Boolean requires real booleans",
         "(block (define [ffi λ libc] (abs (^Boolean flag)) ^Integer) (abs 1))",
         "argument 1 expected Boolean, got Integer", pass, fail);
+    test_error_contains(interp, "ffi module grouped rejects missing return annotation",
+        "(define [ffi module] bad-grouped \"libc.so.6\" (strlen (^String s)))",
+        "expected return type annotation after [ffi module] function signature", pass, fail);
 
     // === SYSTEM PRIMITIVES TESTS ===
     // random — returns double in [0,1)
@@ -574,8 +716,205 @@ fn void run_advanced_ffi_system_long_symbol_tests(Interp* interp, int* pass, int
 }
 
 fn void run_advanced_ffi_system_foreign_handle_metadata_dict_tests(Interp* interp, int* pass, int* fail) {
+    setup(interp, "(define [ffi lib] libc \"libc.so.6\")");
     setup(interp, "(define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'type ForeignHandle 'name File 'ownership owned 'finalizer fclose})");
     test_tag(interp, "ffi dict fopen return is foreign handle", "(fopen \"/etc/hosts\" \"r\")", FFI_HANDLE, pass, fail);
+    test_truthy(interp, "foreign-describe FFI return handle signature metadata",
+        "(block "
+        "(define m (foreign-describe fopen)) "
+        "(define r (ref m 'returns)) "
+        "(and (= (ref r 'type) 'ForeignHandle) "
+        "     (= (ref r 'abi-type) 'ptr) "
+        "     (= (ref r 'name) 'File) "
+        "     (= (ref r 'ownership) 'owned) "
+        "     (= (ref r 'nullability) 'nullable) "
+        "     (= (ref r 'finalizer) 'fclose)))",
+        pass, fail);
+    test_truthy(interp, "foreign-describe owned return handle metadata",
+        "(block "
+        "(define h (fopen \"/etc/hosts\" \"r\")) "
+        "(define m (foreign-describe h)) "
+        "(define ok (and (= (ref m 'runtime) 'c-abi) "
+        "                (= (ref m 'kind) 'opaque) "
+        "                (= (ref m 'name) 'File) "
+        "                (= (ref m 'ownership) 'owned) "
+        "                (array? (ref m 'capabilities)) "
+        "                (= (ref (ref m 'capabilities) 0) 'release))) "
+        "ok)",
+        pass, fail);
+    test_truthy(interp, "foreign-release closes owned return handle once",
+        "(block "
+        "(define h (fopen \"/etc/hosts\" \"r\")) "
+        "(define before (foreign-describe h)) "
+        "(foreign-release h) "
+        "(foreign-release h) "
+        "(define after (foreign-describe h)) "
+        "(and (ref before 'live) "
+        "     (nil? (ref after 'live)) "
+        "     (not (= (ref after 'ownership) 'owned)) "
+        "     (= (length (ref after 'capabilities)) 0)))",
+        pass, fail);
+    test_truthy(interp, "foreign-describe owned return handle includes release capability and runtime",
+        "(let (h (fopen \"/etc/hosts\" \"r\"))"
+        "  (let (m (foreign-describe h))"
+        "    (and (= (ref m 'type) 'ForeignHandle)"
+        "         (= (ref m 'kind) 'opaque)"
+        "         (= (ref m 'runtime) 'c-abi)"
+        "         (= (ref m 'name) 'File)"
+        "         (array? (ref m 'capabilities))"
+        "         (= (length (ref m 'capabilities)) 1)"
+        "         (= (ref (ref m 'capabilities) 0) 'release))))",
+        pass, fail);
+    {
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        test_error_contains(interp, "ffi owned return handle wrapper alloc failure finalizes return",
+            "(fopen \"/etc/hosts\" \"r\")",
+            "ffi: out of memory while wrapping return ForeignHandle",
+            pass, fail);
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+    }
+    {
+        Value* bad_library_handle = make_ffi_handle_ex_with_descriptor(
+            interp,
+            null,
+            "bad-library-release",
+            null,
+            false,
+            FOREIGN_RUNTIME_C_ABI,
+            FOREIGN_HANDLE_LIBRARY,
+            FOREIGN_CAP_RELEASE,
+            true);
+        bool setup_ok = bad_library_handle != null && bad_library_handle.tag == FFI_HANDLE && bad_library_handle.ffi_val != null;
+        bool release_rejected = false;
+        if (setup_ok) {
+            Value*[] args = { bad_library_handle };
+            Value* released = prim_foreign_release(args, null, interp);
+            release_rejected = ffi_test_error_contains(released, "handle is not releasable");
+        }
+        if (setup_ok && release_rejected) {
+            emit_pass_literal("[PASS] ffi release rejects malformed c-abi library descriptor with release capability");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi release rejects malformed c-abi library descriptor with release capability");
+            (*fail)++;
+        }
+    }
+    {
+        Value* bad_opaque_handle = make_ffi_handle_ex_with_descriptor(
+            interp,
+            (void*)0x1234,
+            "bad-opaque-release",
+            null,
+            false,
+            FOREIGN_RUNTIME_C_ABI,
+            FOREIGN_HANDLE_OPAQUE,
+            FOREIGN_CAP_RELEASE,
+            false);
+        bool setup_ok = bad_opaque_handle != null && bad_opaque_handle.tag == FFI_HANDLE && bad_opaque_handle.ffi_val != null;
+        bool release_rejected = false;
+        if (setup_ok) {
+            Value*[] args = { bad_opaque_handle };
+            Value* before = prim_foreign_describe(args, null, interp);
+            Value* ownership_key = make_symbol(interp, interp.symbols.intern("ownership"));
+            Value* capabilities_key = make_symbol(interp, interp.symbols.intern("capabilities"));
+            Value* ownership = before != null && before.tag == HASHMAP && before.hashmap_val != null
+                ? hashmap_get(before.hashmap_val, ownership_key)
+                : null;
+            Value* capabilities = before != null && before.tag == HASHMAP && before.hashmap_val != null
+                ? hashmap_get(before.hashmap_val, capabilities_key)
+                : null;
+            bool reflected_release = false;
+            if (capabilities != null && capabilities.tag == ARRAY && capabilities.array_val != null &&
+                capabilities.array_val.length > 0) {
+                Value* first_capability = capabilities.array_val.items[0];
+                reflected_release = first_capability != null && first_capability.tag == SYMBOL &&
+                    first_capability.sym_val == interp.symbols.intern("release");
+            }
+            Value* released = prim_foreign_release(args, null, interp);
+            release_rejected = ffi_test_error_contains(released, "handle is not releasable") &&
+                before != null &&
+                before.tag == HASHMAP &&
+                before.hashmap_val != null &&
+                bad_opaque_handle.ffi_val.lib_handle == (void*)0x1234 &&
+                (ownership == null || ownership.tag != SYMBOL || ownership.sym_val != interp.symbols.intern("owned")) &&
+                !reflected_release;
+        }
+        if (setup_ok && release_rejected) {
+            emit_pass_literal("[PASS] ffi release rejects release-capability handle without release authority");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi release rejects release-capability handle without release authority");
+            (*fail)++;
+        }
+    }
+
+    setup(interp,
+        "(block "
+        "  (define [ffi λ libc] (fopen (^String path) (^String mode)) ^{'name File 'ownership borrowed 'nullability non-null}) "
+        "  (define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file))))");
+    test_error_contains(interp, "foreign-release rejects borrowed FFI return handle",
+        "(block"
+        " (define h (fopen \"/etc/hosts\" \"r\"))"
+        " (fclose h)"
+        " (foreign-release h))",
+        "handle is not releasable",
+        pass, fail);
+    {
+        int* payload = (int*)mem::malloc(int.sizeof);
+        int* before_release_payload = payload;
+        bool payload_ok = payload != null;
+        if (payload_ok) {
+            *payload = 0xBEEF;
+        }
+        g_double_release_finalizer_calls = 0;
+        Value* mixed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "mixed-release-test", &ffi_double_release_test_finalizer, true, false)
+            : null;
+        bool setup_ok = payload_ok && mixed != null && mixed.tag == FFI_HANDLE && mixed.ffi_val != null &&
+            mixed.ffi_val.free_lib_handle == false;
+        bool release_ok = false;
+        if (setup_ok) {
+            Value*[] args = { mixed };
+            Value* released = prim_foreign_release(args, null, interp);
+            release_ok = released != null && released.tag != ERROR &&
+                g_double_release_finalizer_calls == 1 &&
+                (before_release_payload != null) && (*before_release_payload == 0);
+        }
+        if (setup_ok && release_ok) {
+            emit_pass_literal("[PASS] ffi handle mixed finalizer/free construction is normalized before release");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] ffi handle mixed finalizer/free construction is normalized before release");
+            (*fail)++;
+        }
+        if (payload != null) {
+            mem::free(payload);
+        }
+    }
+    test_truthy(interp, "foreign-describe borrowed return handle has no release capability",
+        "(let (h (fopen \"/etc/hosts\" \"r\"))"
+        "  (let (m (foreign-describe h))"
+        "    (and (= (ref m 'type) 'ForeignHandle)"
+        "         (= (ref m 'runtime) 'c-abi)"
+        "         (= (length (ref m 'capabilities)) 0))))",
+        pass, fail);
+    setup(interp,
+        "(define [ffi λ libc] (fopen (^String path) (^String mode))"
+        " ^{'name File 'ownership manual})");
+    test_truthy(interp, "foreign-describe manual return handle preserves manual ownership",
+        "(let (h (fopen \"/etc/hosts\" \"r\"))"
+        "  (let (m (foreign-describe h))"
+        "    (and (= (ref m 'type) 'ForeignHandle)"
+        "         (= (ref m 'runtime) 'c-abi)"
+        "         (= (ref m 'ownership) 'manual)"
+        "         (= (length (ref m 'capabilities)) 0))))",
+        pass, fail);
+    test_error_contains(interp, "foreign-release rejects manual return handle",
+        "(let (h (fopen \"/etc/hosts\" \"r\"))"
+        "  (foreign-release h))",
+        "handle is not releasable",
+        pass, fail);
 
     setup(interp, "(define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)))");
     test_error_contains(interp, "ffi dict fclose rejects nil for non-null handle",

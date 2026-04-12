@@ -78,6 +78,14 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "error", &prim_error, 1 }, { "error?", &prim_is_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
+        { "Tensor", &prim_tensor, 3 },
+        { "__tensor-map", &prim_tensor_map, -1 },
+        { "contract", &prim_contract, 4 },
+        { "materialize", &prim_materialize, -1 },
+        { "tensor?", &prim_tensor_p, 1 },
+        { "dtype", &prim_dtype, 1 },
+        { "shape", &prim_shape, 1 },
+        { "rank", &prim_rank, 1 },
         // Sets
         { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
@@ -89,6 +97,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "type-of", &prim_type_of, 1 },
         { "is?", &prim_is_type, 2 },
         { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },
+        { "foreign-describe", &prim_foreign_describe, 1 },
+        { "foreign-release", &prim_foreign_release, 1 },
         // Memory reclamation
         { "unsafe-free!", &prim_free_bang, 1 },
         // Iterators
@@ -132,7 +142,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "time-point?", &prim_time_point_p, 1 },
         { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
         // TOML / CSV
-        { "toml-parse", &prim_toml_parse, 1 },
+        { "toml-parse", &prim_toml_parse, -1 },
         { "csv-parse", &prim_csv_parse, -1 },
         { "csv-emit", &prim_csv_emit, -1 },
     };
@@ -217,7 +227,7 @@ fn bool register_regular_primitives_io_and_deduce(Interp* interp) {
         { "deduce/materialize!", &prim_deduce_ns_materialize, -1 },
         { "deduce/dematerialize!", &prim_deduce_ns_dematerialize, -1 },
         { "deduce/refresh!", &prim_deduce_ns_refresh, -1 },
-        { "__define-relation", &prim_define_relation, 1 },
+        { "__define-relation", &prim_define_relation, -1 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },
         { "await", &prim_await, 1 },

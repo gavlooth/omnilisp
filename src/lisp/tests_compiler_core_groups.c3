@@ -285,6 +285,181 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
     }
     {
         char[] code = compile_to_c3(
+            "(define [ffi module] libc \"libc.so.6\" "
+            "  (strlen (^String s)) ^Integer "
+            "  (abs (^Integer n)) ^Integer)",
+            interp
+        );
+        bool ok = code.len > 0
+            && str_contains(code, "// Startup FFI preload")
+            && str_contains(code, "aot::ffi_declare_lib(\"libc\", \"libc.so.6\", true, true)")
+            && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"strlen\", \"strlen\"")
+            && str_contains(code, "aot::ffi_declare_fn(\"libc\", \"abs\", \"abs\"")
+            && str_contains(code, "\"format\": \"omni.ffi-contract/v1\"")
+            && str_contains(code, "\"symbol\": \"strlen\"")
+            && str_contains(code, "\"symbol\": \"abs\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: grouped ffi module lowers through declarative FFI AOT path",
+            "[FAIL] Compiler: grouped ffi module lowers through declarative FFI AOT path",
+            pass,
+            fail
+        );
+    }
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_grouped_ffi_manifest-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(define [ffi module] libc \"libc.so.6\" "
+                "  (strlen (^String s)) ^Integer "
+                "  (abs (^Integer n)) ^Integer)",
+                "grouped-ffi.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"schema\": \"omni-ffi-manifest-v1\"")
+                        && str_contains(generated, "\"binding\": \"libc\"")
+                        && str_contains(generated, "\"soname\": \"libc.so.6\"")
+                        && str_contains(generated, "\"binding\": \"strlen\"")
+                        && str_contains(generated, "\"binding\": \"abs\"");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: grouped ffi module emits compile sidecar manifest",
+                "[FAIL] Compiler: grouped ffi module emits compile sidecar manifest",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: grouped ffi module compose sidecar manifest path");
+        }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_grouped_ffi_manifest_nested-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(block "
+                "  (define [ffi module] libc \"libc.so.6\" "
+                "    (strlen (^String s)) ^Integer "
+                "    (abs (^Integer n)) ^Integer))",
+                "grouped-ffi-nested.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"schema\": \"omni-ffi-manifest-v1\"")
+                        && str_contains(generated, "\"binding\": \"libc\"")
+                        && str_contains(generated, "\"soname\": \"libc.so.6\"")
+                        && str_contains(generated, "\"binding\": \"strlen\"")
+                        && str_contains(generated, "\"binding\": \"abs\"");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: nested grouped ffi module emits compile sidecar manifest",
+                "[FAIL] Compiler: nested grouped ffi module emits compile sidecar manifest",
+                pass,
+                fail
+            );
+    } else {
+        fail++;
+        io::printn("[FAIL] Compiler: nested grouped ffi module compose sidecar manifest path");
+    }
+}
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_grouped_ffi_manifest_escape-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+            bool wrote_manifest = main::write_compile_ffi_manifest(
+                "(define [ffi module] libc \"libc.so.6\" (strlen (^String s)) ^Integer)",
+                "manifest-\b-\f-\v-source.omni",
+                manifest_output_path,
+                interp,
+                &manifest_path,
+                &manifest_write_kind
+            );
+            bool manifest_ok = false;
+            if (wrote_manifest && manifest_path.len > 0) {
+                if (try generated = io::file::load_temp((String)manifest_path)) {
+                    manifest_ok = str_contains(generated, "\"source\": \"manifest-\\b-\\f-\\u000b-source.omni\"")
+                        && str_contains(generated, "\"generated_for\": ");
+                }
+            }
+            compiler_test_finish_bool(
+                wrote_manifest && manifest_ok,
+                "Compiler: grouped ffi manifest escapes control characters in JSON fields",
+                "[FAIL] Compiler: grouped ffi manifest escapes control characters in JSON fields",
+                pass,
+                fail
+            );
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: compose escaped manifest output path");
+        }
+    }
+    {
+        char[] code = compile_to_c3(
             "(define [ffi lib] libc \"libc.so.6\") "
             "(define [ffi λ libc] (strlen (^String s)) ^Integer) "
             "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^ForeignHandle) "
@@ -313,6 +488,23 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             ok,
             "Compiler: declarative ffi emits manifest contract with loading policy and ABI tags",
             "[FAIL] Compiler: declarative ffi emits manifest contract with loading policy and ABI tags",
+            pass,
+            fail
+        );
+    }
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+
+        char[4] json_string = { 'a', (char)8, (char)1, '`' };
+        compiler.emit_json_string(json_string[..]);
+        char[] code = compiler.get_output();
+        bool ok = compiler_str_eq(code, "\"a\\b\\u0001\\u0060\"");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: ffi manifest JSON string emitter escapes control characters",
+            "[FAIL] Compiler: ffi manifest JSON string emitter escapes control characters",
             pass,
             fail
         );
@@ -446,6 +638,37 @@ fn void run_compiler_group_aot_runtime_parity_tests(Interp* interp, usz* pass, u
     defer aot::aot_shutdown();
 
     {
+        aot::AotMetaSpec[1] meta;
+        meta[0].key = "T";
+        meta[0].sym_value = "Number";
+        meta[0].int_value = 0;
+        meta[0].is_int = false;
+
+        aot::AotTypeAnnotationSpec spec = {};
+        spec.has_annotation = true;
+        spec.is_dict = true;
+        spec.base_type = "";
+        spec.meta = &meta[0];
+        spec.meta_count = 1;
+
+        TypeAnnotation ann;
+        bool init_ok = aot::aot_type_annotation_init_from_spec(&ann, &spec);
+        bool parity_ok =
+            init_ok &&
+            ann.has_annotation &&
+            ann.is_dict &&
+            ann.base_type == (SymbolId)0 &&
+            ann.meta_count == 1 &&
+            ann.meta != null &&
+            ann.meta[0].key != INVALID_SYMBOL_ID &&
+            ann.meta[0].sym_value != INVALID_SYMBOL_ID;
+        aot::aot_type_annotation_destroy(&ann);
+
+        if (parity_ok) { (*pass)++; compiler_print_pass("Compiler: AOT dict metadata annotation materializes without a base type"); }
+        else           { (*fail)++; io::printn("[FAIL] Compiler: AOT dict metadata annotation materializes without a base type"); }
+    }
+
+    {
         EvalResult jit_result = run("((lambda (x y) (+ x y)) 20 22)", interp);
         Value* closure = aot::make_closure(null, &compiler_aot_test_capture_first);
         Value* arg_list = aot::cons(aot::make_int(20), aot::cons(aot::make_int(22), aot::make_nil()));
@@ -541,6 +764,35 @@ fn void run_compiler_group_aot_runtime_parity_tests(Interp* interp, usz* pass, u
 
     {
         Value* libc = aot::ffi_declare_lib("libc_aot_policy", "libc.so.6");
+        Interp* aot_interp = aot::aot_interp();
+
+        EvalResult libc_meta = run(
+            "(let (m (foreign-describe libc_aot_policy))"
+            "  (if (and (= (ref m 'type) 'ForeignHandle)"
+            "           (= (ref m 'runtime) 'c-abi)"
+            "           (= (ref m 'kind) 'library)"
+            "           (= (ref m 'name) \"libc.so.6\")"
+            "           (array? (ref m 'capabilities))"
+            "           (= (length (ref m 'capabilities)) 3)"
+            "           (= (ref (ref m 'capabilities) 0) 'load)"
+            "           (= (ref (ref m 'capabilities) 1) 'resolve)"
+            "           (= (ref (ref m 'capabilities) 2) 'reflect))"
+            "      1"
+            "      0))",
+            aot_interp);
+        bool lib_meta_ok =
+            aot_interp != null &&
+            !libc_meta.error.has_error &&
+            libc_meta.value != null &&
+            libc_meta.value.tag == ValueTag.INT &&
+            libc_meta.value.int_val == 1;
+        if (lib_meta_ok) {
+            (*pass)++;
+            compiler_print_pass("Compiler: AOT ForeignHandle library descriptor exposes load/resolve/reflect only");
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] Compiler: AOT ForeignHandle library descriptor exposes load/resolve/reflect only");
+        }
 
         int[2] fopen_tags = { (int)FfiTypeTag.FFI_TYPE_STRING, (int)FfiTypeTag.FFI_TYPE_STRING };
         aot::AotFfiHandlePolicySpec fopen_return_policy;
@@ -570,6 +822,52 @@ fn void run_compiler_group_aot_runtime_parity_tests(Interp* interp, usz* pass, u
             && compiler_str_eq(file.ffi_val.lib_name[:file.ffi_val.name_len], "File");
         if (owned_return_ok) { (*pass)++; compiler_print_pass("Compiler: AOT ffi ForeignHandle owned return resolves finalizer"); }
         else                 { (*fail)++; io::printn("[FAIL] Compiler: AOT ffi ForeignHandle owned return resolves finalizer"); }
+
+        aot::AotFfiHandlePolicySpec bad_return_policy;
+        bad_return_policy.is_foreign_handle = true;
+        bad_return_policy.name = "File";
+        bad_return_policy.ownership = (int)FfiHandleOwnership.FFI_HANDLE_MANUAL;
+        bad_return_policy.nullability = (int)FfiHandleNullability.FFI_HANDLE_NON_NULL;
+        bad_return_policy.finalizer = "fclose";
+        Value* bad_manual_return = aot::ffi_declare_fn(
+            "libc_aot_policy", "fclose_bad_policy_aot", "fclose",
+            &fopen_tags[0], 2, true, (int)FfiTypeTag.FFI_TYPE_INT,
+            true, true, null, &bad_return_policy
+        );
+        bool manual_with_finalizer_rejected = compiler_error_value_contains(
+            bad_manual_return,
+            "manual ForeignHandle return cannot specify a finalizer"
+        );
+        if (manual_with_finalizer_rejected) {
+            (*pass)++;
+            compiler_print_pass("Compiler: AOT ffi rejects manual ownership with finalizer in policy");
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] Compiler: AOT ffi rejects manual ownership with finalizer in policy");
+        }
+
+        aot::AotFfiHandlePolicySpec borrowed_return_policy;
+        borrowed_return_policy.is_foreign_handle = true;
+        borrowed_return_policy.name = "File";
+        borrowed_return_policy.ownership = (int)FfiHandleOwnership.FFI_HANDLE_BORROWED;
+        borrowed_return_policy.nullability = (int)FfiHandleNullability.FFI_HANDLE_NON_NULL;
+        borrowed_return_policy.finalizer = "fclose";
+        Value* borrowed_with_finalizer_rejected = aot::ffi_declare_fn(
+            "libc_aot_policy", "fclose_bad_policy_aot_borrowed", "fclose",
+            &fopen_tags[0], 2, true, (int)FfiTypeTag.FFI_TYPE_INT,
+            true, true, null, &borrowed_return_policy
+        );
+        bool borrowed_with_finalizer_rejected_ok = compiler_error_value_contains(
+            borrowed_with_finalizer_rejected,
+            "finalizer-bearing ForeignHandle return must use owned ownership"
+        );
+        if (borrowed_with_finalizer_rejected_ok) {
+            (*pass)++;
+            compiler_print_pass("Compiler: AOT ffi rejects borrowed ownership with finalizer in policy");
+        } else {
+            (*fail)++;
+            io::printn("[FAIL] Compiler: AOT ffi rejects borrowed ownership with finalizer in policy");
+        }
 
         int[1] fflush_tags = { (int)FfiTypeTag.FFI_TYPE_PTR };
         aot::AotFfiHandlePolicySpec[1] fflush_param_policies;
@@ -689,6 +987,15 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
     {
         bool ok = compiler_serializes_to_roundtrip(
             interp,
+            "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^ForeignHandle)",
+            "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^ForeignHandle)"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: serializer preserves standalone ForeignHandle return annotations"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: serializer preserves standalone ForeignHandle return annotations"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
             "(define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)) ^Integer)",
             "(define [ffi λ libc] (fclose (^{'name File 'ownership borrowed 'nullability non-null} file)) ^Integer)"
         );
@@ -703,6 +1010,73 @@ fn void run_compiler_group_foreign_handle_metadata_dict_tests(Interp* interp, us
         );
         if (ok) { (*pass)++; compiler_print_pass("Compiler: serializer preserves ForeignHandle metadata dict optional-output annotations"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: serializer preserves ForeignHandle metadata dict optional-output annotations"); }
+    }
+    {
+        char[512] manifest_output_path_buf;
+        int manifest_pid = compiler_test_getpid();
+        usz manifest_seq = g_compiler_bindgen_temp_seq++;
+        char[] manifest_output_path;
+        if (try rendered = io::bprintf(
+            &manifest_output_path_buf,
+            "/tmp/omni_compile_manifest_atomic-%d-%d.c3",
+            manifest_pid,
+            (int)manifest_seq
+        )) {
+            manifest_output_path = rendered;
+            char[] manifest_path = "";
+            main::EntryFileWriteKind manifest_write_kind = ENTRY_FILE_WRITE_GENERIC_FAILURE;
+            defer {
+                if (manifest_path.len > 0) {
+                    (void)io::file::delete((String)manifest_path);
+                    mem::free(manifest_path.ptr);
+                }
+            }
+
+            char[512] final_manifest_path_buf;
+            char[] final_manifest_path;
+            if (try final_rendered = io::bprintf(
+                &final_manifest_path_buf,
+                "%s.ffi-manifest.json",
+                (ZString)manifest_output_path
+            )) {
+                final_manifest_path = final_rendered;
+                defer (void)io::file::delete((String)final_manifest_path);
+
+                if (try file = io::file::open((String)final_manifest_path, "w")) {
+                    defer (void)file.close();
+                    (void)file.write("old manifest");
+                }
+
+                main::g_compile_manifest_force_fail_before_rename = true;
+                bool wrote_manifest = main::write_compile_ffi_manifest(
+                    "(define [ffi module] libc \"libc.so.6\" (strlen (^String s)) ^Integer)",
+                    "manifest-\b-\f-\v-source.omni",
+                    manifest_output_path,
+                    interp,
+                    &manifest_path,
+                    &manifest_write_kind
+                );
+                main::g_compile_manifest_force_fail_before_rename = false;
+
+                bool final_manifest_untouched = false;
+                if (try generated = io::file::load_temp((String)final_manifest_path)) {
+                    final_manifest_untouched = compiler_str_eq(generated, "old manifest");
+                }
+                compiler_test_finish_bool(
+                    !wrote_manifest && final_manifest_untouched,
+                    "Compiler: grouped ffi manifest write preserves existing final file on pre-rename failure",
+                    "[FAIL] Compiler: grouped ffi manifest write preserves existing final file on pre-rename failure",
+                    pass,
+                    fail
+                );
+            } else {
+                fail++;
+                io::printn("[FAIL] Compiler: compose atomic manifest final path");
+            }
+        } else {
+            fail++;
+            io::printn("[FAIL] Compiler: compose atomic manifest output path");
+        }
     }
 }
 

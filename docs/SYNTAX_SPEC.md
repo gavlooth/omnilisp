@@ -296,6 +296,7 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ^Integer          ;; simple type
 ^(List Integer)   ;; compound type
 ^(Value 42)       ;; canonical value-level type (dispatch on literal)
+^(Value nil)      ;; nil literal dispatch
 ^{'T Number}      ;; metadata dictionary
 ```
 
@@ -339,7 +340,7 @@ Postfix index syntax:
 ```lisp
 arr.[0]           ;; list/array index
 dict.['key]       ;; dict key lookup
-matrix.[i].[j]    ;; chained indexing
+tensor.[i].[j]    ;; chained indexing
 ```
 
 Path syntax:

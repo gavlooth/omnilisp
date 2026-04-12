@@ -1,4 +1,1343 @@
+## 2026-04-12
+
+- Closed the remaining active TODO lanes for grouped FFI, foreign runtime core,
+  Tensor backend boundary, and Tensor broadcasting:
+  - `FFI-TOML-004AB` adds `exclude-functions = [...]` to
+    `[dependencies.ffi.NAME]`, with strict string-array parsing, generated
+    manifest recording, and bind output filtering so denied functions are
+    omitted from both raw and facade output. The libclang visitor skips denied
+    functions before type mapping while a separate filtered validation pass
+    still proves every denied function exists in the headers.
+  - `FOREIGN-CORE-002R` adds deterministic async process-spawn cleanup
+    failure-injection coverage for `stdin`/`stdout`/`stderr`
+    handle-allocation failures after `uv_process` creation, proving process
+    state and opened pipe handles are cleaned up on each intermediate failure.
+  - `TENSOR-070` is now implemented for tensor-tensor `map`: shapes are
+    right-aligned, missing leading axes behave as `1`, singleton axes expand
+    by max result dimension, rank-0 tensors broadcast as tensor scalars, and
+    incompatible axes raise deterministic `tensor/shape-mismatch` failures.
+  - `TENSOR-080` is closed as a design/contract slice only: backend work must
+    preserve the pure `Tensor` fallback as oracle, use capability-driven
+    optional BLAS/LAPACK/CUDA/cuBLAS routing, avoid implicit CPU/GPU transfer,
+    and keep native backend handles behind explicit `ForeignHandle` ownership
+    and finalizer policy.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=276 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=75 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=212 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=225 fail=0`
+    - `git diff --check`
+
+- Added grouped FFI and Tensor materialization audit regressions:
+  - `src/lisp/tests_advanced_io_effect_ffi_groups.c3` now covers grouped
+    `[ffi module]` `ForeignHandle` parameter metadata dictionaries by binding
+    `fclose` with a borrowed, non-null `File` handle parameter and verifying
+    `(fclose nil)` fails closed with the shared non-null handle check.
+  - `src/lisp/tests_advanced_stdlib_module_groups.c3` now covers failed
+    `(materialize (contract ...) out)` transactionality when a nested lazy
+    `map` operand fails during contract materialization, verifying the explicit
+    destination remains unchanged before any BLAS/CUDA backend routing lands.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=75 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=207 fail=0`
+    - `scripts/check_status_consistency.sh`
+    - `git diff --check`
+
+- Fixed lazy Tensor root promotion for closure-mapped callables:
+  - `src/lisp/eval_promotion_escape_structured.c3` now checks
+    `interp.releasing_scope` when deciding whether closure environments need
+    detaching during escape promotion, so Tensor expression promotion cannot
+    leave an ESCAPE Tensor map callable pointing at a released child env frame.
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now mirrors the same
+    releasing-scope-first closure env detach predicate for copy-to-parent
+    closure clones, so standalone `env_scope` closures are detached when their
+    parent env chain still reaches the releasing source scope.
+  - `src/lisp/eval_boundary_graph_audit_meta.c3` now treats the root scope as
+    persistent rather than TEMP when walking target-scope ancestors, so detached
+    closure envs may keep their safe global parent without tripping the TEMP
+    reachability audit.
+  - committed escape-root graph audit now threads explicit releasing-scope and
+    global-env context through `boundary_graph_audit_escape_reachability_result`,
+    so the audit rejects releasing-child TEMP edges that are not in the target
+    ancestry while stopping traversal at terminal/global env frames.
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now covers root
+    promotion of a lazy Tensor `map` whose callable captures a local variable,
+    asserting both the callable wrapper and captured env are outside the child
+    scope after promotion.
+  - `src/lisp/tests_memory_lifetime_env_copy_closure_groups.c3` now covers the
+    non-null `env_scope` plus source-scope parent-chain copy-to-parent case.
+  - `src/lisp/tests_memory_lifetime_boundary_graph_txn_groups.c3` now covers
+    commit-scoped releasing-child TEMP edge detection and global-env traversal
+    termination in graph audit.
+  - `src/lisp/tests_memory_lifetime_groups.c3` now treats zero-copy direct
+    promotion as valid for the long cons return fallback gate while still
+    rejecting generic fallback copying.
+  - `docs/areas/tensor-scientific.md` now reports the latest lazy Tensor
+    edge/root-promotion validation count from the changelog-backed slice.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - graph-audit repro for lazy Tensor return: `12.0` with no boundary
+      violation output
+    - advanced FFI capability regression: `pass=74 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=222 fail=0`
+    - bounded ASAN container `memory-lifetime-smoke` slice: `pass=222 fail=0`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002Q` C ABI library capability reflection tightening:
+  - C ABI library `ForeignHandle` construction no longer marks library handles
+    with the callable `'call` capability; bound C ABI functions keep reflecting
+    `'call` through their `ForeignCallable` descriptors.
+  - AOT FFI library registration now uses the same `[load resolve reflect]`
+    capability set as the interpreter library constructor.
+  - The advanced FFI surface regression now pins library handle capabilities
+    to `[load resolve reflect]`, keeping `foreign-describe` capability payloads
+    aligned with actual handle behavior.
+  - The callable reflection regressions now pin bound C ABI function
+    capabilities to `[call reflect]` for direct, post-call, and grouped module
+    metadata paths.
+  - `docs/LANGUAGE_SPEC.md`, `TODO.md`,
+    `docs/plans/foreign-runtime-core-plan-2026-04-11.md`, and
+    `docs/areas/ffi-foreign-runtime.md` were updated to carry the same
+    `FOREIGN-CORE-002Q` status and foreign-handle wording.
+
+- Synced the foreign-runtime core plan status with the already-landed
+  `FOREIGN-CORE-002P` capability reflection authority slice:
+  - `docs/plans/foreign-runtime-core-plan-2026-04-11.md` was brought up to
+    `FOREIGN-CORE-002P`; the later `FOREIGN-CORE-002Q` entry above carries the
+    current status.
+  - The plan now records that `foreign-describe` omits reflected `'release`
+    capability unless a handle has actual release authority, matching the live
+    `TODO.md` entry and prior changelog record.
+  - `docs/areas/ffi-foreign-runtime.md` now carries the same operator-facing
+    status note.
+
+- Closed `LANG-TENSOR-LAZY-EDGE-ROLLBACK-094` with deterministic lazy Tensor
+  expression edge rollback coverage and a root-promotion graph-audit fix:
+  - `src/lisp/value_tensor.c3` now has deterministic tensor expression
+    edge-failure counters for copy-to-parent and escape-promotion paths, and
+    `src/lisp/tests_tests.c3` resets those counters between isolated test
+    groups.
+  - memory-lifetime coverage now forces a lazy `map` expression edge copy to
+    fail after a prior tensor child edge has committed, verifying rollback
+    cleans the partially copied tensor edge from the destination scope.
+  - lazy Tensor root promotion now promotes tensor operand edges into the
+    destination ESCAPE lane instead of leaving the returned Tensor expression
+    wrapper pointing at child TEMP operands.
+  - boundary graph audit now treats shared dispatch method tables captured as
+    Tensor `map` callables as callable descriptors rather than Tensor-owned
+    expression data, while still walking non-method-table callable captures and
+    Tensor operands.
+  - Validation:
+    - bounded container graph-audit repro for lazy Tensor return: `5.0` with no
+      boundary violation output
+    - bounded container `memory-lifetime-smoke` slice: `pass=218 fail=0`
+
+- Landed e2e/AOT compiler audit fixes for entry-helper visibility and Tensor
+  primitive lookup:
+  - Stage 3 e2e compilation now includes `src/entry_*.c3`, matching the AOT
+    backend source set so compiler tests that call entry helpers such as
+    `process_bind_dependency`, `build_bind_output_path`, and
+    `write_compile_ffi_manifest` have the same `module main` helper surface
+    available as the normal build.
+  - The e2e source parity guard now pins the `src/entry_*.c3` helper glob so
+    the standalone e2e compile path cannot silently drift from the AOT backend
+    compile source list again.
+  - The compiler primitive hash now treats Tensor surface/runtime primitives,
+    including `__tensor-map`, as AOT runtime lookups. This prevents stdlib
+    Tensor `map` overload closures from capturing a bare sanitized
+    `__tensor_map` C3 identifier instead of using the cached primitive global.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `OMNI_E2E_COMPILE_ONLY=1 ./scripts/run_e2e.sh`
+    - full `./scripts/run_e2e.sh`: `ALL 404 e2e compiler tests passed`
+    - host targeted `compiler` slice: `pass=272 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=206 fail=0`
+
+- Landed general audit fixes for structured error payloads, process-wait
+  cleanup, Tensor materialization cleanup, `Dict` descriptor printing,
+  compile-side FFI sidecar manifests, and `^(Value nil)` annotations:
+  - `raise_error_with_payload(...)` now skips structured payload construction
+    when no matching `raise` handler can consume it, avoiding root-scoped
+    payload dictionaries for ordinary unhandled error returns.
+  - `make_process_wait_result(...)` now cleans its partially built root
+    dictionary if result insertion fails after publishing an entry, so an OOM
+    during status projection cannot leave a half-populated root payload behind.
+  - `make_raise_payload(...)` now tracks inserted root dictionary key/value
+    pairs and rolls them back if payload key/value insertion fails mid-build.
+  - `hashmap_set_checked(...)` and `hashmap_set_symbol_checked(...)` now roll
+    back newly promoted root key/value copies when a checked insertion fails
+    before publication, including the full-table/no-slot failure path.
+    Rollback preserves the original source value so composite promotions clean
+    nested materialized children instead of only freeing the top-level wrapper.
+  - Nested lazy Tensor `materialize` now cleans temporary child tensors created
+    while resolving nested `map`/`contract` expression operands, leaving only
+    the top-level materialized result live until caller cleanup.
+  - Fresh lazy Tensor materialization cleanup now uses fresh-value cleanup
+    instead of interpreting the lazy source graph as expression edges on the
+    concrete result; regressions cover nested `contract` materialization and
+    failed `map` materialization cleanup.
+  - Lazy Tensor `materialize` into an explicit destination now evaluates into a
+    staged temporary and commits to the destination only after success. The
+    contract aliasing rejection now walks lazy expression operands while
+    ignoring zero-byte tensor storage, and failed Tensor constructor data
+    validation cleans the unreturned tensor wrapper.
+  - `format "%s" Dict` now prints the canonical descriptor
+    `#<type Dictionary>`.
+  - Compile-side `.ffi-manifest.json` sidecars now escape all JSON C0 control
+    bytes and write through a temp file plus final rename so failed pre-rename
+    writes preserve an existing final manifest.
+  - Parser/runtime dispatch and compiler metadata now treat `^(Value nil)` as
+    the nil literal rather than the symbol named `nil`.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-unicode-iterator` group: `pass=151 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=206 fail=0`
+    - host targeted `advanced-type-dispatch-mutation-chain` group:
+      `pass=240 fail=0`
+    - host targeted `compiler` slice: `pass=272 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=216 fail=0`
+
+- Landed `AUDIT-ASYNC-SIGNAL-HANDLE-OOM-111` signal-handle allocation
+  rollback cleanup:
+  - `make_signal_handle(...)` now cleans already-registered signal runtime
+    state if the final `ForeignHandle` box/value wrapper allocation fails.
+    The value-allocation failure path releases the box, which runs the
+    signal-handle finalizer and detaches the native watcher, registry link, and
+    retained callback owner scope exactly once.
+  - The memory-lifetime runtime allocation regression now forces
+    `signal-handle` wrapper allocation failure and verifies the error remains
+    `signal-handle: out of memory` while root-scope refcount and signal-handle
+    registry count return to their pre-call state.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded container `memory-lifetime-smoke` slice: `pass=210 fail=0`
+
+- Landed `TENSOR-060G` lazy tensor `ref` temporary cleanup:
+  - `tensor_ref_value(...)` now cancels and destroys the concrete temporary
+    produced when `ref` forces a lazy Tensor expression, so repeated indexing
+    of lazy `map`/`contract` expressions does not retain native tensor backing
+    storage until scope teardown.
+  - The memory-lifetime runtime allocation regression now counts active tensor
+    destructors around a lazy `map` `ref` and verifies the temporary
+    materialized Tensor is not left as a live scope destructor.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-collections-module` group: `pass=203 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=210 fail=0`
+
+- Updated Tensor residual-lane docs:
+  - The plan index, Tensor plan, and Tensor area doc now list
+    `LANG-TENSOR-LAZY-EDGE-ROLLBACK-094` alongside
+    `LANG-TENSOR-BACKEND-BOUNDARY-092` and
+    `LANG-TENSOR-BROADCASTING-093`, so the deterministic rollback test seam
+    remains visible without reopening the completed `TENSOR-110` surface lane.
+  - Validation:
+    - `scripts/check_status_consistency.sh`
+    - targeted `rg` over `TODO.md`, `docs/plans/README.md`,
+      `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+      `docs/areas/tensor-scientific.md`
+
+- Landed `FOREIGN-CORE-002P` foreign-describe capability authority alignment:
+  - `foreign-describe` now reflects the release capability only when the
+    handle has actual release authority, so malformed handles with a stray
+    `FOREIGN_CAP_RELEASE` bit no longer advertise `'release` unless
+    `foreign-release` can legally succeed.
+  - The existing malformed opaque-handle regression now asserts both release
+    rejection and the absence of reflected release capability.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=74 fail=0`
+
+- Landed `FFI-TOML-004Z` raw control-byte rejection for bind TOML metadata:
+  - Strict quoted-string parsing for bind dependency metadata now rejects
+    unescaped bytes below `0x20`, so raw tabs/carriage returns cannot enter
+    fields such as `library`, `headers`, `functions`, or `strip-prefixes`
+    through quoted TOML values.
+  - The bindgen regression asserts a dependency containing a raw tab in a
+    quoted `library` value is marked invalid and produces no raw, facade, or
+    manifest output.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=269 fail=0`
+
+- Landed `FFI-TOML-004AA` escaped NUL rejection for bind TOML metadata:
+  - Strict quoted-string parsing now rejects `\u0000` and `\U00000000`
+    during TOML string decode instead of materializing a C NUL that truncates
+    dependency metadata before later validation.
+  - The bindgen regression asserts a dependency containing `library =
+    "m\u0000evil"` is marked invalid and produces no raw, facade, or manifest
+    output.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=269 fail=0`
+
+- Landed general audit fixes for type annotations and scheduler task-join
+  timeout cleanup:
+  - AOT type annotation materialization now accepts dictionary metadata
+    annotations such as `^{'T Number}` without trying to intern an empty base
+    type.
+  - Parser type annotations now normalize the approved `Dict` shorthand to the
+    canonical `Dictionary` type in both `^Dict` and compound annotation input.
+  - Non-fiber `task-join-timeout` timer-start failure cleanup now clears the
+    local timer pointer after closing it, so the deferred cleanup path cannot
+    close the same libuv handle twice.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=267 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=203 fail=0`
+    - bounded container `scheduler` slice: `pass=113 fail=0`
+
+- Landed general audit fixes for generated FFI manifest escaping and scheduler
+  OS-thread admission cleanup:
+  - Compile-side FFI contract JSON string emission now escapes `\b`, `\f`, and
+    the remaining C0 control characters as JSON-safe `\u00XX` sequences.
+  - Bindgen generated manifest TOML string emission now uses the same
+    fail-closed control-character escaping for dependency/path/prefix strings.
+  - `scheduler_admit_os_thread_work(...)` now releases any shared payload on
+    invalid-handle, thread-table, generation, and OS-thread start failure exits
+    before returning the scheduler error.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=264 fail=0`
+    - bounded container `scheduler` slice: `pass=112 fail=0`
+
+- Landed `TENSOR-060F` tensor boundary/materialize fail-closed hardening:
+  - `boundary_commit_escape(...)` now allows tensor values to use the existing
+    non-unique destination retry promotion route, matching the dedicated tensor
+    escape-copy path.
+  - Concrete tensor `materialize` fast paths now validate source backing
+    storage before returning or copying malformed tensors.
+  - The TOML bind parser also now accepts trailing commas in string arrays and
+    decodes the remaining TOML basic-string escapes used by bind metadata,
+    including `\b`, `\f`, `\uXXXX`, and `\UXXXXXXXX`.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=263 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=202 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=208 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-collections-module` group: `pass=202 fail=0`
+
+- Landed `FFI-TOML-004W` malformed dependency section fail-closed cleanup and
+  validation-status checker coverage:
+  - Malformed section-header lines starting with `[` now mark the currently
+    active FFI dependency invalid before resetting parser context, so a broken
+    `[dependencies.ffi.NAME` line cannot leave the previous dependency looking
+    valid while subsequent keys are ignored.
+  - `scripts/check_status_consistency.sh` now covers the FFI foreign-runtime
+    and validation-status area docs, including their current status and `As of`
+    freshness against the latest changelog date.
+  - The validation all-slice notes now explicitly label runs using
+    `OMNI_SKIP_TLS_INTEGRATION=1` as bounded all-slice-without-TLS baselines,
+    not replacements for the TLS integration gate.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=260 fail=0`
+    - `scripts/check_status_consistency.sh`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-ffi-system` group: `pass=74 fail=0`
+
+- Landed general audit fixes for grouped FFI manifests, bind TOML escaping, and
+  tensor boundary cleanup:
+  - Compile-mode FFI sidecar manifest emission now recurses into lowered
+    `[ffi module]` blocks, so grouped C ABI modules emit the same
+    `.ffi-manifest.json` library/function descriptors as the single-function
+    declarative forms.
+  - The bind-path minimal TOML scanner now counts contiguous backslashes before
+    quote delimiters and decodes strict quoted string escapes for scalar and
+    string-array values. Inline comments after values such as `"C:\\tmp\\"`
+    no longer confuse the scanner.
+  - Tensor boundary rollback now cleans already-copied/promoted expression
+    child values before freeing a cloned tensor payload, and generic
+    materialized-value cleanup recurses through tensor expression edges.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=260 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=74 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=200 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=207 fail=0`
+
+- Landed `FOREIGN-CORE-002J` single-release foreign handle authority:
+  - `make_ffi_box` now normalizes mixed release authority by making the
+    explicit finalizer callback authoritative when both a finalizer and
+    `free_lib_handle` are supplied.
+  - This prevents `foreign-release` / scope teardown from executing both a
+    native finalizer and `mem::free` for the same foreign payload.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=67 fail=0`
+
+- Landed `FOREIGN-CORE-002K` manual-return ownership preservation:
+  - Return-handle construction now preserves explicit ownership in the
+    `FfiHandle` descriptor (including `manual`) when an FFI binding supplies
+    `'ownership` metadata.
+  - Owned-path release behavior is still driven by explicit finalizer
+    authority; manual-return handles remain non-releasable.
+  - AOT declaration policy now rejects manual ownership combined with a
+    finalizer, matching the interpreter metadata parser.
+  - `(foreign-describe)` now reflects manual ownership for returned handles as
+    `'ownership manual` instead of implicitly downgrading to borrowed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=69 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-ffi-system` group: `pass=69 fail=0`
+
+- Landed `FOREIGN-CORE-002L` AOT finalizer/ownership parity:
+  - `aot_ffi_policy_from_spec` now rejects return policies that carry a finalizer
+    unless ownership is explicitly `owned`.
+  - This closes the AOT/JIT gap where borrowed/default finalizer-bearing
+    returns were accepted by AOT policy parsing but ignored by finalizer
+    resolution.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice: `pass=258 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002M` finalizer-owned foreign payload release hardening:
+  - Finalizer-backed handle families now free their own heap payloads after
+    running resource-specific teardown because `make_ffi_box` makes native
+    finalizers authoritative when a finalizer is present.
+  - Covered payload wrappers include UV timer callback, process, signal,
+    TCP, UDP, FS stream, TLS, deduce relation, deduce database, and deduce
+    transaction handles.
+  - `uv-timer-callback-unhandle` remains a non-destructive detach operation, so
+    stale-handle diagnostics still work until the owning `ForeignHandle` is
+    destroyed or explicitly released.
+  - Deduce relation scan column-key-value forced-OOM handling now fails before
+    allocating the relation cache, avoiding a sanitizer-visible test-only leak
+    on the injected OOM path.
+  - Validation:
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-ffi-system` group: `pass=69 fail=0`
+    - ASAN targeted `deduce` slice: `pass=330 fail=0`
+    - final `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=69 fail=0`
+    - host targeted `deduce` slice: `pass=330 fail=0`
+    - `scripts/check_status_consistency.sh`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002N` foreign handle construction-failure ownership:
+  - `make_ffi_handle_ex_with_descriptor` now treats the constructor as the
+    failure-path release authority for finalizer/free-backed non-library
+    payloads once it accepts the raw handle.
+  - Box-allocation and value-allocation failures both release owned foreign
+    payloads through the same finalizer/free policy used by normal
+    `ForeignHandle` teardown.
+  - C ABI library handles remain non-releasable: constructor failure does not
+    `dlclose` them, so the existing `dlopen` caller cleanup path stays
+    authoritative.
+  - Owned C FFI pointer returns no longer run a second caller-side finalizer
+    after constructor failure.
+  - TLS client/server handle wrapper OOM paths now use `tls_handle_finalizer`
+    for connected initialized handles, preserving graceful close/session logic
+    before freeing nested TLS storage.
+  - Allocation-failure tests now pin exactly-once finalizer cleanup for
+    finalizer-backed FFI payloads after both box-allocation and
+    value-allocation failure.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=69 fail=0`
+    - host targeted `compiler` slice: `pass=258 fail=0`
+    - host targeted `deduce` slice: `pass=330 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-ffi-system` group: `pass=69 fail=0`
+    - ASAN targeted `deduce` slice: `pass=330 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=204 fail=0`
+    - final `c3c build --warn-deprecation=no`
+    - `scripts/check_status_consistency.sh`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002O` constructor-failure caller cleanup alignment:
+  - Removed redundant caller-side cleanup after `make_ffi_handle_ex` null
+    returns now that the constructor owns finalizer/free-backed non-library
+    payload release on failure.
+  - Covered async TCP/UDP/process/signal/UV timer callback/FS stream handles,
+    scheduler task/thread handles, atomic refs, TLS wrapper error paths, deduce
+    database/transaction/relation handles, C ABI/AOT library registration
+    failure paths, and boundary helper tests.
+  - C ABI/AOT library registration failures now consume the constructed wrapper
+    safely by clearing the root-scoped value pointer before releasing the
+    wrapper box after closing the raw library handle.
+  - Added advanced FFI regressions for malformed C ABI library and opaque
+    descriptors with `FOREIGN_CAP_RELEASE`: `foreign-release` still rejects
+    them as non-releasable, the malformed opaque payload stays live, and the
+    opaque descriptor is not reflected as owned without finalizer/free release
+    authority.
+  - `foreign-describe` no longer reports released handles as owned after the
+    payload is cleared and release capability has been removed.
+  - Validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=74 fail=0`
+    - host targeted `deduce` slice: `pass=330 fail=0`
+    - bounded container `memory-lifetime-smoke` slice: `pass=207 fail=0`
+
+- Landed `TENSOR-060C` tensor shape/zero-contraction hardening:
+  - Tensor shape parsing now checks non-negative dimensions with an unsigned
+    comparison, avoiding the 64-bit `(long)usz.max` wraparound that rejected
+    valid shapes such as `[2]` and `[2 3]`.
+  - `contract` handles zero-size contracted axes by producing the additive
+    identity instead of reaching a divide/modulo-by-zero path.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-collections-module` group: `pass=185 fail=0`
+    - direct probes for `(Tensor Double [2] [1 2])`, tensor `ref`, and
+      zero-size contracted scalar output.
+
+- Landed `TENSOR-060D` materialize edge hardening:
+  - Added regressions for concrete `Tensor Double []` materialization into
+    rank-0 destination tensors, scalar materialization into `[0]` destination,
+    lazy zero-size source materialization into zero-size destination, aliased
+    elementwise `map` materialization into its destination, and duplicate-axis
+    detection after negative-axis normalization.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-collections-module` group: `pass=196 fail=0`
+
+- Landed `TENSOR-110` Tensor cleanup surface lane closure:
+  - `examples/scicomp_demo.omni` now uses canonical `Tensor`, `map`,
+    `contract`, and `materialize` forms, with the legacy `vec-*`, `mat-*`, and
+    `mat-mul` prototypes removed from the canonical public surface.
+  - `Tensor` now returns lazy expression payloads for `map`/`contract`, and
+    `materialize` is the explicit expression-to-storage boundary used in this
+    cleanup lane.
+  - Added regression coverage for lazy expression returns and closure capture
+    under map/contract execution paths.
+  - Metadata-shape/index payload examples intentionally remain `Array`-based to
+    preserve the existing metadata transport convention while closing this lane.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` tensor coverage: `pass=200 fail=0`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002I` borrowed-handle release regression alignment:
+  - The borrowed-return-handle release regression now binds the real C `fopen`
+    symbol with borrowed `ForeignHandle` metadata before closing it through
+    `fclose` and checking that `foreign-release` rejects the non-releasable
+    borrowed wrapper.
+  - This keeps the advanced FFI ownership regression on the intended safety
+    path instead of accidentally probing a nonexistent `fopen_borrowed` symbol.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `advanced-ffi-system` group: `pass=66 fail=0`
+
+- Landed `FFI-BIND-005A` bindgen return metadata fail-closed:
+  - `bindgen_append_function_decl` and
+    `bindgen_append_grouped_function_decl` now set failure state when return
+    Omni metadata is unsafe (for example, contains control characters).
+  - Mixed emitted-function lists now fail closed on an unsafe return-metadata
+    entry and do not write any raw/facade output.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=253 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-005B` bindgen stale-output cleanup fail-closed:
+  - `bindgen_delete_output_file_if_exists` now returns deletion failure status
+    and `generate_ffi_module_pair_with_options` fail-closes if it cannot remove a
+    newly written raw artifact when facade generation fails.
+  - Existing raw artifacts are preserved on rerun failures so bindgen does not
+    delete previously generated files outside the first-write failure lane.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=256 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-005C` bindgen metadata control-character hardening:
+  - `bindgen_metadata_text_is_safe` now rejects all ASCII control characters
+    below `0x20` in metadata fields and generated comments, covering non-newline
+    controls such as tabs.
+  - Overflow-guard metadata regression now includes a tab control character case
+    and validates fail-closed behavior before any generated output is written.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=257 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-004V` anonymous bindgen parameter fallback naming:
+  - Anonymous C parameter fallback names now format the full numeric index
+    (`arg123`, etc.) instead of only supporting one- or two-digit indexes.
+  - This keeps high-arity generated bindings from producing invalid fallback
+    parameter symbols once an anonymous parameter index reaches three digits.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=253 fail=0`
+
+- Landed `FFI-BIND-004U` atomic bindgen text writes:
+  - Raw, facade, and manifest writers now write to a sibling temp path and
+    rename into place only after the full text write and close succeeds.
+  - Failed final renames clean the temp output, preventing writer-level
+    partial/truncated generated files from replacing the target.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=249 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-004T` manifest failure cleanup:
+  - If raw/facade generation succeeds but the manifest write fails, first-time
+    raw, facade, and manifest artifacts are cleaned before the dependency fails.
+  - Existing raw, facade, or manifest artifacts are left in place on rerun
+    failures.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=248 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-004S` raw/facade pair failure cleanup:
+  - If a bindgen raw module is newly written but facade generation fails, the
+    new raw file is removed before the pair writer returns failure.
+  - Existing raw files are left in place on rerun failures, avoiding deletion
+    of a previously generated or user-reviewed raw artifact.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=247 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004R` section-header comment/context hardening:
+  - `[dependencies.ffi.NAME] # comment` now parses as the intended FFI
+    dependency section instead of falling through as a non-section line.
+  - Malformed section-header lines starting with `[` reset parser context so
+    following keys cannot mutate the previously active dependency section.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=246 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004Q` partial header parse cleanup:
+  - `--bind` now releases functions parsed from earlier headers when a later
+    header fails to parse or trips the header-path guard.
+  - Partial multi-header parse failures still fail before output generation,
+    but no longer leave parsed parameter metadata behind on the error path.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=244 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004P` explicit function filter match enforcement:
+  - When `[dependencies.ffi.NAME] functions = [...]` is present, every
+    requested function name must be discovered in the parsed headers.
+  - Missing filter entries now fail the dependency before output generation
+    instead of silently producing a partial binding set or a successful no-op.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=243 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004O` unsafe bind library stem rejection:
+  - `--bind` now rejects dependency `library` stems containing slash,
+    backslash, quote, whitespace, or control characters before header parsing
+    or generated raw/facade/manifest output.
+  - The lower-level bindgen writers also reject unsafe library stems, keeping
+    direct generator calls aligned with the `omni.toml` bind path.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=242 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004N` unknown FFI dependency key rejection:
+  - Unknown keys in `[dependencies.ffi.NAME]` now fail the dependency before
+    libclang/header parsing instead of being ignored. This keeps typos such as
+    `function = [...]` from accidentally binding all exported functions.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=241 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004M` malformed adjacent quoted scalar rejection:
+  - Strict FFI dependency scalar parsing now rejects values such as
+    `library = "sqlite3" "m"` instead of accepting the whole malformed tail as
+    one library or raw-syntax string.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=240 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004L` dependency count overflow fail-closed:
+  - FFI dependency parsing now records when `[dependencies.ffi.NAME]` sections
+    exceed `TOML_MAX_DEPS` and `--bind` exits before raw syntax resolution,
+    header parsing, or output generation.
+  - Overflow sections reset parser section state so their keys cannot mutate
+    the last accepted dependency.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=239 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004K` inline comment handling for strict bind TOML values:
+  - FFI dependency value parsing now strips `#` comments only when the hash is
+    outside a quoted string, so documented examples such as
+    `library = "m" # comment` remain valid while quoted values containing `#`
+    are preserved.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=238 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FFI-TOML-004J` duplicate FFI dependency section rejection:
+  - Repeated `[dependencies.ffi.NAME]` sections now mark both dependencies
+    invalid instead of letting multiple entries target the same generated raw,
+    facade, and manifest output stem.
+  - `--bind` now rejects invalid or empty dependency names before raw syntax
+    resolution and header parsing.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=237 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FFI-TOML-004I` duplicate bind dependency TOML key rejection:
+  - FFI dependency `library`, `raw-syntax`, `headers`, `functions`, and
+    `strip-prefixes` keys now fail closed when repeated in the same
+    `[dependencies.ffi.NAME]` section instead of letting a later value silently
+    overwrite the bind target, function filter, syntax mode, or generated-name
+    rewrite policy.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=236 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FFI-TOML-004H` strict bind dependency core TOML fields:
+  - FFI dependency `library`, `raw-syntax`, `headers`, and `functions` parsing
+    now fails closed for missing required, malformed, empty, overlong, or
+    incorrectly shaped values instead of silently truncating, accepting missing
+    required fields as no-ops, or accepting malformed arrays before header
+    parsing.
+  - This keeps `--bind` from generating against the wrong shared library,
+    using an unquoted raw syntax selector, parsing a truncated header path, or
+    applying a truncated function filter.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=231 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FFI-TOML-004G` strict `strip-prefixes` TOML parsing:
+  - `strip-prefixes` now rejects malformed, empty, or overlong entries instead of
+    silently truncating prefix strings before generated-name rewriting.
+  - `--bind` fails the dependency before header parsing when `strip-prefixes`
+    is invalid, keeping the generated raw/facade/manifest output contract
+    fail-closed.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=224 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004F` prefix-stripped emitted name collision preflight:
+  - Bindgen now rejects duplicate generated Omni-facing function names before
+    writing raw or facade files.
+  - This catches cases where prefix stripping makes two C functions collide,
+    such as `sqlite3_open` and `open` both emitting `open` when `sqlite3_` is
+    stripped.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=221 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004E` prefix-stripped emitted name preflight:
+  - Bindgen now validates generated Omni-facing function names before writing
+    raw or facade files.
+  - Prefix stripping now fails closed when it would emit a name that the Omni
+    lexer would read as a number-leading token, such as stripping `sqlite3_`
+    from `sqlite3_3d_distance`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=220 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004D` overlong bind dependency section names fail closed:
+  - `toml_parser` no longer silently truncates `[dependencies.ffi.NAME]`
+    section names longer than the bind output stem limit.
+  - Overlong names now flow into the existing empty-name output guard and fail
+    before raw, facade, or manifest files are written, avoiding surprising file
+    stems or generated Omni module names.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=219 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-TOML-004C` path-safe bind output dependency names:
+  - `--bind` output path construction now rejects empty FFI dependency names
+    and names containing anything outside ASCII letters, digits, `_`, and `-`
+    before writing raw, facade, or manifest files under `lib/ffi/`. This keeps
+    dependency names safe as both file stems and generated Omni module names.
+  - Bind path failures now report "too long or unsafe" instead of treating all
+    failures as length overflow.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=218 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BUFFER-009C` string-buffer `inout` direction precedence:
+  - Bindgen string-buffer direction inference now checks the `inout` name hint
+    before the broader `out` substring.
+  - Parameters such as `inout_buffer` now generate `buffer-direction=inout`
+    instead of being misclassified as output-only buffers.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=217 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-010C` char-pointer depth classification:
+  - Bindgen now treats only single-level plain `char*` pointers as
+    string-shaped.
+  - `char**`, `const char**`, and similar pointer-to-pointer spellings remain
+    opaque `ForeignHandle` values instead of string inputs, buffers, or returns.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=217 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-010B` const-pointee char-pointer classification:
+  - Bindgen now distinguishes pointee const from top-level pointer const when
+    classifying plain `char*` types.
+  - `const char*` and `char const*` stay string-input shaped, while
+    `char* const` remains a mutable string-buffer contract that requires the
+    generated fail-closed buffer helper path.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=217 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BIND-010A` byte-pointer bindgen classification:
+  - libclang bindgen now treats only a plain `char` token as string-shaped.
+  - `signed char*`, `unsigned char*`, and their `const` variants remain opaque
+    `ForeignHandle` pointers instead of being classified as string
+    buffers/returns.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=217 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BUFFER-009B` string-buffer none-policy guards:
+  - Generated `none` teardown mutable string-buffer helpers now validate role
+    and ownership before returning the caller-owned buffer.
+  - This keeps the pass-through path narrow instead of relying only on the
+    top-level teardown dispatch and size/direction validation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - host targeted `compiler` slice with libclang: `pass=216 fail=0`
+    - host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-BUFFER-009A` string-buffer manual-review fail-closed cleanup:
+  - Generated mutable string-buffer helpers now raise on `manual-review`
+    teardown until the facade is edited with an explicit allocation and
+    writeback policy.
+  - `none` teardown buffer helpers remain caller-owned pass-through values
+    after validation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `compiler` slice with libclang: `pass=215 fail=0`
+    - Host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-CALLBACK-007B` callback cleanup idempotence:
+  - Generated callback unregister helpers now keep nil cleanup as a true
+    idempotent no-op by nesting the metadata validation and fail-closed shim
+    requirement under the non-nil branch.
+  - Non-nil generic callback handles still fail closed until a concrete
+    subsystem callback-handle shim is supplied.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `compiler` slice with libclang: `pass=215 fail=0`
+    - Host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `git diff --check`
+
+- Landed `FFI-CALLBACK-007A` fail-closed generic callback scaffolds:
+  - Bindgen-generated callback wrapper helpers now validate callback metadata
+    but raise until the facade is edited for a concrete subsystem
+    callback-handle shim.
+  - Generic bindgen output no longer routes arbitrary C callback parameters
+    through the `uv` timer callback prototype.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `compiler` slice with libclang: `pass=215 fail=0`
+    - Host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FOREIGN-CORE-002H` opaque handle name reflection cleanup:
+  - `(foreign-describe handle)` now returns opaque foreign-resource handle
+    families such as `File` as symbols under `'name`, matching
+    `^{'name File ...}` metadata and callable return descriptors.
+  - C ABI library handles keep their soname/path `'name` as a string because
+    that field is the `dlopen` target, not a resource-family symbol.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+
+- Landed `FOREIGN-CORE-002G` C ABI string-return cleanup:
+  - Fixed the interpreter/AOT shared FFI call path so non-null `^String`
+    returns copy the returned C `char*` into an Omni `String` instead of
+    exposing the foreign address as an `Integer`.
+  - Null C string returns still map to `nil`, matching the documented
+    `^String` contract.
+  - Added runtime regression coverage for `strchr` string and null returns.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - ASAN targeted `advanced-ffi-system` group: `pass=63 fail=0`
+    - final `c3c build --warn-deprecation=no`
+
 ## 2026-04-11
+
+- Landed `FFI-TOML-004B` generated bind manifest:
+  - `--bind` now writes `lib/ffi/<name>_manifest.toml` beside each generated
+    raw binding module and facade stub.
+  - The manifest records the effective shipped bindgen output config:
+    dependency name, library, raw syntax, generated raw/facade paths, and
+    `strip-prefixes`.
+  - Manifest TOML string emission escapes quotes, backslashes, and control
+    characters, and fails closed for inconsistent prefix pointer/count input.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `compiler` slice with libclang: `pass=215 fail=0`
+    - Host targeted `advanced-ffi-system` group: `pass=61 fail=0`
+
+- Closed `VALIDATION-ALL-SLICE-NESTED-LET-2026-04-11`:
+  - Root cause: the memory-stress `nested let 10 levels => 55` fixture had a
+    malformed expression with two extra closing parentheses, so both the
+    interpreter and JIT harnesses stopped at parse.
+  - Fixed the test fixture in `tests_core_groups.c3` and left the parser
+    behavior unchanged.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Direct `--eval` of the corrected nested-let expression: `55`
+    - Docker-bounded `memory-stress` slice: unified `pass=15 fail=0`
+    - Docker-bounded all-slice rerun: unified `pass=2798 fail=0`, compiler
+      `pass=208 fail=0`
+
+- Landed `FFI-TOML-004A` facade prefix stripping for bindgen:
+  - `TomlFfiDep` now carries `strip-prefixes`, and `toml_parser` parses
+    `[dependencies.ffi.NAME] strip-prefixes = ["prefix_"]` string arrays.
+  - `--bind` threads the parsed prefixes into facade generation.
+  - Raw binding modules intentionally keep C-derived names so the current FFI
+    parser still derives truthful `dlsym` symbol names; prefix stripping applies
+    to facade/exported Omni names and `raw-*` import aliases.
+  - Added compiler coverage proving grouped raw output preserves
+    `omni_bindgen_*` C symbols while the facade exposes stripped names.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `compiler` slice with libclang: `pass=214 fail=0`
+    - Host targeted `advanced-ffi-system` group: `pass=61 fail=0`
+
+- Revalidated the `VALIDATION-ALL-SLICE-2026-04-11` Deduce residual clusters:
+  - `relation-attrs`: `pass=13 fail=0`
+  - `core-runtime`: `pass=6 fail=0`
+  - `rule-validation`: `pass=70 fail=0`
+  - Fixed the diagnostics match/union residual by making
+    `Parser.alloc_ast_array_bytes(..., count=0)` return `null` without setting
+    a parser error. Zero-length AST arrays are already represented as `null` at
+    callsites, and this prevents constructor patterns such as `(DiagOk)` from
+    being reported as OOM.
+  - The bounded all-slice lane is now split to the single remaining nested-let
+    residual:
+    `docs/plans/validation-all-slice-nested-let-residual-2026-04-11.md`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted Deduce filters listed above
+    - Host targeted `diagnostics` slice: `pass=10 fail=0`
+    - Host targeted `basic` slice: `pass=142 fail=0`
+    - Docker-bounded all-slice rerun: unified `pass=2797 fail=1`, compiler
+      `pass=208 fail=0`
+
+- Fixed the `VALIDATION-ALL-SLICE-2026-04-11` TOML option arity cluster:
+  - Registered `toml-parse` as variadic in the primitive table so both the
+    one-argument and two-argument call shapes reach `prim_toml_parse`.
+  - Kept the existing primitive-level validation as the source of truth for the
+    accepted 1-2 argument contract.
+  - Remaining all-slice validation work is now narrowed to Deduce relation
+    forms, the Deduce CRUD example setup path, and Deduce rule-validation
+    failures.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Targeted `data-format` slice: `pass=64 fail=0`
+
+- Landed `FOREIGN-CORE-002F` capability-gated foreign import/member adapter
+  hooks:
+  - Added `FOREIGN_CAP_IMPORT` and `FOREIGN_CAP_MEMBER` capability gates for
+    the internal foreign runtime adapter boundary.
+  - Added `import_module` and `resolve_member` adapter slots, plus internal
+    dispatch helpers `foreign_runtime_import_module` and
+    `foreign_runtime_resolve_member`.
+  - Kept public user-facing behavior unchanged: no new public primitive was
+    added, and Python/Julia/CUDA behavior is still not wired yet.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `advanced-ffi-system` group: `pass=61 fail=0`
+    - Docker-bounded targeted `advanced-ffi-system` group: `pass=61 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - final `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002E` explicit foreign adapter load/resolve hooks:
+  - Split the C ABI lazy `dlopen` and `dlsym` path into adapter-dispatched
+    `load_bound` and `resolve_bound` slots.
+  - Kept public FFI behavior unchanged: `call_bound` reaches libffi only after
+    adapter load/resolve succeeds, and existing unavailable-library/symbol
+    behavior is preserved.
+  - Reserved a `tensor_buffer` adapter slot behind `FOREIGN_CAP_TENSOR_BUFFER`
+    for later BLAS/cuBLAS work; C ABI does not register Tensor buffer
+    marshalling yet.
+  - Added a public regression for post-call `foreign-describe` metadata on a
+    C ABI bound function.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `advanced-ffi-system` group: `pass=61 fail=0`
+    - Docker-bounded targeted `advanced-ffi-system` group: `pass=61 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - final `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002D` internal foreign runtime adapter dispatch:
+  - Added a small `ForeignRuntimeAdapter` operation boundary with runtime kind,
+    adapter capability bits, handle description, callable description, and
+    handle release and bound-call slots.
+  - Routed `foreign-describe`, `foreign-release`, and C ABI bound-function
+    calls through the adapter dispatch point while preserving the current
+    user-facing behavior.
+  - Registered C ABI callable reflection and bound-function calls on the C ABI
+    adapter. Generic handle describe/release remains available for current
+    runtime kinds until dedicated Python, Julia, CUDA/cuBLAS, optional C++
+    tooling, and polyglot adapters land.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Host targeted `advanced-ffi-system` group: `pass=60 fail=0`
+    - Docker-bounded targeted `advanced-ffi-system` group: `pass=60 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - final `c3c build --warn-deprecation=no`
+
+- Landed `FOREIGN-CORE-002C` bindgen descriptor comment alignment:
+  - Replaced the raw bindgen module's bespoke `bindgen-meta-record` comment
+    vocabulary with `bindgen-descriptor` comments that use the shared
+    `ForeignCallable` descriptor terms: `type=ForeignCallable`,
+    `runtime=c-abi`, `kind=function`, `name`, `c-name`, `parameters`,
+    `returns`, `abi-type`, and user-facing `type`.
+  - Renamed raw review-policy comments from `bindgen-meta` to
+    `bindgen-policy` so generated raw modules distinguish descriptor-shaped
+    metadata from generator safety/review hints.
+  - This remains generated-code documentation only; runtime reflection still
+    comes from `(foreign-describe ...)`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `compiler` slice: `pass=207 fail=0` (container libclang
+      unavailable, bindgen descriptor strings that do not require libclang
+      still ran)
+    - Host targeted `compiler` slice with libclang: `pass=212 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - final `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FFI-GROUP-002` grouped bindgen output option:
+  - Added a per-dependency `omni.toml` opt-in,
+    `[dependencies.ffi.NAME] raw-syntax = "grouped"`, for `--bind` raw modules
+    to emit `(define [ffi module] ...)` grouped C ABI declarations.
+  - Kept the default `raw-syntax = "legacy"` path, preserving the existing
+    generated `[ffi lib]` plus `[ffi lambda]` raw module shape and facade
+    behavior.
+  - Unsupported `raw-syntax` values fail closed before header parsing, so the
+    option does not silently fall back to a different generated surface.
+  - grouped raw output now includes a minimal `;; Raw syntax: grouped` header
+    note to make review diffs easier to scan without changing binding
+    semantics.
+  - That header note also closed the narrow `FFI-BIND-003` reviewability slice;
+    broader bindgen ergonomics such as generated manifests and prefix stripping
+    were follow-up work at the time and later landed as `FFI-TOML-004A/B`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `compiler` slice: `pass=207 fail=0` (container libclang
+      unavailable, grouped raw-syntax option check still ran)
+    - Host targeted `compiler` slice with libclang: `pass=212 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - final `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FFI-GROUP-001` grouped C ABI parser/lowering:
+  - Added `(define [ffi module] lib "path" (fn (^Type arg)) ^Return ...)` as
+    sugar over the existing `[ffi lib]` plus `[ffi λ]` declarative FFI forms.
+  - The grouped body is a flat sequence of function signature and return
+    annotation pairs; malformed pairs, including missing return annotations,
+    fail closed.
+  - Grouped declarations reuse the existing `ForeignHandle` metadata dictionary
+    validation, callable reflection path, AOT preload scan, and FFI contract
+    manifest generation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `advanced` slice filtered to `advanced-ffi-system`:
+      `pass=60 fail=0`
+    - Docker-bounded `compiler` slice: `pass=206 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - Docker-bounded `memory-lifetime-smoke`: `pass=203 fail=0`
+
+- Landed `FOREIGN-CORE-002B` C ABI callable reflection:
+  - Extended `foreign-describe` to accept FFI-bound functions as well as
+    `ForeignHandle` values.
+  - Bound C ABI callables now return a dictionary with quoted-symbol metadata
+    keys including `'type 'ForeignCallable`, `'runtime 'c-abi`, `'kind
+    'function`, `'name`, `'c-name`, `'library`, `'parameters`, `'returns`,
+    `'resolved`, `'available`, and `'capabilities`.
+  - `'parameters` is an array of descriptor dictionaries and `'returns` is a
+    descriptor dictionary. Descriptors expose user-facing `'type` symbols
+    (`'String`, `'Integer`, `'ForeignHandle`, etc.) plus ABI-level `'abi-type`
+    symbols (`'string`, `'int`, `'ptr`, etc.); foreign-handle descriptors also
+    preserve `'name`, `'ownership`, `'nullability`, and `'finalizer` metadata
+    when present.
+  - Capability arrays now promote inserted values to the root boundary before
+    storing them, matching the root-backed dictionary/array reflection payload.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `advanced` slice filtered to `advanced-ffi-system`:
+      `pass=55 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - Docker-bounded `memory-lifetime-smoke`: `pass=203 fail=0`
+    - final `c3c build --warn-deprecation=no`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-002A` explicit foreign-handle release primitive:
+  - Added `foreign-release` as the shared explicit release boundary for
+    releasable `ForeignHandle` payloads. It returns `Void`, is idempotent for
+    already-closed handles, and rejects ordinary non-releasable library handles.
+  - Refactored `ffi_handle_release` through a shared payload-release helper so
+    explicit release and scope teardown agree: the finalizer/free path runs at
+    most once, then `lib_handle` is cleared and shared wrappers observe
+    `'live nil` through `foreign-describe`.
+  - This remains a foreign-resource rule only; it does not add refcount or GC
+    ownership for Omni language values.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `advanced` slice filtered to `advanced-ffi-system`:
+      `pass=53 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - Docker-bounded `memory-lifetime-smoke`: `pass=203 fail=0`
+    - `git diff --check`
+
+- Landed `FOREIGN-CORE-001` first common foreign runtime descriptor slice:
+  - `FfiHandle` now carries common runtime-kind, handle-kind, and capability
+    descriptors so C ABI, Python, Julia, CUDA/cuBLAS, optional C++ tooling, and
+    polyglot adapters can share one small handle contract without exposing raw
+    pointers to Omni code.
+  - C ABI library handles are tagged as `'c-abi` / `'library` with
+    load/resolve/call/reflect capabilities, while C pointer-return handles are
+    tagged as `'c-abi` / `'opaque` and report release capability only when an
+    owned finalizer policy exists.
+  - Added `foreign-describe`, which returns a dictionary with quoted-symbol
+    keys (`'type`, `'runtime`, `'kind`, `'ownership`, `'name`, `'live`,
+    `'capabilities`); capability sequences are arrays to match the metadata
+    shape used by forms such as `'parameters [..]`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - Docker-bounded `advanced` slice filtered to `advanced-ffi-system`:
+      `pass=51 fail=0`
+    - Docker-bounded `compiler` slice: `pass=205 fail=0`
+    - `c3c build --sanitize=address --warn-deprecation=no`
+    - Docker-bounded `memory-lifetime-smoke`: `pass=203 fail=0`
+    - `git diff --check`
+
+- Closed `TENSOR-060B` lazy Tensor-expression protocol and destination
+  materialization:
+  - Extended native `Tensor` payloads with internal concrete/map/contract
+    payload kinds, without adding a new public value tag or language-facing
+    `TensorExpr` type.
+  - Tensor-dispatched `map` and `contract` now return lazy Tensor expression
+    payloads that preserve dtype/shape/rank metadata and retain their operand
+    edges for later evaluation.
+  - `materialize` now forces Tensor expressions either by allocating a
+    concrete result or by staging evaluation into a temporary
+    exact-shape/dtype destination tensor before copying the result after
+    success.
+  - `ref` over a Tensor expression now forces through the same materialization
+    path before indexing, preserving the existing `ref` surface.
+  - Destination materialization now preserves safe elementwise map aliasing and
+    rejects contracted expression destinations that alias either source tensor,
+    because contraction reads each operand more than once.
+  - Boundary graph audit, provenance, parent-copy, root-store promotion, escape
+    promotion, and JIT scope-chain checks now treat non-concrete Tensor payloads
+    as graph-carrying values so expression callback/operand edges do not retain
+    stale TEMP references across return/env/promotion boundaries.
+  - Moved the boundary alias-reuse graph scan buffers off the C stack and onto
+    heap scratch storage so effect-handler resume paths with small continuation
+    stacks can classify returned payload graphs without stack overflow.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=183 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+
+- Landed `TENSOR-060B-prep` destination-ready pure Tensor kernels:
+  - Split eager Tensor `map` execution into a reusable
+    `tensor_map_eval_into(...)` helper that validates the destination tensor
+    and stages elementwise results before committing them into caller-
+    provided storage after success.
+  - Split eager Tensor `contract` execution into result-shape planning and a
+    reusable `tensor_contract_eval_into(...)` helper that stages the pure C3
+    fallback contraction before copying it into caller-provided storage after
+    success.
+  - Kept public behavior eager and unchanged for now: `map` and `contract`
+    still return concrete `Tensor` values, while the runtime now has the
+    internal kernel boundary needed by a later lazy tensor-expression value,
+    destination `materialize`, and optional BLAS/cuBLAS dispatch.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=179 fail=0`
+
+- Closed `TENSOR-060A` destination-fusion audit for the Tensor scientific
+  surface:
+  - Confirmed that true `(materialize (map ...) out)` and
+    `(materialize (contract ...) out)` fusion cannot be implemented honestly
+    on top of the current eager concrete `Tensor` return path: by the time
+    `materialize` receives its source argument, `map` or `contract` has already
+    allocated the temporary source tensor.
+  - Split the remaining fusion work into `TENSOR-060B` lazy tensor-expression
+    protocol and destination fusion. The recommended path is a native
+    tensor-expression value rather than turning `materialize` into a macro or
+    exposing public `map-into` / backend-flavored escape names.
+  - Hardened current `contract` coverage while keeping the eager fallback
+    semantics: list axes, zero-axis outer product, right-axis bounds,
+    non-tensor operands, malformed axis containers, and non-integer axes are
+    now pinned in the advanced collections module tests.
+  - Updated the Tensor plan and live TODO so the backlog tracks the real
+    semantic boundary before backend acceleration work.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=179 fail=0`
+
+- Closed `TENSOR-050` eager Tensor `contract` for the scientific surface:
+  - Registered public `contract` as the canonical summed-axis tensor
+    contraction operation over native `Tensor` operands.
+  - Implemented the pure C3 `Double` fallback for
+    `(contract a b left-axes right-axes)`, including rank-2 matrix-product
+    behavior, rank-0 scalar dot-product results, and multi-axis contractions.
+  - Added deterministic validation for non-tensor operands, malformed axis
+    lists, axis-list length mismatch, out-of-range axes, duplicate contracted
+    axes, dtype mismatch, and paired contracted-dimension mismatch.
+  - Kept backend acceleration out of the public surface: BLAS/LAPACK/CUDA/cuBLAS
+    remain optional optimizations behind `contract`/`materialize`, not new
+    canonical operation names.
+  - Updated the Tensor plan, language spec, type-system docs, reference docs,
+    and live TODO so the next slice is expression/destination optimization
+    planning behind the pure fallback.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=179 fail=0`
+    - targeted `advanced-stdlib-numeric-collections` subgroup:
+      `pass=62 fail=0`
+    - targeted `compiler` slice: `pass=209 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+    - host `c3c build --warn-deprecation=no` refresh after Docker validation
+
+- Closed `TENSOR-040` eager Tensor `map` for the scientific surface:
+  - Registered internal `__tensor-map` as the Tensor elementwise execution
+    primitive and extended generic `map` through fixed-arity `^Tensor` methods
+    for unary tensor, tensor-scalar, scalar-tensor, and exact-shape
+    tensor-tensor `Double` inputs.
+  - Tensor `map` now returns concrete `Tensor` values in this first slice,
+    preserving the tensor-expression contract while deferring lazy expression
+    nodes and singleton-axis broadcasting.
+  - Added deterministic validation for noncallable callbacks,
+    non-tensor/nonnumeric sources, tensor shape mismatch, tensor dtype
+    mismatch, and nonnumeric callback results through `tensor/shape-mismatch`
+    and `tensor/dtype-mismatch` payloads where appropriate.
+  - Updated the compiler stdlib prelude so compiled programs see the same
+    Tensor `map` method surface as the runtime stdlib, and adjusted typed
+    define lowering assertions to count only the tested user method names now
+    that the prelude contains typed `map` methods.
+  - Updated the Tensor plan, language spec, type-system docs, reference docs,
+    and live TODO so the next slice is `TENSOR-050` pure `contract`; backend
+    acceleration remains behind the pure fallback.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=163 fail=0`
+    - targeted `advanced-stdlib-numeric-collections` subgroup:
+      `pass=62 fail=0`
+    - targeted `compiler` slice: `pass=209 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+    - host `c3c build --warn-deprecation=no` refresh after Docker validation
+
+- Closed `TENSOR-030` concrete Tensor materialization for the scientific
+  surface:
+  - Registered `materialize` as the tensor expression-to-storage boundary for
+    concrete tensor sources.
+  - Implemented `(materialize tensor)` as identity for already-concrete
+    tensors, `(materialize tensor out)` as an exact-shape/dtype destination
+    copy that returns `out`, and `(materialize scalar out)` as scalar fill into
+    the mutable destination tensor.
+  - Added deterministic destination validation for missing tensor backing
+    storage, immutable destinations, dtype mismatch, shape mismatch, and
+    non-tensor sources/destinations. Aliasing the same tensor destination is a
+    no-op in this first slice.
+  - Updated the Tensor plan, language spec, type-system docs, and live TODO so
+    the next slice is `TENSOR-040` elementwise `map`; `contract` and backend
+    acceleration remain behind later pure-surface-compatible slices.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-collections-module` subgroup: `pass=154 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+
+- Closed `TENSOR-020` constructor and indexing for the Tensor scientific
+  surface:
+  - Registered `Tensor` as a callable constructor while preserving
+    `(format "%s" Tensor)` as the `#<type Tensor>` descriptor print surface.
+  - Implemented `(Tensor Double shape data-or-scalar)` for native double
+    tensors. Shape accepts arrays or proper lists of non-negative integers;
+    data accepts a numeric scalar fill or an array/proper list with exactly
+    the shape product's element count.
+  - Implemented `(ref tensor index-array)` through the existing generic `ref`
+    dispatcher, with array/proper-list indices, rank checking, per-axis
+    negative indexing, and row-major stride offset calculation.
+  - Updated the Tensor plan, language spec, type-system docs, and live TODO so
+    the next slice is `TENSOR-030` materialization/expression protocol rather
+    than constructor work.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - targeted `advanced-unicode-iterator` subgroup: `pass=150 fail=0`
+    - targeted `advanced-collections-module` subgroup: `pass=147 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+
+- Closed `TENSOR-010` runtime representation for the Tensor scientific surface:
+  - Added a native `Tensor` runtime value tag and `TensorVal` payload with
+    dtype, rank, shape, strides, element count, byte length, mutability, view
+    flag, and contiguous data storage.
+  - Implemented deterministic scope-owned tensor payload allocation and
+    destruction, plus fail-closed allocation fault paths for tensor metadata
+    and storage.
+  - Registered `Tensor` as a builtin type descriptor for type identity and
+    dispatch; constructor/indexing landed later in `TENSOR-020`.
+  - Added `tensor?`, `dtype`, `shape`, `rank`, and `length` support, with
+    tensor printing as `#<tensor Double shape [...]>`.
+  - Integrated tensor payloads into boundary copy, escape promotion, root-store
+    cloning, env-copy, provenance, JIT scope-chain checks, and graph audit
+    leaf handling so tensors deep-clone shape/stride/data storage across
+    ownership boundaries.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded `advanced-unicode-iterator` subgroup: `pass=142 fail=0`
+    - Docker-bounded `memory-lifetime-smoke` after in-container rebuild:
+      `pass=203 fail=0`
+    - `git diff --check`
 
 - Closed `AUDIT-FFI-FOREIGN-HANDLE-AOT-POLICY-105`:
   - Added AOT bridge policy descriptors for generated declarative `ffi λ`
@@ -39,15 +1378,15 @@
     - bounded `compiler` slice: `pass=204 fail=0`
 
 - Closed `AUDIT-FFI-FOREIGN-HANDLE-SURFACE-103`:
-  - Replaced the public FFI pointer annotation surface with `^ForeignHandle`
+  - Replaced the public FFI raw-pointer annotation surface with `^ForeignHandle`
     across runtime annotation mapping, bindgen output, compiler manifest text,
     tests, current-state docs, and tracking notes.
-  - Documented `^ForeignHandle` as the pointer-ABI annotation that accepts
+  - Documented `^ForeignHandle` as the opaque foreign-handle annotation that accepts
     live `FFI_HANDLE` values or `nil`, not raw integer addresses.
-  - Removed raw integer address coercion from pointer-ABI call packing.
-  - Wrapped non-null pointer-ABI returns in non-owning `FFI_HANDLE` values
+  - Removed raw integer address coercion from foreign-handle call packing.
+  - Wrapped non-null foreign-handle returns in non-owning `FFI_HANDLE` values
     instead of exposing raw integer addresses.
-  - Updated bindgen-facing code/docs so pointer-shaped C values now map to
+  - Updated bindgen-facing code/docs so opaque foreign C values now map to
     `^ForeignHandle`.
   - validation:
     - `c3c build --warn-deprecation=no`
@@ -5186,7 +6525,7 @@
 
 ## Archive
 
-Older sessions are archived in [memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md](memory/archive/CHANGELOG_ARCHIVE_2026-03-08.md).
+Older sessions are archived in [archive/CHANGELOG_ARCHIVE_2026-03-08.md](archive/CHANGELOG_ARCHIVE_2026-03-08.md).
 
 ## 2026-03-21
 

@@ -39,7 +39,25 @@ fn bool build_bind_toml_path(char[] toml_path, usz* path_len_out, char* proj_dir
     return true;
 }
 
+fn bool bind_dep_name_is_safe_output_name_char(char ch) @inline {
+    return (ch >= 'a' && ch <= 'z') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') ||
+        ch == '_' ||
+        ch == '-';
+}
+
+fn bool bind_dep_name_is_safe_output_name(char* dep_name) {
+    if (dep_name == null || dep_name[0] == 0) return false;
+    for (usz i = 0; dep_name[i] != 0; i++) {
+        if (!bind_dep_name_is_safe_output_name_char(dep_name[i])) return false;
+    }
+    return true;
+}
+
 fn bool build_bind_module_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name, char[] suffix) {
+    if (!bind_dep_name_is_safe_output_name(dep_name)) return false;
+
     usz olen = 0;
     for (usz i = 0; i < proj_dir_len; i++) {
         if (olen >= out_path.len - 1) return false;
@@ -69,4 +87,8 @@ fn bool build_bind_output_path(char[] out_path, usz* path_len_out, char* proj_di
 
 fn bool build_bind_raw_output_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name) {
     return build_bind_module_path(out_path, path_len_out, proj_dir, proj_dir_len, dep_name, "_raw.omni");
+}
+
+fn bool build_bind_manifest_output_path(char[] out_path, usz* path_len_out, char* proj_dir, usz proj_dir_len, char* dep_name) {
+    return build_bind_module_path(out_path, path_len_out, proj_dir, proj_dir_len, dep_name, "_manifest.toml");
 }

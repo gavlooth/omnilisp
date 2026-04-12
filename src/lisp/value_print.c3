@@ -51,6 +51,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             io::printf("#<ffi-handle:%s>", (ZString)&v.ffi_val.lib_name);
         case ARRAY:
             print_array_value(v, syms);
+        case TENSOR:
+            print_tensor_value(v, syms);
         case TYPE_INFO:
             io::printf("#<type %s>", (ZString)syms.get_name(v.type_info_val.name));
         case INSTANCE:

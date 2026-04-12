@@ -265,6 +265,10 @@ fn Value* promote_escape_method_table_shared_wrapper(Value* v, Interp* interp, P
 fn bool promote_escape_closure_env_needs_detach(Value* v, Interp* interp) @inline {
     if (v == null || interp == null || v.tag != CLOSURE || v.closure_val == null) return false;
     if (v.closure_val.env == null) return false;
+    if (interp.releasing_scope != null &&
+        env_chain_has_frame_in_scope(v.closure_val.env, interp.releasing_scope, interp.global_env)) {
+        return true;
+    }
     if (v.closure_val.env_scope != null) {
         return !boundary_ptr_in_scope((void*)v.closure_val.env, v.closure_val.env_scope);
     }

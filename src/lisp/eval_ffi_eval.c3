@@ -60,6 +60,9 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     }
     if (!env_define_with_barrier_checked(interp.global_env, fl.name, ffi_handle, interp)) {
         dlclose(handle);
+        FfiHandle* box = ffi_handle.ffi_val;
+        ffi_handle.ffi_val = null;
+        ffi_handle_release(box);
         return raise_error(interp, "ffi lib: out of memory");
     }
     return ffi_handle;
@@ -189,6 +192,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.param_handle_policies = null;
     bound.return_handle_policy = ffi_handle_policy_default();
     bound.is_variadic = ff.is_variadic;
+    bound.runtime_kind = lib_val.ffi_val.runtime_kind;
 
     if (ff.param_count > 0) {
         bound.param_types = (FfiTypeTag*)interp.root_scope.alloc(FfiTypeTag.sizeof * ff.param_count);

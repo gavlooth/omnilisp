@@ -4,10 +4,20 @@ import std::core::mem;
 import std::io;
 import main;
 
+bool g_process_wait_force_result_insert_fail = false;
+
 fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int term_signal) {
     Value* out = make_hashmap_checked(interp, 8, "process-wait: out of memory");
     if (out == null || out.tag != HASHMAP) {
         return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: out of memory");
+    }
+    bool keep_out = false;
+    HashMapSetRollback[3] out_rollbacks = {};
+    defer if (!keep_out && out.hashmap_val != null) {
+        for (usz i = 0; i < out_rollbacks.len; i++) {
+            hashmap_cleanup_rollback_record(&out_rollbacks[i], interp);
+        }
+        boundary_cleanup_materialized_value(null, out, interp.root_scope);
     }
     SymbolId pid_sym = interp.symbols.intern("pid");
     SymbolId exit_sym = interp.symbols.intern("exit-code");
@@ -18,11 +28,31 @@ fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int t
     Value* pid_key = make_symbol(interp, pid_sym);
     Value* exit_key = make_symbol(interp, exit_sym);
     Value* sig_key = make_symbol(interp, sig_sym);
-    if (!hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
-        !hashmap_set_checked(out.hashmap_val, exit_key, make_int(interp, exit_code), interp) ||
-        !hashmap_set_checked(out.hashmap_val, sig_key, make_int(interp, term_signal), interp)) {
+    if (!hashmap_set_checked_rollback_record(
+            out.hashmap_val,
+            pid_key,
+            make_int(interp, pid),
+            interp,
+            &out_rollbacks[0]
+        ) ||
+        g_process_wait_force_result_insert_fail ||
+        !hashmap_set_checked_rollback_record(
+            out.hashmap_val,
+            exit_key,
+            make_int(interp, exit_code),
+            interp,
+            &out_rollbacks[1]
+        ) ||
+        !hashmap_set_checked_rollback_record(
+            out.hashmap_val,
+            sig_key,
+            make_int(interp, term_signal),
+            interp,
+            &out_rollbacks[2]
+        )) {
         return io_raise(interp, "io/process-wait-out-of-memory", "process-wait: out of memory");
     }
+    keep_out = true;
     return out;
 }
 

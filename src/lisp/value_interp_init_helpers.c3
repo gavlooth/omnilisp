@@ -71,7 +71,8 @@ fn bool interp_init_type_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_Collection, "Collection") &&
         interp_init_symbol(self, &self.sym_Iterator, "Iterator") &&
         interp_init_symbol(self, &self.sym_TimePoint, "TimePoint") &&
-        interp_init_symbol(self, &self.sym_Coroutine, "Coroutine");
+        interp_init_symbol(self, &self.sym_Coroutine, "Coroutine") &&
+        interp_init_symbol(self, &self.sym_Tensor, "Tensor");
 }
 
 fn bool interp_init_misc_symbols(Interp* self) {

@@ -60,6 +60,7 @@ fn void uv_timer_callback_handle_finalizer(void* raw_handle) {
     UvTimerCallbackHandle* handle = (UvTimerCallbackHandle*)raw_handle;
     if (handle == null) return;
     uv_timer_callback_handle_detach_runtime_state(handle);
+    mem::free(handle);
 }
 
 fn bool uv_timer_callback_handle_name_equals(Value* v) @inline {
@@ -152,8 +153,6 @@ fn Value* make_uv_timer_callback_handle(Interp* interp, Value* callback_v) {
         false
     );
     if (value == null) {
-        uv_timer_callback_handle_detach_runtime_state(handle);
-        mem::free(handle);
         return io_raise(
             interp,
             "io/uv-timer-callback-handle-out-of-memory",

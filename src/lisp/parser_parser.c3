@@ -92,6 +92,7 @@ fn void* Parser.alloc_ast_bytes(Parser* self, usz size, char[] err_msg) {
 }
 
 fn void* Parser.alloc_ast_array_bytes(Parser* self, usz elem_size, usz count, char[] err_msg) {
+    if (count == 0) return null;
     if (count != 0 && elem_size > usz.max / count) {
         self.set_error(err_msg);
         return null;

@@ -27,6 +27,12 @@ struct BoundaryAliasReachScan {
     Env*[BOUNDARY_ALIAS_REACH_MAX_NODES] seen_envs;
 }
 
+struct BoundaryAliasGraphScan {
+    BoundaryAliasVisit[BOUNDARY_ALIAS_MAX_VISITS] stack;
+    Value*[BOUNDARY_ALIAS_MAX_VISITS] seen;
+    BoundaryAliasSeenFastSet fast_set;
+}
+
 <*
 @require interp != null : "boundary_value_in_releasing_scope: null interp"
 *>
@@ -119,6 +125,7 @@ fn bool boundary_alias_value_has_child_payload(Value* value) @inline {
         case METHOD_TABLE:
         case INSTANCE:
         case MODULE:
+        case TENSOR:
             return true;
         default:
             return false;
@@ -271,6 +278,36 @@ fn bool boundary_alias_graph_reaches_scope(Value* root, main::ScopeRegion* scope
                         }
                     }
                     break;
+                case TENSOR:
+                    if (cur.tensor_val != null) {
+                        TensorVal* tensor = cur.tensor_val;
+                        if (boundary_ptr_in_scope((void*)tensor, scope) ||
+                            boundary_ptr_in_scope((void*)tensor.shape, scope) ||
+                            boundary_ptr_in_scope((void*)tensor.strides, scope) ||
+                            boundary_ptr_in_scope(tensor.data, scope) ||
+                            boundary_ptr_in_scope((void*)tensor.contract_left_axes, scope) ||
+                            boundary_ptr_in_scope((void*)tensor.contract_right_axes, scope)) {
+                            return true;
+                        }
+                        switch (tensor.kind) {
+                            case TENSOR_PAYLOAD_CONCRETE:
+                                break;
+                            case TENSOR_PAYLOAD_MAP:
+                                if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_func) ||
+                                    !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_left) ||
+                                    !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_right)) {
+                                    return true;
+                                }
+                                break;
+                            case TENSOR_PAYLOAD_CONTRACT:
+                                if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_left) ||
+                                    !boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_right)) {
+                                    return true;
+                                }
+                                break;
+                        }
+                    }
+                    break;
                 default:
                     break;
             }
@@ -353,15 +390,18 @@ fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz dept
 }
 
 fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz depth) @noinline {
-    BoundaryAliasVisit[BOUNDARY_ALIAS_MAX_VISITS] stack = {};
-    Value*[BOUNDARY_ALIAS_MAX_VISITS] seen = {};
-    BoundaryAliasSeenFastSet fast_set = {};
+    // This scan can run on small continuation stacks during effect resume.
+    // Keep the large traversal buffers off the C stack.
+    BoundaryAliasGraphScan* scan = (BoundaryAliasGraphScan*)mem::malloc(BoundaryAliasGraphScan.sizeof);
+    if (scan == null) return true;
+    defer mem::free(scan);
+    *scan = {};
     usz stack_len = 0;
     usz seen_len = 0;
-    if (boundary_alias_push_visit(&stack[0], &stack_len, &seen[0], &seen_len, &fast_set, v, depth)) return true;
+    if (boundary_alias_push_visit(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, v, depth)) return true;
 
     while (stack_len > 0) {
-        BoundaryAliasVisit visit = stack[--stack_len];
+        BoundaryAliasVisit visit = scan.stack[--stack_len];
         Value* cur = visit.value;
         usz cur_depth = visit.depth;
         if (cur == null) continue;
@@ -374,11 +414,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
             case PARTIAL_PRIM:
                 if (cur.partial_val.first_arg != null &&
                     boundary_alias_push_child(
-                        &stack[0],
+                        &scan.stack[0],
                         &stack_len,
-                        &seen[0],
+                        &scan.seen[0],
                         &seen_len,
-                        &fast_set,
+                        &scan.fast_set,
                         cur.partial_val.first_arg,
                         interp,
                         cur_depth
@@ -387,11 +427,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                 }
                 if (cur.partial_val.second_arg != null &&
                     boundary_alias_push_child(
-                        &stack[0],
+                        &scan.stack[0],
                         &stack_len,
-                        &seen[0],
+                        &scan.seen[0],
                         &seen_len,
-                        &fast_set,
+                        &scan.fast_set,
                         cur.partial_val.second_arg,
                         interp,
                         cur_depth
@@ -402,11 +442,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
             case ITERATOR:
                 if (cur.iterator_val != null &&
                     boundary_alias_push_child(
-                        &stack[0],
+                        &scan.stack[0],
                         &stack_len,
-                        &seen[0],
+                        &scan.seen[0],
                         &seen_len,
-                        &fast_set,
+                        &scan.fast_set,
                         cur.iterator_val,
                         interp,
                         cur_depth
@@ -424,11 +464,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     if (car != null) {
                         if (car.tag == CONS && boundary_value_in_releasing_scope(car, interp)) return true;
                         if (boundary_alias_push_visit(
-                            &stack[0],
+                            &scan.stack[0],
                             &stack_len,
-                            &seen[0],
+                            &scan.seen[0],
                             &seen_len,
-                            &fast_set,
+                            &scan.fast_set,
                             car,
                             list_depth + 1
                         )) {
@@ -440,11 +480,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     if (cdr == null) break;
                     if (cdr.tag != CONS) {
                         if (boundary_alias_push_visit(
-                            &stack[0],
+                            &scan.stack[0],
                             &stack_len,
-                            &seen[0],
+                            &scan.seen[0],
                             &seen_len,
-                            &fast_set,
+                            &scan.fast_set,
                             cdr,
                             list_depth + 1
                         )) {
@@ -463,11 +503,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     Array* arr = cur.array_val;
                     for (usz i = 0; i < arr.length; i++) {
                         if (boundary_alias_push_child(
-                            &stack[0],
+                            &scan.stack[0],
                             &stack_len,
-                            &seen[0],
+                            &scan.seen[0],
                             &seen_len,
-                            &fast_set,
+                            &scan.fast_set,
                             arr.items[i],
                             interp,
                             cur_depth
@@ -484,16 +524,16 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     for (uint i = 0; i < map.capacity; i++) {
                         Value* key = map.entries[i].key;
                         if (key == null) continue;
-                        if (boundary_alias_push_child(&stack[0], &stack_len, &seen[0], &seen_len, &fast_set, key, interp, cur_depth)) {
+                        if (boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, key, interp, cur_depth)) {
                             return true;
                         }
                         if (cur.tag == HASHMAP &&
                             boundary_alias_push_child(
-                                &stack[0],
+                                &scan.stack[0],
                                 &stack_len,
-                                &seen[0],
+                                &scan.seen[0],
                                 &seen_len,
-                                &fast_set,
+                                &scan.fast_set,
                                 map.entries[i].value,
                                 interp,
                                 cur_depth
@@ -508,11 +548,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     MethodTable* mt = cur.method_table_val;
                     for (usz i = 0; i < mt.entry_count; i++) {
                         if (boundary_alias_push_child(
-                            &stack[0],
+                            &scan.stack[0],
                             &stack_len,
-                            &seen[0],
+                            &scan.seen[0],
                             &seen_len,
-                            &fast_set,
+                            &scan.fast_set,
                             mt.entries[i].implementation,
                             interp,
                             cur_depth
@@ -521,11 +561,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                         }
                     }
                     if (boundary_alias_push_child(
-                        &stack[0],
+                        &scan.stack[0],
                         &stack_len,
-                        &seen[0],
+                        &scan.seen[0],
                         &seen_len,
-                        &fast_set,
+                        &scan.fast_set,
                         mt.fallback,
                         interp,
                         cur_depth
@@ -537,6 +577,37 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
             case MODULE:
             case INSTANCE:
                 if (boundary_alias_graph_reaches_scope(cur, interp.releasing_scope, interp.global_env)) return true;
+                break;
+            case TENSOR:
+                if (cur.tensor_val != null &&
+                    (boundary_ptr_in_scope((void*)cur.tensor_val, interp.releasing_scope) ||
+                     boundary_ptr_in_scope((void*)cur.tensor_val.shape, interp.releasing_scope) ||
+                     boundary_ptr_in_scope((void*)cur.tensor_val.strides, interp.releasing_scope) ||
+                     boundary_ptr_in_scope(cur.tensor_val.data, interp.releasing_scope) ||
+                     boundary_ptr_in_scope((void*)cur.tensor_val.contract_left_axes, interp.releasing_scope) ||
+                     boundary_ptr_in_scope((void*)cur.tensor_val.contract_right_axes, interp.releasing_scope))) {
+                    return true;
+                }
+                if (cur.tensor_val != null) {
+                    TensorVal* tensor = cur.tensor_val;
+                    switch (tensor.kind) {
+                        case TENSOR_PAYLOAD_CONCRETE:
+                            break;
+                        case TENSOR_PAYLOAD_MAP:
+                            if (boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.map_func, interp, cur_depth) ||
+                                boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.map_left, interp, cur_depth) ||
+                                boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.map_right, interp, cur_depth)) {
+                                return true;
+                            }
+                            break;
+                        case TENSOR_PAYLOAD_CONTRACT:
+                            if (boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.contract_left, interp, cur_depth) ||
+                                boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.contract_right, interp, cur_depth)) {
+                                return true;
+                            }
+                            break;
+                    }
+                }
                 break;
             default:
                 break;
@@ -635,6 +706,7 @@ fn bool boundary_nonunique_destination_retry_allowed(Value* v) @inline {
         case DOUBLE:
         case SYMBOL:
         case TIME_POINT:
+        case TENSOR:
             return true;
         default:
             return false;

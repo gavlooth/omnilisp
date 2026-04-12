@@ -22,9 +22,29 @@ fn void Compiler.compile_tail_branch_assign(Compiler* self, usz dst_id, Expr* br
     self.compile_branch_assign(dst_id, branch, true);
 }
 
+fn usz Compiler.compile_block_child_to_temp(Compiler* self, Expr* expr) {
+    usz result = self.compile_to_temp(expr);
+    if (expr == null) return result;
+
+    if (expr.tag == E_FFI_LIB) {
+        self.emit_indent();
+        self.emit_symbol_name(expr.ffi_lib.name);
+        self.emit(" = ");
+        self.emit_temp_ref(result);
+        self.emit(";\n");
+    } else if (expr.tag == E_FFI_FN && expr.ffi_fn != null) {
+        self.emit_indent();
+        self.emit_symbol_name(expr.ffi_fn.fn_name);
+        self.emit(" = ");
+        self.emit_temp_ref(result);
+        self.emit(";\n");
+    }
+    return result;
+}
+
 fn void Compiler.compile_block_prefix(Compiler* self, Expr** exprs, usz count) {
     for (usz i = 0; i < count; i++) {
-        self.compile_to_temp(exprs[i]);
+        self.compile_block_child_to_temp(exprs[i]);
     }
 }
 
@@ -88,7 +108,7 @@ fn usz Compiler.compile_block_common(Compiler* self, Expr* expr, bool tail) {
     if (count == 0) return self.emit_nil_temp();
     self.compile_block_prefix(expr.block.exprs, count - 1);
     if (tail) return self.compile_to_temp_tail(expr.block.exprs[count - 1]);
-    return self.compile_to_temp(expr.block.exprs[count - 1]);
+    return self.compile_block_child_to_temp(expr.block.exprs[count - 1]);
 }
 
 fn usz Compiler.compile_tail_if_flat(Compiler* self, Expr* expr) {

@@ -30,6 +30,11 @@ fn void scope_dtor_value(void* ptr) {
                 mem::free(v.array_val);
                 v.array_val = null;
             }
+        case TENSOR:
+            if (v.tensor_val != null) {
+                tensor_free_payload(v.tensor_val);
+                v.tensor_val = null;
+            }
         case INSTANCE:
             if (v.instance_val != null) {
                 instance_release(v.instance_val);

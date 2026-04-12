@@ -70,6 +70,7 @@ enum ValueTag : char {
     ITERATOR,       // Lazy iterator (backed by closure thunk)
     COROUTINE,          // User-facing coroutine (wraps StackCtx*)
     TIME_POINT,         // Temporal value (date/time/datetime/timestamp)
+    TENSOR,             // Rank-polymorphic numeric aggregate
     VOID,               // Singleton no-result value
 }
 

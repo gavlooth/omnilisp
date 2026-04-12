@@ -34,7 +34,6 @@ fn Value* scheduler_make_thread_handle_value(usz thread_id, uint generation, Int
         false
     );
     if (out == null) {
-        scheduler_os_thread_handle_finalizer(handle);
         return scheduler_raise(
             interp,
             "scheduler/thread-spawn-out-of-memory",

@@ -44,7 +44,7 @@ fn bool map_c_type(LibclangHandle* h, CXType ty, bool is_return, char* ffi_out, 
         bool is_const_char_ptr = false;
         if (cstr != null) {
             is_char_ptr = bindgen_type_is_char_pointer(cstr);
-            is_const_char_ptr = bindgen_type_is_const_qualified(cstr);
+            is_const_char_ptr = bindgen_type_is_pointee_const_qualified(cstr);
         }
         h.dispose_string(spelling);
 

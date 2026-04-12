@@ -50,6 +50,13 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
         return make_int(interp, (long)args[0].array_val.length);
     }
 
+    // Tensor element count
+    if (is_tensor(args[0])) {
+        if (args[0].tensor_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: tensor backing storage is missing");
+        if (args[0].tensor_val.element_count > (usz)long.max) return raise_error(interp, "length: tensor element count is too large");
+        return make_int(interp, (long)args[0].tensor_val.element_count);
+    }
+
     // Dictionary / Set count
     if (is_hashmap_backed(args[0])) {
         if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: dict/set backing storage is missing");
@@ -58,7 +65,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 
     // Count cons cells
     if (!is_cons(args[0])) {
-        return raise_error(interp, "length: expected list, array, dict, set, or string");
+        return raise_error(interp, "length: expected list, array, tensor, dict, set, or string");
     }
 
     long count = 0;
@@ -126,6 +133,19 @@ fn Value* hashmap_get(HashMap* map, Value* key) {
     return null;
 }
 
+fn void hashmap_cleanup_failed_promoted_value(Value* original, Value* promoted, Interp* interp) {
+    if (promoted == null || promoted == original || interp == null || interp.root_scope == null) return;
+    boundary_cleanup_materialized_value(original, promoted, interp.root_scope);
+}
+
+struct HashMapSetRollback {
+    Value* original_key;
+    Value* inserted_key;
+    Value* original_value;
+    Value* inserted_value;
+    bool inserted;
+}
+
 fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Interp* interp) {
     if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
     if ((usz)map.count * (usz)10 >= (usz)map.capacity * (usz)7) {
@@ -133,9 +153,12 @@ fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Int
     }
 
     Value* key_value = make_symbol(interp, key);
+    Value* original_value = value;
     key_value = boundary_promote_to_root(key_value, interp);
     value = boundary_promote_to_root(value, interp);
     if (key_value == null || key_value.tag == ERROR || value == null || value.tag == ERROR) {
+        hashmap_cleanup_failed_promoted_value(null, key_value, interp);
+        hashmap_cleanup_failed_promoted_value(original_value, value, interp);
         return false;
     }
 
@@ -154,6 +177,8 @@ fn bool hashmap_set_symbol_checked(HashMap* map, SymbolId key, Value* value, Int
             return true;
         }
     }
+    hashmap_cleanup_failed_promoted_value(null, key_value, interp);
+    hashmap_cleanup_failed_promoted_value(original_value, value, interp);
     return false;
 }
 
@@ -209,9 +234,13 @@ fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* inte
 
     // Promote key/value to root_scope — hashmap lives in root_scope,
     // so its entries must survive child scope release
+    Value* original_key = key;
+    Value* original_value = value;
     key = boundary_promote_to_root(key, interp);
     value = boundary_promote_to_root(value, interp);
     if (key == null || key.tag == ERROR || value == null || value.tag == ERROR) {
+        hashmap_cleanup_failed_promoted_value(original_key, key, interp);
+        hashmap_cleanup_failed_promoted_value(original_value, value, interp);
         return false;
     }
 
@@ -230,7 +259,76 @@ fn bool hashmap_set_checked(HashMap* map, Value* key, Value* value, Interp* inte
             return true;
         }
     }
+    hashmap_cleanup_failed_promoted_value(original_key, key, interp);
+    hashmap_cleanup_failed_promoted_value(original_value, value, interp);
     return false;
+}
+
+fn bool hashmap_set_checked_rollback_record(
+    HashMap* map,
+    Value* key,
+    Value* value,
+    Interp* interp,
+    HashMapSetRollback* rollback
+) {
+    if (rollback != null) *rollback = {};
+    if (map == null || map.entries == null || !hashmap_is_pow2(map.capacity)) return false;
+    // Grow at 70% load.
+    if ((usz)map.count * (usz)10 >= (usz)map.capacity * (usz)7) {
+        if (!hashmap_grow_checked(map, interp)) return false;
+    }
+
+    Value* original_key = key;
+    Value* original_value = value;
+    key = boundary_promote_to_root(key, interp);
+    value = boundary_promote_to_root(value, interp);
+    if (key == null || key.tag == ERROR || value == null || value.tag == ERROR) {
+        hashmap_cleanup_failed_promoted_value(original_key, key, interp);
+        hashmap_cleanup_failed_promoted_value(original_value, value, interp);
+        return false;
+    }
+
+    uint h = hash_value(key) & map.mask;
+    for (uint i = 0; i < map.capacity; i++) {
+        uint idx = (h + i) & map.mask;
+        HashEntry* entry = &map.entries[idx];
+        if (entry.key == null) {
+            entry.key = key;
+            entry.value = value;
+            map.count++;
+            if (rollback != null) {
+                rollback.original_key = original_key;
+                rollback.inserted_key = key;
+                rollback.original_value = original_value;
+                rollback.inserted_value = value;
+                rollback.inserted = true;
+            }
+            return true;
+        }
+        if (hashmap_key_equals(entry.key, key)) {
+            entry.value = value;
+            if (rollback != null) {
+                rollback.original_key = original_key;
+                rollback.inserted_key = key;
+                rollback.original_value = original_value;
+                rollback.inserted_value = value;
+                rollback.inserted = true;
+            }
+            return true;
+        }
+    }
+    hashmap_cleanup_failed_promoted_value(original_key, key, interp);
+    hashmap_cleanup_failed_promoted_value(original_value, value, interp);
+    return false;
+}
+
+fn void hashmap_cleanup_rollback_record(HashMapSetRollback* rollback, Interp* interp) {
+    if (rollback == null || !rollback.inserted) return;
+    hashmap_cleanup_failed_promoted_value(rollback.original_key, rollback.inserted_key, interp);
+    if (rollback.inserted_value != rollback.inserted_key) {
+        hashmap_cleanup_failed_promoted_value(rollback.original_value, rollback.inserted_value, interp);
+    }
+    *rollback = {};
 }
 
 fn bool hashmap_set(HashMap* map, Value* key, Value* value, Interp* interp) {

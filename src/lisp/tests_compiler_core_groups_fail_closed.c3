@@ -254,6 +254,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             aot_interp.prim_user_data = saved_prim_user_data;
 
             Value* ffi_optional_lib = aot::ffi_declare_lib("libc", "libc.so.6");
+            Value* ffi_optional_lib_redeclare = aot::ffi_declare_lib("libc", "libm.so.6");
 
             Value* ffi_optional_fn = aot::ffi_declare_fn(
                 "libc",
@@ -319,6 +320,8 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
 
             bool ffi_optional_path_ok =
                 ffi_optional_lib != null && ffi_optional_lib.tag == ValueTag.FFI_HANDLE
+                && ffi_optional_lib_redeclare != null && ffi_optional_lib_redeclare.tag == ValueTag.ERROR
+                && str_contains(ffi_optional_lib_redeclare.str_chars[:ffi_optional_lib_redeclare.str_len], "different soname")
                 && ffi_optional_fn != null && ffi_optional_fn.tag == ValueTag.PRIMITIVE
                 && ffi_optional_call != null && ffi_optional_call.tag == ValueTag.ERROR
                 && str_contains(ffi_optional_call.str_chars[:ffi_optional_call.str_len], "unavailable");

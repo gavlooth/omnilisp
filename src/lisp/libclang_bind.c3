@@ -134,6 +134,7 @@ struct ParsedFunc {
     usz param_count;
     usz param_capacity;
     bool is_variadic;
+    bool filtered_out;
     BindgenOwnershipTag return_ownership;
     BindgenNullabilityTag return_nullability;
     BindgenRoleTag return_role;

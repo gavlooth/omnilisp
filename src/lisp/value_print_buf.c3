@@ -115,6 +115,28 @@ fn void print_array_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char(']');
 }
 
+fn void print_tensor_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    (void)syms;
+    TensorVal* tensor = v.tensor_val;
+    if (tensor == null) {
+        pb.append_str("#<tensor:null>");
+        return;
+    }
+    pb.append_str(tensor.kind == TENSOR_PAYLOAD_CONCRETE ? "#<tensor " : "#<tensor-expr ");
+    pb.append_str(tensor_dtype_name(tensor.dtype));
+    pb.append_str(" shape [");
+    for (usz i = 0; i < tensor.rank; i++) {
+        if (i > 0) pb.append_char(' ');
+        char[48] dim_buf;
+        if (try rendered_dim = io::bprintf(&dim_buf, "%d", (long)tensor.shape[i])) {
+            pb.append_str(rendered_dim);
+        } else {
+            pb.append_str("0");
+        }
+    }
+    pb.append_str("]>");
+}
+
 fn void print_instance_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     if (v.instance_val != null) {
         char[48] ibuf;
@@ -242,6 +264,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_char('>');
         case ARRAY:
             print_array_value_buf(v, syms, pb);
+        case TENSOR:
+            print_tensor_value_buf(v, syms, pb);
         case TYPE_INFO:
             pb.append_str("#<type ");
             pb.append_str(syms.get_name(v.type_info_val.name));

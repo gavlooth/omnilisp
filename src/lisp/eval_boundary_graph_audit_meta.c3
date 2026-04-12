@@ -96,22 +96,44 @@ fn bool boundary_graph_audit_push_env(Env** stack, usz* stack_len, Env* env) @in
     return true;
 }
 
-fn bool boundary_value_points_into_temp(Value* v, main::ScopeRegion* target_scope) @inline {
+fn bool boundary_value_points_into_scope_temp(Value* v, main::ScopeRegion* scope) @inline {
+    return v != null &&
+        scope != null &&
+        boundary_ptr_in_scope((void*)v, scope) &&
+        v.scope_gen == scope.generation;
+}
+
+fn bool boundary_env_points_into_scope_temp(Env* env, main::ScopeRegion* scope) @inline {
+    return env != null &&
+        scope != null &&
+        boundary_ptr_in_scope((void*)env, scope) &&
+        env.scope_gen == scope.generation;
+}
+
+fn bool boundary_value_points_into_temp(
+    Value* v,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* forbidden_scope = null
+) @inline {
     if (v == null || target_scope == null) return false;
-    for (main::ScopeRegion* s = target_scope; s != null; s = s.parent) {
-        if (boundary_ptr_in_scope((void*)v, s) && v.scope_gen == s.generation) {
-            return true;
-        }
+    if (boundary_value_points_into_scope_temp(v, forbidden_scope)) return true;
+    for (main::ScopeRegion* s = target_scope; s != null && s.parent != null; s = s.parent) {
+        if (boundary_value_points_into_scope_temp(v, s)) return true;
     }
     return false;
 }
 
-fn bool boundary_env_points_into_temp(Env* env, main::ScopeRegion* target_scope) @inline {
+fn bool boundary_env_points_into_temp(
+    Env* env,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* forbidden_scope = null,
+    Env* global_env = null
+) @inline {
     if (env == null || target_scope == null) return false;
-    for (main::ScopeRegion* s = target_scope; s != null; s = s.parent) {
-        if (boundary_ptr_in_scope((void*)env, s) && env.scope_gen == s.generation) {
-            return true;
-        }
+    if (env == global_env || env.is_root_persistent_box()) return false;
+    if (boundary_env_points_into_scope_temp(env, forbidden_scope)) return true;
+    for (main::ScopeRegion* s = target_scope; s != null && s.parent != null; s = s.parent) {
+        if (boundary_env_points_into_scope_temp(env, s)) return true;
     }
     return false;
 }

@@ -15,6 +15,12 @@ fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
                 if (self.has_ffi_preload_expr(expr.module_expr.body[i])) return true;
             }
             return false;
+        case E_BLOCK:
+            if (expr.block == null) return false;
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (self.has_ffi_preload_expr(expr.block.exprs[i])) return true;
+            }
+            return false;
         default:
             return false;
     }
@@ -22,6 +28,12 @@ fn bool Compiler.has_ffi_preload_expr(Compiler* self, Expr* expr) {
 
 fn void Compiler.emit_ffi_preload_expr_phase(Compiler* self, Expr* expr, bool libs_phase) {
     if (expr == null) return;
+    if (expr.tag == E_BLOCK && expr.block != null) {
+        for (usz i = 0; i < expr.block.expr_count; i++) {
+            self.emit_ffi_preload_expr_phase(expr.block.exprs[i], libs_phase);
+        }
+        return;
+    }
     if (expr.tag == E_MODULE && expr.module_expr != null) {
         for (usz i = 0; i < expr.module_expr.body_count; i++) {
             self.emit_ffi_preload_expr_phase(expr.module_expr.body[i], libs_phase);

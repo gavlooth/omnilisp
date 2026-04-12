@@ -99,6 +99,7 @@ fn bool jit_value_is_graph_carrying(Value* v) @inline {
         case METHOD_TABLE:
         case ITERATOR:
         case INSTANCE:
+        case TENSOR:
             return true;
         default:
             return false;
@@ -270,6 +271,28 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         }
                     }
                     break;
+                case TENSOR:
+                    if (cur.tensor_val != null) {
+                        TensorVal* tensor = cur.tensor_val;
+                        switch (tensor.kind) {
+                            case TENSOR_PAYLOAD_CONCRETE:
+                                break;
+                            case TENSOR_PAYLOAD_MAP:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_func) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_left) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_right)) {
+                                    return true;
+                                }
+                                break;
+                            case TENSOR_PAYLOAD_CONTRACT:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_left) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_right)) {
+                                    return true;
+                                }
+                                break;
+                        }
+                    }
+                    break;
                 default:
                     break;
             }
@@ -346,6 +369,28 @@ fn bool jit_binding_payload_in_releasing_scope(Value* v, main::ScopeRegion* rele
             payload.tag == CLOSURE &&
             boundary_closure_payload_in_scope(payload, releasing_scope)) {
             return true;
+        }
+    }
+    if (v.tag == TENSOR && v.tensor_val != null) {
+        TensorVal* tensor = v.tensor_val;
+        if (boundary_ptr_in_scope((void*)tensor, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.shape, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.strides, releasing_scope) ||
+            boundary_ptr_in_scope(tensor.data, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_left_axes, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_right_axes, releasing_scope)) {
+            return true;
+        }
+        switch (tensor.kind) {
+            case TENSOR_PAYLOAD_CONCRETE:
+                return false;
+            case TENSOR_PAYLOAD_MAP:
+                return value_in_temp_lane(tensor.map_func, releasing_scope) ||
+                    value_in_temp_lane(tensor.map_left, releasing_scope) ||
+                    value_in_temp_lane(tensor.map_right, releasing_scope);
+            case TENSOR_PAYLOAD_CONTRACT:
+                return value_in_temp_lane(tensor.contract_left, releasing_scope) ||
+                    value_in_temp_lane(tensor.contract_right, releasing_scope);
         }
     }
     return false;

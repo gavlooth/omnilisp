@@ -166,6 +166,10 @@
                 (block
                   (push! result mapped)
                   (loop (+ i 1)))))))))
+(define (map f (^Tensor t)) (__tensor-map f t))
+(define (map f (^Tensor a) b) (__tensor-map f a b))
+(define (map f a (^Tensor b)) (__tensor-map f a b))
+(define (map f (^Tensor a) (^Tensor b)) (__tensor-map f a b))
 (define (map (^Closure f)) (lambda (coll) (map f coll)))
 
 ;; filter: (filter pred coll) — keep elements where (pred x) is truthy

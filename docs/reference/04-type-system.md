@@ -90,6 +90,7 @@ and `Dictionary` are the primary spellings.
 
 Alias policy is input-tolerant but output-canonical:
 - aliases are accepted at constructor/type-annotation input sites,
+  including `^Dict` as an annotation spelling for `Dictionary`,
 - introspection/rendering surfaces normalize to canonical names (`type-of`,
   type-descriptor rendering),
 - constructor failure text uses canonical constructor names even when the call
@@ -108,6 +109,22 @@ still error).
 
 `Value` remains dedicated to value-literal annotation forms
 (`^(Value literal)`) and is not a callable constructor surface.
+
+`Tensor` is registered as a builtin type descriptor for annotation, dispatch,
+introspection, and construction. `(format "%s" Tensor)` prints
+`#<type Tensor>`, while `(Tensor Double shape data-or-scalar)` constructs
+native double tensor storage. Tensor-specific `map` methods dispatch through
+`^Tensor` annotations for unary, tensor-scalar, scalar-tensor, and exact-shape
+tensor-tensor elementwise operations. `contract` performs pure `Double`
+summed-axis contraction as `(contract a b left-axes right-axes)`, with the
+result shape formed from non-contracted left axes followed by non-contracted
+right axes. Tensor `map` and `contract` may return lazy expression payloads
+under the existing `Tensor` value; no public `TensorExpr` type is introduced.
+`materialize` is the concrete tensor storage boundary: `(materialize tensor)`
+returns an already-concrete tensor or allocates concrete storage for a Tensor
+expression, while `(materialize tensor out)` and `(materialize scalar out)`
+stage into a temporary concrete tensor and copy into a mutable exact-shape/dtype
+destination tensor only after success.
 
 There is no builtin `Empty` type today. Use `Nil` for the language-level empty
 value. `Void` is a real builtin singleton type/value, constructed with
@@ -210,14 +227,15 @@ Define multiple implementations with typed parameters. The best match wins:
 ```
 
 `Value` is the only supported constructor for value-literal dispatch.
-Supported literals in this position are integers, symbols, strings, and booleans (`true`/`false` symbols).
+Supported literals in this position are integers, symbols, strings, booleans
+(`true`/`false` symbols), and `nil`.
 Command-style facades should delegate to canonical `io/udp-*` operations. Module packaging for façade surfaces is deferred; core surface remains canonical `io/*`.
 
 ### Dispatch Scoring
 
 | Match | Score | Example |
 |-------|-------|---------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)`, `^(Value nil)` |
 | Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |

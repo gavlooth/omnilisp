@@ -262,6 +262,87 @@ fn void run_memory_lifetime_boundary_commit_escape_primary_tests(Interp* interp,
         }
     }
 
+    // Invariant: TEMP tensor survivor commits through direct destination ESCAPE promotion.
+    {
+        main::ScopeRegion* root_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(root_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        if (target_scope == null || releasing_scope == null) {
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary_commit_escape TEMP tensor direct destination commit");
+            (*fail)++;
+        } else {
+            interp.current_scope = releasing_scope;
+            usz[1] tensor_shape = { 2 };
+            Value* src = make_tensor_double_uninitialized(interp, tensor_shape[0:1]);
+            bool setup_ok = src != null &&
+                            src.tag == TENSOR &&
+                            src.tensor_val != null &&
+                            src.tensor_val.data != null;
+            if (setup_ok) {
+                double* src_data = (double*)src.tensor_val.data;
+                src_data[0] = 11.0;
+                src_data[1] = 22.0;
+            }
+
+            usz base_generic = copy_to_parent_site_calls(COPY_SITE_GENERIC);
+            usz base_commit = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT);
+            PromotionContext ctx = {};
+            boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
+            BoundaryCommitEscapeResult committed = {};
+            if (setup_ok) {
+                committed = boundary_commit_escape(src, interp, target_scope, releasing_scope, &ctx);
+            }
+            boundary_promotion_context_end(interp, &ctx);
+            usz generic_delta = copy_to_parent_site_calls(COPY_SITE_GENERIC) - base_generic;
+            usz commit_delta = copy_to_parent_site_calls(COPY_SITE_RUN_JIT_RESULT) - base_commit;
+
+            bool tensor_ok = committed.value != null &&
+                             committed.value.tag == TENSOR &&
+                             committed.value.tensor_val != null &&
+                             committed.value.tensor_val.rank == 1 &&
+                             committed.value.tensor_val.shape != null &&
+                             committed.value.tensor_val.shape[0] == 2 &&
+                             committed.value.tensor_val.data != null &&
+                             ((double*)committed.value.tensor_val.data)[0] == 11.0 &&
+                             ((double*)committed.value.tensor_val.data)[1] == 22.0;
+            bool ok = setup_ok &&
+                      !committed.releasing_scope_spliced &&
+                      !committed.reused_in_target_chain &&
+                      committed.outcome == BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED &&
+                      committed.value != src &&
+                      tensor_ok &&
+                      committed.value.scope_gen == target_scope.escape_generation &&
+                      generic_delta == 0 &&
+                      commit_delta == 0 &&
+                      main::is_in_scope((void*)committed.value, target_scope);
+
+            interp.current_scope = root_scope;
+            if (committed.releasing_scope_spliced) {
+                main::scope_release(target_scope);
+            } else {
+                main::scope_release(releasing_scope);
+                main::scope_release(target_scope);
+            }
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary_commit_escape TEMP tensor direct destination commit");
+                (*pass)++;
+            } else {
+                io::printfn("[FAIL] lifetime: boundary_commit_escape TEMP tensor direct destination commit (setup_ok=%s outcome=%d spliced=%s reused=%s generic_delta=%d commit_delta=%d same=%s)",
+                    setup_ok ? "yes" : "no",
+                    (int)committed.outcome,
+                    committed.releasing_scope_spliced ? "yes" : "no",
+                    committed.reused_in_target_chain ? "yes" : "no",
+                    (long)generic_delta,
+                    (long)commit_delta,
+                    committed.value == src ? "yes" : "no");
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: TEMP scalar survivor commits through direct destination ESCAPE promotion.
     {
         main::ScopeRegion* root_scope = interp.current_scope;

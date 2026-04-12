@@ -205,6 +205,7 @@ struct Value {
         Value*        iterator_val;     // Iterator thunk closure (V_CLOSURE Value*)
         main::StackCtx*   coroutine_val;        // User-facing coroutine (StackCtx*)
         TimePoint     time_point_val;   // Parsed temporal value
+        TensorVal*    tensor_val;       // Rank-polymorphic numeric aggregate
     }
 }
 

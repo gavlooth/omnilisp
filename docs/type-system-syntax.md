@@ -83,7 +83,8 @@ Current rule:
   behavior through the same symbol,
 - descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`),
 - shorthand names only exist when explicitly approved; the current builtin
-  exception is `Dictionary` alongside canonical `Dictionary`,
+  exception is `Dict` alongside canonical `Dictionary`; annotation input such
+  as `^Dict` normalizes to `Dictionary`,
 - no lowercase wrappers are part of the canonical constructor
   surface.
 
@@ -94,6 +95,19 @@ Current exception note:
 - `Void` is now a real builtin singleton type/value; `(Void)` constructs the
   runtime no-result value, printed as `#<void>`, and FFI `^Void` returns map
   to that same value.
+- `Tensor` is registered as a builtin type descriptor for annotation,
+  dispatch, introspection, and construction. `(format "%s" Tensor)` prints
+  `#<type Tensor>`; `(Tensor Double shape data-or-scalar)` constructs native
+  double tensor storage in value position. Tensor-specific `map` overloads
+  dispatch through typed `^Tensor` parameters for unary, tensor-scalar,
+  scalar-tensor, and exact-shape tensor-tensor elementwise operations.
+  `contract` performs pure `Double` summed-axis contraction in value position
+  as `(contract a b left-axes right-axes)`. Tensor `map` and `contract` may
+  return lazy expression payloads under the existing `Tensor` value; no public
+  `TensorExpr` type is introduced. `materialize` returns an already concrete
+  tensor unchanged, allocates concrete storage for a Tensor expression, or
+  writes a tensor/scalar source into a mutable exact-shape/dtype destination
+  tensor.
 - Existing side-effecting helpers may still return `nil` on the migration
   path; migrating ordinary no-result surfaces to `Void` is a separate
   language follow-up, not an implicit migration break.
@@ -475,7 +489,7 @@ Status tags:
 
 ---
 
-## Implementation Status (as of 2026-03-09)
+## Implementation Status (as of 2026-04-11)
 
 ### Implemented (Phases 1-7)
 - [x] TypeRegistry wired to Interp with FNV-1a hash lookup
@@ -487,7 +501,7 @@ Status tags:
 - [x] `^Type` annotation parsing (simple, compound `^(List Integer)`, Value `^(Value 42)`)
 - [x] `^{'T Number}` flat metadata dict parsing in parser
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
-- [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool)
+- [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool/nil)
 - [x] Multi-argument dispatch
 - [x] Dispatch scoring: Value=1000, exact=100, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
@@ -504,6 +518,15 @@ Status tags:
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_parametric_ctor_annotation_tests`)
 - [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior  
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
+- [x] `Tensor` builtin type descriptor participates in type identity and
+  dispatch; `(Tensor Double shape data-or-scalar)` and
+  `(ref tensor index-array)` are implemented for native double tensors
+- [x] `materialize` is implemented for concrete tensor sources, lazy Tensor
+  expression sources, tensor destinations, and scalar fills into destination
+  tensors
+- [x] `contract` is implemented for pure `Double` tensor contraction and may
+  return a lazy Tensor expression payload
+  with axis-list validation and rank-0 scalar results
 - [x] 100+ type/dispatch/effect tests all passing
 
 ### Implementation Notes

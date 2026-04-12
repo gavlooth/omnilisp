@@ -41,6 +41,11 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_eq_interp(interp, "dispatch Value bool true literal", "(flag true)", 11, pass, fail);
     test_eq_interp(interp, "dispatch Value bool false literal", "(flag false)", 22, pass, fail);
 
+    setup(interp, "(define (nil-lit (^(Value nil) x)) 33)");
+    setup(interp, "(define (nil-lit x) 99)");
+    test_eq_interp(interp, "dispatch Value nil literal", "(nil-lit nil)", 33, pass, fail);
+    test_eq_interp(interp, "dispatch Value nil literal does not match symbol", "(nil-lit 'nil)", 99, pass, fail);
+
     setup(interp, "(define (ambv (^(Value open) cmd) x) 1)");
     setup(interp, "(define (ambv x (^(Value open) cmd)) 2)");
     test_error(interp, "dispatch ambiguous equal-specificity Value literal", "(ambv 'open 'open)", pass, fail);

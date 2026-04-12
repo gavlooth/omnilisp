@@ -39,6 +39,8 @@ fn void run_advanced_collections_dict_literal_tests(Interp* interp, int* pass, i
     test_truthy(interp, "dict? Dict shorthand", "(dict? (Dict 1 2))", pass, fail);
     test_eq(interp, "Dictionary canonical constructor", "(ref (Dictionary 1 10 2 20) 1)", 10, pass, fail);
     test_eq(interp, "Dict shorthand constructor", "(ref (Dict 1 10 2 20) 1)", 10, pass, fail);
+    test_eq(interp, "Dict shorthand type annotation dispatch",
+        "(block (define (dict-ann (^Dict d)) (ref d 'x)) (dict-ann (Dictionary 'x 5)))", 5, pass, fail);
     test_nil(interp, "dict? no", "(dict? 42)", pass, fail);
     setup(interp, "(define hm-big (Dictionary))");
     setup(interp, "(let loop (i 0) (if (= i 50) hm-big (block (set! hm-big i (* i i)) (loop (+ i 1)))))");
@@ -89,6 +91,251 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "ref string -1", "(ref \"hello\" -1)", "o", pass, fail);
     test_str_val(interp, "ref string -5", "(ref \"hello\" -5)", "h", pass, fail);
     test_error(interp, "ref string -6 oob", "(ref \"hello\" -6)", pass, fail);
+    // ref - tensor
+    test_eq_double(interp, "ref tensor rank-0 scalar",
+        "(ref (Tensor Double [] 3.0) [])",
+        3.0, pass, fail);
+    test_error_contains(interp, "ref tensor rank-0 scalar with vector index",
+        "(ref (Tensor Double [] 3.0) [0])",
+        "ref: tensor index rank mismatch", pass, fail);
+    test_error_contains(interp, "ref tensor rank-0 scalar with scalar index",
+        "(ref (Tensor Double [] 3.0) 0)",
+        "ref: tensor requires array or proper list index", pass, fail);
+    test_eq_double(interp, "ref tensor rank-2", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 2])", 6.0, pass, fail);
+    test_eq_double(interp, "ref tensor negative axis", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 -1])", 6.0, pass, fail);
+    test_eq_double(interp, "ref tensor list index", "(ref (Tensor Double '(2 3) '(1 2 3 4 5 6)) '(1 2))", 6.0, pass, fail);
+    test_error_contains(interp, "ref tensor wrong rank",
+        "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1])", "ref: tensor index rank mismatch", pass, fail);
+    test_error_contains(interp, "ref tensor oob",
+        "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [2 0])", "ref: tensor index out of bounds", pass, fail);
+    // materialize - tensor expression boundary
+    test_eq_double(interp, "materialize concrete tensor",
+        "(ref (materialize (Tensor Double [2 3] [1 2 3 4 5 6])) [1 2])", 6.0, pass, fail);
+    test_eq_double(interp, "materialize rank-0 concrete tensor",
+        "(let (dst (Tensor Double [] 0.0)) (block (materialize (Tensor Double [] 3.0) dst) (ref dst [])))",
+        3.0, pass, fail);
+    test_eq(interp, "materialize scalar into zero-size destination",
+        "(let (dst (Tensor Double [0] 0.0)) (block (materialize 9 dst) (length dst)))",
+        0, pass, fail);
+    test_eq(interp, "materialize lazy zero-size source into zero-size destination",
+        "(let (dst (Tensor Double [0] 0.0)) (block (materialize (map + (Tensor Double [0] 0.0) 1.0) dst) (length dst)))",
+        0, pass, fail);
+    test_eq_double(interp, "materialize tensor into destination",
+        "(let (src (Tensor Double [2] [7 8]) dst (Tensor Double [2] 0.0)) (block (materialize src dst) (ref dst [1])))",
+        8.0, pass, fail);
+    test_eq_double(interp, "materialize scalar fill into destination",
+        "(let (dst (Tensor Double [2 2] 0.0)) (block (materialize 9 dst) (ref dst [1 1])))",
+        9.0, pass, fail);
+    test_eq_double(interp, "materialize aliased destination no-op",
+        "(let (dst (Tensor Double [2] [3 4])) (block (materialize dst dst) (ref dst [1])))",
+        4.0, pass, fail);
+    test_error_contains(interp, "materialize rejects scalar without destination",
+        "(materialize 1)", "materialize: expected Tensor source", pass, fail);
+    test_error_contains(interp, "materialize rejects non-tensor destination",
+        "(materialize 1 [0])", "materialize: destination must be a Tensor", pass, fail);
+    test_error_contains(interp, "materialize tensor destination shape mismatch",
+        "(materialize (Tensor Double [2] [1 2]) (Tensor Double [3] 0.0))", "materialize: tensor shape mismatch", pass, fail);
+    {
+        usz[1] tensor_shape = { 2 };
+        Value* src = make_tensor_double_uninitialized(interp, tensor_shape[0:1]);
+        bool setup_ok = src != null && src.tag == TENSOR && src.tensor_val != null && src.tensor_val.data != null;
+        void* saved_data = setup_ok ? src.tensor_val.data : null;
+        if (setup_ok) src.tensor_val.data = null;
+        Value*[1] args = { src };
+        Value* result = setup_ok ? prim_materialize(args[0:1], null, interp) : null;
+        if (setup_ok) src.tensor_val.data = saved_data;
+        bool ok = setup_ok &&
+            result != null &&
+            result.tag == ERROR &&
+            str_contains(result.str_chars[:result.str_len], "materialize: source tensor backing storage is missing");
+        if (ok) {
+            emit_pass_literal("[PASS] materialize malformed concrete tensor rejects missing source storage");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] materialize malformed concrete tensor rejects missing source storage (setup_ok=%s tag=%d)",
+                setup_ok ? "yes" : "no",
+                result != null ? (int)result.tag : -1
+            );
+            (*fail)++;
+        }
+    }
+    {
+        usz[1] tensor_shape = { 2 };
+        Value* src = make_tensor_double_uninitialized(interp, tensor_shape[0:1]);
+        Value* dst = make_tensor_double_uninitialized(interp, tensor_shape[0:1]);
+        bool setup_ok = src != null && src.tag == TENSOR && src.tensor_val != null && src.tensor_val.data != null &&
+            dst != null && dst.tag == TENSOR && dst.tensor_val != null && dst.tensor_val.data != null;
+        void* saved_data = setup_ok ? src.tensor_val.data : null;
+        if (setup_ok) src.tensor_val.data = null;
+        Value*[2] args = { src, dst };
+        Value* result = setup_ok ? prim_materialize(args[0:2], null, interp) : null;
+        if (setup_ok) src.tensor_val.data = saved_data;
+        bool ok = setup_ok &&
+            result != null &&
+            result.tag == ERROR &&
+            str_contains(result.str_chars[:result.str_len], "materialize: source tensor backing storage is missing");
+        if (ok) {
+            emit_pass_literal("[PASS] materialize malformed tensor into destination rejects missing source storage");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] materialize malformed tensor into destination rejects missing source storage (setup_ok=%s tag=%d)",
+                setup_ok ? "yes" : "no",
+                result != null ? (int)result.tag : -1
+            );
+            (*fail)++;
+        }
+    }
+    // map - tensor elementwise lazy expression surface
+    test_eq_double(interp, "map tensor unary",
+        "(ref (map (lambda (x) (* x 2)) (Tensor Double [2 2] [1 2 3 4])) [1 0])",
+        6.0, pass, fail);
+    test_eq_double(interp, "map tensor scalar right",
+        "(ref (map + (Tensor Double [2] [1 2]) 10) [1])",
+        12.0, pass, fail);
+    test_eq_double(interp, "map tensor scalar left",
+        "(ref (map + 10 (Tensor Double [2] [1 2])) [1])",
+        12.0, pass, fail);
+    test_eq_double(interp, "map tensor tensor exact shape",
+        "(ref (map + (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20])) [1])",
+        22.0, pass, fail);
+    test_eq_double(interp, "map tensor tensor broadcast trailing singleton axis",
+        "(ref (map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [1 3] [10 20 30])) [1 2])",
+        36.0, pass, fail);
+    test_eq_double(interp, "map tensor tensor broadcast inner singleton axis",
+        "(ref (map + (Tensor Double [2 1] [1 2]) (Tensor Double [1 3] [10 20 30])) [1 2])",
+        32.0, pass, fail);
+    test_eq_double(interp, "map rank-0 tensor with rank-1 tensor",
+        "(ref (map + (Tensor Double [] 7.0) (Tensor Double [2] [1 2])) [1])",
+        9.0, pass, fail);
+    test_eq_double(interp, "map rank-0 tensor with rank-2 tensor",
+        "(ref (map + (Tensor Double [] 7.0) (Tensor Double [2 2] [1 2 3 4])) [1 1])",
+        11.0, pass, fail);
+    test_eq_double(interp, "materialize mapped tensor into destination",
+        "(let (src (map + (Tensor Double [2] [1 2]) 3) dst (Tensor Double [2] 0.0)) (block (materialize src dst) (ref dst [1])))",
+        5.0, pass, fail);
+    test_eq_double(interp, "materialize mapped expression directly into destination",
+        "(let (dst (Tensor Double [2] 0.0)) (block (materialize (map + (Tensor Double [2] [1 2]) 3) dst) (ref dst [1])))",
+        5.0, pass, fail);
+    test_eq_double(interp, "failed materialize mapped expression leaves destination unchanged",
+        "(let (dst (Tensor Double [2] [7 8])) (block (handle (materialize (map (lambda (x) (if (= x 2) 'bad (+ x 1))) (Tensor Double [2] [1 2])) dst) (raise msg nil)) (+ (* (ref dst [0]) 10) (ref dst [1]))))",
+        78.0, pass, fail);
+    test_eq_double(interp, "materialize aliased map destination",
+        "(let (dst (Tensor Double [2 3] [1 2 3 4 5 6])) (block (materialize (map + dst dst) dst) (ref dst [1 1])))",
+        10.0, pass, fail);
+    test_eq_double(interp, "map rank-0 scalar",
+        "(ref (map + (Tensor Double [] 7.0) 1.0) [])",
+        8.0, pass, fail);
+    test_eq_double(interp, "materialize mapped rank-0 scalar",
+        "(ref (materialize (map + (Tensor Double [] 7.0) 1.0)) [])",
+        8.0, pass, fail);
+    test_eq_double(interp, "materialize mapped expression aliased destination",
+        "(let (dst (Tensor Double [2] [3 4])) (block (materialize (map + dst 1) dst) (ref dst [1])))",
+        5.0, pass, fail);
+    test_eq_double(interp, "lazy map tensor survives function return boundary",
+        "(block (define (mk-map) (map + (Tensor Double [2] [1 2]) 3)) (ref (mk-map) [1]))",
+        5.0, pass, fail);
+    test_eq_double(interp, "lazy map tensor survives closure capture",
+        "(let (src (map + (Tensor Double [2] [1 2]) 3)) (let (f (lambda () (ref src [1]))) (f)))",
+        5.0, pass, fail);
+    test_error_contains(interp, "map tensor broadcast shape mismatch",
+        "(map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [1 2 3 4]))",
+        "map: tensor shape mismatch", pass, fail);
+    test_error_contains(interp, "map tensor shape mismatch",
+        "(map + (Tensor Double [2] [1 2]) (Tensor Double [3] [1 2 3]))",
+        "map: tensor shape mismatch", pass, fail);
+    test_error_contains(interp, "map tensor function dtype mismatch",
+        "(materialize (map (lambda (x) 'bad) (Tensor Double [1] [1])))",
+        "map: function result dtype mismatch", pass, fail);
+    test_error_contains(interp, "map tensor rejects nonnumeric source",
+        "(map + (Tensor Double [1] [1]) 'bad)",
+        "map: tensor inputs must be Tensors or numbers", pass, fail);
+    test_error_contains(interp, "map tensor rejects noncallable",
+        "(map nil (Tensor Double [1] [1]))",
+        "map: function must be callable", pass, fail);
+    // contract - tensor summed-index lazy expression surface
+    test_eq_double(interp, "contract matrix product rank-2",
+        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [1] [0]) [1 1])",
+        154.0, pass, fail);
+    test_eq(interp, "contract matrix product rank",
+        "(rank (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [1] [0]))",
+        2, pass, fail);
+    test_eq_double(interp, "contract vector dot scalar",
+        "(ref (contract (Tensor Double [3] [1 2 3]) (Tensor Double [3] [10 20 30]) [0] [0]) [])",
+        140.0, pass, fail);
+    test_eq_double(interp, "contract list axes",
+        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) '(1) '(0)) [1 1])",
+        154.0, pass, fail);
+    test_eq_double(interp, "contract negative axes",
+        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [-1] [-2]) [1 1])",
+        154.0, pass, fail);
+    test_eq_double(interp, "contract zero contracted dimension scalar",
+        "(ref (contract (Tensor Double [0] 0.0) (Tensor Double [0] 0.0) [0] [0]) [])",
+        0.0, pass, fail);
+    test_eq_double(interp, "contract rank-0 scalar",
+        "(ref (contract (Tensor Double [] 3.0) (Tensor Double [] 4.0) [] []) [])",
+        12.0, pass, fail);
+    test_eq_double(interp, "contract zero contracted dimension non-scalar",
+        "(ref (contract (Tensor Double [2 0 1] 0.0) (Tensor Double [2 0 1] 0.0) [1] [1]) [1 0 1 0])",
+        0.0, pass, fail);
+    test_eq_double(interp, "contract zero axes outer product",
+        "(ref (contract (Tensor Double [2] [1 2]) (Tensor Double [3] [10 20 30]) [] []) [1 2])",
+        60.0, pass, fail);
+    test_eq_double(interp, "contract multi-axis",
+        "(ref (contract (Tensor Double [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Double [2 3 2] 1.0) [1 2] [0 2]) [1 2])",
+        26.0, pass, fail);
+    test_eq_double(interp, "materialize contracted tensor into destination",
+        "(let (src (contract (Tensor Double [2 2] [1 2 3 4]) (Tensor Double [2 2] [5 6 7 8]) [1] [0]) dst (Tensor Double [2 2] 0.0)) (block (materialize src dst) (ref dst [0 1])))",
+        22.0, pass, fail);
+    test_eq_double(interp, "materialize contracted expression directly into destination",
+        "(let (dst (Tensor Double [2 2] 0.0)) (block (materialize (contract (Tensor Double [2 2] [1 2 3 4]) (Tensor Double [2 2] [5 6 7 8]) [1] [0]) dst) (ref dst [0 1])))",
+        22.0, pass, fail);
+    test_eq_double(interp, "failed materialize contracted expression leaves destination unchanged",
+        "(let (dst (Tensor Double [] 99.0)) (block (handle (materialize (contract (map (lambda (x) (if (= x 2) 'bad x)) (Tensor Double [2] [1 2])) (Tensor Double [2] [10 20]) [0] [0]) dst) (raise msg nil)) (ref dst [])))",
+        99.0, pass, fail);
+    test_eq_double(interp, "lazy contract tensor survives function return boundary",
+        "(block (define (mk-contract) (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) (ref (mk-contract) []))",
+        50.0, pass, fail);
+    test_eq_double(interp, "lazy contract tensor survives closure capture",
+        "(let (src (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) (let (f (lambda () (ref src []))) (f)))",
+        50.0, pass, fail);
+    test_error_contains(interp, "materialize contracted expression rejects aliased destination",
+        "(let (dst (Tensor Double [2 2] [1 2 3 4])) (materialize (contract dst dst [1] [0]) dst))",
+        "contract: destination aliases source tensor", pass, fail);
+    test_error_contains(interp, "materialize nested contracted expression rejects aliased destination",
+        "(let (dst (Tensor Double [2 2] [1 2 3 4])) (let (src (map + dst 0)) (materialize (contract src dst [1] [0]) dst)))",
+        "contract: destination aliases source tensor", pass, fail);
+    test_eq(interp, "materialize zero-size contracted expression into zero-size destination",
+        "(let (dst (Tensor Double [0] 0.0)) (let (src (contract (Tensor Double [0 1] 0.0) (Tensor Double [1] [10]) [1] [0])) (block (materialize src dst) (length dst))))",
+        0, pass, fail);
+    test_error_contains(interp, "contract axis length mismatch",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [0] [])",
+        "contract: axis list length mismatch", pass, fail);
+    test_error_contains(interp, "contract left axis out of range",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [1] [0])",
+        "contract: left axis out of range", pass, fail);
+    test_error_contains(interp, "contract right axis out of range",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [0] [1])",
+        "contract: right axis out of range", pass, fail);
+    test_error_contains(interp, "contract duplicate axis",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2 2] 1.0) [0 0] [0 1])",
+        "contract: duplicate contracted axis", pass, fail);
+    test_error_contains(interp, "contract duplicate axis with negative index normalization",
+        "(contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 3] [7 8 9 10 11 12]) [1 -1] [0 1])",
+        "contract: duplicate contracted axis", pass, fail);
+    test_error_contains(interp, "contract dimension mismatch",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [3] [1 2 3]) [0] [0])",
+        "contract: contracted dimensions must match", pass, fail);
+    test_error_contains(interp, "contract rejects non-tensor operand",
+        "(contract [1 2] (Tensor Double [2] [1 2]) [0] [0])",
+        "contract: expected Tensor operands", pass, fail);
+    test_error_contains(interp, "contract rejects scalar axes",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) 0 [0])",
+        "contract: axes must be arrays or proper lists of integers", pass, fail);
+    test_error_contains(interp, "contract rejects non-integer axes",
+        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) ['bad] [0])",
+        "contract: axes must be integers", pass, fail);
     // ref on lists (walks cons chain, not just pair 0/1)
     test_eq(interp, "ref list 0", "(ref '(10 20 30) 0)", 10, pass, fail);
     test_eq(interp, "ref list 2", "(ref '(10 20 30) 2)", 30, pass, fail);

@@ -121,6 +121,7 @@ struct Interp {
     SymbolId sym_Iterator;
     SymbolId sym_TimePoint;
     SymbolId sym_Coroutine;
+    SymbolId sym_Tensor;
 
     // Error-as-effect
     SymbolId sym_raise;
@@ -159,6 +160,7 @@ struct Interp {
     TypeId tid_Iterator;
     TypeId tid_TimePoint;
     TypeId tid_Coroutine;
+    TypeId tid_Tensor;
 
     // Type registry
     TypeRegistry types;

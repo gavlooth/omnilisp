@@ -105,6 +105,11 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
                 mem::free(v.array_val);  // Array struct is malloc'd in make_array
                 v.array_val = null;
             }
+        case TENSOR:
+            if (v.tensor_val != null) {
+                tensor_free_payload(v.tensor_val);
+                v.tensor_val = null;
+            }
         case HASHMAP:
             // HashMap struct is region-allocated, only entries buffer is malloc'd
             if (v.hashmap_val != null) {

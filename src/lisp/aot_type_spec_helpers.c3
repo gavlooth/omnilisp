@@ -65,7 +65,7 @@ fn bool aot_type_annotation_init_from_spec(lisp::TypeAnnotation* ann, AotTypeAnn
     ann.has_annotation = true;
     ann.is_compound = spec.is_compound;
     ann.is_dict = spec.is_dict;
-    if (!aot_symbol_from_text_checked(spec.base_type, &ann.base_type)) {
+    if (!spec.is_dict && !aot_symbol_from_text_checked(spec.base_type, &ann.base_type)) {
         aot_type_annotation_destroy(ann);
         return false;
     }

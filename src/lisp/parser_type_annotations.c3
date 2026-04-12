@@ -12,6 +12,7 @@ fn void Parser.parse_compound_type_annotation(Parser* self, TypeAnnotation* ann)
         return;
     }
     ann.base_type = self.get_current_symbol();
+    ann.base_type = parser_normalize_type_annotation_base(self, ann.base_type);
     self.lexer.advance();
 
     if (parser_is_removed_val_ctor(self, ann.base_type)) {
@@ -94,6 +95,7 @@ fn TypeAnnotation Parser.parse_type_annotation(Parser* self) {
         ann.has_annotation = true;
         ann.base_type = self.intern_or_error(self.lexer.current.text[1..self.lexer.current.text_len - 1], "failed to intern type annotation");
         if (ann.base_type == INVALID_SYMBOL_ID) return ann;
+        ann.base_type = parser_normalize_type_annotation_base(self, ann.base_type);
         self.lexer.advance();
         return ann;
     }

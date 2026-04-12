@@ -60,10 +60,10 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count > usz.max / Value*.sizeof) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
-    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
     if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
-        key_values = null;
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
+    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
     if (key_values == null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }

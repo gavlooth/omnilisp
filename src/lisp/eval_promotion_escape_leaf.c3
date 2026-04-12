@@ -129,6 +129,8 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
             return promote_escape_hashmap_backed_shared_wrapper(v, interp, ctx);
         case ARRAY:
             return promote_escape_array_shared_wrapper(v, interp, ctx);
+        case TENSOR:
+            return promote_escape_tensor_shared_wrapper(v, interp, ctx);
         case METHOD_TABLE:
             return promote_escape_method_table_shared_wrapper(v, interp, ctx);
         default:
@@ -233,6 +235,12 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
     }
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
+        boundary_cleanup_materialized_value(
+            v.iterator_val,
+            promoted_thunk,
+            interp.current_scope,
+            true
+        );
         return raise_error(interp, "boundary: failed to allocate iterator escape copy");
     }
     result.tag = ITERATOR;

@@ -32,6 +32,18 @@ fn bool parser_is_removed_val_ctor(Parser* self, SymbolId sym) @inline {
            name[2] == 'l';
 }
 
+fn SymbolId parser_normalize_type_annotation_base(Parser* self, SymbolId sym) @inline {
+    char[] name = self.interp.symbols.get_name(sym);
+    if (name.len == 4 &&
+        name[0] == 'D' &&
+        name[1] == 'i' &&
+        name[2] == 'c' &&
+        name[3] == 't') {
+        return self.interp.sym_Dictionary;
+    }
+    return sym;
+}
+
 fn bool parser_is_bool_symbol(Parser* self, SymbolId sym) @inline {
     return (uint)sym == (uint)self.interp.sym_true || (uint)sym == (uint)self.interp.sym_false;
 }
@@ -58,6 +70,18 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
 
     if (self.lexer.current.type == T_SYMBOL) {
         SymbolId sym = self.get_current_symbol();
+        char[] sym_name = self.interp.symbols.get_name(sym);
+        if (sym_name.len == 3 &&
+            sym_name[0] == 'n' &&
+            sym_name[1] == 'i' &&
+            sym_name[2] == 'l') {
+            ann.val_literal.tag = NIL;
+            ann.val_literal.int_value = 0;
+            ann.val_literal.sym_value = 0;
+            ann.has_val_literal = true;
+            self.lexer.advance();
+            return true;
+        }
         if (parser_is_bool_symbol(self, sym)) {
             ann.val_literal.tag = SYMBOL;
             ann.val_literal.int_value = 0;

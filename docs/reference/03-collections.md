@@ -78,6 +78,45 @@ Ordering contract:
 - `List` is deterministic and uses canonical element order.
 - Treat dict/set literal insertion order as non-authoritative for iteration APIs.
 
+### Tensors
+
+`Tensor` is Omni's rank-polymorphic scientific numeric aggregate. The current
+runtime ships native `Double` tensor storage, generic `length` introspection,
+tensor indexing through generic `ref`, tensor-dispatched `map`, pure `Double`
+tensor `contract`, and `materialize` as the explicit storage boundary.
+
+```lisp
+(define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
+
+(shape x)                  ;; => [2 3]
+(rank x)                   ;; => 2
+(dtype x)                  ;; => Double
+(ref x [1 -1])             ;; => 6.0
+
+(define y (Tensor Double [2 3] 0.0))
+(materialize (map + x 1.0) y) ;; => y, after elementwise evaluation into y
+(materialize (Tensor Double [] 3.0) (Tensor Double [] 0.0))
+(materialize 9 (Tensor Double [0] 0.0))
+(materialize (map + (Tensor Double [0] 0.0) 1.0) (Tensor Double [0] 0.0))
+
+(define a (Tensor Double [2 3] [1 2 3 4 5 6]))
+(define b (Tensor Double [3 2] [7 8 9 10 11 12]))
+(ref (contract a b [1] [0]) [1 1]) ;; => 154.0
+```
+
+Tensor `map` and `contract` may return lazy expression payloads under the
+existing `Tensor` value; there is no public `TensorExpr` type. `materialize`
+forces those expressions by allocating concrete storage or by staging into a
+temporary concrete tensor and copying into an exact-shape/dtype destination
+only after success. Elementwise destination materialization may alias an input
+tensor; contraction destination materialization rejects destinations that
+recursively alias either source tensor, while zero-byte tensor storage is not
+treated as an alias.
+Contraction over a zero-size contracted axis produces the additive identity for
+the output cell. Zero-size dimensions are valid shape dimensions. Scalar
+broadcasting is supported; singleton-axis broadcasting and backend acceleration
+are future work.
+
 ### Generic Operations
 
 These work across collection types:
@@ -135,7 +174,7 @@ lst.[0]                 ;; first element of list
 arr.[2]                 ;; third element of array
 dict.['key]             ;; dict key lookup
 str.[0]                 ;; character at index
-matrix.[i].[j]          ;; chained indexing
+tensor.[i].[j]          ;; chained indexing
 arr.[-1]                ;; last element (negative indexing)
 ```
 

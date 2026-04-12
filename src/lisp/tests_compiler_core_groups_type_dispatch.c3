@@ -15,6 +15,18 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: [type] lowers directly and syncs constructor global"); }
     }
 
+    // Dict metadata annotations have no base type; the AOT bridge must keep the metadata payload.
+    {
+        char[] code = compile_to_c3("(define [type] (NumBox T) (^{'T Number} value))", interp);
+        bool ok = str_contains(code, "aot::define_type(")
+            && str_contains(code, ".is_dict = true")
+            && str_contains(code, ".base_type = \"\"")
+            && !str_contains(code, "aot::eval_serialized_expr")
+            && !str_contains(code, "unsupported expr type");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: [type] lowers dict metadata annotations without a base type"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: [type] lowers dict metadata annotations without a base type"); }
+    }
+
     // Union forms must lower directly and sync generated variant constructors into AOT globals.
     {
         char[] code = compile_to_c3("(define [union] Maybe None (Some Integer)) (Some 1)", interp);
@@ -92,6 +104,16 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         else    { (*fail)++; io::printn("[FAIL] Compiler: typed define globals are deduplicated"); }
     }
 
+    // Value-literal nil annotations should stay nil literals through AOT metadata emission.
+    {
+        char[] code = compile_to_c3("(define (nil-route (^(Value nil) x)) 1)", interp);
+        bool ok = str_contains(code, ".has_val_literal = true")
+            && str_contains(code, ".val_tag = lisp::ValueTag.NIL")
+            && str_contains(code, ".val_sym = \"\"");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: Value nil literal metadata emits as NIL"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: Value nil literal metadata emits as NIL"); }
+    }
+
     // Repeated typed methods should all stay on direct helper lowering (no eval fallback path).
     {
         char[] code = compile_to_c3(
@@ -100,7 +122,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(define (route (^Double x)) (+ x 1.0))",
             interp
         );
-        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(");
+        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(\"route\"");
         bool ok = typed_calls == 3
             && !str_contains(code, "aot::eval_serialized_expr")
             && !str_contains(code, "unsupported expr type");
@@ -117,7 +139,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
             "(define (mix x) x)",
             interp
         );
-        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(");
+        usz typed_calls = compiler_str_count(code, "aot::define_typed_method(\"mix\"");
         bool ok = typed_calls == 2
             && str_contains(code, "mix = ")
             && !str_contains(code, "aot::define_var(\"delta\", delta);")

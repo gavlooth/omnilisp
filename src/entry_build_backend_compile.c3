@@ -199,6 +199,7 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
     sources.tinit(128);
 
     if (!append_matching_sources(&sources, "src", "main", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src", "entry_", ".c3")) return 2;
     if (!append_matching_sources(&sources, "src", "scope_region", ".c3")) return 2;
     if (!append_matching_sources(&sources, "src", "stack_engine", ".c3")) return 2;
     if (!append_matching_sources(&sources, "src/lisp", "", ".c3")) return 2;

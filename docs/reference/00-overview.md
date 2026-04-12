@@ -13,8 +13,12 @@ language features:
 
 - **Three collection types**: list `'(1 2 3)`, array `[1 2 3]`, dict `{'a 1}`
 - **Generic operations**: `(ref coll key)` works on all collections
+- **Scientific tensors**: `(Tensor Double [2 3] 0.0)`, tensor `map`,
+  `contract`, and `materialize`
 - **Multiple dispatch**: typed `define` creates method tables, best match wins
 - **Algebraic effects**: `print`/`read-file` go through interceptable effects
+- **First-class C FFI**: grouped `[ffi module]` declarations and
+  `ForeignHandle` metadata
 - **Strict-arity lambdas**: `(lambda (x y) body)` requires exactly 2 args
 - **Region-based memory**: no GC, deterministic cleanup
 - **Truthiness**: only `nil` and `false` are falsy
@@ -72,6 +76,7 @@ Goodbye!
 | Dictionary | `HASHMAP` | `{'a 1}` | Mutable hash table |
 | Array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
 | Coroutine | `COROUTINE` | — | User-level coroutine |
+| Tensor | `TENSOR` | `(Tensor Double [2 3] 0.0)` | Homogeneous n-dimensional numeric storage |
 | ffi-handle | `FFI_HANDLE` | — | Foreign library handle |
 | instance | `INSTANCE` | `(Point 3 4)` | User-defined type instance |
 | method-table | `METHOD_TABLE` | — | Dispatch table (internal) |

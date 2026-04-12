@@ -218,7 +218,15 @@ fn Value* make_tcp_listener_handle_with_transport(
     void* uv_listener_handle = null
 ) {
     TcpHandle* th = (TcpHandle*)mem::malloc(TcpHandle.sizeof);
-    if (th == null) return io_raise(interp, "io/tcp-listen-out-of-memory", "tcp-listen: out of memory");
+    if (th == null) {
+        if (fd >= 0) {
+            c_close_fd(fd);
+        }
+        if (uv_listener_handle != null) {
+            omni_uv_tcp_close_and_free(uv_listener_handle);
+        }
+        return io_raise(interp, "io/tcp-listen-out-of-memory", "tcp-listen: out of memory");
+    }
     th.fd = fd;
     th.connected = true;
     th.mode = TCP_LISTENER;
@@ -227,12 +235,6 @@ fn Value* make_tcp_listener_handle_with_transport(
     Value* v = make_ffi_handle_ex(interp, (void*)th, "tcp-handle",
         &tcp_handle_finalizer, true, false);
     if (v == null) {
-        if (th.uv_listener_handle != null) {
-            omni_uv_tcp_close_and_free(th.uv_listener_handle);
-            th.uv_listener_handle = null;
-        }
-        if (th.fd >= 0) c_close_fd(th.fd);
-        mem::free(th);
         return io_raise(interp, "io/tcp-listen-out-of-memory", "tcp-listen: out of memory");
     }
     return v;

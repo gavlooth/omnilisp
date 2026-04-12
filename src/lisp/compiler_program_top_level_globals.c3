@@ -28,6 +28,12 @@ fn void Compiler.collect_expr_generated_globals(Compiler* self, Expr* expr) {
             if (expr.ffi_fn != null) {
                 self.add_global_if_missing(expr.ffi_fn.fn_name);
             }
+        case E_BLOCK:
+            if (expr.block != null) {
+                for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+                    self.collect_expr_generated_globals(expr.block.exprs[bi]);
+                }
+            }
         case E_DEFTYPE:
             if (expr.deftype != null) {
                 self.add_global_if_missing(expr.deftype.name);

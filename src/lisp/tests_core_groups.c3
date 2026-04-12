@@ -207,7 +207,7 @@ fn void run_memory_stress_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "map double last => 10", "(match mapped ([.. last] last))", 10, pass, fail);
 
     // Nested let 10 levels
-    test_eq(interp, "nested let 10 levels => 55", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (let (f 6) (let (g 7) (let (h 8) (let (i 9) (let (j 10) (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))))))))))))))", 55, pass, fail);
+    test_eq(interp, "nested let 10 levels => 55", "(let (a 1) (let (b 2) (let (c 3) (let (d 4) (let (e 5) (let (f 6) (let (g 7) (let (h 8) (let (i 9) (let (j 10) (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))))))))))))", 55, pass, fail);
 
     // Repeated evaluation
     setup(interp, "(define mem-counter 0)");

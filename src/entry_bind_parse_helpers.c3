@@ -14,7 +14,8 @@ struct BindHeaderParseResult {
 }
 
 fn BindHeaderParseResult parse_ffi_dep_headers(lisp::LibclangHandle* clang, lisp::TomlFfiDep* dep,
-    lisp::ParsedFunc* funcs, usz max_funcs) {
+    lisp::ParsedFunc* funcs, usz max_funcs, char[64]* filter, usz filter_count, bool use_filter,
+    char[64]* exclude_filter, usz exclude_filter_count, bool use_exclude_filter) {
     BindHeaderParseResult result = {};
     for (usz hi = 0; hi < dep.header_count; hi++) {
         char* header = &dep.headers[hi];
@@ -22,7 +23,8 @@ fn BindHeaderParseResult parse_ffi_dep_headers(lisp::LibclangHandle* clang, lisp
         lisp::ParsedFunc* out_ptr = result.func_count < max_funcs ? &funcs[result.func_count] : null;
         lisp::ParseHeaderResult parsed = lisp::parse_header_checked(clang, header[:hlen],
             out_ptr, max_funcs - result.func_count,
-            &dep.functions, dep.function_count, dep.filter_functions);
+            filter, filter_count, use_filter,
+            exclude_filter, exclude_filter_count, use_exclude_filter);
         if (parsed.path_too_long) {
             result.path_too_long = true;
             result.failed_header = header;

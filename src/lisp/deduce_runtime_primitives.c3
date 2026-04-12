@@ -69,8 +69,6 @@ fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
 
     Value* txn_v = make_ffi_handle_ex(interp, (void*)txn, "deduce-txn", &deduce_txn_finalizer, true, false);
     if (txn_v == null) {
-        deduce_txn_finalize(txn);
-        mem::free(txn);
         return deduce_raise(interp, "deduce/block-out-of-memory", "deduce-block: out of memory");
     }
     return txn_v;

@@ -128,7 +128,6 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
     Value* rel_v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (rel_v == null) {
         deduce_db_rollback_relation_schemas_to(db, schema_start);
-        deduce_relation_free(rel);
         return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
     }
     return rel_v;

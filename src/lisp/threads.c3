@@ -30,7 +30,6 @@ fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
 
     Value* v = make_ffi_handle_ex(interp, (void*)ref, "atomic-ref", null, true, false);
     if (v == null) {
-        mem::free(ref);
         return raise_error(interp, "atomic: out of memory");
     }
     return v;

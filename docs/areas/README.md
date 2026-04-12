@@ -25,6 +25,9 @@ When documents disagree, use this precedence:
 - `effects-error-model.md`
 - `types-dispatch.md`
 - `compiler-parser-refactor.md`
+- `tensor-scientific.md`
+- `ffi-foreign-runtime.md`
+- `validation-status.md`
 
 ## Status Legend
 
@@ -47,5 +50,5 @@ For a single machine-readable snapshot of the current bounded gate status, use:
 
 - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`
 
-That artifact is the preferred broad status entrypoint before drilling into
+Regenerate that artifact before treating it as current broad status, then drill into
 area-specific docs or narrower guard scripts.

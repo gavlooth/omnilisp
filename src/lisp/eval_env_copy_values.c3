@@ -81,6 +81,7 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
         case HASHMAP:
         case SET:
         case ARRAY:
+        case TENSOR:
         case METHOD_TABLE: {
             BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
             if (!boundary_copy_result_ok(copied)) return null;

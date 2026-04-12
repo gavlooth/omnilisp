@@ -96,11 +96,14 @@ fn bool copy_parent_should_reuse_closure(Value* v, Interp* interp) @inline {
 fn bool copy_parent_closure_env_needs_detach(Value* src, Interp* interp) @inline {
     if (src == null || interp == null || src.tag != CLOSURE || src.closure_val == null) return false;
     if (src.closure_val.env == null) return false;
+    if (interp.releasing_scope != null &&
+        env_chain_has_frame_in_scope(src.closure_val.env, interp.releasing_scope, interp.global_env)) {
+        return true;
+    }
     if (src.closure_val.env_scope != null) {
         return !boundary_ptr_in_scope((void*)src.closure_val.env, src.closure_val.env_scope);
     }
-    if (interp.releasing_scope == null) return false;
-    return env_chain_has_frame_in_scope(src.closure_val.env, interp.releasing_scope, interp.global_env);
+    return false;
 }
 
 fn bool copy_parent_clone_closure_payload(
@@ -277,6 +280,28 @@ fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inl
             return true;
         }
     }
+    if (v.tag == TENSOR && v.tensor_val != null) {
+        TensorVal* tensor = v.tensor_val;
+        if (boundary_ptr_in_scope((void*)tensor, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.shape, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.strides, releasing_scope) ||
+            boundary_ptr_in_scope(tensor.data, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_left_axes, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_right_axes, releasing_scope)) {
+            return true;
+        }
+        switch (tensor.kind) {
+            case TENSOR_PAYLOAD_CONCRETE:
+                return false;
+            case TENSOR_PAYLOAD_MAP:
+                return boundary_value_in_releasing_scope(tensor.map_func, interp) ||
+                    boundary_value_in_releasing_scope(tensor.map_left, interp) ||
+                    boundary_value_in_releasing_scope(tensor.map_right, interp);
+            case TENSOR_PAYLOAD_CONTRACT:
+                return boundary_value_in_releasing_scope(tensor.contract_left, interp) ||
+                    boundary_value_in_releasing_scope(tensor.contract_right, interp);
+        }
+    }
     return false;
 }
 
@@ -294,8 +319,12 @@ fn bool copy_to_parent_try_fast_reuse(Value* v, Interp* interp, Value** out) {
     // Chunk-transfer/moved wrappers can carry stale scope_gen stamps.
     // Fast-reuse must fail closed whenever wrapper or payload still resides in
     // releasing scope, independent of generation metadata.
-    if (boundary_ptr_in_scope((void*)v, interp.releasing_scope) ||
-        copy_to_parent_payload_in_releasing_scope(v, interp)) {
+    bool wrapper_in_releasing_scope = boundary_ptr_in_scope((void*)v, interp.releasing_scope);
+    bool payload_in_releasing_scope = false;
+    if (!wrapper_in_releasing_scope) {
+        payload_in_releasing_scope = copy_to_parent_payload_in_releasing_scope(v, interp);
+    }
+    if (wrapper_in_releasing_scope || payload_in_releasing_scope) {
         g_copy_to_parent_stats.defensive_copies++;
         return false;
     }

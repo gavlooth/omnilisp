@@ -36,10 +36,22 @@ fn void Compiler.emit_json_string(Compiler* self, char[] s) {
                 self.emit("\\r");
             case '\t':
                 self.emit("\\t");
+            case (char)8:
+                self.emit("\\b");
+            case (char)12:
+                self.emit("\\f");
             case '`':
                 self.emit("\\u0060");
             default:
-                self.emit_char(c);
+                uint byte = (uint)c & 0xFF;
+                if (byte < 0x20) {
+                    char[] hex = "0123456789abcdef";
+                    self.emit("\\u00");
+                    self.emit_char(hex[(usz)((byte >> 4) & 0xF)]);
+                    self.emit_char(hex[(usz)(byte & 0xF)]);
+                } else {
+                    self.emit_char(c);
+                }
         }
     }
     self.emit_char('"');
@@ -136,6 +148,40 @@ fn void Compiler.emit_ffi_manifest_fn_entry(Compiler* self, Expr* expr, bool* fi
     if (param_policies != null) mem::free(param_policies);
 }
 
+fn void Compiler.emit_ffi_manifest_lib_entries(Compiler* self, Expr* expr, bool* first) {
+    if (expr == null) return;
+    if (expr.tag == E_MODULE && expr.module_expr != null) {
+        for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
+            self.emit_ffi_manifest_lib_entries(expr.module_expr.body[mi], first);
+        }
+        return;
+    }
+    if (expr.tag == E_BLOCK && expr.block != null) {
+        for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+            self.emit_ffi_manifest_lib_entries(expr.block.exprs[bi], first);
+        }
+        return;
+    }
+    self.emit_ffi_manifest_lib_entry(expr, first);
+}
+
+fn void Compiler.emit_ffi_manifest_fn_entries(Compiler* self, Expr* expr, bool* first) {
+    if (expr == null) return;
+    if (expr.tag == E_MODULE && expr.module_expr != null) {
+        for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
+            self.emit_ffi_manifest_fn_entries(expr.module_expr.body[mi], first);
+        }
+        return;
+    }
+    if (expr.tag == E_BLOCK && expr.block != null) {
+        for (usz bi = 0; bi < expr.block.expr_count; bi++) {
+            self.emit_ffi_manifest_fn_entries(expr.block.exprs[bi], first);
+        }
+        return;
+    }
+    self.emit_ffi_manifest_fn_entry(expr, first);
+}
+
 fn void Compiler.emit_ffi_contract_manifest(Compiler* self, List{Expr*}* exprs) {
     if (exprs == null || exprs.len() == 0) return;
     bool has_ffi = false;
@@ -152,27 +198,13 @@ fn void Compiler.emit_ffi_contract_manifest(Compiler* self, List{Expr*}* exprs) 
     self.emit("  \"libraries\": [\n");
     bool first_lib = true;
     for (usz i = 0; i < exprs.len(); i++) {
-        Expr* expr = (*exprs)[i];
-        if (expr.tag == E_MODULE && expr.module_expr != null) {
-            for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-                self.emit_ffi_manifest_lib_entry(expr.module_expr.body[mi], &first_lib);
-            }
-        } else {
-            self.emit_ffi_manifest_lib_entry(expr, &first_lib);
-        }
+        self.emit_ffi_manifest_lib_entries((*exprs)[i], &first_lib);
     }
     self.emit("\n  ],\n");
     self.emit("  \"functions\": [\n");
     bool first_fn = true;
     for (usz i = 0; i < exprs.len(); i++) {
-        Expr* expr = (*exprs)[i];
-        if (expr.tag == E_MODULE && expr.module_expr != null) {
-            for (usz mi = 0; mi < expr.module_expr.body_count; mi++) {
-                self.emit_ffi_manifest_fn_entry(expr.module_expr.body[mi], &first_fn);
-            }
-        } else {
-            self.emit_ffi_manifest_fn_entry(expr, &first_fn);
-        }
+        self.emit_ffi_manifest_fn_entries((*exprs)[i], &first_fn);
     }
     self.emit("\n  ]\n");
     self.emit("}`;\n\n");

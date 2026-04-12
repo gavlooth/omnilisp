@@ -9,12 +9,51 @@ import main;
 // =============================================================================
 // --- Flat (statement-level) compilation of individual forms ---
 
+fn usz Compiler.compile_when_unless_if(Compiler* self, Expr* expr, bool when_form, bool tail) {
+    usz arg_count = expr.call.arg_count;
+    if (arg_count < 1) return self.emit_nil_temp();
+
+    Expr* branch = null;
+    usz branch_count = arg_count - 1;
+    if (branch_count == 0) {
+        branch = make_nil_expr(self.interp);
+    } else if (branch_count == 1) {
+        branch = expr.call.args[1];
+    } else {
+        branch = self.interp.alloc_expr();
+        assert(branch != null, "compile_when_unless_if: failed to allocate block expression");
+        branch.tag = E_BLOCK;
+        branch.block = (ExprBlock*)ast_arena_alloc(&self.interp.ast_arena, ExprBlock.sizeof);
+        assert(branch.block != null, "compile_when_unless_if: failed to allocate block payload");
+        branch.block.expr_count = branch_count;
+        branch.block.exprs = (Expr**)ast_arena_alloc(&self.interp.ast_arena, Expr*.sizeof * branch_count);
+        assert(branch.block.exprs != null || branch_count == 0, "compile_when_unless_if: failed to allocate block expressions");
+        for (usz i = 0; i < branch_count; i++) {
+            branch.block.exprs[i] = expr.call.args[i + 1];
+        }
+    }
+
+    Expr if_expr;
+    if_expr.tag = E_IF;
+    if_expr.if_expr.test = expr.call.args[0];
+    if_expr.if_expr.then_branch = when_form ? branch : make_nil_expr(self.interp);
+    if_expr.if_expr.else_branch = when_form ? make_nil_expr(self.interp) : branch;
+
+    if (tail) return self.compile_if_common(&if_expr, true);
+    return self.compile_if_common(&if_expr, false);
+}
+
 fn usz Compiler.compile_call_flat(Compiler* self, Expr* expr) {
     usz arg_count = expr.call.arg_count;
 
     if (self.call_is_explain_thunked(expr)) {
         usz explain_r = self.compile_explain_flat(expr);
         if (explain_r != usz.max) return explain_r;
+    }
+
+    if (arg_count >= 1) {
+        if (self.call_head_is(expr, "when")) return self.compile_when_unless_if(expr, true, false);
+        if (self.call_head_is(expr, "unless")) return self.compile_when_unless_if(expr, false, false);
     }
 
     if (arg_count == 0) {
@@ -55,6 +94,9 @@ fn usz Compiler.compile_call_tail_flat(Compiler* self, Expr* expr) {
 
     // Special cases: list/dict build data structures, delegate to non-tail version
     if (self.tail_call_requires_non_tail_path(expr)) return self.compile_call_flat(expr);
+
+    if (self.call_head_is(expr, "when")) return self.compile_when_unless_if(expr, true, true);
+    if (self.call_head_is(expr, "unless")) return self.compile_when_unless_if(expr, false, true);
 
     if (arg_count == 0) return self.compile_zero_arg_tail_call(expr);
 

@@ -132,7 +132,7 @@ Treat compile-time checks as guardrails, not garnish.
 ### Example
 
 ```c3
-$assert(ValueTag.values.len == 17, "ValueTag changed: update dispatch table");
+$assert(ValueTag.values.len == 18, "ValueTag changed: update dispatch table");
 $assert(ScopeChunk.sizeof % 16 == 0, "ScopeChunk alignment changed");
 ```
 

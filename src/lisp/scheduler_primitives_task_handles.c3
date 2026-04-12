@@ -34,7 +34,6 @@ fn Value* scheduler_make_task_handle_value(usz task_id, uint generation, Interp*
         false
     );
     if (out == null) {
-        scheduler_task_handle_finalizer(handle);
         return scheduler_raise(
             interp,
             "scheduler/task-spawn-out-of-memory",

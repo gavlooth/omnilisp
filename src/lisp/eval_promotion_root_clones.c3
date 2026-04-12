@@ -234,6 +234,15 @@ fn void boundary_cleanup_materialized_value(
         scope_dtor_value((void*)copied);
         return;
     }
+    if (src != null &&
+        copied != null &&
+        src.tag == TENSOR &&
+        copied.tag == TENSOR) {
+        boundary_cleanup_materialized_tensor(src, copied, target_scope, escape_lane);
+        boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
+        scope_dtor_value((void*)copied);
+        return;
+    }
     if (copied.tag == CLOSURE) {
         boundary_cancel_materialized_dtor(copied, target_scope, escape_lane);
         scope_dtor_closure((void*)copied);
@@ -440,8 +449,7 @@ fn Value* root_store_clone_method_table_to_scope(
             dst_mt,
             dst_mt.entry_count,
             true,
-            target_scope,
-            true
+            target_scope
         );
         return null;
     }

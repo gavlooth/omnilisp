@@ -10,16 +10,32 @@ fn bool visitor_matches_filter(VisitorState* state, char* name_cstr) {
     return false;
 }
 
+fn bool visitor_matches_exclude_filter(VisitorState* state, char* name_cstr) {
+    if (!state.use_exclude_filter) return false;
+    for (usz i = 0; i < state.exclude_filter_count; i++) {
+        if (cstr_eq(name_cstr, &state.exclude_filter[i])) return true;
+    }
+    return false;
+}
+
 fn void visitor_set_param_name(ParsedParam* param, int index) {
     param.name[0] = 'a'; param.name[1] = 'r'; param.name[2] = 'g';
-    if (index < 10) {
-        param.name[3] = (char)('0' + index);
-        param.name[4] = 0;
-        return;
+    int value = index;
+    if (value < 0) value = 0;
+
+    char[16] digits;
+    usz digit_count = 0;
+    do {
+        digits[digit_count++] = (char)('0' + (value % 10));
+        value /= 10;
+    } while (value > 0 && digit_count < digits.len);
+
+    usz pos = 3;
+    while (digit_count > 0 && pos < param.name.len - 1) {
+        digit_count--;
+        param.name[pos++] = digits[digit_count];
     }
-    param.name[3] = (char)('0' + index / 10);
-    param.name[4] = (char)('0' + index % 10);
-    param.name[5] = 0;
+    param.name[pos] = 0;
 }
 
 fn void visitor_copy_param_name(LibclangHandle* h, CXCursor fn_cursor, ParsedParam* param, int index) {

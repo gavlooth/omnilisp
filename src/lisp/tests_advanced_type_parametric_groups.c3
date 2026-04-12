@@ -388,6 +388,13 @@ fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, i
         pass,
         fail);
 
+    test_eq_interp(interp,
+        "parser matrix accepts Value nil constructor",
+        "((lambda ((^(Value nil) x)) 77) nil)",
+        77,
+        pass,
+        fail);
+
     // Legacy alias should be rejected at parse time with explicit canonical message.
     test_error_contains(interp,
         "parser matrix rejects Val int constructor",

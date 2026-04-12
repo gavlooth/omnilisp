@@ -27,6 +27,7 @@ enum CopyParentRoute : char {
     CP_ROUTE_MODULE,
     CP_ROUTE_ERROR,
     CP_ROUTE_TIME_POINT,
+    CP_ROUTE_TENSOR,
 }
 
 fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
@@ -58,6 +59,8 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
         case ARRAY:
         case METHOD_TABLE:
             return CP_ROUTE_SHARED_WRAPPER;
+        case TENSOR:
+            return CP_ROUTE_TENSOR;
         case INSTANCE:
             return CP_ROUTE_INSTANCE;
         case FFI_HANDLE:
@@ -133,6 +136,8 @@ fn Value* copy_to_parent_by_route(
             return make_error(interp, v.str_chars[:v.str_len]);
         case CP_ROUTE_TIME_POINT:
             return copy_time_point_to_parent(v, interp);
+        case CP_ROUTE_TENSOR:
+            return copy_tensor_to_parent(v, interp, fault_out);
     }
 }
 

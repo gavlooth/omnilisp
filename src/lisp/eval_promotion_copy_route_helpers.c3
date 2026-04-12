@@ -323,6 +323,8 @@ fn Value* copy_shared_wrapper_to_parent(Value* v, Interp* interp, BoundaryCopyFa
             return copy_hashmap_backed_to_parent(v, interp, fault_out);
         case ARRAY:
             return copy_array_to_parent(v, interp, fault_out);
+        case TENSOR:
+            return copy_tensor_to_parent(v, interp, fault_out);
         case METHOD_TABLE:
             return copy_method_table_to_parent(v, interp, fault_out);
         default:
@@ -420,6 +422,11 @@ fn Value* copy_iterator_to_parent(Value* v, Interp* interp, BoundaryCopyFault* f
     }
     Value* result = interp.alloc_value();
     if (result == null) {
+        boundary_cleanup_materialized_value(
+            v.iterator_val,
+            promoted_thunk,
+            interp.current_scope
+        );
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }

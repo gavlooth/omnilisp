@@ -105,8 +105,10 @@ queue; this file is supporting context for why the queue is ordered this way.
 
 ## Current Plan
 
-1. Continue the remaining scientific-computing surface lane already in
-   `TODO.md`: `LANG-TENSOR-SCIENTIFIC-SURFACE-091`.
+1. Keep the closed scientific-computing surface lane historical; the former
+   Tensor residual lanes in `TODO.md` (`LANG-TENSOR-BACKEND-BOUNDARY-092`,
+   `LANG-TENSOR-BROADCASTING-093`, and `LANG-TENSOR-LAZY-EDGE-ROLLBACK-094`)
+   are now closed.
 2. Keep new implementation work sliced and committed separately after each
    audited fix, with TODO entries closed only after targeted validation.
 3. Re-run broader Docker validation when a change crosses runtime memory,

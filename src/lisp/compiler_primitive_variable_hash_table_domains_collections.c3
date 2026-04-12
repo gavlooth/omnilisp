@@ -42,6 +42,14 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("is?"), "aot::lookup_prim(\"is?\")");
     prim_hash_insert(st.intern("instance?"), "aot::lookup_prim(\"instance?\")");
     prim_hash_insert(st.intern("type-args"), "aot::lookup_prim(\"type-args\")");
+    prim_hash_insert(st.intern("Tensor"), "aot::lookup_prim(\"Tensor\")");
+    prim_hash_insert(st.intern("__tensor-map"), "aot::lookup_prim(\"__tensor-map\")");
+    prim_hash_insert(st.intern("contract"), "aot::lookup_prim(\"contract\")");
+    prim_hash_insert(st.intern("materialize"), "aot::lookup_prim(\"materialize\")");
+    prim_hash_insert(st.intern("tensor?"), "aot::lookup_prim(\"tensor?\")");
+    prim_hash_insert(st.intern("dtype"), "aot::lookup_prim(\"dtype\")");
+    prim_hash_insert(st.intern("shape"), "aot::lookup_prim(\"shape\")");
+    prim_hash_insert(st.intern("rank"), "aot::lookup_prim(\"rank\")");
 
     // Math
     prim_hash_insert(st.intern("abs"), "aot::lookup_prim(\"abs\")");

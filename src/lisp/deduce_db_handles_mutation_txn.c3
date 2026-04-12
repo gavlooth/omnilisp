@@ -168,4 +168,5 @@ fn void deduce_txn_finalizer(void* handle) {
     if (handle == null) return;
     DeduceTxn* txn = (DeduceTxn*)handle;
     deduce_txn_finalize(txn);
+    mem::free(txn);
 }

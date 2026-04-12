@@ -1,7 +1,7 @@
 # Memory and Runtime
 
-Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, and release-signal cleanup are all currently validated)
-As of: 2026-04-11
+Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, and transactional destination materialization are all currently validated)
+As of: 2026-04-12
 
 ## Canonical Sources
 
@@ -24,7 +24,7 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
 - Scoped finalize unification is live via `boundary_finalize_scoped_result(...)`, and eval/JIT finalize flows share that helper.
 - Boundary state restore uses `BoundarySession` (`boundary_session_begin/end`) in audited helpers and regression probes.
 - Runtime intern and unhandled-effect payload guard cleanup is current as of
-  2026-04-11:
+  2026-04-12:
   - `register_language_constants(...)` rejects failed `nil` symbol interning
     before defining the language constant.
   - JIT promise env matching treats failed env-tag interning as a non-match.
@@ -89,6 +89,50 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
   missing-path cases remap nil offload results to I/O payload codes instead of
   leaking `scheduler/offload-invalid-completion-kind`.
   - validation: bounded async slice `pass=61 fail=0`
+- Scheduler non-fiber task join timeout cleanup now handles timer-start failure
+  with single close authority: the explicit failure-path `uv_close(...)` clears
+  the local timer pointer before the deferred cleanup runs.
+  - validation: bounded scheduler slice `pass=113 fail=0`
+- Signal-handle construction now rolls back registered runtime state on final
+  `ForeignHandle` wrapper allocation failure:
+  - the failure path detaches the native watcher, registry entry, and retained
+    callback owner scope instead of leaving an unreachable registered handle.
+  - validation: bounded memory-lifetime smoke slice `pass=210 fail=0`
+- Lazy Tensor `ref` now cancels and destroys the concrete materialization
+  temporary after extracting the scalar result:
+  - active tensor destructor regression coverage verifies repeated lazy Tensor
+    indexing does not leave a live temporary tensor destructor behind.
+  - validation: host advanced collections module group `pass=203 fail=0`;
+    bounded memory-lifetime smoke slice `pass=210 fail=0`
+- Nested lazy Tensor `materialize` now cleans temporary child tensors created
+  while resolving nested `map`/`contract` expression operands:
+  - regression coverage materializes a nested lazy `map` expression and checks
+    that only the top-level concrete result remains live until caller cleanup.
+  - follow-up coverage also materializes a nested lazy `contract` expression
+    and verifies failed lazy `map` materialization destroys the fresh concrete
+    result tensor instead of leaving a live scope destructor.
+  - validation: bounded memory-lifetime smoke slice `pass=215 fail=0`
+- Structured error payloads are no longer built unless a matching `raise`
+  handler can consume them:
+  - ordinary unhandled `io_raise(...)` failures no longer leave root-scoped
+    payload dictionaries behind.
+  - `process-wait` result projection also cleans a partially built result
+    hashmap when insertion fails.
+  - `make_raise_payload(...)` also cleans a partially built root dictionary if
+    payload key/value construction fails mid-build.
+  - checked hashmap insertion now also rolls back newly promoted root key/value
+    copies if publication fails before a slot is claimed, including the
+    full-table/no-slot failure path.
+  - validation: bounded memory-lifetime smoke slice `pass=216 fail=0`
+- Lazy Tensor `materialize` into an explicit destination is now staged:
+  - lazy `map`/`contract` expressions evaluate into a temporary concrete
+    Tensor first and copy into the caller destination only after success, so a
+    failed element computation leaves the destination unchanged.
+  - contract destination/source aliasing is still rejected before staging.
+  - failed Tensor constructor data validation now cleans the unreturned tensor
+    wrapper instead of leaving a live scope destructor.
+  - validation: host advanced collections module group `pass=206 fail=0`;
+    bounded memory-lifetime smoke slice `pass=216 fail=0`
 - I/O and string-buffer growth paths now fail closed on overflow-before-
   allocation and invalid capacity state:
   - console capture/copy, input-state append, CSV field/row growth, REPL
@@ -475,7 +519,7 @@ Repro artifacts:
 
 ## Next Steps
 
-1. Use `scripts/run_validation_status_summary.sh build/validation_status_summary.json` as the broad bounded-gate snapshot before drilling into narrower runtime guards.
+1. Run `scripts/run_validation_status_summary.sh build/validation_status_summary.json` before treating `build/validation_status_summary.json` as current broad bounded-gate output, then drill into narrower runtime guards.
 2. Keep `memory/CHANGELOG.md`, `TODO.md`, and `memory/DESTINATION_ARENA_PLAN.md` closure wording synchronized per landing.
 3. Keep `scripts/run_boundary_hardening.sh` and policy checks as required gate runs for boundary-sensitive changes.
 4. Keep nested wrapper fail-closed coverage (`CONS` / `PARTIAL_PRIM` / `ITERATOR` with opaque primitive payloads) in the bounded smoke lane when touching boundary-copy or ESCAPE promotion code.
@@ -616,24 +660,28 @@ for future concurrency ownership evolution.
     runtime-facing callers that need an explicit OOM channel, and
   - raise payload construction, `Dictionary`, `Set`, and `to-array` now use
     that checked path instead of dereferencing failed constructor internals.
-- The remaining open runtime memory item is now broader constructor-callsite
-  migration from unchecked `make_array(...)` / `make_hashmap(...)` users rather
-  than the shared constructor substrate itself.
+- The broader constructor-callsite migration from unchecked `make_array(...)` /
+  `make_hashmap(...)` users is now split and closed by callsite family rather
+  than carried as one open residual.
 - The data-format bridge slice of that migration is now closed:
   - JSON and TOML recursive decode paths now use checked `ARRAY` / `HASHMAP`
     constructors plus checked hashmap insertion,
   - CSV row/result construction now uses checked array constructors, and
   - nested conversion errors in JSON/TOML no longer get embedded into partial
     collections.
-- The residual runtime constructor migration is now split by real callsite
-  family:
+- The residual runtime constructor migration was split by real callsite family:
   - schema explain payload-map builders
   - remaining runtime/status payload builders
 - The schema-explain family is now closed too:
   - explain entrypoint/result/candidate/source payload maps now use checked map
     construction and checked insertion through one explicit OOM contract.
-- The only remaining unchecked collection-constructor migration lane is now the
-  runtime/status payload-builder family.
+- The runtime/status payload-builder family is now closed too:
+  - async process/DNS/process-wait payload builders, fs-handle payload builders,
+    and parsed HTTP response payloads now use checked `ARRAY` / `HASHMAP`
+    construction plus checked insertion, and
+  - `process-spawn` closes live process/fs handles if final success-payload map
+    construction fails, so constructor OOM cannot strand open resources behind a
+    half-built success result.
 
 - Adjacent apply/promotion helper surfaces are now fail-closed too:
   - `apply_partial(...)` rejects malformed `PARTIAL_PRIM` state before
@@ -714,6 +762,18 @@ for future concurrency ownership evolution.
 - Bounded validation after this slice:
   - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=scheduler ...`
     -> `pass=109 fail=0`
+
+- OS-thread work admission failure now releases shared payloads before
+  returning scheduler errors:
+  - `scheduler_admit_os_thread_work(...)` releases `work.shared` for missing
+    handle, full thread table, invalid generation lookup, and OS-thread start
+    failure exits.
+  - the bounded scheduler slice now pins the direct invalid-handle failure path
+    and verifies the shared registry no longer resolves the payload after
+    admission failure.
+- Bounded validation after this slice:
+  - `scripts/run_validation_container.sh ... OMNI_LISP_TEST_SLICE=scheduler ...`
+    -> `pass=112 fail=0`
 
 - Shared two-arg list materialization is now fail-closed too:
   - `make_list2_or_error(...)` now provides one checked two-value list helper

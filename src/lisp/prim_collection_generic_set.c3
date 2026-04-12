@@ -113,6 +113,12 @@ fn bool ref_try_lookup_collection(Interp* interp, Value* coll, Value* key, Value
         return true;
     }
 
+    // Tensor: rank-polymorphic row-major indexing with an index array/list.
+    if (coll.tag == TENSOR) {
+        *out = tensor_ref_value(coll, key, interp);
+        return true;
+    }
+
     return false;
 }
 

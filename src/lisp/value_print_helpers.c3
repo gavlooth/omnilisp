@@ -22,6 +22,7 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "Double") ||
@@ -33,6 +34,7 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
         zstr_eq(name, "Closure") ||
         zstr_eq(name, "List") ||
         zstr_eq(name, "Array") ||
+        zstr_eq(name, "Tensor") ||
         zstr_eq(name, "Dictionary") ||
         zstr_eq(name, "Set") ||
         zstr_eq(name, "Iterator") ||
@@ -49,6 +51,7 @@ fn ZString symbol_type_descriptor_name(char* name) {
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "Double") ||
@@ -60,6 +63,7 @@ fn ZString symbol_type_descriptor_name(char* name) {
         zstr_eq(name, "Closure") ||
         zstr_eq(name, "List") ||
         zstr_eq(name, "Array") ||
+        zstr_eq(name, "Tensor") ||
         zstr_eq(name, "Dictionary") ||
         zstr_eq(name, "Set") ||
         zstr_eq(name, "Iterator") ||
@@ -172,6 +176,24 @@ fn void print_array_value(Value* v, SymbolTable* syms) {
         }
     }
     io::print("]");
+}
+
+fn void print_tensor_value(Value* v, SymbolTable* syms) {
+    (void)syms;
+    TensorVal* tensor = v.tensor_val;
+    if (tensor == null) {
+        io::print("#<tensor:null>");
+        return;
+    }
+    io::printf(
+        tensor.kind == TENSOR_PAYLOAD_CONCRETE ? "#<tensor %s shape [" : "#<tensor-expr %s shape [",
+        (ZString)tensor_dtype_name(tensor.dtype)
+    );
+    for (usz i = 0; i < tensor.rank; i++) {
+        if (i > 0) io::print(" ");
+        io::printf("%d", (long)tensor.shape[i]);
+    }
+    io::print("]>");
 }
 
 fn void print_instance_value(Value* v, SymbolTable* syms) {

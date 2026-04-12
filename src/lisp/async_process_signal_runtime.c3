@@ -28,6 +28,7 @@ fn void process_handle_finalizer(void* handle) {
     ProcessHandle* ph = (ProcessHandle*)handle;
     if (ph == null) return;
     close_process_handle(ph);
+    mem::free(ph);
 }
 
 fn bool process_handle_try_begin_use(ProcessHandle* ph) {
@@ -135,6 +136,7 @@ fn void signal_handle_finalizer(void* handle) {
     SignalHandle* sh = (SignalHandle*)handle;
     if (sh == null) return;
     signal_handle_detach_runtime_state(sh);
+    mem::free(sh);
 }
 
 fn bool ffi_handle_name_equals(Value* v, char[] expected) @inline {
@@ -163,8 +165,6 @@ fn Value* make_process_handle(Interp* interp, void* uv_process) {
     Value* v = make_ffi_handle_ex(interp, (void*)ph, "process-handle",
         &process_handle_finalizer, true, false);
     if (v == null) {
-        mem::free(ph);
-        if (uv_process != null) omni_uv_process_close(uv_process);
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
     return v;
@@ -213,12 +213,27 @@ fn Value* make_signal_handle(Interp* interp, void* uv_signal_watch, int signum, 
         return io_raise(interp, "io/signal-handle-failed", "signal-handle: failed to register signal handle");
     }
 
-    Value* v = make_ffi_handle_ex(interp, (void*)sh, "signal-handle",
-        &signal_handle_finalizer, true, false);
-    if (v == null) {
+    FfiHandle* box = make_ffi_box(
+        (void*)sh,
+        "signal-handle",
+        &signal_handle_finalizer,
+        true,
+        FOREIGN_RUNTIME_NATIVE,
+        FOREIGN_HANDLE_OPAQUE,
+        FOREIGN_CAP_RELEASE,
+        FFI_HANDLE_OWNED);
+    if (box == null) {
         signal_handle_detach_runtime_state(sh);
         mem::free(sh);
         return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
     }
+
+    Value* v = boundary_alloc_value_in_scope(interp, interp.current_scope, true);
+    if (v == null) {
+        ffi_handle_release(box);
+        return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
+    }
+    v.tag = FFI_HANDLE;
+    v.ffi_val = box;
     return v;
 }

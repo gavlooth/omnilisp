@@ -180,6 +180,8 @@ not exported.
 | `bound?` | 1 | Is name defined? |
 | `type-args` | 1 | Parametric type args |
 | `iterator?` | 1 | Is iterator value? |
+| `foreign-describe` | 1 | Return `ForeignHandle` or FFI-bound callable metadata dictionary |
+| `foreign-release` | 1 | Explicitly release an owned/releasable `ForeignHandle` payload and return `Void` |
 
 `Nil` is the language-level empty/false value type. `Void` is now a real
 singleton value constructor with zero arguments, and FFI `^Void` returns map to
@@ -198,8 +200,9 @@ that same runtime value.
 | `Symbol` | 1 | Canonical symbol constructor/coercion surface |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Boolean`, `Nil`,
-`Void`, and `Closure`.
+`Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Nil`, `Void`, `Closure`,
+`List`, `Array`, `Dictionary`, `Dict`, `Set`, `Iterator`, `Coroutine`,
+`TimePoint`, and `Tensor`.
 
 **Math:**
 
@@ -243,6 +246,24 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `set-contains?` | 2 | Set membership |
 | `length` | 1 | Set cardinality |
 | `List` | 1 | Convert set to list |
+
+**Tensor:**
+
+| Name | Arity | Description |
+|------|-------|-------------|
+| `Tensor` | 3 | Construct native `Double` tensor storage as `(Tensor Double shape data-or-scalar)` |
+| `tensor?` | 1 | Predicate for native tensor values |
+| `length` | 1 | Tensor element count |
+| `dtype` | 1 | Tensor dtype symbol |
+| `shape` | 1 | Tensor shape array |
+| `rank` | 1 | Tensor rank |
+| `contract` | 4 | Pure `Double` summed-axis tensor contraction |
+| `materialize` | 1-2 | Force a tensor expression or write tensor/scalar source into a destination tensor |
+
+Tensor indexing uses generic `ref`. Tensor length uses generic `length`.
+Tensor elementwise operations use generic `map` through `^Tensor` dispatch
+methods. Lazy tensor expression payloads are internal to `Tensor`; there is no
+public `TensorExpr` primitive or type.
 
 **Coroutines:**
 

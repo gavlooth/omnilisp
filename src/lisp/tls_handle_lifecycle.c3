@@ -56,7 +56,7 @@ fn void tls_handle_finalizer(void* handle) {
         br_sslio_close(th.sslio_ctx);
         th.connected = false;
     }
-    tls_handle_free(th);
+    tls_destroy_handle(th);
 }
 
 fn bool tls_try_mark_in_flight(TlsHandle* th) @inline {

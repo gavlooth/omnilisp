@@ -1,7 +1,7 @@
 # Omni Lisp Language Specification
 
 **Version:** 0.4.7
-**Date:** 2026-04-09
+**Date:** 2026-04-11
 
 Omni Lisp is a Lisp dialect with first-class delimited continuations, algebraic effects, strict-arity multi-param lambdas, multiple dispatch, and a structural type system. It runs on a deterministic scope-region memory system with dual-lane TEMP/ESCAPE ownership, implemented in C3 with a GNU Lightning JIT engine and a Lisp-to-C3 AOT transpiler.
 
@@ -357,14 +357,32 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
 | Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
 | Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (lambda () body))` |
+| Tensor | `TENSOR` | Homogeneous n-dimensional numeric storage | `(Tensor Double [2 3] 0.0)` |
 | void | `VOID` | Singleton no-result value | `#<void>` |
+| ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
+| instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
+| method-table | `METHOD_TABLE` | Multiple dispatch table | internal |
 
 Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
 cover the language's empty/false value, while `Void` is now a real builtin
 singleton type/value used by FFI `^Void` returns as well.
-| ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
-| instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
-| method-table | `METHOD_TABLE` | Multiple dispatch table | internal |
+
+`Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
+current runtime slice registers the type descriptor, constructor, print
+surface, lifetime copy/promotion paths, tensor `ref`, and introspection
+primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The first
+constructor surface is `(Tensor Double shape data-or-scalar)`, where `shape`
+is an array or proper list of non-negative integers and `data-or-scalar` is
+either a scalar numeric fill value or an array/proper list with exactly the
+shape product's element count. Tensor `ref` uses `(ref tensor index-array)`.
+`materialize` treats concrete tensors as already materialized values, forces
+lazy Tensor expression payloads, and can write a tensor expression, concrete
+tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
+`map` is the elementwise tensor operation; `contract` is the pure `Double`
+summed-axis operation for tensor contraction. Both may produce lazy Tensor
+expression payloads under the existing `Tensor` value, with backend
+acceleration left as an optimization behind the same semantic surface. User
+code should not name or depend on a separate `TensorExpr` type.
 
 ### 2.2 Truthiness
 
@@ -718,6 +736,7 @@ Canonical naming direction:
 - `Dict` is the allowed shorthand constructor alias for `Dictionary`.
 - alternate-spelling policy is input-tolerant but output-canonical:
   - alternate spellings are accepted in constructor/type-annotation input position,
+    so `^Dict` resolves as canonical `Dictionary`,
   - docs/examples and introspection outputs use canonical names (`Integer`,
     `Boolean`, `Dictionary`),
   - constructor failure messages/payload text use canonical constructor names
@@ -782,6 +801,7 @@ None                    ; nullary variant
 ^(Value bind)           ; symbol literal
 ^(Value "open")         ; string literal
 ^(Value true)           ; boolean literal (true/false symbols)
+^(Value nil)            ; nil literal
 ```
 
 Meta/abstract symbols `Any`, `Number`, and `Collection` participate in
@@ -884,7 +904,7 @@ Command-style facades like `udp` are valid API shape, but core operations remain
 
 | Match Type | Score | Description |
 |------------|-------|-------------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)`, `^(Value nil)` |
 | Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle (Shape child) |
 | Any type | 1 | Untyped parameter matches anything |
@@ -963,7 +983,7 @@ Example:
 ```lisp
 list.[0]            ; first element
 str.[2]             ; character code at index 2
-matrix.[i].[j]      ; chained indexing
+tensor.[i].[j]      ; chained indexing
 array.[0]           ; array indexing
 dict.['key]         ; dict key lookup
 ```
@@ -1038,7 +1058,7 @@ Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` 
 | `cdr` | 1 | Rest element |
 | `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (Iterator ...))`) |
 | `List` | variadic | Canonical list constructor/conversion surface (`list` remains a public helper) |
-| `length` | 1 | Generic: list, array, dict, or string length |
+| `length` | 1 | Generic: list, array, dict, string, or tensor element count |
 | `null?` | 1 | Check if nil |
 | `pair?` | 1 | Check if cons |
 
@@ -1224,6 +1244,57 @@ Numeric conversion policy:
 | `macroexpand` | Expand macro |
 | `bound?` | Check if name is defined |
 
+### 7.17.1 Tensor Construction And Introspection
+
+These primitives are implemented for native `Tensor` values. The first
+constructor surface supports `Double` storage only.
+
+| Prim | Description |
+|------|-------------|
+| `Tensor` | Construct a native double tensor as `(Tensor Double shape data-or-scalar)` |
+| `tensor?` | Predicate for native tensor values |
+| `dtype` | Return the tensor dtype symbol, currently `'Double` for the first storage path |
+| `shape` | Return the tensor shape as an array of dimensions |
+| `rank` | Return the tensor rank |
+| `contract` | Contract two tensors as `(contract a b left-axes right-axes)` |
+| `materialize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(materialize expr [out])` |
+
+Tensor indexing is part of generic `ref`. Tensor elementwise operations are
+part of generic `map`; unary tensor inputs, tensor-scalar inputs,
+scalar-tensor inputs, and exact-shape tensor-tensor inputs are supported in
+the first `Double` slice. Scalar arguments are coerced into the first tensor
+input's dtype and broadcast over the tensor shape. Singleton-axis broadcasting
+is deferred. Tensor `map` and `contract` may return lazy Tensor expression
+payloads under the existing `Tensor` value; `materialize` forces them either
+by allocating concrete storage or by writing directly into an exact-shape/dtype
+destination tensor. Elementwise `map` destination materialization may update
+an input tensor in place; `contract` destination materialization rejects
+destinations that alias either source tensor. Tensor contraction uses
+`(contract a b left-axes right-axes)`, where the axis lists have equal length,
+each paired contracted dimension matches, and the result shape is all
+non-contracted left axes followed by all non-contracted right axes. Axis lists
+may be arrays or proper lists of integers; negative axes normalize from the
+end of each tensor's rank.
+
+```lisp
+(define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
+(ref x [1 2])   ; => 6.0
+(ref x [1 -1])  ; => 6.0
+
+(define z (map + x 1.0))
+(ref z [1 2])   ; => 7.0
+
+(define a (Tensor Double [2 3] [1 2 3 4 5 6]))
+(define b (Tensor Double [3 2] [7 8 9 10 11 12]))
+(ref (contract a b [1] [0]) [1 1]) ; => 154.0
+
+(materialize x)                 ; => x, because x is already concrete
+(define y (Tensor Double [2 3] 0.0))
+(materialize x y)               ; => y, after copying x into y
+(materialize 1.0 y)             ; => y, after filling y with 1.0
+(materialize (map + x 1.0) y)   ; => y, after evaluating into y
+```
+
 ### 7.18 Error Handling (2)
 
 | Prim | Description |
@@ -1251,21 +1322,89 @@ Numeric conversion policy:
 (define [ffi λ libc] (strlen (^String s)) ^Integer)
 (define [ffi λ libc] (abs (^Integer n)) ^Integer)
 
+;; Grouped C ABI module sugar over [ffi lib] plus [ffi λ]
+(define [ffi module] libc2 "libc.so.6"
+  (strlen (^String s)) ^Integer
+  (abs (^Integer n)) ^Integer
+  (fopen (^String path) (^String mode))
+    ^{'name File 'ownership owned 'finalizer fclose})
+
 (strlen "hello")  ; => 5
 (abs -42)          ; => 42
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer` -> sint64, `^Double` -> double, `^String` -> pointer, `^ForeignHandle` -> pointer, `^Void` -> void, `^Boolean` -> sint64
-- `^ForeignHandle` is the simple default foreign-handle annotation. In `ffi λ`, FFI-local metadata dictionaries may refine it, for example `^{'name File 'ownership owned 'finalizer fclose}` implies `ForeignHandle`; the explicit `^{'type ForeignHandle ...}` form is also accepted. Dictionary entries are key/value pairs with quoted symbol keys; Omni does not use colon keywords.
-- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`, `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation level; unsupported annotations fail at definition time instead of defaulting to pointer ABI metadata
+- Type annotations: `^Integer` -> sint64, `^Double` -> double, `^String`
+  -> copied plain `char*` boundary, `^ForeignHandle` -> boxed opaque foreign
+  handle, `^Void` -> void, `^Boolean` -> sint64
+- `^ForeignHandle` is the simple default foreign-handle annotation. It
+  represents opaque foreign resources as `FFI_HANDLE` boxes; user
+  code does not pass raw integer addresses.
+- In `ffi λ`, FFI-local metadata dictionaries may refine a foreign handle
+  policy. `^{'name File 'ownership owned 'finalizer fclose}` implies
+  `ForeignHandle`; the explicit `^{'type ForeignHandle ...}` form is also
+  accepted. Dictionary entries are key/value pairs with quoted symbol keys;
+  Omni does not use colon keywords.
+- Supported `ForeignHandle` metadata keys are `'type`, `'name`, `'ownership`,
+  `'finalizer`, and `'nullability`. Supported ownership values are `borrowed`,
+  `owned`, and `manual`; supported nullability values are `nullable` and
+  `non-null`. An owned return handle requires a finalizer. Owned parameter
+  policies are rejected because a call argument cannot transfer Omni-side
+  finalizer authority safely in the current runtime.
+- Foreign handles carry a small common runtime descriptor internally:
+  runtime kind, handle kind, and capability bits. The user-facing
+  introspection surface is `(foreign-describe value)`. For a `ForeignHandle`,
+  it returns a dictionary using quoted-symbol keys: `'type`, `'runtime`,
+  `'kind`, `'ownership`, `'name`, `'live`, and `'capabilities`. Capability
+  sequences are arrays of symbols so the shape matches metadata sequence fields
+  such as `'parameters [..]`. Opaque foreign-resource handle names such as
+  `File` are returned as symbols; C ABI library handle names remain strings
+  because they are the `dlopen` target. C ABI library handles reflect
+  load/resolve/reflect capabilities; direct call capability is reflected on
+  `ForeignCallable` descriptors for bound functions.
+- `(foreign-describe ffi-bound-function)` returns reflection metadata for C ABI
+  functions declared through `[ffi lambda]`: `'type 'ForeignCallable`, `'runtime
+  'c-abi`, `'kind 'function`, `'name`, `'c-name`, `'library`, `'parameters`,
+  `'returns`, `'resolved`, `'available`, and `'capabilities`. `'parameters` is
+  an array of descriptor dictionaries; `'returns` is one descriptor dictionary.
+  Each descriptor includes user-facing `'type` and ABI-level `'abi-type`.
+  `ForeignHandle` descriptors also preserve `'name`, `'ownership`,
+  `'nullability`, and `'finalizer` metadata when present.
+- `(foreign-release handle)` is the explicit release boundary for releasable
+  `ForeignHandle` payloads. It returns `Void`, is idempotent for already-closed
+  handles, clears the payload pointer observed by `foreign-describe`, and
+  makes released handles stop reflecting as `'ownership owned` because the
+  live pointer and release capability are gone. It
+  rejects ordinary non-releasable library or borrowed resource handles. This is
+  only for foreign resources and does not add refcount or garbage-collected
+  ownership for Omni values.
+- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`,
+  `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation level;
+  unsupported annotations fail at definition time instead of defaulting to
+  foreign-handle metadata.
 - Argument conversion is fail-closed:
   - `^Integer`: Omni `Integer` only
   - `^Double`: Omni `Double` or `Integer`
   - `^Boolean`: Omni `true` / `false` only
-  - `^String`: Omni `String`, or `nil` for a null `char*`
+  - `^String`: Omni `String`, or `nil` for a null plain `char*`
   - `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
   - FFI-local metadata dictionaries in `ffi λ` use the same quoted-symbol key/value dictionary syntax as the rest of Omni; no colon keywords are used.
+- Return conversion follows the same no-raw-pointer rule: non-null `^String`
+  C plain `char*` returns are copied into Omni `String` values, null string
+  returns become `nil`, non-null `^ForeignHandle` C pointer returns become
+  `ForeignHandle` values, and null pointer returns become `nil`.
+  Generated bindings keep byte pointers such as `signed char*` and
+  `unsigned char*` as `ForeignHandle` values instead of string-shaped
+  parameters or returns.
+  For plain character pointers, `const char*` and `char const*` are
+  string-input shaped; `char* const` is still mutable pointee storage and stays
+  on the mutable string-buffer wrapper path.
+  Only single-level plain `char*` pointers are string-shaped; pointer-to-pointer
+  spellings such as `char**` and `const char**` remain opaque `ForeignHandle`
+  values.
+  Name-based mutable string-buffer direction inference treats `inout` as more
+  specific than `out`, so names such as `inout_buffer` generate
+  `buffer-direction=inout`.
 - Declarative `variadic` bindings are currently rejected at definition time until the runtime carries explicit fixed/variadic metadata
 - Execution mode contract: interpreter/JIT `ffi λ` enforces `ForeignHandle`
   metadata dictionaries. AOT lowering carries the same policy into generated
@@ -1273,6 +1412,13 @@ Numeric conversion policy:
   return handle name/ownership/finalizer descriptor.
 - `Nil` is the language-level empty/false value type; `Void` is a real singleton runtime value/type, and FFI `^Void` returns produce that value
 - Lazy dlsym: symbol resolution deferred to first call and cached
+- Grouped FFI module syntax is shipped as parser sugar:
+  `(define [ffi module] lib "path" (fn (^Type arg)) ^Return ...)` expands to
+  one `[ffi lib]` declaration plus one `[ffi λ]` declaration per function. The
+  body is a flat sequence of `(signature, return-annotation)` pairs: no `->`
+  syntax and no bracketed body entries. Malformed body sequences fail closed,
+  and `ForeignHandle` metadata dictionaries use the same policy validation and
+  AOT descriptors as the single-function form.
 
 ### 7.21 Constants
 

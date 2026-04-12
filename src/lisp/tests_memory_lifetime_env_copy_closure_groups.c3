@@ -104,6 +104,91 @@ fn void run_memory_lifetime_copy_parent_closure_env_scope_retain_test(Interp* in
     }
 }
 
+fn void run_memory_lifetime_copy_parent_closure_env_scope_parent_detach_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: standalone closure env scopes are reusable only when their
+    // reachable env chain does not point back into the releasing source scope.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            interp.current_scope = saved_scope;
+            interp.releasing_scope = saved_releasing_scope;
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: copy_to_parent closure env_scope parent detach");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId payload_sym = interp.symbols.intern("__copy_parent_closure_parent_payload");
+        SymbolId late_parent_sym = interp.symbols.intern("__copy_parent_closure_late_parent_payload");
+
+        interp.current_scope = source;
+        Env* captured_env = make_env(interp, interp.global_env);
+        env_define_with_barrier(captured_env, payload_sym, make_int(interp, 77), interp);
+
+        main::ScopeRegion* closure_env_scope = null;
+        Value* closure = make_env_scope_closure_for_test(interp, captured_env, &closure_env_scope);
+        if (captured_env != null) {
+            env_define_with_barrier(captured_env, late_parent_sym, make_int(interp, 92), interp);
+        }
+        if (closure != null &&
+            closure.tag == CLOSURE &&
+            closure.closure_val != null &&
+            closure.closure_val.env != null) {
+            closure.closure_val.env.parent = captured_env;
+        }
+
+        bool setup_ok = captured_env != null &&
+                        closure != null &&
+                        closure.tag == CLOSURE &&
+                        closure.closure_val != null &&
+                        closure.closure_val.env != null &&
+                        closure_env_scope != null &&
+                        closure_env_scope.refcount == 1 &&
+                        env_chain_has_frame_in_scope(closure.closure_val.env, source, interp.global_env);
+
+        interp.current_scope = target;
+        interp.releasing_scope = source;
+        Value* copied = setup_ok ? copy_to_parent(closure, interp) : null;
+        interp.releasing_scope = saved_releasing_scope;
+
+        bool copied_ok = copied != null &&
+                         copied != closure &&
+                         copied.tag == CLOSURE &&
+                         copied.closure_val != null &&
+                         copied.closure_val.env != null &&
+                         copied.closure_val.env_scope != null &&
+                         copied.closure_val.env_scope != closure_env_scope &&
+                         !env_chain_has_frame_in_scope(copied.closure_val.env, source, interp.global_env) &&
+                         closure_env_lookup_int(copied, payload_sym, 77) &&
+                         closure_env_lookup_int(copied, late_parent_sym, 92);
+
+        main::scope_release(source);
+        bool post_release_ok = copied_ok &&
+                               closure_env_lookup_int(copied, late_parent_sym, 92);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(target);
+
+        bool ok = setup_ok && copied_ok && post_release_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: copy_to_parent closure env_scope parent detach");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: copy_to_parent closure env_scope parent detach (setup_ok=%s copied_ok=%s post_release_ok=%s)",
+                setup_ok ? "yes" : "no",
+                copied_ok ? "yes" : "no",
+                post_release_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_copy_parent_closure_wrapper_alloc_fail_test(Interp* interp, int* pass, int* fail) {
     // Invariant: copy_to_parent fails closed on closure wrapper allocation
     // failure and does not retain detached closure env scopes.

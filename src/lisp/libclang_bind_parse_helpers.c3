@@ -12,6 +12,9 @@ struct VisitorState {
     char[64]*       filter;     // Optional function name filter
     usz             filter_count;
     bool            use_filter;
+    char[64]*       exclude_filter;
+    usz             exclude_filter_count;
+    bool            use_exclude_filter;
     bool            output_limit_hit;
     bool            param_allocation_failed;
     bool            unsupported_type;
@@ -55,6 +58,10 @@ fn uint clang_visitor(CXCursor cursor, CXCursor parent, void* client_data) {
         h.dispose_string(name_str);
         return CXCHILDVISIT_CONTINUE;
     }
+    if (visitor_matches_exclude_filter(state, name_cstr)) {
+        h.dispose_string(name_str);
+        return CXCHILDVISIT_CONTINUE;
+    }
 
     ParsedFunc* func = &state.funcs[state.count];
     if (func.params != null) {
@@ -63,6 +70,7 @@ fn uint clang_visitor(CXCursor cursor, CXCursor parent, void* client_data) {
     }
     func.param_count = 0;
     func.param_capacity = 0;
+    func.filtered_out = false;
 
     // Copy name
     cstr_copy(name_cstr, &func.name, 127);

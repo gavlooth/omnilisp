@@ -75,11 +75,27 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(Array (cons 1 2))", "Array: expected a proper list", pass, fail);
     test_truthy(interp, "Dictionary ctor type", "(= (type-of (Dictionary 'a 1)) 'Dictionary)", pass, fail);
     test_eq(interp, "Dict shorthand ctor", "(ref (Dict 'a 1 'b 2) 'b)", 2, pass, fail);
+    test_str_val(interp, "Dict shorthand type descriptor print", "(format \"%s\" Dict)", "#<type Dictionary>", pass, fail);
     test_truthy(interp, "Set ctor type", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
     test_eq(interp, "Set ctor dedup", "(length (Set 1 2 2 3))", 3, pass, fail);
     test_truthy(interp, "Iterator ctor from list type", "(= (type-of (Iterator '(1 2 3))) 'Iterator)", pass, fail);
     test_truthy(interp, "Coroutine ctor type",
         "(= (type-of (Coroutine (lambda () 1))) 'Coroutine)", pass, fail);
+    test_str_val(interp, "Tensor type descriptor print", "(format \"%s\" Tensor)", "#<type Tensor>", pass, fail);
+    test_truthy(interp, "Tensor ctor type", "(= (type-of (Tensor Double [2 3] 0.0)) 'Tensor)", pass, fail);
+    test_truthy(interp, "Tensor predicate", "(tensor? (Tensor Double [2 3] 0.0))", pass, fail);
+    test_str_val(interp, "Tensor ctor dtype", "(format \"%s\" (dtype (Tensor Double [2] 0.0)))", "Double", pass, fail);
+    test_str_val(interp, "Tensor ctor shape", "(format \"%s\" (shape (Tensor Double [2 3] 0.0)))", "[2 3]", pass, fail);
+    test_eq(interp, "Tensor ctor rank", "(rank (Tensor Double [2 3] 0.0))", 2, pass, fail);
+    test_eq(interp, "Tensor ctor length", "(length (Tensor Double [2 3] 0.0))", 6, pass, fail);
+    test_error_contains(interp, "Tensor ctor rejects data length mismatch",
+        "(Tensor Double [2 3] [1 2])", "Tensor: data length does not match shape product", pass, fail);
+    test_error_contains(interp, "Tensor ctor rejects invalid shape",
+        "(Tensor Double [2 -1] 0.0)", "Tensor: shape dimensions must be non-negative integers", pass, fail);
+    test_error_contains(interp, "Tensor ctor rejects unsupported dtype",
+        "(Tensor Integer [2] [1 2])", "Tensor: first argument must be Double", pass, fail);
+    test_nil(interp, "tensor? nil", "(tensor? nil)", pass, fail);
+    test_error_contains(interp, "dtype rejects non-tensor", "(dtype 1)", "dtype: expected Tensor", pass, fail);
     test_tag(interp, "TimePoint ctor type", "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
     setup(interp, "(define (ctor-only-array (^Array a)) 11)");
     setup(interp, "(define (ctor-only-array x) 22)");

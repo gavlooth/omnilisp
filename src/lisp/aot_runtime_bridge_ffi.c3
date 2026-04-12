@@ -44,6 +44,14 @@ fn lisp::Value* aot_ffi_policy_from_spec(
     if (spec.finalizer.len > 0 && !aot_intern_checked(interp, spec.finalizer, &out_policy.finalizer_symbol)) {
         return aot_make_error_best_effort(interp, "aot ffi λ: invalid or uninternable ForeignHandle finalizer");
     }
+    if (out_policy.ownership == lisp::FfiHandleOwnership.FFI_HANDLE_MANUAL
+        && out_policy.finalizer_symbol != lisp::INVALID_SYMBOL_ID) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: manual ForeignHandle return cannot specify a finalizer");
+    }
+    if (out_policy.finalizer_symbol != lisp::INVALID_SYMBOL_ID
+        && out_policy.ownership != lisp::FfiHandleOwnership.FFI_HANDLE_OWNED) {
+        return aot_make_error_best_effort(interp, "aot ffi λ: finalizer-bearing ForeignHandle return must use owned ownership");
+    }
     if (out_policy.ownership == lisp::FfiHandleOwnership.FFI_HANDLE_OWNED
         && out_policy.finalizer_symbol == lisp::INVALID_SYMBOL_ID) {
         return aot_make_error_best_effort(interp, "aot ffi λ: owned ForeignHandle return requires a finalizer");
@@ -106,6 +114,7 @@ fn lisp::Value* ffi_declare_fn(
         unavailable.is_variadic = false;
         unavailable.required_library = false;
         unavailable.required_symbol = false;
+        unavailable.runtime_kind = FOREIGN_RUNTIME_C_ABI;
         unavailable.is_unavailable = true;
         unavailable.c_name = null;
         unavailable.c_name_len = 0;
@@ -146,6 +155,7 @@ fn lisp::Value* ffi_declare_fn(
     bound.has_return = false;
     bound.return_type = (lisp::FfiTypeTag)0;
     bound.return_handle_policy = lisp::ffi_handle_policy_default();
+    bound.runtime_kind = lib_val.ffi_val.runtime_kind;
     bound.is_variadic = false;
     bound.c_name = null;
     bound.c_name_len = c_symbol.len;
