@@ -60,6 +60,36 @@ fn bool Lexer.scan_hash_regex_literal(Lexer* self, char next) {
     return true;
 }
 
+fn bool is_reader_tag_start_char(char c) @inline {
+    if (c >= 'a' && c <= 'z') return true;
+    if (c >= 'A' && c <= 'Z') return true;
+    if ((uint)c >= 0x80) return true;
+    return false;
+}
+
+fn bool is_reader_tag_char(char c) @inline {
+    if (c == '#') return false;
+    return is_symbol_char(c);
+}
+
+fn bool Lexer.scan_hash_reader_tag(Lexer* self, char next) {
+    if (!is_reader_tag_start_char(next)) return false;
+    self.next_char();  // consume #
+    self.current.text_len = 0;
+    if (self.current.text != null && self.current.text_cap > 0) self.current.text[0] = 0;
+
+    while (self.pos < self.len && is_reader_tag_char(self.source[self.pos])) {
+        if (!self.push_current_text_char(self.source[self.pos])) {
+            self.set_error_text("out of memory while lexing reader tag");
+            return true;
+        }
+        self.next_char();
+    }
+
+    self.current.type = T_READER_TAG;
+    return true;
+}
+
 // Returns true after consuming or reporting a hash dispatch token.
 fn bool Lexer.scan_hash_dispatch(Lexer* self) {
     if (self.pos + 1 >= self.len) {
@@ -72,12 +102,14 @@ fn bool Lexer.scan_hash_dispatch(Lexer* self) {
             return self.scan_hash_underscore_form(next);
         case 'r':
             if (self.scan_hash_regex_literal(next)) return true;
+            if (self.scan_hash_reader_tag(next)) return true;
             self.set_error_text("unknown # dispatch sequence");
             return true;
         default:
             if (next >= '1' && next <= '9' && self.scan_hash_counted_underscore_form(next)) {
                 return true;
             }
+            if (self.scan_hash_reader_tag(next)) return true;
             self.set_error_text("unknown # dispatch sequence");
             return true;
     }

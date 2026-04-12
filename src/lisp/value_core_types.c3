@@ -185,6 +185,7 @@ struct Value {
     union {
         long          int_val;
         double        double_val;     // Floating-point value
+        void*         big_integer_val; // Boost.Multiprecision cpp_int handle
         struct {
             char* str_chars;
             usz   str_len;

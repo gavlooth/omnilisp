@@ -30,6 +30,11 @@ fn void scope_dtor_value(void* ptr) {
                 mem::free(v.array_val);
                 v.array_val = null;
             }
+        case BIG_INTEGER:
+            if (v.big_integer_val != null) {
+                omni_big_integer_free(v.big_integer_val);
+                v.big_integer_val = null;
+            }
         case TENSOR:
             if (v.tensor_val != null) {
                 tensor_free_payload(v.tensor_val);

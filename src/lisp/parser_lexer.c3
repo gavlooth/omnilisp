@@ -27,6 +27,7 @@ enum TokenType : char {
     T_RBRACE,       // } for metadata dictionaries
     T_HASH_UNDERSCORE, // #_ or #N_ form comment (int_value = N)
     T_REGEX,        // #r"pattern" compiled regex literal
+    T_READER_TAG,   // #tag form reader tag shorthand
     T_ERROR,
 }
 
@@ -102,7 +103,7 @@ fn void Lexer.advance(Lexer* self) {
     if (self.scan_punctuation_token(c)) return;
     if (self.scan_logic_variable(c)) return;
 
-    // Reader dispatch: # followed by {, r", _, N_
+    // Reader dispatch: #r"...", #_/#N_, and #tag form
     if (c == '#') {
         if (self.scan_hash_dispatch()) return;
     }

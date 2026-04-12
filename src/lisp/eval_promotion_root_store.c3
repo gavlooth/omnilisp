@@ -66,6 +66,7 @@ fn Value* root_store_route_to_scope(
         case NIL:
         case VOID:
         case INT:
+        case BIG_INTEGER:
         case STRING:
         case SYMBOL:
         case CONS:

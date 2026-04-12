@@ -22,6 +22,33 @@ Recently Closed is retained below as a short audit trail.
 
 ## Recently Closed
 
+- [x] `LANG-SCALAR-BOOST-BIGINTEGER-096` add the first Boost.Multiprecision
+  exact-integer scalar slice
+  - shipped slice: `SCALAR-010A` Boost `BigInteger` core:
+    - Added Boost.Multiprecision `cpp_int` storage behind an owned C++ helper
+      archive and C ABI shim.
+    - Added the language-facing `BigInteger` constructor for integers and
+      decimal strings, type identity as a `Number` subtype, printing/String
+      conversion, hashing/equality, and scope-boundary copy/promotion support.
+    - Updated `+`, `-`, and `*` so fixed-width `Integer` overflow promotes to
+      `BigInteger`; `BigInteger` combines with `Integer`/`BigInteger`, and
+      mixed `Double` arithmetic uses finite double conversion when possible.
+    - Deferred `/`, `%`, ordering comparisons, bitwise operations, `gcd`/`lcm`,
+      `BigFloat`/`BigComplex`, and `parse-number` arbitrary-precision parsing
+      until each has an explicit surface contract.
+    - Validation: `./scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`,
+      direct BigInteger smokes, focused advanced numeric tests, full
+      `advanced-stdlib-numeric` under `prlimit --stack=67108864`, and Stage 3
+      e2e source parity passed.
+
+- [x] `LANG-TENSOR-LAPACK-SOLVER-NAMING-097` record solver naming constraint
+  for the next LAPACK/LAPACKE slice
+  - decision note:
+    - Do not expose solver/decomposition conveniences as a bare `solve`.
+    - Do not lock `linalg/` as the base namespace yet.
+    - Keep `tensor/lapack` as an implementation/backend ownership label until
+      the public Tensor convenience namespace is explicitly chosen.
+
 - [x] `LANG-FFI-FIRST-CLASS-GROUPED-MODULE-106` make Omni FFI grouped,
   first-class, and easier to bind
   - design note:
@@ -476,6 +503,26 @@ Recently Closed is retained below as a short audit trail.
       library/context handles.
     - do not add public `matmul`, backend-specific tensor types, or implicit
       CPU/GPU transfer semantics.
+
+- [ ] `LANG-TENSOR-NATIVE-BLAS-LAPACK-095` continue optional native BLAS/LAPACK
+  execution backend work behind `contract`/`realize`
+  - source plan: `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`
+  - shipped slice: `TENSOR-090A` added optional runtime `cblas_dgemm`
+    discovery and a private rank-2 `[1 0]` `Double` fast path.
+  - shipped slice: `TENSOR-090B` extended that private `dgemm` path with
+    transpose flags for all contiguous rank-2 single-axis layouts:
+    `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
+  - deferred work:
+    - decide LAPACK/LAPACKE solver/decomposition surface names before adding
+      public conveniences;
+    - consider private `gemv`/vector-specialized BLAS only with focused
+      pure-fallback regressions;
+    - do not add public `matmul`, backend-specific Tensor types, or
+      `ForeignHandle`-backed ordinary Tensor storage.
+  - latest validation:
+    - `c3c build --obj-out obj`
+    - host targeted `advanced-collections-module` group: `pass=221 fail=0`
+    - direct transpose-backed smokes returned `84.0`, `68.0`, and `123.0`
 
 - [x] `LANG-TENSOR-BROADCASTING-093` decide singleton-axis Tensor
   broadcasting semantics

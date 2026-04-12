@@ -83,7 +83,7 @@ Ordering contract:
 `Tensor` is Omni's rank-polymorphic scientific numeric aggregate. The current
 runtime ships native `Double` tensor storage, generic `length` introspection,
 tensor indexing through generic `ref`, tensor-dispatched `map`, pure `Double`
-tensor `contract`, and `materialize` as the explicit storage boundary.
+tensor `contract`, and `realize` as the explicit storage boundary.
 
 ```lisp
 (define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
@@ -94,24 +94,26 @@ tensor `contract`, and `materialize` as the explicit storage boundary.
 (ref x [1 -1])             ;; => 6.0
 
 (define y (Tensor Double [2 3] 0.0))
-(materialize (map + x 1.0) y) ;; => y, after elementwise evaluation into y
-(materialize (Tensor Double [] 3.0) (Tensor Double [] 0.0))
-(materialize 9 (Tensor Double [0] 0.0))
-(materialize (map + (Tensor Double [0] 0.0) 1.0) (Tensor Double [0] 0.0))
+(realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y
+(realize (Tensor Double [] 3.0) (Tensor Double [] 0.0))
+(realize 9 (Tensor Double [0] 0.0))
+(realize (map + (Tensor Double [0] 0.0) 1.0) (Tensor Double [0] 0.0))
 
 (define a (Tensor Double [2 3] [1 2 3 4 5 6]))
 (define b (Tensor Double [3 2] [7 8 9 10 11 12]))
-(ref (contract a b [1] [0]) [1 1]) ;; => 154.0
+(ref (contract a b [1 0]) [1 1]) ;; => 154.0
 ```
 
 Tensor `map` and `contract` may return lazy expression payloads under the
-existing `Tensor` value; there is no public `TensorExpr` type. `materialize`
+existing `Tensor` value; there is no public `TensorExpr` type. `realize`
 forces those expressions by allocating concrete storage or by staging into a
 temporary concrete tensor and copying into an exact-shape/dtype destination
-only after success. Elementwise destination materialization may alias an input
-tensor; contraction destination materialization rejects destinations that
+only after success. Elementwise destination realization may alias an input
+tensor; contraction destination realization rejects destinations that
 recursively alias either source tensor, while zero-byte tensor storage is not
 treated as an alias.
+`contract` accepts paired-axis arrays such as `[1 0]` and `[[1 0] [2 3]]`;
+the explicit left/right axis-list form remains available when it is clearer.
 Contraction over a zero-size contracted axis produces the additive identity for
 the output cell. Zero-size dimensions are valid shape dimensions. Scalar
 broadcasting and right-aligned singleton-axis tensor-tensor broadcasting are

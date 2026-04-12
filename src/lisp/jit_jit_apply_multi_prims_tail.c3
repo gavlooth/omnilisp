@@ -162,32 +162,17 @@ fn Env* jit_env_reparent(Env* env, Env* new_parent) {
 }
 
 fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) + to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val + b.int_val);
-    }
+    if (a != null && b != null) return numeric_add2(interp, a, b);
     return raise_error(interp, "+: expected numbers");
 }
 
 fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) - to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val - b.int_val);
-    }
+    if (a != null && b != null) return numeric_sub2(interp, a, b);
     return raise_error(interp, "-: expected numbers");
 }
 
 fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) * to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val * b.int_val);
-    }
+    if (a != null && b != null) return numeric_mul2(interp, a, b);
     return raise_error(interp, "*: expected numbers");
 }
 

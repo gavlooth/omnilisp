@@ -44,6 +44,11 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
     }
     if (arg.tag == INT) return arg;
+    if (arg.tag == BIG_INTEGER) {
+        long out = 0;
+        if (big_integer_try_to_i64(arg, &out)) return make_int(interp, out);
+        return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
+    }
     if (arg.tag == DOUBLE) {
         return conversion_int_from_double_or_raise(
             interp,
@@ -73,7 +78,7 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
     }
     if (arg.tag == STRING) return arg;
-    if (is_number(arg)) return prim_number_to_string(args, env, interp);
+    if (is_number(arg) || is_big_integer(arg)) return prim_number_to_string(args, env, interp);
     if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
     if (is_nil(arg) || is_cons(arg)) {
         return list_to_string_value(arg, interp,
@@ -93,6 +98,11 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
     }
     if (arg.tag == DOUBLE) return arg;
     if (arg.tag == INT) return make_double(interp, (double)arg.int_val);
+    if (arg.tag == BIG_INTEGER) {
+        double out = 0.0;
+        if (big_integer_try_to_double(arg, &out)) return make_double(interp, out);
+        return conversion_type_raise(interp, "Double: expected int, double, BigInteger in Double range, or numeric string");
+    }
     if (arg.tag == STRING) {
         Value* parsed = prim_string_to_number(args, env, interp);
         if (parsed != null && parsed.tag != NIL) {
@@ -113,6 +123,19 @@ fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
     if (arg.tag == SYMBOL) return arg;
     if (arg.tag == STRING) return prim_string_to_symbol(args, env, interp);
     return conversion_type_raise(interp, "Symbol: expected symbol or string");
+}
+
+fn Value* prim_ctor_big_integer(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
+    }
+    if (arg.tag == BIG_INTEGER) return arg;
+    if (arg.tag == INT) return make_big_integer_from_i64(interp, arg.int_val);
+    if (arg.tag == STRING) return make_big_integer_from_string(interp, arg.str_chars[:arg.str_len]);
+    return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
 }
 
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
@@ -206,7 +229,10 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "String: expected number");
+    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]))) return conversion_type_raise(interp, "String: expected number");
+    if (is_big_integer(args[0])) {
+        return big_integer_to_string_value(args[0], interp, "String: failed to render BigInteger");
+    }
     char[64] buf;
     if (is_double(args[0])) {
         return make_string(interp, double_to_string(args[0].double_val, &buf));
@@ -215,12 +241,15 @@ fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "Double: expected number");
-    return make_double(interp, to_double(args[0]));
+    if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Double: expected number");
+    double out = 0.0;
+    if (!try_numeric_to_double(args[0], &out)) return conversion_type_raise(interp, "Double: expected number in Double range");
+    return make_double(interp, out);
 }
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return conversion_type_raise(interp, "Integer: expected number");
+    if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Integer: expected number");
+    if (is_big_integer(args[0])) return prim_ctor_int(args, env, interp);
     return conversion_int_from_double_or_raise(interp, to_double(args[0]), "Integer: expected finite number in Integer range");
 }
 

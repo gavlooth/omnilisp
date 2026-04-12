@@ -1,0 +1,19 @@
+module lisp;
+
+extern fn void* omni_big_integer_from_i64(long value) @extern("omni_big_integer_from_i64");
+extern fn void* omni_big_integer_from_chars(char* chars, usz len) @extern("omni_big_integer_from_chars");
+extern fn void* omni_big_integer_clone(void* value) @extern("omni_big_integer_clone");
+extern fn void omni_big_integer_free(void* value) @extern("omni_big_integer_free");
+extern fn char* omni_big_integer_to_string(void* value, usz* out_len) @extern("omni_big_integer_to_string");
+extern fn void omni_big_integer_string_free(char* value) @extern("omni_big_integer_string_free");
+extern fn int omni_big_integer_fits_i64(void* value) @extern("omni_big_integer_fits_i64");
+extern fn int omni_big_integer_to_i64(void* value, long* out) @extern("omni_big_integer_to_i64");
+extern fn int omni_big_integer_to_double(void* value, double* out) @extern("omni_big_integer_to_double");
+extern fn int omni_big_integer_compare(void* lhs, void* rhs) @extern("omni_big_integer_compare");
+extern fn int omni_big_integer_compare_i64(void* lhs, long rhs) @extern("omni_big_integer_compare_i64");
+extern fn void* omni_big_integer_binary(void* lhs, void* rhs, int op) @extern("omni_big_integer_binary");
+extern fn void* omni_big_integer_binary_i64(long lhs, long rhs, int op) @extern("omni_big_integer_binary_i64");
+extern fn void* omni_big_integer_binary_left_i64(long lhs, void* rhs, int op) @extern("omni_big_integer_binary_left_i64");
+extern fn void* omni_big_integer_binary_right_i64(void* lhs, long rhs, int op) @extern("omni_big_integer_binary_right_i64");
+extern fn void* omni_big_integer_neg(void* value) @extern("omni_big_integer_neg");
+extern fn void* omni_big_integer_neg_i64(long value) @extern("omni_big_integer_neg_i64");

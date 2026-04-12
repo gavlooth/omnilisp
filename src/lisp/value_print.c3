@@ -20,6 +20,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             char[] dstr = double_to_string(v.double_val, &dbuf);
             dbuf[dstr.len] = 0;
             io::printf("%s", (ZString)&dbuf);
+        case BIG_INTEGER:
+            print_big_integer_value(v);
         case STRING:
             io::printf("\"%s\"", (ZString)v.str_chars);
         case SYMBOL:

@@ -1,6 +1,6 @@
 # Omni Surface Compatibility
 
-**Updated:** 2026-04-09
+**Updated:** 2026-04-13
 
 This document is the single compatibility source for removed or renamed
 language surface syntax.
@@ -21,6 +21,8 @@ Policy:
 | Effects | `signal`, `handle`, `resolve`, `with-continuation` |
 | Access syntax | `expr.name`, `expr.[key]`, `(ref expr key)` |
 | Macro definition | `(define [macro] name (syntax-match ...))` |
+| Reader tag macro definition | `(define [reader tag] name (syntax-match ...))` |
+| Reader tag use | `#tag form` parses as `(tag form)` |
 | Value dispatch constructor | `Value` |
 | Transaction command | `(deduce 'block db ['read|'write|'write-deferred])` |
 

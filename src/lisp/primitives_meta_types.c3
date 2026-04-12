@@ -110,6 +110,11 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
                 tensor_free_payload(v.tensor_val);
                 v.tensor_val = null;
             }
+        case BIG_INTEGER:
+            if (v.big_integer_val != null) {
+                omni_big_integer_free(v.big_integer_val);
+                v.big_integer_val = null;
+            }
         case HASHMAP:
             // HashMap struct is region-allocated, only entries buffer is malloc'd
             if (v.hashmap_val != null) {

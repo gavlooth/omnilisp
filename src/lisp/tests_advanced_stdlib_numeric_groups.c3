@@ -156,6 +156,25 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "parse-number exp", "(parse-number \"1.5e2\")", 150.0, pass, fail);
     test_nil(interp, "parse-number integer overflow => nil", "(parse-number \"9223372036854775808\")", pass, fail);
     test_nil(interp, "parse-number integer underflow => nil", "(parse-number \"-9223372036854775809\")", pass, fail);
+    test_str_val(interp, "BigInteger ctor large string",
+        "(String (BigInteger \"9223372036854775808\"))",
+        "9223372036854775808", pass, fail);
+    test_truthy(interp, "BigInteger type-of",
+        "(= (type-of (BigInteger \"1\")) 'BigInteger)", pass, fail);
+    test_truthy(interp, "BigInteger is Number",
+        "(number? (BigInteger \"1\"))", pass, fail);
+    test_str_val(interp, "BigInteger + overflow promotion",
+        "(String (+ 9223372036854775807 1))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger subtraction",
+        "(String (- (BigInteger \"9223372036854775808\") 1))",
+        "9223372036854775807", pass, fail);
+    test_str_val(interp, "BigInteger multiplication",
+        "(String (* (BigInteger \"9223372036854775808\") 2))",
+        "18446744073709551616", pass, fail);
+    test_eq(interp, "Integer ctor accepts in-range BigInteger",
+        "(Integer (BigInteger \"9223372036854775807\"))",
+        9223372036854775807, pass, fail);
     test_str_val(interp, "Integer ctor overflow payload code",
         "(handle (Integer \"9223372036854775808\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
@@ -167,6 +186,12 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "Integer huge-double payload code",
         "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "BigInteger invalid string payload code",
+        "(handle (BigInteger \"12x\") (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer rejects out-of-range BigInteger payload code",
+        "(handle (Integer (BigInteger \"9223372036854775808\")) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str(interp, "String double", "(String 3.14)", pass, fail);
     test_error_contains(interp, "String rejects trailing arg", "(String 42 99)", "arity mismatch", pass, fail);

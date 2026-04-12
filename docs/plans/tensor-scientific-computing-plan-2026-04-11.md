@@ -22,7 +22,7 @@ The chosen direction is:
 - `map` is extended through dispatch for elementwise tensor operations and
   scalar broadcast.
 - `contract` is the canonical tensor contraction operation.
-- `materialize` is the canonical tensor-expression-to-storage boundary.
+- `realize` is the canonical tensor-expression-to-storage boundary.
 
 This plan records the naming decisions, semantic contracts, rollout slices,
 test gates, deferred work, and implementation progress.
@@ -44,14 +44,14 @@ dynamic collection of boxed Omni values. It is useful as a general collection,
 but it is not a high-performance homogeneous numeric storage type.
 
 `examples/scicomp_demo.omni` now uses canonical `Tensor`, `map`,
-`contract`, and `materialize` forms. The older `vec-*`, `mat-*`, and `mat-mul`
+`contract`, and `realize` forms. The older `vec-*`, `mat-*`, and `mat-mul`
 prototype vocabulary is no longer part of the shipped surface.
 
 Name collision note:
 
 - Deduce already has the namespaced command `deduce/materialize!` and the
   relation attribute `[relation ... materialized]`.
-- Tensor `materialize` is a different concept: it turns a tensor expression
+- Tensor `realize` is a different concept: it turns a tensor expression
   into concrete tensor storage, optionally into an existing destination tensor.
 - Do not rename or fold the Deduce materialized-view command into this tensor
   operation.
@@ -59,7 +59,7 @@ Name collision note:
 ## Implementation Progress
 
 - `TENSOR-001` is complete: the surface is frozen around `Tensor`, tensor
-  dispatch through `map`, `contract`, and `materialize`.
+  dispatch through `map`, `contract`, and `realize`.
 - `TENSOR-010` is complete: native `Tensor` runtime payloads, destructor,
   printing, type identity, boundary copy/promotion support, and `tensor?`,
   `dtype`, `shape`, `rank`, and `length` are implemented and tested.
@@ -67,10 +67,10 @@ Name collision note:
   native double tensors from scalar fills or exact-length array/proper-list
   data, and `(ref tensor index-array)` indexes tensors with per-axis negative
   index support.
-- `TENSOR-030` is complete for concrete tensor materialization: concrete
-  tensors satisfy the tensor-expression boundary, `(materialize tensor)`
-  returns the already-concrete tensor, `(materialize tensor out)` copies into a
-  mutable exact-shape/dtype destination, and `(materialize scalar out)` fills
+- `TENSOR-030` is complete for concrete tensor realization: concrete
+  tensors satisfy the tensor-expression boundary, `(realize tensor)`
+  returns the already-concrete tensor, `(realize tensor out)` copies into a
+  mutable exact-shape/dtype destination, and `(realize scalar out)` fills
   the destination.
 - `TENSOR-040` is complete for elementwise `map`: unary tensor, tensor-scalar,
   scalar-tensor, and exact-shape tensor-tensor `Double` inputs route through
@@ -79,52 +79,52 @@ Name collision note:
   singleton-axis broadcasting for tensor-tensor inputs, with rank-0 tensors
   treated as broadcast-compatible tensor scalars and deterministic
   `tensor/shape-mismatch` failures for incompatible shapes.
-- `TENSOR-050` is complete for pure `Double` `contract`: axis-list
-  contraction supports one or more axis pairs, rank-0 scalar results,
-  multi-axis contractions, per-axis negative normalization, and deterministic
-  axis/dimension diagnostics.
+- `TENSOR-050` is complete for pure `Double` `contract`: paired-axis arrays
+  and explicit axis-list contraction support one or more axis pairs, rank-0
+  scalar results, multi-axis contractions, per-axis negative normalization,
+  and deterministic axis/dimension diagnostics.
 - `TENSOR-060A` is complete as a fusion-boundary audit: true
-  `(materialize (map ...) out)` / `(materialize (contract ...) out)` fusion
+  `(realize (map ...) out)` / `(realize (contract ...) out)` fusion
   requires a lazy tensor-expression value or a macro/special-form rewrite,
-  because ordinary eager evaluation materializes the source before
-  `materialize` receives it.
+  because ordinary eager evaluation realizes the source before
+  `realize` receives it.
 - `TENSOR-060B-prep` is complete: eager `map` and `contract` now execute
   through internal destination-ready pure Tensor kernels, so a later lazy
-  expression value can materialize through staged destination storage without
+  expression value can realize through staged destination storage without
   reimplementing the elementwise or contraction loops.
 - `TENSOR-060B` is complete: Tensor-dispatched `map` and `contract` now return
   lazy expression payloads under the existing `Tensor` value, and
-  `materialize` can allocate a concrete result or stage evaluation before
+  `realize` can allocate a concrete result or stage evaluation before
   copying into a destination tensor after success.
 - `TENSOR-060C` is complete: valid non-negative Tensor dimensions no longer
   trip the platform-size overflow guard on 64-bit builds, and contraction over
-  zero-size axes materializes the additive identity instead of entering the
+  zero-size axes realizes the additive identity instead of entering the
   contracted-index divide/modulo path.
-- `TENSOR-060D` is complete: rank-0 concrete destination materialization,
-  zero-size destination/materialization paths, aliased elementwise `map`
-  destination materialization, and duplicate-axis checks after negative-axis
+- `TENSOR-060D` is complete: rank-0 concrete destination realization,
+  zero-size destination/realization paths, aliased elementwise `map`
+  destination realization, and duplicate-axis checks after negative-axis
   normalization are covered.
 - `TENSOR-060E` is complete: tensor expression child values copied or promoted
   across boundary paths are now rolled back if a later tensor copy/promotion or
-  wrapper allocation step fails. Generic materialized-value cleanup also
+  wrapper allocation step fails. Generic realized-value cleanup also
   recurses through tensor expression edges before freeing the copied tensor
   payload.
 - `TENSOR-060F` is complete: tensor values now use the non-unique destination
-  retry promotion path at return boundaries, and concrete `materialize` fast
+  retry promotion path at return boundaries, and concrete `realize` fast
   paths validate source backing storage before returning or copying malformed
   tensors.
 - `TENSOR-060G` is complete: lazy Tensor `ref` cancels and destroys the
-  temporary concrete materialization after extracting the scalar result, with
+  temporary concrete realization after extracting the scalar result, with
   destructor-count regression coverage in the memory-lifetime smoke slice.
-- `TENSOR-060H` is complete: nested lazy Tensor `materialize` now cleans
+- `TENSOR-060H` is complete: nested lazy Tensor `realize` now cleans
   temporary child tensors created while resolving nested `map`/`contract`
-  expression operands, leaving only the top-level materialized result live
+  expression operands, leaving only the top-level realized result live
   until caller cleanup.
-- `TENSOR-060I` is complete: failed lazy Tensor materialization now cleans the
+- `TENSOR-060I` is complete: failed lazy Tensor realization now cleans the
   fresh concrete result tensor through the generic fresh-value cleanup path,
-  with nested `contract` materialization and failed `map` materialization
+  with nested `contract` realization and failed `map` realization
   destructor-count coverage in the memory-lifetime smoke slice.
-- `TENSOR-060J` is complete: lazy Tensor `materialize` into an explicit
+- `TENSOR-060J` is complete: lazy Tensor `realize` into an explicit
   destination now stages expression evaluation into a temporary Tensor and
   commits to the destination only after success. The contract destination/source
   aliasing rejection walks lazy expression operands while ignoring zero-byte
@@ -142,9 +142,24 @@ Name collision note:
   `map`/`contract` return and closure-capture regression coverage.
   Metadata examples retain `Array`-based shape/axes payload forms where that
   transport format was already canonical.
-- Current next slices are optional backend follow-ons:
-  `TENSOR-090` BLAS/LAPACK backend optimization and `TENSOR-100` explicit
-  CUDA/cuBLAS design.
+- Current next slices are optional backend follow-ons: the remaining
+  `TENSOR-090` BLAS/LAPACK work beyond the transpose-capable rank-2 `dgemm`
+  fast path, and `TENSOR-100` explicit CUDA/cuBLAS design.
+- `TENSOR-090A` is complete: dense rank-2 `Double` contraction equivalent to
+  `(contract a b [1 0])` now has a direct native BLAS `dgemm` fast path at the
+  Tensor evaluation boundary. The fast path is optional at runtime, uses the
+  existing scoped native `TensorVal` storage, does not introduce a public
+  `TensorHandle`, and falls back to the pure C3 contraction kernel when no
+  compatible BLAS library/symbol is available or when dtype/rank/layout/axis
+  conditions do not match.
+- `TENSOR-090B` is complete: that private `dgemm` backend now accepts
+  transpose flags and covers all contiguous row-major rank-2 single-axis
+  `Double` contractions, including `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
+  while still using the pure C3 contraction kernel as the semantic fallback.
+- Solver naming checkpoint: future LAPACK/LAPACKE solve/decomposition
+  conveniences must not expose a bare `solve`; `linalg/` is not yet locked as
+  the base namespace. Backend-module labels such as `tensor/lapack` describe
+  implementation ownership, not a finalized public convenience prefix.
 
 ## Locked Naming Decisions
 
@@ -168,7 +183,7 @@ Contract:
   algebra.
 - The first surface means: dtype, shape, rank, homogeneous numeric storage,
   indexing, elementwise expressions, contraction expressions, and explicit
-  materialization into storage. Reductions remain planned library conveniences,
+  realization into storage. Reductions remain planned library conveniences,
   not part of the shipped first surface.
 
 ### `Array`
@@ -197,7 +212,7 @@ Contract:
 
 - For tensors, `map` produces a tensor-shaped expression.
 - The current implementation represents that expression as a lazy `Tensor`
-  payload and materializes it only at `materialize` or `ref`.
+  payload and realizes it only at `realize` or `ref`.
 - Tensor `map` currently accepts one or two tensor/scalar inputs.
 - Scalar arguments broadcast over tensor arguments.
 - First implementation supports scalar broadcast and exact-shape tensor-tensor
@@ -222,7 +237,7 @@ Use `contract` as the canonical summed-index tensor algebra operation.
 Canonical form:
 
 ```lisp
-(contract a b [1] [0])
+(contract a b [1 0])
 ```
 
 Meaning:
@@ -233,41 +248,43 @@ Meaning:
 Multi-axis form:
 
 ```lisp
-(contract a b [1 2] [0 3])
+(contract a b [[1 0] [2 3]])
 ```
 
 Rules:
 
 - `contract` produces a tensor-shaped expression.
-- axis lists must have equal length.
+- paired-axis arrays are canonical; the explicit
+  `(contract a b left-axes right-axes)` form remains accepted.
+- explicit axis lists must have equal length.
 - each axis must be in range for its tensor.
 - dimensions for paired axes must match.
 - result shape is all non-contracted axes from the left tensor followed by all
   non-contracted axes from the right tensor, preserving source order.
 - no implicit default contraction is provided for general tensors.
 
-### `materialize`
+### `realize`
 
-Use `materialize` as the canonical tensor-expression-to-storage boundary.
+Use `realize` as the canonical tensor-expression-to-storage boundary.
 
 Canonical forms:
 
 ```lisp
-(materialize (map + a b))
-(materialize (map sqrt x) x)
-(materialize (contract a b [1] [0]) c)
-(materialize 0.0 x)
-(materialize src out)
+(realize (map + a b))
+(realize (map sqrt x) x)
+(realize (contract a b [1 0]) c)
+(realize 0.0 x)
+(realize src out)
 ```
 
 Contract:
 
-- `(materialize expr)` returns a concrete `Tensor`.
-- `(materialize expr out)` writes the expression into existing mutable tensor
+- `(realize expr)` returns a concrete `Tensor`.
+- `(realize expr out)` writes the expression into existing mutable tensor
   `out` and returns `out`.
 - A concrete `Tensor` satisfies the tensor-expression protocol.
 - If `expr` is already a concrete tensor and no destination is provided,
-  `materialize` may return the tensor unchanged.
+  `realize` may return the tensor unchanged.
 - If `expr` is a scalar, a destination tensor is required; every element of the
   destination is set to that scalar, subject to dtype policy.
 - If `expr` is a tensor and a destination is provided, shape and dtype
@@ -294,8 +311,8 @@ Rejected as canonical:
 - `map-into`: technically clear, but awkward to read and too tied to `map`.
 - `compute`: too broad.
 - `assign`: too vague and too close to binding/update semantics.
-- `copy` / `fill` as peers to `materialize`: too close to each other; they may
-  exist later only as convenience wrappers over `materialize`.
+- `copy` / `fill` as peers to `realize`: too close to each other; they may
+  exist later only as convenience wrappers over `realize`.
 
 Non-goals for the first implementation:
 
@@ -385,7 +402,7 @@ Diagnostic target:
 Acceptance:
 
 - `Tensor` constructor success and failure behavior is documented.
-- `map`, `contract`, and `materialize` have deterministic shape/dtype/aliasing
+- `map`, `contract`, and `realize` have deterministic shape/dtype/aliasing
   rules.
 - The old `vec-*` / `mat-*` exploratory example is not presented as the
   canonical surface.
@@ -448,10 +465,10 @@ contract(a, b, left_axes, right_axes):
   return tensor expression
 ```
 
-`materialize`:
+`realize`:
 
 ```text
-materialize(source, maybe_dest):
+realize(source, maybe_dest):
   if maybe_dest is omitted:
     if source is concrete Tensor:
       return source
@@ -522,7 +539,7 @@ Likely code ownership:
 - compiler/JIT/AOT:
   - direct primitive calls first,
   - compiler parity cases after interpreter behavior is green,
-  - fusion for `(materialize (map ...) out)` and `(materialize (contract ...) out)`
+  - fusion for `(realize (map ...) out)` and `(realize (contract ...) out)`
     only after allocation semantics are correct.
 
 Storage and backend policy:
@@ -531,7 +548,7 @@ Storage and backend policy:
 - Strides should be present in the metadata early, even if all MVP tensors are
   contiguous. This avoids painting slicing/views into a corner.
 - The core implementation owns the semantic fallback for `map`, `contract`,
-  and `materialize`; it must not require BLAS, LAPACK, CUDA, or cuBLAS to be
+  and `realize`; it must not require BLAS, LAPACK, CUDA, or cuBLAS to be
   present for correctness.
 - BLAS/LAPACK/CUDA/cuBLAS integrations are optional backend optimizations, not
   separate first-surface types.
@@ -561,14 +578,15 @@ adding a new user-facing runtime surface.
 Decision points:
 
 - The pure `Tensor` fallback remains the semantic source of truth for
-  `map`, `contract`, and `materialize`.
+  `map`, `contract`, and `realize`.
 - Optional backend modules may accelerate evaluation only when their capability
   contract matches the operation.
 - Backend selection is capability-driven and deterministic.
 - Missing backend dependencies must fall back to the pure implementation rather
   than altering tensor semantics.
-- Backend resources use explicit `ForeignHandle` ownership and finalizers.
-- Backend handles must not own Omni `Value` graphs.
+- Ordinary Tensor storage remains native and scope/region owned.
+- Backend resources that are truly opaque foreign resources use explicit
+  ownership/finalizer policy and must not own Omni `Value` graphs.
 - GPU/device movement is explicit; ordinary tensor operations never imply
   implicit CPU/GPU transfers.
 - No public backend-flavored mathematical names are introduced as the normal
@@ -589,7 +607,7 @@ Module layering:
   - `Tensor` value representation,
   - dtype, shape, rank, total length, and `ref`,
   - tensor-expression protocol,
-  - `map`, `contract`, and `materialize` semantics,
+  - `map`, `contract`, and `realize` semantics,
   - pure CPU fallback kernels,
   - deterministic diagnostics and scope/region lifetime behavior.
 - A later `tensor` library may own conveniences such as `sum`, `mean`,
@@ -606,21 +624,30 @@ Module layering:
     device placement match the kernel contract,
   - otherwise route to the pure fallback.
 - Backend modules optimize execution; they do not change `Tensor`, `map`,
-  `contract`, or `materialize` semantics.
+  `contract`, or `realize` semantics.
+- The first CPU BLAS integration is a native runtime shim over shared-library
+  discovery for `cblas_dgemm`; it is not routed through user-visible FFI
+  `ForeignHandle` values.
+- Solver/decomposition conveniences remain naming-deferred: do not publish
+  bare `solve`, and do not assume `linalg/` is the qualifier until the public
+  Tensor convenience layer is named.
 - The canonical user-facing contraction stays `contract`. Do not expose
   `blas-matmul`, `cublas-contract`, or similar backend-flavored names as the
   normal mathematical surface.
-- Backend dispatch should happen at the materialization/evaluation boundary,
-  especially for `(materialize (contract ...) out)` and
-  `(materialize (map ...) out)`.
+- Backend dispatch should happen at the realization/evaluation boundary,
+  especially for `(realize (contract ...) out)` and
+  `(realize (map ...) out)`.
 - GPU/CUDA support requires explicit device movement in the first design.
   Do not introduce implicit CPU-GPU transfer in ordinary `map`, `contract`, or
-  `materialize`.
+  `realize`.
 - BLAS first target:
   - optimize only contiguous `Double` rank-2 contraction equivalent to
-    `(contract a b [1] [0])`,
+    `(contract a b [1 0])`,
   - preserve the C3 fallback as the validation oracle,
   - route unsupported strides, dtypes, aliasing, or shapes back to fallback.
+  - Status: implemented 2026-04-14 as `TENSOR-090A` through a private
+    `dlopen`/`dlsym` C shim for `cblas_dgemm`, with path-sensitive regression
+    coverage when a compatible BLAS library is available.
 - cuBLAS first target:
   - require explicit CUDA device placement before invoking cuBLAS,
   - keep host tensors on CPU fallback unless explicitly moved,
@@ -651,7 +678,7 @@ Rollout slices:
 2. `TENSOR-010` Runtime representation
    - Add native Tensor payload, destructor, printing, `tensor?`, `dtype`,
      `shape`, `rank`, and `length`.
-   - No `map`, `contract`, or `materialize` yet.
+   - No `map`, `contract`, or `realize` yet.
    - Status: implemented 2026-04-11. Payloads are current-scope owned,
      payload copy/promotion paths deep-clone shape/stride/data storage, and
      the boundary graph audit treats tensors as leaf payloads.
@@ -666,12 +693,12 @@ Rollout slices:
      accepts array/proper-list indices and supports negative indexing per
      axis.
 
-4. `TENSOR-030` Tensor-expression protocol and `materialize` — complete for
+4. `TENSOR-030` Tensor-expression protocol and `realize` — complete for
    concrete tensor/scalar sources
    - Treat concrete `Tensor` as a tensor expression.
-   - Implement `(materialize expr)`.
-   - Implement `(materialize expr out)`.
-   - Implement scalar-to-destination fill through `(materialize scalar out)`.
+   - Implement `(realize expr)`.
+   - Implement `(realize expr out)`.
+   - Implement scalar-to-destination fill through `(realize scalar out)`.
    - No lazy expression fusion is required yet.
 
 5. `TENSOR-040` Elementwise `map`
@@ -690,46 +717,47 @@ Rollout slices:
    - Support one or more axis pairs.
    - Add rank-2 contraction examples through `contract`.
    - Status: implemented 2026-04-11. The runtime exposes public `contract`
-     with pure `Double` fallback, exact axis-list arity validation,
-     duplicate-axis checks, paired-dimension checks, rank-0 scalar result
-     support, and lazy Tensor expression materialization through `TENSOR-060B`.
+     with pure `Double` fallback, paired-axis shorthand, exact axis-list arity
+     validation, duplicate-axis checks, paired-dimension checks, rank-0 scalar
+     result support, and lazy Tensor expression realization through
+     `TENSOR-060B`.
 
-7. `TENSOR-060A` Destination materialization and expression fusion audit
+7. `TENSOR-060A` Destination realization and expression fusion audit
    - Status: implemented 2026-04-11 as a split/decision slice.
    - Current eager `map` and `contract` already make
-     `(materialize (map ...) out)` and `(materialize (contract ...) out)`
+     `(realize (map ...) out)` and `(realize (contract ...) out)`
      semantically correct, but they allocate a source tensor before
-     `materialize` sees it.
+     `realize` sees it.
    - True fusion requires either a native lazy tensor-expression value that
-     `map` and `contract` can return, or making `materialize` a macro/special
+     `map` and `contract` can return, or making `realize` a macro/special
      form that rewrites recognized source expressions before ordinary argument
      evaluation.
    - Choose the lazy tensor-expression value path for the next implementation
-     slice. It keeps `materialize` as a runtime storage boundary and gives
+     slice. It keeps `realize` as a runtime storage boundary and gives
      backend dispatch a real expression node to inspect later.
    - Do not add public `map-into`, `matmul`, or backend-flavored escape names
      to compensate for the eager temporary.
 
 8. `TENSOR-060B` Tensor-expression protocol and destination fusion
-   - Optimize `(materialize (map ...) out)` and
-     `(materialize (contract ...) out)` when the expression representation
+   - Optimize `(realize (map ...) out)` and
+     `(realize (contract ...) out)` when the expression representation
      exists.
    - Implementation prep landed 2026-04-11: the first pure `map` and
      `contract` paths were split through destination-ready internal kernels
      before lazy payloads were wired on top.
    - Status: implemented 2026-04-11. Tensor-dispatched `map` and `contract`
      now return lazy expression payloads under the existing `Tensor` value,
-     with `materialize` forcing them into allocated concrete storage or staging
+     with `realize` forcing them into allocated concrete storage or staging
      evaluation before copying into an exact-shape/dtype destination tensor
      after success.
    - `TENSOR-060C` follow-up status: implemented 2026-04-12. Shape parsing now
      checks the signed-to-`usz` boundary through an unsigned comparison, and
-     zero-size contracted axes materialize to the additive identity.
+     zero-size contracted axes realize to the additive identity.
    - The implementation keeps expression nodes internal to native `Tensor`
      payloads; no public `TensorExpr` type, macro rewrite, `map-into`, or
      backend-specific operation name was added.
    - Keep ordinary eager-source copy semantics as the fallback.
-   - Aliasing policy: elementwise `map` may safely materialize into an input
+   - Aliasing policy: elementwise `map` may safely realize into an input
      tensor; `contract` rejects destinations that alias either source tensor.
 
 9. `TENSOR-070` Broadcasting extension
@@ -751,7 +779,7 @@ Rollout slices:
    - Status: design/contract slice only; no backend runtime code lands here.
    - Decide the import/module path for the high-level tensor library.
    - Keep backend-specific names out of the public semantic surface.
-   - Document that `contract` and `materialize` are the semantic hooks that
+   - Document that `contract` and `realize` are the semantic hooks that
      backend optimizations must preserve.
    - Define the optional backend capability table and fallback routing
      contract.
@@ -759,7 +787,7 @@ Rollout slices:
      `tensor/blas`, `tensor/lapack`, `tensor/cuda`, and `tensor/cublas`
      modules, without making those backends required for core correctness.
    - Record the no-implicit-transfer rule for CUDA-style movement and the
-     `ForeignHandle` ownership/finalizer boundary for native backend
+     explicit ownership/finalizer boundary for genuinely opaque native backend
      resources.
    - Acceptance criteria:
      - the pure fallback remains valid for every covered tensor operation,
@@ -775,10 +803,10 @@ Rollout slices:
       stable.
     - Keep fallback available for validation and portability.
     - Treat BLAS-backed rank-2 contraction as an optimization of
-      `(materialize (contract a b [1] [0]) out)`, not as a new canonical
+      `(realize (contract a b [1 0]) out)`, not as a new canonical
       contraction operation.
-    - Gate all native handles through explicit `ForeignHandle` ownership and
-      finalizer policy.
+    - Keep ordinary Tensor storage native/scoped; gate genuinely opaque native
+      handles through explicit ownership and finalizer policy.
 
 12. `TENSOR-100` CUDA/cuBLAS backend design
     - Require explicit host/device movement in the design.
@@ -790,7 +818,7 @@ Rollout slices:
 
 13. `TENSOR-110` Example migration - complete
     - `examples/scicomp_demo.omni` now uses canonical `Tensor`, `map`,
-      `contract`, and `materialize`.
+      `contract`, and `realize`.
     - `vec-*`, `mat-*`, and `mat-mul` are removed from the canonical example
       surface.
     - Lazy `map`/`contract` return and closure-capture regressions now cover
@@ -809,8 +837,8 @@ First implementation decisions:
   constructor surface.
 - Tensor `map` result dtype is the dtype of the first tensor input in the first
   slice. Explicit conversion can be expressed as another mapped operation.
-- Destination `materialize` requires exact dtype compatibility in the first
-  slice. Explicit conversion must happen before materialization.
+- Destination `realize` requires exact dtype compatibility in the first
+  slice. Explicit conversion must happen before realization.
 - `TENSOR-070` concrete singleton-axis broadcasting is implemented:
   right-align
   shapes, treat missing leading axes as `1`, require compatibility when either
@@ -829,18 +857,18 @@ Documentation gates:
   - `dtype`, `shape`, `rank`,
   - `length` as tensor element count,
   - tensor `ref`,
-  - concrete tensor/scalar/expression `materialize`,
+  - concrete tensor/scalar/expression `realize`,
   - lazy tensor `map` and `contract` expression payloads.
   - remaining gates for later slices: optional backend routing and diagnostic
     code refinements.
 - `docs/type-system-syntax.md` documents how `Tensor` participates in type
   annotations and dispatch, and that `(Tensor Double shape data-or-scalar)`
   is the first constructor surface, including Tensor-specific `map`,
-  `contract`, and `materialize` behavior.
+  `contract`, and `realize` behavior.
 - `docs/SURFACE_COMPATIBILITY.md` records any scicomp prototype surface
   removal if old names are removed.
 - `examples/scicomp_demo.omni` is updated to the canonical `Tensor`, `map`,
-  `contract`, and `materialize` surface.
+  `contract`, and `realize` surface.
 - `memory/CHANGELOG.md` records behavior only after code lands and validation
   has concrete evidence.
 
@@ -873,11 +901,11 @@ Test gates:
   - shape mismatch,
   - function result dtype mismatch.
 - `contract`:
-  - rank-2 contraction via `(contract a b [1] [0])`,
+  - rank-2 contraction via `(contract a b [1 0])`,
   - rank-0 scalar result for vector dot product,
   - zero-axis outer product,
   - multi-axis contraction,
-  - array and proper-list axis inputs,
+  - paired-axis array shorthand plus array and proper-list axis inputs,
   - negative axis normalization,
   - axis length mismatch,
   - axis out of range,
@@ -886,15 +914,15 @@ Test gates:
   - non-tensor operands,
   - malformed axis containers,
   - non-integer axes.
-- `materialize`:
+- `realize`:
   - concrete tensor source without destination returns the already-concrete
     tensor,
   - allocate concrete tensor from `map`,
   - allocate concrete tensor from `contract`,
-  - materialize scalar into destination,
-  - materialize tensor into destination,
-  - materialize `map` into destination,
-  - materialize `contract` into destination,
+  - realize scalar into destination,
+  - realize tensor into destination,
+  - realize `map` into destination,
+  - realize `contract` into destination,
   - destination shape mismatch,
   - dtype mismatch,
   - safe self-update,
@@ -902,7 +930,7 @@ Test gates:
 - Memory/lifetime:
   - tensor returned across a function boundary,
   - tensor captured in closure env,
-  - tensor materialized across scope boundaries,
+  - tensor realized across scope boundaries,
   - tensor destruction path under normal and ASAN builds,
   - no hidden per-type refcount ownership path.
 - Execution parity:
@@ -959,10 +987,10 @@ Latest targeted validation for the tensor boundary cleanup audit:
 
 (define c (Tensor Double [2 2] 0.0))
 
-(materialize (contract a b [1] [0]) c)
+(realize (contract a b [1 0]) c)
 
-(define shifted (materialize (map + c 1.0)))
-(define squared (materialize (map * shifted shifted)))
+(define shifted (realize (map + c 1.0)))
+(define squared (realize (map * shifted shifted)))
 ```
 
 This is the intended mental model:
@@ -970,5 +998,5 @@ This is the intended mental model:
 - `Tensor` is the object.
 - `map` is elementwise/broadcast computation.
 - `contract` is tensor algebra.
-- `materialize` is the expression-to-storage boundary, with optional
+- `realize` is the expression-to-storage boundary, with optional
   destination reuse.

@@ -322,6 +322,11 @@ null?
 | `[` `]` | Array literals, bracket attributes, and patterns |
 | `{` `}` | Dictionary literals |
 
+Slash (`/`) is part of ordinary symbol syntax. Names like `math/lgamma`,
+`stats/normal-cdf`, and `io/println` are single symbols, not module dereferences.
+They are naming-convention prefixes like `math-lgamma`; real module access uses
+module values/path access (`mod.sym`) or explicit import/export forms.
+
 ### 1.4 Reader Dispatch (`#`)
 
 The reader supports a small canonical `#` dispatch surface:
@@ -332,8 +337,14 @@ The reader supports a small canonical `#` dispatch surface:
 | `#_ form` | skip next form |
 | `#N_ form...` | skip next `N` forms (`N` in `1..9`) |
 | `#| ... |#` | (nestable) block comment |
+| `#tag form` | reader tag shorthand; parses as `(tag form)` |
 
-Any other `#` sequence is rejected with a deterministic parser/lexer error.
+Reader tags are constrained syntax, not Common Lisp style readtable hooks:
+`#tag form` reads exactly one following expression and rewrites it to a normal
+one-argument call. A tag can therefore be an ordinary function, or a macro
+declared with the canonical `(define [reader tag] name (syntax-match ...))`
+surface. Any other non-tag `#` sequence is rejected with a deterministic
+parser/lexer error.
 
 ---
 
@@ -346,6 +357,7 @@ Any other `#` sequence is rejected with a deterministic parser/lexer error.
 | nil | `NIL` | Empty / absence value | `nil`, `()` |
 | int | `INT` | 64-bit signed integer | `42`, `-17` |
 | double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
+| BigInteger | `BIG_INTEGER` | Arbitrary-precision exact integer | `(BigInteger "9223372036854775808")` |
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
@@ -367,6 +379,13 @@ Omni does not currently define a builtin `Empty`/bottom type. `nil`/`Nil`
 cover the language's empty/false value, while `Void` is now a real builtin
 singleton type/value used by FFI `^Void` returns as well.
 
+`Integer` is the fixed-width signed integer surface. `BigInteger` is the
+arbitrary-precision exact integer surface backed by Boost.Multiprecision in the
+current runtime. `+`, `-`, and `*` promote overflowing `Integer` results to
+`BigInteger`; `/`, `%`, ordering comparisons, bitwise operations, `gcd`/`lcm`,
+and `parse-number` arbitrary-precision parsing remain explicit follow-up work.
+Use `(BigInteger "...")` to parse large decimal integers.
+
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
 surface, lifetime copy/promotion paths, tensor `ref`, and introspection
@@ -375,7 +394,7 @@ constructor surface is `(Tensor Double shape data-or-scalar)`, where `shape`
 is an array or proper list of non-negative integers and `data-or-scalar` is
 either a scalar numeric fill value or an array/proper list with exactly the
 shape product's element count. Tensor `ref` uses `(ref tensor index-array)`.
-`materialize` treats concrete tensors as already materialized values, forces
+`realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
 `map` is the elementwise tensor operation; `contract` is the pure `Double`
@@ -504,7 +523,7 @@ Normative rules:
 - `(define name value)` is canonical for value binding.
 - `(define (f args...) body)` is canonical shorthand for function declaration.
 - `(define [attr] ...)` is canonical for declaration families (type, union,
-  alias, macro, FFI, relation, rule, schema, effect).
+  alias, macro, reader tag, FFI, relation, rule, schema, effect).
 - Alternative declaration keywords (`def`, `defn`, `deftype`, etc.) are not
   canonical language forms and MUST NOT be introduced as parallel syntax.
 - `lambda` and `define` remain distinct: `lambda` is expression-level function
@@ -1105,7 +1124,7 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `string?` | Is string? |
 | `int?` | Is integer? |
 | `double?` | Is double? |
-| `number?` | Is int or double? |
+| `number?` | Is int, BigInteger, or double? |
 | `symbol?` | Is symbol? |
 | `closure?` | Is closure? |
 | `continuation?` | Is continuation? |
@@ -1187,7 +1206,7 @@ Iteration order contract:
 | `set-remove` | 2 | Remove element |
 | `set-contains?` | 2 | Check membership |
 | `length` | 1 | Set cardinality |
-| `List` | 1 | Materialize set elements as list (canonical order) |
+| `List` | 1 | Return set elements as list (canonical order) |
 
 Set order contract:
 - `List` returns elements in deterministic canonical element order
@@ -1221,14 +1240,17 @@ Set order contract:
 |------|-------------|
 | `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Double` | Canonical double constructor/coercion surface |
-| `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
+| `Double` | Canonical double constructor/coercion surface; accepts finite BigInteger inputs when representable as a finite double |
+| `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero and accepts in-range BigInteger inputs |
+| `BigInteger` | Canonical arbitrary-precision exact integer constructor/coercion surface; accepts integers and decimal strings |
 | `Symbol` | Canonical symbol constructor/coercion surface |
 
 Numeric conversion policy:
 - Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
 - `parse-number` returns `nil` on parse failure or numeric overflow/underflow.
+- `parse-number` remains fixed-width for integer parsing; use `BigInteger` for
+  arbitrary-precision decimal string input.
 - Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
 - Dispatch does not do implicit numeric widening; cross-numeric calls require explicit conversion.
 
@@ -1256,8 +1278,8 @@ constructor surface supports `Double` storage only.
 | `dtype` | Return the tensor dtype symbol, currently `'Double` for the first storage path |
 | `shape` | Return the tensor shape as an array of dimensions |
 | `rank` | Return the tensor rank |
-| `contract` | Contract two tensors as `(contract a b left-axes right-axes)` |
-| `materialize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(materialize expr [out])` |
+| `contract` | Contract two tensors as `(contract a b axis-pairs)` or `(contract a b left-axes right-axes)` |
+| `realize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(realize expr [out])` |
 
 Tensor indexing is part of generic `ref`. Tensor elementwise operations are
 part of generic `map`; unary tensor inputs, tensor-scalar inputs,
@@ -1267,16 +1289,18 @@ slice. Scalar arguments are coerced into the first tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
 incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
 `contract` may return lazy Tensor expression payloads under the existing
-`Tensor` value; `materialize` forces them either
+`Tensor` value; `realize` forces them either
 by allocating concrete storage or by writing directly into an exact-shape/dtype
-destination tensor. Elementwise `map` destination materialization may update
-an input tensor in place; `contract` destination materialization rejects
-destinations that alias either source tensor. Tensor contraction uses
-`(contract a b left-axes right-axes)`, where the axis lists have equal length,
-each paired contracted dimension matches, and the result shape is all
-non-contracted left axes followed by all non-contracted right axes. Axis lists
-may be arrays or proper lists of integers; negative axes normalize from the
-end of each tensor's rank.
+destination tensor. Elementwise `map` destination realization may update
+an input tensor in place; `contract` destination realization rejects
+destinations that alias either source tensor. Tensor contraction uses paired
+axes as `(contract a b [left-axis right-axis])` for one contracted pair or
+`(contract a b [[left-axis right-axis] ...])` for multiple pairs. The explicit
+left/right axis-list form `(contract a b left-axes right-axes)` is also
+accepted. Axis lists may be arrays or proper lists of integers, negative axes
+normalize from the end of each tensor's rank, each paired contracted dimension
+must match, and the result shape is all non-contracted left axes followed by
+all non-contracted right axes.
 
 ```lisp
 (define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
@@ -1288,13 +1312,13 @@ end of each tensor's rank.
 
 (define a (Tensor Double [2 3] [1 2 3 4 5 6]))
 (define b (Tensor Double [3 2] [7 8 9 10 11 12]))
-(ref (contract a b [1] [0]) [1 1]) ; => 154.0
+(ref (contract a b [1 0]) [1 1]) ; => 154.0
 
-(materialize x)                 ; => x, because x is already concrete
+(realize x)                 ; => x, because x is already concrete
 (define y (Tensor Double [2 3] 0.0))
-(materialize x y)               ; => y, after copying x into y
-(materialize 1.0 y)             ; => y, after filling y with 1.0
-(materialize (map + x 1.0) y)   ; => y, after evaluating into y
+(realize x y)               ; => y, after copying x into y
+(realize 1.0 y)             ; => y, after filling y with 1.0
+(realize (map + x 1.0) y)   ; => y, after evaluating into y
 ```
 
 ### 7.18 Error Handling (2)
@@ -1780,6 +1804,8 @@ For helper-style handler composition in examples and public-facing docs:
 ```
 
 - One macro surface only: `(define [macro] name (syntax-match ...))`
+- Reader tag macros use `(define [reader tag] name (syntax-match ...))`;
+  `#name form` parses as `(name form)`.
 - Macros are syntax transformers, not overloaded callable sets
 - Pattern-based with template substitution
 - Hygienic: template literals resolve at definition time

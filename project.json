@@ -17,6 +17,8 @@
                 "clib/mathutils.c",
                 "csrc/stack_helpers.c",
                 "csrc/ffi_helpers.c",
+                "csrc/big_integer_helpers.cpp",
+                "csrc/tensor_blas_helpers.c",
                 "csrc/json_helpers.c",
                 "csrc/tls_helpers.c",
                 "csrc/uv_helpers.c",
@@ -103,7 +105,7 @@
                 "third_party/ftxui/src/ftxui/screen/string.cpp",
                 "third_party/ftxui/src/ftxui/screen/terminal.cpp"
             ],
-            "linked-libraries": ["m", "lightning", "replxx", "dl", "ffi", "omni_ftxui", "stdc++"],
+            "linked-libraries": ["m", "lightning", "replxx", "dl", "ffi", "omni_chelpers", "omni_ftxui", "stdc++"],
             "linker-search-paths": ["build", "/usr/local/lib", "deps/lib"],
             "link-args": ["-Wl,-Bstatic", "-lutf8proc", "-ldeflate", "-lyyjson", "-luv", "-lbearssl", "-llmdb", "-Wl,-Bdynamic", "-Wl,-rpath,\\$ORIGIN"]
         }

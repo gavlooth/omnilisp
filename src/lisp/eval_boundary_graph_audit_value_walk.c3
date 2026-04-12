@@ -264,6 +264,7 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
         case PRIMITIVE:
         case ERROR:
         case DOUBLE:
+        case BIG_INTEGER:
         case FFI_HANDLE:
         case TYPE_INFO:
         case COROUTINE:

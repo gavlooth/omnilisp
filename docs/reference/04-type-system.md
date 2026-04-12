@@ -116,13 +116,15 @@ introspection, and construction. `(format "%s" Tensor)` prints
 native double tensor storage. Tensor-specific `map` methods dispatch through
 `^Tensor` annotations for unary, tensor-scalar, scalar-tensor, and exact-shape
 tensor-tensor elementwise operations. `contract` performs pure `Double`
-summed-axis contraction as `(contract a b left-axes right-axes)`, with the
-result shape formed from non-contracted left axes followed by non-contracted
-right axes. Tensor `map` and `contract` may return lazy expression payloads
+summed-axis contraction as `(contract a b [left-axis right-axis])`,
+`(contract a b [[left-axis right-axis] ...])`, or the explicit
+`(contract a b left-axes right-axes)` form, with the result shape formed from
+non-contracted left axes followed by non-contracted right axes. Tensor `map`
+and `contract` may return lazy expression payloads
 under the existing `Tensor` value; no public `TensorExpr` type is introduced.
-`materialize` is the concrete tensor storage boundary: `(materialize tensor)`
+`realize` is the concrete tensor storage boundary: `(realize tensor)`
 returns an already-concrete tensor or allocates concrete storage for a Tensor
-expression, while `(materialize tensor out)` and `(materialize scalar out)`
+expression, while `(realize tensor out)` and `(realize scalar out)`
 stage into a temporary concrete tensor and copy into a mutable exact-shape/dtype
 destination tensor only after success.
 

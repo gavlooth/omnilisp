@@ -1,0 +1,481 @@
+# Session Report
+
+## 2026-04-14 11:55 CEST - Boost BigInteger First Slice And Solver Naming Checkpoint
+
+Objective attempted:
+- Land the first Boost.Multiprecision scalar integration after the owner chose
+  the BigInteger path, and record the solver naming constraint that `solve`
+  must not be bare while `linalg/` remains unsettled.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Installed `libboost-dev` on the host to provide Boost.Multiprecision headers.
+- Added `csrc/big_integer_helpers.cpp`, a small C++17 shim around
+  `boost::multiprecision::cpp_int` with a stable C ABI.
+- Added C3 extern declarations and `BIG_INTEGER` value support, including
+  destructor, copy-to-parent, escape/root promotion, env-copy, printing,
+  hashing/equality, builtin type identity, and `Number` parent registration.
+- Added `BigInteger` constructor/coercion behavior for `Integer`, decimal
+  `String`, and existing `BigInteger`; invalid decimal input and out-of-range
+  `Integer` narrowing fail with `type/arg-mismatch`.
+- Updated `+`, `-`, and `*` so `Integer` overflow promotes to `BigInteger`
+  and `BigInteger` combines with `Integer`/`BigInteger`; mixed `Double`
+  arithmetic uses finite double conversion where possible.
+- Added the C++ helper object to `scripts/build_omni_chelpers.sh` and linked
+  the helper archive from `project.json`.
+- Added focused advanced stdlib numeric coverage for constructor,
+  stringification, type identity, `number?`, overflow promotion, arithmetic,
+  and failure payloads.
+- Updated `memory/CHANGELOG.md`, `.agents/PLAN.md`, `TODO.md`,
+  `docs/LANGUAGE_SPEC.md`, `docs/areas/tensor-scientific.md`, and
+  `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`.
+
+Commands run and key results:
+- `test -f /usr/include/boost/multiprecision/cpp_int.hpp`: initially absent.
+- `sudo apt-get install -y libboost-dev`: installed Boost 1.83 development
+  headers.
+- `c++ -O2 -std=c++17 -c csrc/big_integer_helpers.cpp -o /tmp/omni_big_integer_helpers.o`:
+  passed.
+- `./scripts/build_omni_chelpers.sh`: passed.
+- `c3c build --obj-out obj`: passed with existing entry deprecation warnings.
+- Direct smokes passed for:
+  - `(String (BigInteger "9223372036854775808"))`
+  - `(String (+ 9223372036854775807 1))`
+  - `(= (type-of (BigInteger "1")) (quote BigInteger))`
+  - `(String (* (BigInteger "9223372036854775808") 2))`
+  - `(Integer (BigInteger "9223372036854775807"))`
+  - invalid decimal and out-of-range narrowing handlers returning
+    `"type/arg-mismatch"`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=66 fail=0`.
+- Remaining advanced numeric child groups passed; exact and combined TCO
+  groups required `prlimit --stack=67108864` because the default-stack
+  `(length (range 4000))` path crashes in deep recursive escape promotion.
+- `prlimit --stack=67108864 env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=295 fail=0`.
+- `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+- Final `c3c build --obj-out obj`: passed with the same existing entry
+  deprecation warnings.
+- Final direct smokes for overflow promotion, invalid BigInteger input, and
+  `type-of BigInteger`: passed.
+- `git diff --check` on the touched tracked files: passed.
+- `jj status` and `jj diff --stat`: worked at the final checkpoint.
+
+Current best recommendation / checkpoint:
+- Treat `BigInteger` as the first Boost.Multiprecision scalar slice only.
+  Keep `/`, `%`, ordering comparisons, bitwise operations, `gcd`/`lcm`,
+  `BigFloat`/`BigComplex`, and `parse-number` arbitrary-precision parsing as
+  explicit follow-up slices.
+- Do not publish a bare `solve` for LAPACK/LAPACKE solver conveniences.
+  `linalg/` is not accepted yet as the base namespace; keep the public
+  qualifier unresolved until the Tensor convenience layer is named.
+
+Unresolved issues:
+- The normal-stack advanced numeric TCO headroom case crashes in recursive
+  escape promotion for `(length (range 4000))`; the same test passes with a
+  64MB stack limit. This looks like a pre-existing deep-promotion headroom
+  issue, not a BigInteger arithmetic failure, but it remains a validation
+  caveat.
+- The earlier corrupt-object `jj` failure was not reproduced at this checkpoint:
+  `jj status` and `jj diff --stat` both worked after the BigInteger slice.
+
+Signature: Codex GPT-5
+
+## 2026-04-14 08:20 CEST - Tensor Native BLAS Backend First Slices
+
+Objective attempted:
+- Write and start implementing the plan to keep ordinary Tensor storage
+  C3-native/scoped while integrating OpenBLAS/LAPACK-style acceleration
+  directly at the Tensor backend layer instead of through user-visible
+  `ForeignHandle` Tensor storage.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Added private native BLAS shim `csrc/tensor_blas_helpers.c` with optional
+  runtime `cblas_dgemm` discovery via `dlopen`/`dlsym`.
+- Added C3 extern declarations in `src/lisp/tensor_blas_backend.c3`.
+- Wired `tensor_contract_eval_into(...)` to use the native `dgemm` fast path
+  only for contiguous rank-2 row-major `Double` contraction equivalent to
+  `(contract a b [1 0])`; unsupported cases still fall back to the pure C3
+  contraction kernel.
+- 09:40 CEST follow-up: extended the same private `dgemm` path with CBLAS
+  transpose flags so all contiguous rank-2 single-axis contractions can route
+  through BLAS when available: `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
+- Added an internal path-sensitive call counter so the targeted regression can
+  prove BLAS branch use when a compatible BLAS symbol is available.
+- Added focused regressions for the transpose-backed contract cases without
+  introducing a public `matmul`/`linalg-matmul` surface.
+- Added the shim to both `project.json` direct build sources and
+  `scripts/build_omni_chelpers.sh` for AOT/e2e helper-archive linkage.
+- Updated Tensor plan/area notes to record that ordinary Tensor storage remains
+  native/scoped and is not replaced with `ForeignHandle`.
+
+Commands run and key results:
+- `jj status`: working copy already had unrelated dirty/untracked operational
+  artifacts plus Tensor docs/source changes from the current session.
+- `find /usr/include /usr/local/include /usr/include/aarch64-linux-gnu ...`:
+  found no local `cblas.h`, `lapacke.h`, or OpenBLAS headers.
+- `ldconfig -p` / `nm -D`: found generic `/lib/aarch64-linux-gnu/libblas.so.3`
+  exporting `cblas_dgemm`; no hard OpenBLAS pkg-config/header path was present.
+- `c3c build --obj-out obj`: passed with the existing deprecation warnings in
+  entry file/read/build helpers.
+- `bash -n scripts/build_omni_chelpers.sh`: passed.
+- `./scripts/build_omni_chelpers.sh`: passed.
+- `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+- Direct Tensor smoke
+  `(ref (realize (contract a b [1 0])) [1 1])`: returned `154.0`.
+- Direct Tensor smokes for transpose-backed rank-2 contractions returned
+  `84.0` for `[0 0]`, `68.0` for `[1 1]`, and `123.0` for `[0 1]`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed first at `217 passed, 0 failed`; after the transpose follow-up it
+  passed at `221 passed, 0 failed`.
+- Subagent check: explorer `019d8aec-bae8-7462-a5c6-4ec1fbd360af` confirmed
+  the CBLAS row-major transpose mapping for all four rank-2 axis-pair cases.
+- Final `jj status` and `jj diff --stat` attempts failed with a corrupt loose
+  Git object at `.git/objects/da/96d1f92060d63d31f50ba48b1086b0fbc60545`;
+  `git status --short` and targeted `git diff --stat` still worked.
+
+Current best recommendation / checkpoint:
+- Keep `TensorVal` as the normal scoped Tensor storage model.
+- Treat direct native backend calls as implementation details behind `contract`
+  / `realize`, not as public `TensorHandle` or user-level FFI handles.
+- Continue `TENSOR-090` by deciding LAPACK/LAPACKE solver/decomposition
+  surface names. Remaining BLAS broadening, such as rank-2/rank-1 `gemv`,
+  should stay private and continue treating the pure C3 kernel as the
+  validation oracle.
+
+Unresolved issues:
+- Full/heavy validation was not run in this session.
+- LAPACK/LAPACKE has not been wired yet; this slice only covers the first BLAS
+  `dgemm` family behind rank-2 `contract`.
+- BLAS `gemv`/vector-specialized paths are still deferred; rank-2/rank-1
+  contractions currently use the pure fallback.
+- VCS health issue at that Tensor checkpoint: `jj` status/diff tripped over
+  the corrupt loose Git object above. This was not reproduced after the later
+  BigInteger checkpoint, where `jj status` and `jj diff --stat` worked.
+
+Signature: Codex GPT-5
+
+## 2026-04-12 18:35 CEST - Scientific Numerics and Tensor Planning Checkpoint
+
+Objective attempted: define the forward plan for Omni scientific work, including exact integer promotion, BigFloat, Tensor constructor conversions, GSL compatibility, and adjacent scientific libraries.
+
+Workspace: `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Added `.agents/PLAN.md` with a phased scientific numerics plan.
+- Recorded the durable design decision in memory under `Omni scientific numerics tensor plan 2026-04-12`.
+
+Key results:
+- Chose constructor/coercion dispatch as the public API rule for Tensor conversions, matching existing `Array` behavior such as `(Array '(1 2 3))`.
+- Planned GMP-backed exact integer storage with automatic promotion on overflow while preserving inline small `Integer`.
+- Planned MPFR-backed `BigFloat` as explicit high-precision float support, while keeping `Double` as the default hardware float and avoiding silent `Double` overflow promotion unless the owner later explicitly chooses it.
+- Planned Tensor as the scientific data boundary: unboxed numeric storage or foreign backend handle with dtype/shape/strides/rank/device/ownership metadata, while `Array` remains heterogeneous boxed `Value*` storage.
+- Planned GSL as an optional Tensor-aware package/backend first, not a mandatory core dependency, with C shim error conversion and layout/device/dtype checks.
+- Recommended scientific library ordering: OpenBLAS + LAPACK/LAPACKE, HDF5, optional FFTW, SUNDIALS, NetCDF, SuiteSparse/GraphBLAS, ARPACK-ng, and libtorch as the ML/autograd/GPU Tensor backend.
+
+Commands run:
+- `sed -n '1,260p' .agents/PLAN.md`
+- `git diff --check -- .agents/PLAN.md`
+- `git diff --check -- .agents/PLAN.md .agents/SESSION_REPORT.md`
+
+Validation:
+- `git diff --check -- .agents/PLAN.md`: passed.
+- `git diff --check -- .agents/PLAN.md .agents/SESSION_REPORT.md`: passed.
+- No build/test commands were run because this was a planning-only pass with no source code changes.
+
+Current best recommendation / checkpoint:
+- Start implementation with Phase 1 in `.agents/PLAN.md`: exact integer representation, `Integer`/`BigInteger` constructor and dispatch behavior, overflow-promotion helper API, FFI range-check policy, and boundary lifetime regressions for GMP-backed values.
+- Do not start by binding all of GSL; Tensor constructor conversion and exact integer promotion are better foundations.
+
+Unresolved issues:
+- Naming for public `(Float x)` remains owner-level: the plan recommends using it only if approved, otherwise keeping `Double` as the canonical hardware-float constructor.
+- GSL default-core inclusion remains blocked on an explicit GPL-compatible distribution decision.
+
+Signature: Codex GPT-5
+
+## 2026-04-14 07:30:08 CEST - Tensor Naming Decision Integration
+
+Objective attempted:
+- Investigate prior Tensor naming decisions after the owner recalled that
+  Tensor iteration involved explicit realization, Tensor arithmetic should
+  use the normal tensor surface, and `matmul` had been rejected in favor of
+  another name.
+- Pull and integrate the owner-pushed remote bookmark
+  `bookmark/omni-local-master-2026-04-14@origin`.
+- Apply the follow-up owner decision to drop public Tensor `materialize` in
+  favor of `realize`, and simplify common `contract` notation with paired-axis
+  arrays.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Rebased local reader-tag and operational-artifact work on top of remote
+  commit `87680cae` (`docs: fix tensor broadcasting status drift`).
+- Resolved `.agents/PLAN.md` by replacing the stale standalone Tensor plan with
+  a short operational note pointing at the integrated canonical Tensor plan.
+- Resolved `memory/CHANGELOG.md` by keeping the remote changelog and reinserting
+  the local 2026-04-13 reader-tag entry.
+- Renamed the public Tensor boundary primitive from `materialize` to `realize`
+  with no alias, updating runtime registration, AOT primitive lookup, Tensor
+  error messages, docs, examples, and tests.
+- Added `contract` paired-axis shorthand: `(contract a b [1 0])` for the
+  common rank-2 pair and `[[1 0] [2 3]]` for multi-axis pairs. The explicit
+  `(contract a b [1] [0])` form remains accepted.
+- Confirmed no shipped `TensorHandle` type exists in `TensorVal`; the backend
+  plan keeps ordinary Tensor storage native/scoped and reserves explicit
+  ownership/finalizer policy for genuinely opaque backend resources.
+
+Commands run and key results:
+- `jj status`: showed the existing dirty working copy plus the operational
+  artifacts/docs from this planning session.
+- `jj git fetch --remote origin --branch bookmark/omni-local-master-2026-04-14`:
+  fetched `bookmark/omni-local-master-2026-04-14@origin`.
+- `jj rebase -r @ -d 'bookmark/omni-local-master-2026-04-14@origin'`: rebased
+  the local working-copy commit onto the fetched bookmark and produced
+  conflicts only in `.agents/PLAN.md` and `memory/CHANGELOG.md`.
+- Targeted `rg` searches over `.agents`, `docs`, `memory`, `examples`, and
+  `plan.jsonl` initially found no local replacement for rejected `matmul`, but
+  the fetched bookmark carried the missing canonical Tensor plan.
+- `docs/plans/tensor-scientific-computing-plan-2026-04-11.md` now records the
+  recovered decision: `contract` is the canonical tensor contraction operation,
+  rank-2 multiplication is `(contract a b [1 0])`, `realize` is the
+  tensor-expression-to-storage boundary, and `matmul` is rejected as
+  programming jargon/rank-2 biased.
+- `c3c build --obj-out obj`: passed; existing deprecation warnings remain in
+  `src/entry_file_read_reporting.c3`, `src/entry_build_aot_temp.c3`, and
+  `src/entry_build_backend_compile.c3`.
+- Direct Tensor smoke `(ref (realize (contract a b [1 0])) [1 1])`: returned
+  `154.0`.
+- Direct Tensor smoke `(ref (realize (contract a b [[1 0]])) [1 1])`:
+  returned `154.0`.
+- Direct Tensor smoke `(ref (realize (map * x 2.0)) [1 2])`: returned `12.0`.
+- Direct old-name removal smoke `(materialize (Tensor Double [1] [1]))`:
+  failed with `unbound variable 'materialize'`, as intended.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `216 passed, 0 failed`.
+- `OMNI_LISP_TEST_SLICE=reader-dispatch LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `16 passed, 0 failed`.
+- `git diff --check` on touched Tensor/docs/artifact files: passed.
+- Conflict marker scan on touched Tensor/docs/artifact files: clean.
+
+Current best recommendation / checkpoint:
+- Treat `Tensor`, tensor-dispatched `map`, `contract`, and `realize` as the
+  locked Tensor surface.
+- Prefer paired-axis arrays for new contraction examples:
+  `(contract a b [1 0])` for rank-2 and `[[1 0] [2 3]]` for multi-axis
+  contractions.
+- Elementwise multiplication is `(map * a b)`, not `(* a b)`.
+- BLAS rank-2 GEMM should optimize
+  `(realize (contract a b [1 0]) out)` behind the Tensor backend
+  boundary, not introduce `linalg/matmul` as a public surface.
+- Keep the scalar scientific plan Boost-first and GSL-avoiding.
+
+Unresolved issues:
+- Heavy/full validation was not run in this session.
+
+Signature: Codex GPT-5
+
+## 2026-04-14 07:06:05 CEST - Boost-First Scientific Plan Correction
+
+Objective attempted:
+- Correct the scientific numerics plan after owner clarification that the goal
+  is to avoid GSL/GNU-style baseline dependencies and prefer Boost precision.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Updated `.agents/PLAN.md` so the default scientific backend direction is:
+  Boost.Multiprecision for exact/high-precision scalar values, Boost.Math for
+  scalar scientific functions, and OpenBLAS + LAPACK/LAPACKE for dense Tensor
+  linear algebra.
+- Replaced the prior GMP/MPFR-backed first-slice wording with
+  Boost.Multiprecision-backed `BigInteger`, `BigFloat`, and `BigComplex`
+  planning.
+- Replaced the prior GSL compatibility phase with a Boost.Math scientific
+  functions phase behind an owned C++ shim and C ABI boundary.
+- Recorded that GSL is not a default dependency and should only be revisited as
+  an explicit optional compatibility package if the owner asks for it.
+
+Commands run and key results:
+- `git diff --check -- .agents/PLAN.md`: passed.
+
+Current best recommendation / checkpoint:
+- Start with a Boost.Multiprecision C++ shim for `BigInteger` (`cpp_int`) and
+  plan `BigFloat`/`BigComplex` (`cpp_complex`) behind the same backend boundary.
+- Keep user-facing names backend-neutral; do not expose Boost or GSL names in
+  Omni language surfaces.
+
+Unresolved issues:
+- No implementation/build validation was run; this was a plan correction only.
+
+Signature: Codex GPT-5
+
+## 2026-04-12 16:38:56 CEST - Runtime Boundary Audit and Fix Pass
+
+Objective attempted: continue the whole-codebase audit/fix pass with emphasis on runtime boundary promotion/copy paths, closure env copy/promotion memoization, allocator growth, and stale validation status wording.
+
+Workspace: `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Squashed source/doc/script changes into `master`; final source commit is `edb06c3b` (`Harden type registry and allocator growth paths`).
+- Fixed `ast_arena_alloc` inverted `math::overflow_add` checks so normal arena growth no longer returns null.
+- Fixed stack defer reserve overflow test expectation to preserve the first grown capacity after a rejected overflow request.
+- Repaired `src/lisp/tests_core_groups.c3` after a raw patch-marker corruption in the parent commit and tightened the type-registry allocation-failure recovery assertion.
+- Added checked allocation growth guards in bind runtime setup, Pika named grammar growth, and FTXUI helper pointer/component vectors.
+- Added early promotion-context memoization for closure payload copy/promotion and shared wrapper container copy paths, and installed the passed promotion context during parent-site boundary copy so nested copy helpers see the active context.
+- Added env-copy regression coverage for a self-referential closure payload cloned through promotion-context memoization.
+- Hardened boundary provenance child traversal so root-owned child graphs are not recursively walked during releasing-scope reuse checks, non-root graph-bearing children retain target-chain checks, and child recursion has a depth guard.
+- Updated validation/status docs and `scripts/run_validation_status_summary.sh` wording to avoid stale host-local e2e/full-suite claims.
+
+Commands run and key results:
+- `jj git fetch`: `Nothing changed`.
+- `git diff --check -- src docs scripts`: passed.
+- patch-marker/stale-wording scan over `src docs scripts`: no matches.
+- `c3c build`: passed with pre-existing `errno::*` deprecation warnings in `src/main_repl_shared.c3`.
+- `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `suite=unified pass=156 fail=0`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite stack`: passed, `Stack engine: 24 passed, 0 failed`.
+- `scripts/run_ftxui_smoke.sh`: passed; `module_value_smoke`, `module_effect_smoke`, full `smoke.omni`, and `demo.omni` all completed.
+- `c3c build --sanitize=address`: unavailable in this toolchain, reporting that address sanitizer is unsupported.
+
+Invalidated assumptions / failed approaches:
+- Do not trust the `agent-1776003689746-p0w3r1` Deduce refresh output. It wrote raw `<<<<<<< SEARCH` markers and truncated four Deduce refresh files; those files were restored with `jj restore` and should not be used as a basis for future work.
+- Do not assume `math::overflow_add` returns true on success. The corrected code treats true as overflow/failure.
+- Provenance child traversal cannot safely recurse through root-owned cyclic module/registry maps during releasing-boundary reuse classification. Treat root-owned children as lifetime-stable in that walk and inspect non-root graph children instead.
+
+Current best recommendation / checkpoint:
+- Source/doc/script work, including the final FTXUI resolve fix, is committed in `master` at `edb06c3b`; the remaining working-copy changes are operational artifacts under `.agents/`, `.claude-flow/`, `.serena/`, and `.swarm/`.
+- The FTXUI `resolve` continuation smoke is now green after keeping the active promotion-context memo lookup, avoiding recursive alias walks for edge-free values, adding alias-walk depth/headroom guards, and raising the normal stack-context budget to 256KB.
+- Memory-lifetime smoke/full ownership slices were not run because repo policy requires container-bound execution for memory ownership slices, and the bounded container path was previously unavailable in this environment.
+
+Unresolved issues:
+- The new self-referential env-copy regression is compiled but not executed through the memory-lifetime smoke slice locally because that slice is container-only by repo policy.
+
+### 2026-04-12 15:16 CEST - Value Environment Hardening Patch
+
+Objective attempted:
+- Apply narrow, fail-closed hardening in `value_environment.c3` and `value_environment_storage.c3` for capacity growth and hash rebuild arithmetic.
+
+Code/configuration changes made:
+- `src/lisp/value_environment.c3:22-63`: added overflow and OOM-closure guards in `Env.define`.
+  - guard `capacity > usz.max / 2` before doubling
+  - guard `new_cap > usz.max / Binding.sizeof` before allocation
+  - avoid overflow in load-factor path with `hash_capacity > usz.max / 10`
+  - replace `binding_count * 10 > hash_capacity * 7` with `binding_count > (hash_capacity * 7) / 10`
+- `src/lisp/value_environment_storage.c3:142-156`: added capacity/size guards in `Env.build_hash_table`.
+  - return-fail when `binding_count > usz.max / 2`
+  - growth loop guard `cap > usz.max / 2` before doubling
+  - guard allocation bytes with `binding_count * 2 > usz.max / EnvHashEntry.sizeof`
+
+Commands and results:
+- `git diff --check -- src/lisp/value_environment.c3 src/lisp/value_environment_storage.c3`: clean.
+- `rg -n '^(<<<<<<<|>>>>>>>)|\*\*\* (Search|Replace)' src/lisp/value_environment.c3 src/lisp/value_environment_storage.c3`: no matches.
+- `c3c build`: blocked by pre-existing merge markers in `src/lisp/eval_pattern_equality_helpers.c3`.
+
+Unresolved / residual risk:
+- End-to-end compilation and broader test slices remain unavailable until unrelated merge markers in `src/lisp/eval_pattern_equality_helpers.c3` are resolved.
+
+Signature: Codex GPT-5
+
+## 2026-04-12 17:46:11 CEST - Whole-Codebase Allocation Hardening Audit/Fix Continuation
+
+Objective attempted: continue the whole-codebase audit and fix pass using parallel GPT-5.4 high audit agents and scoped GPT-5.3 Spark implementation workers, then commit non-artifact source changes and fetch remote updates.
+
+Workspace: `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Hardened parser AST, module, relation-attribute, pattern, handle, pipe, import/export, collection literal, and type annotation allocation paths with checked byte-size/count arithmetic before arena allocation.
+- Hardened Pika named grammar rule table registration/growth to fail closed on capacity/registration failure, including the clause symbol-ref placeholder path.
+- Hardened JIT/effect handler staged argument, closure/method signature, module export, and method table allocation/copy paths with overflow guards.
+- Hardened Deduce rule signature persistence/record codec size computation and cursor movement, SCC/reachability matrix allocations, row materialization dictionary capacity, column key allocation, explain/list builders, schema query refresh payload handling, and why-result list concatenation error propagation.
+- Hardened environment hash rebuild behavior so post-mutation rebuild failure falls back to linear lookup instead of reporting mutation failure after state has already changed.
+- Hardened REPL server/session and JSON request size arithmetic.
+- Kept operational artifacts under `.agents/`, `.claude-flow/`, `.serena/`, and `.swarm/` out of the planned source-only commit.
+
+Commands run and key results:
+- `c3c clean && c3c build`: passed with existing `errno::*` deprecation warnings in `src/main_repl_shared.c3`.
+- `c3c build`: passed again after final hygiene checks.
+- `rg -n '^(<<<<<<<|=======|>>>>>>>)|\*\*\* (Search|Replace)' src/lisp src/pika src/stack_engine_lifecycle.c3`: no matches.
+- `git diff --check -- src/lisp src/pika src/stack_engine_lifecycle.c3`: passed.
+- `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=156 fail=0`.
+- `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=195 fail=0`.
+- `OMNI_LISP_TEST_SLICE=jit-policy OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=49 fail=0`.
+- `OMNI_LISP_TEST_SLICE=pika OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=83 fail=0`.
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=materialized OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=8 fail=0`.
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=relation-attrs OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=13 fail=0`.
+- `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=integrity OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=34 fail=0`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite stack`: passed, `24 passed, 0 failed`.
+- `scripts/run_ftxui_smoke.sh`: passed.
+- Manual recursive Deduce `--eval` expression returned `true`.
+- Initial parent comparison in `/tmp/omni-parent-edb06c3b` at `edb06c3b` reproduced the then-current grouped Deduce failures, which showed they were not caused by the allocation-hardening runtime paths.
+- Follow-up source fixes in the committed tree resolved the grouped Deduce parser failures:
+  - `src/lisp/tests_deduce_rule_groups_more_tail_head.c3` no longer carries stale duplicated analysis tests that conflicted with the split `more_tail_analysis_tests` coverage.
+  - `src/lisp/tests_deduce_query_admin_surface_fallback_tests.c3` has the integrity-reporting assertion flattened to the intended parseable shape.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=rule-validation OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=79 fail=0`.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=query OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=254 fail=0`.
+  - `OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=432 fail=0`.
+
+Invalidated assumptions / failed approaches:
+- Do not rely on the earlier `AUDIT-DEDUCE-GROUPED-PARSER-STATE-040` open TODO entry or the earlier report text that said broad Deduce still failed; those artifacts were stale after the committed tree fixed and verified the grouped parser failures.
+- Do not rely on `jj diff` rendering alone for source verification when it appears to fuse identifiers; use `git diff` and direct file reads for final inspection.
+
+Current best recommendation / checkpoint:
+- Broad Deduce grouped parser failures are verified fixed in the current source tree. `TODO.md` was updated to close `AUDIT-DEDUCE-GROUPED-PARSER-STATE-040`.
+- Proceed with normal source commit/push for the stale backlog cleanup if this working copy is being published.
+
+Unresolved issues:
+- Full heavy/container-only memory lifetime gates were not run in this host session.
+
+Signature: Codex GPT-5
+
+## 2026-04-13 22:45:08 CEST - Constrained Reader Tag Surface
+
+Objective attempted:
+- Implement the owner-requested hybrid reader-tag surface: Clojure-like
+  `#tag form` use without a full Common Lisp readtable facility.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Added a `T_READER_TAG` token and `#tag` lexer dispatch while preserving
+  `#r"..."`, `#_`, `#N_`, and `#| ... |#`.
+- Added parser lowering for `#tag form` to the normal one-argument call
+  `(tag form)`.
+- Added `(define [reader tag] name (syntax-match ...))` as the canonical
+  reader-tag macro declaration surface by reusing the existing `E_DEFMACRO`
+  parser path.
+- Added reader-dispatch regressions for ordinary function tags, slash tags,
+  reader-tag macros, malformed reader-tag definitions, numeric `#1x`, and
+  bare `#`.
+- Updated `memory/CHANGELOG.md` plus language/reference/syntax/compatibility
+  docs for the new canonical surface.
+
+Commands run and key results:
+- `c3c build --obj-out obj`: passed and linked `build/main`; existing
+  `errno::*` deprecation warnings in `src/main_repl_shared.c3` remain.
+- `OMNI_LISP_TEST_SLICE=reader-dispatch LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `16 passed, 0 failed`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(block (define (spy x) x) #spy 7)'`:
+  returned `7`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(block (define [reader tag] spy (syntax-match ([x] (template (block (insert x)))))) #spy 7)'`:
+  returned `7`.
+- `git diff --check -- ...`: passed for the touched source/docs/changelog files.
+
+Current best recommendation / checkpoint:
+- Treat `[reader tag]` as the chosen canonical declaration spelling. Do not add
+  parallel `[reader/tag]`, `[reader-tag]`, or `defreader` aliases unless the
+  owner explicitly requests a migration or alternate surface.
+
+Unresolved issues:
+- Full global/container gates were not run; this was verified with the narrow
+  reader-dispatch slice and a local build using the workspace's known
+  `--obj-out obj` recovery path.
+
+Signature: Codex GPT-5

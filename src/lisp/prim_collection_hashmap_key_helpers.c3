@@ -36,6 +36,15 @@ fn uint hash_value(Value* key) {
     if (key == null) return 0;
     switch (key.tag) {
         case INT: return murmur_finalizer((uint)key.int_val);
+        case BIG_INTEGER: {
+            if (key.big_integer_val == null) return 0;
+            usz len = 0;
+            char* rendered = omni_big_integer_to_string(key.big_integer_val, &len);
+            if (rendered == null) return 0;
+            uint hashed = fnv1a(rendered[:len]);
+            omni_big_integer_string_free(rendered);
+            return hashed;
+        }
         case STRING: return fnv1a(key.str_chars[:key.str_len]);
         case SYMBOL: return murmur_finalizer((uint)key.sym_val);
         case TIME_POINT: {
@@ -76,6 +85,8 @@ fn bool hashmap_key_equals(Value* left, Value* right) {
             return left.int_val == right.int_val;
         case DOUBLE:
             return left.double_val == right.double_val;
+        case BIG_INTEGER:
+            return big_integer_values_equal(left, right);
         case STRING:
             if (left.str_len != right.str_len) return false;
             for (usz i = 0; i < left.str_len; i++) {

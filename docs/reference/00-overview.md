@@ -14,7 +14,7 @@ language features:
 - **Three collection types**: list `'(1 2 3)`, array `[1 2 3]`, dict `{'a 1}`
 - **Generic operations**: `(ref coll key)` works on all collections
 - **Scientific tensors**: `(Tensor Double [2 3] 0.0)`, tensor `map`,
-  `contract`, and `materialize`
+  `contract`, and `realize`
 - **Multiple dispatch**: typed `define` creates method tables, best match wins
 - **Algebraic effects**: `print`/`read-file` go through interceptable effects
 - **First-class C FFI**: grouped `[ffi module]` declarations and

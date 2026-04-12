@@ -44,8 +44,8 @@ sequence, returning the last:
 `(define (f x y) body)` desugars to `(define f (lambda (x y) body))`.
 
 Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
-`[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`, `[relation]`,
-`[ffi lib]`, `[ffi λ]`.
+`[reader tag]`, `[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`,
+`[relation]`, `[ffi lib]`, `[ffi λ]`.
 
 ### `let` — Local Binding
 

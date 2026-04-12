@@ -55,6 +55,7 @@ fn bool interp_init_type_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_ForeignHandle, "ForeignHandle") &&
         interp_init_symbol(self, &self.sym_Void, "Void") &&
         interp_init_symbol(self, &self.sym_Integer, "Integer") &&
+        interp_init_symbol(self, &self.sym_BigInteger, "BigInteger") &&
         interp_init_symbol(self, &self.sym_Double, "Double") &&
         interp_init_symbol(self, &self.sym_String, "String") &&
         interp_init_symbol(self, &self.sym_Symbol, "Symbol") &&

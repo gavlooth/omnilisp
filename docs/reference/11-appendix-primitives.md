@@ -257,8 +257,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `dtype` | 1 | Tensor dtype symbol |
 | `shape` | 1 | Tensor shape array |
 | `rank` | 1 | Tensor rank |
-| `contract` | 4 | Pure `Double` summed-axis tensor contraction |
-| `materialize` | 1-2 | Force a tensor expression or write tensor/scalar source into a destination tensor |
+| `contract` | 3-4 | Pure `Double` summed-axis tensor contraction |
+| `realize` | 1-2 | Force a tensor expression or write tensor/scalar source into a destination tensor |
 
 Tensor indexing uses generic `ref`. Tensor length uses generic `length`.
 Tensor elementwise operations use generic `map` through `^Tensor` dispatch

@@ -3,7 +3,8 @@ module lisp;
 import std::collections::list;
 
 /**
- * Handle special bracket defines: [macro], [effect], [relation], [schema]
+ * Handle special bracket defines: [macro], [reader tag], [effect],
+ * [relation], [schema].
  */
 fn Expr* Parser.parse_define_macro_attr(Parser* self, Expr* e) {
     if (self.lexer.current.type != T_SYMBOL) {
@@ -66,9 +67,21 @@ fn Expr* Parser.parse_define_schema_attr(Parser* self, Expr* e) {
     return e;
 }
 
+fn Expr* Parser.parse_define_reader_tag_attr(Parser* self, Expr* e, List{SymbolId}* attrs) {
+    if (attrs.len() != 2 || !parser_symbol_is(self, (*attrs)[1], "tag")) {
+        self.set_error("reader tag definitions use (define [reader tag] name (syntax-match ...))");
+        return null;
+    }
+    return self.parse_define_macro_attr(e);
+}
+
 fn Expr* Parser.parse_define_special(Parser* self, Expr* e, SymbolId annotation, List{SymbolId}* attrs) {
     if (annotation == self.interp.sym_macro) {
         return self.parse_define_macro_attr(e);
+    }
+
+    if (parser_symbol_is(self, annotation, "reader")) {
+        return self.parse_define_reader_tag_attr(e, attrs);
     }
 
     if (annotation == self.interp.sym_effect) {

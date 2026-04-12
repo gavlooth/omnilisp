@@ -1701,11 +1701,11 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             ref_result.double_val == 5.0 &&
             active_tensor_dtors_after == active_tensor_dtors_before;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: lazy tensor ref cleans temporary materialized tensor");
+            emit_pass_literal("[PASS] lifetime: lazy tensor ref cleans temporary realized tensor");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: lazy tensor ref cleans temporary materialized tensor (setup=%s result=%s before=%d after=%d)",
+                "[FAIL] lifetime: lazy tensor ref cleans temporary realized tensor (setup=%s result=%s before=%d after=%d)",
                 setup_ok ? "yes" : "no",
                 ref_result != null && ref_result.tag == DOUBLE ? (ZString)"double" : runtime_alloc_error_text(ref_result),
                 (long)active_tensor_dtors_before,
@@ -1723,39 +1723,39 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP;
 
         usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
-        Value* materialized = setup_ok ? tensor_materialize_to_value(expr_eval.value, interp) : null;
-        usz active_tensor_dtors_materialized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        Value* realized = setup_ok ? tensor_realize_to_value(expr_eval.value, interp) : null;
+        usz active_tensor_dtors_realized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
-        bool value_ok = materialized != null &&
-            materialized.tag == TENSOR &&
-            materialized.tensor_val != null &&
-            materialized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
-            materialized.tensor_val.element_count == 2 &&
-            materialized.tensor_val.data != null;
+        bool value_ok = realized != null &&
+            realized.tag == TENSOR &&
+            realized.tensor_val != null &&
+            realized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
+            realized.tensor_val.element_count == 2 &&
+            realized.tensor_val.data != null;
         if (value_ok) {
-            double* data = (double*)materialized.tensor_val.data;
+            double* data = (double*)realized.tensor_val.data;
             value_ok = data[0] == 4.0 && data[1] == 5.0;
         }
 
-        if (materialized != null && materialized != expr_eval.value && materialized.tag != ERROR) {
-            boundary_cleanup_materialized_value(null, materialized, interp.current_scope);
+        if (realized != null && realized != expr_eval.value && realized.tag != ERROR) {
+            boundary_cleanup_materialized_value(null, realized, interp.current_scope);
         }
         usz active_tensor_dtors_after_cleanup = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = setup_ok &&
             value_ok &&
-            active_tensor_dtors_materialized == active_tensor_dtors_before + 1 &&
+            active_tensor_dtors_realized == active_tensor_dtors_before + 1 &&
             active_tensor_dtors_after_cleanup == active_tensor_dtors_before;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: nested lazy tensor materialize cleans child temporaries");
+            emit_pass_literal("[PASS] lifetime: nested lazy tensor realize cleans child temporaries");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: nested lazy tensor materialize cleans child temporaries (setup=%s materialized=%s before=%d during=%d after=%d)",
+                "[FAIL] lifetime: nested lazy tensor realize cleans child temporaries (setup=%s realized=%s before=%d during=%d after=%d)",
                 setup_ok ? "yes" : "no",
-                materialized != null && materialized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(materialized),
+                realized != null && realized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(realized),
                 (long)active_tensor_dtors_before,
-                (long)active_tensor_dtors_materialized,
+                (long)active_tensor_dtors_realized,
                 (long)active_tensor_dtors_after_cleanup);
             (*fail)++;
         }
@@ -1772,39 +1772,39 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_CONTRACT;
 
         usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
-        Value* materialized = setup_ok ? tensor_materialize_to_value(expr_eval.value, interp) : null;
-        usz active_tensor_dtors_materialized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        Value* realized = setup_ok ? tensor_realize_to_value(expr_eval.value, interp) : null;
+        usz active_tensor_dtors_realized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
-        bool value_ok = materialized != null &&
-            materialized.tag == TENSOR &&
-            materialized.tensor_val != null &&
-            materialized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
-            materialized.tensor_val.element_count == 2 &&
-            materialized.tensor_val.data != null;
+        bool value_ok = realized != null &&
+            realized.tag == TENSOR &&
+            realized.tensor_val != null &&
+            realized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
+            realized.tensor_val.element_count == 2 &&
+            realized.tensor_val.data != null;
         if (value_ok) {
-            double* data = (double*)materialized.tensor_val.data;
+            double* data = (double*)realized.tensor_val.data;
             value_ok = data[0] == 50.0 && data[1] == 110.0;
         }
 
-        if (materialized != null && materialized != expr_eval.value && materialized.tag != ERROR) {
-            boundary_cleanup_materialized_value(null, materialized, interp.current_scope);
+        if (realized != null && realized != expr_eval.value && realized.tag != ERROR) {
+            boundary_cleanup_materialized_value(null, realized, interp.current_scope);
         }
         usz active_tensor_dtors_after_cleanup = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = setup_ok &&
             value_ok &&
-            active_tensor_dtors_materialized == active_tensor_dtors_before + 1 &&
+            active_tensor_dtors_realized == active_tensor_dtors_before + 1 &&
             active_tensor_dtors_after_cleanup == active_tensor_dtors_before;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: nested lazy tensor contract materialize cleans child temporaries");
+            emit_pass_literal("[PASS] lifetime: nested lazy tensor contract realize cleans child temporaries");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: nested lazy tensor contract materialize cleans child temporaries (setup=%s materialized=%s before=%d during=%d after=%d)",
+                "[FAIL] lifetime: nested lazy tensor contract realize cleans child temporaries (setup=%s realized=%s before=%d during=%d after=%d)",
                 setup_ok ? "yes" : "no",
-                materialized != null && materialized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(materialized),
+                realized != null && realized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(realized),
                 (long)active_tensor_dtors_before,
-                (long)active_tensor_dtors_materialized,
+                (long)active_tensor_dtors_realized,
                 (long)active_tensor_dtors_after_cleanup);
             (*fail)++;
         }
@@ -1975,18 +1975,18 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
     {
         usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
-        EvalResult expr_eval = run("(materialize (map (lambda (x) 'bad) (Tensor Double [1] [1])))", interp);
+        EvalResult expr_eval = run("(realize (map (lambda (x) 'bad) (Tensor Double [1] [1])))", interp);
         usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = expr_eval.error.has_error &&
             str_starts_with(expr_eval.error.message[:256], "map: function result dtype mismatch") &&
             active_tensor_dtors_after == active_tensor_dtors_before;
         if (ok) {
-            emit_pass_literal("[PASS] lifetime: failed lazy tensor materialize cleans fresh result tensor");
+            emit_pass_literal("[PASS] lifetime: failed lazy tensor realize cleans fresh result tensor");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: failed lazy tensor materialize cleans fresh result tensor (error=%s msg=%s before=%d after=%d)",
+                "[FAIL] lifetime: failed lazy tensor realize cleans fresh result tensor (error=%s msg=%s before=%d after=%d)",
                 expr_eval.error.has_error ? "yes" : "no",
                 expr_eval.error.has_error ? (ZString)expr_eval.error.message[:256] : runtime_alloc_error_text(expr_eval.value),
                 (long)active_tensor_dtors_before,

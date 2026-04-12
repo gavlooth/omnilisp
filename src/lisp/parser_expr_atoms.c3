@@ -79,6 +79,7 @@ fn Expr* Parser.parse_expr(Parser* self) {
         case T_COMMA_AT: return self.parse_unquote_splicing_shorthand();
         case T_HASH_UNDERSCORE: return self.parse_form_comment_expr();
         case T_REGEX: return self.parse_regex_literal_expr();
+        case T_READER_TAG: return self.parse_reader_tag_expr();
         case T_QUOTE: return self.parse_quote_shorthand();
         case T_INT: return self.parse_int_literal_expr();
         case T_FLOAT: return self.parse_float_literal_expr();

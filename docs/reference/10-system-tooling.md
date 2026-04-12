@@ -85,6 +85,19 @@ nil               ;; nil value
 #r"[0-9]+"        ;; compiled regex (no string escaping needed)
 ```
 
+### Reader Tags
+
+```lisp
+(define (reader-inc x) (+ x 1))
+#reader-inc 41    ;; parses as (reader-inc 41), evaluates to 42
+
+(define [reader tag] reader-double
+  (syntax-match
+    ([x] (template (+ (insert x) (insert x))))))
+
+#reader-double 21 ;; parses as (reader-double 21), macro-expands to 42
+```
+
 ### Special Tokens
 
 | Token | Description |

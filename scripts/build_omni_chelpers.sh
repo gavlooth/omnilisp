@@ -12,6 +12,7 @@ mkdir -p "$OBJ_DIR"
 sources=(
   "csrc/stack_helpers.c"
   "csrc/ffi_helpers.c"
+  "csrc/tensor_blas_helpers.c"
   "csrc/json_helpers.c"
   "csrc/tls_helpers.c"
   "csrc/uv_helpers.c"
@@ -23,6 +24,10 @@ sources=(
   "csrc/uv_helpers_signal.c"
   "csrc/toml_helpers.c"
   "third_party/tomlc17/tomlc17.c"
+)
+
+cxx_helper_sources=(
+  "csrc/big_integer_helpers.cpp"
 )
 
 objects=()
@@ -42,6 +47,19 @@ compile_c_source() {
 
 for src in "${sources[@]}"; do
   compile_c_source "$src"
+done
+
+compile_cxx_helper_source() {
+  local src="$1"
+  local obj_name="${src//\//__}"
+  obj_name="${obj_name//./_}.o"
+  local obj="$OBJ_DIR/$obj_name"
+  "${CXX:-c++}" -O2 -std=c++17 -c "$src" -o "$obj"
+  objects+=("$obj")
+}
+
+for src in "${cxx_helper_sources[@]}"; do
+  compile_cxx_helper_source "$src"
 done
 
 compile_cxx_source() {

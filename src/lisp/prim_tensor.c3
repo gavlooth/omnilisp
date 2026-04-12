@@ -182,6 +182,37 @@ fn bool tensor_axis_is_listed(usz axis, usz* axes, usz axis_count) {
     return false;
 }
 
+fn Value* tensor_parse_axis_value(
+    Value* axis_value,
+    TensorVal* tensor,
+    Interp* interp,
+    char[] label,
+    usz* prior_axes,
+    usz prior_axis_count,
+    usz* out_axis
+) {
+    if (out_axis == null) return tensor_runtime_raise(interp, "contract: axis parser state is missing");
+    *out_axis = 0;
+    if (tensor == null) return tensor_runtime_raise(interp, "contract: tensor backing storage is missing");
+    if (tensor.rank > (usz)long.max) return raise_error(interp, "contract: tensor rank is too large");
+    if (!is_int(axis_value)) {
+        return tensor_type_raise(interp, "contract: axes must be integers");
+    }
+
+    long rank = (long)tensor.rank;
+    long axis = axis_value.int_val;
+    if (axis < 0) axis += rank;
+    if (axis < 0 || axis >= rank) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/axis-out-of-range", label, null);
+    }
+    usz normalized = (usz)axis;
+    if (tensor_axis_is_listed(normalized, prior_axes, prior_axis_count)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/axis-duplicate", "contract: duplicate contracted axis", null);
+    }
+    *out_axis = normalized;
+    return null;
+}
+
 fn Value* tensor_parse_axes(Value* axes_arg, TensorVal* tensor, Interp* interp, char[] label, usz** out_axes, usz* out_count) {
     if (out_axes == null || out_count == null) return tensor_runtime_raise(interp, "contract: axis parser state is missing");
     *out_axes = null;
@@ -196,7 +227,6 @@ fn Value* tensor_parse_axes(Value* axes_arg, TensorVal* tensor, Interp* interp, 
     if (count > 0 && count > usz.max / usz.sizeof) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "contract: axis list is too large", null);
     }
-    if (tensor.rank > (usz)long.max) return raise_error(interp, "contract: tensor rank is too large");
 
     usz* axes = null;
     if (count > 0) {
@@ -206,28 +236,122 @@ fn Value* tensor_parse_axes(Value* axes_arg, TensorVal* tensor, Interp* interp, 
         }
     }
 
-    long rank = (long)tensor.rank;
     for (usz i = 0; i < count; i++) {
         Value* axis_value = tensor_container_nth(axes_arg, i);
-        if (!is_int(axis_value)) {
+        usz normalized = 0;
+        Value* err = tensor_parse_axis_value(axis_value, tensor, interp, label, axes, i, &normalized);
+        if (err != null) {
             if (axes != null) mem::free(axes);
-            return tensor_type_raise(interp, "contract: axes must be integers");
-        }
-        long axis = axis_value.int_val;
-        if (axis < 0) axis += rank;
-        if (axis < 0 || axis >= rank) {
-            if (axes != null) mem::free(axes);
-            return raise_error_with_payload_names(interp, "tensor", "tensor/axis-out-of-range", label, null);
-        }
-        usz normalized = (usz)axis;
-        if (tensor_axis_is_listed(normalized, axes, i)) {
-            if (axes != null) mem::free(axes);
-            return raise_error_with_payload_names(interp, "tensor", "tensor/axis-duplicate", "contract: duplicate contracted axis", null);
+            return err;
         }
         axes[i] = normalized;
     }
 
     *out_axes = axes;
+    *out_count = count;
+    return null;
+}
+
+fn bool tensor_axis_pair_container(Value* value) @inline {
+    return is_array(value) || is_cons(value);
+}
+
+fn Value* tensor_parse_axis_pair_values(
+    Value* left_axis_value,
+    Value* right_axis_value,
+    TensorVal* left,
+    TensorVal* right,
+    Interp* interp,
+    usz* left_axes,
+    usz* right_axes,
+    usz index
+) {
+    usz left_axis = 0;
+    Value* err = tensor_parse_axis_value(left_axis_value, left, interp, "contract: left axis out of range", left_axes, index, &left_axis);
+    if (err != null) return err;
+
+    usz right_axis = 0;
+    err = tensor_parse_axis_value(right_axis_value, right, interp, "contract: right axis out of range", right_axes, index, &right_axis);
+    if (err != null) return err;
+
+    left_axes[index] = left_axis;
+    right_axes[index] = right_axis;
+    return null;
+}
+
+fn Value* tensor_parse_axis_pairs(Value* pairs_arg, TensorVal* left, TensorVal* right, Interp* interp, usz** out_left_axes, usz** out_right_axes, usz* out_count) {
+    if (out_left_axes == null || out_right_axes == null || out_count == null) {
+        return tensor_runtime_raise(interp, "contract: axis parser state is missing");
+    }
+    *out_left_axes = null;
+    *out_right_axes = null;
+    *out_count = 0;
+
+    usz input_count = 0;
+    if (!tensor_container_count(pairs_arg, &input_count) ||
+        (!is_array(pairs_arg) && !is_cons(pairs_arg) && !is_nil(pairs_arg))) {
+        return tensor_type_raise(interp, "contract: axis pairs must be an array or proper list");
+    }
+
+    bool single_pair = false;
+    if (input_count == 2) {
+        Value* first = tensor_container_nth(pairs_arg, 0);
+        Value* second = tensor_container_nth(pairs_arg, 1);
+        single_pair = is_int(first) && is_int(second);
+    }
+
+    usz count = single_pair ? 1 : input_count;
+    if (count > 0 && count > usz.max / usz.sizeof) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "contract: axis list is too large", null);
+    }
+
+    usz* left_axes = null;
+    usz* right_axes = null;
+    if (count > 0) {
+        left_axes = (usz*)mem::malloc(usz.sizeof * count);
+        if (left_axes == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "contract: failed to allocate axis list", null);
+        }
+        right_axes = (usz*)mem::malloc(usz.sizeof * count);
+        if (right_axes == null) {
+            mem::free(left_axes);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "contract: failed to allocate axis list", null);
+        }
+    }
+
+    if (single_pair) {
+        Value* err = tensor_parse_axis_pair_values(
+            tensor_container_nth(pairs_arg, 0),
+            tensor_container_nth(pairs_arg, 1),
+            left, right, interp, left_axes, right_axes, 0);
+        if (err != null) {
+            if (left_axes != null) mem::free(left_axes);
+            if (right_axes != null) mem::free(right_axes);
+            return err;
+        }
+    } else {
+        for (usz i = 0; i < count; i++) {
+            Value* pair = tensor_container_nth(pairs_arg, i);
+            usz pair_count = 0;
+            if (!tensor_axis_pair_container(pair) || !tensor_container_count(pair, &pair_count) || pair_count != 2) {
+                if (left_axes != null) mem::free(left_axes);
+                if (right_axes != null) mem::free(right_axes);
+                return tensor_type_raise(interp, "contract: axis pairs must contain two-integer arrays or proper lists");
+            }
+            Value* err = tensor_parse_axis_pair_values(
+                tensor_container_nth(pair, 0),
+                tensor_container_nth(pair, 1),
+                left, right, interp, left_axes, right_axes, i);
+            if (err != null) {
+                if (left_axes != null) mem::free(left_axes);
+                if (right_axes != null) mem::free(right_axes);
+                return err;
+            }
+        }
+    }
+
+    *out_left_axes = left_axes;
+    *out_right_axes = right_axes;
     *out_count = count;
     return null;
 }
@@ -261,22 +385,80 @@ fn bool tensor_contract_sources_alias_destination(TensorVal* source, TensorVal* 
     return tensor_expr_storage_aliases(source.contract_left, dest) || tensor_expr_storage_aliases(source.contract_right, dest);
 }
 
+fn bool tensor_rank2_row_major(TensorVal* tensor) @inline {
+    return tensor != null &&
+        tensor.rank == 2 &&
+        tensor.shape != null &&
+        tensor.strides != null &&
+        tensor.strides[1] == 1 &&
+        tensor.strides[0] == tensor.shape[1];
+}
+
+fn bool tensor_usz_fits_blas_int(usz value) @inline {
+    return value <= 2147483647;
+}
+
+fn bool tensor_contract_try_blas_dgemm(
+    TensorVal* left,
+    TensorVal* right,
+    usz* left_axes,
+    usz* right_axes,
+    usz axis_count,
+    TensorVal* out_tensor
+) {
+    if (axis_count != 1 || left_axes == null || right_axes == null) return false;
+    if (!tensor_rank2_row_major(left) || !tensor_rank2_row_major(right) || !tensor_rank2_row_major(out_tensor)) return false;
+
+    usz left_axis = left_axes[0];
+    usz right_axis = right_axes[0];
+    if (left_axis > 1 || right_axis > 1) return false;
+
+    usz left_free_axis = left_axis == 0 ? 1 : 0;
+    usz right_free_axis = right_axis == 0 ? 1 : 0;
+    usz m = left.shape[left_free_axis];
+    usz k = left.shape[left_axis];
+    usz n = right.shape[right_free_axis];
+    if (m == 0 || n == 0 || k == 0) return false;
+    if (right.shape[right_axis] != k || out_tensor.shape[0] != m || out_tensor.shape[1] != n) return false;
+    if (!tensor_usz_fits_blas_int(m) || !tensor_usz_fits_blas_int(n) || !tensor_usz_fits_blas_int(k) ||
+        !tensor_usz_fits_blas_int(left.strides[0]) || !tensor_usz_fits_blas_int(right.strides[0]) ||
+        !tensor_usz_fits_blas_int(out_tensor.strides[0])) {
+        return false;
+    }
+
+    int trans_a = left_axis == 0 ? 1 : 0;
+    int trans_b = right_axis == 1 ? 1 : 0;
+    return omni_tensor_backend_blas_dgemm(
+        m,
+        n,
+        k,
+        trans_a,
+        trans_b,
+        (double*)left.data,
+        left.strides[0],
+        (double*)right.data,
+        right.strides[0],
+        (double*)out_tensor.data,
+        out_tensor.strides[0]
+    ) != 0;
+}
+
 fn Value* tensor_copy_into_destination(Value* source_value, Value* dest_value, Interp* interp) {
-    if (!is_tensor(source_value)) return tensor_type_raise(interp, "materialize: expected Tensor source");
-    if (!is_tensor(dest_value)) return tensor_type_raise(interp, "materialize: destination must be a Tensor");
+    if (!is_tensor(source_value)) return tensor_type_raise(interp, "realize: expected Tensor source");
+    if (!is_tensor(dest_value)) return tensor_type_raise(interp, "realize: destination must be a Tensor");
 
     TensorVal* source = source_value.tensor_val;
     TensorVal* dest = dest_value.tensor_val;
-    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "materialize: source tensor metadata is missing");
-    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "materialize: destination tensor backing storage is missing");
+    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "realize: source tensor metadata is missing");
+    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "realize: destination tensor backing storage is missing");
     if (!dest.mutable) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "materialize: destination Tensor is immutable", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "realize: destination Tensor is immutable", null);
     }
     if (source.dtype != dest.dtype) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "materialize: tensor dtype mismatch", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "realize: tensor dtype mismatch", null);
     }
     if (source.element_count != dest.element_count || source.byte_len != dest.byte_len || !tensor_same_shape(source, dest)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "materialize: tensor shape mismatch", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "realize: tensor shape mismatch", null);
     }
 
     if (source.kind != TENSOR_PAYLOAD_CONCRETE) {
@@ -285,21 +467,21 @@ fn Value* tensor_copy_into_destination(Value* source_value, Value* dest_value, I
         }
         usz[1] scalar_shape = { 0 };
         usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
-        Value* staged_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "materialize: failed to allocate tensor result");
+        Value* staged_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "realize: failed to allocate tensor result");
         if (staged_value == null || staged_value.tag == ERROR) return staged_value;
         bool keep_staged = false;
         defer if (!keep_staged) {
             boundary_cleanup_materialized_value(null, staged_value, interp.current_scope);
         }
         if (staged_value.tag != TENSOR || staged_value.tensor_val == null || !tensor_has_valid_storage(staged_value.tensor_val)) {
-            return tensor_runtime_raise(interp, "materialize: tensor result backing storage is missing");
+            return tensor_runtime_raise(interp, "realize: tensor result backing storage is missing");
         }
         Value* err = tensor_eval_expr_into(source, staged_value.tensor_val, interp);
         if (err != null) return err;
         if (source.byte_len > 0) mem::copy(dest.data, staged_value.tensor_val.data, source.byte_len);
         return dest_value;
     }
-    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "materialize: source tensor backing storage is missing");
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "realize: source tensor backing storage is missing");
     if (source_value == dest_value || source == dest || source.data == dest.data) return dest_value;
     if (source.byte_len > 0) mem::copy(dest.data, source.data, source.byte_len);
     return dest_value;
@@ -738,6 +920,9 @@ fn Value* tensor_contract_eval_into(
     if (out_tensor.data != null && (out_tensor.data == left.data || out_tensor.data == right.data)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/aliasing", "contract: destination aliases source tensor", null);
     }
+    if (tensor_contract_try_blas_dgemm(left, right, left_axes, right_axes, axis_count, out_tensor)) {
+        return null;
+    }
 
     usz contracted_count = 1;
     for (usz i = 0; i < axis_count; i++) {
@@ -837,8 +1022,8 @@ fn Value* make_tensor_contract_expr(
 }
 
 fn Value* prim_contract(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 4) {
-        return primitive_arity_raise(interp, "contract", "4 arguments: left right left-axes right-axes", args.len);
+    if (args.len != 3 && args.len != 4) {
+        return primitive_arity_raise(interp, "contract", "3 or 4 arguments: left right axis-pairs | left right left-axes right-axes", args.len);
     }
     if (!is_tensor(args[0]) || !is_tensor(args[1])) {
         return tensor_type_raise(interp, "contract: expected Tensor operands");
@@ -855,7 +1040,28 @@ fn Value* prim_contract(Value*[] args, Env* env, Interp* interp) {
 
     usz* left_axes = null;
     usz left_axis_count = 0;
-    Value* err = tensor_parse_axes(args[2], left, interp, "contract: left axis out of range", &left_axes, &left_axis_count);
+    Value* err = null;
+    if (args.len == 3) {
+        usz* right_axes = null;
+        usz right_axis_count = 0;
+        err = tensor_parse_axis_pairs(args[2], left, right, interp, &left_axes, &right_axes, &left_axis_count);
+        if (err != null) return err;
+        right_axis_count = left_axis_count;
+        defer if (left_axes != null) mem::free(left_axes);
+        defer if (right_axes != null) mem::free(right_axes);
+
+        usz* result_shape = null;
+        usz result_rank = 0;
+        err = tensor_contract_result_shape(left, right, left_axes, left_axis_count, right_axes, right_axis_count, interp, &result_shape, &result_rank);
+        if (err != null) return err;
+        defer if (result_shape != null) mem::free(result_shape);
+
+        usz[1] scalar_shape = { 0 };
+        usz[] result_shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+        return make_tensor_contract_expr(args[0], args[1], left_axes, right_axes, left_axis_count, result_shape_slice, interp);
+    }
+
+    err = tensor_parse_axes(args[2], left, interp, "contract: left axis out of range", &left_axes, &left_axis_count);
     if (err != null) return err;
     defer if (left_axes != null) mem::free(left_axes);
 
@@ -876,25 +1082,25 @@ fn Value* prim_contract(Value*[] args, Env* env, Interp* interp) {
     return make_tensor_contract_expr(args[0], args[1], left_axes, right_axes, left_axis_count, result_shape_slice, interp);
 }
 
-fn Value* tensor_materialize_to_value(Value* source_value, Interp* interp) {
-    if (!is_tensor(source_value)) return tensor_type_raise(interp, "materialize: expected Tensor source");
+fn Value* tensor_realize_to_value(Value* source_value, Interp* interp) {
+    if (!is_tensor(source_value)) return tensor_type_raise(interp, "realize: expected Tensor source");
     TensorVal* source = source_value.tensor_val;
-    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "materialize: source tensor metadata is missing");
+    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "realize: source tensor metadata is missing");
     if (source.kind == TENSOR_PAYLOAD_CONCRETE) {
-        if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "materialize: source tensor backing storage is missing");
+        if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "realize: source tensor backing storage is missing");
         return source_value;
     }
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
-    Value* out_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "materialize: failed to allocate tensor result");
+    Value* out_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "realize: failed to allocate tensor result");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
     defer if (!keep_out && out_value != source_value) {
         boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
     }
     if (out_value.tag != TENSOR || out_value.tensor_val == null || !tensor_has_valid_storage(out_value.tensor_val)) {
-        return tensor_runtime_raise(interp, "materialize: tensor result backing storage is missing");
+        return tensor_runtime_raise(interp, "realize: tensor result backing storage is missing");
     }
     Value* err = tensor_eval_expr_into(source, out_value.tensor_val, interp);
     if (err != null) return err;
@@ -907,27 +1113,27 @@ fn Value* tensor_expr_resolve_concrete(Value* source_value, TensorVal** out_tens
     *out_tensor = null;
     if (out_value != null) *out_value = null;
     if (!is_tensor(source_value)) return tensor_type_raise(interp, label);
-    Value* materialized = tensor_materialize_to_value(source_value, interp);
-    if (materialized == null || materialized.tag == ERROR) return materialized;
-    if (!is_tensor(materialized) || !tensor_has_valid_storage(materialized.tensor_val)) {
+    Value* realized = tensor_realize_to_value(source_value, interp);
+    if (realized == null || realized.tag == ERROR) return realized;
+    if (!is_tensor(realized) || !tensor_has_valid_storage(realized.tensor_val)) {
         return tensor_runtime_raise(interp, label);
     }
-    *out_tensor = materialized.tensor_val;
-    if (out_value != null) *out_value = materialized;
+    *out_tensor = realized.tensor_val;
+    if (out_value != null) *out_value = realized;
     return null;
 }
 
 fn Value* tensor_eval_expr_into(TensorVal* source, TensorVal* dest, Interp* interp) {
-    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "materialize: source tensor metadata is missing");
-    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "materialize: destination tensor backing storage is missing");
-    if (source.dtype != dest.dtype) return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "materialize: tensor dtype mismatch", null);
+    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, "realize: source tensor metadata is missing");
+    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "realize: destination tensor backing storage is missing");
+    if (source.dtype != dest.dtype) return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "realize: tensor dtype mismatch", null);
     if (source.element_count != dest.element_count || source.byte_len != dest.byte_len || !tensor_same_shape(source, dest)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "materialize: tensor shape mismatch", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "realize: tensor shape mismatch", null);
     }
 
     switch (source.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
-            if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "materialize: source tensor backing storage is missing");
+            if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "realize: source tensor backing storage is missing");
             if (source == dest || source.data == dest.data) return null;
             if (source.byte_len > 0) mem::copy(dest.data, source.data, source.byte_len);
             return null;
@@ -992,7 +1198,7 @@ fn Value* tensor_eval_expr_into(TensorVal* source, TensorVal* dest, Interp* inte
 
 fn Value* tensor_ref_value(Value* tensor_value, Value* index_arg, Interp* interp) {
     if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "ref: expected Tensor");
-    Value* concrete_value = tensor_materialize_to_value(tensor_value, interp);
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
     if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
     bool cleanup_concrete_value = concrete_value != tensor_value;
     defer if (cleanup_concrete_value) {
@@ -1077,21 +1283,21 @@ fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
     return tensor;
 }
 
-fn Value* prim_materialize(Value*[] args, Env* env, Interp* interp) {
+fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1 && args.len != 2) {
-        return primitive_arity_raise(interp, "materialize", "1 or 2 arguments: expr [out]", args.len);
+        return primitive_arity_raise(interp, "realize", "1 or 2 arguments: expr [out]", args.len);
     }
 
     if (args.len == 1) {
-        if (is_tensor(args[0])) return tensor_materialize_to_value(args[0], interp);
-        return tensor_type_raise(interp, "materialize: expected Tensor source");
+        if (is_tensor(args[0])) return tensor_realize_to_value(args[0], interp);
+        return tensor_type_raise(interp, "realize: expected Tensor source");
     }
 
-    if (!is_tensor(args[1])) return tensor_type_raise(interp, "materialize: destination must be a Tensor");
+    if (!is_tensor(args[1])) return tensor_type_raise(interp, "realize: destination must be a Tensor");
     TensorVal* dest = args[1].tensor_val;
-    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "materialize: destination tensor backing storage is missing");
+    if (!tensor_has_valid_storage(dest)) return tensor_runtime_raise(interp, "realize: destination tensor backing storage is missing");
     if (!dest.mutable) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "materialize: destination Tensor is immutable", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "realize: destination Tensor is immutable", null);
     }
 
     if (is_number(args[0])) {

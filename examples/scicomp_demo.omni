@@ -6,7 +6,7 @@
 ; - Tensor construction and indexing
 ; - elementwise map with scalar broadcast
 ; - tensor contraction
-; - explicit materialize into destination storage
+; - explicit realize into destination storage
 ;
 ; Run with: ./omnilisp examples/scicomp_demo.omni
 
@@ -35,9 +35,9 @@
 
 (print "--- Demo 2: Elementwise map ---\n")
 
-(define shifted (materialize (map + x 1.0)))
-(define doubled (materialize (map * x 2.0)))
-(define combined (materialize (map + shifted doubled)))
+(define shifted (realize (map + x 1.0)))
+(define doubled (realize (map * x 2.0)))
+(define combined (realize (map + shifted doubled)))
 
 (print "shifted[1, 2] = " (ref shifted [1 2]) "\n")
 (print "doubled[1, 2] = " (ref doubled [1 2]) "\n")
@@ -60,22 +60,22 @@
      9.0  10.0
      11.0 12.0]))
 
-(define product (contract a b [1] [0]))
+(define product (contract a b [1 0]))
 (define product-storage (Tensor Double [2 2] 0.0))
 
-(materialize product product-storage)
+(realize product product-storage)
 
 (print "contract(a, b)[0, 0] = " (ref product-storage [0 0]) "\n")
 (print "contract(a, b)[1, 1] = " (ref product-storage [1 1]) "\n\n")
 
 ; ===========================================
-; Demo 4: Lazy expression materialization
+; Demo 4: Lazy expression realization
 ; ===========================================
 
-(print "--- Demo 4: Materialize destination ---\n")
+(print "--- Demo 4: Realize destination ---\n")
 
 (define destination (Tensor Double [2 3] 0.0))
-(materialize (map + x x) destination)
+(realize (map + x x) destination)
 
 (print "destination[0, 1] = " (ref destination [0 1]) "\n")
 (print "destination[1, 2] = " (ref destination [1 2]) "\n")

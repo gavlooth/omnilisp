@@ -147,9 +147,21 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "ellipsis token fails closed",
         "...", "unexpected '...'", pass, fail);
 
-    // Unknown hash dispatch should be rejected deterministically.
-    test_error_contains(interp, "unknown # dispatch rejected",
-        "(+ 1 #x 2)", "unknown # dispatch sequence", pass, fail);
+    // Reader tags rewrite to one-argument calls. Function handlers are ordinary
+    // definitions; [reader tag] is the canonical macro-tag declaration surface.
+    test_eq(interp, "reader tag function call shorthand",
+        "(block (define (reader-inc x) (+ x 1)) #reader-inc 41)", 42, pass, fail);
+    test_eq(interp, "reader tag supports slash names",
+        "(block (define (debug/spy x) x) #debug/spy 7)", 7, pass, fail);
+    test_eq(interp, "reader tag macro declaration",
+        "(block (define [reader tag] reader-double (syntax-match ([x] (template (+ (insert x) (insert x)))))) #reader-double 21)",
+        42, pass, fail);
+    test_error_contains(interp, "reader tag malformed define rejected",
+        "(define [reader tag] bad 1)", "macro definition requires", pass, fail);
+
+    // Non-symbol hash dispatch should still fail closed.
+    test_error_contains(interp, "numeric # dispatch rejected",
+        "(+ 1 #1x 2)", "unknown # dispatch sequence", pass, fail);
     test_error_contains(interp, "bare # dispatch rejected",
         "(+ 1 # 2)", "unknown # dispatch sequence", pass, fail);
 

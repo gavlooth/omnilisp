@@ -1,3 +1,129 @@
+## 2026-04-14
+
+- Landed the first Boost.Multiprecision scalar slice:
+  - Added Boost-backed `BigInteger` storage through a small owned C++ shim over
+    `boost::multiprecision::cpp_int`; Omni owns the handle through the normal
+    scope/region value lifecycle and does not route it through user-visible FFI
+    handles.
+  - Added the `BigInteger` constructor for `Integer`, decimal `String`, and
+    existing `BigInteger` values, plus `String`, `Integer`, and `Double`
+    conversion paths with deterministic `type/arg-mismatch` failures on
+    invalid decimal input or out-of-range narrowing.
+  - Registered `BigInteger` as a builtin `Number` subtype and updated printing,
+    hashing/equality, copy-to-parent, escape/root promotion, and env-copy
+    paths for a leaf exact-integer value.
+  - Updated `+`, `-`, and `*` so `Integer` overflow promotes to `BigInteger`
+    and `BigInteger` combines with `Integer`/`BigInteger`; mixed `Double`
+    operations convert through finite `Double` when possible.
+  - Deferred `/`, `%`, ordering comparisons, bitwise operations, `gcd`/`lcm`,
+    and `parse-number` arbitrary-precision parsing until they have explicit
+    surface contracts.
+  - validation:
+    - installed `libboost-dev` to provide the Boost.Multiprecision headers
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct smokes for constructor/stringification, overflow promotion,
+      multiplication, type identity, `number?`, invalid decimal failure, and
+      out-of-range `Integer` narrowing failure
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `66 passed, 0 failed`
+    - all advanced numeric child groups passed; the normal-stack TCO headroom
+      path still crashes in deep recursive escape promotion for
+      `(length (range 4000))`, while the full `advanced-stdlib-numeric` filter
+      passed under `prlimit --stack=67108864` with `295 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+
+- Recorded the LAPACK/LAPACKE solver naming checkpoint:
+  - a public solver convenience must not be bare `solve`;
+  - `linalg/` is not yet accepted as the base namespace;
+  - keep solver/decomposition naming unresolved until the public convenience
+    layer has a qualifier that fits Omni's tensor/module naming.
+
+- Landed `TENSOR-090B` as the transpose-capable rank-2 BLAS contract slice:
+  - Extended the private `cblas_dgemm` shim to accept transpose flags without
+    adding a public `matmul`/`linalg-matmul` surface.
+  - Broadened the optional BLAS fast path from only `(contract a b [1 0])` to
+    all contiguous row-major rank-2 single-axis `Double` contractions:
+    `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
+  - Kept unsupported ranks, vector-specialized cases, zero-size dimensions,
+    aliasing, missing BLAS symbols, and non-compatible layouts on the pure C3
+    fallback path.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct Tensor smokes:
+      - `[0 0]` transpose-left case -> `84.0`
+      - `[1 1]` transpose-right case -> `68.0`
+      - `[0 1]` transpose-both case -> `123.0`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `221 passed, 0 failed`
+
+- Landed `TENSOR-090A` as the first direct native BLAS backend slice:
+  - Added a private C shim for optional runtime `cblas_dgemm` discovery through
+    `dlopen`/`dlsym`, avoiding a hard OpenBLAS/LAPACKE header or link
+    dependency on hosts that do not provide those development files.
+  - Wired dense rank-2 row-major `Double` contraction equivalent to
+    `(contract a b [1 0])` through the `dgemm` fast path when a compatible BLAS
+    symbol is available, while preserving the pure C3 contraction kernel as the
+    fallback for missing libraries, zero-size dimensions, non-rank-2 cases,
+    unsupported axes/layouts, and aliasing failures.
+  - Kept ordinary Tensor storage native/scoped under `TensorVal`; this does not
+    introduce a public `TensorHandle` or route normal Tensor values through
+    user-visible `ForeignHandle` reference counting.
+  - Added path-sensitive regression coverage for the BLAS fast path when
+    available, with fallback retention when unavailable.
+  - validation:
+    - `c3c build --obj-out obj`
+    - `./scripts/build_omni_chelpers.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - direct Tensor smoke for `(ref (realize (contract a b [1 0])) [1 1])`
+      -> `154.0`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `217 passed, 0 failed`
+
+- Renamed the public Tensor expression-to-storage boundary from `materialize`
+  to `realize` with no compatibility alias:
+  - `realize` now registers as the Tensor boundary primitive and AOT lookup
+    target, with Tensor-facing error messages updated to `realize: ...`.
+  - Tensor docs, examples, and runtime tests now use `(realize expr)` and
+    `(realize expr out)`.
+  - Deduce materialized-view surfaces such as `deduce/materialize!` and
+    `[relation ... materialized]` remain unchanged and intentionally separate.
+- Added the paired-axis shorthand for Tensor `contract`:
+  - `(contract a b [1 0])` is the canonical rank-2 contraction spelling for
+    contracting left axis `1` with right axis `0`.
+  - `(contract a b [[1 0] [2 3]])` covers multi-axis paired contractions.
+  - The explicit `(contract a b [1] [0])` left/right axis-list form remains
+    accepted.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct Tensor smokes for `[1 0]`, `[[1 0]]`, `realize (map ...)`, and
+      old `materialize` removal
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `216 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=reader-dispatch OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `16 passed, 0 failed`
+    - `git diff --check`
+
+## 2026-04-13
+
+- Added constrained hybrid reader-tag syntax:
+  - `#tag form` now parses as `(tag form)` for symbol-like tags while
+    preserving existing built-in hash dispatch forms: `#r"..."`, `#_`, `#N_`,
+    and `#| ... |#`.
+  - Ordinary reader tags can be implemented as normal one-argument functions,
+    for example `(define (reader-inc x) (+ x 1))` with `#reader-inc 41`.
+  - Reader tag macros use the canonical declaration surface
+    `(define [reader tag] name (syntax-match ...))`, which reuses the existing
+    single-transformer macro contract instead of introducing a Common
+    Lisp-style readtable hook.
+  - Non-tag hash dispatch remains fail-closed, including bare `#` and numeric
+    non-comment forms such as `#1x`.
+  - validation:
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=reader-dispatch LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `16 passed, 0 failed`
+
 ## 2026-04-12
 
 - Closed the remaining active TODO lanes for grouped FFI, foreign runtime core,
@@ -19,8 +145,8 @@
   - `TENSOR-080` is closed as a design/contract slice only: backend work must
     preserve the pure `Tensor` fallback as oracle, use capability-driven
     optional BLAS/LAPACK/CUDA/cuBLAS routing, avoid implicit CPU/GPU transfer,
-    and keep native backend handles behind explicit `ForeignHandle` ownership
-    and finalizer policy.
+    keep ordinary Tensor storage native/scoped, and require explicit
+    ownership/finalizer policy for genuinely opaque backend resources.
   - validation:
     - `c3c build --warn-deprecation=no`
     - host targeted `compiler` slice with libclang: `pass=276 fail=0`

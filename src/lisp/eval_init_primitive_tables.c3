@@ -80,8 +80,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
         { "Tensor", &prim_tensor, 3 },
         { "__tensor-map", &prim_tensor_map, -1 },
-        { "contract", &prim_contract, 4 },
-        { "materialize", &prim_materialize, -1 },
+        { "contract", &prim_contract, -1 },
+        { "realize", &prim_realize, -1 },
         { "tensor?", &prim_tensor_p, 1 },
         { "dtype", &prim_dtype, 1 },
         { "shape", &prim_shape, 1 },

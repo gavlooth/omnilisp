@@ -50,6 +50,37 @@ fn Expr* Parser.parse_regex_literal_expr(Parser* self) {
     return e;
 }
 
+fn Expr* Parser.parse_reader_tag_expr(Parser* self) {
+    SymbolId tag = self.get_current_symbol();
+    usz tag_line = self.lexer.current.line;
+    usz tag_col = self.lexer.current.column;
+    self.lexer.advance();
+
+    Expr* arg = self.parse_expr();
+    if (arg == null || self.has_error) return null;
+
+    Expr* func = self.alloc_expr();
+    if (func == null) return null;
+    func.loc_line = tag_line;
+    func.loc_column = tag_col;
+    func.tag = E_VAR;
+    func.var_expr.name = tag;
+
+    Expr* e = self.alloc_expr();
+    if (e == null) return null;
+    e.loc_line = tag_line;
+    e.loc_column = tag_col;
+    e.tag = E_CALL;
+    e.call = (ExprCall*)self.alloc_ast_bytes(ExprCall.sizeof, "out of memory while allocating reader tag call");
+    if (e.call == null) return null;
+    e.call.func = func;
+    e.call.arg_count = 1;
+    e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof, "out of memory while allocating reader tag argument");
+    if (e.call.args == null) return null;
+    e.call.args[0] = arg;
+    return self.parse_postfix_index(e);
+}
+
 fn Expr* Parser.parse_quote_shorthand(Parser* self) {
     Expr* e = self.alloc_expr_here();
     if (e == null) return null;
