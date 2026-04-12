@@ -94,6 +94,5 @@ fn Value* prim_tls_server_wrap(Value*[] args, Env* env, Interp* interp) {
         (BrSslioCallback)&omni_tls_sock_write, th.fd_ptr);
 
     Value* handle_v = make_tls_handle_val(interp, th, "io/tls-server-wrap-out-of-memory", "tls-server-wrap: out of memory");
-    if (handle_v != null && handle_v.tag == ERROR) tls_destroy_handle(th);
     return handle_v;
 }

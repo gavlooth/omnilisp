@@ -51,8 +51,10 @@ fn Value* deduce_define_relation_finalize_open_relation(
         }
     }
 
-    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
+    bool ctor_took_ownership = false;
+    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
+        if (!ctor_took_ownership) deduce_relation_free(rel);
         return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     return v;

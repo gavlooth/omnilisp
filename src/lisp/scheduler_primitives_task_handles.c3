@@ -25,16 +25,20 @@ fn Value* scheduler_make_task_handle_value(usz task_id, uint generation, Interp*
     handle.generation = generation;
     handle.owner_interp = interp;
 
+    bool ctor_took_ownership = false;
     Value* out = make_ffi_handle_ex(
         interp,
         handle,
         "task-handle",
         &scheduler_task_handle_finalizer,
         false,
-        false
+        false,
+        &ctor_took_ownership
     );
     if (out == null) {
-        scheduler_task_handle_finalizer(handle);
+        if (!ctor_took_ownership) {
+            scheduler_task_handle_finalizer(handle);
+        }
         return scheduler_raise(
             interp,
             "scheduler/task-spawn-out-of-memory",

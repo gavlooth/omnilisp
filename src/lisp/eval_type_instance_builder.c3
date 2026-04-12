@@ -41,10 +41,24 @@ fn Value* make_instance_in_scope(Interp* interp, main::ScopeRegion* wrapper_scop
     if (owner_scope == null) return null;
 
     Instance* inst = (Instance*)owner_scope.alloc(Instance.sizeof);
+    if (inst == null) {
+        main::scope_release(owner_scope);
+        return null;
+    }
     inst.owner_scope = owner_scope;
     inst.type_id = type_id;
     inst.field_count = field_count;
-    inst.fields = field_count > 0 ? (Value*)owner_scope.alloc(Value.sizeof * field_count) : null;
+
+    if (field_count > 0 && field_count > usz.max / Value.sizeof) {
+        main::scope_release(owner_scope);
+        return null;
+    }
+    usz field_bytes = field_count > 0 ? Value.sizeof * field_count : 0;
+    inst.fields = field_count > 0 ? (Value*)owner_scope.alloc(field_bytes) : null;
+    if (inst.fields == null && field_count > 0) {
+        main::scope_release(owner_scope);
+        return null;
+    }
     inst.type_arg_count = 0;
     inst.type_args = null;
 

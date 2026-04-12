@@ -155,14 +155,22 @@ fn void instance_release(Instance* inst) @inline {
 }
 
 fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
-    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false) {
+    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false,
+    bool* constructor_owns_handle = null) {
     main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
+    if (constructor_owns_handle != null) *constructor_owns_handle = false;
+
     FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle);
     if (box == null) {
         return null;
     }
+    if (constructor_owns_handle != null) *constructor_owns_handle = true;
+
     Value* v = boundary_alloc_value_in_scope(interp, target_scope, true);
     if (v == null) {
+        // The constructor consumed the raw handle once the box was created;
+        // release it here and keep the ownership flag set so callers do not
+        // run duplicate cleanup on null return.
         ffi_handle_release(box);
         return null;
     }

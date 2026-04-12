@@ -35,10 +35,13 @@ fn Value* make_fs_handle(Interp* interp, int fd) {
     fh.fd = fd;
     fh.open = true;
 
-    Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false);
+    bool ctor_took_ownership = false;
+    Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        (void)fs_uv_close(fd);
-        mem::free(fh);
+        if (!ctor_took_ownership) {
+            (void)fs_uv_close(fd);
+            mem::free(fh);
+        }
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
     return v;

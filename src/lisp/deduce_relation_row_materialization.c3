@@ -1,5 +1,6 @@
 module lisp;
 
+import main;
 import std::core::mem;
 
 bool g_deduce_force_row_dict_oom = false;
@@ -20,7 +21,7 @@ fn Value* deduce_relation_materialize_row_dict(
     uint dict_capacity
 ) {
     Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-scan-range: out of memory");
-    if (g_deduce_force_row_dict_oom || test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+    if (g_deduce_force_row_dict_oom || main::getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
     }
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
@@ -52,7 +53,7 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.column_key_values != null) return null;
 
     Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
-    if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
+    if (g_deduce_force_column_key_values_oom || main::getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
         key_values = null;
     }
     if (key_values == null) {

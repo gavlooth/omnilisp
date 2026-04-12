@@ -318,6 +318,95 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
     {
         Interp local = {};
         local.init();
+        MacroDef* before_table = local.macro_table;
+        usz* before_hash = local.macro_hash_index;
+        usz before_cap = local.macro_capacity;
+        usz before_hash_cap = local.macro_hash_capacity;
+        bool failed = !local.ensure_macro_capacity(usz.max);
+        bool preserved = local.macro_table == before_table
+            && local.macro_hash_index == before_hash
+            && local.macro_capacity == before_cap
+            && local.macro_hash_capacity == before_hash_cap;
+
+        if (failed && preserved) {
+            emit_pass_literal("[PASS] interp macro capacity overflow guards allocation bytes");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp macro capacity overflow guards allocation bytes");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        MacroDef* before_table = local.macro_table;
+        usz* before_hash = local.macro_hash_index;
+        usz before_cap = local.macro_capacity;
+        usz before_hash_cap = local.macro_hash_capacity;
+        usz max_macro_needed = usz.max / MacroDef.sizeof + 1;
+        bool failed = !local.ensure_macro_capacity(max_macro_needed);
+        bool preserved = local.macro_table == before_table
+            && local.macro_hash_index == before_hash
+            && local.macro_capacity == before_cap
+            && local.macro_hash_capacity == before_hash_cap;
+
+        if (failed && preserved) {
+            emit_pass_literal("[PASS] interp macro item-bytes overflow guards growth");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp macro item-bytes overflow guards growth");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        Module* before_modules = local.modules;
+        usz* before_hash = local.module_hash_index;
+        usz before_cap = local.module_capacity;
+        usz before_hash_cap = local.module_hash_capacity;
+        bool failed = !local.ensure_module_capacity(usz.max);
+        bool preserved = local.modules == before_modules
+            && local.module_hash_index == before_hash
+            && local.module_capacity == before_cap
+            && local.module_hash_capacity == before_hash_cap;
+
+        if (failed && preserved) {
+            emit_pass_literal("[PASS] interp module capacity overflow guards allocation bytes");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp module capacity overflow guards allocation bytes");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
+        EffectHandler* before_stack = local.handler_stack;
+        usz before_cap = local.handler_capacity;
+        bool failed = !local.ensure_handler_capacity(usz.max);
+        bool preserved = local.handler_stack == before_stack
+            && local.handler_capacity == before_cap;
+
+        if (failed && preserved) {
+            emit_pass_literal("[PASS] interp handler capacity overflow guards allocation bytes");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp handler capacity overflow guards allocation bytes");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
         SymbolId name = local.symbols.intern("macro-grow-check");
         local.macro_table[0] = (MacroDef){
             .name = name,

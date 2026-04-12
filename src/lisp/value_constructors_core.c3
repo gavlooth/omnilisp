@@ -122,7 +122,8 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
             }
             if (promoted_car.tag == ERROR) return promoted_car;
             bool string_like_car = car.tag == STRING || car.tag == ERROR;
-            if (string_like_car && promoted_car == car) {
+            bool current_scope_temp_car = car.scope_gen == interp.current_scope.generation;
+            if (string_like_car && current_scope_temp_car && promoted_car == car) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
         }
@@ -151,7 +152,8 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 return promoted_cdr;
             }
             bool string_like_cdr = cdr.tag == STRING || cdr.tag == ERROR;
-            if (string_like_cdr && promoted_cdr == cdr) {
+            bool current_scope_temp_cdr = cdr.scope_gen == interp.current_scope.generation;
+            if (string_like_cdr && current_scope_temp_cdr && promoted_cdr == cdr) {
                 boundary_cleanup_materialized_value(
                     car,
                     promoted_car,

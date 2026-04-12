@@ -210,10 +210,13 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
         return rule_signature_err;
     }
 
-    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db", &deduce_db_finalizer, true, false);
+    bool ctor_took_ownership = false;
+    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db", &deduce_db_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        mdb_env_close(db.env);
-        mem::free(db);
+        if (!ctor_took_ownership) {
+            mdb_env_close(db.env);
+            mem::free(db);
+        }
         return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
     }
     return v;

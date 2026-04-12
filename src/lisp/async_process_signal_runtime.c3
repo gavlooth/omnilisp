@@ -160,11 +160,14 @@ fn Value* make_process_handle(Interp* interp, void* uv_process) {
     ph.uv_process = uv_process;
     ph.open = true;
     ph.lifecycle_state = PROCESS_HANDLE_STATE_OPEN;
+    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)ph, "process-handle",
-        &process_handle_finalizer, true, false);
+        &process_handle_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        mem::free(ph);
-        if (uv_process != null) omni_uv_process_close(uv_process);
+        if (!ctor_took_ownership) {
+            mem::free(ph);
+            if (uv_process != null) omni_uv_process_close(uv_process);
+        }
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
     return v;
@@ -213,11 +216,14 @@ fn Value* make_signal_handle(Interp* interp, void* uv_signal_watch, int signum, 
         return io_raise(interp, "io/signal-handle-failed", "signal-handle: failed to register signal handle");
     }
 
+    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)sh, "signal-handle",
-        &signal_handle_finalizer, true, false);
+        &signal_handle_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        signal_handle_detach_runtime_state(sh);
-        mem::free(sh);
+        if (!ctor_took_ownership) {
+            signal_handle_detach_runtime_state(sh);
+            mem::free(sh);
+        }
         return io_raise(interp, "io/signal-handle-out-of-memory", "signal-handle: out of memory");
     }
     return v;

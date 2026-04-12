@@ -10,6 +10,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
     if (self.chunks != null) {
         prev_cap = self.chunks.capacity;
     }
+    if (prev_cap > usz.max / 2) return null;
     usz new_cap = prev_cap * 2;
     if (new_cap > SCOPE_CHUNK_MAX) new_cap = SCOPE_CHUNK_MAX;
     if (new_cap < aligned_size) new_cap = aligned_size;
@@ -52,6 +53,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
     if (self.escape_chunks != null) {
         prev_cap = self.escape_chunks.capacity;
     }
+    if (prev_cap > usz.max / 2) return null;
     usz new_cap = prev_cap * 2;
     if (new_cap > SCOPE_CHUNK_MAX) new_cap = SCOPE_CHUNK_MAX;
     if (new_cap < aligned_size) new_cap = aligned_size;
@@ -81,10 +83,13 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
 fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
     scope_guard_owner(self, "scope_alloc");
     usz mask = 7;
+    if (size > usz.max - mask) return null;
     usz aligned = (size + mask) & ~mask;
     char* result = self.bump;
-    char* new_bump = result + aligned;
-    if (new_bump <= self.limit) {
+    usz result_addr = (usz)result;
+    usz limit_addr = (usz)self.limit;
+    if (result != null && result_addr <= limit_addr && aligned <= limit_addr - result_addr) {
+        char* new_bump = result + aligned;
         self.bump = new_bump;
         self.alloc_bytes += aligned;
         self.alloc_count++;
@@ -99,11 +104,14 @@ fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
 fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
     scope_guard_owner(self, "scope_alloc_escape");
     usz mask = 7;
+    if (size > usz.max - mask) return null;
     usz aligned = (size + mask) & ~mask;
     if (self.escape_bump != null) {
         char* result = self.escape_bump;
-        char* new_bump = result + aligned;
-        if (new_bump <= self.escape_limit) {
+        usz result_addr = (usz)result;
+        usz limit_addr = (usz)self.escape_limit;
+        if (result_addr <= limit_addr && aligned <= limit_addr - result_addr) {
+            char* new_bump = result + aligned;
             self.escape_bump = new_bump;
             self.alloc_bytes += aligned;
             self.alloc_count++;

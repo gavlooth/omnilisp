@@ -28,9 +28,12 @@ fn Value* prim_atomic(Value*[] args, Env* env, Interp* interp) {
     if (ref == null) return raise_error(interp, "atomic: out of memory");
     ref.value.store(args[0].int_val);
 
-    Value* v = make_ffi_handle_ex(interp, (void*)ref, "atomic-ref", null, true, false);
+    bool ctor_took_ownership = false;
+    Value* v = make_ffi_handle_ex(interp, (void*)ref, "atomic-ref", null, true, false, &ctor_took_ownership);
     if (v == null) {
-        mem::free(ref);
+        if (!ctor_took_ownership) {
+            mem::free(ref);
+        }
         return raise_error(interp, "atomic: out of memory");
     }
     return v;

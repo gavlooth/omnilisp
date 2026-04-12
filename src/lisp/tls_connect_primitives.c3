@@ -150,7 +150,6 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     if (th == null) return tls_raise_async(interp, "io/tls-connect-handle-allocation-failed", "tls-connect: failed to allocate TLS handle");
 
     Value* handle_v = make_tls_handle_val(interp, th, "io/tls-connect-out-of-memory", "tls-connect: out of memory");
-    if (handle_v != null && handle_v.tag == ERROR) tls_destroy_handle(th);
     return handle_v;
 }
 

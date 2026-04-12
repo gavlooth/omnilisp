@@ -18,12 +18,17 @@ fn ScopeChunk* scope_chunk_alloc_raw(usz min_bytes) {
     // Double from initial, capped at max
     usz capacity = SCOPE_CHUNK_INITIAL;
     while (capacity < min_bytes) {
+        if (capacity > usz.max / 2) {
+            capacity = min_bytes;
+            break;
+        }
         capacity *= 2;
         if (capacity > SCOPE_CHUNK_MAX) {
             capacity = min_bytes;  // Oversized allocation — exact fit
             break;
         }
     }
+    if (capacity > usz.max - ScopeChunk.sizeof) return null;
     usz total = ScopeChunk.sizeof + capacity;
     ScopeChunk* chunk = (ScopeChunk*)mem::malloc(total);
     if (chunk == null) return null;

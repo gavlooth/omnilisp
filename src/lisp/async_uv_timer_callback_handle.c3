@@ -143,17 +143,21 @@ fn Value* make_uv_timer_callback_handle(Interp* interp, Value* callback_v) {
         return io_raise(interp, "io/uv-timer-callback-handle-register-failed", err_msg);
     }
 
+    bool ctor_took_ownership = false;
     Value* value = make_ffi_handle_ex(
         interp,
         (void*)handle,
         "uv-timer-callback-handle",
         &uv_timer_callback_handle_finalizer,
         true,
-        false
+        false,
+        &ctor_took_ownership
     );
     if (value == null) {
-        uv_timer_callback_handle_detach_runtime_state(handle);
-        mem::free(handle);
+        if (!ctor_took_ownership) {
+            uv_timer_callback_handle_detach_runtime_state(handle);
+            mem::free(handle);
+        }
         return io_raise(
             interp,
             "io/uv-timer-callback-handle-out-of-memory",

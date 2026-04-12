@@ -24,11 +24,14 @@ fn Value* make_tcp_stream_handle(Interp* interp, int fd, TcpTransport transport 
     th.mode = TCP_STREAM;
     th.transport = transport;
     th.uv_listener_handle = null;
+    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)th, "tcp-handle",
-        &tcp_handle_finalizer, true, false);
+        &tcp_handle_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        if (th.fd >= 0) c_close_fd(th.fd);
-        mem::free(th);
+        if (!ctor_took_ownership) {
+            if (th.fd >= 0) c_close_fd(th.fd);
+            mem::free(th);
+        }
         return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
     }
     return v;
@@ -57,11 +60,14 @@ fn Value* make_udp_handle(Interp* interp, int fd) {
     }
     uh.fd = fd;
     uh.open = true;
+    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)uh, "udp-handle",
-        &udp_handle_finalizer, true, false);
+        &udp_handle_finalizer, true, false, &ctor_took_ownership);
     if (v == null) {
-        mem::free(uh);
-        c_close_fd(fd);
+        if (!ctor_took_ownership) {
+            mem::free(uh);
+            c_close_fd(fd);
+        }
         return io_raise(interp, "io/udp-socket-out-of-memory", "udp-socket: out of memory");
     }
     return v;
