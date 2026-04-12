@@ -519,7 +519,7 @@ Repro artifacts:
 
 ## Next Steps
 
-1. Run `scripts/run_validation_status_summary.sh build/validation_status_summary.json` before treating `build/validation_status_summary.json` as current broad bounded-gate output, then drill into narrower runtime guards.
+1. Run `scripts/run_validation_status_summary.sh build/validation_status_summary.json` before treating `build/validation_status_summary.json` as current broad validation output; it includes host-local build/e2e/FTXUI smoke checks plus container-bound runtime slices, and should be used before drilling into narrower runtime guards.
 2. Keep `memory/CHANGELOG.md`, `TODO.md`, and `memory/DESTINATION_ARENA_PLAN.md` closure wording synchronized per landing.
 3. Keep `scripts/run_boundary_hardening.sh` and policy checks as required gate runs for boundary-sensitive changes.
 4. Keep nested wrapper fail-closed coverage (`CONS` / `PARTIAL_PRIM` / `ITERATOR` with opaque primitive payloads) in the bounded smoke lane when touching boundary-copy or ESCAPE promotion code.
@@ -527,8 +527,7 @@ Repro artifacts:
 6. Treat any new bounded `advanced`, `basic`, or `memory-lifetime-smoke` regression as a fresh blocker instead of reopening stale historical notes here.
 7. Keep runtime modularization queue updates in sync with `docs/plans/runtime-modularization-split-2026-03-11.md` and `memory/CHANGELOG.md` when deduce/runtime test splits land.
 8. Keep contributor guidance aligned with lane ownership: boundary/lifetime lanes stay container-bound, allocator lanes stay separate, and syntax/compiler-only work should not inherit memory lanes by convenience.
-9. Keep any future follow-up blocker explicit in `TODO.md`; the latest focused
-   audit wave is currently back to zero live items.
+9. Do not treat stale historical follow-up wording as live work unless a fresh failing signal or owner request promotes it into `TODO.md`; the current live queue is authoritative for active blockers.
 
 ## Concurrency Boundary Plan Alignment
 
