@@ -44,21 +44,31 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
     return true;
 }
 
-fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
+fn bool gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
     int existing = gc.find_rule(rule_name);
     if (existing >= 0) {
         gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
-        return;
+        return true;
     }
+
     char[] name_str = interp.symbols.get_name(rule_name);
     gc.rb.rules[clause_idx].name = (String)name_str;
-    if (!gc_ensure_rule_capacity(gc)) return;
+    if (!gc_ensure_rule_capacity(gc)) return false;
+    if (gc.rule_count < 0 || gc.rule_count >= gc.rule_capacity || gc.rule_names == null || gc.rule_indices == null) {
+        gc_set_error(gc, "parser/grammar-oom", "pika/grammar: failed to grow rule table");
+        return false;
+    }
+
     gc.rule_names[gc.rule_count] = rule_name;
     gc.rule_indices[gc.rule_count] = clause_idx;
     gc.rule_count++;
+    return true;
 }
 
 fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc) {
+    if (gc.has_error) {
+        return parser_raise(interp, gc.error_code, gc.error_message);
+    }
     if (gc.rb.len == 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
@@ -119,7 +129,9 @@ fn lisp::Value* prim_pika_grammar(lisp::Value*[] args, lisp::Env* env, lisp::Int
         // Compile the clause
         int clause_idx = compile_clause(&gc, clause);
         if (gc.has_error) return parser_raise(interp, gc.error_code, gc.error_message);
-        gc_register_rule(&gc, interp, rule_name, clause_idx);
+        if (!gc_register_rule(&gc, interp, rule_name, clause_idx)) {
+            return parser_raise(interp, gc.error_code, gc.error_message);
+        }
     }
     return finalize_named_grammar(interp, grammar_name, &gc);
 }

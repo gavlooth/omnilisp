@@ -1,5 +1,7 @@
 module lisp;
 
+import std::math;
+
 const usz AST_ARENA_ALIGNMENT = 8;
 const usz AST_ARENA_INITIAL_CHUNK_BYTES = 4096;
 
@@ -18,9 +20,12 @@ struct AstArena {
     usz capacity;
 }
 
-fn usz ast_arena_aligned_size(usz size) {
+fn bool ast_arena_aligned_size(usz size, usz* out) {
     usz mask = AST_ARENA_ALIGNMENT - 1;
-    return (size + mask) & ~mask;
+    usz aligned = 0;
+    if (math::overflow_add(size, mask, &aligned)) return false;
+    *out = aligned & ~mask;
+    return true;
 }
 
 fn usz ast_arena_next_chunk_capacity(AstArena* arena, usz required) {
@@ -44,7 +49,8 @@ fn usz ast_arena_next_chunk_capacity(AstArena* arena, usz required) {
 fn AstArenaChunk* ast_arena_chunk_alloc(usz capacity) {
     if (capacity == 0) return null;
 
-    usz total = AstArenaChunk.sizeof + capacity;
+    usz total = 0;
+    if (math::overflow_add(AstArenaChunk.sizeof, capacity, &total)) return null;
     AstArenaChunk* chunk = (AstArenaChunk*)mem::malloc(total);
     if (chunk == null) return null;
 
@@ -133,23 +139,31 @@ fn void ast_arena_zero(void* ptr, usz size) @inline {
 fn void* ast_arena_alloc(AstArena* arena, usz size) {
     if (arena == null || size == 0) return null;
 
-    usz aligned = ast_arena_aligned_size(size);
+    usz aligned = 0;
+    if (!ast_arena_aligned_size(size, &aligned)) return null;
 
     AstArenaChunk* current = arena.chunks;
-    if (current != null && current.used + aligned <= current.capacity) {
-        char* data = ast_arena_chunk_data(current);
-        void* result = data + current.used;
-        current.used += aligned;
-        ast_arena_zero(result, size);
-        return result;
+    if (current != null) {
+        usz next_used = 0;
+        if (math::overflow_add(current.used, aligned, &next_used)) return null;
+        if (next_used <= current.capacity) {
+            char* data = ast_arena_chunk_data(current);
+            void* result = data + current.used;
+            current.used = next_used;
+            ast_arena_zero(result, size);
+            return result;
+        }
     }
 
     usz chunk_capacity = ast_arena_next_chunk_capacity(arena, aligned);
+    usz updated_capacity = 0;
+    if (math::overflow_add(arena.capacity, chunk_capacity, &updated_capacity)) return null;
+
     AstArenaChunk* chunk = ast_arena_chunk_alloc(chunk_capacity);
     if (chunk == null) return null;
 
     chunk.used = aligned;
-    arena.capacity += chunk_capacity;
+    arena.capacity = updated_capacity;
     arena.count++;
     chunk.next = arena.chunks;
     arena.chunks = chunk;

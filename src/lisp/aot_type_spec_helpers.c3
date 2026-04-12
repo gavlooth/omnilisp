@@ -66,15 +66,21 @@ fn bool aot_type_annotation_init_from_spec(lisp::TypeAnnotation* ann, AotTypeAnn
     ann.is_compound = spec.is_compound;
     ann.is_dict = spec.is_dict;
     ann.base_type = aot_symbol_from_text(spec.base_type);
+
+    if (spec.param_count > usz.max / lisp::SymbolId.sizeof) return false;
     ann.param_count = spec.param_count;
     if (spec.param_count > 0) {
         ann.params = (lisp::SymbolId*)mem::malloc(lisp::SymbolId.sizeof * spec.param_count);
-        if (ann.params == null) return false;
+        if (ann.params == null) {
+            aot_type_annotation_destroy(ann);
+            return false;
+        }
         for (usz i = 0; i < spec.param_count; i++) {
             ann.params[i] = aot_symbol_from_text(spec.params[i]);
         }
     }
 
+    if (spec.meta_count > usz.max / lisp::MetaEntry.sizeof) return false;
     ann.meta_count = spec.meta_count;
     if (spec.meta_count > 0) {
         ann.meta = (lisp::MetaEntry*)mem::malloc(lisp::MetaEntry.sizeof * spec.meta_count);
@@ -120,7 +126,15 @@ fn void aot_method_signature_destroy(lisp::MethodSignature* sig) {
 }
 
 fn bool aot_method_signature_alloc(lisp::MethodSignature* sig, usz param_count, usz constraint_count) {
+    if (sig == null) return false;
     aot_method_signature_init_empty(sig);
+
+    if (param_count > usz.max / lisp::TypeId.sizeof) return false;
+    if (param_count > usz.max / lisp::SymbolId.sizeof) return false;
+    if (param_count > usz.max / lisp::ValueLiteralKey.sizeof) return false;
+    if (param_count > usz.max / bool.sizeof) return false;
+    if (constraint_count > usz.max / lisp::MethodConstraint.sizeof) return false;
+
     sig.param_count = param_count;
     sig.constraint_count = constraint_count;
     if (param_count > 0) {
@@ -152,10 +166,13 @@ fn bool aot_method_signature_alloc(lisp::MethodSignature* sig, usz param_count, 
 }
 
 fn bool aot_build_method_signature_from_specs(lisp::MethodSignature* sig, AotTypeAnnotationSpec* specs, usz param_count) {
+    if (specs == null && param_count > 0) return false;
+
     usz constraint_count = 0;
     for (usz i = 0; i < param_count; i++) {
         if (!specs[i].has_annotation || !specs[i].is_dict) continue;
         for (usz m = 0; m < specs[i].meta_count; m++) {
+            if (constraint_count == usz.max) return false;
             if (!specs[i].meta[m].is_int) constraint_count++;
         }
     }
@@ -179,6 +196,10 @@ fn bool aot_build_method_signature_from_specs(lisp::MethodSignature* sig, AotTyp
             bool saw_type_var = false;
             for (usz m = 0; m < ann.meta_count; m++) {
                 if (ann.meta[m].is_int) continue;
+                if (next_constraint >= constraint_count) {
+                    aot_method_signature_destroy(sig);
+                    return false;
+                }
                 lisp::SymbolId param_sym = aot_symbol_from_text(ann.meta[m].key);
                 if (!saw_type_var) {
                     sig.param_type_vars[i] = param_sym;

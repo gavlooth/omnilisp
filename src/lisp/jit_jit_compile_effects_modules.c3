@@ -119,10 +119,16 @@ fn Module* jit_find_current_module(Interp* interp, Env* env) {
     return null;
 }
 
-fn void jit_append_module_export(Module* mod, SymbolId sym) {
+fn bool jit_append_module_export(Module* mod, SymbolId sym) {
     if (mod.export_count >= mod.export_capacity) {
-        usz new_cap = mod.export_capacity * 2;
+        if (mod.export_count >= usz.max) return false;
+        usz needed_cap = mod.export_count + 1;
+        if (mod.export_capacity > usz.max / 2) return false;
+        usz new_cap = mod.export_capacity > 0 ? mod.export_capacity * 2 : 16;
+        if (new_cap < needed_cap) new_cap = needed_cap;
+        if (new_cap > usz.max / SymbolId.sizeof) return false;
         SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
+        if (new_exports == null) return false;
         for (usz j = 0; j < mod.export_count; j++) {
             new_exports[j] = mod.exports[j];
         }
@@ -130,8 +136,10 @@ fn void jit_append_module_export(Module* mod, SymbolId sym) {
         mod.exports = new_exports;
         mod.export_capacity = new_cap;
     }
+    if (mod.exports == null) return false;
     mod.exports[mod.export_count] = sym;
     mod.export_count++;
+    return true;
 }
 
 fn bool jit_is_exported_symbol(Module* source_mod, SymbolId sym) {
@@ -146,7 +154,7 @@ fn bool jit_is_exported_symbol(Module* source_mod, SymbolId sym) {
 fn bool jit_bind_and_reexport(Env* env, Interp* interp, Module* current_mod, SymbolId sym, Value* val) {
     if (val == null) return true;
     if (env_define_with_barrier_result(env, sym, val, interp) != null) return false;
-    jit_append_module_export(current_mod, sym);
+    if (!jit_append_module_export(current_mod, sym)) return false;
     return true;
 }
 

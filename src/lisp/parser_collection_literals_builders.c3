@@ -32,7 +32,17 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
     e.call.arg_count = args.len();
     e.call.args = null;
     if (args.len() > 0) {
-        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * args.len(), "out of memory while allocating dictionary literal arguments");
+        usz arg_bytes;
+        if (!self.alloc_ast_bytes_for_count(
+            Expr*.sizeof,
+            args.len(),
+            "out of memory while allocating dictionary literal arguments",
+            &arg_bytes
+        )) {
+            args.free();
+            return null;
+        }
+        e.call.args = (Expr**)self.alloc_ast_bytes(arg_bytes, "out of memory while allocating dictionary literal arguments");
         if (e.call.args == null) { args.free(); return null; }
     }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
@@ -76,7 +86,17 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     e.call.arg_count = args.len();
     e.call.args = null;
     if (args.len() > 0) {
-        e.call.args = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * args.len(), "out of memory while allocating array literal arguments");
+        usz arg_bytes;
+        if (!self.alloc_ast_bytes_for_count(
+            Expr*.sizeof,
+            args.len(),
+            "out of memory while allocating array literal arguments",
+            &arg_bytes
+        )) {
+            args.free();
+            return null;
+        }
+        e.call.args = (Expr**)self.alloc_ast_bytes(arg_bytes, "out of memory while allocating array literal arguments");
         if (e.call.args == null) { args.free(); return null; }
     }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }

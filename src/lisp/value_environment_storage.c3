@@ -141,18 +141,24 @@ fn Env* make_env(Interp* interp, Env* parent) {
  */
 fn bool Env.build_hash_table(Env* self) {
     // Determine capacity (next power of 2 >= 2 * count)
+    if (self.binding_count > usz.max / 2) {
+        return false;
+    }
     usz cap = 32;
-    while (cap < self.binding_count * 2) cap *= 2;
+    while (cap < self.binding_count * 2) {
+        if (cap > usz.max / 2) {
+            return false;
+        }
+        cap *= 2;
+    }
+    if (cap > usz.max / EnvHashEntry.sizeof) {
+        return false;
+    }
 
     EnvHashEntry* new_hash_table = g_env_force_hash_alloc_oom
         ? null
         : (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
     if (new_hash_table == null) {
-        if (self.hash_table != null) {
-            mem::free(self.hash_table);
-            self.hash_table = null;
-            self.hash_capacity = 0;
-        }
         return false;
     }
 

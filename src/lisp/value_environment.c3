@@ -21,7 +21,13 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     }
     // Grow if needed
     if (self.binding_count >= self.capacity) {
+        if (self.capacity > usz.max / 2) {
+            return false;
+        }
         usz new_cap = self.capacity * 2;
+        if (new_cap > usz.max / Binding.sizeof) {
+            return false;
+        }
         Binding* new_bindings = g_env_force_bindings_alloc_oom
             ? null
             : (Binding*)mem::malloc(Binding.sizeof * new_cap);
@@ -45,9 +51,14 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
         (void)self.build_hash_table();
     } else if (self.hash_table != null) {
-        // Check load factor: rebuild if > 70%
-        if (self.binding_count * 10 > self.hash_capacity * 7) {
-            (void)self.build_hash_table();
+        // Check load factor: rebuild if > 70%. If the rebuild fails, keep
+        // the binding visible by falling back to linear lookup.
+        if (self.binding_count > (self.hash_capacity / 10) * 7) {
+            if (!self.build_hash_table()) {
+                mem::free(self.hash_table);
+                self.hash_table = null;
+                self.hash_capacity = 0;
+            }
         } else {
             self.hash_insert(name, new_idx);
         }

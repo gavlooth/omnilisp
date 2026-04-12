@@ -128,8 +128,9 @@ validated runtime behavior, follow `memory/CHANGELOG.md` and this area doc.
     state maps, deduce explain/schema/analyze payload maps, and deduce
     why-result path/payload builders no longer use raw `make_hashmap(...)`
     in `src/lisp/deduce_*` / `src/lisp/unify_*`.
-  - scoped grep verification is now clean for that family, and the bounded
-    `deduce` slice passes on the shipped tree (`pass=328 fail=0`).
+  - scoped grep verification was clean for that family in that historical
+    closure snapshot (`deduce` slice `pass=328 fail=0`); later full-slice
+    evidence is recorded in `docs/areas/deduce-runtime.md`.
 - That deduce payload family now also treats checked insertion failure as a
   first-class error:
   - explain/analyze/schema/stats/why-result payload builders no longer ignore
@@ -363,7 +364,7 @@ Repro artifacts:
 
 ## Next Steps
 
-1. Use `scripts/run_validation_status_summary.sh build/validation_status_summary.json` as the broad validation snapshot before drilling into narrower runtime guards; it includes host-local build/e2e/FTXUI smoke checks plus container-bound runtime slices.
+1. Use `scripts/run_validation_status_summary.sh build/validation_status_summary.json` as the broad validation snapshot before drilling into narrower runtime guards; it includes host-local build/FTXUI smoke checks, local-entrypoint Docker-bound e2e execution, and container-bound runtime slices.
 2. Keep `memory/CHANGELOG.md`, `TODO.md`, and `memory/DESTINATION_ARENA_PLAN.md` closure wording synchronized per landing.
 3. Keep `scripts/run_boundary_hardening.sh` and policy checks as required gate runs for boundary-sensitive changes.
 4. Keep nested wrapper fail-closed coverage (`CONS` / `PARTIAL_PRIM` / `ITERATOR` with opaque primitive payloads) in the bounded smoke lane when touching boundary-copy or ESCAPE promotion code.

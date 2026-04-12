@@ -6,6 +6,13 @@ import main;
 fn bool method_signature_copy_to_escape(MethodSignature* dst, MethodSignature* src, main::ScopeRegion* scope) {
     if (dst == null || src == null || scope == null) return false;
     method_signature_init_empty(dst);
+    if (src.param_count > 0 && (src.param_count > usz.max / TypeId.sizeof
+            || src.param_count > usz.max / SymbolId.sizeof
+            || src.param_count > usz.max / ValueLiteralKey.sizeof
+            || src.param_count > usz.max / bool.sizeof)) {
+        return false;
+    }
+    if (src.constraint_count > 0 && src.constraint_count > usz.max / MethodConstraint.sizeof) return false;
     dst.param_count = src.param_count;
     dst.constraint_count = src.constraint_count;
 
@@ -364,6 +371,10 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
         cloned.type_sig = cloned_sig;
     }
 
+    result.tag = CLOSURE;
+    result.closure_val = cloned;
+    if (ctx != null) promotion_context_remember(ctx, v, result, interp);
+
     if (promote_escape_closure_env_needs_detach(v, interp)) {
         main::ScopeRegion* env_scope = main::scope_create(null);
         if (env_scope == null) {
@@ -391,8 +402,6 @@ fn Value* promote_escape_closure(Value* v, Interp* interp, PromotionContext* ctx
     } else if (cloned.env_scope != null) {
         main::scope_retain(cloned.env_scope);
     }
-    result.tag = CLOSURE;
-    result.closure_val = cloned;
     main::scope_register_dtor_escape(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }

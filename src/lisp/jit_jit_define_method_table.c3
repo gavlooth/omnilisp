@@ -48,7 +48,9 @@ fn bool jit_method_table_append_entry_with_sig(MethodTable* mt, MethodSignature*
         }
     }
     if (mt.entry_count >= mt.capacity) {
+        if (mt.capacity > usz.max / 2) return false;
         usz new_cap = mt.capacity * 2;
+        if (new_cap > usz.max / MethodEntry.sizeof) return false;
         MethodEntry* new_entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * new_cap);
         if (new_entries == null) return false;
         for (usz ei = 0; ei < mt.entry_count; ei++) new_entries[ei] = mt.entries[ei];
@@ -77,6 +79,10 @@ fn bool jit_method_table_append_entry(MethodTable* mt, Value* impl) {
 fn MethodTable* jit_new_method_table_with_sig(SymbolId name, MethodSignature* sig, Value* impl, Value* fallback) {
     MethodTable* mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     if (mt == null) return null;
+    if (METHOD_INITIAL_CAPACITY > usz.max / MethodEntry.sizeof) {
+        mem::free(mt);
+        return null;
+    }
     mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * METHOD_INITIAL_CAPACITY);
     if (mt.entries == null) {
         mem::free(mt);

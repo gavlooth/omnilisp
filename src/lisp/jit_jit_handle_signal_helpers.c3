@@ -144,12 +144,19 @@ fn bool handle_effect_state_capture_handler_copy(HandleEffectState* state, Effec
     Value** copied_closures = null;
 
     if (src.tags != null) {
+        if (count > usz.max / SymbolId.sizeof) {
+            return false;
+        }
         copied_tags = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
         if (copied_tags == null) return false;
         mem::copy(copied_tags, src.tags, SymbolId.sizeof * count);
     }
 
     if (src.clauses != null) {
+        if (count > usz.max / EffectClause.sizeof) {
+            if (copied_tags != null) mem::free(copied_tags);
+            return false;
+        }
         copied_clauses = (EffectClause*)mem::malloc(EffectClause.sizeof * count);
         if (copied_clauses == null) {
             if (copied_tags != null) mem::free(copied_tags);
@@ -159,6 +166,11 @@ fn bool handle_effect_state_capture_handler_copy(HandleEffectState* state, Effec
     }
 
     if (src.closures != null) {
+        if (count > usz.max / Value*.sizeof) {
+            if (copied_clauses != null) mem::free(copied_clauses);
+            if (copied_tags != null) mem::free(copied_tags);
+            return false;
+        }
         copied_closures = (Value**)mem::malloc(Value*.sizeof * count);
         if (copied_closures == null) {
             if (copied_clauses != null) mem::free(copied_clauses);

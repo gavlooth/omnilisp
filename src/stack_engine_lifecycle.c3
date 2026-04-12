@@ -50,6 +50,9 @@ fn StackCtx* stack_ctx_create(StackPool* pool) {
     } else {
         // Fresh allocation
         c = (StackCtx*)mem::malloc(StackCtx.sizeof);
+        if (c == null) {
+            return null;
+        }
         c.stack = stack_region_alloc(pool.stack_size);
         if (c.stack.base == null) {
             mem::free(c);

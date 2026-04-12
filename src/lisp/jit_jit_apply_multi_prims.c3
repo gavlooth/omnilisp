@@ -11,6 +11,7 @@ bool g_jit_force_multi_arg_buffer_alloc_fail = false;
 
 fn Value** jit_alloc_multi_arg_buffer(Interp* interp, usz arg_count) @inline {
     if (arg_count == 0) return null;
+    if (arg_count > usz.max / Value*.sizeof) return null;
     if (g_jit_force_multi_arg_buffer_alloc_fail) return null;
     return (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count);
 }
@@ -58,6 +59,9 @@ fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, 
     if (checked_count <= JIT_TYPED_PREFIX_INLINE_ARG_CAPACITY) {
         checked_args = checked_inline[:checked_count];
     } else {
+        if (checked_count > usz.max / Value*.sizeof) {
+            return raise_error(interp, "lambda type check: out of memory");
+        }
         checked_storage = (Value**)mem::malloc(Value*.sizeof * checked_count);
         if (checked_storage == null) {
             return raise_error(interp, "lambda type check: out of memory");

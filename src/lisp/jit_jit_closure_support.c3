@@ -19,6 +19,13 @@ fn void method_signature_init_empty(MethodSignature* sig) {
 
 fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::ScopeRegion* scope, usz param_count, usz constraint_count) {
     method_signature_init_empty(sig);
+    if (param_count > 0 && (param_count > usz.max / TypeId.sizeof
+            || param_count > usz.max / SymbolId.sizeof
+            || param_count > usz.max / ValueLiteralKey.sizeof
+            || param_count > usz.max / bool.sizeof)) {
+        return false;
+    }
+    if (constraint_count > 0 && constraint_count > usz.max / MethodConstraint.sizeof) return false;
     sig.param_count = param_count;
     sig.constraint_count = constraint_count;
     if (param_count > 0) {
@@ -79,6 +86,13 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
         return false;
     }
     method_signature_init_empty(dst);
+    if (src.param_count > 0 && (src.param_count > usz.max / TypeId.sizeof
+            || src.param_count > usz.max / SymbolId.sizeof
+            || src.param_count > usz.max / ValueLiteralKey.sizeof
+            || src.param_count > usz.max / bool.sizeof)) {
+        return false;
+    }
+    if (src.constraint_count > 0 && src.constraint_count > usz.max / MethodConstraint.sizeof) return false;
     dst.param_count = src.param_count;
     dst.constraint_count = src.constraint_count;
     if (src.param_count > 0) {

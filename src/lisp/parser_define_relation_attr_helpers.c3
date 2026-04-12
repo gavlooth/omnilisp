@@ -34,6 +34,9 @@ fn Expr* Parser.build_define_relation_call(
     SymbolId index_col
 ) {
     usz col_count = col_names.len();
+    usz unique_count = unique_cols == null ? 0 : unique_cols.len();
+    usz reference_count = reference_constraints == null ? 0 : reference_constraints.len();
+    usz check_count = check_constraints == null ? 0 : check_constraints.len();
     SymbolId sym_role_key = self.interp.symbols.intern("__relation-role-key");
     SymbolId sym_role_unique = self.interp.symbols.intern("__relation-role-unique");
     SymbolId sym_role_index = self.interp.symbols.intern("__relation-role-index");
@@ -46,11 +49,62 @@ fn Expr* Parser.build_define_relation_call(
     if (materialized_view) role_arg_count++;
     if (materialized_refresh_policy != (SymbolId)0) role_arg_count++;
     if (key_col != (SymbolId)0) role_arg_count++;
-    role_arg_count += unique_cols != null ? unique_cols.len() : 0;
-    role_arg_count += reference_constraints != null ? reference_constraints.len() * 3 : 0;
-    role_arg_count += check_constraints != null ? check_constraints.len() * 2 : 0;
-    if (index_col != (SymbolId)0) role_arg_count++;
-    usz total_args = 2 + col_count + role_arg_count;
+    if (unique_count > 0) {
+        if (role_arg_count > usz.max - unique_count) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        role_arg_count += unique_count;
+    }
+
+    if (reference_count > 0) {
+        if (reference_count > usz.max / 3) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        usz reference_args = reference_count * 3;
+        if (role_arg_count > usz.max - reference_args) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        role_arg_count += reference_args;
+    }
+
+    if (check_count > 0) {
+        if (check_count > usz.max / 2) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        usz check_args = check_count * 2;
+        if (role_arg_count > usz.max - check_args) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        role_arg_count += check_args;
+    }
+    if (index_col != (SymbolId)0) {
+        if (role_arg_count == usz.max) {
+            self.set_error("relation definition is too large");
+            return null;
+        }
+        role_arg_count++;
+    }
+    usz total_args = 2;
+    if (col_count > usz.max - total_args) {
+        self.set_error("relation definition is too large");
+        return null;
+    }
+    total_args += col_count;
+    if (role_arg_count > usz.max - total_args) {
+        self.set_error("relation definition is too large");
+        return null;
+    }
+    total_args += role_arg_count;
+
+    if (total_args > usz.max / Expr*.sizeof) {
+        self.set_error("relation definition argument table size is too large");
+        return null;
+    }
     Expr* func = parser_relation_var_ref(self, self.interp.symbols.intern("__define-relation"));
     if (func == null) return null;
 

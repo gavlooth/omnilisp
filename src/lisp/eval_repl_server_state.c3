@@ -106,6 +106,7 @@ fn void repl_server_close_session(ReplServerSession* session) {
 fn bool repl_server_dup_heap_string(char[] text, char** out_ptr, usz* out_len) {
     *out_ptr = null;
     *out_len = 0;
+    if (text.len == usz.max) return false;
     char* copy = (char*)mem::malloc(text.len + 1);
     if (copy == null) return false;
     if (text.len > 0) mem::copy(copy, text.ptr, text.len);
@@ -172,11 +173,16 @@ fn void repl_server_connection_destroy(ReplServerConnection* conn) {
 
 fn bool repl_server_ensure_session_capacity(ReplServerConnection* conn, usz needed) {
     if (needed <= conn.session_capacity) return true;
-    usz next_cap = conn.session_capacity > 0 ? conn.session_capacity * 2 : 4;
-    while (next_cap < needed) next_cap *= 2;
+    usz next_cap = conn.session_capacity > 0 ? conn.session_capacity : 4;
+    while (next_cap < needed) {
+        if (next_cap > usz.max / 2) return false;
+        next_cap *= 2;
+    }
+    if (next_cap > usz.max / ReplServerSession.sizeof) return false;
+    usz next_bytes = ReplServerSession.sizeof * next_cap;
     ReplServerSession* next = conn.sessions == null
-        ? (ReplServerSession*)mem::malloc(ReplServerSession.sizeof * next_cap)
-        : (ReplServerSession*)mem::realloc(conn.sessions, ReplServerSession.sizeof * next_cap);
+        ? (ReplServerSession*)mem::malloc(next_bytes)
+        : (ReplServerSession*)mem::realloc(conn.sessions, next_bytes);
     if (next == null) return false;
     for (usz i = conn.session_capacity; i < next_cap; i++) next[i] = {};
     conn.sessions = next;

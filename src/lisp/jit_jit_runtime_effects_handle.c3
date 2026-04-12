@@ -21,6 +21,10 @@ fn Value* jit_handle_init_clauses(Interp* interp, EffectHandler* h, Value** tags
         return null;
     }
 
+    if (count > usz.max / SymbolId.sizeof || count > usz.max / Value*.sizeof) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
+    }
+
     h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
     h.closures = (Value**)mem::malloc(Value*.sizeof * count);
     if (h.tags == null || h.closures == null) {

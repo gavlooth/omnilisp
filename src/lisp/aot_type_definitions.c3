@@ -11,13 +11,21 @@ fn lisp::Value* define_type(
     AotTypeFieldSpec* fields,
     usz field_count
 ) {
-    lisp::TypeField* rt_fields = field_count > 0 ? (lisp::TypeField*)mem::malloc(lisp::TypeField.sizeof * field_count) : null;
+    if (field_count > usz.max / lisp::TypeField.sizeof) {
+        return lisp::make_error(g_aot_interp, "aot define-type: size overflow");
+    }
+    usz rt_fields_bytes = field_count > 0 ? lisp::TypeField.sizeof * field_count : 0;
+    lisp::TypeField* rt_fields = field_count > 0 ? (lisp::TypeField*)mem::malloc(rt_fields_bytes) : null;
     defer if (rt_fields != null) {
         for (usz i = 0; i < field_count; i++) aot_type_annotation_destroy(&rt_fields[i].type_ann);
         mem::free(rt_fields);
     };
 
-    lisp::SymbolId* rt_type_params = type_param_count > 0 ? (lisp::SymbolId*)mem::malloc(lisp::SymbolId.sizeof * type_param_count) : null;
+    if (type_param_count > usz.max / lisp::SymbolId.sizeof) {
+        return lisp::make_error(g_aot_interp, "aot define-type: size overflow");
+    }
+    usz rt_type_params_bytes = type_param_count > 0 ? lisp::SymbolId.sizeof * type_param_count : 0;
+    lisp::SymbolId* rt_type_params = type_param_count > 0 ? (lisp::SymbolId*)mem::malloc(rt_type_params_bytes) : null;
     defer if (rt_type_params != null) mem::free(rt_type_params);
 
     if ((field_count > 0 && rt_fields == null) || (type_param_count > 0 && rt_type_params == null)) {
@@ -71,10 +79,18 @@ fn lisp::Value* define_union(
     AotUnionVariantSpec* variants,
     usz variant_count
 ) {
-    lisp::SymbolId* rt_type_params = type_param_count > 0 ? (lisp::SymbolId*)mem::malloc(lisp::SymbolId.sizeof * type_param_count) : null;
+    if (type_param_count > usz.max / lisp::SymbolId.sizeof) {
+        return lisp::make_error(g_aot_interp, "aot define-union: size overflow");
+    }
+    usz rt_type_params_bytes = type_param_count > 0 ? lisp::SymbolId.sizeof * type_param_count : 0;
+    lisp::SymbolId* rt_type_params = type_param_count > 0 ? (lisp::SymbolId*)mem::malloc(rt_type_params_bytes) : null;
     defer if (rt_type_params != null) mem::free(rt_type_params);
 
-    lisp::UnionVariant* rt_variants = variant_count > 0 ? (lisp::UnionVariant*)mem::malloc(lisp::UnionVariant.sizeof * variant_count) : null;
+    if (variant_count > usz.max / lisp::UnionVariant.sizeof) {
+        return lisp::make_error(g_aot_interp, "aot define-union: size overflow");
+    }
+    usz rt_variant_bytes = variant_count > 0 ? lisp::UnionVariant.sizeof * variant_count : 0;
+    lisp::UnionVariant* rt_variants = variant_count > 0 ? (lisp::UnionVariant*)mem::malloc(rt_variant_bytes) : null;
     defer if (rt_variants != null) {
         for (usz i = 0; i < variant_count; i++) {
             if (rt_variants[i].fields != null) mem::free(rt_variants[i].fields);
@@ -96,7 +112,11 @@ fn lisp::Value* define_union(
     for (usz i = 0; i < variant_count; i++) {
         rt_variants[i].name = aot_symbol_from_text(variants[i].name);
         rt_variants[i].field_count = variants[i].field_count;
-        rt_variants[i].fields = variants[i].field_count > 0 ? (lisp::SymbolId*)mem::malloc(lisp::SymbolId.sizeof * variants[i].field_count) : null;
+        if (variants[i].field_count > usz.max / lisp::SymbolId.sizeof) {
+            return lisp::make_error(g_aot_interp, "aot define-union: size overflow");
+        }
+        usz variant_field_bytes = variants[i].field_count > 0 ? lisp::SymbolId.sizeof * variants[i].field_count : 0;
+        rt_variants[i].fields = variants[i].field_count > 0 ? (lisp::SymbolId*)mem::malloc(variant_field_bytes) : null;
         if (variants[i].field_count > 0 && rt_variants[i].fields == null) {
             return lisp::make_error(g_aot_interp, "aot define-union: out of memory");
         }

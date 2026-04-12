@@ -40,6 +40,11 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
         p.elem_count = elems.len();
         p.elements = null;
         if (p.elem_count > 0) {
+            if (p.elem_count > usz.max / Pattern*.sizeof) {
+                self.set_error("sequence pattern is too large");
+                elems.free();
+                return null;
+            }
             p.elements = (Pattern**)self.alloc_ast_bytes(
                 Pattern*.sizeof * p.elem_count,
                 "out of memory while allocating sequence pattern"
@@ -60,6 +65,11 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     p.elem_count = elems.len();
     p.elements = null;
     if (p.elem_count > 0) {
+        if (p.elem_count > usz.max / Pattern*.sizeof) {
+            self.set_error("sequence pattern is too large");
+            elems.free();
+            return null;
+        }
         p.elements = (Pattern**)self.alloc_ast_bytes(
             Pattern*.sizeof * p.elem_count,
             "out of memory while allocating sequence pattern"
@@ -105,6 +115,11 @@ fn Pattern* Parser.parse_dict_pattern(Parser* self) {
     p.dict_key_count = keys.len();
     p.dict_keys = null;
     if (p.dict_key_count > 0) {
+        if (p.dict_key_count > usz.max / SymbolId.sizeof) {
+            self.set_error("dict pattern is too large");
+            keys.free();
+            return null;
+        }
         p.dict_keys = (SymbolId*)self.alloc_ast_bytes(
             SymbolId.sizeof * p.dict_key_count,
             "out of memory while allocating dict pattern keys"

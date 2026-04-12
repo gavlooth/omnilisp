@@ -38,37 +38,37 @@ fn Value* prim_deduce_refresh(Value*[] args, Env* env, Interp* interp) {
 
         Value* out = deduce_relation_schema_payload(rel, target_schema, interp);
         if (out == null || out.tag == ERROR || out.tag != HASHMAP || out.hashmap_val == null) return out;
-        explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-refresh"));
-        explain_dict_set_symbol(
+        if (Value* err = explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-refresh"))) return err;
+        if (Value* err = explain_dict_set_symbol(
             out,
             interp,
             "refresh-policy",
             deduce_materialized_refresh_policy_value(target_schema, interp)
-        );
-        explain_dict_set_symbol(out, interp, "refresh-scope", interp.symbols.intern("relation"));
-        explain_dict_set_symbol(
+        )) return err;
+        if (Value* err = explain_dict_set_symbol(out, interp, "refresh-scope", interp.symbols.intern("relation"))) return err;
+        if (Value* err = explain_dict_set_symbol(
             out,
             interp,
             "refresh-execution-path",
             interp.symbols.intern(used_incremental ? "incremental-targeted" : "targeted")
-        );
-        explain_dict_set(out, interp, "refresh-fallback-reason", make_nil(interp));
-        explain_dict_set(out, interp, "requested-refresh-relation", make_symbol(interp, rel.name));
-        explain_dict_set(out, interp, "refreshed-relation", make_symbol(interp, rel.name));
-        explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_stale_count));
-        explain_dict_set(out, interp, "refreshed-materialized-relations", refreshed_relations);
-        explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates);
-        explain_dict_set(out, interp, "remaining-dirty-predicates", remaining_dirty_predicates);
-        explain_dict_set(out, interp, "remaining-stale-materialized-relations", remaining_stale_relations);
+        )) return err;
+        if (Value* err = explain_dict_set(out, interp, "refresh-fallback-reason", make_nil(interp))) return err;
+        if (Value* err = explain_dict_set(out, interp, "requested-refresh-relation", make_symbol(interp, rel.name))) return err;
+        if (Value* err = explain_dict_set(out, interp, "refreshed-relation", make_symbol(interp, rel.name))) return err;
+        if (Value* err = explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_stale_count))) return err;
+        if (Value* err = explain_dict_set(out, interp, "refreshed-materialized-relations", refreshed_relations)) return err;
+        if (Value* err = explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates)) return err;
+        if (Value* err = explain_dict_set(out, interp, "remaining-dirty-predicates", remaining_dirty_predicates)) return err;
+        if (Value* err = explain_dict_set(out, interp, "remaining-stale-materialized-relations", remaining_stale_relations)) return err;
         // Refresh payload should report the target's stale state explicitly.
-        explain_dict_set(
+        if (Value* err = explain_dict_set(
             out,
             interp,
             "materialized-stale",
             deduce_relation_schema_is_materialized_stale(db, target_schema)
                 ? make_symbol(interp, interp.sym_true)
                 : make_symbol(interp, interp.sym_false)
-        );
+        )) return err;
         return out;
     }
     return deduce_refresh_db_wide(&refresh, env, interp);

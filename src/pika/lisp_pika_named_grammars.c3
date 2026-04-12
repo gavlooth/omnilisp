@@ -34,7 +34,16 @@ fn void named_grammar_unlock() @inline {
 
 fn bool ensure_named_grammar_capacity() {
     if (g_grammar_count < g_grammar_capacity) return true;
-    int new_capacity = g_grammar_capacity < 16 ? 16 : g_grammar_capacity * 2;
+    if (g_grammar_count < 0) return false;
+    if (g_grammar_capacity < 0) return false;
+
+    usz new_capacity = 16;
+    if (g_grammar_capacity >= 16) {
+        if (g_grammar_capacity > int.max / 2) return false;
+        new_capacity = (usz)g_grammar_capacity * 2;
+    }
+    if (NamedGrammar.sizeof > 0 && new_capacity > usz.max / NamedGrammar.sizeof) return false;
+
     NamedGrammar* next = (NamedGrammar*)mem::malloc(NamedGrammar.sizeof * new_capacity);
     if (next == null) return false;
     for (int i = 0; i < g_grammar_count; i++) {
@@ -42,7 +51,7 @@ fn bool ensure_named_grammar_capacity() {
     }
     if (g_named_grammars != null) mem::free(g_named_grammars);
     g_named_grammars = next;
-    g_grammar_capacity = new_capacity;
+    g_grammar_capacity = (int)new_capacity;
     return true;
 }
 

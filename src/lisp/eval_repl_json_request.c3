@@ -13,6 +13,7 @@ struct JsonReplRequest {
 }
 
 fn char[] json_repl_dup_string(char[] src) {
+    if (src.len == usz.max) return {};
     char* out = (char*)mem::malloc(src.len + 1);
     if (out == null) return {};
     for (usz i = 0; i < src.len; i++) out[i] = src[i];

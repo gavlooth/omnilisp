@@ -23,6 +23,7 @@ fn EvalResult jit_eval_module_impl(Expr* expr, Env* env, Interp* interp) {
     mod.path = null;
     mod.path_len = 0;
     usz exp_cap = expr.module_expr.export_count < 16 ? 16 : expr.module_expr.export_count;
+    if (exp_cap > usz.max / SymbolId.sizeof) return eval_error("module: out of memory while allocating exports");
     mod.exports = (SymbolId*)mem::malloc(SymbolId.sizeof * exp_cap);
     if (mod.exports == null) {
         return eval_error("module: out of memory while allocating exports");
@@ -190,8 +191,13 @@ fn bool module_copy_path(Module* mod, char[] path) {
 fn bool module_ensure_export_capacity(Module* mod) {
     if (mod == null) return false;
     if (mod.exports != null && mod.export_count < mod.export_capacity) return true;
+    if (mod.export_count >= usz.max) return false;
+    usz needed_cap = mod.export_count + 1;
+    if (mod.export_capacity > usz.max / 2) return false;
     usz new_cap = mod.export_capacity > 0 ? mod.export_capacity * 2 : 16;
-    if (new_cap == 0) return false;
+    if (new_cap < needed_cap) new_cap = needed_cap;
+    if (new_cap > usz.max / SymbolId.sizeof) return false;
+    if (mod.export_count > 0 && mod.exports == null) return false;
     SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
     if (new_exports == null) return false;
     for (usz i = 0; i < mod.export_count; i++) new_exports[i] = mod.exports[i];

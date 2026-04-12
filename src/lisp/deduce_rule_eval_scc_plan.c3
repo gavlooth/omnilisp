@@ -17,8 +17,13 @@ fn Value* deduce_build_scc_plan(
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }
 
-    bool[] reversed_edges = mem::new_array(bool, out.component_count * out.component_count);
-    if (reversed_edges.ptr == null && out.component_count > 0) {
+    if (out.component_count > 0 && out.component_count > usz.max / out.component_count) {
+        deduce_scc_plan_free(out);
+        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+    }
+    usz reversed_edge_count = out.component_count * out.component_count;
+    bool[] reversed_edges = mem::new_array(bool, reversed_edge_count);
+    if (reversed_edges.ptr == null && reversed_edge_count > 0) {
         deduce_scc_plan_free(out);
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }

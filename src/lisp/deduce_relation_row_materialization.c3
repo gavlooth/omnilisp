@@ -7,11 +7,16 @@ bool g_deduce_force_row_dict_oom = false;
 bool g_deduce_force_column_key_values_oom = false;
 
 fn uint deduce_relation_row_dict_capacity(Relation* rel) {
-    uint dict_capacity = 8;
-    if (rel == null) return dict_capacity;
-    uint needed_capacity = (uint)(rel.col_count * 2);
-    while (dict_capacity < needed_capacity) dict_capacity *= 2;
-    return dict_capacity;
+    usz dict_capacity = 8;
+    if (rel == null) return (uint)dict_capacity;
+    if (rel.col_count > (usz)uint.max / 2) return 0;
+    usz needed_capacity = rel.col_count * 2;
+    while (dict_capacity < needed_capacity) {
+        if (dict_capacity > (usz)uint.max / 2) return 0;
+        dict_capacity *= 2;
+    }
+    if (dict_capacity > (usz)uint.max) return 0;
+    return (uint)dict_capacity;
 }
 
 fn Value* deduce_relation_materialize_row_dict(
@@ -20,6 +25,9 @@ fn Value* deduce_relation_materialize_row_dict(
     Interp* interp,
     uint dict_capacity
 ) {
+    if (dict_capacity == 0) {
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
+    }
     Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-scan-range: out of memory");
     if (g_deduce_force_row_dict_oom || main::getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
@@ -41,6 +49,7 @@ fn Value* deduce_reverse_list(Value* list, Interp* interp) {
     Value* curr = list;
     while (is_cons(curr)) {
         reversed = make_cons(interp, car(curr), reversed);
+        if (reversed != null && reversed.tag == ERROR) return reversed;
         curr = cdr(curr);
     }
     return reversed;
@@ -52,6 +61,9 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count == 0) return null;
     if (rel.column_key_values != null) return null;
 
+    if (rel.col_count > usz.max / Value*.sizeof) {
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
+    }
     Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
     if (g_deduce_force_column_key_values_oom || main::getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
         key_values = null;

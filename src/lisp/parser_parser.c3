@@ -86,6 +86,22 @@ fn void* Parser.alloc_ast_bytes(Parser* self, usz size, char[] err_msg) {
     return ptr;
 }
 
+fn bool Parser.alloc_ast_bytes_for_count(
+    Parser* self,
+    usz elem_size,
+    usz count,
+    char[] err_msg,
+    usz* out_size
+) {
+    if (out_size == null) return false;
+    if (count > 0 && elem_size > 0 && count > usz.max / elem_size) {
+        self.set_error(err_msg);
+        return false;
+    }
+    *out_size = elem_size * count;
+    return true;
+}
+
 fn Expr* Parser.alloc_expr(Parser* self) {
     if (self.has_error) return null;
     if (g_parser_force_ast_expr_alloc_fail) {

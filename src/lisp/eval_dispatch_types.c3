@@ -78,7 +78,7 @@ fn bool register_builtin_types(Interp* interp) {
         info.variants = null;
         info.variant_count = 0;
         info.alias_target = INVALID_TYPE_ID;
-        interp.types.register_type(info, &interp.symbols);
+        if (interp.types.register_type(info, &interp.symbols) == INVALID_TYPE_ID) return false;
     }
 
     // Register abstract types: Number, Collection
@@ -96,10 +96,10 @@ fn bool register_builtin_types(Interp* interp) {
     abs_info.alias_target = INVALID_TYPE_ID;
 
     abs_info.name = interp.sym_Number;
-    interp.types.register_type(abs_info, &interp.symbols);
+    if (interp.types.register_type(abs_info, &interp.symbols) == INVALID_TYPE_ID) return false;
 
     abs_info.name = interp.sym_Collection;
-    interp.types.register_type(abs_info, &interp.symbols);
+    if (interp.types.register_type(abs_info, &interp.symbols) == INVALID_TYPE_ID) return false;
 
     // Cache TypeIds for O(1) dispatch lookups
     interp.tid_Integer = interp.types.lookup(interp.sym_Integer, &interp.symbols);
@@ -120,6 +120,27 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_Iterator = interp.types.lookup(interp.sym_Iterator, &interp.symbols);
     interp.tid_TimePoint = interp.types.lookup(interp.sym_TimePoint, &interp.symbols);
     interp.tid_Coroutine = interp.types.lookup(interp.sym_Coroutine, &interp.symbols);
+
+    if (interp.tid_Integer == INVALID_TYPE_ID ||
+        interp.tid_Double == INVALID_TYPE_ID ||
+        interp.tid_String == INVALID_TYPE_ID ||
+        interp.tid_Symbol == INVALID_TYPE_ID ||
+        interp.tid_List == INVALID_TYPE_ID ||
+        interp.tid_Boolean == INVALID_TYPE_ID ||
+        interp.tid_Nil == INVALID_TYPE_ID ||
+        interp.tid_Void == INVALID_TYPE_ID ||
+        interp.tid_Closure == INVALID_TYPE_ID ||
+        interp.tid_Array == INVALID_TYPE_ID ||
+        interp.tid_Dictionary == INVALID_TYPE_ID ||
+        interp.tid_Set == INVALID_TYPE_ID ||
+        interp.tid_Any == INVALID_TYPE_ID ||
+        interp.tid_Number == INVALID_TYPE_ID ||
+        interp.tid_Collection == INVALID_TYPE_ID ||
+        interp.tid_Iterator == INVALID_TYPE_ID ||
+        interp.tid_TimePoint == INVALID_TYPE_ID ||
+        interp.tid_Coroutine == INVALID_TYPE_ID) {
+        return false;
+    }
 
     // Set parent chains: Integer/Double → Number, List/Array/Dictionary/Set → Collection,
     // Nil → List, and standalone runtime leaf types under Any.

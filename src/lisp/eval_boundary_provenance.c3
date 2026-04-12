@@ -2,22 +2,53 @@ module lisp;
 
 import main;
 
+const usz BOUNDARY_ALIAS_MAX_DEPTH = 32;
+const usz BOUNDARY_ALIAS_MIN_STACK_HEADROOM = 96 * 1024;
+
 <*
 @require interp != null : "boundary_value_in_releasing_scope: null interp"
 *>
 fn bool boundary_value_in_releasing_scope(Value* v, Interp* interp) @inline {
-    if (v == null || interp.releasing_scope == null) return false;
+    if (v == null || interp == null || interp.releasing_scope == null) return false;
+    if (v.scope_gen != interp.releasing_scope.generation &&
+        v.scope_gen != interp.releasing_scope.escape_generation) {
+        return false;
+    }
     return boundary_ptr_in_scope((void*)v, interp.releasing_scope);
 }
 
 fn bool boundary_graph_child_alias_unsafe_for_reuse(Value* child, Interp* interp, usz depth) @inline {
     if (child == null || interp == null) return false;
+    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
     if (boundary_value_in_releasing_scope(child, interp)) return true;
+    bool root_owned = interp.root_scope != null &&
+        (child.scope_gen == interp.root_scope.generation || child.scope_gen == interp.root_scope.escape_generation);
+    if (root_owned) return false;
     if (!boundary_ptr_in_target_scope_chain_with_hint((void*)child, interp, child.scope_gen)) return true;
-    return boundary_graph_alias_unsafe_for_reuse(child, interp, depth + 1);
+
+    usz child_depth = depth + 1;
+    switch (child.tag) {
+        case CLOSURE:
+            return boundary_closure_alias_unsafe_for_reuse(child, interp);
+        case PARTIAL_PRIM:
+            return boundary_partial_payload_alias_unsafe_for_reuse(child, interp);
+        case ITERATOR:
+            return boundary_iterator_payload_alias_unsafe_for_reuse(child, interp);
+        case CONS:
+            return boundary_cons_payload_alias_unsafe_for_reuse(child, interp, child_depth);
+        case ARRAY:
+            return boundary_array_payload_alias_unsafe_for_reuse(child, interp, child_depth);
+        case HASHMAP:
+        case SET:
+            return boundary_hashmap_payload_alias_unsafe_for_reuse(child, interp, child_depth);
+        case METHOD_TABLE:
+            return boundary_method_table_payload_alias_unsafe_for_reuse(child, interp, child_depth);
+        default:
+            return false;
+    }
 }
 
-fn bool boundary_array_payload_alias_unsafe_for_reuse(Value* array_v, Interp* interp, usz depth) {
+fn bool boundary_array_payload_alias_unsafe_for_reuse(Value* array_v, Interp* interp, usz depth) @inline {
     if (array_v == null || array_v.tag != ARRAY || array_v.array_val == null) return false;
     Array* arr = array_v.array_val;
     for (usz i = 0; i < arr.length; i++) {
@@ -26,7 +57,7 @@ fn bool boundary_array_payload_alias_unsafe_for_reuse(Value* array_v, Interp* in
     return false;
 }
 
-fn bool boundary_hashmap_payload_alias_unsafe_for_reuse(Value* map_v, Interp* interp, usz depth) {
+fn bool boundary_hashmap_payload_alias_unsafe_for_reuse(Value* map_v, Interp* interp, usz depth) @inline {
     if (map_v == null || (map_v.tag != HASHMAP && map_v.tag != SET) || map_v.hashmap_val == null) return false;
     HashMap* map = map_v.hashmap_val;
     if (map.entries == null) return false;
@@ -43,7 +74,7 @@ fn bool boundary_hashmap_payload_alias_unsafe_for_reuse(Value* map_v, Interp* in
     return false;
 }
 
-fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp* interp, usz depth) {
+fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp* interp, usz depth) @inline {
     if (mt_v == null || mt_v.tag != METHOD_TABLE || mt_v.method_table_val == null) return false;
     MethodTable* mt = mt_v.method_table_val;
     for (usz i = 0; i < mt.entry_count; i++) {
@@ -54,13 +85,13 @@ fn bool boundary_method_table_payload_alias_unsafe_for_reuse(Value* mt_v, Interp
     return boundary_graph_child_alias_unsafe_for_reuse(mt.fallback, interp, depth);
 }
 
-fn bool boundary_cons_payload_alias_unsafe_for_reuse(Value* cons_v, Interp* interp, usz depth) {
+fn bool boundary_cons_payload_alias_unsafe_for_reuse(Value* cons_v, Interp* interp, usz depth) @inline {
     if (cons_v == null || cons_v.tag != CONS) return false;
 
     Value* current = cons_v;
     usz cur_depth = depth;
     while (current != null && current.tag == CONS) {
-        if (cur_depth >= 128) return true;
+        if (cur_depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
 
         Value* car = current.cons_val.car;
         if (car != null) {
@@ -82,9 +113,30 @@ fn bool boundary_cons_payload_alias_unsafe_for_reuse(Value* cons_v, Interp* inte
     return false;
 }
 
-fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth = 0) {
+fn bool boundary_value_tag_has_alias_edges(ValueTag tag) @inline {
+    switch (tag) {
+        case CLOSURE:
+        case PARTIAL_PRIM:
+        case ITERATOR:
+        case CONS:
+        case ARRAY:
+        case HASHMAP:
+        case SET:
+        case METHOD_TABLE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool boundary_value_has_alias_edges(Value* v) @inline {
+    return v != null && boundary_value_tag_has_alias_edges(v.tag);
+}
+
+fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz depth) @inline {
     if (v == null || interp == null) return false;
-    if (depth >= 128) return true;
+    if (depth >= BOUNDARY_ALIAS_MAX_DEPTH) return true;
+    if (!main::stack_has_apply_headroom(BOUNDARY_ALIAS_MIN_STACK_HEADROOM)) return true;
 
     switch (v.tag) {
         case CLOSURE:
@@ -114,7 +166,7 @@ fn bool boundary_can_reuse_value(Value* v, Interp* interp) @inline {
     if (v == null) return false;
     boundary_assert_interp_scope_chain(interp);
     if (boundary_value_in_releasing_scope(v, interp)) return false;
-    if (boundary_graph_alias_unsafe_for_reuse(v, interp)) return false;
+    if (boundary_value_has_alias_edges(v) && boundary_graph_alias_unsafe_for_reuse(v, interp, 0)) return false;
     return boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
 }
 

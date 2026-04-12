@@ -25,7 +25,17 @@ fn bool ui_ftxui_str_eq(char[] left, char[] right) @inline {
 fn bool ui_ftxui_push_heap_ptr(UiFtxuiRunState* state, void* ptr) {
     if (ptr == null) return true;
     if (state.heap_ptr_count == state.heap_ptr_capacity) {
-        usz new_cap = state.heap_ptr_capacity == 0 ? 8 : state.heap_ptr_capacity * 2;
+        if (state.heap_ptr_count == usz.max) return false;
+        usz needed = state.heap_ptr_count + 1;
+        usz new_cap = state.heap_ptr_capacity == 0 ? 8 : state.heap_ptr_capacity;
+        while (new_cap < needed) {
+            if (new_cap > usz.max / 2) {
+                new_cap = needed;
+                break;
+            }
+            new_cap *= 2;
+        }
+        if (new_cap > usz.max / void*.sizeof) return false;
         void** grown = (void**)mem::realloc(state.heap_ptrs, void*.sizeof * new_cap);
         if (grown == null) return false;
         state.heap_ptrs = grown;
@@ -38,7 +48,17 @@ fn bool ui_ftxui_push_heap_ptr(UiFtxuiRunState* state, void* ptr) {
 fn bool ui_ftxui_push_component(UiFtxuiRunState* state, OmniFtxuiComponent* component) {
     if (component == null) return true;
     if (state.component_count == state.component_capacity) {
-        usz new_cap = state.component_capacity == 0 ? 8 : state.component_capacity * 2;
+        if (state.component_count == usz.max) return false;
+        usz needed = state.component_count + 1;
+        usz new_cap = state.component_capacity == 0 ? 8 : state.component_capacity;
+        while (new_cap < needed) {
+            if (new_cap > usz.max / 2) {
+                new_cap = needed;
+                break;
+            }
+            new_cap *= 2;
+        }
+        if (new_cap > usz.max / OmniFtxuiComponent*.sizeof) return false;
         OmniFtxuiComponent** grown =
             (OmniFtxuiComponent**)mem::realloc(state.components, OmniFtxuiComponent*.sizeof * new_cap);
         if (grown == null) return false;

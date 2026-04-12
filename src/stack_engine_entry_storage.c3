@@ -12,8 +12,13 @@ fn bool stack_ctx_entry_reserve(StackCtxDeferEntry* inline_entries, StackCtxDefe
     }
 
     if (*heap_entries == null) {
-        usz new_cap = inline_cap * 2;
-        while (new_cap < needed) new_cap *= 2;
+        usz new_cap = inline_cap == 0 ? 1 : inline_cap;
+        while (new_cap < needed) {
+            if (new_cap > usz.max / 2) return false;
+            new_cap *= 2;
+        }
+
+        if (new_cap > usz.max / StackCtxDeferEntry.sizeof) return false;
 
         StackCtxDeferEntry* buf = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
         if (buf == null) return false;
@@ -29,8 +34,14 @@ fn bool stack_ctx_entry_reserve(StackCtxDeferEntry* inline_entries, StackCtxDefe
 
     if (needed <= *capacity) return true;
 
-    usz new_cap = *capacity * 2;
-    while (new_cap < needed) new_cap *= 2;
+    usz new_cap = *capacity;
+    if (new_cap == 0) return false;
+    while (new_cap < needed) {
+        if (new_cap > usz.max / 2) return false;
+        new_cap *= 2;
+    }
+
+    if (new_cap > usz.max / StackCtxDeferEntry.sizeof) return false;
 
     StackCtxDeferEntry* grown = (StackCtxDeferEntry*)mem::malloc(StackCtxDeferEntry.sizeof * new_cap);
     if (grown == null) return false;

@@ -11,6 +11,10 @@ fn bool parser_module_ensure_export_capacity(Parser* self, ExprModule* module_ex
         self.set_error("module export list is too large");
         return false;
     }
+    if (new_cap > usz.max / SymbolId.sizeof) {
+        self.set_error("module export list is too large");
+        return false;
+    }
     SymbolId* new_exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing module export list");
     if (new_exports == null) return false;
     for (usz i = 0; i < module_expr.export_count; i++) {
@@ -29,6 +33,10 @@ fn bool parser_module_ensure_body_capacity(Parser* self, ExprModule* module_expr
     }
     usz new_cap = module_expr.body_capacity * 2;
     if (new_cap <= module_expr.body_capacity) {
+        self.set_error("module body is too large");
+        return false;
+    }
+    if (new_cap > usz.max / Expr*.sizeof) {
         self.set_error("module body is too large");
         return false;
     }
@@ -54,10 +62,18 @@ fn Expr* Parser.alloc_module_expr(Parser* self, SymbolId name) {
     e.module_expr.name = name;
     e.module_expr.export_count = 0;
     e.module_expr.export_capacity = 32;
+    if (e.module_expr.export_capacity > usz.max / SymbolId.sizeof) {
+        self.set_error("module export table is too large");
+        return null;
+    }
     e.module_expr.exports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * 32, "out of memory while allocating module export list");
     if (e.module_expr.exports == null) return null;
     e.module_expr.body_count = 0;
     e.module_expr.body_capacity = 32;
+    if (e.module_expr.body_capacity > usz.max / Expr*.sizeof) {
+        self.set_error("module body is too large");
+        return null;
+    }
     e.module_expr.body = (Expr**)self.alloc_ast_bytes(Expr*.sizeof * 32, "out of memory while allocating module body");
     if (e.module_expr.body == null) return null;
     return e;

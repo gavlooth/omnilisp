@@ -135,7 +135,11 @@ fn Value* deduce_rule_validate_stratification(DeduceDb* db, DeduceRuleIr* candid
     usz n = graph.predicates.len;
     if (n == 0) return null;
 
-    bool[] reach = mem::new_array(bool, n * n);
+    if (n > usz.max / n) {
+        return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
+    }
+    usz reach_count = n * n;
+    bool[] reach = mem::new_array(bool, reach_count);
     if (reach.ptr == null) {
         return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
     }

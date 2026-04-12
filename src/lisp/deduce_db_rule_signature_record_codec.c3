@@ -46,22 +46,26 @@ fn bool deduce_rule_signature_literals_supported(DeduceRuleSignature* sig) {
 fn usz? deduce_tuple_encoded_size(Value*[] vals) {
     usz total = 0;
     for (usz i = 0; i < vals.len; i++) {
+        usz next = 0;
         Value* v = vals[i];
         if (v == null || v.tag == NIL) {
-            total += 1;
+            next = 1;
         } else if (v.tag == INT || v.tag == DOUBLE) {
-            total += 9;
+            next = 9;
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;
-            total += 3 + slen;
+            if (slen > usz.max - (usz)3) return WRITE_FAILED~;
+            next = (usz)3 + slen;
         } else if (v.tag == SYMBOL) {
-            total += 3;
+            next = 3;
         } else if (v.tag == TIME_POINT) {
-            total += 34;
+            next = 34;
         } else {
             return WRITE_FAILED~;
         }
+        if (total > usz.max - next) return WRITE_FAILED~;
+        total += next;
     }
     return total;
 }
@@ -72,38 +76,63 @@ fn bool deduce_encode_rule_catalog_key(ulong ordinal, char[ulong.sizeof]* out) {
     return true;
 }
 
-fn usz deduce_rule_signature_record_size(
+fn bool deduce_rule_signature_record_add_size(usz* total, usz amount) @inline {
+    if (total == null || *total > usz.max - amount) return false;
+    *total += amount;
+    return true;
+}
+
+fn bool deduce_rule_signature_record_add_array_size(usz* total, usz elem_size, usz count) @inline {
+    if (count > usz.max / elem_size) return false;
+    return deduce_rule_signature_record_add_size(total, elem_size * count);
+}
+
+fn usz? deduce_rule_signature_record_size(
     DeduceRuleSignature* sig,
     usz head_literal_blob_len,
     usz body_literal_blob_len
 ) {
-    if (sig == null) return 0;
-    return DeducePersistedRuleSignatureRecordV1.sizeof +
-        (SymbolId.sizeof * sig.body_count) +
-        (bool.sizeof * sig.body_count) +
-        (ulong.sizeof * sig.body_count) +
-        (int.sizeof * sig.body_count) +
-        (bool.sizeof * sig.body_count) +
-        (ulong.sizeof * sig.body_count) +
-        (DeduceRuleTermKind.sizeof * sig.head_term_count) +
-        (DeduceAggregateOpKind.sizeof * sig.head_term_count) +
-        (bool.sizeof * sig.head_term_count) +
-        (uint.sizeof * sig.head_term_count) +
-        head_literal_blob_len +
-        (usz.sizeof * sig.body_count) +
-        (usz.sizeof * sig.body_count) +
-        (bool.sizeof * sig.body_term_total_count) +
-        (uint.sizeof * sig.body_term_total_count) +
-        body_literal_blob_len;
+    if (sig == null) return WRITE_FAILED~;
+    usz total = 0;
+    if (!deduce_rule_signature_record_add_size(&total, DeducePersistedRuleSignatureRecordV1.sizeof)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, SymbolId.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, bool.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, ulong.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, int.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, bool.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, ulong.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, DeduceRuleTermKind.sizeof, sig.head_term_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, DeduceAggregateOpKind.sizeof, sig.head_term_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, bool.sizeof, sig.head_term_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, uint.sizeof, sig.head_term_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_size(&total, head_literal_blob_len)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, usz.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, usz.sizeof, sig.body_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, bool.sizeof, sig.body_term_total_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_array_size(&total, uint.sizeof, sig.body_term_total_count)) return WRITE_FAILED~;
+    if (!deduce_rule_signature_record_add_size(&total, body_literal_blob_len)) return WRITE_FAILED~;
+    return total;
+}
+
+fn bool deduce_advance_record_cursor(char[] out, usz* cursor, usz len) @inline {
+    if (out.ptr == null || cursor == null) return false;
+    if (*cursor > out.len || len > out.len - *cursor) return false;
+    *cursor += len;
+    return true;
 }
 
 fn bool deduce_copy_bytes_into_record(char[] out, usz* cursor, void* src, usz len) {
-    if (out.ptr == null || cursor == null) return false;
-    if (*cursor + len > out.len) return false;
     if (len > 0 && src == null) return false;
+    if (out.ptr == null || cursor == null) return false;
+    if (*cursor > out.len || len > out.len - *cursor) return false;
     if (len > 0) mem::copy(out.ptr + *cursor, src, len);
     *cursor += len;
     return true;
+}
+
+fn bool deduce_copy_array_into_record(char[] out, usz* cursor, void* src, usz elem_size, usz count) @inline {
+    if (count > usz.max / elem_size) return false;
+    return deduce_copy_bytes_into_record(out, cursor, src, elem_size * count);
 }
 
 fn bool deduce_encode_rule_signature_record(
@@ -120,7 +149,9 @@ fn bool deduce_encode_rule_signature_record(
     if (catch err = body_literal_blob_len_opt) return false;
     usz head_literal_blob_len = head_literal_blob_len_opt;
     usz body_literal_blob_len = body_literal_blob_len_opt;
-    usz needed = deduce_rule_signature_record_size(sig, head_literal_blob_len, body_literal_blob_len);
+    usz? needed_opt = deduce_rule_signature_record_size(sig, head_literal_blob_len, body_literal_blob_len);
+    if (catch err = needed_opt) return false;
+    usz needed = needed_opt;
     if (needed == 0 || out.len < needed) return false;
 
     DeducePersistedRuleSignatureRecordV1 header = {
@@ -144,41 +175,43 @@ fn bool deduce_encode_rule_signature_record(
 
     usz cursor = 0;
     if (!deduce_copy_bytes_into_record(out, &cursor, &header, DeducePersistedRuleSignatureRecordV1.sizeof)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_predicates, SymbolId.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_negated, bool.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_bound_masks, ulong.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_selected_indexes, int.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_filter_pushdown, bool.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_projection_masks, ulong.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.head_term_kinds, DeduceRuleTermKind.sizeof * sig.head_term_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.head_term_aggregate_ops, DeduceAggregateOpKind.sizeof * sig.head_term_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.head_term_is_variable, bool.sizeof * sig.head_term_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.head_term_var_ids, uint.sizeof * sig.head_term_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_predicates, SymbolId.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_negated, bool.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_bound_masks, ulong.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_selected_indexes, int.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_filter_pushdown, bool.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_projection_masks, ulong.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.head_term_kinds, DeduceRuleTermKind.sizeof, sig.head_term_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.head_term_aggregate_ops, DeduceAggregateOpKind.sizeof, sig.head_term_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.head_term_is_variable, bool.sizeof, sig.head_term_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.head_term_var_ids, uint.sizeof, sig.head_term_count)) return false;
 
     if (head_literal_blob_len > 0) {
+        if (cursor > out.len || head_literal_blob_len > out.len - cursor) return false;
         usz? encoded_head_literals = encode_tuple(sig.head_term_literals[0:sig.head_term_count], out.ptr + cursor, head_literal_blob_len);
         if (catch err = encoded_head_literals) return false;
         if (encoded_head_literals != head_literal_blob_len) return false;
     }
-    cursor += head_literal_blob_len;
+    if (!deduce_advance_record_cursor(out, &cursor, head_literal_blob_len)) return false;
 
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_term_offsets, usz.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_term_counts, usz.sizeof * sig.body_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_term_is_variable, bool.sizeof * sig.body_term_total_count)) return false;
-    if (!deduce_copy_bytes_into_record(out, &cursor, sig.body_term_var_ids, uint.sizeof * sig.body_term_total_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_term_offsets, usz.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_term_counts, usz.sizeof, sig.body_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_term_is_variable, bool.sizeof, sig.body_term_total_count)) return false;
+    if (!deduce_copy_array_into_record(out, &cursor, sig.body_term_var_ids, uint.sizeof, sig.body_term_total_count)) return false;
 
     if (body_literal_blob_len > 0) {
+        if (cursor > out.len || body_literal_blob_len > out.len - cursor) return false;
         usz? encoded_body_literals = encode_tuple(sig.body_term_literals[0:sig.body_term_total_count], out.ptr + cursor, body_literal_blob_len);
         if (catch err = encoded_body_literals) return false;
         if (encoded_body_literals != body_literal_blob_len) return false;
     }
-    cursor += body_literal_blob_len;
+    if (!deduce_advance_record_cursor(out, &cursor, body_literal_blob_len)) return false;
     return cursor == needed;
 }
 
 fn bool deduce_record_slice(char[] data, usz* cursor, usz len, char[]* out_slice) {
     if (cursor == null || out_slice == null) return false;
-    if (*cursor + len > data.len) return false;
+    if (*cursor > data.len || len > data.len - *cursor) return false;
     if (len == 0) {
         *out_slice = {};
         return true;

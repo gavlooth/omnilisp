@@ -35,6 +35,9 @@ fn EvalResult eval_defabstract(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        return eval_error("out of memory while registering abstract type");
+    }
 
     // Return type name as symbol
     Value* result = make_symbol(interp, da.name);
@@ -126,6 +129,9 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
+    if (union_id == INVALID_TYPE_ID) {
+        return eval_error("out of memory while registering union type");
+    }
 
     // Register each variant as its own type (with union as parent)
     for (usz i = 0; i < du.variant_count; i++) {
@@ -168,6 +174,9 @@ fn EvalResult eval_defalias(Expr* expr, Env* env, Interp* interp) {
     }
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        return eval_error("out of memory while registering type alias");
+    }
 
     Value* result = make_symbol(interp, da.name);
     return eval_ok(result);

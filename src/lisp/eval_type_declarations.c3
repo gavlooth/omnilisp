@@ -10,6 +10,7 @@ fn bool eval_type_info_copy_symbol_array(SymbolId** out, SymbolId* src, usz coun
         *out = null;
         return true;
     }
+    if (count > usz.max / SymbolId.sizeof) return false;
     SymbolId* buf = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
     if (buf == null) return false;
     for (usz i = 0; i < count; i++) buf[i] = src[i];
@@ -22,6 +23,7 @@ fn bool eval_type_info_alloc_fields(TypeInfo* info, usz count) {
         info.fields = null;
         return true;
     }
+    if (count > usz.max / TypeFieldInfo.sizeof) return false;
     info.fields = (TypeFieldInfo*)mem::malloc(TypeFieldInfo.sizeof * count);
     return info.fields != null;
 }
@@ -31,14 +33,22 @@ fn bool eval_type_info_alloc_constraints(TypeInfo* info, usz count) {
         info.constraints = null;
         return true;
     }
+    if (count > usz.max / MethodConstraint.sizeof) return false;
     info.constraints = (MethodConstraint*)mem::malloc(MethodConstraint.sizeof * count);
     return info.constraints != null;
 }
 
-fn usz eval_deftype_constraint_capacity(ExprDefType* dt) {
+fn bool eval_deftype_constraint_capacity(ExprDefType* dt, usz* out_capacity) {
     usz count = 0;
-    for (usz i = 0; i < dt.field_count; i++) count += dt.fields[i].type_ann.meta_count;
-    return count;
+    for (usz i = 0; i < dt.field_count; i++) {
+        for (usz m = 0; m < dt.fields[i].type_ann.meta_count; m++) {
+            if (dt.fields[i].type_ann.meta[m].is_int) continue;
+            if (count == usz.max) return false;
+            count++;
+        }
+    }
+    *out_capacity = count;
+    return true;
 }
 
 fn bool eval_type_info_copy_union_variants(TypeInfo* info, UnionVariant* src, usz count) {
@@ -46,6 +56,7 @@ fn bool eval_type_info_copy_union_variants(TypeInfo* info, UnionVariant* src, us
         info.variants = null;
         return true;
     }
+    if (count > usz.max / UnionVariant.sizeof) return false;
     info.variants = (UnionVariant*)mem::malloc(UnionVariant.sizeof * count);
     if (info.variants == null) return false;
     for (usz i = 0; i < count; i++) {
@@ -94,12 +105,13 @@ fn bool eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, 
     return eval_type_info_copy_symbol_array(&info.type_params, dt.type_params, info.type_param_count);
 }
 
-fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, Interp* interp) {
+fn bool eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, usz constraint_capacity, Interp* interp) {
     // Dictionary annotation like ^{'T Number} — extract constraints.
     out_field.field_type = INVALID_TYPE_ID;
     out_field.annotation_sym = 0;
     for (usz m = 0; m < field.type_ann.meta_count; m++) {
         if (field.type_ann.meta[m].is_int) continue;
+        if (info.constraint_count >= constraint_capacity) return false;
         info.constraints[info.constraint_count].param_sym = field.type_ann.meta[m].key;
         info.constraints[info.constraint_count].bound_type =
             interp.types.lookup(field.type_ann.meta[m].sym_value, &interp.symbols);
@@ -107,9 +119,10 @@ fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, Typ
         out_field.annotation_sym = field.type_ann.meta[m].key;
         info.constraint_count++;
     }
+    return true;
 }
 
-fn void eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, Interp* interp) {
+fn bool eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, usz constraint_capacity, Interp* interp) {
     for (usz i = 0; i < dt.field_count; i++) {
         TypeField* src_field = &dt.fields[i];
         TypeFieldInfo* dst_field = &info.fields[i];
@@ -122,13 +135,14 @@ fn void eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, Interp* interp
         }
 
         if (src_field.type_ann.is_dict) {
-            eval_deftype_apply_dict_annotation(info, src_field, dst_field, interp);
+            if (!eval_deftype_apply_dict_annotation(info, src_field, dst_field, constraint_capacity, interp)) return false;
             continue;
         }
 
         dst_field.field_type = interp.types.lookup(src_field.type_ann.base_type, &interp.symbols);
         dst_field.annotation_sym = src_field.type_ann.base_type;
     }
+    return true;
 }
 
 fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
@@ -149,7 +163,13 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
         if (info.type_params != null) mem::free(info.type_params);
         return eval_error("out of memory while registering type");
     }
-    usz constraint_capacity = eval_deftype_constraint_capacity(dt);
+
+    usz constraint_capacity = 0;
+    if (!eval_deftype_constraint_capacity(dt, &constraint_capacity)) {
+        if (info.fields != null) mem::free(info.fields);
+        if (info.type_params != null) mem::free(info.type_params);
+        return eval_error("out of memory while registering type");
+    }
     if (!eval_type_info_alloc_constraints(&info, constraint_capacity)) {
         if (info.fields != null) mem::free(info.fields);
         if (info.type_params != null) mem::free(info.type_params);
@@ -157,12 +177,23 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Copy fields and store original annotation symbol for type-param mapping
-    eval_deftype_copy_fields(&info, dt, interp);
+    if (!eval_deftype_copy_fields(&info, dt, constraint_capacity, interp)) {
+        if (info.constraints != null) mem::free(info.constraints);
+        if (info.fields != null) mem::free(info.fields);
+        if (info.type_params != null) mem::free(info.type_params);
+        return eval_error("out of memory while registering type");
+    }
 
     // Register in type registry
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        return eval_error("out of memory while registering type");
+    }
 
     // Create constructor primitive in root_scope (lives permanently in global env)
+    if (dt.field_count > (usz)int.max) {
+        return eval_error("type constructor arity exceeds supported range");
+    }
     char[] name_str = interp.symbols.get_name(dt.name);
     Value* constructor = make_primitive(interp, name_str, &prim_type_constructor, (int)dt.field_count);
     if (constructor == null) {

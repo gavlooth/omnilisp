@@ -32,8 +32,17 @@ fn bool Parser.import_ensure_capacity(Parser* self, Expr* e, usz needed) {
         }
         new_cap *= 2;
     }
-    SymbolId* new_imports = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing import specifier list");
-    SymbolId* new_aliases = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * new_cap, "out of memory while growing import specifier list");
+
+    usz import_bytes;
+    if (!self.alloc_ast_bytes_for_count(
+        SymbolId.sizeof,
+        new_cap,
+        "out of memory while growing import specifier list",
+        &import_bytes
+    )) return false;
+
+    SymbolId* new_imports = (SymbolId*)self.alloc_ast_bytes(import_bytes, "out of memory while growing import specifier list");
+    SymbolId* new_aliases = (SymbolId*)self.alloc_ast_bytes(import_bytes, "out of memory while growing import specifier list");
     if (new_imports == null || new_aliases == null) return false;
     if (e.import_expr.import_count > 0 &&
         (e.import_expr.imports == null || e.import_expr.aliases == null)) {

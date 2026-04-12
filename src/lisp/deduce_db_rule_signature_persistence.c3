@@ -59,7 +59,13 @@ fn Value* deduce_db_persist_rule_signatures(DeduceDb* db, Interp* interp) {
             return deduce_raise(interp, "deduce/rule-signature-encode-failed",
                 "deduce: persisted rule signature encode failed");
         }
-        usz record_size = deduce_rule_signature_record_size(sig, head_literal_blob_len_opt, body_literal_blob_len_opt);
+        usz? record_size_opt = deduce_rule_signature_record_size(sig, head_literal_blob_len_opt, body_literal_blob_len_opt);
+        if (catch err = record_size_opt) {
+            mdb_txn_abort(txn);
+            return deduce_raise(interp, "deduce/rule-signature-encode-failed",
+                "deduce: persisted rule signature encode failed");
+        }
+        usz record_size = record_size_opt;
         if (record_size == 0) {
             mdb_txn_abort(txn);
             return deduce_raise(interp, "deduce/rule-signature-encode-failed",

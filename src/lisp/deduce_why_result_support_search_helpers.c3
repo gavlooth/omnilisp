@@ -60,11 +60,13 @@ fn Value* deduce_why_result_concat_support(Value* front, Value* tail, Interp* in
     Value* cur = front;
     while (is_cons(cur)) {
         rev = make_cons(interp, car(cur), rev);
+        if (rev != null && rev.tag == ERROR) return rev;
         cur = cdr(cur);
     }
     Value* out = tail == null ? make_nil(interp) : tail;
     while (is_cons(rev)) {
         out = make_cons(interp, car(rev), out);
+        if (out != null && out.tag == ERROR) return out;
         rev = cdr(rev);
     }
     return out;

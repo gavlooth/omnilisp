@@ -22,6 +22,16 @@ Use this file only for still-open work.
 
 ## Recently Closed
 
+- [x] `AUDIT-DEDUCE-GROUPED-PARSER-STATE-040` isolate and fix inherited broad Deduce grouped parser/lexer failures
+  - closure evidence:
+    - stale duplicated analysis tests were removed from `src/lisp/tests_deduce_rule_groups_more_tail_head.c3` so the split `more_tail_analysis_tests` path is the authoritative grouped rule-validation coverage.
+    - the malformed deeply nested integrity assertion in `src/lisp/tests_deduce_query_admin_surface_fallback_tests.c3` was flattened so the grouped query path parses and evaluates the intended checks.
+    - validation:
+      - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=rule-validation OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: `pass=79 fail=0`
+      - `OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_GROUP_FILTER=query OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: `pass=254 fail=0`
+      - `OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: `pass=432 fail=0`
+
+
 - [x] `AUDIT-CAPACITY-REALLOC-BYTE-OVERFLOW-039` guard deduce/JIT
   capacity growth before `sizeof * new_cap` arithmetic can wrap and
   under-allocate

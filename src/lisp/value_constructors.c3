@@ -252,8 +252,14 @@ fn Value* make_raise_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = make_hashmap(interp, 8);
-    if (payload == null || payload.tag != HASHMAP || payload.hashmap_val == null) return null;
+    Value* payload = boundary_alloc_value_in_root(interp, true);
+    if (payload == null) return null;
+    payload.tag = HASHMAP;
+    payload.hashmap_val = hashmap_new_checked(8, interp);
+    if (payload.hashmap_val == null) {
+        payload.tag = NIL;
+        return null;
+    }
 
     SymbolId key_code = interp.symbols.intern("code");
     SymbolId key_message = interp.symbols.intern("message");

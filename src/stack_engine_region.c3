@@ -14,7 +14,7 @@ struct StackRegion {
 // Higher-order stdlib work inside handle/reset stack contexts now regularly exceeds
 // 64KB even on small lists, so normal runtime stacks need more headroom than the
 // original coroutine-only budget.
-const usz DEFAULT_STACK_SIZE = 131072; // 128KB usable stack (normal builds)
+const usz DEFAULT_STACK_SIZE = 262144; // 256KB usable stack (normal builds)
 // Sanitizer-instrumented recursive eval paths burn substantially more stack per
 // frame than normal builds. Keep the ASAN coroutine/checkpoint stack budget
 // large enough to validate deep recursion contracts without tripping on
