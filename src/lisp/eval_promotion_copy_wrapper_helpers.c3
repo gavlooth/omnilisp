@@ -152,9 +152,13 @@ fn bool copy_parent_clone_closure_payload(
         }
     }
 
+    PromotionContext* active_ctx = interp.active_promotion_ctx;
+    if (active_ctx != null) promotion_context_remember(active_ctx, src, result, interp);
+
     if (copy_parent_closure_env_needs_detach(src, interp)) {
         main::ScopeRegion* env_scope = main::scope_create(null);
         if (env_scope == null) {
+            if (active_ctx != null) promotion_context_invalidate(active_ctx, PROMOTION_ABORT_BUDGET_EXHAUSTED);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             return false;
         }
@@ -165,6 +169,7 @@ fn bool copy_parent_clone_closure_payload(
 
         BoundaryEnvCopyResult copied = boundary_copy_env_to_scope_checked(src.closure_val.env, interp);
         if (!boundary_env_copy_result_ok(copied) || copied.env == null) {
+            if (active_ctx != null) promotion_context_invalidate(active_ctx, PROMOTION_ABORT_BUDGET_EXHAUSTED);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             main::scope_release(env_scope);
             return false;

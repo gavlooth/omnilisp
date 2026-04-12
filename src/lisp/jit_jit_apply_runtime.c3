@@ -60,6 +60,10 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
         return jit_apply_value(func, arg, interp);
     }
 
+    if (argc > usz.max / Value*.sizeof) {
+        return raise_error(interp, "jit: out of memory while staging continuation-sensitive call args");
+    }
+
     Value** argv = interp.current_scope != null
         ? (Value**)interp.current_scope.alloc_escape(Value*.sizeof * argc)
         : null;

@@ -17,8 +17,9 @@ When this page disagrees with another Deduce doc, resolve in this order:
 
 - `green`: core Deduce command surfaces are implemented and exercised broadly
   (`deduce/open`, relation admin, query/read surfaces, rule install, explain/analyze payloads).
-- `yellow`: aggregate and broader incremental-maintenance lanes remain partial
-  and are still tracked as deferred slices.
+- `yellow`: aggregate and broader incremental-maintenance lanes remain partial,
+  but they are observational constraints only; no live deferred queue exists
+  until a fresh failing signal or owner request promotes one.
 - `yellow`: legacy JIT call fastpath remains unstable under `OMNI_JIT_CALL_FASTPATH=1`,
   while the default safe call-lowering mode is stable.
 

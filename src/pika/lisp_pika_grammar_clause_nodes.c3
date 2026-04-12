@@ -52,7 +52,7 @@ fn int compile_clause_symbol_ref(GrammarCompiler* gc, lisp::Value* clause) {
 
     char[] sym_name = gc.interp.symbols.get_name(sym);
     int placeholder = gc.rb.add((String)sym_name, mk_fail());
-    if (!gc_ensure_rule_capacity(gc)) return placeholder;
+    if (!gc_ensure_rule_capacity(gc)) return -1;
     gc.rule_names[gc.rule_count] = sym;
     gc.rule_indices[gc.rule_count] = placeholder;
     gc.rule_count++;

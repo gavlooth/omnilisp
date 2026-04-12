@@ -11,6 +11,7 @@ bool g_jit_force_multi_arg_buffer_alloc_fail = false;
 
 fn Value** jit_alloc_multi_arg_buffer(Interp* interp, usz arg_count) @inline {
     if (arg_count == 0) return null;
+    if (arg_count > usz.max / Value*.sizeof) return null;
     if (g_jit_force_multi_arg_buffer_alloc_fail) return null;
     if (arg_count > usz.max / Value*.sizeof) return null;
     return (Value**)interp.current_scope.alloc(Value*.sizeof * arg_count);

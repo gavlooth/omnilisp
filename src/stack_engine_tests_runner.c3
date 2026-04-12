@@ -93,6 +93,9 @@ fn void run_stack_engine_tests(int* out_pass, int* out_fail) {
     if (test_stack_pool_shutdown_defer_cross_ctx_order()) { stack_print_pass("pool shutdown defer cross-context order"); pass++; }
     else { io::printfn("  FAIL: pool shutdown defer cross-context order"); fail++; }
 
+    if (test_stack_ctx_entry_reserve_rejects_byte_overflow()) { stack_print_pass("defer entry reserve overflow guards"); pass++; }
+    else { io::printfn("  FAIL: defer entry reserve overflow guards"); fail++; }
+
     if (!stack_quiet_enabled()) {
         io::printfn("\nStack engine: %d passed, %d failed", pass, fail);
     }

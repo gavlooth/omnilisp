@@ -91,7 +91,7 @@ run_case \
   "e2e_live" \
   "integration" \
   "e2e" \
-  "host-local live e2e compiler execution" \
+  "local entrypoint, Docker-bound e2e compiler execution" \
   scripts/run_e2e.sh
 
 run_case \

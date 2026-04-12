@@ -579,6 +579,36 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
             overflow_gate_ok = false;
         }
 
+        void* alignment_overflow = ast_arena_alloc(&arena, usz.max);
+        bool alignment_overflow_ok = alignment_overflow == null && ast_arena_validate(&arena);
+
+        usz count_before_overflow_tests = arena.count;
+        usz capacity_before_overflow_tests = arena.capacity;
+
+        bool fastpath_overflow_ok = false;
+        if (chunk != null) {
+            usz chunk_used_before_fastpath = chunk.used;
+            chunk.used = usz.max;
+            void* fastpath_overflow = ast_arena_alloc(&arena, AST_ARENA_ALIGNMENT);
+            fastpath_overflow_ok = fastpath_overflow == null &&
+                                  arena.count == count_before_overflow_tests &&
+                                  arena.capacity == capacity_before_overflow_tests;
+            chunk.used = chunk_used_before_fastpath;
+        }
+
+        bool capacity_overflow_ok = false;
+        if (chunk != null) {
+            usz chunk_used_before_capacity = chunk.used;
+            arena.capacity = usz.max;
+            chunk.used = chunk.capacity;
+            void* capacity_overflow = ast_arena_alloc(&arena, AST_ARENA_ALIGNMENT);
+            capacity_overflow_ok = capacity_overflow == null &&
+                                   arena.count == count_before_overflow_tests &&
+                                   arena.capacity == usz.max;
+            chunk.used = chunk_used_before_capacity;
+            arena.capacity = capacity_before_overflow_tests;
+        }
+
         usz count_before_destroy = arena.count;
         usz capacity_before_destroy = arena.capacity;
         ast_arena_destroy(&arena);
@@ -606,6 +636,9 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
                   init_ok &&
                   alloc_ok &&
                   overflow_gate_ok &&
+                  alignment_overflow_ok &&
+                  fastpath_overflow_ok &&
+                  capacity_overflow_ok &&
                   destroy_ok &&
                   reinit_ok &&
                   contains_foreign_is_false;
@@ -614,10 +647,13 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: ast_arena chunked allocator validation (init=%s alloc=%s overflow=%s destroy=%s reinit=%s contains=%s)",
+                "[FAIL] lifetime: ast_arena chunked allocator validation (init=%s alloc=%s overflow=%s alignment_overflow=%s fastpath_overflow=%s capacity_overflow=%s destroy=%s reinit=%s contains=%s)",
                 init_ok ? "yes" : "no",
                 alloc_ok ? "yes" : "no",
                 overflow_gate_ok ? "yes" : "no",
+                alignment_overflow_ok ? "yes" : "no",
+                fastpath_overflow_ok ? "yes" : "no",
+                capacity_overflow_ok ? "yes" : "no",
                 destroy_ok ? "yes" : "no",
                 reinit_ok ? "yes" : "no",
                 contains_foreign_is_false ? "yes" : "no"

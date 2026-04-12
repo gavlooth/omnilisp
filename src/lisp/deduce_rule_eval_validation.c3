@@ -138,7 +138,11 @@ fn Value* deduce_rule_validate_stratification(DeduceDb* db, DeduceRuleIr* candid
         return deduce_raise(interp, "deduce/rule-invalid-state", "deduce-rule!: dependency graph is too large");
     }
 
-    bool[] reach = mem::new_array(bool, n * n);
+    if (n > usz.max / n) {
+        return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
+    }
+    usz reach_count = n * n;
+    bool[] reach = mem::new_array(bool, reach_count);
     if (reach.ptr == null) {
         return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
     }

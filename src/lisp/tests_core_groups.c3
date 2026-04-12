@@ -256,6 +256,137 @@ fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* f
     }
 }
 
+fn TypeInfo make_basic_type_info(SymbolId name) {
+    TypeInfo info;
+    info.name = name;
+    info.kind = TK_BUILTIN;
+    info.parent = INVALID_TYPE_ID;
+    info.fields = null;
+    info.field_count = 0;
+    info.type_params = null;
+    info.type_param_count = 0;
+    info.constraints = null;
+    info.constraint_count = 0;
+    info.variants = null;
+    info.variant_count = 0;
+    info.alias_target = INVALID_TYPE_ID;
+    return info;
+}
+
+fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* fail) {
+    {
+        TypeRegistry registry = {};
+        g_type_registry_force_types_alloc_fail = true;
+        bool ok = registry.init();
+        g_type_registry_force_types_alloc_fail = false;
+
+        bool closed = !ok
+            && registry.types == null
+            && registry.type_hash_index == null
+            && registry.type_count == 0
+            && registry.capacity == 0
+            && registry.hash_capacity == 0;
+        if (closed) {
+            emit_pass_literal("[PASS] type registry init type-alloc failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] type registry init type-alloc failure fails closed");
+            (*fail)++;
+        }
+        registry.destroy();
+    }
+
+    {
+        TypeRegistry registry = {};
+        g_type_registry_force_hash_alloc_fail = true;
+        bool ok = registry.init();
+        g_type_registry_force_hash_alloc_fail = false;
+
+        bool closed = !ok
+            && registry.types == null
+            && registry.type_hash_index == null
+            && registry.type_count == 0
+            && registry.capacity == 0
+            && registry.hash_capacity == 0;
+        if (closed) {
+            emit_pass_literal("[PASS] type registry init hash-alloc failure fails closed");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] type registry init hash-alloc failure fails closed");
+            (*fail)++;
+        }
+        registry.destroy();
+    }
+
+    {
+        TypeRegistry registry = {};
+        if (!registry.init()) {
+            emit_pass_literal("[PASS] skipped type registry growth fail-closed (init blocked)");
+            (*pass)++;
+        } else {
+            SymbolTable syms = {};
+            syms.init();
+
+            bool seeded = true;
+            for (usz i = 0; i < TYPE_INITIAL_CAPACITY; i++) {
+                char[32] name_buf;
+                if (try char[] name = io::bprintf(&name_buf, "seed-type-%d", (int)i)) {
+                    SymbolId sid = syms.intern(name);
+                    if (sid == INVALID_SYMBOL_ID) {
+                        seeded = false;
+                        break;
+                    }
+                    if (registry.register_type(make_basic_type_info(sid), &syms) == INVALID_TYPE_ID) {
+                        seeded = false;
+                        break;
+                    }
+                } else {
+                    seeded = false;
+                    break;
+                }
+            }
+
+            usz before_count = registry.type_count;
+            TypeInfo* before_types = registry.types;
+            TypeId* before_hash = registry.type_hash_index;
+            usz before_cap = registry.capacity;
+            usz before_hash_cap = registry.hash_capacity;
+
+            g_type_registry_force_grow_types_alloc_fail = true;
+            TypeInfo fail_info = make_basic_type_info(syms.intern("grow-fail"));
+            TypeId fail_id = registry.register_type(fail_info, &syms);
+            g_type_registry_force_grow_types_alloc_fail = false;
+
+            bool preserved_after_failure = seeded
+                && fail_id == INVALID_TYPE_ID
+                && registry.type_count == before_count
+                && registry.types == before_types
+                && registry.type_hash_index == before_hash
+                && registry.capacity == before_cap
+                && registry.hash_capacity == before_hash_cap;
+
+            SymbolId after_name = syms.intern("grow-success");
+            TypeInfo recover_info = make_basic_type_info(after_name);
+            TypeId recover_id = registry.register_type(recover_info, &syms);
+
+            bool preserved = preserved_after_failure
+                && recover_id != INVALID_TYPE_ID
+                && registry.type_count == before_count + 1;
+
+            if (preserved) {
+                emit_pass_literal("[PASS] type registry grow type-alloc failure preserves state");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] type registry grow type-alloc failure preserves state");
+                (*fail)++;
+            }
+
+            syms.destroy();
+        }
+        registry.destroy();
+    }
+}
+
 fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int* fail) {
     {
         Interp local = {};
@@ -562,6 +693,7 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     run_basic_function_param_destructure_tests(interp, pass, fail);
     run_basic_control_flow_tests(interp, pass, fail);
     run_basic_symbol_table_hardening_tests(interp, pass, fail);
+    run_basic_type_registry_hardening_tests(interp, pass, fail);
     run_basic_interp_storage_hardening_tests(interp, pass, fail);
 }
 
