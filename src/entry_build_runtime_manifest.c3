@@ -1,7 +1,8 @@
 module main;
 
-const String[32] AOT_RUNTIME_ROOT_SOURCES = {
+const String[33] AOT_RUNTIME_ROOT_SOURCES = {
     "src/main.c3",
+    "src/main_repl_shared.c3",
     "src/main_thread_registry.c3",
     "src/scope_region.c3",
     "src/scope_region_allocators.c3",
@@ -35,7 +36,7 @@ const String[32] AOT_RUNTIME_ROOT_SOURCES = {
     "src/ffi_bindings.c3",
 };
 
-const String[717] AOT_RUNTIME_LISP_SOURCES = {
+const String[722] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/aot.c3",
     "src/lisp/aot_runtime_bridge.c3",
     "src/lisp/aot_runtime_bridge_closure.c3",
@@ -69,6 +70,7 @@ const String[717] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/bindgen_buffer_append.c3",
     "src/lisp/bindgen_emit.c3",
     "src/lisp/bindgen_facade_bindings.c3",
+    "src/lisp/bindgen_facade_scaffold_helpers.c3",
     "src/lisp/bindgen_facade_review_notes.c3",
     "src/lisp/bindgen_facade_scaffold.c3",
     "src/lisp/bindgen_facade_wrappers.c3",
@@ -86,6 +88,7 @@ const String[717] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/compiler_code_emission_main_globals.c3",
     "src/lisp/compiler_compiler_initialization.c3",
     "src/lisp/compiler_compiler_state.c3",
+    "src/lisp/compiler_name_helpers.c3",
     "src/lisp/compiler_expr_serialize_callable_forms.c3",
     "src/lisp/compiler_expr_serialize_control_match_forms.c3",
     "src/lisp/compiler_expr_serialize_definition_forms.c3",
@@ -251,6 +254,7 @@ const String[717] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/deduce_rule_eval_exec_seminaive_execution.c3",
     "src/lisp/deduce_rule_eval_exec_seminaive_recursive_aggregate_helpers.c3",
     "src/lisp/deduce_rule_eval_exec_seminaive_recursive_aggregates.c3",
+    "src/lisp/deduce_rule_eval_exec_seminaive_recursive_aggregates_impl.c3",
     "src/lisp/deduce_rule_eval_exec_seminaive_recursive_finalize.c3",
     "src/lisp/deduce_rule_eval_exec_seminaive_replay_emit.c3",
     "src/lisp/deduce_rule_eval_exec_seminaive_step.c3",
@@ -384,6 +388,7 @@ const String[717] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/eval_boundary_commit_destination.c3",
     "src/lisp/eval_boundary_commit_escape.c3",
     "src/lisp/eval_boundary_commit_escape_builder_helpers.c3",
+    "src/lisp/eval_boundary_commit_escape_helpers.c3",
     "src/lisp/eval_boundary_commit_escape_builders.c3",
     "src/lisp/eval_boundary_commit_escape_cons.c3",
     "src/lisp/eval_boundary_commit_escape_wrappers.c3",
@@ -455,6 +460,7 @@ const String[717] AOT_RUNTIME_LISP_SOURCES = {
     "src/lisp/eval_repl_server_worker.c3",
     "src/lisp/eval_repl_server_worker_helpers.c3",
     "src/lisp/eval_run_pipeline.c3",
+    "src/lisp/eval_run_pipeline_helpers.c3",
     "src/lisp/eval_signal.c3",
     "src/lisp/eval_stdlib_loader.c3",
     "src/lisp/eval_type_constructor.c3",

@@ -50,11 +50,20 @@ fn Value* validate_constructor_fields(Value*[] args, TypeInfo* ti, Interp* inter
     return null;
 }
 
-fn void infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, Interp* interp) {
+fn bool infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, Interp* interp) {
     inst.type_arg_count = ti.type_param_count;
+
+    if (ti.type_param_count > 0 && ti.type_param_count > usz.max / TypeId.sizeof) {
+        return false;
+    }
+
     inst.type_args = ti.type_param_count > 0
         ? (TypeId*)inst.owner_scope.alloc(TypeId.sizeof * ti.type_param_count)
         : null;
+    if (inst.type_args == null && ti.type_param_count > 0) {
+        return false;
+    }
+
     for (usz p = 0; p < ti.type_param_count; p++) {
         SymbolId param_sym = ti.type_params[p];
         inst.type_args[p] = INVALID_TYPE_ID;
@@ -65,6 +74,8 @@ fn void infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, In
             }
         }
     }
+
+    return true;
 }
 
 fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* interp) {
@@ -127,7 +138,9 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
 
     if (ti.type_param_count > 0 && result.instance_val != null) {
         Instance* inst = result.instance_val;
-        infer_instance_type_args(inst, ti, args, interp);
+        if (!infer_instance_type_args(inst, ti, args, interp)) {
+            return make_error(interp, "type constructor: failed to infer constructor type args");
+        }
         Value* constraint_error = validate_instance_constraints(inst, ti, interp);
         if (constraint_error != null) return constraint_error;
     }

@@ -156,10 +156,16 @@ fn bool ffi_handle_can_release_payload(FfiHandle* box) @inline {
     return box.finalizer != null || box.free_lib_handle;
 }
 
+fn bool ffi_handle_release_raw_allowed(void* payload, FfiHandleFinalizer finalizer,
+    bool free_lib_handle, ForeignHandleKind handle_kind) @inline {
+    if (payload == null) return false;
+    if (handle_kind == FOREIGN_HANDLE_LIBRARY) return false;
+    return finalizer != null || free_lib_handle;
+}
+
 fn void ffi_handle_release_raw_payload(void* payload, FfiHandleFinalizer finalizer,
     bool free_lib_handle, ForeignHandleKind handle_kind) {
-    if (payload == null) return;
-    if (handle_kind == FOREIGN_HANDLE_LIBRARY) return;
+    if (!ffi_handle_release_raw_allowed(payload, finalizer, free_lib_handle, handle_kind)) return;
     if (finalizer != null) {
         finalizer(payload);
         return;
@@ -209,7 +215,8 @@ fn void instance_release(Instance* inst) @inline {
 }
 
 fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
-    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false) {
+    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false,
+    bool* constructor_owns_handle = null) {
     FfiHandleOwnership ownership = FFI_HANDLE_BORROWED;
     if (finalizer != null) ownership = FFI_HANDLE_OWNED;
     if (free_lib_handle) ownership = FFI_HANDLE_OWNED;
@@ -223,7 +230,8 @@ fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
         FOREIGN_HANDLE_OPAQUE,
         (finalizer != null || free_lib_handle) ? FOREIGN_CAP_RELEASE : 0,
         root_lifetime,
-        ownership);
+        ownership,
+        constructor_owns_handle);
 }
 
 fn Value* make_ffi_handle_ex_with_descriptor(
@@ -236,9 +244,13 @@ fn Value* make_ffi_handle_ex_with_descriptor(
     ForeignHandleKind handle_kind,
     uint capabilities,
     bool root_lifetime = false,
-    FfiHandleOwnership ownership = FFI_HANDLE_BORROWED
+    FfiHandleOwnership ownership = FFI_HANDLE_BORROWED,
+    bool* constructor_owns_handle = null
 ) {
     main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
+    if (constructor_owns_handle != null) {
+        *constructor_owns_handle = ffi_handle_release_raw_allowed(handle, finalizer, free_lib_handle, handle_kind);
+    }
     FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle,
         runtime_kind, handle_kind, capabilities, ownership);
     if (box == null) {

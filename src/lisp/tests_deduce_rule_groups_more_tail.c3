@@ -302,6 +302,7 @@ fn bool deduce_rule_test_capture_recursive_limit_message_contains(
 }
 
 fn void run_deduce_rule_validation_tests_more_tail(Interp* interp, int* pass, int* fail) {
+    run_deduce_rule_validation_tests_more_tail_head(interp, pass, fail);
     run_deduce_rule_validation_tests_more_tail_schema_tests(interp, pass, fail);
     run_deduce_rule_validation_tests_more_tail_support_prelude_tests(interp, pass, fail);
     run_deduce_rule_validation_tests_more_tail_analysis_tests(interp, pass, fail);

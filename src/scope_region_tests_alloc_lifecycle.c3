@@ -120,6 +120,25 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         scope_release(s);
     }
 
+    // Test 2e: Overflow-sized requests fail closed before pointer arithmetic
+    {
+        ScopeRegion* s = scope_create(null);
+        usz bad = (usz)-6;
+        void* fail = s.alloc(bad);
+        void* recover = s.alloc(16);
+        void* fail_escape = s.alloc_escape(bad);
+        void* recover_escape = s.alloc_escape(16);
+
+        bool ok = fail == null && recover != null && fail_escape == null && recover_escape != null;
+        if (ok) {
+            passed++;
+        } else {
+            io::printn("FAIL: overflow-sized scope allocs");
+            failed++;
+        }
+        scope_release(s);
+    }
+
     // Test 2c: Escape-lane destructor execution
     {
         ScopeRegion* s = scope_create(null);
@@ -153,6 +172,17 @@ fn ScopeRegionTestCounts run_scope_region_alloc_lifecycle_tests() {
         if (chunk_count > 1) { passed++; } else { io::printn("FAIL: no overflow chunks"); failed++; }
         scope_release(s);
         passed++;
+    }
+
+    // Test 3a: Raw chunk allocator fails closed on max-size overflow
+    {
+        bool ok = scope_chunk_alloc_raw((usz)-1) == null;
+        if (ok) {
+            passed++;
+        } else {
+            io::printn("FAIL: raw chunk allocator overflow");
+            failed++;
+        }
     }
 
     scope_region_run_refcount_destructor_tests(&passed, &failed);
