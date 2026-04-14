@@ -1,5 +1,28 @@
 ## 2026-04-14
 
+- Added standard-normal Boost.Math distribution wrappers:
+  - Added `stats/normal-cdf` and `stats/normal-quantile` as one-argument
+    standard normal distribution helpers backed by `boost::math::cdf` and
+    `boost::math::quantile`.
+  - Reused the C++17 Boost.Math C-ABI status-code shim pattern. `cdf` accepts
+    finite numeric inputs that can narrow to `Double`; `quantile` accepts finite
+    probabilities strictly between `0` and `1`; both return `Double` and fail
+    closed on invalid, non-finite, or out-of-Double-range inputs.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `79 passed, 0 failed`
+    - direct smokes:
+      - `(stats/normal-cdf 0.0)` -> `0.5`
+      - `(stats/normal-cdf 1.96)` -> `0.97500210485178`
+      - `(stats/normal-quantile 0.975)` -> `1.95996398454005`
+      - `(stats/normal-quantile 0.0)` -> `stats/normal-quantile: probability must be between 0 and 1`
+      - out-of-range `BigInteger` input to `stats/normal-cdf` -> `stats/normal-cdf: value out of Double range`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+
 - Closed the container-only memory-smoke validation gap for the range/TCO fix:
   - Built the local bounded validation image `omni-validation:2026-03-10`.
   - Fixed a StackCtx overflow in nested effect payload return copying. The

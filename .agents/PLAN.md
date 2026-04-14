@@ -51,12 +51,14 @@ Minimal scalar-first targets:
   `gcd`/`lcm`, and `parse-number` arbitrary-precision parsing remain deferred.
 - `BigFloat` / `BigComplex` only after the scalar representation, precision
   policy, and lifetime boundaries are stable.
-- `math/lgamma`, `math/erf`, and `math/erfc` are now validated Boost.Math
-  wrapper slices: C++ shim status codes, finite-input/range/domain error
-  mapping, primitive registration, AOT lookup, focused numeric tests, and
-  direct runtime smokes are implemented.
-- `stats/normal-cdf` and `stats/normal-quantile` should come only after the
-  Boost.Math distribution wrapper policy is kept as a small follow-up slice.
+- `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+  `stats/normal-quantile` are now validated Boost.Math wrapper slices: C++ shim
+  status codes, finite-input/range/domain error mapping, primitive
+  registration, AOT lookup, focused numeric tests, and direct runtime smokes
+  are implemented.
+- `stats/normal-cdf` and `stats/normal-quantile` are intentionally
+  one-argument standard-normal helpers. Mean/stddev parameters or other
+  distribution families need separate surface decisions.
 
 ## Tensor Backend Direction
 
@@ -93,8 +95,7 @@ next scientific work should pick one narrow slice:
 2. Continue the scalar Boost.Multiprecision lane only by choosing one explicit
    follow-up: `BigFloat`/`BigComplex`, BigInteger division/modulo/comparisons,
    or `parse-number` arbitrary-precision parsing.
-3. Extend Boost.Math by reusing the validated finite-input shim/error-policy
-   pattern for a distribution wrapper: `stats/normal-cdf` or
-   `stats/normal-quantile`.
+3. Extend Boost.Math only when there is a concrete next scientific function or
+   distribution family. The minimal planned scalar wrappers are now complete.
 
 Do not start by binding GSL. Do not implement `linalg/matmul` as canonical.

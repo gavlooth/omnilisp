@@ -1,3 +1,4 @@
+#include <boost/math/distributions/normal.hpp>
 #include <boost/math/special_functions/erf.hpp>
 #include <boost/math/special_functions/gamma.hpp>
 
@@ -57,6 +58,24 @@ int omni_boost_math_erf(double value, double* out) {
 
 int omni_boost_math_erfc(double value, double* out) {
     return run_boost_math_unary(value, out, [](double v) { return boost::math::erfc(v); });
+}
+
+int omni_boost_math_standard_normal_cdf(double value, double* out) {
+    return run_boost_math_unary(value, out, [](double v) {
+        boost::math::normal_distribution<double> normal;
+        return boost::math::cdf(normal, v);
+    });
+}
+
+int omni_boost_math_standard_normal_quantile(double probability, double* out) {
+    if (out == nullptr) return OMNI_BOOST_MATH_STATUS_INVALID_ARGUMENT;
+    if (!std::isfinite(probability)) return OMNI_BOOST_MATH_STATUS_INVALID_ARGUMENT;
+    if (probability <= 0.0 || probability >= 1.0) return OMNI_BOOST_MATH_STATUS_DOMAIN_ERROR;
+
+    return run_boost_math_unary(probability, out, [](double p) {
+        boost::math::normal_distribution<double> normal;
+        return boost::math::quantile(normal, p);
+    });
 }
 
 }

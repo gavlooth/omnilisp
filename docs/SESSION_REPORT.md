@@ -1,3 +1,63 @@
+## 2026-04-14 22:27 CEST - Boost.Math Standard Normal Wrappers
+- Objective attempted:
+  - Continue the scalar scientific numerics plan by adding the first
+    Boost.Math distribution helpers on top of the validated unary scalar
+    wrapper pattern.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/boost_math_helpers.cpp` with standard normal CDF and
+    quantile C-ABI functions backed by `boost::math::normal_distribution`,
+    `boost::math::cdf`, and `boost::math::quantile`.
+  - Added C3 extern declarations in `src/lisp/boost_math_backend.c3`.
+  - Added one-argument `stats/normal-cdf` and `stats/normal-quantile`
+    primitives. `stats/normal-cdf` takes a finite standard-normal x value;
+    `stats/normal-quantile` takes a finite probability strictly between `0`
+    and `1`.
+  - Registered both primitives in the interpreter primitive table and AOT
+    primitive lookup table.
+  - Added focused float-math coverage for CDF values, quantile values,
+    probability-domain failure, and out-of-Double-range `BigInteger` input.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/reference/11-appendix-primitives.md`,
+    `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf 1.96)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-quantile 0.975)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-quantile 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf (BigInteger "..."))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused float-math tests passed at `79 passed, 0 failed`.
+  - Direct runtime smokes returned `0.5` for `(stats/normal-cdf 0.0)`,
+    `0.97500210485178` for `(stats/normal-cdf 1.96)`, and
+    `1.95996398454005` for `(stats/normal-quantile 0.975)`.
+  - `(stats/normal-quantile 0.0)` fails closed with
+    `stats/normal-quantile: probability must be between 0 and 1`.
+  - Very large `BigInteger` input to `stats/normal-cdf` fails closed with
+    `stats/normal-cdf: value out of Double range`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - None in this slice.
+- Current best recommendation/checkpoint:
+  - Treat standard-normal CDF/quantile as the validated first distribution
+    wrapper contract. Do not broaden it silently to mean/stddev parameters; add
+    that as a separate surface decision if needed.
+  - The remaining high-value scientific numerics choices are now scalar
+    precision work (`BigFloat`, `BigComplex`, BigInteger division/comparison,
+    arbitrary-precision parsing) or Tensor LAPACK/LAPACKE public naming.
+- Unresolved issues / blockers:
+  - No container-only memory ownership run was needed for this slice because it
+    does not change Omni value ownership.
+  - Multi-parameter normal distributions and other distribution families are
+    intentionally not part of this first wrapper.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-14 21:48 CEST - StackCtx Boundary Copy Smoke Fix
 - Objective attempted:
   - Continue the range/TCO follow-up by closing the container-only

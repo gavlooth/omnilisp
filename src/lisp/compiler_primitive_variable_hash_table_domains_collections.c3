@@ -81,6 +81,8 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("math/lgamma"), "aot::lookup_prim(\"math/lgamma\")");
     prim_hash_insert(st.intern("math/erf"), "aot::lookup_prim(\"math/erf\")");
     prim_hash_insert(st.intern("math/erfc"), "aot::lookup_prim(\"math/erfc\")");
+    prim_hash_insert(st.intern("stats/normal-cdf"), "aot::lookup_prim(\"stats/normal-cdf\")");
+    prim_hash_insert(st.intern("stats/normal-quantile"), "aot::lookup_prim(\"stats/normal-quantile\")");
 
     // Bitwise
     prim_hash_insert(st.intern("bitwise-and"), "aot::lookup_prim(\"bitwise-and\")");

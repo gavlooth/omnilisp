@@ -94,6 +94,56 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
     }
 }
 
+fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-cdf", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-cdf", 0, "number", args[0]);
+
+    double input = 0.0;
+    if (!try_numeric_to_double(args[0], &input)) {
+        return raise_error(interp, "stats/normal-cdf: value out of Double range");
+    }
+
+    double output = 0.0;
+    int status = omni_boost_math_standard_normal_cdf(input, &output);
+    switch (status) {
+        case BOOST_MATH_STATUS_OK:
+            return make_double(interp, output);
+        case BOOST_MATH_STATUS_INVALID_ARGUMENT:
+            return raise_error(interp, "stats/normal-cdf: expected finite numeric input");
+        case BOOST_MATH_STATUS_DOMAIN_ERROR:
+            return raise_error(interp, "stats/normal-cdf: domain error");
+        case BOOST_MATH_STATUS_RANGE_ERROR:
+            return raise_error(interp, "stats/normal-cdf: range error");
+        default:
+            return raise_error(interp, "stats/normal-cdf: evaluation error");
+    }
+}
+
+fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-quantile", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-quantile", 0, "number", args[0]);
+
+    double probability = 0.0;
+    if (!try_numeric_to_double(args[0], &probability)) {
+        return raise_error(interp, "stats/normal-quantile: probability out of Double range");
+    }
+
+    double output = 0.0;
+    int status = omni_boost_math_standard_normal_quantile(probability, &output);
+    switch (status) {
+        case BOOST_MATH_STATUS_OK:
+            return make_double(interp, output);
+        case BOOST_MATH_STATUS_INVALID_ARGUMENT:
+            return raise_error(interp, "stats/normal-quantile: expected finite numeric input");
+        case BOOST_MATH_STATUS_DOMAIN_ERROR:
+            return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+        case BOOST_MATH_STATUS_RANGE_ERROR:
+            return raise_error(interp, "stats/normal-quantile: range error");
+        default:
+            return raise_error(interp, "stats/normal-quantile: evaluation error");
+    }
+}
+
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
     if (!is_number(args[0])) return primitive_arg_type_raise(interp, "sin", 0, "number", args[0]);

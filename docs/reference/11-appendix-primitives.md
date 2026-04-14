@@ -222,6 +222,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `math/lgamma` | 1 | Natural log of absolute gamma value |
 | `math/erf` | 1 | Error function |
 | `math/erfc` | 1 | Complementary error function |
+| `stats/normal-cdf` | 1 | Standard normal cumulative distribution function |
+| `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

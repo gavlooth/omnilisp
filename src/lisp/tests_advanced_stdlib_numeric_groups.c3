@@ -229,6 +229,15 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_error_contains(interp, "math/erf rejects out-of-range BigInteger",
         "(math/erf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
         "math/erf: value out of Double range", pass, fail);
+    test_double(interp, "stats/normal-cdf 0", "(stats/normal-cdf 0.0)", 0.5, pass, fail);
+    test_double(interp, "stats/normal-cdf 1.96", "(stats/normal-cdf 1.96)", 0.97500210485, pass, fail);
+    test_double(interp, "stats/normal-quantile median", "(stats/normal-quantile 0.5)", 0.0, pass, fail);
+    test_double(interp, "stats/normal-quantile 0.975", "(stats/normal-quantile 0.975)", 1.95996398454, pass, fail);
+    test_error_contains(interp, "stats/normal-quantile rejects zero probability",
+        "(stats/normal-quantile 0.0)", "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_error_contains(interp, "stats/normal-cdf rejects out-of-range BigInteger",
+        "(stats/normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "stats/normal-cdf: value out of Double range", pass, fail);
     test_eq(interp, "floor 3.7", "(floor 3.7)", 3, pass, fail);
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);
