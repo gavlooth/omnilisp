@@ -102,6 +102,18 @@ fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
     }
 }
 
+fn bool copy_parent_tag_is_stackctx_data_container(ValueTag tag) @inline {
+    switch (tag) {
+        case CONS:
+        case HASHMAP:
+        case SET:
+        case ARRAY:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn Value* copy_to_parent_by_route(
     Value* v,
     Interp* interp,
@@ -187,7 +199,8 @@ fn Value* copy_to_parent_with_fault(
     }
 
     CopyParentRoute route = copy_parent_route_for_tag(v.tag);
-    if (main::g_current_stack_ctx != null && copy_parent_route_is_leaf(route)) {
+    if (main::g_current_stack_ctx != null &&
+        (copy_parent_route_is_leaf(route) || copy_parent_tag_is_stackctx_data_container(v.tag))) {
         g_copy_to_parent_stats.defensive_copies++;
         return copy_to_parent_by_route(v, interp, route, copy_fault_out);
     }

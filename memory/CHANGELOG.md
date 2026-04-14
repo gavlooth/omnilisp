@@ -1,5 +1,27 @@
 ## 2026-04-14
 
+- Closed the container-only memory-smoke validation gap for the range/TCO fix:
+  - Built the local bounded validation image `omni-validation:2026-03-10`.
+  - Fixed a StackCtx overflow in nested effect payload return copying. The
+    recursive copy path was spending continuation stack on full reuse
+    classification for scalar leaves and ordinary data containers while copying
+    a small nested dict/list graph. Inside an active StackCtx, copy-to-parent now
+    directly copies leaf values and list/array/dict/set data containers instead
+    of running the boundary reuse classifier first.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct nested effect payload predicate -> `true`
+    - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+      -> `225 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --test-suite lisp`
+      -> `1 passed, 0 failed`, `copy_tag_cons=0`, `copy_site_tco=0`
+    - `OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --test-suite lisp`
+      -> `17 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --test-suite lisp`
+      -> `11 passed, 0 failed`
+    - `(length (range 4000))` -> `4000`, about 0.31s; `(length (range 16000))`
+      -> `16000`, about 4.17s.
+
 - Extended the Boost.Math scalar wrapper lane with `math/erf` and `math/erfc`:
   - Reused the validated C++17 Boost.Math C-ABI shim pattern from
     `math/lgamma`, adding `boost::math::erf` and `boost::math::erfc` behind

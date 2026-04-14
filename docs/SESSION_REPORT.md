@@ -1,3 +1,60 @@
+## 2026-04-14 21:48 CEST - StackCtx Boundary Copy Smoke Fix
+- Objective attempted:
+  - Continue the range/TCO follow-up by closing the container-only
+    `memory-lifetime-smoke` validation gap.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Built the local validation image `omni-validation:2026-03-10` from
+    `docker/validation.Dockerfile` so container-bound memory slices can run.
+  - Updated `src/lisp/eval_promotion_copy.c3` so copy-to-parent skips full
+    boundary reuse classification for leaf values and list/array/dict/set data
+    containers while executing inside a StackCtx. These values are copied
+    defensively instead, which preserves ownership and avoids spending the
+    128KB continuation stack on reuse probes during nested effect payload return
+    copying.
+  - Updated `memory/CHANGELOG.md` with the validation result.
+- Commands run:
+  - `OMNI_VALIDATION_IMAGE=omni-validation:2026-03-10 scripts/build_validation_image.sh`
+  - `c3c build --obj-out obj`
+  - direct nested effect payload expression and predicate via `./build/main --eval`
+  - `gdb --batch ... ./build/main --eval <nested effect payload expression>`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 16000))'`
+- Key results and observed behavior:
+  - Initial bounded `memory-lifetime-smoke` run failed at
+    `lifetime: boundary nested effect payload graph`; direct evaluation showed
+    `stack overflow in resolve`.
+  - GDB localized the guard hit to recursive copy-to-parent of a nested
+    dict/list payload under `boundary_build_destination_cons_escape`, with full
+    `boundary_classify_return_value` reuse probes still occurring deep inside
+    the StackCtx.
+  - The direct nested payload test now returns the expected captured render
+    event, and the test predicate returns `true`.
+  - Container `memory-lifetime-smoke` now passes at `225 passed, 0 failed`.
+  - Range/TCO checks stayed in the fixed regime: exact advanced TCO passed with
+    `copy_tag_cons=0` and `copy_site_tco=0`; direct `(length (range 4000))`
+    took about 0.31s and `(length (range 16000))` about 4.17s.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Bypassing reuse classification only for scalar leaves inside StackCtx was
+    insufficient; nested `HASHMAP` containers still triggered the same guarded
+    stack overflow. The data-container shortcut is required for this payload
+    shape.
+- Current best recommendation/checkpoint:
+  - Keep StackCtx copy-to-parent defensive for ordinary data payloads. Reuse
+    classification remains valuable on the main stack, but effect continuations
+    need the smaller-stack path to prefer copying over recursive provenance
+    probing for lists, arrays, dictionaries, and sets.
+- Unresolved issues / blockers:
+  - None known for this follow-up. The parent revision already contains the
+    Boost.Math `math/erf` / `math/erfc` slice; this change is scoped to the
+    StackCtx copy fix and handoff notes.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-14 16:20 CEST - Boost.Math `math/erf` And `math/erfc`
 - Objective attempted:
   - Continue the scalar scientific numerics plan by extending the validated
