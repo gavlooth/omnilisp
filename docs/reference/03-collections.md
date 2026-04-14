@@ -114,8 +114,9 @@ recursively alias either source tensor, while zero-byte tensor storage is not
 treated as an alias.
 Contraction over a zero-size contracted axis produces the additive identity for
 the output cell. Zero-size dimensions are valid shape dimensions. Scalar
-broadcasting is supported; singleton-axis broadcasting and backend acceleration
-are future work.
+broadcasting and right-aligned singleton-axis tensor-tensor broadcasting are
+supported; optional backend acceleration remains future work behind the pure
+`Tensor` fallback.
 
 ### Generic Operations
 

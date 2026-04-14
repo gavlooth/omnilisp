@@ -1261,11 +1261,13 @@ constructor surface supports `Double` storage only.
 
 Tensor indexing is part of generic `ref`. Tensor elementwise operations are
 part of generic `map`; unary tensor inputs, tensor-scalar inputs,
-scalar-tensor inputs, and exact-shape tensor-tensor inputs are supported in
-the first `Double` slice. Scalar arguments are coerced into the first tensor
-input's dtype and broadcast over the tensor shape. Singleton-axis broadcasting
-is deferred. Tensor `map` and `contract` may return lazy Tensor expression
-payloads under the existing `Tensor` value; `materialize` forces them either
+scalar-tensor inputs, exact-shape tensor-tensor inputs, and right-aligned
+singleton-axis tensor-tensor broadcasting are supported in the current `Double`
+slice. Scalar arguments are coerced into the first tensor input's dtype and
+broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
+incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
+`contract` may return lazy Tensor expression payloads under the existing
+`Tensor` value; `materialize` forces them either
 by allocating concrete storage or by writing directly into an exact-shape/dtype
 destination tensor. Elementwise `map` destination materialization may update
 an input tensor in place; `contract` destination materialization rejects

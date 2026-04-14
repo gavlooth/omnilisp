@@ -752,9 +752,8 @@ Recently Closed is retained below as a short audit trail.
       axes, and metadata payload transport), so the cleanup does not alter
       metadata-shape conventions.
   - closure note:
-    - the pure public Tensor surface is now split from backend acceleration
-      and singleton-axis broadcasting residuals, which are tracked below as
-      separate backlog items.
+    - the pure public Tensor surface was split into separate backend-boundary
+      and broadcasting lanes; both are now closed above.
 
 - [x] `AUDIT-IMMER-FFI-COMPAT-101` retire the optional Immer bridge instead
   of extending FFI around it
