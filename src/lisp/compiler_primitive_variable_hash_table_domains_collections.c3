@@ -79,6 +79,8 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("log10"), "aot::lookup_prim(\"log10\")");
     prim_hash_insert(st.intern("pow"), "aot::lookup_prim(\"pow\")");
     prim_hash_insert(st.intern("math/lgamma"), "aot::lookup_prim(\"math/lgamma\")");
+    prim_hash_insert(st.intern("math/erf"), "aot::lookup_prim(\"math/erf\")");
+    prim_hash_insert(st.intern("math/erfc"), "aot::lookup_prim(\"math/erfc\")");
 
     // Bitwise
     prim_hash_insert(st.intern("bitwise-and"), "aot::lookup_prim(\"bitwise-and\")");

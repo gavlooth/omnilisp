@@ -220,6 +220,8 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `log10` | 1 | Log base 10 |
 | `pow` | 2 | Power |
 | `math/lgamma` | 1 | Natural log of absolute gamma value |
+| `math/erf` | 1 | Error function |
+| `math/erfc` | 1 | Complementary error function |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

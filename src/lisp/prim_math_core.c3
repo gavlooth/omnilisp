@@ -44,6 +44,56 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
     }
 }
 
+fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "math/erf", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erf", 0, "number", args[0]);
+
+    double input = 0.0;
+    if (!try_numeric_to_double(args[0], &input)) {
+        return raise_error(interp, "math/erf: value out of Double range");
+    }
+
+    double output = 0.0;
+    int status = omni_boost_math_erf(input, &output);
+    switch (status) {
+        case BOOST_MATH_STATUS_OK:
+            return make_double(interp, output);
+        case BOOST_MATH_STATUS_INVALID_ARGUMENT:
+            return raise_error(interp, "math/erf: expected finite numeric input");
+        case BOOST_MATH_STATUS_DOMAIN_ERROR:
+            return raise_error(interp, "math/erf: domain error");
+        case BOOST_MATH_STATUS_RANGE_ERROR:
+            return raise_error(interp, "math/erf: range error");
+        default:
+            return raise_error(interp, "math/erf: evaluation error");
+    }
+}
+
+fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "math/erfc", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erfc", 0, "number", args[0]);
+
+    double input = 0.0;
+    if (!try_numeric_to_double(args[0], &input)) {
+        return raise_error(interp, "math/erfc: value out of Double range");
+    }
+
+    double output = 0.0;
+    int status = omni_boost_math_erfc(input, &output);
+    switch (status) {
+        case BOOST_MATH_STATUS_OK:
+            return make_double(interp, output);
+        case BOOST_MATH_STATUS_INVALID_ARGUMENT:
+            return raise_error(interp, "math/erfc: expected finite numeric input");
+        case BOOST_MATH_STATUS_DOMAIN_ERROR:
+            return raise_error(interp, "math/erfc: domain error");
+        case BOOST_MATH_STATUS_RANGE_ERROR:
+            return raise_error(interp, "math/erfc: range error");
+        default:
+            return raise_error(interp, "math/erfc: evaluation error");
+    }
+}
+
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
     if (!is_number(args[0])) return primitive_arg_type_raise(interp, "sin", 0, "number", args[0]);

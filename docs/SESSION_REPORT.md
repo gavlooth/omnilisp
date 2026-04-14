@@ -1,3 +1,55 @@
+## 2026-04-14 16:20 CEST - Boost.Math `math/erf` And `math/erfc`
+- Objective attempted:
+  - Continue the scalar scientific numerics plan by extending the validated
+    Boost.Math wrapper pattern from `math/lgamma` to the error-function family.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/boost_math_helpers.cpp` with a shared finite-input unary
+    Boost.Math helper and new C-ABI functions for `boost::math::erf` and
+    `boost::math::erfc`.
+  - Added C3 extern declarations in `src/lisp/boost_math_backend.c3`.
+  - Added `math/erf` and `math/erfc` runtime primitives with the same
+    numeric-narrowing and deterministic error policy as `math/lgamma`.
+  - Registered both primitives in the interpreter primitive table and AOT
+    primitive lookup table.
+  - Added focused float-math coverage for `math/erf`, `math/erfc`, and
+    out-of-Double-range `BigInteger` input.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/reference/11-appendix-primitives.md`,
+    `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erf 1.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erfc 1.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erf (BigInteger "..."))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused float-math tests passed at `73 passed, 0 failed`.
+  - Direct runtime smokes returned `0.842700792949715` for `(math/erf 1.0)`
+    and `0.157299207050285` for `(math/erfc 1.0)`.
+  - Very large `BigInteger` input to `math/erf` fails closed with
+    `math/erf: value out of Double range`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - None in this slice. The helper-archive ordering issue from the prior
+    `math/lgamma` slice remains the useful operational constraint.
+- Current best recommendation/checkpoint:
+  - Treat the unary Boost.Math finite-input wrapper pattern as validated for
+    scalar special functions with `Double` output.
+  - The next scalar Boost.Math slice can either add normal distribution helpers
+    (`stats/normal-cdf`, `stats/normal-quantile`) or pause scalar wrappers and
+    return to Tensor LAPACK/LAPACKE naming.
+- Unresolved issues / blockers:
+  - Container-only memory ownership validation was not run; this slice does not
+    change Omni value ownership.
+  - BigFloat/BigComplex, BigInteger division/modulo/comparisons, and
+    arbitrary-precision parsing remain deferred.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-14 15:45 CEST - Boost.Math `math/lgamma` First Wrapper
 - Objective attempted:
   - Continue the scientific numerics plan by landing the first Boost.Math scalar

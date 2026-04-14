@@ -1,5 +1,26 @@
 ## 2026-04-14
 
+- Extended the Boost.Math scalar wrapper lane with `math/erf` and `math/erfc`:
+  - Reused the validated C++17 Boost.Math C-ABI shim pattern from
+    `math/lgamma`, adding `boost::math::erf` and `boost::math::erfc` behind
+    stable status-code returns.
+  - Added the `math/erf` and `math/erfc` primitives, primitive-table
+    registration, and AOT lookup entries. Both primitives accept Omni numeric
+    values that can narrow to finite `Double`, return `Double`, and fail
+    closed on non-finite or out-of-Double-range input.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `73 passed, 0 failed`
+    - direct smokes:
+      - `(math/erf 1.0)` -> `0.842700792949715`
+      - `(math/erfc 1.0)` -> `0.157299207050285`
+      - out-of-range `BigInteger` input to `math/erf` -> `math/erf: value out of Double range`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+
 - Landed the first Boost.Math scalar wrapper:
   - Added a small C++17 Boost.Math shim for `boost::math::lgamma` with stable
     integer status codes instead of exposing C++ exceptions across the C3

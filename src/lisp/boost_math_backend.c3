@@ -7,3 +7,5 @@ const int BOOST_MATH_STATUS_RANGE_ERROR = 3;
 const int BOOST_MATH_STATUS_EVALUATION_ERROR = 4;
 
 extern fn int omni_boost_math_lgamma(double value, double* out) @extern("omni_boost_math_lgamma");
+extern fn int omni_boost_math_erf(double value, double* out) @extern("omni_boost_math_erf");
+extern fn int omni_boost_math_erfc(double value, double* out) @extern("omni_boost_math_erfc");

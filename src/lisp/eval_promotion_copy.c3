@@ -83,6 +83,25 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
     }
 }
 
+fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
+    switch (route) {
+        case CP_ROUTE_NIL:
+        case CP_ROUTE_VOID:
+        case CP_ROUTE_INT:
+        case CP_ROUTE_DOUBLE:
+        case CP_ROUTE_BIG_INTEGER:
+        case CP_ROUTE_STRING:
+        case CP_ROUTE_SYMBOL:
+        case CP_ROUTE_TYPE_INFO:
+        case CP_ROUTE_MODULE:
+        case CP_ROUTE_ERROR:
+        case CP_ROUTE_TIME_POINT:
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn Value* copy_to_parent_by_route(
     Value* v,
     Interp* interp,
@@ -167,6 +186,12 @@ fn Value* copy_to_parent_with_fault(
         return copy_to_parent_missing_scope_provenance_error(interp);
     }
 
+    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
+    if (main::g_current_stack_ctx != null && copy_parent_route_is_leaf(route)) {
+        g_copy_to_parent_stats.defensive_copies++;
+        return copy_to_parent_by_route(v, interp, route, copy_fault_out);
+    }
+
     // Scope-aware optimization: if value is NOT in the scope being released,
     // reuse only when it is already in the target scope chain.
     // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
@@ -176,7 +201,6 @@ fn Value* copy_to_parent_with_fault(
     if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
     copy_to_parent_note_cons_spine(v);
 
-    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
     return copy_to_parent_by_route(v, interp, route, copy_fault_out);
 }
 
