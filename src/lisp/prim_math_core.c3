@@ -19,6 +19,31 @@ extern fn double c_ceil(double x) @extern("ceil");
 extern fn double c_round(double x) @extern("round");
 extern fn double c_fabs(double x) @extern("fabs");
 
+fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "math/lgamma", "1 argument", args.len);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/lgamma", 0, "number", args[0]);
+
+    double input = 0.0;
+    if (!try_numeric_to_double(args[0], &input)) {
+        return raise_error(interp, "math/lgamma: value out of Double range");
+    }
+
+    double output = 0.0;
+    int status = omni_boost_math_lgamma(input, &output);
+    switch (status) {
+        case BOOST_MATH_STATUS_OK:
+            return make_double(interp, output);
+        case BOOST_MATH_STATUS_INVALID_ARGUMENT:
+            return raise_error(interp, "math/lgamma: expected finite numeric input");
+        case BOOST_MATH_STATUS_DOMAIN_ERROR:
+            return raise_error(interp, "math/lgamma: domain error");
+        case BOOST_MATH_STATUS_RANGE_ERROR:
+            return raise_error(interp, "math/lgamma: range error");
+        default:
+            return raise_error(interp, "math/lgamma: evaluation error");
+    }
+}
+
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
     if (!is_number(args[0])) return primitive_arg_type_raise(interp, "sin", 0, "number", args[0]);

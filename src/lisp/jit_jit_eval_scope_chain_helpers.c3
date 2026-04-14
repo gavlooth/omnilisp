@@ -107,6 +107,7 @@ fn bool jit_value_is_graph_carrying(Value* v) @inline {
 }
 
 const usz JIT_TEMP_GRAPH_SCAN_MAX_NODES = 4096;
+const usz JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES = 65536;
 
 struct JitTempGraphScan {
     Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] value_stack;
@@ -153,6 +154,18 @@ fn bool jit_temp_graph_push_env(
     return true;
 }
 
+fn bool jit_temp_graph_push_child_or_detect_temp(
+    Value** stack,
+    usz* stack_len,
+    Value* value,
+    main::ScopeRegion* scope
+) @inline {
+    if (value == null) return false;
+    if (value_in_temp_lane(value, scope)) return true;
+    if (!jit_value_is_graph_carrying(value)) return false;
+    return !jit_temp_graph_push_value(stack, stack_len, value);
+}
+
 fn bool jit_graph_binding_reaches_temp_scope(
     Value* root,
     main::ScopeRegion* scope,
@@ -184,15 +197,46 @@ fn bool jit_graph_binding_reaches_temp_scope(
 
             switch (cur.tag) {
                 case CONS:
-                    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.car) ||
-                        !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.cdr)) {
-                        return true;
+                    Value* current = cur;
+                    usz list_nodes = 0;
+                    while (current != null && current.tag == CONS) {
+                        if (list_nodes >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
+                        if (value_in_temp_lane(current, scope)) return true;
+                        if (jit_temp_graph_push_child_or_detect_temp(
+                            &scan.value_stack[0],
+                            &value_stack_len,
+                            current.cons_val.car,
+                            scope
+                        )) {
+                            return true;
+                        }
+
+                        Value* cdr = current.cons_val.cdr;
+                        if (cdr == null) break;
+                        if (cdr.tag != CONS) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                cdr,
+                                scope
+                            )) {
+                                return true;
+                            }
+                            break;
+                        }
+                        current = cdr;
+                        list_nodes++;
                     }
                     break;
                 case ARRAY:
                     if (cur.array_val != null) {
                         for (usz i = 0; i < cur.array_val.length; i++) {
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.array_val.items[i])) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                cur.array_val.items[i],
+                                scope
+                            )) {
                                 return true;
                             }
                         }
@@ -203,8 +247,18 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key) ||
-                                !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.hashmap_val.entries[i].value)) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                key,
+                                scope
+                            ) ||
+                                jit_temp_graph_push_child_or_detect_temp(
+                                    &scan.value_stack[0],
+                                    &value_stack_len,
+                                    cur.hashmap_val.entries[i].value,
+                                    scope
+                                )) {
                                 return true;
                             }
                         }
@@ -215,7 +269,12 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key)) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                key,
+                                scope
+                            )) {
                                 return true;
                             }
                         }
@@ -410,7 +469,7 @@ fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
                 Value* current = v;
                 usz cur_depth = depth;
                 while (current != null && current.tag == CONS) {
-                    if (cur_depth >= 128) return true;
+                    if (cur_depth >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
 
                     Value* car = current.cons_val.car;
                     if (car != null) {

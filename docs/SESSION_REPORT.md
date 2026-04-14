@@ -1,3 +1,143 @@
+## 2026-04-14 15:45 CEST - Boost.Math `math/lgamma` First Wrapper
+- Objective attempted:
+  - Continue the scientific numerics plan by landing the first Boost.Math scalar
+    function behind an owned C++ shim, without changing the public Tensor or GSL
+    direction.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/boost_math_helpers.cpp` as the C++17 Boost.Math C-ABI bridge
+    for `boost::math::lgamma`, returning stable status codes rather than C++
+    exceptions across the C3 boundary.
+  - Added `src/lisp/boost_math_backend.c3` and wired `math/lgamma` through the
+    math primitive table and AOT primitive lookup.
+  - Updated the helper archive build script and project source list so the new
+    Boost.Math helper is part of `libomni_chelpers`.
+  - Added focused float-math regression coverage for ordinary results, a gamma
+    pole domain error, and out-of-Double-range `BigInteger` input.
+  - Updated the language spec, primitive appendix, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md` for the landed wrapper and remaining scientific
+    numerics checkpoints.
+- Commands run:
+  - `c3c build --obj-out obj` initially failed at link time because the local
+    `build/libomni_chelpers.a` archive had not yet been rebuilt with
+    `omni_boost_math_lgamma`.
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 6.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 0.5)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma (BigInteger "..."))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 16000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Rebuilding `libomni_chelpers` resolved the expected missing-symbol link
+    failure, and the project linked successfully.
+  - Focused float-math tests passed at `70 passed, 0 failed`.
+  - Direct runtime smokes returned `4.78749174278205` for `(math/lgamma 6.0)`
+    and `0.5723649429247` for `(math/lgamma 0.5)`.
+  - `(math/lgamma 0.0)` raises `math/lgamma: domain error`.
+  - Very large `BigInteger` input fails closed with
+    `math/lgamma: value out of Double range`, preserving the scalar
+    narrowing boundary.
+  - Since the same working copy includes the range/TCO fix, the sharp TCO
+    validation was rechecked: `(length (range 4000))` returned `4000`,
+    `(length (range 16000))` returned `16000`, the exact TCO group passed at
+    `1 passed, 0 failed`, and `limit-busting` passed at `17 passed, 0 failed`.
+  - `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - `c3c build` alone is not enough after adding a helper translation unit if
+    `build/libomni_chelpers.a` is stale; run `./scripts/build_omni_chelpers.sh`
+    first or use a build path that refreshes the helper archive.
+- Current best recommendation/checkpoint:
+  - Treat `math/lgamma` as the validated first Boost.Math wrapper and reuse its
+    status-code/error-policy pattern for the next scalar wrappers.
+  - Continue with one narrow scalar follow-up such as `math/erf`,
+    `math/erfc`, `stats/normal-cdf`, or `stats/normal-quantile`, or switch back
+    to the unresolved Tensor LAPACK/LAPACKE public naming checkpoint.
+- Unresolved issues / blockers:
+  - Container-only memory ownership validation was not run in this continuation.
+  - BigFloat/BigComplex, BigInteger division/modulo/comparisons, and
+    arbitrary-precision parsing remain deferred.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 15:00 CEST - Default-Stack Range/TCO Crash Fix
+- Objective attempted:
+  - Debug and fix the normal-stack crash in `(length (range 4000))` and the
+    `advanced-stdlib-numeric-tco` regression that previously required a larger
+    process stack.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/eval_promotion_escape_structured.c3` so cons cdr tail
+    promotion remains iterative when target-chain reuse is unsafe under the
+    boundary alias scan.
+  - Updated `src/lisp/eval_promotion_escape.c3` so cons values already in the
+    current ESCAPE lane reuse directly before the full alias graph scan.
+  - Updated `src/lisp/jit_jit_eval_scope_chain_helpers.c3` so the TCO temp-graph
+    scanner walks cons spines iteratively, skips non-TEMP scalar child values,
+    and uses a separate cons-spine cap instead of the generic graph worklist cap.
+  - Updated `memory/CHANGELOG.md` to mark the previous "needs larger stack"
+    caveat as historical and record the verified default-stack/performance fix.
+- Commands run:
+  - `timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `prlimit --stack=67108864 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `gdb --batch ... ./build/main --eval '(length (range 4000))'`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 8000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 16000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check -- src/lisp/eval_promotion_escape_structured.c3`
+- Key results and observed behavior:
+  - Reproduced the default-stack crash before the fix: the 30s guarded
+    `(length (range 4000))` command dumped core.
+  - Localized the recursive stack source to long cons cdr promotion:
+    `promote_escape_cons` called `promote_to_escape(old_cdr)` after treating a
+    target-chain cons tail as reusable; alias analysis then rejected the long
+    tail at `BOUNDARY_ALIAS_MAX_DEPTH` and recursive disjoint promotion could
+    walk the range spine deeply enough to exhaust the normal stack.
+  - After the fix, the exact advanced TCO group passed (`1 passed, 0 failed`)
+    and the limit-busting slice passed (`17 passed, 0 failed`) on the normal
+    stack.
+  - Direct default-stack `(length (range 4000))` now returns `4000`; measured
+    runtime improved from about 55s after the correctness-only fix to about
+    0.32s after the performance patch.
+  - The exact advanced TCO traversal summary changed from
+    `copy_tag_cons=3906`, `copy_site_tco=7812`, and `cons_spine_peak_len=4000`
+    to `copy_tag_cons=0`, `copy_site_tco=0`, and `cons_spine_peak_len=0`.
+  - Longer direct probes also stayed under the 30s guard: `range 8000` returned
+    in about 1.15s and `range 16000` returned in about 4.14s.
+  - Host-side `memory-lifetime-smoke` was not run because the test harness
+    correctly rejects memory ownership slices outside the container. The
+    bounded container wrapper could not run because the local validation image
+    `omni-validation:2026-03-10` is not present.
+- Invalidated assumptions / failed approaches worth preserving:
+  - A releasing-scope-only tail iteration check did not fix the crash; the
+    failing path involved target-chain cons tails that alias analysis considered
+    unsafe for reuse only after its bounded depth scan.
+  - Do not treat the earlier `prlimit --stack=67108864` workaround as the best
+    current recommendation; the default-stack correctness issue is fixed.
+- Current best recommendation/checkpoint:
+  - Keep the cons-tail promotion rule aligned with alias-analysis reuse safety:
+    target-chain cdr tails may short-circuit only when
+    `boundary_graph_alias_unsafe_for_reuse` says reuse is safe.
+  - Keep the TCO temp-graph scanner on its cons-specific iterative path; do not
+    reintroduce scalar child pushes or generic worklist caps for proper cons
+    spines.
+- Unresolved issues / blockers:
+  - No correctness or 30s performance blocker remains for the reported
+    default-stack range/TCO issue.
+  - Container-only memory ownership validation still needs the local
+    `omni-validation:2026-03-10` image or an allowed rebuild.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-09 Report Docs Syntax Drift Audit
 - Objectives attempted
   - Audit report/status documentation for syntax-surface drift after recent large refactor volume.

@@ -219,6 +219,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `log` | 1 | Natural log |
 | `log10` | 1 | Log base 10 |
 | `pow` | 2 | Power |
+| `math/lgamma` | 1 | Natural log of absolute gamma value |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

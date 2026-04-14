@@ -217,6 +217,13 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "log 1", "(log 1.0)", 0.0, pass, fail);
     test_double(interp, "sqrt 4", "(sqrt 4.0)", 2.0, pass, fail);
     test_double(interp, "pow 2 10", "(pow 2.0 10.0)", 1024.0, pass, fail);
+    test_double(interp, "math/lgamma 6", "(math/lgamma 6.0)", 4.78749174278, pass, fail);
+    test_double(interp, "math/lgamma half", "(math/lgamma 0.5)", 0.57236494292, pass, fail);
+    test_error_contains(interp, "math/lgamma pole domain error",
+        "(math/lgamma 0.0)", "math/lgamma: domain error", pass, fail);
+    test_error_contains(interp, "math/lgamma rejects out-of-range BigInteger",
+        "(math/lgamma (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "math/lgamma: value out of Double range", pass, fail);
     test_eq(interp, "floor 3.7", "(floor 3.7)", 3, pass, fail);
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);

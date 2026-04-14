@@ -17,6 +17,11 @@ fn bool promote_escape_can_mutate(Value* v, PromotionContext* ctx) @inline {
 }
 
 fn bool promote_to_escape_fast_path(Value* v, Interp* interp, Value** out) {
+    if (v.tag == CONS && v.scope_gen == interp.current_scope.escape_generation) {
+        *out = v;
+        return true;
+    }
+
     bool unsafe_alias = boundary_graph_alias_unsafe_for_reuse(v, interp);
 
     if (v.scope_gen == interp.current_scope.escape_generation) {

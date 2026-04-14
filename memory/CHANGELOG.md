@@ -1,5 +1,56 @@
 ## 2026-04-14
 
+- Landed the first Boost.Math scalar wrapper:
+  - Added a small C++17 Boost.Math shim for `boost::math::lgamma` with stable
+    integer status codes instead of exposing C++ exceptions across the C3
+    boundary.
+  - Added the `math/lgamma` primitive, primitive-table registration, and AOT
+    lookup entry. The primitive accepts Omni numeric values that can narrow to a
+    finite `Double`, returns a `Double`, and reports deterministic domain,
+    range, finite-input, and out-of-Double-range errors.
+  - Kept the public surface backend-neutral; Boost.Math remains an
+    implementation backend, not a user-facing package prefix.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `70 passed, 0 failed`
+    - direct smokes:
+      - `(math/lgamma 6.0)` -> `4.78749174278205`
+      - `(math/lgamma 0.5)` -> `0.5723649429247`
+      - `(math/lgamma 0.0)` -> `math/lgamma: domain error`
+      - out-of-range `BigInteger` input -> `math/lgamma: value out of Double range`
+
+- Fixed the default-stack TCO range headroom crash left after the first
+  BigInteger/Tensor integration pass:
+  - Root cause: `promote_escape_cons` treated target-chain cons cdr tails as
+    reusable without rechecking whether alias analysis would reject the long
+    tail for safe reuse. For `(length (range 4000))`, the long target-chain
+    tail exceeded `BOUNDARY_ALIAS_MAX_DEPTH`, fell back into recursive disjoint
+    promotion, and could exhaust the normal stack.
+  - Updated `promote_escape_should_iterate_cons_tail` so releasing/current-scope
+    cons tails stay iterative and target-chain tails iterate when
+    `boundary_graph_alias_unsafe_for_reuse` classifies reuse as unsafe.
+  - Removed the follow-on performance bottleneck by fast-reusing current
+    ESCAPE-lane cons values before the full alias scan and by making the TCO
+    temp-graph scanner walk cons spines iteratively while only pushing
+    graph-carrying child values. A separate cons-spine scan cap keeps long
+    proper lists from falling back to the generic graph worklist cap.
+  - validation:
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `1 passed, 0 failed`, `copy_tag_cons=0`, `copy_site_tco=0`
+    - `OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `17 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `11 passed, 0 failed`
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+      -> `4000` on the normal stack, about 0.32s in this workspace
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 8000))'`
+      -> `8000`, about 1.15s
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 16000))'`
+      -> `16000`, about 4.14s
+
 - Landed the first Boost.Multiprecision scalar slice:
   - Added Boost-backed `BigInteger` storage through a small owned C++ shim over
     `boost::multiprecision::cpp_int`; Omni owns the handle through the normal
@@ -27,10 +78,11 @@
       out-of-range `Integer` narrowing failure
     - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
       -> `66 passed, 0 failed`
-    - all advanced numeric child groups passed; the normal-stack TCO headroom
-      path still crashes in deep recursive escape promotion for
+    - all advanced numeric child groups passed; initial validation found a
+      normal-stack TCO headroom crash in deep recursive escape promotion for
       `(length (range 4000))`, while the full `advanced-stdlib-numeric` filter
-      passed under `prlimit --stack=67108864` with `295 passed, 0 failed`
+      passed under `prlimit --stack=67108864` with `295 passed, 0 failed`;
+      the follow-up fix above resolves the default-stack crash
     - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
       -> passed
 

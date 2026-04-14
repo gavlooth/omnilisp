@@ -278,10 +278,13 @@ fn bool promote_escape_closure_env_needs_detach(Value* v, Interp* interp) @inlin
 
 fn bool promote_escape_should_iterate_cons_tail(Value* old_cdr, Interp* interp) @inline {
     if (old_cdr == null || old_cdr.tag != CONS) return false;
-    // Keep long disjoint list promotion iterative to avoid recursive depth blowups
-    // under ASAN stack pressure. Reusable target-chain tails still short-circuit.
+    // Keep long disjoint or alias-unsafe list tails iterative to avoid recursive
+    // depth blowups under default or ASAN stack pressure.
+    if (boundary_value_in_releasing_scope(old_cdr, interp)) return true;
     if (old_cdr.scope_gen == interp.current_scope.generation) return true;
-    if (boundary_ptr_in_target_scope_chain_with_hint((void*)old_cdr, interp, old_cdr.scope_gen)) return false;
+    if (boundary_ptr_in_target_scope_chain_with_hint((void*)old_cdr, interp, old_cdr.scope_gen)) {
+        return boundary_graph_alias_unsafe_for_reuse(old_cdr, interp);
+    }
     return true;
 }
 

@@ -51,7 +51,9 @@ Minimal scalar-first targets:
   `gcd`/`lcm`, and `parse-number` arbitrary-precision parsing remain deferred.
 - `BigFloat` / `BigComplex` only after the scalar representation, precision
   policy, and lifetime boundaries are stable.
-- `math/lgamma` as the first Boost.Math wrapper.
+- `math/lgamma` is the first validated Boost.Math wrapper slice: C++ shim
+  status codes, finite-input/range/domain error mapping, primitive registration,
+  AOT lookup, focused numeric tests, and direct runtime smokes are implemented.
 - `math/erf`, `math/erfc`, `stats/normal-cdf`, and `stats/normal-quantile`
   only after the C++ shim/error policy is validated.
 
@@ -84,12 +86,14 @@ as a new public Tensor surface:
 Use the integrated Tensor plan as source of truth before changing code. The
 next scientific work should pick one narrow slice:
 
-1. Boost.Math `math/lgamma` shim/error-policy design.
-2. Continue `TENSOR-090` beyond the landed transpose-capable rank-2 `dgemm`
+1. Continue `TENSOR-090` beyond the landed transpose-capable rank-2 `dgemm`
    path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
    rejected; `linalg/` is not yet accepted as the qualifier.
-3. Continue the scalar Boost.Multiprecision lane only by choosing one explicit
+2. Continue the scalar Boost.Multiprecision lane only by choosing one explicit
    follow-up: `BigFloat`/`BigComplex`, BigInteger division/modulo/comparisons,
    or `parse-number` arbitrary-precision parsing.
+3. Extend Boost.Math by reusing the validated `math/lgamma` shim/error-policy
+   pattern: `math/erf`, `math/erfc`, `stats/normal-cdf`, or
+   `stats/normal-quantile`.
 
 Do not start by binding GSL. Do not implement `linalg/matmul` as canonical.

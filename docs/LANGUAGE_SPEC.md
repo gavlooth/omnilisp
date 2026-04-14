@@ -1212,7 +1212,7 @@ Set order contract:
 - `List` returns elements in deterministic canonical element order
   (same comparator family as dictionary keys).
 
-### 7.14 Math Library (19)
+### 7.14 Math Library (20)
 
 | Prim | Description |
 |------|-------------|
@@ -1221,6 +1221,7 @@ Set order contract:
 | `atan2` | Two-argument arctangent |
 | `exp`, `log`, `log10` | Exponential/logarithmic |
 | `pow`, `sqrt` | Power/root |
+| `math/lgamma` | Natural log of absolute gamma value; domain/range failures raise errors |
 | `floor`, `ceiling`, `round`, `truncate` | Rounding |
 | `abs` | Absolute value |
 | `min`, `max` | Binary min/max |

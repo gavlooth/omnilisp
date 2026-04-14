@@ -56,6 +56,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
         { "atan2", &prim_atan2, 2 }, { "exp", &prim_exp, 1 }, { "log", &prim_log, 1 },
         { "log10", &prim_log10, 1 }, { "pow", &prim_pow, 2 },
+        { "math/lgamma", &prim_math_lgamma, 1 },
         { "gcd", &prim_gcd, 2 }, { "lcm", &prim_lcm, 2 },
         // Bitwise
         { "bitwise-and", &prim_bitwise_and, 2 }, { "bitwise-or", &prim_bitwise_or, 2 },
