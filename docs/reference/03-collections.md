@@ -81,9 +81,11 @@ Ordering contract:
 ### Tensors
 
 `Tensor` is Omni's rank-polymorphic scientific numeric aggregate. The current
-runtime ships native `Double` tensor storage, generic `length` introspection,
-tensor indexing through generic `ref`, tensor-dispatched `map`, pure `Double`
-tensor `contract`, and `realize` as the explicit storage boundary.
+runtime ships native `Double` and `BigFloat` tensor storage, generic `length`
+introspection, tensor indexing through generic `ref`, tensor-dispatched `map`,
+pure `Double` tensor `contract`, and `realize` as the explicit storage
+boundary. `BigFloat` tensors support constructor/ref/flat collection
+conversion/concrete `realize` paths; `map` and `contract` remain `Double`-only.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -94,6 +96,10 @@ tensor `contract`, and `realize` as the explicit storage boundary.
 (ref x [1 -1])             ;; => 6.0
 (Array x)                  ;; => [1.0 2.0 3.0 4.0 5.0 6.0]
 (List x)                   ;; => (1.0 2.0 3.0 4.0 5.0 6.0)
+
+(define big (Tensor BigFloat [1] [(BigFloat "1e309")]))
+(dtype big)                ;; => BigFloat
+(String (ref big [0]))     ;; => "1e+309"
 
 (define y (Tensor Double [2 3] 0.0))
 (realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y

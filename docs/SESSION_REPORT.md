@@ -1,3 +1,72 @@
+## 2026-04-15 12:14 CEST - Native BigFloat Tensor Storage
+- Objective attempted:
+  - Move beyond Double-only Tensor ingestion by adding the first
+    BigFloat-preserving concrete Tensor storage dtype.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_FLOAT` metadata, dtype printing/symbol lookup,
+    owned BigFloat handle storage, element cleanup, deep clone, and concrete
+    storage copy support.
+  - Extended `Tensor` constructors to accept `BigFloat` dtype descriptors:
+    `(Tensor BigFloat shape data-or-scalar)`, `(Tensor data BigFloat)`, and
+    `(Tensor BigFloat data)`.
+  - Added BigFloat Tensor support for `dtype`, `ref`, flat `(Array tensor)` /
+    `(List tensor)` conversion, scalar `realize` fill, and concrete tensor copy
+    realization.
+  - Kept `map` and `contract` `Double`-only; BigFloat tensors reject those
+    paths with `tensor/dtype-mismatch` until dedicated kernels land.
+  - Added focused advanced collections/module regressions for dtype/ref,
+    inferred prefix/suffix construction, flat collection conversion, scalar
+    fill, concrete copy, and map rejection.
+  - Updated the lifetime partial-constructor cleanup assertion for the more
+    specific Double narrowing error text.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/reference/04-type-system.md`,
+    `docs/reference/11-appendix-primitives.md`,
+    `docs/type-system-syntax.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat dtype/ref/inferred construction/Array/List
+    conversion/scalar fill/concrete copy/map rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - `(format "%s" (dtype (Tensor BigFloat [2] [(BigFloat "1.25") 2])))`
+    returns `"BigFloat"`.
+  - `(String (ref (Tensor [(BigFloat "1e309")] BigFloat) [0]))` returns
+    `"1e+309"`, preserving values outside Double range.
+  - Flat `(Array tensor)` and `(List tensor)` conversions return BigFloat
+    values for BigFloat tensors.
+  - Concrete `realize` scalar fill and tensor copy work for BigFloat tensors.
+  - `(map + (Tensor BigFloat [1] [(BigFloat "1")]) 1)` fails closed with
+    `map: tensor dtype mismatch`.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `257 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The earlier phrase "BigFloat/BigInteger-preserving Tensor storage remains
+    unshipped" is now stale for BigFloat concrete storage. It remains true for
+    BigInteger storage and for BigFloat tensor arithmetic kernels.
+- Unresolved issues:
+  - BigFloat Tensor `map` and `contract` kernels are not implemented.
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - ASAN validation could not run: the C3 compiler rejected the sanitizer build
+    immediately with `Address sanitizer is only supported on Linux, FreeBSD,
+    NetBSD, Darwin and Windows.`
+- Current best recommendation:
+  - Continue with BigFloat Tensor `map` kernels next if the goal is scientific
+    scalar precision through Tensor operations. Keep BLAS-backed Double kernels
+    separate from BigFloat handle storage.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:57 CEST - Tensor Real Numeric Narrowing
 - Objective attempted:
   - Close the Tensor constructor contract gap after inferred-shape

@@ -188,6 +188,7 @@ struct Array {
  */
 enum TensorDType : char {
     TENSOR_DTYPE_DOUBLE,
+    TENSOR_DTYPE_BIG_FLOAT,
 }
 
 /**

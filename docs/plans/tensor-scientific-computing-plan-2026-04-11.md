@@ -71,6 +71,10 @@ Name collision note:
   `(Tensor Double data)` infer native `Double` tensor shape from real numeric
   scalars or rectangular nested arrays/proper lists whose leaves can narrow to
   finite `Double` while preserving the explicit shape/data constructor.
+- `TENSOR-077` is complete: `BigFloat` concrete Tensor storage supports
+  constructor, `dtype`, `ref`, flat collection conversion, and concrete
+  `realize`. `map` and `contract` remain `Double`-only until dedicated
+  BigFloat tensor kernels land.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a
@@ -559,7 +563,8 @@ Likely code ownership:
 
 Storage and backend policy:
 
-- MVP uses native contiguous CPU `Double` storage.
+- MVP uses native contiguous CPU `Double` storage; the first follow-up storage
+  dtype is concrete native `BigFloat`.
 - Strides should be present in the metadata early, even if all MVP tensors are
   contiguous. This avoids painting slicing/views into a corner.
 - The core implementation owns the semantic fallback for `map`, `contract`,
@@ -851,11 +856,12 @@ Rollout slices:
 First implementation decisions:
 
 - `Tensor` constructor accepts value-position dtype descriptors like `Double`
-  as the canonical dtype argument.
-- Quoted dtype symbols like `'Double` are not part of the first canonical
-  constructor surface.
-- Tensor `map` result dtype is the dtype of the first tensor input in the first
-  slice. Explicit conversion can be expressed as another mapped operation.
+  and `BigFloat` as the canonical dtype argument. Quoted dtype symbols such as
+  `'Double` and `'BigFloat` are accepted compatibility inputs, but docs should
+  prefer value-position descriptors.
+- Tensor `map` result dtype is the dtype of the first tensor input for the
+  `Double` kernel slice. Explicit conversion can be expressed as another
+  mapped operation once non-Double kernels exist.
 - Destination `realize` requires exact dtype compatibility in the first
   slice. Explicit conversion must happen before realization.
 - `TENSOR-070` concrete singleton-axis broadcasting is implemented:

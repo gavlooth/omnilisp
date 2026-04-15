@@ -112,9 +112,10 @@ still error).
 
 `Tensor` is registered as a builtin type descriptor for annotation, dispatch,
 introspection, and construction. `(format "%s" Tensor)` prints
-`#<type Tensor>`, while `(Tensor data)` infers rectangular native double
-tensor storage and `(Tensor Double shape data-or-scalar)` keeps the explicit
-shape/data construction path. Tensor-specific `map` methods dispatch through
+`#<type Tensor>`, while `(Tensor data)` infers rectangular native `Double`
+tensor storage, `(Tensor data BigFloat)` preserves BigFloat storage, and
+`(Tensor dtype shape data-or-scalar)` keeps the explicit shape/data
+construction path. Tensor-specific `map` methods dispatch through
 `^Tensor` annotations for unary, tensor-scalar, scalar-tensor, and exact-shape
 tensor-tensor elementwise operations. `contract` performs pure `Double`
 summed-axis contraction as `(contract a b [left-axis right-axis])`,

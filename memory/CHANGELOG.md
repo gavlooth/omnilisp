@@ -1,5 +1,40 @@
 ## 2026-04-15
 
+- Completed `TENSOR-077` native BigFloat concrete Tensor storage:
+  - Added `TENSOR_DTYPE_BIG_FLOAT` metadata, dtype printing/symbol lookup,
+    owned BigFloat handle storage, element cleanup, deep clone, and concrete
+    storage copy support.
+  - Extended `Tensor` constructors to accept `BigFloat` dtype descriptors:
+    `(Tensor BigFloat shape data-or-scalar)`, `(Tensor data BigFloat)`, and
+    `(Tensor BigFloat data)`.
+  - `BigFloat` tensors now support `dtype`, `ref`, flat `(Array tensor)` /
+    `(List tensor)` conversion, scalar `realize` fill, and concrete tensor
+    copy realization.
+  - `map` and `contract` remain `Double`-only and reject BigFloat tensors with
+    `tensor/dtype-mismatch` until dedicated BigFloat tensor kernels land.
+  - Added focused advanced collections/module regressions for dtype/ref,
+    inferred prefix/suffix construction, flat collection conversion, scalar
+    fill, concrete copy, and map rejection. Updated the existing lifetime
+    partial-constructor cleanup assertion for the more specific Double
+    narrowing error text.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigFloat dtype/ref/inferred construction/Array/List
+      conversion/scalar fill/concrete copy/map rejection
+    - focused advanced collections/module group on host
+      -> `257 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `257 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+  - ASAN note: `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+    failed immediately with the compiler message `Address sanitizer is only
+    supported on Linux, FreeBSD, NetBSD, Darwin and Windows.` No ASAN binary
+    was produced in this environment.
+
 - Completed Tensor real numeric narrowing for native `Double` constructors:
   - Routed Tensor constructor and Tensor scalar-map conversion through the
     shared `try_numeric_to_double` path, so native `Double` Tensor inputs now

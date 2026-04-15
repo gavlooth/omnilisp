@@ -285,7 +285,7 @@ comparisons and ordered helpers such as `min`, `max`, `positive?`, and
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `Tensor` | 1-3 | Construct native `Double` tensor storage as `(Tensor data)` or `(Tensor Double shape data-or-scalar)` |
+| `Tensor` | 1-3 | Construct native `Double` or `BigFloat` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, or `(Tensor dtype shape data-or-scalar)` |
 | `tensor?` | 1 | Predicate for native tensor values |
 | `length` | 1 | Tensor element count |
 | `dtype` | 1 | Tensor dtype symbol |

@@ -2001,7 +2001,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = expr_eval.error.has_error &&
-            str_starts_with(expr_eval.error.message[:256], "Tensor: data elements must be numbers") &&
+            str_starts_with(expr_eval.error.message[:256], "Tensor: data elements must be real numbers representable as Double") &&
             active_tensor_dtors_after == active_tensor_dtors_before;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: failed tensor constructor cleans partial tensor result");

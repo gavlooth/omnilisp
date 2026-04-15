@@ -17,6 +17,29 @@ fn bool tensor_dtype_arg_is_double(Value* dtype_arg, Interp* interp) @inline {
     return false;
 }
 
+fn bool tensor_dtype_arg_is_big_float(Value* dtype_arg, Interp* interp) @inline {
+    if (dtype_arg == null) return false;
+    if (dtype_arg.tag == SYMBOL) return dtype_arg.sym_val == interp.sym_BigFloat;
+    if (dtype_arg.tag == PRIMITIVE) return primitive_name_equals(dtype_arg, "BigFloat");
+    if (dtype_arg.tag == METHOD_TABLE && dtype_arg.method_table_val != null) {
+        return dtype_arg.method_table_val.name == interp.sym_BigFloat;
+    }
+    return false;
+}
+
+fn bool tensor_dtype_arg_to_dtype(Value* dtype_arg, Interp* interp, TensorDType* out) @inline {
+    if (out == null) return false;
+    if (tensor_dtype_arg_is_double(dtype_arg, interp)) {
+        *out = TENSOR_DTYPE_DOUBLE;
+        return true;
+    }
+    if (tensor_dtype_arg_is_big_float(dtype_arg, interp)) {
+        *out = TENSOR_DTYPE_BIG_FLOAT;
+        return true;
+    }
+    return false;
+}
+
 fn Value* tensor_type_raise(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "type", "type/arg-mismatch", message, null);
 }
@@ -117,6 +140,11 @@ fn bool tensor_value_to_double(Value* value, double* out) @inline {
     return try_numeric_to_double(value, out);
 }
 
+fn bool tensor_value_is_real_numeric_leaf(Value* value) @inline {
+    return value != null &&
+        (value.tag == INT || value.tag == DOUBLE || value.tag == BIG_INTEGER || value.tag == BIG_FLOAT);
+}
+
 fn bool tensor_infer_shape_from_value(
     Value* value,
     Interp* interp,
@@ -131,8 +159,7 @@ fn bool tensor_infer_shape_from_value(
     *out_count = 0;
     *err_out = null;
 
-    double ignored = 0.0;
-    if (tensor_value_to_double(value, &ignored)) {
+    if (tensor_value_is_real_numeric_leaf(value)) {
         *out_count = 1;
         return true;
     }
@@ -218,35 +245,100 @@ fn bool tensor_infer_shape_from_value(
     return true;
 }
 
-fn Value* tensor_flatten_inferred_data(Value* value, double* dst, usz* offset, Interp* interp) {
-    if (dst == null || offset == null) return tensor_runtime_raise(interp, "Tensor: inferred tensor storage is missing");
+fn Value* tensor_store_value_at(TensorVal* tensor, usz index, Value* value, Interp* interp, char[] label) {
+    if (tensor == null || index >= tensor.element_count) return tensor_runtime_raise(interp, label);
+    if (tensor.byte_len > 0 && tensor.data == null) return tensor_runtime_raise(interp, label);
+    switch (tensor.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double scalar = 0.0;
+            if (!tensor_value_to_double(value, &scalar)) return tensor_type_raise(interp, "Tensor: data elements must be real numbers representable as Double");
+            ((double*)tensor.data)[index] = scalar;
+            return null;
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void* handle = big_float_handle_from_value(value);
+            if (handle == null) return tensor_type_raise(interp, "Tensor: data elements must be real numbers representable as BigFloat");
+            void** values = (void**)tensor.data;
+            if (values[index] != null) omni_big_float_free(values[index]);
+            values[index] = handle;
+            return null;
+        }
+    }
+}
 
-    double scalar = 0.0;
-    if (tensor_value_to_double(value, &scalar)) {
-        dst[*offset] = scalar;
+fn Value* tensor_flatten_inferred_data(TensorVal* tensor, Value* value, usz* offset, Interp* interp) {
+    if (tensor == null || offset == null) return tensor_runtime_raise(interp, "Tensor: inferred tensor storage is missing");
+
+    if (tensor_value_is_real_numeric_leaf(value)) {
+        Value* err = tensor_store_value_at(tensor, *offset, value, interp, "Tensor: inferred tensor storage is missing");
+        if (err != null) return err;
         *offset += 1;
         return null;
     }
 
     usz count = 0;
     if (!tensor_container_count(value, &count)) {
-        return tensor_type_raise(interp, "Tensor: inferred data must be a proper nested array/list");
+        return tensor_type_raise(interp, "Tensor: inferred data must be numeric or nested arrays/lists of numbers");
     }
     for (usz i = 0; i < count; i++) {
-        Value* err = tensor_flatten_inferred_data(tensor_container_nth(value, i), dst, offset, interp);
+        Value* err = tensor_flatten_inferred_data(tensor, tensor_container_nth(value, i), offset, interp);
         if (err != null) return err;
     }
     return null;
 }
 
+fn Value* tensor_fill_scalar(TensorVal* tensor, Value* data_arg, Interp* interp) {
+    if (tensor == null) return tensor_runtime_raise(interp, "Tensor: tensor backing storage is missing");
+    switch (tensor.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double scalar = 0.0;
+            if (!tensor_value_to_double(data_arg, &scalar)) return null;
+            double* dst = (double*)tensor.data;
+            for (usz i = 0; i < tensor.element_count; i++) dst[i] = scalar;
+            return data_arg;
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void* source = big_float_handle_from_value(data_arg);
+            if (source == null) return null;
+            defer omni_big_float_free(source);
+            void** staged = (void**)mem::malloc(tensor.byte_len);
+            if (tensor.byte_len > 0 && staged == null) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to allocate BigFloat fill storage", null);
+            }
+            defer if (staged != null) mem::free(staged);
+            for (usz i = 0; i < tensor.element_count; i++) staged[i] = null;
+            bool ok = true;
+            for (usz i = 0; i < tensor.element_count; i++) {
+                staged[i] = omni_big_float_clone(source);
+                if (staged[i] == null) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) {
+                for (usz i = 0; i < tensor.element_count; i++) {
+                    if (staged[i] != null) omni_big_float_free(staged[i]);
+                }
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to allocate BigFloat fill value", null);
+            }
+            tensor_big_float_clear_data(tensor);
+            void** dst = (void**)tensor.data;
+            for (usz i = 0; i < tensor.element_count; i++) {
+                dst[i] = staged[i];
+                staged[i] = null;
+            }
+            return data_arg;
+        }
+    }
+}
+
 fn Value* tensor_fill_from_data_arg(TensorVal* tensor, Value* data_arg, Interp* interp) {
     if (tensor == null) return tensor_runtime_raise(interp, "Tensor: tensor backing storage is missing");
     if (tensor.byte_len > 0 && tensor.data == null) return tensor_runtime_raise(interp, "Tensor: tensor data storage is missing");
-    double* dst = (double*)tensor.data;
 
-    double scalar = 0.0;
-    if (tensor_value_to_double(data_arg, &scalar)) {
-        for (usz i = 0; i < tensor.element_count; i++) dst[i] = scalar;
+    Value* scalar_fill = tensor_fill_scalar(tensor, data_arg, interp);
+    if (scalar_fill != null) {
+        if (scalar_fill.tag == ERROR) return scalar_fill;
         return null;
     }
 
@@ -262,11 +354,8 @@ fn Value* tensor_fill_from_data_arg(TensorVal* tensor, Value* data_arg, Interp* 
     }
 
     for (usz i = 0; i < data_count; i++) {
-        double value = 0.0;
-        if (!tensor_value_to_double(tensor_container_nth(data_arg, i), &value)) {
-            return tensor_type_raise(interp, "Tensor: data elements must be numbers");
-        }
-        dst[i] = value;
+        Value* err = tensor_store_value_at(tensor, i, tensor_container_nth(data_arg, i), interp, "Tensor: tensor data storage is missing");
+        if (err != null) return err;
     }
     return null;
 }
@@ -649,7 +738,7 @@ fn Value* tensor_copy_into_destination(Value* source_value, Value* dest_value, I
         }
         usz[1] scalar_shape = { 0 };
         usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
-        Value* staged_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "realize: failed to allocate tensor result");
+        Value* staged_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "realize: failed to allocate tensor result");
         if (staged_value == null || staged_value.tag == ERROR) return staged_value;
         bool keep_staged = false;
         defer if (!keep_staged) {
@@ -660,12 +749,16 @@ fn Value* tensor_copy_into_destination(Value* source_value, Value* dest_value, I
         }
         Value* err = tensor_eval_expr_into(source, staged_value.tensor_val, interp);
         if (err != null) return err;
-        if (source.byte_len > 0) mem::copy(dest.data, staged_value.tensor_val.data, source.byte_len);
+        if (!tensor_copy_concrete_storage(dest, staged_value.tensor_val)) {
+            return tensor_runtime_raise(interp, "realize: failed to copy staged tensor result");
+        }
         return dest_value;
     }
     if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "realize: source tensor backing storage is missing");
     if (source_value == dest_value || source == dest || source.data == dest.data) return dest_value;
-    if (source.byte_len > 0) mem::copy(dest.data, source.data, source.byte_len);
+    if (!tensor_copy_concrete_storage(dest, source)) {
+        return tensor_runtime_raise(interp, "realize: failed to copy tensor storage");
+    }
     return dest_value;
 }
 
@@ -1278,7 +1371,7 @@ fn Value* tensor_realize_to_value(Value* source_value, Interp* interp) {
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
-    Value* out_value = make_tensor_double_uninitialized_checked(interp, shape_slice, "realize: failed to allocate tensor result");
+    Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "realize: failed to allocate tensor result");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
     defer if (!keep_out && out_value != source_value) {
@@ -1320,7 +1413,9 @@ fn Value* tensor_eval_expr_into(TensorVal* source, TensorVal* dest, Interp* inte
         case TENSOR_PAYLOAD_CONCRETE:
             if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "realize: source tensor backing storage is missing");
             if (source == dest || source.data == dest.data) return null;
-            if (source.byte_len > 0) mem::copy(dest.data, source.data, source.byte_len);
+            if (!tensor_copy_concrete_storage(dest, source)) {
+                return tensor_runtime_raise(interp, "realize: failed to copy tensor storage");
+            }
             return null;
         case TENSOR_PAYLOAD_MAP: {
             TensorVal* left_tensor = null;
@@ -1435,6 +1530,12 @@ fn Value* tensor_ref_value(Value* tensor_value, Value* index_arg, Interp* interp
     switch (tensor.dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return make_double(interp, ((double*)tensor.data)[offset]);
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** values = (void**)tensor.data;
+            if (values[offset] == null) return tensor_runtime_raise(interp, "ref: tensor BigFloat element is missing");
+            void* cloned = omni_big_float_clone(values[offset]);
+            return make_big_float_from_owned_handle(interp, cloned, "ref: failed to allocate BigFloat tensor element");
+        }
     }
 }
 
@@ -1449,19 +1550,24 @@ fn Value* tensor_to_flat_array_value(Value* tensor_value, Interp* interp) {
 
     TensorVal* tensor = concrete_value.tensor_val;
     if (!tensor_has_valid_storage(tensor)) return tensor_runtime_raise(interp, "Array: tensor backing storage is missing");
-    if (tensor.dtype != TENSOR_DTYPE_DOUBLE) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "Array: tensor dtype mismatch", null);
-    }
-
     Value* result = make_array_checked(interp, tensor.element_count, "Array: failed to allocate tensor conversion result");
     if (result == null || result.tag == ERROR) return result;
     if (result.tag != ARRAY || result.array_val == null) {
         return tensor_runtime_raise(interp, "Array: result array backing storage is missing");
     }
 
-    double* data = (double*)tensor.data;
     for (usz i = 0; i < tensor.element_count; i++) {
-        Value* elem = make_double(interp, data[i]);
+        Value* elem = null;
+        switch (tensor.dtype) {
+            case TENSOR_DTYPE_DOUBLE:
+                elem = make_double(interp, ((double*)tensor.data)[i]);
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                void** values = (void**)tensor.data;
+                if (values[i] == null) return tensor_runtime_raise(interp, "Array: tensor BigFloat element is missing");
+                elem = make_big_float_from_owned_handle(interp, omni_big_float_clone(values[i]), "Array: failed to allocate BigFloat tensor element");
+            }
+        }
+        if (elem == null || elem.tag == ERROR) return elem;
         Value* promoted = array_promote_or_error(elem, interp);
         if (promoted == null || promoted.tag == ERROR) return promoted;
         result.array_val.items[i] = promoted;
@@ -1481,24 +1587,31 @@ fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
 
     TensorVal* tensor = concrete_value.tensor_val;
     if (!tensor_has_valid_storage(tensor)) return tensor_runtime_raise(interp, "List: tensor backing storage is missing");
-    if (tensor.dtype != TENSOR_DTYPE_DOUBLE) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "List: tensor dtype mismatch", null);
-    }
-
     Value* result = make_nil(interp);
-    double* data = (double*)tensor.data;
     usz remaining = tensor.element_count;
     while (remaining > 0) {
         remaining--;
-        result = make_cons_or_error(interp, make_double(interp, data[remaining]), result, "List: failed to allocate tensor conversion result");
+        Value* elem = null;
+        switch (tensor.dtype) {
+            case TENSOR_DTYPE_DOUBLE:
+                elem = make_double(interp, ((double*)tensor.data)[remaining]);
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                void** values = (void**)tensor.data;
+                if (values[remaining] == null) return tensor_runtime_raise(interp, "List: tensor BigFloat element is missing");
+                elem = make_big_float_from_owned_handle(interp, omni_big_float_clone(values[remaining]), "List: failed to allocate BigFloat tensor element");
+            }
+        }
+        if (elem == null || elem.tag == ERROR) return elem;
+        result = make_cons_or_error(interp, elem, result, "List: failed to allocate tensor conversion result");
         if (result == null || result.tag == ERROR) return result;
     }
     return result;
 }
 
 fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_arg, Value* data_arg, Interp* interp) {
-    if (!tensor_dtype_arg_is_double(dtype_arg, interp)) {
-        return tensor_type_raise(interp, "Tensor: first argument must be Double");
+    TensorDType dtype = TENSOR_DTYPE_DOUBLE;
+    if (!tensor_dtype_arg_to_dtype(dtype_arg, interp, &dtype)) {
+        return tensor_type_raise(interp, "Tensor: first argument must be Double or BigFloat");
     }
 
     usz* shape = null;
@@ -1509,7 +1622,7 @@ fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_ar
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = rank == 0 ? scalar_shape[0:0] : shape[0:rank];
-    Value* tensor = make_tensor_double_uninitialized_checked(interp, shape_slice, "Tensor: out of memory");
+    Value* tensor = make_tensor_uninitialized_checked(interp, dtype, shape_slice, "Tensor: out of memory");
     if (tensor == null || tensor.tag == ERROR) return tensor;
     bool keep_tensor = false;
     defer if (!keep_tensor) {
@@ -1525,7 +1638,7 @@ fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_ar
     return tensor;
 }
 
-fn Value* tensor_construct_inferred(Value* data_arg, Interp* interp) {
+fn Value* tensor_construct_inferred(Value* data_arg, TensorDType dtype, Interp* interp) {
     usz* shape = null;
     usz rank = 0;
     usz count = 0;
@@ -1535,7 +1648,7 @@ fn Value* tensor_construct_inferred(Value* data_arg, Interp* interp) {
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = rank == 0 ? scalar_shape[0:0] : shape[0:rank];
-    Value* tensor = make_tensor_double_uninitialized_checked(interp, shape_slice, "Tensor: out of memory");
+    Value* tensor = make_tensor_uninitialized_checked(interp, dtype, shape_slice, "Tensor: out of memory");
     if (tensor == null || tensor.tag == ERROR) return tensor;
     bool keep_tensor = false;
     defer if (!keep_tensor) {
@@ -1550,8 +1663,7 @@ fn Value* tensor_construct_inferred(Value* data_arg, Interp* interp) {
 
     usz offset = 0;
     if (count > 0 || rank == 0) {
-        double* dst = (double*)tensor.tensor_val.data;
-        err = tensor_flatten_inferred_data(data_arg, dst, &offset, interp);
+        err = tensor_flatten_inferred_data(tensor.tensor_val, data_arg, &offset, interp);
         if (err != null) return err;
     }
     if (offset != count) {
@@ -1563,11 +1675,12 @@ fn Value* tensor_construct_inferred(Value* data_arg, Interp* interp) {
 }
 
 fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len == 1) return tensor_construct_inferred(args[0], interp);
+    if (args.len == 1) return tensor_construct_inferred(args[0], TENSOR_DTYPE_DOUBLE, interp);
     if (args.len == 2) {
-        if (tensor_dtype_arg_is_double(args[0], interp)) return tensor_construct_inferred(args[1], interp);
-        if (tensor_dtype_arg_is_double(args[1], interp)) return tensor_construct_inferred(args[0], interp);
-        return tensor_type_raise(interp, "Tensor: expected data with optional Double dtype");
+        TensorDType dtype = TENSOR_DTYPE_DOUBLE;
+        if (tensor_dtype_arg_to_dtype(args[0], interp, &dtype)) return tensor_construct_inferred(args[1], dtype, interp);
+        if (tensor_dtype_arg_to_dtype(args[1], interp, &dtype)) return tensor_construct_inferred(args[0], dtype, interp);
+        return tensor_type_raise(interp, "Tensor: expected data with optional Double or BigFloat dtype");
     }
     if (args.len == 3) return tensor_construct_from_shape_and_data(args[0], args[1], args[2], interp);
     return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [Double] or Double shape data-or-scalar", args.len);
@@ -1590,7 +1703,7 @@ fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "realize: destination Tensor is immutable", null);
     }
 
-    if (is_number(args[0])) {
+    if (is_numeric_value(args[0]) && args[0].tag != BIG_COMPLEX) {
         Value* err = tensor_fill_from_data_arg(dest, args[0], interp);
         if (err != null) return err;
         return args[1];

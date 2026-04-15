@@ -130,13 +130,34 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq(interp, "Tensor inferred empty vector length",
         "(length (Tensor []))", 0, pass, fail);
     test_error_contains(interp, "Tensor inferred BigFloat outside Double range rejected",
-        "(Tensor [(BigFloat \"1e309\")])", "nested arrays/lists of numbers", pass, fail);
+        "(Tensor [(BigFloat \"1e309\")])", "representable as Double", pass, fail);
     test_error_contains(interp, "Tensor inferred complex data rejected",
         "(Tensor [(BigComplex 1 2)])", "nested arrays/lists of numbers", pass, fail);
     test_error_contains(interp, "Tensor inferred ragged data rejected",
         "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
     test_error_contains(interp, "Tensor inferred non-numeric data rejected",
         "(Tensor [1 'bad])", "nested arrays/lists of numbers", pass, fail);
+    test_str_val(interp, "Tensor BigFloat dtype",
+        "(format \"%s\" (dtype (Tensor BigFloat [2] [(BigFloat \"1.25\") 2])))", "BigFloat", pass, fail);
+    test_str_val(interp, "Tensor BigFloat explicit ref preserves precision range",
+        "(String (ref (Tensor BigFloat [1] [(BigFloat \"1e309\")]) [0]))", "1e+309", pass, fail);
+    test_str_val(interp, "Tensor BigFloat inferred suffix ref",
+        "(String (ref (Tensor [(BigFloat \"1.25\")] BigFloat) [0]))", "1.25", pass, fail);
+    test_str_val(interp, "Tensor BigFloat inferred prefix ref",
+        "(String (ref (Tensor BigFloat [(BigFloat \"2.5\")]) [0]))", "2.5", pass, fail);
+    test_str_val(interp, "Array BigFloat tensor conversion preserves element",
+        "(String (ref (Array (Tensor BigFloat [2] [(BigFloat \"1.25\") 2])) 1))", "2", pass, fail);
+    test_str_val(interp, "List BigFloat tensor conversion preserves element",
+        "(String (ref (List (Tensor BigFloat [2] [(BigFloat \"1.25\") 2])) 0))", "1.25", pass, fail);
+    test_str_val(interp, "realize BigFloat scalar fill into tensor",
+        "(let (dst (Tensor BigFloat [2] 0)) (block (realize (BigFloat \"3.5\") dst) (String (ref dst [1]))))",
+        "3.5", pass, fail);
+    test_str_val(interp, "realize BigFloat tensor copy",
+        "(let (src (Tensor BigFloat [1] [(BigFloat \"7.25\")]) dst (Tensor BigFloat [1] 0)) (block (realize src dst) (String (ref dst [0]))))",
+        "7.25", pass, fail);
+    test_error_contains(interp, "map BigFloat tensor rejected until kernel support",
+        "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) 1)",
+        "map: tensor dtype mismatch", pass, fail);
     test_eq(interp, "Array tensor conversion length",
         "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "Array tensor conversion row-major value",

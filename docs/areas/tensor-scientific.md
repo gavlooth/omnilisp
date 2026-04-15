@@ -69,6 +69,10 @@ Implemented slices:
   `(Tensor Double data)` infer `Double` tensor shape from real numeric scalars
   or rectangular nested arrays/proper lists whose leaves can narrow to finite
   `Double`.
+- `TENSOR-077`: native `BigFloat` concrete Tensor storage supports
+  constructor, `dtype`, `ref`, flat `(Array tensor)` / `(List tensor)`
+  conversion, and concrete `realize`; `map` and `contract` remain
+  `Double`-only pending dedicated BigFloat tensor kernels.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque

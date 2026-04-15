@@ -98,6 +98,10 @@ as a new public Tensor surface:
   native `Double` tensor shape from real numeric scalars or rectangular nested
   arrays/proper lists whose leaves can narrow to finite `Double`, while
   preserving the explicit `(Tensor Double shape data-or-scalar)` constructor.
+- Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
+  `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
+  `realize`; `map` and `contract` remain `Double`-only until dedicated
+  BigFloat tensor kernels land.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing
