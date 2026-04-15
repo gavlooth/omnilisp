@@ -17,3 +17,9 @@ extern fn void* omni_big_integer_binary_left_i64(long lhs, void* rhs, int op) @e
 extern fn void* omni_big_integer_binary_right_i64(void* lhs, long rhs, int op) @extern("omni_big_integer_binary_right_i64");
 extern fn void* omni_big_integer_neg(void* value) @extern("omni_big_integer_neg");
 extern fn void* omni_big_integer_neg_i64(long value) @extern("omni_big_integer_neg_i64");
+extern fn void* omni_big_integer_bitwise_not(void* value) @extern("omni_big_integer_bitwise_not");
+extern fn void* omni_big_integer_bitwise_not_i64(long value) @extern("omni_big_integer_bitwise_not_i64");
+extern fn void* omni_big_integer_shift_left(void* value, ulong shift) @extern("omni_big_integer_shift_left");
+extern fn void* omni_big_integer_shift_left_i64(long value, ulong shift) @extern("omni_big_integer_shift_left_i64");
+extern fn void* omni_big_integer_shift_right(void* value, ulong shift) @extern("omni_big_integer_shift_right");
+extern fn void* omni_big_integer_shift_right_i64(long value, ulong shift) @extern("omni_big_integer_shift_right_i64");

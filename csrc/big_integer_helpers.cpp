@@ -71,12 +71,15 @@ cpp_int apply_binary(const cpp_int& lhs, const cpp_int& rhs, int op) {
         case 5: return lhs % rhs;
         case 6: return gcd_value(lhs, rhs);
         case 7: return lcm_value(lhs, rhs);
+        case 8: return lhs & rhs;
+        case 9: return lhs | rhs;
+        case 10: return lhs ^ rhs;
         default: return 0;
     }
 }
 
 bool valid_binary_op(int op) {
-    return op >= 1 && op <= 7;
+    return op >= 1 && op <= 10;
 }
 
 } // namespace
@@ -247,6 +250,63 @@ void* omni_big_integer_neg_i64(long value) {
     try {
         cpp_int src(value);
         return new cpp_int(-src);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_bitwise_not(const void* value) {
+    try {
+        const cpp_int* src = as_big_integer_const(value);
+        if (src == nullptr) return nullptr;
+        return new cpp_int(~(*src));
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_bitwise_not_i64(long value) {
+    try {
+        cpp_int src(value);
+        return new cpp_int(~src);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_shift_left(const void* value, unsigned long shift) {
+    try {
+        const cpp_int* src = as_big_integer_const(value);
+        if (src == nullptr) return nullptr;
+        return new cpp_int((*src) << shift);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_shift_left_i64(long value, unsigned long shift) {
+    try {
+        cpp_int src(value);
+        return new cpp_int(src << shift);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_shift_right(const void* value, unsigned long shift) {
+    try {
+        const cpp_int* src = as_big_integer_const(value);
+        if (src == nullptr) return nullptr;
+        return new cpp_int((*src) >> shift);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_integer_shift_right_i64(long value, unsigned long shift) {
+    try {
+        cpp_int src(value);
+        return new cpp_int(src >> shift);
     } catch (...) {
         return nullptr;
     }

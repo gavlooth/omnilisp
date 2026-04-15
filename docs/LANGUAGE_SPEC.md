@@ -384,8 +384,8 @@ arbitrary-precision exact integer surface backed by Boost.Multiprecision in the
 current runtime. `+`, `-`, `*`, `abs`, `gcd`, `lcm`, and the `long.min / -1`
 division overflow case promote overflowing `Integer` results to `BigInteger`.
 `/`, `%`, ordering comparisons, `min`, and `max` support `BigInteger` values;
-bitwise operations and `parse-number` arbitrary-precision parsing remain
-explicit follow-up work.
+bitwise operations support exact `Integer`/`BigInteger` operands. `parse-number`
+arbitrary-precision parsing remains explicit follow-up work.
 Integer source literals cover the full signed fixed-width range, including
 `-9223372036854775808`; positive overflow and negative underflow still fail at
 lex time.
@@ -1238,9 +1238,9 @@ Set order contract:
 
 | Prim | Description |
 |------|-------------|
-| `bitwise-and`, `bitwise-or`, `bitwise-xor` | Bitwise logic |
-| `bitwise-not` | Bitwise complement |
-| `lshift`, `rshift` | Bit shifting |
+| `bitwise-and`, `bitwise-or`, `bitwise-xor` | Bitwise logic; supports exact `Integer`/`BigInteger` operands |
+| `bitwise-not` | Bitwise complement; supports exact `Integer`/`BigInteger` operands |
+| `lshift`, `rshift` | Bit shifting; non-negative shifts use exact integer semantics and may promote to `BigInteger`; negative shifts return `0`; shift counts above the bounded exact-shift cap fail closed |
 
 ### 7.16 Conversion (5)
 

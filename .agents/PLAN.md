@@ -47,9 +47,9 @@ Minimal scalar-first targets:
 - `BigInteger` through Boost.Multiprecision `cpp_int` is now the first landed
   scalar slice: constructor, printing/String conversion, `Number` identity,
   `+`/`-`/`*` overflow promotion, `/`, `%`, ordering comparisons,
-  `abs`, `min`, `max`, `gcd`, `lcm`, equality/hash support, and
-  scope-boundary cloning are implemented. Bitwise operations and
-  `parse-number` arbitrary-precision parsing remain deferred.
+  `abs`, `min`, `max`, `gcd`, `lcm`, bitwise operations, equality/hash
+  support, and scope-boundary cloning are implemented. `parse-number`
+  arbitrary-precision parsing remains deferred.
 - `BigFloat` / `BigComplex` only after the scalar representation, precision
   policy, and lifetime boundaries are stable.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
@@ -94,8 +94,8 @@ next scientific work should pick one narrow slice:
    path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
    rejected; `linalg/` is not yet accepted as the qualifier.
 2. Continue the scalar Boost.Multiprecision lane only by choosing one explicit
-   follow-up: `BigFloat`/`BigComplex`, BigInteger bitwise operations,
-   or `parse-number` arbitrary-precision parsing.
+   follow-up: `BigFloat`/`BigComplex` or `parse-number` arbitrary-precision
+   parsing.
 3. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 

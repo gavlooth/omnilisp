@@ -376,6 +376,33 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "bitwise-not 0", "(bitwise-not 0)", -1, pass, fail);
     test_eq(interp, "lshift", "(lshift 1 4)", 16, pass, fail);
     test_eq(interp, "rshift", "(rshift 16 4)", 1, pass, fail);
+    test_str_val(interp, "BigInteger bitwise-and",
+        "(String (bitwise-and (BigInteger \"18446744073709551615\") 255))",
+        "255", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-or",
+        "(String (bitwise-or (BigInteger \"18446744073709551360\") 255))",
+        "18446744073709551615", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-xor",
+        "(String (bitwise-xor (BigInteger \"18446744073709551615\") 255))",
+        "18446744073709551360", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-not",
+        "(String (bitwise-not (BigInteger \"0\")))",
+        "-1", pass, fail);
+    test_str_val(interp, "Integer lshift overflow promotes",
+        "(String (lshift 1 64))",
+        "18446744073709551616", pass, fail);
+    test_str_val(interp, "BigInteger lshift",
+        "(String (lshift (BigInteger \"1\") 100))",
+        "1267650600228229401496703205376", pass, fail);
+    test_str_val(interp, "BigInteger rshift",
+        "(String (rshift (BigInteger \"1267650600228229401496703205376\") 100))",
+        "1", pass, fail);
+    test_eq(interp, "BigInteger negative lshift count returns zero",
+        "(lshift (BigInteger \"1\") -1)", 0, pass, fail);
+    test_error_contains(interp, "BigInteger shift count out of range",
+        "(lshift 1 (BigInteger \"9223372036854775808\"))", "shift count out of range", pass, fail);
+    test_error_contains(interp, "Integer shift count allocation cap",
+        "(lshift 1 1048577)", "shift count out of range", pass, fail);
 
     // === STDLIB HOFs (Phase 3) ===
     test_eq(interp, "flatten", "(length (flatten (quote ((1 2) (3 4) (5)))))", 5, pass, fail);

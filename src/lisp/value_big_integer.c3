@@ -10,6 +10,10 @@ const int BIG_INTEGER_OP_DIV = 4;
 const int BIG_INTEGER_OP_MOD = 5;
 const int BIG_INTEGER_OP_GCD = 6;
 const int BIG_INTEGER_OP_LCM = 7;
+const int BIG_INTEGER_OP_BIT_AND = 8;
+const int BIG_INTEGER_OP_BIT_OR = 9;
+const int BIG_INTEGER_OP_BIT_XOR = 10;
+const long BIG_INTEGER_MAX_SHIFT_BITS = 1048576;
 
 fn Value* make_big_integer_from_owned_handle(Interp* interp, void* handle, char[] message) {
     if (handle == null) return raise_error(interp, message);
@@ -159,6 +163,16 @@ fn bool is_exact_integer_value(Value* v) @inline {
     return v != null && (v.tag == INT || v.tag == BIG_INTEGER);
 }
 
+fn bool exact_integer_value_to_i64(Value* v, long* out) @inline {
+    if (v == null || out == null) return false;
+    if (v.tag == INT) {
+        *out = v.int_val;
+        return true;
+    }
+    if (v.tag == BIG_INTEGER) return big_integer_try_to_i64(v, out);
+    return false;
+}
+
 fn void* big_integer_binary_handle(Value* lhs, Value* rhs, int op) {
     void* result = null;
     if (lhs.tag == INT && rhs.tag == INT) {
@@ -249,6 +263,30 @@ fn Value* big_integer_neg_value(Interp* interp, Value* v, char[] message) {
         result = omni_big_integer_neg(v.big_integer_val);
     }
     return make_big_integer_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_integer_bitwise_not_value(Interp* interp, Value* v, bool prefer_integer, char[] message) {
+    void* result = null;
+    if (v.tag == INT) {
+        result = omni_big_integer_bitwise_not_i64(v.int_val);
+    } else if (v.tag == BIG_INTEGER) {
+        result = omni_big_integer_bitwise_not(v.big_integer_val);
+    }
+    return make_integer_or_big_integer_from_owned_handle(interp, result, prefer_integer, message);
+}
+
+fn Value* big_integer_shift_value(Interp* interp, Value* v, ulong shift, bool left, bool prefer_integer, char[] message) {
+    void* result = null;
+    if (v.tag == INT) {
+        result = left ?
+            omni_big_integer_shift_left_i64(v.int_val, shift) :
+            omni_big_integer_shift_right_i64(v.int_val, shift);
+    } else if (v.tag == BIG_INTEGER) {
+        result = left ?
+            omni_big_integer_shift_left(v.big_integer_val, shift) :
+            omni_big_integer_shift_right(v.big_integer_val, shift);
+    }
+    return make_integer_or_big_integer_from_owned_handle(interp, result, prefer_integer, message);
 }
 
 fn bool big_integer_values_equal(Value* lhs, Value* rhs) @inline {

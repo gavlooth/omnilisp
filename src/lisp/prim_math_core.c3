@@ -338,45 +338,67 @@ fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_bitwise_and(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "bitwise-and", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "bitwise-and", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "bitwise-and", 1, "integer", args[1]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-and", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-and", 1, "integer", args[1]);
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
+        return big_integer_binary_values(
+            interp, args[0], args[1], BIG_INTEGER_OP_BIT_AND, "bitwise-and: failed to allocate BigInteger result");
+    }
     return make_int(interp, args[0].int_val & args[1].int_val);
 }
 
 fn Value* prim_bitwise_or(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "bitwise-or", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "bitwise-or", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "bitwise-or", 1, "integer", args[1]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-or", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-or", 1, "integer", args[1]);
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
+        return big_integer_binary_values(
+            interp, args[0], args[1], BIG_INTEGER_OP_BIT_OR, "bitwise-or: failed to allocate BigInteger result");
+    }
     return make_int(interp, args[0].int_val | args[1].int_val);
 }
 
 fn Value* prim_bitwise_xor(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "bitwise-xor", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "bitwise-xor", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "bitwise-xor", 1, "integer", args[1]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-xor", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "bitwise-xor", 1, "integer", args[1]);
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
+        return big_integer_binary_values(
+            interp, args[0], args[1], BIG_INTEGER_OP_BIT_XOR, "bitwise-xor: failed to allocate BigInteger result");
+    }
     return make_int(interp, args[0].int_val ^ args[1].int_val);
 }
 
 fn Value* prim_bitwise_not(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "bitwise-not", "1 argument", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "bitwise-not", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "bitwise-not", 0, "integer", args[0]);
+    if (args[0].tag == BIG_INTEGER) {
+        return big_integer_bitwise_not_value(
+            interp, args[0], false, "bitwise-not: failed to allocate BigInteger result");
+    }
     return make_int(interp, ~args[0].int_val);
 }
 
 fn Value* prim_lshift(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "lshift", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "lshift", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "lshift", 1, "integer", args[1]);
-    long shift = args[1].int_val;
-    if (shift < 0 || shift >= 64) return make_int(interp, 0);
-    return make_int(interp, args[0].int_val << shift);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "lshift", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "lshift", 1, "integer", args[1]);
+    long shift = 0;
+    if (!exact_integer_value_to_i64(args[1], &shift)) return raise_error(interp, "lshift: shift count out of range");
+    if (shift < 0) return make_int(interp, 0);
+    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return raise_error(interp, "lshift: shift count out of range");
+    return big_integer_shift_value(
+        interp, args[0], (ulong)shift, true, args[0].tag == INT, "lshift: failed to allocate BigInteger result");
 }
 
 fn Value* prim_rshift(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "rshift", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "rshift", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "rshift", 1, "integer", args[1]);
-    long shift = args[1].int_val;
-    if (shift < 0 || shift >= 64) return make_int(interp, 0);
-    return make_int(interp, args[0].int_val >> shift);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "rshift", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "rshift", 1, "integer", args[1]);
+    long shift = 0;
+    if (!exact_integer_value_to_i64(args[1], &shift)) return raise_error(interp, "rshift: shift count out of range");
+    if (shift < 0) return make_int(interp, 0);
+    if (shift > BIG_INTEGER_MAX_SHIFT_BITS) return raise_error(interp, "rshift: shift count out of range");
+    return big_integer_shift_value(
+        interp, args[0], (ulong)shift, false, args[0].tag == INT, "rshift: failed to allocate BigInteger result");
 }

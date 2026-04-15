@@ -1,5 +1,37 @@
 ## 2026-04-15
 
+- Completed the BigInteger bitwise primitive slice:
+  - Extended the Boost.Multiprecision `cpp_int` helper op set with
+    `bitwise-and`, `bitwise-or`, `bitwise-xor`, `bitwise-not`, `lshift`, and
+    `rshift` support.
+  - Updated bitwise primitives so `Integer`/`BigInteger` operands use exact
+    integer semantics. Small fixed-width results narrow back to `Integer` for
+    `Integer` shift inputs when representable; BigInteger operands preserve
+    BigInteger results.
+  - `lshift 1 64` now promotes to `BigInteger` instead of returning `0`.
+    Negative shift counts keep the existing `0` result. Shift counts that
+    cannot narrow to `Integer`, or that exceed the bounded exact-shift cap
+    (`1048576` bits), fail closed with `shift count out of range`.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-sort-bitwise-hof OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `35 passed, 0 failed`
+    - bounded container rerun of the same advanced bitwise group
+      -> `35 passed, 0 failed`
+    - direct smokes:
+      - `(String (bitwise-and (BigInteger "18446744073709551615") 255))`
+        -> `"255"`
+      - `(String (lshift 1 64))` -> `"18446744073709551616"`
+      - `(String (rshift (BigInteger "1267650600228229401496703205376") 100))`
+        -> `"1"`
+      - `(lshift (BigInteger "1") -1)` -> `0`
+      - `(lshift 1 (BigInteger "9223372036854775808"))`
+        -> `lshift: shift count out of range`
+      - `(lshift 1 1048577)` -> `lshift: shift count out of range`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+
 - Fixed the signed integer lexer boundary:
   - `Lexer.scan_number(...)` now allows exactly the negative `long.min`
     magnitude while preserving overflow rejection for positive

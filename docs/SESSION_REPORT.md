@@ -1,3 +1,60 @@
+## 2026-04-15 06:42 CEST - BigInteger Bitwise Primitives
+- Objective attempted:
+  - Continue the scalar Boost.Multiprecision lane by closing the deferred
+    BigInteger bitwise primitive surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` with Boost.Multiprecision-backed
+    bitwise binary ops, bitwise complement, and left/right shifts.
+  - Added C3 extern declarations in `src/lisp/big_integer_backend.c3`.
+  - Added BigInteger bitwise helper plumbing in
+    `src/lisp/value_big_integer.c3`.
+  - Updated `src/lisp/prim_math_core.c3` so `bitwise-and`, `bitwise-or`,
+    `bitwise-xor`, `bitwise-not`, `lshift`, and `rshift` accept exact
+    `Integer`/`BigInteger` operands.
+  - Added focused advanced numeric bitwise regressions in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-sort-bitwise-hof OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-sort-bitwise-hof OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (bitwise-and (BigInteger "18446744073709551615") 255))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (lshift 1 64))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (rshift (BigInteger "1267650600228229401496703205376") 100))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift (BigInteger "1") -1)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift 1 (BigInteger "9223372036854775808"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift 1 1048577)'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results and observed behavior:
+  - Focused advanced numeric bitwise group passed on host and in the bounded
+    container at `35 passed, 0 failed`.
+  - Direct BigInteger bitwise-and smoke returned `"255"`.
+  - `lshift 1 64` now returns `"18446744073709551616"` through overflow
+    promotion instead of the old machine-width `0`.
+  - BigInteger right shift smoke returned `"1"`.
+  - Negative shift counts still return `0`.
+  - Shift counts too large to narrow to `Integer`, or above the bounded
+    exact-shift cap (`1048576` bits), fail closed with
+    `shift count out of range`.
+  - Stage 3 source parity passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not treat the old `shift >= 64 -> 0` behavior as the exact-integer
+    contract for `lshift`; it is superseded by promotion for non-negative exact
+    integer shifts.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger bitwise operations as shipped. Remaining scalar precision
+    follow-ups are arbitrary-precision `parse-number` policy and the larger
+    `BigFloat`/`BigComplex` representation work.
+- Unresolved issues / blockers:
+  - Shift counts are still bounded; unbounded BigInteger shift counts and
+    representable-but-huge counts are intentionally rejected to avoid accidental
+    huge allocations.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 06:31 CEST - Signed Long-Min Lexer Boundary
 - Objective attempted:
   - Fix the raw source literal `-9223372036854775808` after the prior
