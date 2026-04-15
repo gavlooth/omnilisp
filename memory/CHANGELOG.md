@@ -1,5 +1,36 @@
 ## 2026-04-15
 
+- Completed `TENSOR-086` Tensor `sqrt` semantics:
+  - Extended the existing `sqrt` primitive to accept native Tensor inputs.
+  - `Double` Tensor inputs return same-shape `Double` Tensor results.
+  - `BigInteger` Tensor inputs return same-shape `Double` Tensor results,
+    matching scalar `sqrt` conversion behavior for exact integers.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, and lazy
+    BigComplex Tensor sources are realized before evaluation.
+  - Hardened `omni_big_integer_to_double` so enormous `cpp_int` values are
+    rejected by bit-length before `convert_to<double>()`, preventing a
+    Boost-domain abort and preserving fail-closed scalar/Tensor conversion.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - direct smokes for huge BigInteger `Double` conversion rejection, huge
+      BigInteger Tensor `sqrt` rejection, and BigComplex Tensor `sqrt`
+    - focused advanced collections/module group on host
+      -> `341 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `341 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-085` Tensor `abs` semantics:
   - Extended the existing `abs` primitive to accept native Tensor inputs.
   - Real Tensor dtypes (`Double`, `BigInteger`, and `BigFloat`) preserve

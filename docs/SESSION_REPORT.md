@@ -1,3 +1,68 @@
+## 2026-04-15 13:56 CEST - Tensor Sqrt Semantics
+- Objective attempted:
+  - Continue direct Tensor support for scalar scientific numeric primitives.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended the existing `sqrt` primitive to accept Tensor inputs.
+  - Added Tensor `sqrt` runtime handling for `Double`, `BigInteger`,
+    `BigFloat`, and `BigComplex` tensors in `src/lisp/prim_tensor.c3`.
+  - `Double` Tensor inputs return same-shape `Double` tensors.
+  - `BigInteger` Tensor inputs return same-shape `Double` tensors, matching
+    scalar `sqrt` conversion behavior for exact integers.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, including
+    lazy source realization.
+  - Hardened `csrc/big_integer_helpers.cpp` so `omni_big_integer_to_double`
+    rejects enormous `cpp_int` values by bit length before attempting
+    `convert_to<double>()`.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, BigComplex, lazy BigComplex, and out-of-Double-range BigInteger
+    Tensor `sqrt`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct `--eval` smokes for huge BigInteger `Double` conversion rejection,
+    huge BigInteger Tensor `sqrt` rejection, and BigComplex Tensor `sqrt`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes now fail closed instead of aborting for huge BigInteger
+    conversion and Tensor `sqrt`.
+  - Direct BigComplex Tensor `sqrt` returned `"0+1i"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=341 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=341 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not rely on `cpp_int::convert_to<double>()` alone as the range guard for
+    enormous exact integers; pre-screen by bit length before conversion.
+- Current best recommendation:
+  - Treat Tensor `sqrt` as closed for native numeric dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor `sqrt` slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:47 CEST - Tensor Abs Semantics
 - Objective attempted:
   - Continue the precision Tensor lane with a concrete scalar-to-Tensor

@@ -165,6 +165,8 @@ int omni_big_integer_to_double(const void* value, double* out) {
     try {
         const cpp_int* src = as_big_integer_const(value);
         if (src == nullptr || out == nullptr) return 0;
+        cpp_int magnitude = abs_value(*src);
+        if (magnitude != 0 && boost::multiprecision::msb(magnitude) > 1023) return 0;
         double converted = src->convert_to<double>();
         if (!std::isfinite(converted)) return 0;
         *out = converted;

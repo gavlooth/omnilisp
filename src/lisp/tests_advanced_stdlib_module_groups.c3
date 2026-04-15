@@ -235,6 +235,22 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "abs lazy BigComplex tensor realizes source",
         "(String (ref (abs (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 2))) [0]))",
         "5", pass, fail);
+    test_eq_double(interp, "sqrt Double tensor preserves Double dtype",
+        "(ref (sqrt (Tensor Double [1] [9.0])) [0])", 3.0, pass, fail);
+    test_eq_double(interp, "sqrt BigInteger tensor returns Double tensor",
+        "(ref (sqrt (Tensor BigInteger [1] [9])) [0])", 3.0, pass, fail);
+    test_str_val(interp, "sqrt BigFloat tensor preserves high precision dtype",
+        "(String (ref (sqrt (Tensor BigFloat [1] [(BigFloat \"4\")])) [0]))",
+        "2", pass, fail);
+    test_str_val(interp, "sqrt BigComplex tensor preserves complex dtype",
+        "(String (ref (sqrt (Tensor BigComplex [1] [(BigComplex -1 0)])) [0]))",
+        "0+1i", pass, fail);
+    test_str_val(interp, "sqrt lazy BigComplex tensor realizes source",
+        "(String (ref (sqrt (map + (Tensor BigComplex [1] [(BigComplex -2 0)]) (BigComplex 1 0))) [0]))",
+        "0+1i", pass, fail);
+    test_error_contains(interp, "sqrt BigInteger tensor rejects out of Double range",
+        "(sqrt (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]))",
+        "sqrt: BigInteger tensor element out of Double range", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

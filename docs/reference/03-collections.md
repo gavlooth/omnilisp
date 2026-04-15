@@ -92,7 +92,9 @@ conversion/concrete `realize` paths, elementwise `map`, and summed-axis
 same-dtype zeros for imaginary components, while BigComplex component
 extraction returns BigFloat tensors. Tensor `abs` applies elementwise
 magnitude; real Tensor dtypes preserve dtype and BigComplex tensors return
-BigFloat magnitude tensors.
+BigFloat magnitude tensors. Tensor `sqrt` applies elementwise square root:
+Double and BigInteger Tensor inputs return Double tensors, BigFloat tensors
+preserve BigFloat, and BigComplex tensors preserve BigComplex.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -119,6 +121,7 @@ BigFloat magnitude tensors.
 (String (ref (imag-part complex) [0])) ;; => "2"
 (String (ref (conjugate complex) [0])) ;; => "1-2i"
 (String (ref (abs (Tensor BigComplex [1] [(BigComplex 3 4)])) [0])) ;; => "5"
+(String (ref (sqrt (Tensor BigComplex [1] [(BigComplex -1 0)])) [0])) ;; => "0+1i"
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))

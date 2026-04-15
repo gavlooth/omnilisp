@@ -119,6 +119,9 @@ as a new public Tensor surface:
 - Tensor `abs` now supports elementwise magnitude for all native Tensor dtypes:
   real Tensor dtypes preserve dtype and shape, while BigComplex tensors return
   same-shape BigFloat magnitude tensors.
+- Tensor `sqrt` now supports elementwise square root for all native Tensor
+  dtypes: Double and BigInteger tensors return same-shape Double tensors,
+  while BigFloat and BigComplex tensors preserve dtype.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.

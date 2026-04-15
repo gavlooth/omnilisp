@@ -459,7 +459,10 @@ Tensor dtypes, `real-part` and `conjugate` preserve dtype and values, while
 `BigComplex` tensors, `real-part` and `imag-part` produce `BigFloat` tensors
 and `conjugate` produces a `BigComplex` tensor. Tensor `abs` applies
 elementwise magnitude; real Tensor dtypes preserve dtype and `BigComplex`
-tensors return same-shape `BigFloat` tensors.
+tensors return same-shape `BigFloat` tensors. Tensor `sqrt` applies
+elementwise square root; `Double` and `BigInteger` Tensor inputs return
+`Double` tensors, `BigFloat` tensors preserve `BigFloat`, and `BigComplex`
+tensors preserve `BigComplex`.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User

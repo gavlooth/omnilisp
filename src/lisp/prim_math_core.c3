@@ -368,6 +368,7 @@ fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sqrt", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_sqrt_value(args[0], interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SQRT, "sqrt: BigComplex evaluation error");
     }

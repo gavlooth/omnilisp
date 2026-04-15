@@ -4,6 +4,7 @@ import std::core::mem;
 import main;
 
 extern fn double tensor_c_fabs(double x) @extern("fabs");
+extern fn double tensor_c_sqrt(double x) @extern("sqrt");
 
 fn bool is_tensor(Value* v) @inline {
     return v != null && v.tag == TENSOR;
@@ -2447,6 +2448,79 @@ fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
                 void* result = omni_big_complex_abs(src_values[i]);
                 if (result == null) return raise_error(interp, "abs: failed to allocate BigComplex tensor magnitude");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
+fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "sqrt: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* source = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "sqrt: tensor backing storage is missing");
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    TensorDType result_dtype = source.dtype == TENSOR_DTYPE_BIG_INTEGER ? TENSOR_DTYPE_DOUBLE : source.dtype;
+
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "sqrt: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "sqrt: tensor result backing storage is missing");
+    }
+
+    switch (source.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double* src_values = (double*)source.data;
+            double* dst_values = (double*)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                dst_values[i] = tensor_c_sqrt(src_values[i]);
+            }
+        }
+        case TENSOR_DTYPE_BIG_INTEGER: {
+            void** src_values = (void**)source.data;
+            double* dst_values = (double*)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigInteger element is missing");
+                double input = 0.0;
+                if (omni_big_integer_to_double(src_values[i], &input) == 0) {
+                    return raise_error(interp, "sqrt: BigInteger tensor element out of Double range");
+                }
+                dst_values[i] = tensor_c_sqrt(input);
+            }
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** src_values = (void**)source.data;
+            void** dst_values = (void**)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigFloat element is missing");
+                void* result = omni_big_float_unary_math(src_values[i], BIG_FLOAT_MATH_SQRT);
+                if (result == null) return raise_error(interp, "sqrt: failed to evaluate BigFloat tensor element");
+                if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** src_values = (void**)source.data;
+            void** dst_values = (void**)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigComplex element is missing");
+                void* result = omni_big_complex_unary_math(src_values[i], BIG_COMPLEX_MATH_SQRT);
+                if (result == null) return raise_error(interp, "sqrt: failed to evaluate BigComplex tensor element");
+                if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
                 dst_values[i] = result;
             }
         }

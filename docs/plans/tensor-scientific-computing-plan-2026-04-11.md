@@ -106,6 +106,10 @@ Name collision note:
 - `TENSOR-085` is complete: Tensor `abs` applies elementwise magnitude for all
   native tensor dtypes. Real tensor dtypes preserve dtype and shape;
   BigComplex tensors return same-shape native BigFloat magnitude tensors.
+- `TENSOR-086` is complete: Tensor `sqrt` applies elementwise square root for
+  all native tensor dtypes. Double and BigInteger tensor inputs return
+  same-shape Double tensors; BigFloat and BigComplex tensor inputs preserve
+  dtype.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a
