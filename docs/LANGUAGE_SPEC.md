@@ -466,11 +466,14 @@ tensors preserve `BigComplex`. Tensor `sin`, `cos`, `tan`, `asin`, `acos`,
 `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10` apply the same
 elementwise unary scientific-math contract: `Double` and `BigInteger` inputs
 return `Double` tensors, while `BigFloat` and `BigComplex` tensors preserve
-their dtype.
-Both may produce lazy Tensor
-expression payloads under the existing `Tensor` value, with backend
-acceleration left as an optimization behind the same semantic surface. User
-code should not name or depend on a separate `TensorExpr` type.
+their dtype. Tensor `pow` supports tensor-scalar, scalar-tensor, and broadcast
+tensor-tensor powers: `BigComplex` wins the result dtype if either input is
+complex, otherwise `BigFloat` wins if either input is BigFloat, otherwise the
+result is a `Double` tensor.
+Tensor operations may produce lazy Tensor expression payloads under the
+existing `Tensor` value, with backend acceleration left as an optimization
+behind the same semantic surface. User code should not name or depend on a
+separate `TensorExpr` type.
 
 ### 2.2 Truthiness
 

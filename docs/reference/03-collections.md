@@ -96,7 +96,10 @@ BigFloat magnitude tensors. Tensor `sqrt` applies elementwise square root:
 Double and BigInteger Tensor inputs return Double tensors, BigFloat tensors
 preserve BigFloat, and BigComplex tensors preserve BigComplex. Tensor `sin`,
 `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`,
-and `log10` follow the same unary scientific-math dtype contract.
+and `log10` follow the same unary scientific-math dtype contract. Tensor
+`pow` supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor
+powers; `BigComplex` wins the result dtype, then `BigFloat`, otherwise the
+result is a Double tensor.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -125,6 +128,7 @@ and `log10` follow the same unary scientific-math dtype contract.
 (String (ref (abs (Tensor BigComplex [1] [(BigComplex 3 4)])) [0])) ;; => "5"
 (String (ref (sqrt (Tensor BigComplex [1] [(BigComplex -1 0)])) [0])) ;; => "0+1i"
 (ref (exp (Tensor BigInteger [1] [0])) [0]) ;; => 1.0
+(ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1]) ;; => 27.0
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))

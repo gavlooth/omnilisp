@@ -17,6 +17,7 @@ extern fn double tensor_c_exp(double x) @extern("exp");
 extern fn double tensor_c_log(double x) @extern("log");
 extern fn double tensor_c_log10(double x) @extern("log10");
 extern fn double tensor_c_sqrt(double x) @extern("sqrt");
+extern fn double tensor_c_pow(double x, double y) @extern("pow");
 
 fn bool is_tensor(Value* v) @inline {
     return v != null && v.tag == TENSOR;
@@ -2577,6 +2578,171 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
 
 fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
     return tensor_unary_math_value(tensor_value, BIG_FLOAT_MATH_SQRT, BIG_COMPLEX_MATH_SQRT, interp);
+}
+
+fn bool tensor_pow_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {
+    if (dtype_out == null) return false;
+    if (tensor != null) {
+        switch (tensor.dtype) {
+            case TENSOR_DTYPE_BIG_COMPLEX:
+                *dtype_out = TENSOR_DTYPE_BIG_COMPLEX;
+            case TENSOR_DTYPE_BIG_FLOAT:
+                *dtype_out = TENSOR_DTYPE_BIG_FLOAT;
+            case TENSOR_DTYPE_BIG_INTEGER:
+            case TENSOR_DTYPE_DOUBLE:
+                *dtype_out = TENSOR_DTYPE_DOUBLE;
+        }
+        return true;
+    }
+    if (!is_numeric_value(value)) return false;
+    if (is_big_complex(value)) {
+        *dtype_out = TENSOR_DTYPE_BIG_COMPLEX;
+    } else if (is_big_float(value)) {
+        *dtype_out = TENSOR_DTYPE_BIG_FLOAT;
+    } else {
+        *dtype_out = TENSOR_DTYPE_DOUBLE;
+    }
+    return true;
+}
+
+fn TensorDType tensor_pow_result_dtype(TensorDType left_dtype, TensorDType right_dtype) @inline {
+    if (left_dtype == TENSOR_DTYPE_BIG_COMPLEX || right_dtype == TENSOR_DTYPE_BIG_COMPLEX) return TENSOR_DTYPE_BIG_COMPLEX;
+    if (left_dtype == TENSOR_DTYPE_BIG_FLOAT || right_dtype == TENSOR_DTYPE_BIG_FLOAT) return TENSOR_DTYPE_BIG_FLOAT;
+    return TENSOR_DTYPE_DOUBLE;
+}
+
+fn Value* tensor_value_at_offset(TensorVal* tensor, usz offset, Interp* interp, char[] message) {
+    if (tensor == null || !tensor_has_valid_storage(tensor) || offset >= tensor.element_count) return tensor_runtime_raise(interp, message);
+    switch (tensor.dtype) {
+        case TENSOR_DTYPE_DOUBLE:
+            return make_double(interp, ((double*)tensor.data)[offset]);
+        case TENSOR_DTYPE_BIG_INTEGER: {
+            void** values = (void**)tensor.data;
+            if (values[offset] == null) return tensor_runtime_raise(interp, message);
+            return make_big_integer_from_owned_handle(interp, omni_big_integer_clone(values[offset]), message);
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** values = (void**)tensor.data;
+            if (values[offset] == null) return tensor_runtime_raise(interp, message);
+            return make_big_float_from_owned_handle(interp, omni_big_float_clone(values[offset]), message);
+        }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** values = (void**)tensor.data;
+            if (values[offset] == null) return tensor_runtime_raise(interp, message);
+            return make_big_complex_from_owned_handle(interp, omni_big_complex_clone(values[offset]), message);
+        }
+    }
+}
+
+fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp) {
+    bool left_is_tensor = is_tensor(left_value);
+    bool right_is_tensor = is_tensor(right_value);
+    if (!left_is_tensor && !right_is_tensor) return tensor_type_raise(interp, "pow: expected at least one Tensor input");
+
+    Value* left_concrete = left_value;
+    if (left_is_tensor) {
+        left_concrete = tensor_realize_to_value(left_value, interp);
+        if (left_concrete == null || left_concrete.tag == ERROR) return left_concrete;
+    }
+    bool cleanup_left = left_is_tensor && left_concrete != left_value;
+    defer if (cleanup_left) {
+        boundary_cleanup_materialized_value(null, left_concrete, interp.current_scope);
+    }
+
+    Value* right_concrete = right_value;
+    if (right_is_tensor) {
+        right_concrete = tensor_realize_to_value(right_value, interp);
+        if (right_concrete == null || right_concrete.tag == ERROR) return right_concrete;
+    }
+    bool cleanup_right = right_is_tensor && right_concrete != right_value;
+    defer if (cleanup_right) {
+        boundary_cleanup_materialized_value(null, right_concrete, interp.current_scope);
+    }
+
+    TensorVal* left_tensor = left_is_tensor ? left_concrete.tensor_val : null;
+    TensorVal* right_tensor = right_is_tensor ? right_concrete.tensor_val : null;
+    if (left_tensor != null && !tensor_has_valid_storage(left_tensor)) return tensor_runtime_raise(interp, "pow: left tensor backing storage is missing");
+    if (right_tensor != null && !tensor_has_valid_storage(right_tensor)) return tensor_runtime_raise(interp, "pow: right tensor backing storage is missing");
+
+    TensorDType left_dtype = TENSOR_DTYPE_DOUBLE;
+    TensorDType right_dtype = TENSOR_DTYPE_DOUBLE;
+    if (!tensor_pow_input_dtype(left_value, left_tensor, &left_dtype)) return primitive_arg_type_raise(interp, "pow", 0, "number or Tensor", left_value);
+    if (!tensor_pow_input_dtype(right_value, right_tensor, &right_dtype)) return primitive_arg_type_raise(interp, "pow", 1, "number or Tensor", right_value);
+    TensorDType result_dtype = tensor_pow_result_dtype(left_dtype, right_dtype);
+
+    usz* result_shape = null;
+    usz result_rank = 0;
+    Value* err = tensor_map_result_shape(left_tensor, right_tensor, true, interp, &result_shape, &result_rank);
+    if (err != null) return err;
+    defer if (result_shape != null) mem::free(result_shape);
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "pow: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "pow: tensor result backing storage is missing");
+    }
+
+    TensorVal* out_tensor = out_value.tensor_val;
+    for (usz i = 0; i < out_tensor.element_count; i++) {
+        Value* left_arg = left_value;
+        Value* right_arg = right_value;
+        if (left_tensor != null) {
+            usz left_offset = 0;
+            if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "pow: tensor shape mismatch", null);
+            }
+            left_arg = tensor_value_at_offset(left_tensor, left_offset, interp, "pow: left tensor element is missing");
+            if (left_arg == null || left_arg.tag == ERROR) return left_arg;
+        }
+        if (right_tensor != null) {
+            usz right_offset = 0;
+            if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "pow: tensor shape mismatch", null);
+            }
+            right_arg = tensor_value_at_offset(right_tensor, right_offset, interp, "pow: right tensor element is missing");
+            if (right_arg == null || right_arg.tag == ERROR) return right_arg;
+        }
+
+        switch (result_dtype) {
+            case TENSOR_DTYPE_DOUBLE: {
+                double base = 0.0;
+                double exponent = 0.0;
+                if (!try_numeric_to_double(left_arg, &base) || !try_numeric_to_double(right_arg, &exponent)) {
+                    return raise_error(interp, "pow: tensor element out of Double range");
+                }
+                ((double*)out_tensor.data)[i] = tensor_c_pow(base, exponent);
+            }
+            case TENSOR_DTYPE_BIG_INTEGER:
+                return tensor_runtime_raise(interp, "pow: unreachable BigInteger result dtype");
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                Value* result = big_float_binary_math_values(interp, left_arg, right_arg, BIG_FLOAT_MATH_POW, "pow: BigFloat tensor evaluation error");
+                if (result == null || result.tag == ERROR) return result;
+                void** out = (void**)out_tensor.data;
+                void* cloned = omni_big_float_clone(result.big_float_val);
+                if (cloned == null) return raise_error(interp, "pow: failed to allocate BigFloat tensor element");
+                if (out[i] != null) omni_big_float_free(out[i]);
+                out[i] = cloned;
+            }
+            case TENSOR_DTYPE_BIG_COMPLEX: {
+                Value* result = big_complex_binary_math_values(interp, left_arg, right_arg, BIG_COMPLEX_MATH_POW, "pow: BigComplex tensor evaluation error");
+                if (result == null || result.tag == ERROR) return result;
+                void** out = (void**)out_tensor.data;
+                void* cloned = omni_big_complex_clone(result.big_complex_val);
+                if (cloned == null) return raise_error(interp, "pow: failed to allocate BigComplex tensor element");
+                if (out[i] != null) omni_big_complex_free(out[i]);
+                out[i] = cloned;
+            }
+        }
+    }
+
+    keep_out = true;
+    return out_value;
 }
 
 fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp) {

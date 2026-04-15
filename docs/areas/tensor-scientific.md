@@ -109,6 +109,10 @@ Implemented slices:
   through a shared elementwise helper. `Double` and `BigInteger` Tensor inputs
   return `Double` tensors; `BigFloat` and `BigComplex` Tensor inputs preserve
   dtype.
+- `TENSOR-088`: Tensor `pow` supports tensor-scalar, scalar-tensor, and
+  broadcast tensor-tensor powers. `BigComplex` wins the result dtype if either
+  input is complex, `BigFloat` wins if either input is BigFloat, and remaining
+  real/exact inputs return `Double` tensors.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -178,6 +182,8 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     semantics: `pass=341 fail=0`.
   - host targeted `advanced-collections-module` group after Tensor unary
     scientific math semantics: `pass=353 fail=0`.
+  - host targeted `advanced-collections-module` group after Tensor `pow`
+    semantics: `pass=361 fail=0`.
   - bounded container `advanced-collections-module` group after real Tensor
     component semantics: `pass=330 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor `abs`
@@ -186,6 +192,8 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     semantics: `pass=341 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor unary
     scientific math semantics: `pass=353 fail=0`.
+  - bounded container `advanced-collections-module` group after Tensor `pow`
+    semantics: `pass=361 fail=0`.
   - bounded container `memory-lifetime-smoke`: `pass=225 fail=0`.
   - bounded container `advanced-collections-module` group after BigComplex
     component kernels: `pass=327 fail=0`.

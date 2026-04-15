@@ -359,6 +359,7 @@ fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "pow", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_pow_value(args[0], args[1], interp);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
         if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "pow", 0, "number", args[0]);
         if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "pow", 1, "number", args[1]);

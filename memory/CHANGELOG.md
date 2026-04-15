@@ -1,5 +1,32 @@
 ## 2026-04-15
 
+- Completed `TENSOR-088` Tensor `pow` semantics:
+  - Extended the existing `pow` primitive to accept native Tensor inputs.
+  - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor powers.
+  - Result dtype policy is `BigComplex` if either input is complex,
+    `BigFloat` if either input is BigFloat, otherwise `Double`.
+  - `Double` and `BigInteger` Tensor inputs therefore return same-shape or
+    broadcast-shape `Double` tensors through the hardened fail-closed finite
+    conversion path.
+  - `BigFloat` and `BigComplex` Tensor inputs preserve precision dtype.
+  - Lazy Tensor operands are realized before elementwise power evaluation.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - focused advanced collections/module group on host
+      -> `361 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `361 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-087` Tensor unary scientific math semantics:
   - Added a shared Tensor unary-math helper for scalar scientific primitives.
   - Extended `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,

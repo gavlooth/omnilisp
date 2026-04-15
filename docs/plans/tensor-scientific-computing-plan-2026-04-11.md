@@ -115,6 +115,11 @@ Name collision note:
   `log`, and `log10` for all native tensor dtypes. Double and BigInteger
   tensor inputs return same-shape Double tensors; BigFloat and BigComplex
   tensor inputs preserve dtype.
+- `TENSOR-088` is complete: Tensor `pow` applies elementwise power for
+  tensor-scalar, scalar-tensor, and broadcast tensor-tensor inputs. BigComplex
+  wins the result dtype if either input is complex, BigFloat wins if either
+  input is BigFloat, and remaining Double/BigInteger inputs return Double
+  tensors.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

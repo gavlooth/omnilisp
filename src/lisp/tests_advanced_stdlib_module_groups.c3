@@ -280,6 +280,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "log10 lazy BigComplex tensor realizes source",
         "(String (ref (log10 (map + (Tensor BigComplex [1] [(BigComplex 0 0)]) (BigComplex 1 0))) [0]))",
         "0+0i", pass, fail);
+    test_eq_double(interp, "pow Double tensor scalar",
+        "(ref (pow (Tensor Double [1] [2.0]) 3.0) [0])", 8.0, pass, fail);
+    test_eq_double(interp, "pow scalar Double tensor",
+        "(ref (pow 2.0 (Tensor Double [1] [3.0])) [0])", 8.0, pass, fail);
+    test_eq_double(interp, "pow BigInteger tensor returns Double tensor",
+        "(ref (pow (Tensor BigInteger [1] [2]) 3) [0])", 8.0, pass, fail);
+    test_eq_double(interp, "pow Tensor broadcast",
+        "(ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1])", 27.0, pass, fail);
+    test_str_val(interp, "pow BigFloat tensor preserves dtype",
+        "(String (ref (pow (Tensor BigFloat [1] [(BigFloat \"2\")]) (BigFloat \"3\")) [0]))",
+        "8", pass, fail);
+    test_str_val(interp, "pow BigComplex tensor preserves dtype",
+        "(String (< (abs (- (ref (pow (Tensor BigComplex [1] [(BigComplex 0 1)]) 2) [0]) (BigComplex -1 0))) (BigFloat \"1e-40\")))",
+        "true", pass, fail);
+    test_str_val(interp, "pow lazy BigComplex tensor realizes source",
+        "(String (< (abs (- (ref (pow (map + (Tensor BigComplex [1] [(BigComplex 0 1)]) (BigComplex 0 0)) 2) [0]) (BigComplex -1 0))) (BigFloat \"1e-40\")))",
+        "true", pass, fail);
+    test_error_contains(interp, "pow BigInteger tensor rejects out of Double range",
+        "(pow (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 2)",
+        "pow: tensor element out of Double range", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

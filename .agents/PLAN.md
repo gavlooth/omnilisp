@@ -127,6 +127,9 @@ as a new public Tensor surface:
   for all native Tensor dtypes. Double and BigInteger tensors return
   same-shape Double tensors, while BigFloat and BigComplex tensors preserve
   dtype.
+- Tensor `pow` now supports tensor-scalar, scalar-tensor, and broadcast
+  tensor-tensor powers. BigComplex wins result dtype, then BigFloat, otherwise
+  the result is a Double tensor.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.
