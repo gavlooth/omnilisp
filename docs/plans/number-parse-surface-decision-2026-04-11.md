@@ -4,9 +4,9 @@
 
 Use `parse-number` as the canonical permissive number parse API.
 
-- `parse-number` parses a string into either `Integer` or `Double`.
-- `parse-number` returns `nil` on parse failure, integer overflow/underflow, or
-  non-finite double results.
+- `parse-number` parses a string into `Integer`, `BigInteger`, or `Double`.
+- `parse-number` returns `nil` on parse failure or non-finite double results.
+  Decimal integer overflow/underflow promotes to `BigInteger`.
 - `Number` remains a non-callable abstract/meta type descriptor for annotation
   and dispatch.
 - `string->number` is not retained as a public compatibility alias during this
@@ -17,8 +17,8 @@ Use `parse-number` as the canonical permissive number parse API.
 - `Integer` and `Double` constructors are target-specific coercions and raise
   deterministic `type/arg-mismatch` payloads on invalid input.
 - The current parse operation is intentionally permissive and maybe-valued; it
-  does not have constructor semantics because success may produce either numeric
-  concrete type, and failure is represented as `nil`.
+  does not have constructor semantics because success may produce one of several
+  numeric concrete types, and failure is represented as `nil`.
 - `Number` is already documented and tested as an abstract/meta type descriptor,
   not a value-position constructor.
 
@@ -29,7 +29,15 @@ Use `parse-number` as the canonical permissive number parse API.
 - Keep `string->number` public: rejected because constructor/coercion cleanup is
   removing arrow-style conversion aliases from the pre-alpha surface.
 - Split into `parse-integer` and `parse-double` only: deferred because the
-  current shipped operation intentionally returns either numeric concrete type.
+  current shipped operation intentionally returns multiple numeric concrete
+  types.
+
+## Update - 2026-04-15
+
+`BigInteger` is now a shipped concrete numeric type. `parse-number` keeps its
+permissive maybe-valued contract, but syntactically valid decimal integer
+overflow/underflow now returns `BigInteger` instead of `nil`. Malformed strings
+and non-finite floating parses still return `nil`.
 
 ## Migration Notes
 

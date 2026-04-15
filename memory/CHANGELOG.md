@@ -1,5 +1,36 @@
 ## 2026-04-15
 
+- Completed the `parse-number` BigInteger promotion slice:
+  - Updated `prim_string_to_number` so syntactically valid decimal integer
+    overflow/underflow returns `BigInteger` instead of `nil`.
+  - Kept malformed integer strings maybe-valued: overflow-looking strings with
+    a non-digit suffix still return `nil` rather than raising through the
+    `BigInteger` constructor.
+  - Exact fixed-width boundaries remain fixed-width: `-9223372036854775808`
+    parses to `Integer`; positive/negative decimal strings outside that range
+    parse to `BigInteger`.
+  - Updated `Double` string coercion to accept a `parse-number` BigInteger
+    result when it can narrow to a finite `Double`.
+  - validation:
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `101 passed, 0 failed`
+    - bounded container rerun of the same advanced numeric group
+      -> `101 passed, 0 failed`
+    - direct smokes:
+      - `(String (parse-number "9223372036854775808"))`
+        -> `"9223372036854775808"`
+      - `(String (parse-number "-9223372036854775809"))`
+        -> `"-9223372036854775809"`
+      - `(= (type-of (parse-number "9223372036854775808")) 'BigInteger)`
+        -> `true`
+      - `(= (type-of (parse-number "-9223372036854775808")) 'Integer)`
+        -> `true`
+      - `(parse-number "9223372036854775808x")` -> `nil`
+      - `(Double "9223372036854775808")` -> `9.22337203685478e+18`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+
 - Completed the BigInteger bitwise primitive slice:
   - Extended the Boost.Multiprecision `cpp_int` helper op set with
     `bitwise-and`, `bitwise-or`, `bitwise-xor`, `bitwise-not`, `lshift`, and

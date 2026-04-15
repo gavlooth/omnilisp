@@ -1,3 +1,58 @@
+## 2026-04-15 06:51 CEST - Parse Number BigInteger Promotion
+- Objective attempted:
+  - Continue the scalar precision lane by implementing automatic BigInteger
+    promotion for `parse-number` decimal integer overflow.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/prim_string_convert.c3` so syntactically valid decimal
+    integer overflow/underflow returns `BigInteger` instead of `nil`.
+  - Preserved maybe-valued parse failure behavior for malformed strings by
+    verifying the rest of the decimal input before calling the BigInteger
+    constructor.
+  - Updated `Double` string coercion so a `parse-number` BigInteger result can
+    narrow to finite `Double`.
+  - Added focused advanced numeric regressions in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/04-type-system.md`,
+    `docs/plans/number-parse-surface-decision-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "9223372036854775808"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "-9223372036854775809"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "9223372036854775808")) '\''BigInteger)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "-9223372036854775808")) '\''Integer)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(parse-number "9223372036854775808x")'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Double "9223372036854775808")'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `parse-number` now returns `BigInteger` for valid decimal strings outside
+    fixed-width `Integer` range.
+  - The exact `long.min` string still returns fixed-width `Integer`.
+  - Malformed overflow-looking strings such as
+    `"9223372036854775808x"` still return `nil`.
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `101 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not keep treating `parse-number` integer overflow/underflow as `nil`;
+    that contract is superseded for syntactically valid decimal integer input.
+- Current best recommendation/checkpoint:
+  - Treat the BigInteger scalar follow-up lane as closed through constructor,
+    exact arithmetic, comparisons, bitwise operations, and `parse-number`
+    decimal overflow promotion.
+- Unresolved issues / blockers:
+  - Source literals wider than fixed-width `Integer` still fail lexing; this
+    slice only changes string parsing through `parse-number`.
+  - BigFloat/BigComplex representation, precision policy, and lifetimes remain
+    the next scalar precision design problem.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 06:42 CEST - BigInteger Bitwise Primitives
 - Objective attempted:
   - Continue the scalar Boost.Multiprecision lane by closing the deferred

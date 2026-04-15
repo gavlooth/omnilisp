@@ -161,8 +161,9 @@ Numeric conversion contract:
 - `Integer` truncates finite doubles toward zero.
 - Narrowing must be finite and within `Integer` range; overflow/non-finite
   inputs raise `type/arg-mismatch`.
-- `parse-number` returns `nil` for parse failure and integer
-  overflow/underflow.
+- `parse-number` returns `Integer`, `BigInteger`, or `Double`; syntactically
+  valid decimal integer overflow/underflow promotes to `BigInteger`, while
+  invalid input and non-finite floating parses return `nil`.
 
 ### Type Introspection
 

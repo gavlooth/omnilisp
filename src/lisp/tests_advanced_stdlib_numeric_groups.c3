@@ -154,8 +154,18 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
     test_double(interp, "parse-number float", "(parse-number \"3.14\")", 3.14, pass, fail);
     test_double(interp, "parse-number exp", "(parse-number \"1.5e2\")", 150.0, pass, fail);
-    test_nil(interp, "parse-number integer overflow => nil", "(parse-number \"9223372036854775808\")", pass, fail);
-    test_nil(interp, "parse-number integer underflow => nil", "(parse-number \"-9223372036854775809\")", pass, fail);
+    test_str_val(interp, "parse-number integer overflow => BigInteger",
+        "(String (parse-number \"9223372036854775808\"))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "parse-number integer underflow => BigInteger",
+        "(String (parse-number \"-9223372036854775809\"))",
+        "-9223372036854775809", pass, fail);
+    test_truthy(interp, "parse-number overflow type is BigInteger",
+        "(= (type-of (parse-number \"9223372036854775808\")) 'BigInteger)", pass, fail);
+    test_truthy(interp, "parse-number long-min type is Integer",
+        "(= (type-of (parse-number \"-9223372036854775808\")) 'Integer)", pass, fail);
+    test_nil(interp, "parse-number invalid overflow suffix => nil",
+        "(parse-number \"9223372036854775808x\")", pass, fail);
     test_str_val(interp, "BigInteger ctor large string",
         "(String (BigInteger \"9223372036854775808\"))",
         "9223372036854775808", pass, fail);

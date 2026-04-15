@@ -48,8 +48,8 @@ Minimal scalar-first targets:
   scalar slice: constructor, printing/String conversion, `Number` identity,
   `+`/`-`/`*` overflow promotion, `/`, `%`, ordering comparisons,
   `abs`, `min`, `max`, `gcd`, `lcm`, bitwise operations, equality/hash
-  support, and scope-boundary cloning are implemented. `parse-number`
-  arbitrary-precision parsing remains deferred.
+  support, `parse-number` decimal overflow promotion, and scope-boundary
+  cloning are implemented.
 - `BigFloat` / `BigComplex` only after the scalar representation, precision
   policy, and lifetime boundaries are stable.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
@@ -93,9 +93,8 @@ next scientific work should pick one narrow slice:
 1. Continue `TENSOR-090` beyond the landed transpose-capable rank-2 `dgemm`
    path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
    rejected; `linalg/` is not yet accepted as the qualifier.
-2. Continue the scalar Boost.Multiprecision lane only by choosing one explicit
-   follow-up: `BigFloat`/`BigComplex` or `parse-number` arbitrary-precision
-   parsing.
+2. Continue the scalar precision lane with `BigFloat`/`BigComplex` only after
+   deciding representation, precision policy, and lifetime boundaries.
 3. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 

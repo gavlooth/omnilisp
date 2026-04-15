@@ -36,6 +36,19 @@ fn Value* conversion_int_from_double_or_raise(Interp* interp, double v, char[] m
     return make_int(interp, out);
 }
 
+fn bool conversion_decimal_digits_from(char[] s, usz i) @inline {
+    while (i < s.len) {
+        if (s[i] < '0' || s[i] > '9') return false;
+        i++;
+    }
+    return true;
+}
+
+fn Value* conversion_big_integer_or_nil(Interp* interp, char[] s, usz overflow_at) @inline {
+    if (!conversion_decimal_digits_from(s, overflow_at)) return make_nil(interp);
+    return make_big_integer_from_string(interp, s);
+}
+
 fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
 
@@ -108,6 +121,10 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
         if (parsed != null && parsed.tag != NIL) {
             if (parsed.tag == DOUBLE) return parsed;
             if (parsed.tag == INT) return make_double(interp, (double)parsed.int_val);
+            if (parsed.tag == BIG_INTEGER) {
+                double out = 0.0;
+                if (big_integer_try_to_double(parsed, &out)) return make_double(interp, out);
+            }
         }
     }
     return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
@@ -217,10 +234,10 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
         if (s[i] < '0' || s[i] > '9') return make_nil(interp);
         long digit = (long)(s[i] - '0');
         if (negative) {
-            if (val < (long.min + digit) / 10) return make_nil(interp);
+            if (val < (long.min + digit) / 10) return conversion_big_integer_or_nil(interp, s, i);
             val = val * 10 - digit;
         } else {
-            if (val > (long.max - digit) / 10) return make_nil(interp);
+            if (val > (long.max - digit) / 10) return conversion_big_integer_or_nil(interp, s, i);
             val = val * 10 + digit;
         }
         i++;

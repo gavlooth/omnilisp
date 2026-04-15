@@ -385,11 +385,13 @@ current runtime. `+`, `-`, `*`, `abs`, `gcd`, `lcm`, and the `long.min / -1`
 division overflow case promote overflowing `Integer` results to `BigInteger`.
 `/`, `%`, ordering comparisons, `min`, and `max` support `BigInteger` values;
 bitwise operations support exact `Integer`/`BigInteger` operands. `parse-number`
-arbitrary-precision parsing remains explicit follow-up work.
+returns fixed-width `Integer` values when the decimal input fits and promotes
+valid wider decimal integers to `BigInteger`.
 Integer source literals cover the full signed fixed-width range, including
 `-9223372036854775808`; positive overflow and negative underflow still fail at
 lex time.
-Use `(BigInteger "...")` to parse large decimal integers.
+Use `(BigInteger "...")` when an explicit arbitrary-precision integer
+constructor is needed.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
@@ -1256,9 +1258,9 @@ Set order contract:
 Numeric conversion policy:
 - Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
-- `parse-number` returns `nil` on parse failure or numeric overflow/underflow.
-- `parse-number` remains fixed-width for integer parsing; use `BigInteger` for
-  arbitrary-precision decimal string input.
+- `parse-number` returns `Integer`, `BigInteger`, or `Double`: valid decimal
+  integers that exceed the fixed-width `Integer` range promote to `BigInteger`.
+- `parse-number` returns `nil` on parse failure or non-finite floating parse.
 - Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
 - Dispatch does not do implicit numeric widening; cross-numeric calls require explicit conversion.
 
