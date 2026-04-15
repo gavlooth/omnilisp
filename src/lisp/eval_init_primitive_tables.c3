@@ -82,7 +82,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "error", &prim_error, 1 }, { "error?", &prim_is_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
-        { "Tensor", &prim_tensor, 3 },
+        { "Tensor", &prim_tensor, -1 },
         { "__tensor-map", &prim_tensor_map, -1 },
         { "contract", &prim_contract, -1 },
         { "realize", &prim_realize, -1 },

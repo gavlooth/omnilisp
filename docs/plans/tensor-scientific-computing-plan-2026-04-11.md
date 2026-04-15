@@ -67,6 +67,10 @@ Name collision note:
   native double tensors from scalar fills or exact-length array/proper-list
   data, and `(ref tensor index-array)` indexes tensors with per-axis negative
   index support.
+- `TENSOR-076` is complete: `(Tensor data)`, `(Tensor data Double)`, and
+  `(Tensor Double data)` infer native `Double` tensor shape from numeric
+  scalars or rectangular nested arrays/proper lists while preserving the
+  explicit shape/data constructor.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a
@@ -704,6 +708,8 @@ Rollout slices:
      shape as an array or proper list of non-negative integers, and data as
      a numeric scalar fill or exact-length array/proper list. Tensor `ref`
      accepts array/proper-list indices and supports negative indexing per
+     axis. Inferred-shape constructor overloads are implemented as
+     `TENSOR-076`.
      axis.
 
 4. `TENSOR-030` Tensor-expression protocol and `realize` — complete for
@@ -875,9 +881,9 @@ Documentation gates:
   - remaining gates for later slices: optional backend routing and diagnostic
     code refinements.
 - `docs/type-system-syntax.md` documents how `Tensor` participates in type
-  annotations and dispatch, and that `(Tensor Double shape data-or-scalar)`
-  is the first constructor surface, including Tensor-specific `map`,
-  `contract`, and `realize` behavior.
+  annotations and dispatch, and that `(Tensor data)` plus
+  `(Tensor Double shape data-or-scalar)` are the constructor surfaces,
+  including Tensor-specific `map`, `contract`, and `realize` behavior.
 - `docs/SURFACE_COMPATIBILITY.md` records any scicomp prototype surface
   removal if old names are removed.
 - `examples/scicomp_demo.omni` is updated to the canonical `Tensor`, `map`,

@@ -1,5 +1,28 @@
 ## 2026-04-15
 
+- Completed `TENSOR-076` inferred Tensor constructor overloads:
+  - Added `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)`
+    as constructor-dispatch surfaces that infer native `Double` tensor shape
+    from numeric scalars or rectangular nested arrays/proper lists.
+  - Preserved the explicit `(Tensor Double shape data-or-scalar)` constructor
+    for scalar fills and exact-length flat data.
+  - Extended the `Tensor` primitive registration to variable arity and accepted
+    both `Double` and `'Double` as the dtype marker.
+  - Added focused regressions for inferred vector, matrix, scalar rank-0,
+    dtype prefix/suffix, quoted dtype, empty vector, ragged rejection, and
+    non-numeric rejection.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for inferred vector, inferred matrix shape, dtype-prefix
+      construction, and ragged rejection
+    - focused advanced collections/module group on host
+      -> `242 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `242 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed Tensor collection constructor conversions:
   - Added `(Array tensor)` and `(List tensor)` support to the canonical
     collection constructor/conversion surfaces.

@@ -104,6 +104,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "ref tensor rank-2", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 2])", 6.0, pass, fail);
     test_eq_double(interp, "ref tensor negative axis", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 -1])", 6.0, pass, fail);
     test_eq_double(interp, "ref tensor list index", "(ref (Tensor Double '(2 3) '(1 2 3 4 5 6)) '(1 2))", 6.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred vector ref",
+        "(ref (Tensor [1 2 3]) [2])", 3.0, pass, fail);
+    test_str_val(interp, "Tensor inferred matrix shape",
+        "(format \"%s\" (shape (Tensor [[1 2] [3 4]])))", "[2 2]", pass, fail);
+    test_eq_double(interp, "Tensor inferred matrix row-major ref",
+        "(ref (Tensor [[1 2] [3 4]]) [1 0])", 3.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred scalar rank-0",
+        "(ref (Tensor 7) [])", 7.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred data dtype suffix",
+        "(ref (Tensor [1 2] Double) [1])", 2.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred data dtype prefix",
+        "(ref (Tensor Double [1 2]) [1])", 2.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred quoted dtype suffix",
+        "(ref (Tensor [1 2] 'Double) [1])", 2.0, pass, fail);
+    test_eq(interp, "Tensor inferred empty vector length",
+        "(length (Tensor []))", 0, pass, fail);
+    test_error_contains(interp, "Tensor inferred ragged data rejected",
+        "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
+    test_error_contains(interp, "Tensor inferred non-numeric data rejected",
+        "(Tensor [1 'bad])", "nested arrays/lists of numbers", pass, fail);
     test_eq(interp, "Array tensor conversion length",
         "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "Array tensor conversion row-major value",

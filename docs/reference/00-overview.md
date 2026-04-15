@@ -13,7 +13,7 @@ language features:
 
 - **Three collection types**: list `'(1 2 3)`, array `[1 2 3]`, dict `{'a 1}`
 - **Generic operations**: `(ref coll key)` works on all collections
-- **Scientific tensors**: `(Tensor Double [2 3] 0.0)`, tensor `map`,
+- **Scientific tensors**: `(Tensor [[1 2] [3 4]])`, tensor `map`,
   `contract`, and `realize`
 - **Multiple dispatch**: typed `define` creates method tables, best match wins
 - **Algebraic effects**: `print`/`read-file` go through interceptable effects
@@ -76,7 +76,7 @@ Goodbye!
 | Dictionary | `HASHMAP` | `{'a 1}` | Mutable hash table |
 | Array | `ARRAY` | `[1 2 3]` | Mutable dynamic array |
 | Coroutine | `COROUTINE` | — | User-level coroutine |
-| Tensor | `TENSOR` | `(Tensor Double [2 3] 0.0)` | Homogeneous n-dimensional numeric storage |
+| Tensor | `TENSOR` | `(Tensor [[1 2] [3 4]])` | Homogeneous n-dimensional numeric storage |
 | ffi-handle | `FFI_HANDLE` | — | Foreign library handle |
 | instance | `INSTANCE` | `(Point 3 4)` | User-defined type instance |
 | method-table | `METHOD_TABLE` | — | Dispatch table (internal) |

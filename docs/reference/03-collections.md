@@ -86,7 +86,7 @@ tensor indexing through generic `ref`, tensor-dispatched `map`, pure `Double`
 tensor `contract`, and `realize` as the explicit storage boundary.
 
 ```lisp
-(define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
+(define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
 
 (shape x)                  ;; => [2 3]
 (rank x)                   ;; => 2

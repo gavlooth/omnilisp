@@ -9,6 +9,7 @@ fn bool is_tensor(Value* v) @inline {
 
 fn bool tensor_dtype_arg_is_double(Value* dtype_arg, Interp* interp) @inline {
     if (dtype_arg == null) return false;
+    if (dtype_arg.tag == SYMBOL) return dtype_arg.sym_val == interp.sym_Double;
     if (dtype_arg.tag == PRIMITIVE) return primitive_name_equals(dtype_arg, "Double");
     if (dtype_arg.tag == METHOD_TABLE && dtype_arg.method_table_val != null) {
         return dtype_arg.method_table_val.name == interp.sym_Double;
@@ -46,6 +47,10 @@ fn bool tensor_container_count(Value* container, usz* out_count) {
     if (!is_nil(cur)) return false;
     *out_count = count;
     return true;
+}
+
+fn bool tensor_value_is_container(Value* value) @inline {
+    return is_array(value) || is_cons(value) || is_nil(value);
 }
 
 fn Value* tensor_container_nth(Value* container, usz index) {
@@ -119,6 +124,128 @@ fn bool tensor_value_to_double(Value* value, double* out) @inline {
         return true;
     }
     return false;
+}
+
+fn bool tensor_infer_shape_from_value(
+    Value* value,
+    Interp* interp,
+    usz** out_shape,
+    usz* out_rank,
+    usz* out_count,
+    Value** err_out
+) {
+    if (out_shape == null || out_rank == null || out_count == null || err_out == null) return false;
+    *out_shape = null;
+    *out_rank = 0;
+    *out_count = 0;
+    *err_out = null;
+
+    double ignored = 0.0;
+    if (tensor_value_to_double(value, &ignored)) {
+        *out_count = 1;
+        return true;
+    }
+
+    if (!tensor_value_is_container(value)) {
+        *err_out = tensor_type_raise(interp, "Tensor: inferred data must be numeric or nested arrays/lists of numbers");
+        return false;
+    }
+
+    usz count = 0;
+    if (!tensor_container_count(value, &count)) {
+        *err_out = tensor_type_raise(interp, "Tensor: inferred data must be a proper nested array/list");
+        return false;
+    }
+
+    if (count == 0) {
+        usz* shape = (usz*)mem::malloc(usz.sizeof);
+        if (shape == null) {
+            *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to infer shape", null);
+            return false;
+        }
+        shape[0] = 0;
+        *out_shape = shape;
+        *out_rank = 1;
+        *out_count = 0;
+        return true;
+    }
+
+    usz* child_shape = null;
+    usz child_rank = 0;
+    usz child_count = 0;
+    if (!tensor_infer_shape_from_value(tensor_container_nth(value, 0), interp, &child_shape, &child_rank, &child_count, err_out)) {
+        return false;
+    }
+    defer if (child_shape != null) mem::free(child_shape);
+
+    if (child_count > 0 && count > usz.max / child_count) {
+        *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: inferred shape product overflow", null);
+        return false;
+    }
+    usz total_count = count * child_count;
+    usz rank = child_rank + 1;
+    if (rank == 0 || rank > usz.max / usz.sizeof) {
+        *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: inferred rank is too large", null);
+        return false;
+    }
+
+    for (usz i = 1; i < count; i++) {
+        usz* next_shape = null;
+        usz next_rank = 0;
+        usz next_count = 0;
+        if (!tensor_infer_shape_from_value(tensor_container_nth(value, i), interp, &next_shape, &next_rank, &next_count, err_out)) {
+            return false;
+        }
+        if (next_rank != child_rank || next_count != child_count) {
+            if (next_shape != null) mem::free(next_shape);
+            *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "Tensor: inferred data must be rectangular", null);
+            return false;
+        }
+        for (usz axis = 0; axis < child_rank; axis++) {
+            if (next_shape == null || child_shape == null || next_shape[axis] != child_shape[axis]) {
+                if (next_shape != null) mem::free(next_shape);
+                *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "Tensor: inferred data must be rectangular", null);
+                return false;
+            }
+        }
+        if (next_shape != null) mem::free(next_shape);
+    }
+
+    usz* shape = (usz*)mem::malloc(usz.sizeof * rank);
+    if (shape == null) {
+        *err_out = raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to infer shape", null);
+        return false;
+    }
+    shape[0] = count;
+    for (usz axis = 0; axis < child_rank; axis++) {
+        shape[axis + 1] = child_shape[axis];
+    }
+
+    *out_shape = shape;
+    *out_rank = rank;
+    *out_count = total_count;
+    return true;
+}
+
+fn Value* tensor_flatten_inferred_data(Value* value, double* dst, usz* offset, Interp* interp) {
+    if (dst == null || offset == null) return tensor_runtime_raise(interp, "Tensor: inferred tensor storage is missing");
+
+    double scalar = 0.0;
+    if (tensor_value_to_double(value, &scalar)) {
+        dst[*offset] = scalar;
+        *offset += 1;
+        return null;
+    }
+
+    usz count = 0;
+    if (!tensor_container_count(value, &count)) {
+        return tensor_type_raise(interp, "Tensor: inferred data must be a proper nested array/list");
+    }
+    for (usz i = 0; i < count; i++) {
+        Value* err = tensor_flatten_inferred_data(tensor_container_nth(value, i), dst, offset, interp);
+        if (err != null) return err;
+    }
+    return null;
 }
 
 fn Value* tensor_fill_from_data_arg(TensorVal* tensor, Value* data_arg, Interp* interp) {
@@ -1378,16 +1505,15 @@ fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
     return result;
 }
 
-fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 3) return primitive_arity_raise(interp, "Tensor", "3 arguments: dtype, shape, data-or-scalar", args.len);
-    if (!tensor_dtype_arg_is_double(args[0], interp)) {
+fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_arg, Value* data_arg, Interp* interp) {
+    if (!tensor_dtype_arg_is_double(dtype_arg, interp)) {
         return tensor_type_raise(interp, "Tensor: first argument must be Double");
     }
 
     usz* shape = null;
     usz rank = 0;
     Value* err = null;
-    if (!tensor_parse_shape(args[1], interp, &shape, &rank, &err)) return err;
+    if (!tensor_parse_shape(shape_arg, interp, &shape, &rank, &err)) return err;
     defer if (shape != null) mem::free(shape);
 
     usz[1] scalar_shape = { 0 };
@@ -1402,10 +1528,58 @@ fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
         return tensor_runtime_raise(interp, "Tensor: constructor produced invalid backing storage");
     }
 
-    err = tensor_fill_from_data_arg(tensor.tensor_val, args[2], interp);
+    err = tensor_fill_from_data_arg(tensor.tensor_val, data_arg, interp);
     if (err != null) return err;
     keep_tensor = true;
     return tensor;
+}
+
+fn Value* tensor_construct_inferred(Value* data_arg, Interp* interp) {
+    usz* shape = null;
+    usz rank = 0;
+    usz count = 0;
+    Value* err = null;
+    if (!tensor_infer_shape_from_value(data_arg, interp, &shape, &rank, &count, &err)) return err;
+    defer if (shape != null) mem::free(shape);
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = rank == 0 ? scalar_shape[0:0] : shape[0:rank];
+    Value* tensor = make_tensor_double_uninitialized_checked(interp, shape_slice, "Tensor: out of memory");
+    if (tensor == null || tensor.tag == ERROR) return tensor;
+    bool keep_tensor = false;
+    defer if (!keep_tensor) {
+        boundary_cleanup_materialized_value(null, tensor, interp.current_scope);
+    }
+    if (tensor.tag != TENSOR || tensor.tensor_val == null) {
+        return tensor_runtime_raise(interp, "Tensor: constructor produced invalid backing storage");
+    }
+    if (tensor.tensor_val.element_count != count) {
+        return tensor_runtime_raise(interp, "Tensor: inferred shape count mismatch");
+    }
+
+    usz offset = 0;
+    if (count > 0 || rank == 0) {
+        double* dst = (double*)tensor.tensor_val.data;
+        err = tensor_flatten_inferred_data(data_arg, dst, &offset, interp);
+        if (err != null) return err;
+    }
+    if (offset != count) {
+        return tensor_runtime_raise(interp, "Tensor: inferred data length mismatch");
+    }
+
+    keep_tensor = true;
+    return tensor;
+}
+
+fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
+    if (args.len == 1) return tensor_construct_inferred(args[0], interp);
+    if (args.len == 2) {
+        if (tensor_dtype_arg_is_double(args[0], interp)) return tensor_construct_inferred(args[1], interp);
+        if (tensor_dtype_arg_is_double(args[1], interp)) return tensor_construct_inferred(args[0], interp);
+        return tensor_type_raise(interp, "Tensor: expected data with optional Double dtype");
+    }
+    if (args.len == 3) return tensor_construct_from_shape_and_data(args[0], args[1], args[2], interp);
+    return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [Double] or Double shape data-or-scalar", args.len);
 }
 
 fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {

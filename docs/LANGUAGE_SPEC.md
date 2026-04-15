@@ -371,7 +371,7 @@ parser/lexer error.
 | Dictionary | `HASHMAP` | Mutable hash table | `{'a 1}`, `(Dictionary 'a 1)` |
 | Array | `ARRAY` | Mutable dynamic array | `[1 2 3]`, `(Array 1 2 3)` |
 | Coroutine | `COROUTINE` | User-level coroutine | `(Coroutine (lambda () body))` |
-| Tensor | `TENSOR` | Homogeneous n-dimensional numeric storage | `(Tensor Double [2 3] 0.0)` |
+| Tensor | `TENSOR` | Homogeneous n-dimensional numeric storage | `(Tensor [[1 2] [3 4]])` |
 | void | `VOID` | Singleton no-result value | `#<void>` |
 | ffi-handle | `FFI_HANDLE` | Foreign library handle | `(define [ffi lib] libc "libc.so.6")` |
 | instance | `INSTANCE` | User-defined type instance | `(Point 3 4)` |
@@ -431,11 +431,14 @@ not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
 surface, lifetime copy/promotion paths, tensor `ref`, and introspection
-primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The first
+primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The explicit
 constructor surface is `(Tensor Double shape data-or-scalar)`, where `shape`
 is an array or proper list of non-negative integers and `data-or-scalar` is
 either a scalar numeric fill value or an array/proper list with exactly the
-shape product's element count. Tensor `ref` uses `(ref tensor index-array)`.
+shape product's element count. The inferred-shape constructor surface is
+`(Tensor data)`, `(Tensor data Double)`, or `(Tensor Double data)`, where
+`data` is a numeric scalar or rectangular nested arrays/proper lists of
+numeric values. Tensor `ref` uses `(ref tensor index-array)`.
 `(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
 return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
@@ -1329,12 +1332,12 @@ Numeric conversion policy:
 
 ### 7.17.1 Tensor Construction And Introspection
 
-These primitives are implemented for native `Tensor` values. The first
-constructor surface supports `Double` storage only.
+These primitives are implemented for native `Tensor` values. The current
+constructor surfaces support `Double` storage only.
 
 | Prim | Description |
 |------|-------------|
-| `Tensor` | Construct a native double tensor as `(Tensor Double shape data-or-scalar)` |
+| `Tensor` | Construct a native double tensor as `(Tensor data)`, `(Tensor data Double)`, `(Tensor Double data)`, or `(Tensor Double shape data-or-scalar)` |
 | `tensor?` | Predicate for native tensor values |
 | `dtype` | Return the tensor dtype symbol, currently `'Double` for the first storage path |
 | `shape` | Return the tensor shape as an array of dimensions |
@@ -1368,7 +1371,7 @@ must match, and the result shape is all non-contracted left axes followed by
 all non-contracted right axes.
 
 ```lisp
-(define x (Tensor Double [2 3] [1.0 2.0 3.0 4.0 5.0 6.0]))
+(define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
 (ref x [1 2])   ; => 6.0
 (ref x [1 -1])  ; => 6.0
 

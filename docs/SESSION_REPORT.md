@@ -1,3 +1,61 @@
+## 2026-04-15 11:52 CEST - Tensor Inferred Constructor Overloads
+- Objective attempted:
+  - Continue the owner-preferred constructor-dispatch Tensor surface by adding
+    inferred-shape construction through `Tensor` itself.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added recursive Tensor shape inference for numeric scalars and rectangular
+    nested arrays/proper lists.
+  - Added flattening into native row-major `Double` tensor storage.
+  - Preserved `(Tensor Double shape data-or-scalar)` and added
+    `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)`.
+  - Changed `Tensor` primitive registration from fixed arity 3 to variable
+    arity, and allowed both `Double` and `'Double` as dtype markers.
+  - Added focused advanced collections/module regressions for vector, matrix,
+    scalar rank-0, dtype prefix/suffix, quoted dtype, empty vector, ragged
+    rejection, and non-numeric rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/00-overview.md`, `docs/reference/03-collections.md`,
+    `docs/reference/04-type-system.md`,
+    `docs/reference/11-appendix-primitives.md`,
+    `docs/type-system-syntax.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for inferred vector, inferred matrix shape, dtype-prefix
+    construction, and ragged rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Tensor [1 2 3]) [2])` returns `3.0`.
+  - `(format "%s" (shape (Tensor [[1 2] [3 4]])))` returns `"[2 2]"`.
+  - `(ref (Tensor Double [1 2]) [1])` returns `2.0`.
+  - `(Tensor [[1] [2 3]])` fails with `Tensor: inferred data must be rectangular`.
+  - Focused advanced collections/module group passed on host:
+    `242 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `242 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Treat constructor-dispatch Tensor ingestion as shipped for native `Double`
+    rectangular data. Continue next with backend naming policy, LAPACK solver
+    surfaces, or additional dtype work, not a separate Tensor-only conversion
+    helper.
+- Unresolved issues:
+  - Inferred constructors currently accept the first native `Double` storage
+    path only; BigFloat/BigInteger-preserving Tensor dtypes remain unshipped.
+  - Tensor-to-collection conversion remains flat row-major; nested
+    reconstruction is still intentionally not part of the shipped contract.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this inferred-constructor slice, then choose the next
+    Tensor/scientific lane explicitly.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:41 CEST - Tensor Collection Conversions
 - Objective attempted:
   - Implement the owner-preferred constructor-dispatch Tensor conversion

@@ -10,7 +10,7 @@
 ## Current Status
 
 Status: `yellow`
-As of: 2026-04-14
+As of: 2026-04-15
 
 The canonical user-facing surface is:
 
@@ -65,6 +65,9 @@ Implemented slices:
 - `TENSOR-075`: `(Array tensor)` and `(List tensor)` now realize Tensor
   expressions and expose flat row-major element values through the canonical
   collection constructor/conversion surfaces.
+- `TENSOR-076`: `(Tensor data)`, `(Tensor data Double)`, and
+  `(Tensor Double data)` infer `Double` tensor shape from numeric scalars or
+  rectangular nested arrays/proper lists.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque

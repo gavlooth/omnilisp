@@ -97,14 +97,16 @@ Current exception note:
   to that same value.
 - `Tensor` is registered as a builtin type descriptor for annotation,
   dispatch, introspection, and construction. `(format "%s" Tensor)` prints
-  `#<type Tensor>`; `(Tensor Double shape data-or-scalar)` constructs native
-  double tensor storage in value position. Tensor-specific `map` overloads
+  `#<type Tensor>`; `(Tensor data)` infers rectangular native double tensor
+  storage and `(Tensor Double shape data-or-scalar)` keeps the explicit
+  shape/data construction path in value position. Tensor-specific `map`
+  overloads
   dispatch through typed `^Tensor` parameters for unary, tensor-scalar,
   scalar-tensor, and exact-shape tensor-tensor elementwise operations.
   `contract` performs pure `Double` summed-axis contraction in value position
   as `(contract a b left-axes right-axes)`. Tensor `map` and `contract` may
   return lazy expression payloads under the existing `Tensor` value; no public
-  `TensorExpr` type is introduced. `materialize` returns an already concrete
+  `TensorExpr` type is introduced. `realize` returns an already concrete
   tensor unchanged, allocates concrete storage for a Tensor expression, or
   writes a tensor/scalar source into a mutable exact-shape/dtype destination
   tensor.
@@ -519,9 +521,9 @@ Status tags:
 - [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior  
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
 - [x] `Tensor` builtin type descriptor participates in type identity and
-  dispatch; `(Tensor Double shape data-or-scalar)` and
+  dispatch; `(Tensor data)`, `(Tensor Double shape data-or-scalar)`, and
   `(ref tensor index-array)` are implemented for native double tensors
-- [x] `materialize` is implemented for concrete tensor sources, lazy Tensor
+- [x] `realize` is implemented for concrete tensor sources, lazy Tensor
   expression sources, tensor destinations, and scalar fills into destination
   tensors
 - [x] `contract` is implemented for pure `Double` tensor contraction and may
