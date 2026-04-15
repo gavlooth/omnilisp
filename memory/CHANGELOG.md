@@ -1,5 +1,29 @@
 ## 2026-04-15
 
+- Narrowed the StackCtx boundary-copy fix after efficiency review:
+  - Replaced the broad "any StackCtx leaf/data-container return copies
+    defensively" rule with a low-headroom gate. StackCtx returns now skip the
+    reuse classifier only when the current stack is already below
+    `BOUNDARY_ALIAS_STACK_MIN_HEADROOM`; otherwise they use the normal
+    scope-aware fast-reuse path.
+  - This keeps the original nested effect payload safety while avoiding an
+    unnecessary defensive-copy tax for StackCtx payloads that still have enough
+    continuation-stack headroom to classify safely.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct nested effect payload predicate -> `true`
+    - bounded container `OMNI_LISP_TEST_SLICE=memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - same bounded memory-smoke run with boundary traversal summary
+      -> `copy_fast_reuse=3`, `copy_defensive=89`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco`
+      -> `1 passed, 0 failed`, `copy_tag_cons=0`, `copy_site_tco=0`
+    - `OMNI_LISP_TEST_SLICE=limit-busting` -> `17 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=tco-recycling`
+      -> `11 passed, 0 failed`, `copy_site_tco=20`
+    - `(length (range 4000))` -> `4000`, about 0.32s; `(length (range 16000))`
+      -> `16000`, about 4.18s.
+
 - Completed the `parse-number` BigInteger promotion slice:
   - Updated `prim_string_to_number` so syntactically valid decimal integer
     overflow/underflow returns `BigInteger` instead of `nil`.

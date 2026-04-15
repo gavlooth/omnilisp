@@ -102,7 +102,7 @@ fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
     }
 }
 
-fn bool copy_parent_tag_is_stackctx_data_container(ValueTag tag) @inline {
+fn bool copy_parent_tag_is_data_container(ValueTag tag) @inline {
     switch (tag) {
         case CONS:
         case HASHMAP:
@@ -112,6 +112,12 @@ fn bool copy_parent_tag_is_stackctx_data_container(ValueTag tag) @inline {
         default:
             return false;
     }
+}
+
+fn bool copy_parent_should_skip_reuse_for_stackctx_headroom(CopyParentRoute route, ValueTag tag) @inline {
+    if (main::g_current_stack_ctx == null) return false;
+    if (!copy_parent_route_is_leaf(route) && !copy_parent_tag_is_data_container(tag)) return false;
+    return !main::stack_has_apply_headroom(BOUNDARY_ALIAS_STACK_MIN_HEADROOM);
 }
 
 fn Value* copy_to_parent_by_route(
@@ -199,8 +205,7 @@ fn Value* copy_to_parent_with_fault(
     }
 
     CopyParentRoute route = copy_parent_route_for_tag(v.tag);
-    if (main::g_current_stack_ctx != null &&
-        (copy_parent_route_is_leaf(route) || copy_parent_tag_is_stackctx_data_container(v.tag))) {
+    if (copy_parent_should_skip_reuse_for_stackctx_headroom(route, v.tag)) {
         g_copy_to_parent_stats.defensive_copies++;
         return copy_to_parent_by_route(v, interp, route, copy_fault_out);
     }

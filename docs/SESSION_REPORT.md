@@ -1,3 +1,50 @@
+## 2026-04-15 07:35 CEST - StackCtx Boundary Copy Efficiency Narrowing
+- Objective attempted:
+  - Respond to the efficiency concern about the prior StackCtx boundary-copy
+    safety fix.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/eval_promotion_copy.c3` so StackCtx leaf/data-container
+    values bypass the fast-reuse classifier only when current stack headroom is
+    below `BOUNDARY_ALIAS_STACK_MIN_HEADROOM`.
+  - Kept the original safety behavior for low-headroom effect-continuation
+    returns, but restored normal scope-aware reuse classification for StackCtx
+    payloads with enough stack headroom.
+  - Updated `memory/CHANGELOG.md` with the validation result.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - direct nested effect payload predicate via `./build/main --eval`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 16000))'`
+- Key results and observed behavior:
+  - The direct nested effect payload predicate still returns `true`.
+  - Container `memory-lifetime-smoke` still passes at `225 passed, 0 failed`;
+    the traversal-summary run reports `copy_fast_reuse=3` and
+    `copy_defensive=89`.
+  - Range/TCO checks stayed in the fixed regime: exact advanced TCO passed with
+    `copy_tag_cons=0` and `copy_site_tco=0`; `limit-busting` passed `17/0`;
+    `tco-recycling` passed `11/0`.
+  - Direct `(length (range 4000))` took about 0.32s and
+    `(length (range 16000))` about 4.18s.
+- Invalidated assumptions / failed approaches worth preserving:
+  - The broad "every StackCtx ordinary payload container must skip reuse
+    classification" rule is too conservative now that the alias graph scan uses
+    heap scratch storage. The correct safety boundary is low StackCtx headroom,
+    not StackCtx presence by itself.
+- Current best recommendation/checkpoint:
+  - Keep reuse classification active for StackCtx returns when headroom allows
+    it. Retain direct defensive copy as the low-headroom fallback for leaf values
+    and ordinary data containers.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this narrowing.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 06:51 CEST - Parse Number BigInteger Promotion
 - Objective attempted:
   - Continue the scalar precision lane by implementing automatic BigInteger
