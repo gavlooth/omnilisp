@@ -213,6 +213,10 @@ fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
     if (lhs == null || rhs == null || out == null) return false;
     if (!is_numeric_value(lhs) || !is_numeric_value(rhs)) return false;
 
+    if (lhs.tag == BIG_FLOAT || rhs.tag == BIG_FLOAT) {
+        return big_float_compare_values(lhs, rhs, out);
+    }
+
     if (lhs.tag == DOUBLE || rhs.tag == DOUBLE) {
         double left = 0.0;
         double right = 0.0;

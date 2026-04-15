@@ -105,6 +105,7 @@ struct Interp {
     // Built-in type name symbols
     SymbolId sym_Integer;
     SymbolId sym_BigInteger;
+    SymbolId sym_BigFloat;
     SymbolId sym_Double;
     SymbolId sym_String;
     SymbolId sym_Symbol;
@@ -145,6 +146,7 @@ struct Interp {
     // Cached TypeIds for built-in types (avoid repeated hash lookups)
     TypeId tid_Integer;
     TypeId tid_BigInteger;
+    TypeId tid_BigFloat;
     TypeId tid_Double;
     TypeId tid_String;
     TypeId tid_Symbol;

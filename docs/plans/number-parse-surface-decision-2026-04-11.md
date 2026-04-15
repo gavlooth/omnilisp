@@ -4,9 +4,11 @@
 
 Use `parse-number` as the canonical permissive number parse API.
 
-- `parse-number` parses a string into `Integer`, `BigInteger`, or `Double`.
-- `parse-number` returns `nil` on parse failure or non-finite double results.
-  Decimal integer overflow/underflow promotes to `BigInteger`.
+- `parse-number` parses a string into `Integer`, `BigInteger`, `Double`, or
+  `BigFloat`.
+- `parse-number` returns `nil` on parse failure. Decimal integer
+  overflow/underflow promotes to `BigInteger`; valid floating inputs that
+  overflow `Double` promote to `BigFloat`.
 - `Number` remains a non-callable abstract/meta type descriptor for annotation
   and dispatch.
 - `string->number` is not retained as a public compatibility alias during this
@@ -34,10 +36,11 @@ Use `parse-number` as the canonical permissive number parse API.
 
 ## Update - 2026-04-15
 
-`BigInteger` is now a shipped concrete numeric type. `parse-number` keeps its
-permissive maybe-valued contract, but syntactically valid decimal integer
-overflow/underflow now returns `BigInteger` instead of `nil`. Malformed strings
-and non-finite floating parses still return `nil`.
+`BigInteger` and `BigFloat` are now shipped concrete numeric types.
+`parse-number` keeps its permissive maybe-valued contract, but syntactically
+valid decimal integer overflow/underflow now returns `BigInteger` instead of
+`nil`, and syntactically valid floating inputs that overflow `Double` return
+`BigFloat`. Malformed strings still return `nil`.
 
 ## Migration Notes
 

@@ -35,6 +35,11 @@ fn void scope_dtor_value(void* ptr) {
                 omni_big_integer_free(v.big_integer_val);
                 v.big_integer_val = null;
             }
+        case BIG_FLOAT:
+            if (v.big_float_val != null) {
+                omni_big_float_free(v.big_float_val);
+                v.big_float_val = null;
+            }
         case TENSOR:
             if (v.tensor_val != null) {
                 tensor_free_payload(v.tensor_val);

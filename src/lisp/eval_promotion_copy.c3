@@ -12,6 +12,7 @@ enum CopyParentRoute : char {
     CP_ROUTE_INT,
     CP_ROUTE_DOUBLE,
     CP_ROUTE_BIG_INTEGER,
+    CP_ROUTE_BIG_FLOAT,
     CP_ROUTE_STRING,
     CP_ROUTE_SYMBOL,
     CP_ROUTE_CONS,
@@ -43,6 +44,8 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
             return CP_ROUTE_DOUBLE;
         case BIG_INTEGER:
             return CP_ROUTE_BIG_INTEGER;
+        case BIG_FLOAT:
+            return CP_ROUTE_BIG_FLOAT;
         case STRING:
             return CP_ROUTE_STRING;
         case SYMBOL:
@@ -90,6 +93,7 @@ fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
         case CP_ROUTE_INT:
         case CP_ROUTE_DOUBLE:
         case CP_ROUTE_BIG_INTEGER:
+        case CP_ROUTE_BIG_FLOAT:
         case CP_ROUTE_STRING:
         case CP_ROUTE_SYMBOL:
         case CP_ROUTE_TYPE_INFO:
@@ -137,6 +141,8 @@ fn Value* copy_to_parent_by_route(
             return make_double(interp, v.double_val);
         case CP_ROUTE_BIG_INTEGER:
             return copy_big_integer_to_parent(v, interp, fault_out);
+        case CP_ROUTE_BIG_FLOAT:
+            return copy_big_float_to_parent(v, interp, fault_out);
         case CP_ROUTE_STRING:
             return make_string(interp, v.str_chars[:v.str_len]);
         case CP_ROUTE_SYMBOL:

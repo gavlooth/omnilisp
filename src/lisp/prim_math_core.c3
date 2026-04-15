@@ -19,6 +19,10 @@ extern fn double c_ceil(double x) @extern("ceil");
 extern fn double c_round(double x) @extern("round");
 extern fn double c_fabs(double x) @extern("fabs");
 
+fn bool math_arg_to_double(Value* value, double* out) @inline {
+    return is_numeric_value(value) && try_numeric_to_double(value, out);
+}
+
 fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "math/lgamma", "1 argument", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/lgamma", 0, "number", args[0]);
@@ -146,105 +150,124 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "sin", 0, "number", args[0]);
-    return make_double(interp, c_sin(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sin", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_sin(x));
 }
 
 fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "cos", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "cos", 0, "number", args[0]);
-    return make_double(interp, c_cos(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cos", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_cos(x));
 }
 
 fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "tan", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "tan", 0, "number", args[0]);
-    return make_double(interp, c_tan(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tan", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_tan(x));
 }
 
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "asin", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "asin", 0, "number", args[0]);
-    return make_double(interp, c_asin(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "asin", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_asin(x));
 }
 
 fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "acos", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "acos", 0, "number", args[0]);
-    return make_double(interp, c_acos(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "acos", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_acos(x));
 }
 
 fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "atan", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "atan", 0, "number", args[0]);
-    return make_double(interp, c_atan(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "atan", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_atan(x));
 }
 
 fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "atan2", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "atan2", 1, "number", args[1]);
-    return make_double(interp, c_atan2(to_double(args[0]), to_double(args[1])));
+    double y = 0.0;
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &y)) return primitive_arg_type_raise(interp, "atan2", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[1], &x)) return primitive_arg_type_raise(interp, "atan2", 1, "number representable as Double", args[1]);
+    return make_double(interp, c_atan2(y, x));
 }
 
 fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "exp", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "exp", 0, "number", args[0]);
-    return make_double(interp, c_exp(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "exp", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_exp(x));
 }
 
 fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "log", 0, "number", args[0]);
-    return make_double(interp, c_log(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_log(x));
 }
 
 fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log10", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "log10", 0, "number", args[0]);
-    return make_double(interp, c_log10(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log10", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_log10(x));
 }
 
 fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "pow", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "pow", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "pow", 1, "number", args[1]);
-    return make_double(interp, c_pow(to_double(args[0]), to_double(args[1])));
+    double base = 0.0;
+    double exp = 0.0;
+    if (!math_arg_to_double(args[0], &base)) return primitive_arg_type_raise(interp, "pow", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[1], &exp)) return primitive_arg_type_raise(interp, "pow", 1, "number representable as Double", args[1]);
+    return make_double(interp, c_pow(base, exp));
 }
 
 fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sqrt", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "sqrt", 0, "number", args[0]);
-    return make_double(interp, c_sqrt(to_double(args[0])));
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sqrt", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_sqrt(x));
 }
 
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "floor", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "floor", 0, "number", args[0]);
-    return math_int_from_double_or_raise(interp, c_floor(to_double(args[0])), "floor");
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "floor", 0, "number representable as Double", args[0]);
+    return math_int_from_double_or_raise(interp, c_floor(x), "floor");
 }
 
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "ceiling", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "ceiling", 0, "number", args[0]);
-    return math_int_from_double_or_raise(interp, c_ceil(to_double(args[0])), "ceiling");
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "ceiling", 0, "number representable as Double", args[0]);
+    return math_int_from_double_or_raise(interp, c_ceil(x), "ceiling");
 }
 
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "round", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "round", 0, "number", args[0]);
-    return math_int_from_double_or_raise(interp, c_round(to_double(args[0])), "round");
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "round", 0, "number representable as Double", args[0]);
+    return math_int_from_double_or_raise(interp, c_round(x), "round");
 }
 
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "truncate", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "truncate", 0, "number", args[0]);
-    return math_int_from_double_or_raise(interp, to_double(args[0]), "truncate");
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "truncate", 0, "number representable as Double", args[0]);
+    return math_int_from_double_or_raise(interp, x, "truncate");
 }
 
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
+    if (is_big_float(args[0])) return big_float_abs_value(interp, args[0], "abs: failed to allocate BigFloat result");
     if (is_double(args[0])) return make_double(interp, c_fabs(args[0].double_val));
     if (args[0].tag == BIG_INTEGER) {
         int cmp = omni_big_integer_compare_i64(args[0].big_integer_val, 0);
@@ -260,6 +283,11 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "min", "2 arguments", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
+    if (is_big_float(args[0]) || is_big_float(args[1])) {
+        int cmp = 0;
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
+        return cmp <= 0 ? args[0] : args[1];
+    }
     if (is_double(args[0]) || is_double(args[1])) {
         double a = 0.0;
         double b = 0.0;
@@ -278,6 +306,11 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "max", "2 arguments", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
+    if (is_big_float(args[0]) || is_big_float(args[1])) {
+        int cmp = 0;
+        if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");
+        return cmp >= 0 ? args[0] : args[1];
+    }
     if (is_double(args[0]) || is_double(args[1])) {
         double a = 0.0;
         double b = 0.0;

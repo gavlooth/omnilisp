@@ -1,3 +1,66 @@
+## 2026-04-15 07:52 CEST - BigFloat Numeric Promotion
+- Objective attempted:
+  - Continue the scientific numerics scalar lane with a non-conservative
+    BigFloat implementation, not just a boxed constructor.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added Boost.Multiprecision `cpp_dec_float_50` helper plumbing in
+    `csrc/big_float_helpers.cpp`, helper archive/project wiring, and C3 externs.
+  - Added runtime `BIG_FLOAT` values with scope destruction, copy-to-parent,
+    escape promotion, printing, `String`, `Double`, and `Integer` conversion.
+  - Registered `BigFloat` as a callable constructor/type descriptor and
+    `Number` subtype.
+  - Added BigFloat support for `+`, `-`, `*`, `/`, numeric comparisons, `=`,
+    `abs`, `min`, and `max`. Arithmetic returns `BigFloat` when a `BigFloat`
+    operand participates.
+  - Updated `parse-number` so valid floating inputs that overflow `Double`,
+    such as `"1e309"`, promote to `BigFloat`.
+  - Added focused advanced numeric regressions and updated language/reference
+    docs plus `.agents/PLAN.md` and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (BigFloat "1.25"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (+ (BigFloat "1.25") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigFloat "10") 4))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "1e309")) '\''BigFloat)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "1e309"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(is? (BigFloat "1.25") '\''Number)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(/ (BigFloat "1") 0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(sin (BigFloat "1e309"))'`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `115 passed, 0 failed`.
+  - Direct smokes returned `"1.25"`, `"3.25"`, and `"2.5"` for constructor,
+    addition, and division.
+  - `parse-number "1e309"` now returns `BigFloat` and stringifies as
+    `"1e+309"`.
+  - `BigFloat` is recognized as a `Number`.
+  - BigFloat division by zero preserves `/: division by zero`.
+  - Double-returning transcendentals fail closed for out-of-Double-range
+    BigFloat input instead of silently narrowing.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - A constructor-only BigFloat slice would be misleading because arithmetic
+    gates would either reject or accidentally reinterpret the value. BigFloat
+    now has the core numeric path wired with it.
+  - Initial helper code assumed `cpp_dec_float_50` exposes `.isfinite()`; this
+    was wrong for the local Boost version. Use `boost::math::isfinite(...)`.
+- Current best recommendation/checkpoint:
+  - Treat the first BigFloat numeric surface as active. Next scalar work should
+    choose between precision-control APIs, broader BigFloat transcendental
+    wrappers, or BigComplex.
+- Unresolved issues / blockers:
+  - BigFloat currently uses the fixed `cpp_dec_float_50` backend. User-visible
+    precision configuration has not been designed.
+  - Broader full-suite and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 07:35 CEST - StackCtx Boundary Copy Efficiency Narrowing
 - Objective attempted:
   - Respond to the efficiency concern about the prior StackCtx boundary-copy

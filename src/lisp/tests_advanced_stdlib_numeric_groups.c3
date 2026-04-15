@@ -173,6 +173,43 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(= (type-of (BigInteger \"1\")) 'BigInteger)", pass, fail);
     test_truthy(interp, "BigInteger is Number",
         "(number? (BigInteger \"1\"))", pass, fail);
+    test_str_val(interp, "BigFloat ctor string",
+        "(String (BigFloat \"1.25\"))",
+        "1.25", pass, fail);
+    test_truthy(interp, "BigFloat type-of",
+        "(= (type-of (BigFloat \"1.25\")) 'BigFloat)", pass, fail);
+    test_truthy(interp, "BigFloat is Number",
+        "(number? (BigFloat \"1.25\"))", pass, fail);
+    test_str_val(interp, "BigFloat addition",
+        "(String (+ (BigFloat \"1.25\") 2))",
+        "3.25", pass, fail);
+    test_str_val(interp, "BigFloat subtraction",
+        "(String (- (BigFloat \"5.5\") 2))",
+        "3.5", pass, fail);
+    test_str_val(interp, "BigFloat multiplication with BigInteger",
+        "(String (* (BigFloat \"1.5\") (BigInteger \"4\")))",
+        "6", pass, fail);
+    test_str_val(interp, "BigFloat division",
+        "(String (/ (BigFloat \"10\") 4))",
+        "2.5", pass, fail);
+    test_error_contains(interp, "BigFloat division by zero",
+        "(/ (BigFloat \"1\") 0)", "/: division by zero", pass, fail);
+    test_truthy(interp, "BigFloat less-than",
+        "(< (BigFloat \"1.25\") (BigFloat \"2.5\"))", pass, fail);
+    test_str_val(interp, "BigFloat abs",
+        "(String (abs (BigFloat \"-3.5\")))",
+        "3.5", pass, fail);
+    test_str_val(interp, "BigFloat max",
+        "(String (max (BigFloat \"1.25\") 2))",
+        "2", pass, fail);
+    test_truthy(interp, "parse-number double overflow type is BigFloat",
+        "(= (type-of (parse-number \"1e309\")) 'BigFloat)", pass, fail);
+    test_str_val(interp, "parse-number double overflow value",
+        "(String (parse-number \"1e309\"))",
+        "1e+309", pass, fail);
+    test_str_val(interp, "Double rejects out-of-range BigFloat payload code",
+        "(handle (Double (BigFloat \"1e309\")) (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
     test_str_val(interp, "BigInteger + overflow promotion",
         "(String (+ 9223372036854775807 1))",
         "9223372036854775808", pass, fail);

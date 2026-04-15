@@ -25,18 +25,27 @@ fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "zero?: expected number");
-    return to_double(args[0]) == 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "zero?: expected number");
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "zero?: numeric comparison failed");
+    return cmp == 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "positive?: expected number");
-    return to_double(args[0]) > 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "positive?: expected number");
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "positive?: numeric comparison failed");
+    return cmp > 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "negative?: expected number");
-    return to_double(args[0]) < 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "negative?: expected number");
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "negative?: numeric comparison failed");
+    return cmp < 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_even(Value*[] args, Env* env, Interp* interp) {

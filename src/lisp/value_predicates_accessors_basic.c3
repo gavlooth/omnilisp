@@ -79,16 +79,25 @@ fn bool is_big_integer(Value* v) @inline {
     return v != null && v.tag == BIG_INTEGER;
 }
 
+fn bool is_big_float(Value* v) @inline {
+    return v != null && v.tag == BIG_FLOAT;
+}
+
 fn bool is_number(Value* v) @inline {
     return v != null && (v.tag == INT || v.tag == DOUBLE);
 }
 
 fn bool is_numeric_value(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == BIG_INTEGER);
+    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == BIG_INTEGER || v.tag == BIG_FLOAT);
 }
 
 fn double to_double(Value* v) @inline {
     if (v.tag == DOUBLE) return v.double_val;
+    if (v.tag == BIG_FLOAT) {
+        double out = 0.0;
+        if (big_float_try_to_double(v, &out)) return out;
+        return 0.0;
+    }
     return (double)v.int_val;
 }
 
@@ -104,6 +113,9 @@ fn bool try_numeric_to_double(Value* v, double* out) @inline {
     }
     if (v.tag == BIG_INTEGER) {
         return big_integer_try_to_double(v, out);
+    }
+    if (v.tag == BIG_FLOAT) {
+        return big_float_try_to_double(v, out);
     }
     return false;
 }

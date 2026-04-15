@@ -12,6 +12,9 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
         (a.tag == INT && b.tag == BIG_INTEGER)) {
         return big_integer_values_equal(a, b);
     }
+    if (a.tag == BIG_FLOAT || b.tag == BIG_FLOAT) {
+        return is_numeric_value(a) && is_numeric_value(b) && big_float_values_equal(a, b);
+    }
     if (is_number(a) && is_number(b)) {
         return to_double(a) == to_double(b);
     }
@@ -81,6 +84,13 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
             }
             continue;
         }
+        if (left.tag == BIG_FLOAT || right.tag == BIG_FLOAT) {
+            if (!is_numeric_value(left) || !is_numeric_value(right) || !big_float_values_equal(left, right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
         if (is_number(left) && is_number(right)) {
             if (to_double(left) != to_double(right)) {
                 ok = false;
@@ -105,6 +115,9 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
                 break;
             case BIG_INTEGER:
                 if (!big_integer_values_equal(left, right)) ok = false;
+                break;
+            case BIG_FLOAT:
+                if (!big_float_values_equal(left, right)) ok = false;
                 break;
             case STRING:
                 if (left.str_len != right.str_len) {

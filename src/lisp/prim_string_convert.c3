@@ -62,6 +62,16 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
         if (big_integer_try_to_i64(arg, &out)) return make_int(interp, out);
         return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
     }
+    if (arg.tag == BIG_FLOAT) {
+        double out = 0.0;
+        if (big_float_try_to_double(arg, &out)) {
+            return conversion_int_from_double_or_raise(
+                interp,
+                out,
+                "Integer: expected int, finite double, or in-range numeric string");
+        }
+        return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
+    }
     if (arg.tag == DOUBLE) {
         return conversion_int_from_double_or_raise(
             interp,
@@ -78,6 +88,15 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
                     parsed.double_val,
                     "Integer: expected int, finite double, or in-range numeric string");
             }
+            if (parsed.tag == BIG_FLOAT) {
+                double out = 0.0;
+                if (big_float_try_to_double(parsed, &out)) {
+                    return conversion_int_from_double_or_raise(
+                        interp,
+                        out,
+                        "Integer: expected int, finite double, or in-range numeric string");
+                }
+            }
         }
     }
     return conversion_type_raise(interp, "Integer: expected int, finite double, or in-range numeric string");
@@ -91,7 +110,7 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
     }
     if (arg.tag == STRING) return arg;
-    if (is_number(arg) || is_big_integer(arg)) return prim_number_to_string(args, env, interp);
+    if (is_number(arg) || is_big_integer(arg) || is_big_float(arg)) return prim_number_to_string(args, env, interp);
     if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
     if (is_nil(arg) || is_cons(arg)) {
         return list_to_string_value(arg, interp,
@@ -116,6 +135,11 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
         if (big_integer_try_to_double(arg, &out)) return make_double(interp, out);
         return conversion_type_raise(interp, "Double: expected int, double, BigInteger in Double range, or numeric string");
     }
+    if (arg.tag == BIG_FLOAT) {
+        double out = 0.0;
+        if (big_float_try_to_double(arg, &out)) return make_double(interp, out);
+        return conversion_type_raise(interp, "Double: expected int, double, BigFloat in Double range, or numeric string");
+    }
     if (arg.tag == STRING) {
         Value* parsed = prim_string_to_number(args, env, interp);
         if (parsed != null && parsed.tag != NIL) {
@@ -124,6 +148,10 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
             if (parsed.tag == BIG_INTEGER) {
                 double out = 0.0;
                 if (big_integer_try_to_double(parsed, &out)) return make_double(interp, out);
+            }
+            if (parsed.tag == BIG_FLOAT) {
+                double out = 0.0;
+                if (big_float_try_to_double(parsed, &out)) return make_double(interp, out);
             }
         }
     }
@@ -153,6 +181,21 @@ fn Value* prim_ctor_big_integer(Value*[] args, Env* env, Interp* interp) {
     if (arg.tag == INT) return make_big_integer_from_i64(interp, arg.int_val);
     if (arg.tag == STRING) return make_big_integer_from_string(interp, arg.str_chars[:arg.str_len]);
     return conversion_type_raise(interp, "BigInteger: expected integer or decimal integer string");
+}
+
+fn Value* prim_ctor_big_float(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
+    }
+    if (arg.tag == BIG_FLOAT) return arg;
+    if (arg.tag == INT) return make_big_float_from_i64(interp, arg.int_val);
+    if (arg.tag == DOUBLE) return make_big_float_from_double(interp, arg.double_val);
+    if (arg.tag == BIG_INTEGER) return big_float_from_value(interp, arg, "BigFloat: expected numeric value or finite decimal string");
+    if (arg.tag == STRING) return make_big_float_from_string(interp, arg.str_chars[:arg.str_len]);
+    return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
 }
 
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
@@ -221,7 +264,7 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
         }
         if (i != s.len) return make_nil(interp);
         if (negative) val = -val;
-        if (!conversion_double_is_finite(val)) return make_nil(interp);
+        if (!conversion_double_is_finite(val)) return make_big_float_from_string(interp, s);
         return make_double(interp, val);
     }
     // Integer parse
@@ -246,9 +289,12 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]))) return conversion_type_raise(interp, "String: expected number");
+    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]))) return conversion_type_raise(interp, "String: expected number");
     if (is_big_integer(args[0])) {
         return big_integer_to_string_value(args[0], interp, "String: failed to render BigInteger");
+    }
+    if (is_big_float(args[0])) {
+        return big_float_to_string_value(args[0], interp, "String: failed to render BigFloat");
     }
     char[64] buf;
     if (is_double(args[0])) {

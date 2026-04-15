@@ -58,6 +58,9 @@ fn Value* numeric_binary_double_result(Interp* interp, Value* lhs, Value* rhs, i
 fn Value* numeric_add2(Interp* interp, Value* lhs, Value* rhs) {
     if (!is_numeric_value(lhs)) return primitive_arg_type_raise(interp, "+", 0, "number", lhs);
     if (!is_numeric_value(rhs)) return primitive_arg_type_raise(interp, "+", 1, "number", rhs);
+    if (is_big_float(lhs) || is_big_float(rhs)) {
+        return big_float_binary_values(interp, lhs, rhs, BIG_FLOAT_OP_ADD, "+: failed to allocate BigFloat result");
+    }
     if (is_double(lhs) || is_double(rhs)) return numeric_binary_double_result(interp, lhs, rhs, BIG_INTEGER_OP_ADD, "+");
     if (is_big_integer(lhs) || is_big_integer(rhs)) {
         return big_integer_binary_values(interp, lhs, rhs, BIG_INTEGER_OP_ADD, "+: failed to allocate BigInteger result");
@@ -72,6 +75,9 @@ fn Value* numeric_add2(Interp* interp, Value* lhs, Value* rhs) {
 fn Value* numeric_sub2(Interp* interp, Value* lhs, Value* rhs) {
     if (!is_numeric_value(lhs)) return primitive_arg_type_raise(interp, "-", 0, "number", lhs);
     if (!is_numeric_value(rhs)) return primitive_arg_type_raise(interp, "-", 1, "number", rhs);
+    if (is_big_float(lhs) || is_big_float(rhs)) {
+        return big_float_binary_values(interp, lhs, rhs, BIG_FLOAT_OP_SUB, "-: failed to allocate BigFloat result");
+    }
     if (is_double(lhs) || is_double(rhs)) return numeric_binary_double_result(interp, lhs, rhs, BIG_INTEGER_OP_SUB, "-");
     if (is_big_integer(lhs) || is_big_integer(rhs)) {
         return big_integer_binary_values(interp, lhs, rhs, BIG_INTEGER_OP_SUB, "-: failed to allocate BigInteger result");
@@ -86,6 +92,9 @@ fn Value* numeric_sub2(Interp* interp, Value* lhs, Value* rhs) {
 fn Value* numeric_mul2(Interp* interp, Value* lhs, Value* rhs) {
     if (!is_numeric_value(lhs)) return primitive_arg_type_raise(interp, "*", 0, "number", lhs);
     if (!is_numeric_value(rhs)) return primitive_arg_type_raise(interp, "*", 1, "number", rhs);
+    if (is_big_float(lhs) || is_big_float(rhs)) {
+        return big_float_binary_values(interp, lhs, rhs, BIG_FLOAT_OP_MUL, "*: failed to allocate BigFloat result");
+    }
     if (is_double(lhs) || is_double(rhs)) return numeric_binary_double_result(interp, lhs, rhs, BIG_INTEGER_OP_MUL, "*");
     if (is_big_integer(lhs) || is_big_integer(rhs)) {
         return big_integer_binary_values(interp, lhs, rhs, BIG_INTEGER_OP_MUL, "*: failed to allocate BigInteger result");
@@ -99,6 +108,7 @@ fn Value* numeric_mul2(Interp* interp, Value* lhs, Value* rhs) {
 
 fn Value* numeric_neg1(Interp* interp, Value* value) {
     if (!is_numeric_value(value)) return primitive_arg_type_raise(interp, "-", 0, "number", value);
+    if (is_big_float(value)) return big_float_neg_value(interp, value, "-: failed to allocate BigFloat result");
     if (is_double(value)) return make_double(interp, -value.double_val);
     if (is_big_integer(value) || value.int_val == long.min) {
         return big_integer_neg_value(interp, value, "-: failed to allocate BigInteger result");
@@ -132,6 +142,12 @@ fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "/", "2 arguments", args.len);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "/", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "/", 1, "number", args[1]);
+    if (is_big_float(args[0]) || is_big_float(args[1])) {
+        Value* zero = make_int(interp, 0);
+        int cmp = 0;
+        if (numeric_values_compare(args[1], zero, &cmp) && cmp == 0) return raise_error(interp, "/: division by zero");
+        return big_float_binary_values(interp, args[0], args[1], BIG_FLOAT_OP_DIV, "/: failed to allocate BigFloat result");
+    }
     if (is_double(args[0]) || is_double(args[1])) {
         return numeric_binary_double_result(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/");
     }

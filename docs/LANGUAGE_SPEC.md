@@ -358,6 +358,7 @@ parser/lexer error.
 | int | `INT` | 64-bit signed integer | `42`, `-17` |
 | double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
 | BigInteger | `BIG_INTEGER` | Arbitrary-precision exact integer | `(BigInteger "9223372036854775808")` |
+| BigFloat | `BIG_FLOAT` | High-precision decimal float | `(BigFloat "1.25")` |
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
@@ -392,6 +393,14 @@ Integer source literals cover the full signed fixed-width range, including
 lex time.
 Use `(BigInteger "...")` when an explicit arbitrary-precision integer
 constructor is needed.
+
+`BigFloat` is the high-precision decimal float surface backed by
+Boost.Multiprecision in the current runtime. `BigFloat` values are `Number`
+values, support `String` and finite `Double` conversion, participate in `+`,
+`-`, `*`, `/`, ordering comparisons, `abs`, `min`, and `max`, and preserve
+`BigFloat` results when mixed with `Integer`, `BigInteger`, or `Double`.
+`parse-number` promotes syntactically valid floating inputs that overflow
+`Double` to `BigFloat`.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
@@ -1131,7 +1140,7 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 | `string?` | Is string? |
 | `int?` | Is integer? |
 | `double?` | Is double? |
-| `number?` | Is int, BigInteger, or double? |
+| `number?` | Is int, BigInteger, BigFloat, or double? |
 | `symbol?` | Is symbol? |
 | `closure?` | Is closure? |
 | `continuation?` | Is continuation? |
@@ -1232,8 +1241,8 @@ Set order contract:
 | `math/erf`, `math/erfc` | Error function and complementary error function |
 | `stats/normal-cdf`, `stats/normal-quantile` | Standard normal CDF and inverse CDF |
 | `floor`, `ceiling`, `round`, `truncate` | Rounding |
-| `abs` | Absolute value; exact `Integer` overflow promotes to `BigInteger` |
-| `min`, `max` | Binary min/max; supports exact `BigInteger` comparison |
+| `abs` | Absolute value; exact `Integer` overflow promotes to `BigInteger`; supports `BigFloat` |
+| `min`, `max` | Binary min/max; supports exact `BigInteger` and `BigFloat` comparison |
 | `gcd`, `lcm` | Number theory; supports exact `Integer`/`BigInteger` operands |
 
 ### 7.15 Bitwise Operations (6)
@@ -1244,23 +1253,27 @@ Set order contract:
 | `bitwise-not` | Bitwise complement; supports exact `Integer`/`BigInteger` operands |
 | `lshift`, `rshift` | Bit shifting; non-negative shifts use exact integer semantics and may promote to `BigInteger`; negative shifts return `0`; shift counts above the bounded exact-shift cap fail closed |
 
-### 7.16 Conversion (5)
+### 7.16 Conversion (6)
 
 | Prim | Description |
 |------|-------------|
 | `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Double` | Canonical double constructor/coercion surface; accepts finite BigInteger inputs when representable as a finite double |
-| `Integer` | Canonical integer constructor/coercion surface; truncates finite doubles toward zero and accepts in-range BigInteger inputs |
+| `Double` | Canonical double constructor/coercion surface; accepts finite BigInteger and BigFloat inputs when representable as a finite double |
+| `Integer` | Canonical integer constructor/coercion surface; truncates finite numeric inputs toward zero and accepts in-range BigInteger/BigFloat inputs |
 | `BigInteger` | Canonical arbitrary-precision exact integer constructor/coercion surface; accepts integers and decimal strings |
+| `BigFloat` | Canonical high-precision decimal float constructor/coercion surface; accepts numeric values and finite decimal strings |
 | `Symbol` | Canonical symbol constructor/coercion surface |
 
 Numeric conversion policy:
 - Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
-- `parse-number` returns `Integer`, `BigInteger`, or `Double`: valid decimal
-  integers that exceed the fixed-width `Integer` range promote to `BigInteger`.
-- `parse-number` returns `nil` on parse failure or non-finite floating parse.
+- `parse-number` returns `Integer`, `BigInteger`, `Double`, or `BigFloat`:
+  valid decimal integers that exceed the fixed-width `Integer` range promote to
+  `BigInteger`, and valid floating inputs that overflow `Double` promote to
+  `BigFloat`.
+- `parse-number` returns `nil` on parse failure or floating input outside the
+  supported `BigFloat` range.
 - Constructor/coercion narrowing failures use deterministic recoverable code `type/arg-mismatch`.
 - Dispatch does not do implicit numeric widening; cross-numeric calls require explicit conversion.
 

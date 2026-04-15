@@ -18,6 +18,7 @@
                 "csrc/stack_helpers.c",
                 "csrc/ffi_helpers.c",
                 "csrc/big_integer_helpers.cpp",
+                "csrc/big_float_helpers.cpp",
                 "csrc/boost_math_helpers.cpp",
                 "csrc/tensor_blas_helpers.c",
                 "csrc/json_helpers.c",

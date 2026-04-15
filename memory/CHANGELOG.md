@@ -1,5 +1,40 @@
 ## 2026-04-15
 
+- Completed the first full BigFloat numeric slice:
+  - Added Boost.Multiprecision `cpp_dec_float_50` helper plumbing and runtime
+    `BIG_FLOAT` values with scope-region destruction, copy-to-parent,
+    escape-promotion, printing, `String`, `Double`, and `Integer` conversion
+    paths.
+  - Registered `BigFloat` as a callable constructor/type descriptor and a
+    `Number` subtype. `number?` / `is?` now recognize `BigFloat` through the
+    type hierarchy.
+  - Added BigFloat arithmetic and comparison support for `+`, `-`, `*`, `/`,
+    `<`, `>`, `<=`, `>=`, `=`, `abs`, `min`, and `max`. When a `BigFloat`
+    participates, the result stays `BigFloat` for arithmetic.
+  - `parse-number` now promotes syntactically valid floating inputs that
+    overflow `Double`, for example `"1e309"`, to `BigFloat`.
+  - Existing Double-returning transcendentals still require values
+    representable as `Double`; out-of-range `BigFloat` inputs fail closed
+    instead of silently narrowing.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `115 passed, 0 failed`
+    - bounded container rerun of the same advanced numeric group
+      -> `115 passed, 0 failed`
+    - direct smokes:
+      - `(String (+ (BigFloat "1.25") 2))` -> `"3.25"`
+      - `(String (/ (BigFloat "10") 4))` -> `"2.5"`
+      - `(= (type-of (parse-number "1e309")) 'BigFloat)` -> `true`
+      - `(String (parse-number "1e309"))` -> `"1e+309"`
+      - `(is? (BigFloat "1.25") 'Number)` -> `true`
+      - `(/ (BigFloat "1") 0)` -> `/: division by zero`
+      - `(sin (BigFloat "1e309"))`
+        -> `sin: argument 1 expected number representable as Double`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+
 - Narrowed the StackCtx boundary-copy fix after efficiency review:
   - Replaced the broad "any StackCtx leaf/data-container return copies
     defensively" rule with a low-headroom gate. StackCtx returns now skip the

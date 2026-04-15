@@ -186,6 +186,7 @@ struct Value {
         long          int_val;
         double        double_val;     // Floating-point value
         void*         big_integer_val; // Boost.Multiprecision cpp_int handle
+        void*         big_float_val;   // Boost.Multiprecision cpp_dec_float handle
         struct {
             char* str_chars;
             usz   str_len;

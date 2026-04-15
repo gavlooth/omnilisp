@@ -21,12 +21,14 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
 
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
     if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
+    if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
     if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "BigInteger") ||
+        zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "Double") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
@@ -52,12 +54,14 @@ fn ZString symbol_type_descriptor_name(char* name) {
 
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
     if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
+    if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
     if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
         zstr_eq(name, "BigInteger") ||
+        zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "Double") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
