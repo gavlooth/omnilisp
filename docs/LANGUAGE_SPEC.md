@@ -399,6 +399,11 @@ Boost.Multiprecision in the current runtime. `BigFloat` values are `Number`
 values, support `String` and finite `Double` conversion, participate in `+`,
 `-`, `*`, `/`, ordering comparisons, `abs`, `min`, and `max`, and preserve
 `BigFloat` results when mixed with `Integer`, `BigInteger`, or `Double`.
+Core scalar math primitives preserve `BigFloat` results when a `BigFloat`
+operand participates for trigonometric, inverse trigonometric, exponential,
+logarithmic, power/root, gamma/error-function, and standard-normal distribution
+helpers. Fixed-width `Double` remains the result type for non-`BigFloat`
+floating inputs.
 `parse-number` promotes syntactically valid floating inputs that overflow
 `Double` to `BigFloat`.
 
@@ -1244,6 +1249,12 @@ Set order contract:
 | `abs` | Absolute value; exact `Integer` overflow promotes to `BigInteger`; supports `BigFloat` |
 | `min`, `max` | Binary min/max; supports exact `BigInteger` and `BigFloat` comparison |
 | `gcd`, `lcm` | Number theory; supports exact `Integer`/`BigInteger` operands |
+
+When a `BigFloat` operand participates, `sin`, `cos`, `tan`, `asin`, `acos`,
+`atan`, `atan2`, `exp`, `log`, `log10`, `pow`, `sqrt`, `math/lgamma`,
+`math/erf`, `math/erfc`, `stats/normal-cdf`, and `stats/normal-quantile`
+return `BigFloat` results. `stats/normal-quantile` keeps its probability-domain
+contract and raises when the input is not strictly between `0` and `1`.
 
 ### 7.15 Bitwise Operations (6)
 

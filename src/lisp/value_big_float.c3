@@ -8,6 +8,27 @@ const int BIG_FLOAT_OP_SUB = 2;
 const int BIG_FLOAT_OP_MUL = 3;
 const int BIG_FLOAT_OP_DIV = 4;
 
+const int BIG_FLOAT_MATH_SIN = 1;
+const int BIG_FLOAT_MATH_COS = 2;
+const int BIG_FLOAT_MATH_TAN = 3;
+const int BIG_FLOAT_MATH_ASIN = 4;
+const int BIG_FLOAT_MATH_ACOS = 5;
+const int BIG_FLOAT_MATH_ATAN = 6;
+const int BIG_FLOAT_MATH_EXP = 7;
+const int BIG_FLOAT_MATH_LOG = 8;
+const int BIG_FLOAT_MATH_LOG10 = 9;
+const int BIG_FLOAT_MATH_SQRT = 10;
+const int BIG_FLOAT_MATH_FLOOR = 11;
+const int BIG_FLOAT_MATH_CEILING = 12;
+const int BIG_FLOAT_MATH_LGAMMA = 13;
+const int BIG_FLOAT_MATH_ERF = 14;
+const int BIG_FLOAT_MATH_ERFC = 15;
+const int BIG_FLOAT_MATH_NORMAL_CDF = 16;
+const int BIG_FLOAT_MATH_NORMAL_QUANTILE = 17;
+
+const int BIG_FLOAT_MATH_POW = 1;
+const int BIG_FLOAT_MATH_ATAN2 = 2;
+
 fn Value* make_big_float_from_owned_handle(Interp* interp, void* handle, char[] message) {
     if (handle == null) return raise_error(interp, message);
     Value* v = interp.alloc_value();
@@ -203,6 +224,28 @@ fn Value* big_float_abs_value(Interp* interp, Value* v, char[] message) {
     defer omni_big_float_free(source);
 
     void* result = omni_big_float_abs(source);
+    return make_big_float_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_float_unary_math_value(Interp* interp, Value* v, int op, char[] message) {
+    void* source = big_float_handle_from_value(v);
+    if (source == null) return raise_error(interp, message);
+    defer omni_big_float_free(source);
+
+    void* result = omni_big_float_unary_math(source, op);
+    return make_big_float_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_float_binary_math_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
+    void* left = big_float_handle_from_value(lhs);
+    if (left == null) return raise_error(interp, message);
+    defer omni_big_float_free(left);
+
+    void* right = big_float_handle_from_value(rhs);
+    if (right == null) return raise_error(interp, message);
+    defer omni_big_float_free(right);
+
+    void* result = omni_big_float_binary_math(left, right, op);
     return make_big_float_from_owned_handle(interp, result, message);
 }
 

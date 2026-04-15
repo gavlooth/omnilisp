@@ -227,6 +227,11 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 
+Core scalar math functions return `BigFloat` when a `BigFloat` operand
+participates for trigonometric, inverse trigonometric, exponential,
+logarithmic, power/root, gamma/error-function, and standard-normal helpers.
+Non-`BigFloat` floating inputs continue to return `Double`.
+
 **Bitwise:**
 
 | Name | Arity | Description |

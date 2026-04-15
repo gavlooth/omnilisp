@@ -1,3 +1,64 @@
+## 2026-04-15 08:48 CEST - BigFloat Scalar Math And Agent Rule
+- Objective attempted:
+  - Continue Omni scientific numerics non-conservatively by closing the
+    BigFloat math gap instead of leaving the type at constructor/arithmetic
+    support.
+  - Persist the owner-requested hard anti-conservatism rule in `AGENTS.md`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_float_helpers.cpp` with BigFloat-preserving wrappers for
+    trig, inverse trig, exponential/logarithmic, power/root,
+    `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+    `stats/normal-quantile`.
+  - Added C3 externs and value helper wrappers for BigFloat unary/binary math.
+  - Updated math primitives so `BigFloat` operands return `BigFloat` for the
+    supported scalar math/scientific helpers instead of narrowing through
+    `Double`.
+  - Added focused advanced numeric regressions for BigFloat math results,
+    probability-domain failure, high-range `exp`, and high-precision
+    `lgamma`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+  - Added `AGENTS.md` hard anti-conservatism rule with a mandatory
+    conservative-choice tax.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - direct smokes for BigFloat `sqrt`, `pow`, `stats/normal-cdf`,
+    `stats/normal-quantile`, high-range `exp`, and `math/lgamma` precision
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `127 passed, 0 failed`.
+  - Direct smokes returned `"1024"` for `(pow (BigFloat "2") 10)`, `"0"` for
+    `(stats/normal-quantile (BigFloat "0.5"))`, and `true` for
+    `(= (type-of (exp (BigFloat "1000"))) 'BigFloat)`.
+  - `math/lgamma` on `BigFloat "6"` matched the high-precision expected value
+    within `1e-45`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Treating BigFloat scientific functions as requiring Double-range narrowing
+    is now superseded for the implemented scalar math set.
+  - `c3c build` sometimes exited clean without recreating `build/main` after the
+    executable had been removed; using explicit `--output-dir build --build-dir`
+    restored a reliable validation artifact for this session.
+- Current best recommendation/checkpoint:
+  - BigFloat now has the core scalar scientific math surface. Next scalar work
+    should choose precision-control policy, exact BigFloat rounding-to-integer
+    behavior, or `BigComplex`.
+- Unresolved issues / blockers:
+  - BigFloat precision remains fixed at `cpp_dec_float_50`.
+  - `floor`, `ceiling`, `round`, and `truncate` still use the existing
+    Double-to-Integer path; exact BigFloat rounding-to-Integer/BigInteger needs
+    a separate policy and implementation.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 07:52 CEST - BigFloat Numeric Promotion
 - Objective attempted:
   - Continue the scientific numerics scalar lane with a non-conservative

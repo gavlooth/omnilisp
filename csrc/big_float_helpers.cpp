@@ -1,5 +1,8 @@
 #include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/math/distributions/normal.hpp>
+#include <boost/math/special_functions/erf.hpp>
 #include <boost/math/special_functions/fpclassify.hpp>
+#include <boost/math/special_functions/gamma.hpp>
 
 #include <cmath>
 #include <cstdlib>
@@ -40,6 +43,53 @@ cpp_dec_float_50 apply_binary(const cpp_dec_float_50& lhs, const cpp_dec_float_5
                 return 0;
             }
             return lhs / rhs;
+        default:
+            ok = false;
+            return 0;
+    }
+}
+
+cpp_dec_float_50 apply_unary_math(const cpp_dec_float_50& value, int op, bool& ok) {
+    ok = true;
+    switch (op) {
+        case 1: return sin(value);
+        case 2: return cos(value);
+        case 3: return tan(value);
+        case 4: return asin(value);
+        case 5: return acos(value);
+        case 6: return atan(value);
+        case 7: return exp(value);
+        case 8: return log(value);
+        case 9: return log10(value);
+        case 10: return sqrt(value);
+        case 11: return floor(value);
+        case 12: return ceil(value);
+        case 13: return boost::math::lgamma(value);
+        case 14: return boost::math::erf(value);
+        case 15: return boost::math::erfc(value);
+        case 16: {
+            boost::math::normal_distribution<cpp_dec_float_50> normal;
+            return boost::math::cdf(normal, value);
+        }
+        case 17: {
+            if (value <= 0 || value >= 1) {
+                ok = false;
+                return 0;
+            }
+            boost::math::normal_distribution<cpp_dec_float_50> normal;
+            return boost::math::quantile(normal, value);
+        }
+        default:
+            ok = false;
+            return 0;
+    }
+}
+
+cpp_dec_float_50 apply_binary_math(const cpp_dec_float_50& lhs, const cpp_dec_float_50& rhs, int op, bool& ok) {
+    ok = true;
+    switch (op) {
+        case 1: return pow(lhs, rhs);
+        case 2: return atan2(lhs, rhs);
         default:
             ok = false;
             return 0;
@@ -183,6 +233,35 @@ void* omni_big_float_abs(const void* value) {
         const cpp_dec_float_50* src = as_big_float_const(value);
         if (src == nullptr) return nullptr;
         return new cpp_dec_float_50(*src < 0 ? -*src : *src);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_float_unary_math(const void* value, int op) {
+    try {
+        const cpp_dec_float_50* src = as_big_float_const(value);
+        if (src == nullptr || !boost::math::isfinite(*src)) return nullptr;
+        bool ok = false;
+        cpp_dec_float_50 result = apply_unary_math(*src, op, ok);
+        if (!ok || !boost::math::isfinite(result)) return nullptr;
+        return new cpp_dec_float_50(result);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_float_binary_math(const void* lhs, const void* rhs, int op) {
+    try {
+        const cpp_dec_float_50* left = as_big_float_const(lhs);
+        const cpp_dec_float_50* right = as_big_float_const(rhs);
+        if (left == nullptr || right == nullptr || !boost::math::isfinite(*left) || !boost::math::isfinite(*right)) {
+            return nullptr;
+        }
+        bool ok = false;
+        cpp_dec_float_50 result = apply_binary_math(*left, *right, op, ok);
+        if (!ok || !boost::math::isfinite(result)) return nullptr;
+        return new cpp_dec_float_50(result);
     } catch (...) {
         return nullptr;
     }

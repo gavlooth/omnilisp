@@ -14,3 +14,5 @@ extern fn int omni_big_float_compare_double(void* lhs, double rhs) @extern("omni
 extern fn void* omni_big_float_binary(void* lhs, void* rhs, int op) @extern("omni_big_float_binary");
 extern fn void* omni_big_float_neg(void* value) @extern("omni_big_float_neg");
 extern fn void* omni_big_float_abs(void* value) @extern("omni_big_float_abs");
+extern fn void* omni_big_float_unary_math(void* value, int op) @extern("omni_big_float_unary_math");
+extern fn void* omni_big_float_binary_math(void* lhs, void* rhs, int op) @extern("omni_big_float_binary_math");

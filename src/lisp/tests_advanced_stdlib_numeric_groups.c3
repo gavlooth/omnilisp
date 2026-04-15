@@ -335,6 +335,32 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_error_contains(interp, "stats/normal-cdf rejects out-of-range BigInteger",
         "(stats/normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
         "stats/normal-cdf: value out of Double range", pass, fail);
+    test_str_val(interp, "BigFloat sin zero",
+        "(String (sin (BigFloat \"0\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat cos zero",
+        "(String (cos (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat exp zero",
+        "(String (exp (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat sqrt exact",
+        "(String (sqrt (BigFloat \"4\")))", "2", pass, fail);
+    test_str_val(interp, "BigFloat pow exact",
+        "(String (pow (BigFloat \"2\") 10))", "1024", pass, fail);
+    test_str_val(interp, "BigFloat atan2 zero",
+        "(String (atan2 (BigFloat \"0\") 1))", "0", pass, fail);
+    test_str_val(interp, "BigFloat normal cdf median",
+        "(String (stats/normal-cdf (BigFloat \"0\")))", "0.5", pass, fail);
+    test_str_val(interp, "BigFloat normal quantile median",
+        "(String (stats/normal-quantile (BigFloat \"0.5\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat erfc zero",
+        "(String (math/erfc (BigFloat \"0\")))", "1", pass, fail);
+    test_truthy(interp, "BigFloat lgamma precision",
+        "(< (abs (- (math/lgamma (BigFloat \"6\")) (BigFloat \"4.787491742782045994247700934523243048399592315172\"))) (BigFloat \"1e-45\"))",
+        pass, fail);
+    test_truthy(interp, "BigFloat exp beyond Double range stays BigFloat",
+        "(= (type-of (exp (BigFloat \"1000\"))) 'BigFloat)", pass, fail);
+    test_error_contains(interp, "BigFloat normal quantile rejects zero probability",
+        "(stats/normal-quantile (BigFloat \"0\"))",
+        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
     test_eq(interp, "floor 3.7", "(floor 3.7)", 3, pass, fail);
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);

@@ -133,6 +133,89 @@ Follow `docs/C3_STYLE.md`. Especially:
 - Any deferred or blocked work must also add/update a concrete item in `TODO.md` so the next agent TODO scan can pick it up immediately
 - If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
 
+## Hard Anti-Conservatism Rule (Required)
+
+User intent overrides minimalism. When the owner asks for a capability, design
+direction, compatibility, or continued implementation, interpret the request as
+permission to implement the complete useful version of the feature, not a
+minimal demonstration, scaffold, or safest local slice.
+
+Treat phrases like "continue", "go on", "support X", "add X", "make it work",
+"make it compatible", "do the sensible thing", and "stop being conservative" as
+authorization to cross files, subsystems, and abstraction boundaries as needed.
+
+Required behavior:
+
+- Start from the user-visible capability and work backward to the implementation
+  surface required to make it real.
+- Choose the work boundary by semantic completeness, not by diff size.
+- If the capability naturally spans parser, runtime representation, dispatch,
+  lifecycle, printing, tests, docs, build wiring, or validation, implement
+  across those layers in the same work item unless a concrete blocker prevents
+  it.
+- Prefer a coherent higher-blast-radius change over a low-blast-radius change
+  that leaves the requested capability semantically incomplete.
+- Do not stop at scaffolding, constructor-only wiring, parser-only changes, type
+  tags, compatibility stubs, or doc-only updates when behavior is implied.
+
+Conservative choices are not neutral:
+
+- A conservative choice means choosing a narrow, local, partial,
+  low-blast-radius, or scaffolding-first path when a broader complete semantic
+  path is available.
+- The burden of proof is on choosing the conservative path.
+- Before making a conservative choice, the agent must write a concrete
+  justification naming:
+  - the broader capability being deferred,
+  - the invariant, blocker, or validation uncertainty that requires deferral,
+  - the exact follow-up required to complete the semantic capability,
+  - and the validation command that will prove the conservative step was useful.
+
+Valid reasons for conservatism are limited to:
+
+- preventing a known correctness regression,
+- protecting a documented runtime invariant,
+- isolating an unknown failure mode with a specific validation command,
+- avoiding a destructive or irreversible operation,
+- a required dependency, tool, or generated artifact being unavailable,
+- or honoring an explicit owner request for a narrow change.
+
+Invalid reasons for conservatism:
+
+- "lower risk",
+- "smaller diff",
+- "incremental",
+- "safer",
+- "minimal",
+- "easier to review",
+- "avoids touching many files",
+- "can be done later",
+- or equivalent phrasing that does not identify a concrete invariant, blocker,
+  or validation purpose.
+
+Mandatory conservative-choice tax:
+
+- Any conservative choice, even justified, requires immediate extra compute in
+  the same turn.
+- The agent must perform all of the following before returning control:
+  - revise the active plan to name the deferred semantic boundary,
+  - inspect the broader implementation surface that was avoided,
+  - implement at least one additional layer beyond the conservative patch or
+    explicitly record the blocker preventing it,
+  - run one extra validation command beyond the minimum needed for the
+    conservative patch,
+  - and record negative memory if the conservative path was chosen because a
+    broader assumption is unsafe or currently invalidated.
+
+Violation consequence:
+
+- An unjustified conservative choice is failed work.
+- Returning control after an unjustified conservative stopping point is not
+  allowed.
+- The agent must immediately revise toward the nearest complete semantic
+  boundary, update the plan or handoff artifact, and run relevant validation
+  before reporting completion.
+
 ## Backlog Shaping and Closure (Required)
 
 Backlog items must be shaped around real semantic/risk boundaries, not broad

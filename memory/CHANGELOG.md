@@ -1,5 +1,21 @@
 ## 2026-04-15
 
+- Completed the BigFloat scalar math slice:
+  - Extended `csrc/big_float_helpers.cpp` with BigFloat-preserving wrappers for
+    trigonometric, inverse trigonometric, exponential/logarithmic, power/root,
+    `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+    `stats/normal-quantile`.
+  - Updated the math primitives so `BigFloat` inputs no longer have to narrow to
+    `Double` for those operations; non-`BigFloat` inputs keep the existing
+    `Double` result path.
+  - `stats/normal-quantile` keeps the existing strict probability domain for
+    BigFloat inputs.
+  - validation so far:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - focused advanced numeric float-math group
+      -> `127 passed, 0 failed`
+
 - Completed the first full BigFloat numeric slice:
   - Added Boost.Multiprecision `cpp_dec_float_50` helper plumbing and runtime
     `BIG_FLOAT` values with scope-region destruction, copy-to-parent,
