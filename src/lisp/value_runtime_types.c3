@@ -188,6 +188,7 @@ struct Array {
  */
 enum TensorDType : char {
     TENSOR_DTYPE_DOUBLE,
+    TENSOR_DTYPE_BIG_INTEGER,
     TENSOR_DTYPE_BIG_FLOAT,
 }
 
@@ -223,6 +224,8 @@ struct TensorVal {
     Value* map_right;
     double map_left_scalar;
     double map_right_scalar;
+    void* map_left_big_integer_scalar;
+    void* map_right_big_integer_scalar;
     void* map_left_big_float_scalar;
     void* map_right_big_float_scalar;
     bool map_is_binary;

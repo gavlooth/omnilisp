@@ -137,6 +137,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
     test_error_contains(interp, "Tensor inferred non-numeric data rejected",
         "(Tensor [1 'bad])", "nested arrays/lists of numbers", pass, fail);
+    test_str_val(interp, "Tensor BigInteger dtype",
+        "(format \"%s\" (dtype (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2])))", "BigInteger", pass, fail);
+    test_str_val(interp, "Tensor BigInteger explicit ref preserves exact range",
+        "(String (ref (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")]) [0]))", "9223372036854775808", pass, fail);
+    test_str_val(interp, "Tensor BigInteger inferred suffix ref",
+        "(String (ref (Tensor [(BigInteger \"9223372036854775808\")] BigInteger) [0]))", "9223372036854775808", pass, fail);
+    test_str_val(interp, "Tensor BigInteger inferred prefix ref",
+        "(String (ref (Tensor BigInteger [(BigInteger \"9223372036854775809\")]) [0]))", "9223372036854775809", pass, fail);
+    test_str_val(interp, "Array BigInteger tensor conversion preserves element",
+        "(String (ref (Array (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2])) 0))", "9223372036854775808", pass, fail);
+    test_str_val(interp, "List BigInteger tensor conversion preserves element",
+        "(String (ref (List (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2])) 1))", "2", pass, fail);
+    test_str_val(interp, "realize BigInteger scalar fill into tensor",
+        "(let (dst (Tensor BigInteger [2] 0)) (block (realize (BigInteger \"3\") dst) (String (ref dst [1]))))",
+        "3", pass, fail);
+    test_str_val(interp, "realize BigInteger tensor copy",
+        "(let (src (Tensor BigInteger [1] [(BigInteger \"7\")]) dst (Tensor BigInteger [1] 0)) (block (realize src dst) (String (ref dst [0]))))",
+        "7", pass, fail);
+    test_error_contains(interp, "Tensor BigInteger rejects inexact data",
+        "(Tensor BigInteger [1] [1.5])", "exact integers", pass, fail);
     test_str_val(interp, "Tensor BigFloat dtype",
         "(format \"%s\" (dtype (Tensor BigFloat [2] [(BigFloat \"1.25\") 2])))", "BigFloat", pass, fail);
     test_str_val(interp, "Tensor BigFloat explicit ref preserves precision range",
@@ -305,6 +325,51 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "lazy map tensor survives closure capture",
         "(let (src (map + (Tensor Double [2] [1 2]) 3)) (let (f (lambda () (ref src [1]))) (f)))",
         5.0, pass, fail);
+    test_str_val(interp, "map BigInteger unary preserves exact range",
+        "(String (ref (map (lambda (x) x) (Tensor [(BigInteger \"9223372036854775808\")] BigInteger)) [0]))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "map BigInteger scalar left",
+        "(String (ref (map + (BigInteger \"2\") (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2])) [1]))",
+        "4", pass, fail);
+    test_str_val(interp, "map BigInteger tensor broadcast",
+        "(String (ref (map + (Tensor BigInteger [2 1] [(BigInteger \"1\") (BigInteger \"2\")]) (Tensor BigInteger [1 2] [(BigInteger \"10\") (BigInteger \"20\")])) [1 1]))",
+        "22", pass, fail);
+    test_str_val(interp, "realize mapped BigInteger expression into destination",
+        "(let (dst (Tensor BigInteger [2] 0)) (block (realize (map + (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2]) (BigInteger \"2\")) dst) (String (ref dst [0]))))",
+        "9223372036854775810", pass, fail);
+    test_str_val(interp, "lazy BigInteger map survives function return boundary",
+        "(block (define (mk) (map + (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")]) (BigInteger \"2\"))) (String (ref (mk) [0])))",
+        "9223372036854775810", pass, fail);
+    test_str_val(interp, "lazy BigInteger map survives closure capture",
+        "(let (src (map + (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")]) (BigInteger \"2\"))) (let (f (lambda () (String (ref src [0])))) (f)))",
+        "9223372036854775810", pass, fail);
+    test_error_contains(interp, "map mixed BigInteger Double tensors rejected",
+        "(map + (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Double [1] [1]))",
+        "map: tensor dtype mismatch", pass, fail);
+    test_error_contains(interp, "map BigInteger rejects inexact scalar",
+        "(map + (Tensor BigInteger [1] [(BigInteger \"1\")]) 1.5)",
+        "map: tensor inputs must be exact integers", pass, fail);
+    test_str_val(interp, "contract BigInteger vector dot",
+        "(String (ref (contract (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2]) (Tensor BigInteger [2] [2 3]) [0] [0]) []))",
+        "18446744073709551622", pass, fail);
+    test_str_val(interp, "contract BigInteger matrix product",
+        "(String (ref (contract (Tensor BigInteger [2 3] [1 2 3 4 5 6]) (Tensor BigInteger [3 2] [7 8 9 10 11 12]) [1] [0]) [1 1]))",
+        "154", pass, fail);
+    test_str_val(interp, "contract BigInteger zero-size identity",
+        "(String (ref (contract (Tensor BigInteger [0] []) (Tensor BigInteger [0] []) [0] [0]) []))",
+        "0", pass, fail);
+    test_str_val(interp, "realize BigInteger contract into destination",
+        "(let (dst (Tensor BigInteger [2 2] 0)) (block (realize (contract (Tensor BigInteger [2 3] [1 2 3 4 5 6]) (Tensor BigInteger [3 2] [7 8 9 10 11 12]) [1] [0]) dst) (String (ref dst [1 1]))))",
+        "154", pass, fail);
+    test_str_val(interp, "lazy BigInteger contract survives function return boundary",
+        "(block (define (mk) (contract (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2]) (Tensor BigInteger [2] [2 3]) [0] [0])) (String (ref (mk) [])))",
+        "18446744073709551622", pass, fail);
+    test_str_val(interp, "lazy BigInteger contract survives closure capture",
+        "(let (src (contract (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2]) (Tensor BigInteger [2] [2 3]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
+        "18446744073709551622", pass, fail);
+    test_error_contains(interp, "contract mixed BigInteger Double tensors rejected",
+        "(contract (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Double [1] [1]) [0] [0])",
+        "contract: tensor dtype mismatch", pass, fail);
     test_str_val(interp, "map BigFloat unary preserves outside Double range",
         "(String (ref (map (lambda (x) x) (Tensor [(BigFloat \"1e309\")] BigFloat)) [0]))",
         "1e+309", pass, fail);

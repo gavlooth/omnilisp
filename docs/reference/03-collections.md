@@ -81,12 +81,12 @@ Ordering contract:
 ### Tensors
 
 `Tensor` is Omni's rank-polymorphic scientific numeric aggregate. The current
-runtime ships native `Double` and `BigFloat` tensor storage, generic `length`
-introspection, tensor indexing through generic `ref`, tensor-dispatched `map`
-for both native dtypes, tensor `contract`, and `realize` as the
-explicit storage boundary. `BigFloat` tensors support constructor/ref/flat
-collection conversion/concrete `realize` paths, elementwise `map`, and
-summed-axis `contract`.
+runtime ships native `Double`, `BigInteger`, and `BigFloat` tensor storage,
+generic `length` introspection, tensor indexing through generic `ref`,
+tensor-dispatched `map` for all native dtypes, tensor `contract`, and
+`realize` as the explicit storage boundary. `BigInteger` and `BigFloat`
+tensors support constructor/ref/flat collection conversion/concrete `realize`
+paths, elementwise `map`, and summed-axis `contract`.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -101,6 +101,10 @@ summed-axis `contract`.
 (define big (Tensor BigFloat [1] [(BigFloat "1e309")]))
 (dtype big)                ;; => BigFloat
 (String (ref big [0]))     ;; => "1e+309"
+
+(define exact (Tensor BigInteger [1] [(BigInteger "9223372036854775808")]))
+(dtype exact)              ;; => BigInteger
+(String (ref exact [0]))   ;; => "9223372036854775808"
 
 (define y (Tensor Double [2 3] 0.0))
 (realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y

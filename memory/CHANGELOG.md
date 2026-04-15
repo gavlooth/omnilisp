@@ -1,5 +1,42 @@
 ## 2026-04-15
 
+- Completed `TENSOR-081` native BigInteger Tensor storage and kernels:
+  - Added `TENSOR_DTYPE_BIG_INTEGER` metadata, dtype symbol/name lookup,
+    owned BigInteger handle storage, element cleanup, deep clone, and concrete
+    storage copy support.
+  - Extended `Tensor` constructors to accept `BigInteger` dtype descriptors:
+    `(Tensor BigInteger shape data-or-scalar)`, `(Tensor data BigInteger)`,
+    and `(Tensor BigInteger data)`. BigInteger tensors accept exact `Integer`
+    and `BigInteger` values; inexact `Double` data fails closed.
+  - Extended flat `(Array tensor)` / `(List tensor)` conversion, scalar
+    `realize` fill, and concrete tensor copy realization for BigInteger
+    tensors.
+  - Extended lazy tensor `map` and `contract` evaluation to native BigInteger
+    tensors, including unary map, tensor/scalar map, scalar/tensor map,
+    broadcast map, vector dot, rank-2 matrix product, zero-size contracted-axis
+    identity, explicit destination realization, return-boundary survival, and
+    closure-capture survival.
+  - Kept BLAS `dgemm`/`dgemv` fast paths `Double`-only; BigInteger contracts
+    use the pure C3 contraction fallback and preserve exact integer results.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigInteger dtype/ref, inferred prefix/suffix
+      constructors, flat collection conversion, scalar fill, concrete copy,
+      map, contract, and inexact-data rejection
+    - focused advanced collections/module group on host
+      -> `295 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `295 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-079` native BigFloat Tensor `contract` kernels:
   - Extended tensor-dispatched `contract` from `Double`-only evaluation to
     native `BigFloat` evaluation through the pure C3 contraction fallback.

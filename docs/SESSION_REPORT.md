@@ -1,3 +1,66 @@
+## 2026-04-15 12:54 CEST - Native BigInteger Tensor Kernels
+- Objective attempted:
+  - Extend Omni Tensor precision support from `Double`/`BigFloat` to native
+    exact integer Tensor storage and kernels.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_INTEGER`, dtype metadata, owned element cleanup,
+    scalar-handle cleanup for lazy maps, concrete storage copy, and clone
+    support.
+  - Extended `Tensor` dtype parsing and constructors for
+    `(Tensor BigInteger shape data-or-scalar)`, `(Tensor data BigInteger)`,
+    and `(Tensor BigInteger data)`.
+  - Added BigInteger Tensor `ref`, `(Array tensor)`, `(List tensor)`, scalar
+    `realize` fill, concrete tensor copy, lazy `map`, and pure C3 `contract`
+    paths.
+  - Added focused advanced collection/module tests for BigInteger dtype/ref,
+    inferred prefix/suffix construction, flat conversions, scalar fill, copy,
+    map, broadcast, return/closure boundaries, contract, and mixed/inexact
+    rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigInteger dtype/ref, inferred prefix/suffix
+    constructors, flat collection conversion, scalar fill, concrete copy,
+    map, contract, and inexact-data rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=295 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=295 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+  - BLAS fast paths remain `Double`-only; BigInteger contracts use the pure C3
+    fallback and preserve exact integer results.
+- Invalidated assumptions or failed approaches:
+  - Treating precision Tensor work as BigFloat-only is now stale; BigInteger is
+    a native Tensor dtype with storage, map, and contract support.
+- Current best recommendation:
+  - Use the pure C3 Tensor fallback as the semantic oracle for additional
+    precision dtypes. Continue to BigComplex Tensor storage/kernels only when
+    complex scientific tensor workflows become the active priority.
+- Unresolved issues:
+  - No BigInteger Tensor runtime blocker remains from this slice.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BigInteger Tensor slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 12:31 CEST - Native BigFloat Tensor Contract
 - Objective attempted:
   - Complete the BigFloat Tensor arithmetic kernel lane by adding summed-axis

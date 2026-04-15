@@ -84,6 +84,11 @@ Name collision note:
   dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
   destination realization, and lazy expression boundary survival. BLAS fast
   paths remain `Double`-only.
+- `TENSOR-081` is complete: native `BigInteger` Tensor storage supports
+  constructor, `dtype`, `ref`, flat collection conversion, concrete
+  `realize`, tensor-dispatched `map`, and pure C3 `contract` kernels for exact
+  integer tensor work. BigInteger Tensor data must be exact `Integer` or
+  `BigInteger` values; inexact `Double` data fails closed.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

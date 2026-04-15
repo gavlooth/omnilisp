@@ -81,6 +81,11 @@ Implemented slices:
   rank-2 matrix product, zero-size contracted-axis identity, explicit
   destination realization, and lazy expression boundary survival. BLAS fast
   paths remain `Double`-only.
+- `TENSOR-081`: native `BigInteger` Tensor storage and kernels support
+  constructor, `dtype`, `ref`, flat collection conversion, concrete
+  `realize`, tensor-dispatched `map`, and pure C3 `contract` for exact
+  integer tensor work. BigInteger Tensor data must be exact integers; inexact
+  floating data fails closed.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -115,8 +120,8 @@ Deferred by design:
    decisions. Do not expose a bare `solve`; `linalg/` is not yet locked as the
    base namespace. Any additional private BLAS eligibility should keep the pure
    fallback as the validation oracle.
-3. Continue the BigFloat Tensor kernel lane with `contract` only when
-   high-precision reductions are the active priority.
+3. Continue precision Tensor work with native `BigComplex` storage/kernels only
+   when complex scientific tensor workflows become the active priority.
 4. Use `TENSOR-100` for the explicit-device CUDA/cuBLAS design slice after the
    BLAS contract is settled.
 5. Keep ordinary Tensor storage native/scoped; gate only genuinely opaque

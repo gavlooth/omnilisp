@@ -28,6 +28,8 @@ fn usz tensor_dtype_size(TensorDType dtype) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return double.sizeof;
+        case TENSOR_DTYPE_BIG_INTEGER:
+            return void*.sizeof;
         case TENSOR_DTYPE_BIG_FLOAT:
             return void*.sizeof;
     }
@@ -37,6 +39,8 @@ fn char[] tensor_dtype_name(TensorDType dtype) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return "Double";
+        case TENSOR_DTYPE_BIG_INTEGER:
+            return "BigInteger";
         case TENSOR_DTYPE_BIG_FLOAT:
             return "BigFloat";
     }
@@ -46,8 +50,21 @@ fn SymbolId tensor_dtype_symbol(TensorDType dtype, Interp* interp) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return interp.sym_Double;
+        case TENSOR_DTYPE_BIG_INTEGER:
+            return interp.sym_BigInteger;
         case TENSOR_DTYPE_BIG_FLOAT:
             return interp.sym_BigFloat;
+    }
+}
+
+fn void tensor_big_integer_clear_data(TensorVal* tensor) {
+    if (tensor == null || tensor.dtype != TENSOR_DTYPE_BIG_INTEGER || tensor.data == null) return;
+    void** values = (void**)tensor.data;
+    for (usz i = 0; i < tensor.element_count; i++) {
+        if (values[i] != null) {
+            omni_big_integer_free(values[i]);
+            values[i] = null;
+        }
     }
 }
 
@@ -59,6 +76,18 @@ fn void tensor_big_float_clear_data(TensorVal* tensor) {
             omni_big_float_free(values[i]);
             values[i] = null;
         }
+    }
+}
+
+fn void tensor_map_big_integer_scalar_clear(TensorVal* tensor) {
+    if (tensor == null || tensor.kind != TENSOR_PAYLOAD_MAP || tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return;
+    if (tensor.map_left_big_integer_scalar != null) {
+        omni_big_integer_free(tensor.map_left_big_integer_scalar);
+        tensor.map_left_big_integer_scalar = null;
+    }
+    if (tensor.map_right_big_integer_scalar != null) {
+        omni_big_integer_free(tensor.map_right_big_integer_scalar);
+        tensor.map_right_big_integer_scalar = null;
     }
 }
 
@@ -76,6 +105,7 @@ fn void tensor_map_big_float_scalar_clear(TensorVal* tensor) {
 
 fn void tensor_free_payload(TensorVal* tensor) {
     if (tensor == null) return;
+    tensor_map_big_integer_scalar_clear(tensor);
     tensor_map_big_float_scalar_clear(tensor);
     if (tensor.shape != null) {
         mem::free(tensor.shape);
@@ -86,7 +116,10 @@ fn void tensor_free_payload(TensorVal* tensor) {
         tensor.strides = null;
     }
     if (!tensor.is_view && tensor.data != null) {
-        if (tensor.kind == TENSOR_PAYLOAD_CONCRETE) tensor_big_float_clear_data(tensor);
+        if (tensor.kind == TENSOR_PAYLOAD_CONCRETE) {
+            tensor_big_integer_clear_data(tensor);
+            tensor_big_float_clear_data(tensor);
+        }
         mem::free(tensor.data);
         tensor.data = null;
     }
@@ -192,15 +225,33 @@ fn TensorVal* tensor_alloc_payload_base_checked(
             tensor_free_payload(tensor);
             return null;
         }
-        if (dtype == TENSOR_DTYPE_DOUBLE) {
-            double* values = (double*)tensor.data;
-            for (usz i = 0; i < element_count; i++) values[i] = 0.0;
-        } else if (dtype == TENSOR_DTYPE_BIG_FLOAT) {
-            void** values = (void**)tensor.data;
-            for (usz i = 0; i < element_count; i++) values[i] = null;
+        switch (dtype) {
+            case TENSOR_DTYPE_DOUBLE: {
+                double* values = (double*)tensor.data;
+                for (usz i = 0; i < element_count; i++) values[i] = 0.0;
+            }
+            case TENSOR_DTYPE_BIG_INTEGER:
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                void** values = (void**)tensor.data;
+                for (usz i = 0; i < element_count; i++) values[i] = null;
+            }
         }
     }
     return tensor;
+}
+
+fn bool tensor_clone_big_integer_data(TensorVal* dst, TensorVal* src) {
+    if (dst == null || src == null || dst.dtype != TENSOR_DTYPE_BIG_INTEGER || src.dtype != TENSOR_DTYPE_BIG_INTEGER) return false;
+    if (src.element_count == 0) return true;
+    if (dst.data == null || src.data == null) return false;
+    void** dst_values = (void**)dst.data;
+    void** src_values = (void**)src.data;
+    for (usz i = 0; i < src.element_count; i++) {
+        if (src_values[i] == null) return false;
+        dst_values[i] = omni_big_integer_clone(src_values[i]);
+        if (dst_values[i] == null) return false;
+    }
+    return true;
 }
 
 fn bool tensor_clone_big_float_data(TensorVal* dst, TensorVal* src) {
@@ -226,6 +277,36 @@ fn bool tensor_copy_concrete_storage(TensorVal* dest, TensorVal* source) {
         case TENSOR_DTYPE_DOUBLE:
             mem::copy(dest.data, source.data, source.byte_len);
             return true;
+        case TENSOR_DTYPE_BIG_INTEGER: {
+            void** staged = (void**)mem::malloc(source.byte_len);
+            if (staged == null) return false;
+            for (usz i = 0; i < source.element_count; i++) staged[i] = null;
+            void** source_values = (void**)source.data;
+            bool ok = true;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (source_values[i] == null) {
+                    ok = false;
+                    break;
+                }
+                staged[i] = omni_big_integer_clone(source_values[i]);
+                if (staged[i] == null) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) {
+                for (usz i = 0; i < source.element_count; i++) {
+                    if (staged[i] != null) omni_big_integer_free(staged[i]);
+                }
+                mem::free(staged);
+                return false;
+            }
+            tensor_big_integer_clear_data(dest);
+            void** dest_values = (void**)dest.data;
+            for (usz i = 0; i < source.element_count; i++) dest_values[i] = staged[i];
+            mem::free(staged);
+            return true;
+        }
         case TENSOR_DTYPE_BIG_FLOAT: {
             void** staged = (void**)mem::malloc(source.byte_len);
             if (staged == null) return false;
@@ -288,6 +369,8 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
     tensor.strides = null;
     tensor.data = null;
     tensor.is_view = false;
+    tensor.map_left_big_integer_scalar = null;
+    tensor.map_right_big_integer_scalar = null;
     tensor.map_left_big_float_scalar = null;
     tensor.map_right_big_float_scalar = null;
     tensor.contract_left_axes = null;
@@ -326,15 +409,41 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
             tensor_free_payload(tensor);
             return null;
         }
-        if (src.dtype == TENSOR_DTYPE_BIG_FLOAT) {
-            void** values = (void**)tensor.data;
-            for (usz i = 0; i < src.element_count; i++) values[i] = null;
-            if (!tensor_clone_big_float_data(tensor, src)) {
+        switch (src.dtype) {
+            case TENSOR_DTYPE_DOUBLE:
+                mem::copy(tensor.data, src.data, src.byte_len);
+            case TENSOR_DTYPE_BIG_INTEGER: {
+                void** values = (void**)tensor.data;
+                for (usz i = 0; i < src.element_count; i++) values[i] = null;
+                if (!tensor_clone_big_integer_data(tensor, src)) {
+                    tensor_free_payload(tensor);
+                    return null;
+                }
+            }
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                void** values = (void**)tensor.data;
+                for (usz i = 0; i < src.element_count; i++) values[i] = null;
+                if (!tensor_clone_big_float_data(tensor, src)) {
+                    tensor_free_payload(tensor);
+                    return null;
+                }
+            }
+        }
+    }
+    if (src.kind == TENSOR_PAYLOAD_MAP && src.dtype == TENSOR_DTYPE_BIG_INTEGER) {
+        if (src.map_left_big_integer_scalar != null) {
+            tensor.map_left_big_integer_scalar = omni_big_integer_clone(src.map_left_big_integer_scalar);
+            if (tensor.map_left_big_integer_scalar == null) {
                 tensor_free_payload(tensor);
                 return null;
             }
-        } else {
-            mem::copy(tensor.data, src.data, src.byte_len);
+        }
+        if (src.map_right_big_integer_scalar != null) {
+            tensor.map_right_big_integer_scalar = omni_big_integer_clone(src.map_right_big_integer_scalar);
+            if (tensor.map_right_big_integer_scalar == null) {
+                tensor_free_payload(tensor);
+                return null;
+            }
         }
     }
     if (src.kind == TENSOR_PAYLOAD_MAP && src.dtype == TENSOR_DTYPE_BIG_FLOAT) {

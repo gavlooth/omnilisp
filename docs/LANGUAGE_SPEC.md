@@ -432,22 +432,25 @@ not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and
 current runtime slice registers the type descriptor, constructor, print
 surface, lifetime copy/promotion paths, tensor `ref`, and introspection
 primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The explicit
-constructor surfaces are `(Tensor Double shape data-or-scalar)` and
+constructor surfaces are `(Tensor Double shape data-or-scalar)`,
+`(Tensor BigInteger shape data-or-scalar)`, and
 `(Tensor BigFloat shape data-or-scalar)`, where `shape` is an array or proper
 list of non-negative integers and `data-or-scalar` is either a scalar numeric
 fill value or an array/proper list with exactly the shape product's element
 count. The inferred-shape constructor surface is `(Tensor data)`,
-`(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Double` or
-`BigFloat`. `Double` tensors accept real numeric values that can narrow to
-finite `Double`; `BigFloat` tensors preserve arbitrary finite `BigFloat`
+`(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Double`,
+`BigInteger`, or `BigFloat`. `Double` tensors accept real numeric values that
+can narrow to finite `Double`; `BigInteger` tensors accept exact `Integer` and
+`BigInteger` values; `BigFloat` tensors preserve arbitrary finite `BigFloat`
 range. Complex values fail closed. Tensor `ref` uses `(ref tensor index-array)`.
 `(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
 return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
-`map` is the elementwise tensor operation for `Double` and `BigFloat` tensors;
-`contract` is the summed-axis operation for `Double` and `BigFloat` tensors.
+`map` is the elementwise tensor operation for `Double`, `BigInteger`, and
+`BigFloat` tensors; `contract` is the summed-axis operation for `Double`,
+`BigInteger`, and `BigFloat` tensors.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User
@@ -1336,26 +1339,27 @@ Numeric conversion policy:
 ### 7.17.1 Tensor Construction And Introspection
 
 These primitives are implemented for native `Tensor` values. The current
-concrete storage dtypes are `Double` and `BigFloat`; tensor `map` supports
-both dtypes, while tensor `contract` supports pure C3 `Double` and `BigFloat`
-kernels.
+concrete storage dtypes are `Double`, `BigInteger`, and `BigFloat`; tensor
+`map` supports all three dtypes, while tensor `contract` supports pure C3
+`Double`, `BigInteger`, and `BigFloat` kernels.
 
 | Prim | Description |
 |------|-------------|
 | `Tensor` | Construct a native tensor as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor dtype data)`, or `(Tensor dtype shape data-or-scalar)` |
 | `tensor?` | Predicate for native tensor values |
-| `dtype` | Return the tensor dtype symbol, currently `'Double` or `'BigFloat` |
+| `dtype` | Return the tensor dtype symbol, currently `'Double`, `'BigInteger`, or `'BigFloat` |
 | `shape` | Return the tensor shape as an array of dimensions |
 | `rank` | Return the tensor rank |
 | `contract` | Contract two tensors as `(contract a b axis-pairs)` or `(contract a b left-axes right-axes)` |
 | `realize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(realize expr [out])` |
 
-Tensor indexing is part of generic `ref`. `BigFloat` tensors support
-constructor/ref/flat collection conversion/concrete `realize` paths and
-tensor-dispatched `map` and `contract`. Tensor elementwise operations are part
-of generic `map`; unary tensor inputs, tensor-scalar inputs, scalar-tensor
-inputs, exact-shape tensor-tensor inputs, and right-aligned singleton-axis
-tensor-tensor broadcasting are supported for `Double` and `BigFloat` tensors.
+Tensor indexing is part of generic `ref`. `BigInteger` and `BigFloat` tensors
+support constructor/ref/flat collection conversion/concrete `realize` paths
+and tensor-dispatched `map` and `contract`. Tensor elementwise operations are
+part of generic `map`; unary tensor inputs, tensor-scalar inputs,
+scalar-tensor inputs, exact-shape tensor-tensor inputs, and right-aligned
+singleton-axis tensor-tensor broadcasting are supported for `Double`,
+`BigInteger`, and `BigFloat` tensors.
 Scalar arguments are coerced into the first tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
 incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and

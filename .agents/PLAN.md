@@ -98,6 +98,10 @@ as a new public Tensor surface:
   native `Double` tensor shape from real numeric scalars or rectangular nested
   arrays/proper lists whose leaves can narrow to finite `Double`, while
   preserving the explicit `(Tensor Double shape data-or-scalar)` constructor.
+- Native `BigInteger` Tensor storage now supports constructor, `dtype`, `ref`,
+  flat `(Array tensor)` / `(List tensor)` conversion, concrete `realize`,
+  tensor-dispatched `map`, and pure C3 `contract` kernels. BigInteger Tensor
+  data must be exact integers.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.
@@ -128,7 +132,9 @@ next scientific work should pick one narrow slice:
    `linalg/` is not yet accepted as the qualifier.
 2. Continue the scalar precision lane with explicit BigFloat precision-control
    policy or BigComplex special-function/distribution policy.
-3. Extend Boost.Math only when there is a concrete next scientific function or
+3. Continue precision Tensor work with native `BigComplex` storage/kernels only
+   when complex scientific tensor workflows become the active priority.
+4. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 
 Do not start by binding GSL. Do not implement `linalg/matmul` as canonical.
