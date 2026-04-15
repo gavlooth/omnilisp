@@ -1,5 +1,38 @@
 ## 2026-04-15
 
+- Completed `TENSOR-078` native BigFloat Tensor `map` kernels:
+  - Extended lazy tensor `map` evaluation from `Double`-only storage to native
+    `BigFloat` storage for unary, tensor-scalar, scalar-tensor,
+    exact-shape tensor-tensor, and right-aligned singleton-axis broadcast
+    cases.
+  - Added owned BigFloat scalar handles to lazy map payloads so scalar
+    operands survive function-return and closure-capture boundaries through
+    Tensor payload clone/promotion paths.
+  - Preserved fail-closed mixed tensor dtype behavior; `Double`/`BigFloat`
+    tensor-tensor `map` combinations still raise `tensor/dtype-mismatch`.
+  - `contract` remains `Double`-only pending dedicated BigFloat contraction
+    kernels.
+  - Added focused advanced collections/module regressions for BigFloat unary
+    map outside Double range, scalar-left/right map, broadcast map,
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigFloat unary preservation, scalar-left/right map,
+      broadcast map, destination realization, return-boundary survival,
+      closure-capture survival, and mixed-dtype rejection
+    - focused advanced collections/module group on host
+      -> `264 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `264 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-077` native BigFloat concrete Tensor storage:
   - Added `TENSOR_DTYPE_BIG_FLOAT` metadata, dtype printing/symbol lookup,
     owned BigFloat handle storage, element cleanup, deep clone, and concrete

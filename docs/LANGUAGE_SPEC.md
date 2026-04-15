@@ -446,8 +446,9 @@ return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
-`map` is the elementwise tensor operation; `contract` is the pure `Double`
-summed-axis operation for tensor contraction. Both may produce lazy Tensor
+`map` is the elementwise tensor operation for `Double` and `BigFloat` tensors;
+`contract` is the pure `Double` summed-axis operation for tensor contraction.
+Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User
 code should not name or depend on a separate `TensorExpr` type.
@@ -1335,8 +1336,9 @@ Numeric conversion policy:
 ### 7.17.1 Tensor Construction And Introspection
 
 These primitives are implemented for native `Tensor` values. The current
-concrete storage dtypes are `Double` and `BigFloat`; tensor `map` and
-`contract` kernels remain `Double`-only in this slice.
+concrete storage dtypes are `Double` and `BigFloat`; tensor `map` supports
+both dtypes, while tensor `contract` kernels remain `Double`-only in this
+slice.
 
 | Prim | Description |
 |------|-------------|
@@ -1349,13 +1351,14 @@ concrete storage dtypes are `Double` and `BigFloat`; tensor `map` and
 | `realize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(realize expr [out])` |
 
 Tensor indexing is part of generic `ref`. `BigFloat` tensors support
-constructor/ref/flat collection conversion/concrete `realize` paths; `map` and
-`contract` reject them with `tensor/dtype-mismatch` until BigFloat kernels are
-implemented. Tensor elementwise operations are
-part of generic `map`; unary tensor inputs, tensor-scalar inputs,
-scalar-tensor inputs, exact-shape tensor-tensor inputs, and right-aligned
-singleton-axis tensor-tensor broadcasting are supported in the current `Double`
-slice. Scalar arguments are coerced into the first tensor input's dtype and
+constructor/ref/flat collection conversion/concrete `realize` paths and
+tensor-dispatched `map`; `contract` rejects them with `tensor/dtype-mismatch`
+until BigFloat contraction kernels are implemented. Tensor elementwise
+operations are part of generic `map`; unary tensor inputs, tensor-scalar
+inputs, scalar-tensor inputs, exact-shape tensor-tensor inputs, and
+right-aligned singleton-axis tensor-tensor broadcasting are supported for
+`Double` and `BigFloat` tensors. Scalar arguments are coerced into the first
+tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
 incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
 `contract` may return lazy Tensor expression payloads under the existing

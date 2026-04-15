@@ -1,3 +1,67 @@
+## 2026-04-15 12:25 CEST - Native BigFloat Tensor Map
+- Objective attempted:
+  - Move BigFloat Tensor support beyond storage/ref/conversion into the
+    elementwise Tensor operation surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended tensor-dispatched `map` from `Double`-only evaluation to native
+    `BigFloat` evaluation for unary, tensor-scalar, scalar-tensor,
+    exact-shape tensor-tensor, and right-aligned singleton-axis broadcast
+    cases.
+  - Added owned BigFloat scalar handles to lazy map payloads and cloned them
+    during Tensor payload clone/promotion paths so BigFloat scalar operands
+    survive function-return and closure-capture boundaries.
+  - Preserved deterministic mixed tensor dtype rejection:
+    `Double`/`BigFloat` tensor-tensor `map` still raises
+    `tensor/dtype-mismatch`.
+  - Left `contract` `Double`-only; BigFloat contraction kernels remain a
+    separate implementation slice.
+  - Added focused advanced collections/module regressions for BigFloat unary
+    map outside Double range, scalar-left/right map, broadcast map,
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat unary preservation, scalar-left/right map,
+    broadcast map, destination realization, return-boundary survival,
+    closure-capture survival, and mixed-dtype rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - `(String (ref (map (lambda (x) x) (Tensor [(BigFloat "1e309")] BigFloat)) [0]))`
+    returns `"1e+309"`.
+  - BigFloat tensor-scalar and scalar-tensor map cases return BigFloat values.
+  - BigFloat tensor-tensor map supports right-aligned singleton-axis broadcast.
+  - Explicit destination `realize` works for mapped BigFloat expressions.
+  - Lazy BigFloat map expressions survive function return and closure capture.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `264 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - ASAN validation could not run: the local C3 compiler rejected the
+    sanitizer build before compilation with `Address sanitizer is only
+    supported on Linux, FreeBSD, NetBSD, Darwin and Windows.`
+- Invalidated assumptions or failed approaches worth preserving:
+  - The previous checkpoint statement that BigFloat Tensor `map` is unshipped
+    is now stale. It remains true only for BigFloat `contract` kernels and for
+    other unimplemented Tensor dtypes.
+- Unresolved issues:
+  - BigFloat Tensor `contract` kernels are not implemented.
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - ASAN still cannot run in this environment because the C3 compiler rejects
+    the sanitizer build before producing a binary.
+- Current best recommendation:
+  - Continue with BigFloat Tensor `contract` only if high-precision reductions
+    are the next priority. Otherwise resume the optional LAPACK/LAPACKE naming
+    decision for `Double` solver/decomposition conveniences.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 12:14 CEST - Native BigFloat Tensor Storage
 - Objective attempted:
   - Move beyond Double-only Tensor ingestion by adding the first

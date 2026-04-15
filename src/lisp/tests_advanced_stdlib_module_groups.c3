@@ -155,9 +155,9 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "realize BigFloat tensor copy",
         "(let (src (Tensor BigFloat [1] [(BigFloat \"7.25\")]) dst (Tensor BigFloat [1] 0)) (block (realize src dst) (String (ref dst [0]))))",
         "7.25", pass, fail);
-    test_error_contains(interp, "map BigFloat tensor rejected until kernel support",
-        "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) 1)",
-        "map: tensor dtype mismatch", pass, fail);
+    test_str_val(interp, "map BigFloat tensor scalar preserves dtype",
+        "(String (ref (map + (Tensor BigFloat [2] [(BigFloat \"1.25\") 2]) (BigFloat \"2\")) [0]))",
+        "3.25", pass, fail);
     test_eq(interp, "Array tensor conversion length",
         "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "Array tensor conversion row-major value",
@@ -305,6 +305,27 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "lazy map tensor survives closure capture",
         "(let (src (map + (Tensor Double [2] [1 2]) 3)) (let (f (lambda () (ref src [1]))) (f)))",
         5.0, pass, fail);
+    test_str_val(interp, "map BigFloat unary preserves outside Double range",
+        "(String (ref (map (lambda (x) x) (Tensor [(BigFloat \"1e309\")] BigFloat)) [0]))",
+        "1e+309", pass, fail);
+    test_str_val(interp, "map BigFloat scalar left",
+        "(String (ref (map + (BigFloat \"2\") (Tensor BigFloat [2] [(BigFloat \"1.25\") 2])) [1]))",
+        "4", pass, fail);
+    test_str_val(interp, "map BigFloat tensor broadcast",
+        "(String (ref (map + (Tensor BigFloat [2 1] [(BigFloat \"1\") (BigFloat \"2\")]) (Tensor BigFloat [1 2] [(BigFloat \"10\") (BigFloat \"20\")])) [1 1]))",
+        "22", pass, fail);
+    test_str_val(interp, "realize mapped BigFloat expression into destination",
+        "(let (dst (Tensor BigFloat [2] 0)) (block (realize (map + (Tensor BigFloat [2] [(BigFloat \"1.25\") 2]) (BigFloat \"2\")) dst) (String (ref dst [0]))))",
+        "3.25", pass, fail);
+    test_str_val(interp, "lazy BigFloat map survives function return boundary",
+        "(block (define (mk) (map + (Tensor BigFloat [1] [(BigFloat \"1.25\")]) (BigFloat \"2\"))) (String (ref (mk) [0])))",
+        "3.25", pass, fail);
+    test_str_val(interp, "lazy BigFloat map survives closure capture",
+        "(let (src (map + (Tensor BigFloat [1] [(BigFloat \"1.25\")]) (BigFloat \"2\"))) (let (f (lambda () (String (ref src [0])))) (f)))",
+        "3.25", pass, fail);
+    test_error_contains(interp, "map mixed BigFloat Double tensors rejected",
+        "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]))",
+        "map: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "map tensor broadcast shape mismatch",
         "(map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [1 2 3 4]))",
         "map: tensor shape mismatch", pass, fail);

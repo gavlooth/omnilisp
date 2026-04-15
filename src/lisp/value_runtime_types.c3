@@ -223,6 +223,8 @@ struct TensorVal {
     Value* map_right;
     double map_left_scalar;
     double map_right_scalar;
+    void* map_left_big_float_scalar;
+    void* map_right_big_float_scalar;
     bool map_is_binary;
     Value* contract_left;
     Value* contract_right;

@@ -73,8 +73,13 @@ Name collision note:
   finite `Double` while preserving the explicit shape/data constructor.
 - `TENSOR-077` is complete: `BigFloat` concrete Tensor storage supports
   constructor, `dtype`, `ref`, flat collection conversion, and concrete
-  `realize`. `map` and `contract` remain `Double`-only until dedicated
-  BigFloat tensor kernels land.
+  `realize`.
+- `TENSOR-078` is complete: tensor-dispatched `map` supports native
+  `BigFloat` tensors for unary, tensor-scalar, scalar-tensor, exact-shape
+  tensor-tensor, and right-aligned singleton-axis broadcast cases, with
+  BigFloat scalar operands cloned into lazy map payloads for boundary-safe
+  function-return and closure-capture behavior. `contract` remains
+  `Double`-only until dedicated BigFloat contraction kernels land.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

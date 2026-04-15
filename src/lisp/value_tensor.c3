@@ -62,8 +62,21 @@ fn void tensor_big_float_clear_data(TensorVal* tensor) {
     }
 }
 
+fn void tensor_map_big_float_scalar_clear(TensorVal* tensor) {
+    if (tensor == null || tensor.kind != TENSOR_PAYLOAD_MAP || tensor.dtype != TENSOR_DTYPE_BIG_FLOAT) return;
+    if (tensor.map_left_big_float_scalar != null) {
+        omni_big_float_free(tensor.map_left_big_float_scalar);
+        tensor.map_left_big_float_scalar = null;
+    }
+    if (tensor.map_right_big_float_scalar != null) {
+        omni_big_float_free(tensor.map_right_big_float_scalar);
+        tensor.map_right_big_float_scalar = null;
+    }
+}
+
 fn void tensor_free_payload(TensorVal* tensor) {
     if (tensor == null) return;
+    tensor_map_big_float_scalar_clear(tensor);
     if (tensor.shape != null) {
         mem::free(tensor.shape);
         tensor.shape = null;
@@ -275,6 +288,8 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
     tensor.strides = null;
     tensor.data = null;
     tensor.is_view = false;
+    tensor.map_left_big_float_scalar = null;
+    tensor.map_right_big_float_scalar = null;
     tensor.contract_left_axes = null;
     tensor.contract_right_axes = null;
 
@@ -320,6 +335,22 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
             }
         } else {
             mem::copy(tensor.data, src.data, src.byte_len);
+        }
+    }
+    if (src.kind == TENSOR_PAYLOAD_MAP && src.dtype == TENSOR_DTYPE_BIG_FLOAT) {
+        if (src.map_left_big_float_scalar != null) {
+            tensor.map_left_big_float_scalar = omni_big_float_clone(src.map_left_big_float_scalar);
+            if (tensor.map_left_big_float_scalar == null) {
+                tensor_free_payload(tensor);
+                return null;
+            }
+        }
+        if (src.map_right_big_float_scalar != null) {
+            tensor.map_right_big_float_scalar = omni_big_float_clone(src.map_right_big_float_scalar);
+            if (tensor.map_right_big_float_scalar == null) {
+                tensor_free_payload(tensor);
+                return null;
+            }
         }
     }
     if (src.contract_axis_count > 0) {

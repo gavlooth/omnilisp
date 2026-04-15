@@ -100,8 +100,11 @@ as a new public Tensor surface:
   preserving the explicit `(Tensor Double shape data-or-scalar)` constructor.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
-  `realize`; `map` and `contract` remain `Double`-only until dedicated
-  BigFloat tensor kernels land.
+  `realize`.
+- Tensor-dispatched `map` now supports native `BigFloat` tensors for unary,
+  tensor-scalar, scalar-tensor, exact-shape tensor-tensor, and right-aligned
+  singleton-axis broadcast cases. `contract` remains `Double`-only until
+  dedicated BigFloat contraction kernels land.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing
@@ -122,9 +125,11 @@ next scientific work should pick one narrow slice:
 1. Continue `TENSOR-090` beyond the landed `dgemm` and `dgemv` paths: decide
    LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is rejected;
    `linalg/` is not yet accepted as the qualifier.
-2. Continue the scalar precision lane with explicit BigFloat precision-control
+2. Continue the Tensor precision lane with BigFloat `contract` kernels if
+   high-precision reductions are the priority.
+3. Continue the scalar precision lane with explicit BigFloat precision-control
    policy or BigComplex special-function/distribution policy.
-3. Extend Boost.Math only when there is a concrete next scientific function or
+4. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 
 Do not start by binding GSL. Do not implement `linalg/matmul` as canonical.

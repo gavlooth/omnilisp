@@ -71,8 +71,13 @@ Implemented slices:
   `Double`.
 - `TENSOR-077`: native `BigFloat` concrete Tensor storage supports
   constructor, `dtype`, `ref`, flat `(Array tensor)` / `(List tensor)`
-  conversion, and concrete `realize`; `map` and `contract` remain
-  `Double`-only pending dedicated BigFloat tensor kernels.
+  conversion, and concrete `realize`.
+- `TENSOR-078`: tensor-dispatched `map` now supports native `BigFloat`
+  tensors for unary, tensor-scalar, scalar-tensor, exact-shape tensor-tensor,
+  and right-aligned singleton-axis broadcast cases. BigFloat lazy map payloads
+  clone scalar handles across function-return/closure-capture boundaries.
+  `contract` remains `Double`-only pending dedicated BigFloat contraction
+  kernels.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -107,11 +112,13 @@ Deferred by design:
    decisions. Do not expose a bare `solve`; `linalg/` is not yet locked as the
    base namespace. Any additional private BLAS eligibility should keep the pure
    fallback as the validation oracle.
-3. Use `TENSOR-100` for the explicit-device CUDA/cuBLAS design slice after the
+3. Continue the BigFloat Tensor kernel lane with `contract` only when
+   high-precision reductions are the active priority.
+4. Use `TENSOR-100` for the explicit-device CUDA/cuBLAS design slice after the
    BLAS contract is settled.
-4. Keep ordinary Tensor storage native/scoped; gate only genuinely opaque
+5. Keep ordinary Tensor storage native/scoped; gate only genuinely opaque
    backend resources through explicit ownership/finalizer policy.
-5. Do not add a public `TensorExpr`, `matmul`, backend-specific tensor type, or
+6. Do not add a public `TensorExpr`, `matmul`, backend-specific tensor type, or
    implicit CPU/GPU transfer surface in the first backend slice.
 
 ## Validation

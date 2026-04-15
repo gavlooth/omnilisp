@@ -805,20 +805,53 @@ fn Value* tensor_map_apply_binary(Value* func, double a, double b, double* out, 
     return null;
 }
 
-fn Value* tensor_map_source_storage(Value* source, TensorVal** out_tensor, double* out_scalar, Interp* interp) {
-    if (out_tensor == null || out_scalar == null) return tensor_runtime_raise(interp, "map: tensor source state is missing");
+fn Value* tensor_map_apply_unary_big_float(Value* func, void* a, void** out, Interp* interp) {
+    if (out == null) return tensor_runtime_raise(interp, "map: tensor result storage is missing");
+    *out = null;
+    if (a == null) return tensor_runtime_raise(interp, "map: BigFloat tensor input is missing");
+    Value* arg = make_big_float_from_owned_handle(interp, omni_big_float_clone(a), "map: failed to allocate tensor call argument");
+    if (arg == null || arg.tag == ERROR) return arg;
+    Value* arg_list = make_cons_or_error(interp, arg, make_nil(interp), "map: failed to allocate tensor call arguments");
+    if (arg_list == null || arg_list.tag == ERROR) return arg_list;
+    Value* result = jit_apply_multi_args(interp, func, arg_list, 1);
+    if (result == null) return tensor_runtime_raise(interp, "map: function returned invalid value");
+    if (result.tag == ERROR) return result;
+    *out = big_float_handle_from_value(result);
+    if (*out == null) return tensor_map_dtype_raise(interp);
+    return null;
+}
+
+fn Value* tensor_map_apply_binary_big_float(Value* func, void* a, void* b, void** out, Interp* interp) {
+    if (out == null) return tensor_runtime_raise(interp, "map: tensor result storage is missing");
+    *out = null;
+    if (a == null || b == null) return tensor_runtime_raise(interp, "map: BigFloat tensor input is missing");
+    Value* right = make_big_float_from_owned_handle(interp, omni_big_float_clone(b), "map: failed to allocate tensor call argument");
+    if (right == null || right.tag == ERROR) return right;
+    Value* tail = make_cons_or_error(interp, right, make_nil(interp), "map: failed to allocate tensor call arguments");
+    if (tail == null || tail.tag == ERROR) return tail;
+    Value* left = make_big_float_from_owned_handle(interp, omni_big_float_clone(a), "map: failed to allocate tensor call argument");
+    if (left == null || left.tag == ERROR) return left;
+    Value* arg_list = make_cons_or_error(interp, left, tail, "map: failed to allocate tensor call arguments");
+    if (arg_list == null || arg_list.tag == ERROR) return arg_list;
+
+    Value* result = jit_apply_multi_args(interp, func, arg_list, 2);
+    if (result == null) return tensor_runtime_raise(interp, "map: function returned invalid value");
+    if (result.tag == ERROR) return result;
+    *out = big_float_handle_from_value(result);
+    if (*out == null) return tensor_map_dtype_raise(interp);
+    return null;
+}
+
+fn Value* tensor_map_source_storage(Value* source, TensorVal** out_tensor, Interp* interp) {
+    if (out_tensor == null) return tensor_runtime_raise(interp, "map: tensor source state is missing");
     *out_tensor = null;
-    *out_scalar = 0.0;
     if (is_tensor(source)) {
         TensorVal* tensor = source.tensor_val;
         if (!tensor_has_valid_metadata(tensor)) return tensor_runtime_raise(interp, "map: tensor metadata is missing");
-        if (tensor.dtype != TENSOR_DTYPE_DOUBLE) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: tensor dtype mismatch", null);
-        }
         *out_tensor = tensor;
         return null;
     }
-    if (tensor_value_to_double(source, out_scalar)) return null;
+    if (tensor_value_is_real_numeric_leaf(source)) return null;
     return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
 }
 
@@ -939,17 +972,16 @@ fn Value* tensor_map_eval_into(
     Value* func,
     TensorVal* left_tensor,
     double left_scalar,
+    void* left_big_float_scalar,
     TensorVal* right_tensor,
     double right_scalar,
+    void* right_big_float_scalar,
     bool is_binary,
     TensorVal* out_tensor,
     Interp* interp
 ) {
     if (!tensor_map_callable(func)) return tensor_type_raise(interp, "map: function must be callable");
     if (!tensor_has_valid_storage(out_tensor)) return tensor_runtime_raise(interp, "map: tensor result backing storage is missing");
-    if (out_tensor.dtype != TENSOR_DTYPE_DOUBLE) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: tensor dtype mismatch", null);
-    }
     if (left_tensor == null && (!is_binary || right_tensor == null)) {
         return tensor_type_raise(interp, "map: expected at least one Tensor input");
     }
@@ -972,64 +1004,137 @@ fn Value* tensor_map_eval_into(
         }
     }
 
-    double* out = (double*)out_tensor.data;
-    double* left_data = left_tensor != null ? (double*)left_tensor.data : null;
-    double* right_data = right_tensor != null ? (double*)right_tensor.data : null;
+    switch (out_tensor.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double* out = (double*)out_tensor.data;
+            double* left_data = left_tensor != null ? (double*)left_tensor.data : null;
+            double* right_data = right_tensor != null ? (double*)right_tensor.data : null;
 
-    for (usz i = 0; i < out_tensor.element_count; i++) {
-        double result = 0.0;
-        Value* err = null;
-        if (!is_binary) {
-            usz left_offset = 0;
-            if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
-                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
-            }
-            err = tensor_map_apply_unary(func, left_data[left_offset], &result, interp);
-        } else {
-            double a = left_scalar;
-            double b = right_scalar;
-            if (left_tensor != null) {
-                usz left_offset = 0;
-                if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
-                    return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+            for (usz i = 0; i < out_tensor.element_count; i++) {
+                double result = 0.0;
+                Value* err = null;
+                if (!is_binary) {
+                    usz left_offset = 0;
+                    if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                    }
+                    err = tensor_map_apply_unary(func, left_data[left_offset], &result, interp);
+                } else {
+                    double a = left_scalar;
+                    double b = right_scalar;
+                    if (left_tensor != null) {
+                        usz left_offset = 0;
+                        if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        a = left_data[left_offset];
+                    }
+                    if (right_tensor != null) {
+                        usz right_offset = 0;
+                        if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        b = right_data[right_offset];
+                    }
+                    err = tensor_map_apply_binary(func, a, b, &result, interp);
                 }
-                a = left_data[left_offset];
+                if (err != null) return err;
+                out[i] = result;
             }
-            if (right_tensor != null) {
-                usz right_offset = 0;
-                if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
-                    return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
-                }
-                b = right_data[right_offset];
-            }
-            err = tensor_map_apply_binary(func, a, b, &result, interp);
+            return null;
         }
-        if (err != null) return err;
-        out[i] = result;
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** out = (void**)out_tensor.data;
+            void** left_data = left_tensor != null ? (void**)left_tensor.data : null;
+            void** right_data = right_tensor != null ? (void**)right_tensor.data : null;
+
+            for (usz i = 0; i < out_tensor.element_count; i++) {
+                void* result = null;
+                Value* err = null;
+                if (!is_binary) {
+                    usz left_offset = 0;
+                    if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                    }
+                    err = tensor_map_apply_unary_big_float(func, left_data[left_offset], &result, interp);
+                } else {
+                    void* a = left_big_float_scalar;
+                    void* b = right_big_float_scalar;
+                    if (left_tensor != null) {
+                        usz left_offset = 0;
+                        if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        a = left_data[left_offset];
+                    }
+                    if (right_tensor != null) {
+                        usz right_offset = 0;
+                        if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        b = right_data[right_offset];
+                    }
+                    err = tensor_map_apply_binary_big_float(func, a, b, &result, interp);
+                }
+                if (err != null) {
+                    if (result != null) omni_big_float_free(result);
+                    return err;
+                }
+                if (out[i] != null) omni_big_float_free(out[i]);
+                out[i] = result;
+            }
+            return null;
+        }
     }
-    return null;
 }
 
 fn Value* make_tensor_map_expr(
     Value* func,
     Value* left_value,
     TensorVal* left_tensor,
-    double left_scalar,
     Value* right_value,
     TensorVal* right_tensor,
-    double right_scalar,
     bool is_binary,
+    TensorDType dtype,
     usz[] result_shape,
     Interp* interp
 ) {
-    TensorVal* tensor = tensor_alloc_expression_payload_checked(TENSOR_DTYPE_DOUBLE, result_shape, TENSOR_PAYLOAD_MAP, "map: failed to allocate tensor expression");
+    TensorVal* tensor = tensor_alloc_expression_payload_checked(dtype, result_shape, TENSOR_PAYLOAD_MAP, "map: failed to allocate tensor expression");
     if (tensor == null) return raise_error(interp, "map: failed to allocate tensor expression");
     tensor.map_func = func;
     tensor.map_left = left_tensor != null ? left_value : null;
     tensor.map_right = is_binary && right_tensor != null ? right_value : null;
-    tensor.map_left_scalar = left_tensor != null ? 0.0 : left_scalar;
-    tensor.map_right_scalar = right_tensor != null ? 0.0 : right_scalar;
     tensor.map_is_binary = is_binary;
+    if (left_tensor == null) {
+        switch (dtype) {
+            case TENSOR_DTYPE_DOUBLE:
+                if (!tensor_value_to_double(left_value, &tensor.map_left_scalar)) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Double");
+                }
+            case TENSOR_DTYPE_BIG_FLOAT:
+                tensor.map_left_big_float_scalar = big_float_handle_from_value(left_value);
+                if (tensor.map_left_big_float_scalar == null) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
+                }
+        }
+    }
+    if (is_binary && right_tensor == null) {
+        switch (dtype) {
+            case TENSOR_DTYPE_DOUBLE:
+                if (!tensor_value_to_double(right_value, &tensor.map_right_scalar)) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Double");
+                }
+            case TENSOR_DTYPE_BIG_FLOAT:
+                tensor.map_right_big_float_scalar = big_float_handle_from_value(right_value);
+                if (tensor.map_right_big_float_scalar == null) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
+                }
+        }
+    }
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -1052,15 +1157,14 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* left_tensor = null;
     TensorVal* right_tensor = null;
-    double left_scalar = 0.0;
-    double right_scalar = 0.0;
-    Value* err = tensor_map_source_storage(args[1], &left_tensor, &left_scalar, interp);
+    Value* err = tensor_map_source_storage(args[1], &left_tensor, interp);
     if (err != null) return err;
 
     usz* result_shape = null;
     usz result_rank = 0;
+    TensorDType result_dtype = left_tensor != null ? left_tensor.dtype : TENSOR_DTYPE_DOUBLE;
     if (args.len == 3) {
-        err = tensor_map_source_storage(args[2], &right_tensor, &right_scalar, interp);
+        err = tensor_map_source_storage(args[2], &right_tensor, interp);
         if (err != null) return err;
         if (left_tensor == null && right_tensor == null) {
             return tensor_type_raise(interp, "map: expected at least one Tensor input");
@@ -1068,6 +1172,7 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
         if (left_tensor != null && right_tensor != null && left_tensor.dtype != right_tensor.dtype) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: tensor dtype mismatch", null);
         }
+        if (left_tensor == null && right_tensor != null) result_dtype = right_tensor.dtype;
         err = tensor_map_result_shape(left_tensor, right_tensor, true, interp, &result_shape, &result_rank);
         if (err != null) return err;
     } else if (left_tensor == null) {
@@ -1080,7 +1185,7 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
     defer if (result_shape != null) mem::free(result_shape);
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
-    return make_tensor_map_expr(func, args[1], left_tensor, left_scalar, args.len == 3 ? args[2] : null, right_tensor, right_scalar, args.len == 3, shape_slice, interp);
+    return make_tensor_map_expr(func, args[1], left_tensor, args.len == 3 ? args[2] : null, right_tensor, args.len == 3, result_dtype, shape_slice, interp);
 }
 
 fn Value* tensor_contract_result_shape(
@@ -1441,8 +1546,10 @@ fn Value* tensor_eval_expr_into(TensorVal* source, TensorVal* dest, Interp* inte
                 source.map_func,
                 left_tensor,
                 source.map_left_scalar,
+                source.map_left_big_float_scalar,
                 right_tensor,
                 source.map_right_scalar,
+                source.map_right_big_float_scalar,
                 source.map_is_binary,
                 dest,
                 interp
