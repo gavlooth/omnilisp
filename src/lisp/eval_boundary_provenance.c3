@@ -706,6 +706,7 @@ fn bool boundary_nonunique_destination_retry_allowed(Value* v) @inline {
         case DOUBLE:
         case BIG_INTEGER:
         case BIG_FLOAT:
+        case BIG_COMPLEX:
         case SYMBOL:
         case TIME_POINT:
         case TENSOR:

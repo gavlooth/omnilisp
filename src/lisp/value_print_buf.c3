@@ -229,6 +229,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             print_big_integer_value_buf(v, pb);
         case BIG_FLOAT:
             print_big_float_value_buf(v, pb);
+        case BIG_COMPLEX:
+            print_big_complex_value_buf(v, pb);
         case STRING:
             pb.append_char('"');
             pb.append_zstr((ZString)v.str_chars);

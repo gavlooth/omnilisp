@@ -212,6 +212,7 @@ fn Value* big_integer_binary_values_or_integer(Interp* interp, Value* lhs, Value
 fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
     if (lhs == null || rhs == null || out == null) return false;
     if (!is_numeric_value(lhs) || !is_numeric_value(rhs)) return false;
+    if (lhs.tag == BIG_COMPLEX || rhs.tag == BIG_COMPLEX) return false;
 
     if (lhs.tag == BIG_FLOAT || rhs.tag == BIG_FLOAT) {
         return big_float_compare_values(lhs, rhs, out);

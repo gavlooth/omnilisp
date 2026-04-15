@@ -29,6 +29,7 @@ sources=(
 cxx_helper_sources=(
   "csrc/big_integer_helpers.cpp"
   "csrc/big_float_helpers.cpp"
+  "csrc/big_complex_helpers.cpp"
   "csrc/boost_math_helpers.cpp"
 )
 

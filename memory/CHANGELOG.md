@@ -1,5 +1,28 @@
 ## 2026-04-15
 
+- Completed the first BigComplex numeric slice:
+  - Added Boost.Multiprecision decimal complex helper plumbing through
+    `csrc/big_complex_helpers.cpp` and the C3 `BIG_COMPLEX` runtime value.
+  - Registered `BigComplex` as a callable constructor/type descriptor and a
+    `Number` subtype.
+  - Added `String`, printing, equality/hash, scope-boundary copy/promotion,
+    `+`, `-`, `*`, `/`, unary `-`, `zero?`, and `abs` returning a `BigFloat`
+    magnitude.
+  - Ordered operations fail closed for complex operands: `<`, `>`, `<=`, `>=`,
+    `min`, `max`, `positive?`, and `negative?` report that complex numbers
+    are not ordered.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for constructor/type identity, `Number` identity,
+      addition, multiplication, division, `abs`, and ordering rejection
+    - focused advanced numeric float-math group on host
+      -> `145 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `145 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed exact BigFloat rounding-to-integer support:
   - Added `omni_big_float_round_to_integer_string` in
     `csrc/big_float_helpers.cpp` so `floor`, `ceiling`, `round`, and

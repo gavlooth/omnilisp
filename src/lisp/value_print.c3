@@ -24,6 +24,8 @@ fn void print_value(Value* v, SymbolTable* syms) {
             print_big_integer_value(v);
         case BIG_FLOAT:
             print_big_float_value(v);
+        case BIG_COMPLEX:
+            print_big_complex_value(v);
         case STRING:
             io::printf("\"%s\"", (ZString)v.str_chars);
         case SYMBOL:

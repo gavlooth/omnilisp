@@ -70,6 +70,8 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             return copy_big_integer_to_parent(v, interp);
         case BIG_FLOAT:
             return copy_big_float_to_parent(v, interp);
+        case BIG_COMPLEX:
+            return copy_big_complex_to_parent(v, interp);
         case DOUBLE:
             return make_double(interp, v.double_val);
         case SYMBOL:

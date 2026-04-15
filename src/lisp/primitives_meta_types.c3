@@ -120,6 +120,11 @@ fn Value* prim_free_bang(Value*[] args, Env* env, Interp* interp) {
                 omni_big_float_free(v.big_float_val);
                 v.big_float_val = null;
             }
+        case BIG_COMPLEX:
+            if (v.big_complex_val != null) {
+                omni_big_complex_free(v.big_complex_val);
+                v.big_complex_val = null;
+            }
         case HASHMAP:
             // HashMap struct is region-allocated, only entries buffer is malloc'd
             if (v.hashmap_val != null) {

@@ -359,6 +359,7 @@ parser/lexer error.
 | double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
 | BigInteger | `BIG_INTEGER` | Arbitrary-precision exact integer | `(BigInteger "9223372036854775808")` |
 | BigFloat | `BIG_FLOAT` | High-precision decimal float | `(BigFloat "1.25")` |
+| BigComplex | `BIG_COMPLEX` | High-precision decimal complex value | `(BigComplex 1 2)` |
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
@@ -409,6 +410,16 @@ through `Double`. Fixed-width `Double` remains the result type for
 non-`BigFloat` floating inputs.
 `parse-number` promotes syntactically valid floating inputs that overflow
 `Double` to `BigFloat`.
+
+`BigComplex` is the high-precision complex-number surface backed by decimal
+real and imaginary parts in the current runtime. `(BigComplex real imag)`
+constructs a complex value from non-complex numeric parts; a one-argument
+constructor creates a zero-imaginary value from a number or finite decimal
+string. BigComplex values are `Number` values, support `String`, `+`, `-`,
+`*`, `/`, unary `-`, `=`, hashing/equality, and scope-boundary copy/promotion.
+`abs` returns a `BigFloat` magnitude. Complex values are intentionally not
+ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and `negative?`
+fail closed for BigComplex operands.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print

@@ -1,3 +1,58 @@
+## 2026-04-15 10:58 CEST - BigComplex Numeric Primitive
+- Objective attempted:
+  - Continue the scientific scalar precision lane by shipping the first
+    BigComplex runtime slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/big_complex_helpers.cpp` and C3 extern wiring for decimal
+    complex construction, cloning, destruction, rendering, arithmetic,
+    equality, zero checks, and magnitude.
+  - Added the `BIG_COMPLEX` value tag, payload field, runtime lifecycle hooks,
+    scope copy/promotion paths, boundary audit classification, printing, hash
+    and equality support.
+  - Registered `BigComplex` as a callable constructor/type descriptor and a
+    subtype of `Number`.
+  - Routed arithmetic through BigComplex when either operand is complex:
+    `+`, `-`, `*`, `/`, unary `-`, `=`, `zero?`, and `abs` are supported.
+    `abs` returns `BigFloat`.
+  - Ordered numeric operations fail closed for complex operands: `<`, `>`,
+    `<=`, `>=`, `min`, `max`, `positive?`, and `negative?`.
+  - Added focused advanced numeric regressions and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for `(String (BigComplex 1 2))`, type identity, `Number`
+    identity, addition, multiplication, division, `abs`, and ordering
+    rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(String (BigComplex 1 2))` returns `"1+2i"`.
+  - `(= (type-of (BigComplex 1 2)) 'BigComplex)` and
+    `(is? (BigComplex 1 2) 'Number)` return `true`.
+  - `(String (+ (BigComplex 1 2) 3))` returns `"4+2i"`.
+  - `(String (* (BigComplex 1 2) (BigComplex 3 4)))` returns `"-5+10i"`.
+  - `(String (/ (BigComplex 1 2) (BigComplex 3 -4)))` returns
+    `"-0.2+0.4i"`.
+  - `(String (abs (BigComplex 3 4)))` returns `"5"`.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `145 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - No failed implementation path required negative memory for this slice.
+- Current best recommendation/checkpoint:
+  - BigComplex scalar arithmetic is shipped. Next scalar precision work should
+    be BigFloat precision-control policy or broader complex scientific math.
+- Unresolved issues / blockers:
+  - BigComplex transcendental functions are not implemented.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 10:20 CEST - Exact BigFloat Rounding
 - Objective attempted:
   - Continue the scalar scientific numerics lane by closing the deferred exact

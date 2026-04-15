@@ -83,12 +83,16 @@ fn bool is_big_float(Value* v) @inline {
     return v != null && v.tag == BIG_FLOAT;
 }
 
+fn bool is_big_complex(Value* v) @inline {
+    return v != null && v.tag == BIG_COMPLEX;
+}
+
 fn bool is_number(Value* v) @inline {
     return v != null && (v.tag == INT || v.tag == DOUBLE);
 }
 
 fn bool is_numeric_value(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == BIG_INTEGER || v.tag == BIG_FLOAT);
+    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == BIG_INTEGER || v.tag == BIG_FLOAT || v.tag == BIG_COMPLEX);
 }
 
 fn double to_double(Value* v) @inline {

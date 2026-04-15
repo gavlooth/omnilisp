@@ -90,6 +90,7 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("Integer"), "aot::lookup_prim(\"Integer\")");
     prim_hash_insert(st.intern("BigInteger"), "aot::lookup_prim(\"BigInteger\")");
     prim_hash_insert(st.intern("BigFloat"), "aot::lookup_prim(\"BigFloat\")");
+    prim_hash_insert(st.intern("BigComplex"), "aot::lookup_prim(\"BigComplex\")");
     prim_hash_insert(st.intern("Double"), "aot::lookup_prim(\"Double\")");
     prim_hash_insert(st.intern("String"), "aot::lookup_prim(\"String\")");
     prim_hash_insert(st.intern("Symbol"), "aot::lookup_prim(\"Symbol\")");

@@ -110,7 +110,7 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
     }
     if (arg.tag == STRING) return arg;
-    if (is_number(arg) || is_big_integer(arg) || is_big_float(arg)) return prim_number_to_string(args, env, interp);
+    if (is_number(arg) || is_big_integer(arg) || is_big_float(arg) || is_big_complex(arg)) return prim_number_to_string(args, env, interp);
     if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
     if (is_nil(arg) || is_cons(arg)) {
         return list_to_string_value(arg, interp,
@@ -196,6 +196,43 @@ fn Value* prim_ctor_big_float(Value*[] args, Env* env, Interp* interp) {
     if (arg.tag == BIG_INTEGER) return big_float_from_value(interp, arg, "BigFloat: expected numeric value or finite decimal string");
     if (arg.tag == STRING) return make_big_float_from_string(interp, arg.str_chars[:arg.str_len]);
     return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
+}
+
+fn Value* prim_ctor_big_complex(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "BigComplex: expected real part and optional imaginary part");
+
+    Value* real = args[0];
+    if (real == null || real.tag == NIL) {
+        return conversion_type_raise(interp, "BigComplex: expected real part and optional imaginary part");
+    }
+
+    if (args.len == 1) {
+        if (real.tag == BIG_COMPLEX) return real;
+        if (real.tag == STRING) {
+            char[] zero = "0";
+            return make_big_complex_from_strings(interp, real.str_chars[:real.str_len], zero);
+        }
+        if (is_numeric_value(real) && !is_big_complex(real)) {
+            return big_complex_from_value(interp, real, "BigComplex: expected numeric real part");
+        }
+        return conversion_type_raise(interp, "BigComplex: expected numeric real part");
+    }
+
+    Value* imag = args[1];
+    if (imag == null || imag.tag == NIL) {
+        return conversion_type_raise(interp, "BigComplex: expected numeric imaginary part");
+    }
+
+    if (real.tag == STRING && imag.tag == STRING) {
+        return make_big_complex_from_strings(
+            interp,
+            real.str_chars[:real.str_len],
+            imag.str_chars[:imag.str_len]);
+    }
+    if (is_numeric_value(real) && !is_big_complex(real) && is_numeric_value(imag) && !is_big_complex(imag)) {
+        return big_complex_from_parts(interp, real, imag, "BigComplex: expected numeric real and imaginary parts");
+    }
+    return conversion_type_raise(interp, "BigComplex: expected numeric real and imaginary parts");
 }
 
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
@@ -289,12 +326,15 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]))) return conversion_type_raise(interp, "String: expected number");
+    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]) && !is_big_complex(args[0]))) return conversion_type_raise(interp, "String: expected number");
     if (is_big_integer(args[0])) {
         return big_integer_to_string_value(args[0], interp, "String: failed to render BigInteger");
     }
     if (is_big_float(args[0])) {
         return big_float_to_string_value(args[0], interp, "String: failed to render BigFloat");
+    }
+    if (is_big_complex(args[0])) {
+        return big_complex_to_string_value(args[0], interp, "String: failed to render BigComplex");
     }
     char[64] buf;
     if (is_double(args[0])) {
@@ -312,6 +352,7 @@ fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Integer: expected number");
+    if (is_big_complex(args[0])) return conversion_type_raise(interp, "Integer: expected real number");
     if (is_big_integer(args[0])) return prim_ctor_int(args, env, interp);
     return conversion_int_from_double_or_raise(interp, to_double(args[0]), "Integer: expected finite number in Integer range");
 }

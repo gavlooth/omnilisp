@@ -202,6 +202,33 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigFloat max",
         "(String (max (BigFloat \"1.25\") 2))",
         "2", pass, fail);
+    test_str_val(interp, "BigComplex constructor stringifies parts",
+        "(String (BigComplex 1 2))",
+        "1+2i", pass, fail);
+    test_truthy(interp, "BigComplex type-of",
+        "(= (type-of (BigComplex 1 2)) 'BigComplex)", pass, fail);
+    test_truthy(interp, "BigComplex is Number",
+        "(is? (BigComplex 1 2) 'Number)", pass, fail);
+    test_str_val(interp, "BigComplex scalar addition",
+        "(String (+ (BigComplex 1 2) 3))",
+        "4+2i", pass, fail);
+    test_str_val(interp, "BigComplex multiplication",
+        "(String (* (BigComplex 1 2) (BigComplex 3 4)))",
+        "-5+10i", pass, fail);
+    test_str_val(interp, "BigComplex division",
+        "(String (/ (BigComplex 1 2) (BigComplex 3 -4)))",
+        "-0.2+0.4i", pass, fail);
+    test_str_val(interp, "BigComplex abs returns BigFloat magnitude",
+        "(String (abs (BigComplex 3 4)))",
+        "5", pass, fail);
+    test_truthy(interp, "BigComplex equality",
+        "(= (BigComplex 1 2) (BigComplex 1 2))", pass, fail);
+    test_truthy(interp, "BigComplex zero predicate",
+        "(zero? (BigComplex 0 0))", pass, fail);
+    test_error_contains(interp, "BigComplex ordering rejected",
+        "(< (BigComplex 1 2) (BigComplex 2 3))", "complex numbers are not ordered", pass, fail);
+    test_error_contains(interp, "BigComplex division by zero",
+        "(/ (BigComplex 1 2) (BigComplex 0 0))", "/: division by zero", pass, fail);
     test_truthy(interp, "parse-number double overflow type is BigFloat",
         "(= (type-of (parse-number \"1e309\")) 'BigFloat)", pass, fail);
     test_str_val(interp, "parse-number double overflow value",

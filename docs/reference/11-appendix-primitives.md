@@ -197,12 +197,13 @@ that same runtime value.
 | `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
 | `Double` | 1 | Canonical double constructor/coercion surface |
 | `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
+| `BigComplex` | 1-2 | High-precision complex constructor from a real part and optional imaginary part |
 | `Symbol` | 1 | Canonical symbol constructor/coercion surface |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Nil`, `Void`, `Closure`,
-`List`, `Array`, `Dictionary`, `Dict`, `Set`, `Iterator`, `Coroutine`,
-`TimePoint`, and `Tensor`.
+`Integer`, `BigInteger`, `BigFloat`, `BigComplex`, `Double`, `String`,
+`Symbol`, `Boolean`, `Nil`, `Void`, `Closure`, `List`, `Array`, `Dictionary`,
+`Dict`, `Set`, `Iterator`, `Coroutine`, `TimePoint`, and `Tensor`.
 
 **Math:**
 
@@ -238,6 +239,10 @@ logarithmic, power/root, gamma/error-function, and standard-normal helpers.
 values, narrowing to `Integer` when representable and promoting to `BigInteger`
 otherwise. Huge integer materializations fail closed.
 Non-`BigFloat` floating inputs continue to return `Double`.
+`BigComplex` participates in `+`, `-`, `*`, `/`, unary `-`, `=`, and `abs`;
+`abs` returns a `BigFloat` magnitude. Ordered comparisons and ordered helpers
+such as `min`, `max`, `positive?`, and `negative?` fail closed for complex
+operands.
 
 **Bitwise:**
 

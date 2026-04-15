@@ -50,6 +50,7 @@ enum PromoteEscapeRoute : char {
     PE_ROUTE_SCALAR,
     PE_ROUTE_BIG_INTEGER,
     PE_ROUTE_BIG_FLOAT,
+    PE_ROUTE_BIG_COMPLEX,
     PE_ROUTE_STRING_OR_ERROR,
     PE_ROUTE_CONS,
     PE_ROUTE_CLOSURE,
@@ -76,6 +77,8 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
             return PE_ROUTE_BIG_INTEGER;
         case BIG_FLOAT:
             return PE_ROUTE_BIG_FLOAT;
+        case BIG_COMPLEX:
+            return PE_ROUTE_BIG_COMPLEX;
         case STRING:
         case ERROR:
             return PE_ROUTE_STRING_OR_ERROR;
@@ -127,6 +130,8 @@ fn Value* promote_to_escape_by_route(
             return promote_escape_big_integer(v, interp, ctx);
         case PE_ROUTE_BIG_FLOAT:
             return promote_escape_big_float(v, interp, ctx);
+        case PE_ROUTE_BIG_COMPLEX:
+            return promote_escape_big_complex(v, interp, ctx);
         case PE_ROUTE_STRING_OR_ERROR:
             return promote_escape_string_or_error(v, interp, ctx);
         case PE_ROUTE_CONS:

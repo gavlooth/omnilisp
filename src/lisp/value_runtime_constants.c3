@@ -61,6 +61,7 @@ enum ValueTag : char {
     DOUBLE,         // Floating-point number
     BIG_INTEGER,    // Arbitrary-precision exact integer
     BIG_FLOAT,      // Arbitrary-precision decimal float
+    BIG_COMPLEX,    // Arbitrary-precision complex decimal float pair
     HASHMAP,        // Hash map (mutable dictionary)
     SET,            // Hash map payload with set semantics
     FFI_HANDLE,     // FFI library handle (dlopen result)

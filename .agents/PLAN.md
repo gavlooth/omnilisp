@@ -58,8 +58,13 @@ Minimal scalar-first targets:
   scalar math for trig, inverse trig, exponential/logarithmic, power/root,
   gamma/error-function, standard-normal helpers, and exact BigFloat
   `floor`/`ceiling`/`round`/`truncate` to `Integer` or `BigInteger` are
-  implemented. Precision-control APIs and `BigComplex` remain separate
-  follow-ups.
+  implemented. Precision-control APIs remain a separate follow-up.
+- `BigComplex` is now the first high-precision complex scalar slice:
+  constructor, printing/String conversion, `Number` identity, `+`, `-`, `*`,
+  `/`, unary `-`, equality/hash support, `zero?`, `abs` to `BigFloat`,
+  scope-boundary cloning/promotion, and fail-closed ordered operations are
+  implemented. Broader complex transcendental math remains a separate
+  follow-up.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
   `stats/normal-quantile` are now validated Boost.Math wrapper slices: C++ shim
   status codes, finite-input/range/domain error mapping, primitive
@@ -102,7 +107,7 @@ next scientific work should pick one narrow slice:
    path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
    rejected; `linalg/` is not yet accepted as the qualifier.
 2. Continue the scalar precision lane with explicit BigFloat precision-control
-   policy or `BigComplex`.
+   policy or broader BigComplex scientific math.
 3. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 
