@@ -300,6 +300,9 @@ fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "floor", "1 argument", args.len);
+    if (is_big_float(args[0])) {
+        return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_FLOOR, "floor: BigFloat integer result out of supported range");
+    }
     double x = 0.0;
     if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "floor", 0, "number representable as Double", args[0]);
     return math_int_from_double_or_raise(interp, c_floor(x), "floor");
@@ -307,6 +310,9 @@ fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "ceiling", "1 argument", args.len);
+    if (is_big_float(args[0])) {
+        return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_CEILING, "ceiling: BigFloat integer result out of supported range");
+    }
     double x = 0.0;
     if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "ceiling", 0, "number representable as Double", args[0]);
     return math_int_from_double_or_raise(interp, c_ceil(x), "ceiling");
@@ -314,6 +320,9 @@ fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "round", "1 argument", args.len);
+    if (is_big_float(args[0])) {
+        return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_ROUND, "round: BigFloat integer result out of supported range");
+    }
     double x = 0.0;
     if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "round", 0, "number representable as Double", args[0]);
     return math_int_from_double_or_raise(interp, c_round(x), "round");
@@ -321,6 +330,9 @@ fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "truncate", "1 argument", args.len);
+    if (is_big_float(args[0])) {
+        return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_TRUNCATE, "truncate: BigFloat integer result out of supported range");
+    }
     double x = 0.0;
     if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "truncate", 0, "number representable as Double", args[0]);
     return math_int_from_double_or_raise(interp, x, "truncate");

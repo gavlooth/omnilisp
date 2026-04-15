@@ -16,3 +16,4 @@ extern fn void* omni_big_float_neg(void* value) @extern("omni_big_float_neg");
 extern fn void* omni_big_float_abs(void* value) @extern("omni_big_float_abs");
 extern fn void* omni_big_float_unary_math(void* value, int op) @extern("omni_big_float_unary_math");
 extern fn void* omni_big_float_binary_math(void* lhs, void* rhs, int op) @extern("omni_big_float_binary_math");
+extern fn char* omni_big_float_round_to_integer_string(void* value, int op, usz* out_len) @extern("omni_big_float_round_to_integer_string");

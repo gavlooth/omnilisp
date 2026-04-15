@@ -7,10 +7,12 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <ios>
 #include <limits>
 #include <string>
 
 using boost::multiprecision::cpp_dec_float_50;
+constexpr long BIG_FLOAT_MAX_INTEGER_DIGITS = 315653;
 
 namespace {
 
@@ -90,6 +92,23 @@ cpp_dec_float_50 apply_binary_math(const cpp_dec_float_50& lhs, const cpp_dec_fl
     switch (op) {
         case 1: return pow(lhs, rhs);
         case 2: return atan2(lhs, rhs);
+        default:
+            ok = false;
+            return 0;
+    }
+}
+
+cpp_dec_float_50 apply_integer_rounding(const cpp_dec_float_50& value, int op, bool& ok) {
+    ok = true;
+    switch (op) {
+        case 1: return floor(value);
+        case 2: return ceil(value);
+        case 3:
+            if (value < 0) return ceil(value - cpp_dec_float_50("0.5"));
+            return floor(value + cpp_dec_float_50("0.5"));
+        case 4:
+            if (value < 0) return ceil(value);
+            return floor(value);
         default:
             ok = false;
             return 0;
@@ -262,6 +281,27 @@ void* omni_big_float_binary_math(const void* lhs, const void* rhs, int op) {
         cpp_dec_float_50 result = apply_binary_math(*left, *right, op, ok);
         if (!ok || !boost::math::isfinite(result)) return nullptr;
         return new cpp_dec_float_50(result);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+char* omni_big_float_round_to_integer_string(const void* value, int op, size_t* out_len) {
+    try {
+        const cpp_dec_float_50* src = as_big_float_const(value);
+        if (src == nullptr || !boost::math::isfinite(*src)) return nullptr;
+
+        if (*src != 0) {
+            cpp_dec_float_50 magnitude = *src < 0 ? -*src : *src;
+            cpp_dec_float_50 digits = floor(log10(magnitude)) + 1;
+            if (digits > BIG_FLOAT_MAX_INTEGER_DIGITS) return nullptr;
+        }
+
+        bool ok = false;
+        cpp_dec_float_50 rounded = apply_integer_rounding(*src, op, ok);
+        if (!ok || !boost::math::isfinite(rounded)) return nullptr;
+
+        return copy_string(rounded.str(0, std::ios_base::fixed), out_len);
     } catch (...) {
         return nullptr;
     }

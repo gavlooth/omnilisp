@@ -1,3 +1,56 @@
+## 2026-04-15 10:20 CEST - Exact BigFloat Rounding
+- Objective attempted:
+  - Continue the scalar scientific numerics lane by closing the deferred exact
+    BigFloat rounding-to-integer policy.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added a C++ BigFloat rounding helper that performs `floor`, `ceiling`,
+    `round`, and `truncate` directly on `cpp_dec_float_50` and renders the
+    rounded integer as fixed decimal text.
+  - Added the C3 extern and runtime value helper to parse that decimal text
+    through the BigInteger constructor, then narrow to `Integer` when the
+    result fits `i64`.
+  - Routed the rounding primitives through the exact BigFloat path before the
+    existing Double-based path.
+  - Added advanced numeric regressions for small narrowing, large BigInteger
+    promotion, negative rounding semantics, and huge-result fail-closed
+    behavior.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for large BigFloat floor promotion, result type, negative
+    `round`, negative `truncate`, and over-cap failure
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Large BigFloat floor now returns string `"9223372036854775808"` and type
+    `BigInteger` instead of saturating or narrowing through `Double`.
+  - `(round (BigFloat "-3.5"))` returns `-4`; `(truncate (BigFloat "-3.9"))`
+    returns `-3`.
+  - `(floor (BigFloat "1e400000"))` fails closed with
+    `floor: BigFloat integer result out of supported range`.
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `134 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not convert rounded `cpp_dec_float_50` directly to `cpp_int` for this
+    path. Local Boost conversion saturated near fixed-width limits; fixed
+    decimal rendering plus BigInteger parsing is the validated path.
+  - The earlier report statement that BigFloat rounding still used the
+    Double-to-Integer path is superseded by this implementation.
+- Current best recommendation/checkpoint:
+  - Exact BigFloat integer rounding is shipped. Next scalar precision work is
+    now precision-control policy or `BigComplex`.
+- Unresolved issues / blockers:
+  - BigFloat precision remains fixed at `cpp_dec_float_50`.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 08:48 CEST - BigFloat Scalar Math And Agent Rule
 - Objective attempted:
   - Continue Omni scientific numerics non-conservatively by closing the

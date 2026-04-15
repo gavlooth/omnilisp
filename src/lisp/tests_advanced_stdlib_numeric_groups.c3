@@ -366,6 +366,22 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);
     test_eq(interp, "truncate 3.9", "(truncate 3.9)", 3, pass, fail);
     test_eq(interp, "truncate -3.9", "(truncate -3.9)", -3, pass, fail);
+    test_eq(interp, "BigFloat floor narrows to Integer",
+        "(floor (BigFloat \"3.7\"))", 3, pass, fail);
+    test_eq(interp, "BigFloat ceiling narrows to Integer",
+        "(ceiling (BigFloat \"3.2\"))", 4, pass, fail);
+    test_eq(interp, "BigFloat round negative half away from zero",
+        "(round (BigFloat \"-3.5\"))", -4, pass, fail);
+    test_eq(interp, "BigFloat truncate negative toward zero",
+        "(truncate (BigFloat \"-3.9\"))", -3, pass, fail);
+    test_str_val(interp, "BigFloat floor promotes large integer result",
+        "(String (floor (BigFloat \"9223372036854775808.9\")))",
+        "9223372036854775808", pass, fail);
+    test_truthy(interp, "BigFloat floor large result is BigInteger",
+        "(= (type-of (floor (BigFloat \"9223372036854775808.9\"))) 'BigInteger)", pass, fail);
+    test_error_contains(interp, "BigFloat floor rejects huge integer allocation",
+        "(floor (BigFloat \"1e400000\"))",
+        "floor: BigFloat integer result out of supported range", pass, fail);
     test_error_contains(interp, "truncate overflow raises",
         "(truncate (pow 10.0 400.0))", "out of Integer range", pass, fail);
     test_eq(interp, "abs -5", "(abs -5)", 5, pass, fail);

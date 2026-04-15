@@ -29,6 +29,11 @@ const int BIG_FLOAT_MATH_NORMAL_QUANTILE = 17;
 const int BIG_FLOAT_MATH_POW = 1;
 const int BIG_FLOAT_MATH_ATAN2 = 2;
 
+const int BIG_FLOAT_ROUND_FLOOR = 1;
+const int BIG_FLOAT_ROUND_CEILING = 2;
+const int BIG_FLOAT_ROUND_ROUND = 3;
+const int BIG_FLOAT_ROUND_TRUNCATE = 4;
+
 fn Value* make_big_float_from_owned_handle(Interp* interp, void* handle, char[] message) {
     if (handle == null) return raise_error(interp, message);
     Value* v = interp.alloc_value();
@@ -247,6 +252,26 @@ fn Value* big_float_binary_math_values(Interp* interp, Value* lhs, Value* rhs, i
 
     void* result = omni_big_float_binary_math(left, right, op);
     return make_big_float_from_owned_handle(interp, result, message);
+}
+
+fn Value* integer_or_big_integer_from_decimal_string(Interp* interp, char[] value, char[] message) {
+    Value* big = make_big_integer_from_string(interp, value);
+    if (big == null || big.tag != BIG_INTEGER) return raise_error(interp, message);
+
+    long narrowed = 0;
+    if (big_integer_try_to_i64(big, &narrowed)) return make_int(interp, narrowed);
+    return big;
+}
+
+fn Value* big_float_round_to_integer_value(Interp* interp, Value* v, int op, char[] message) {
+    if (v == null || v.tag != BIG_FLOAT || v.big_float_val == null) return raise_error(interp, message);
+
+    usz len = 0;
+    char* rendered = omni_big_float_round_to_integer_string(v.big_float_val, op, &len);
+    if (rendered == null) return raise_error(interp, message);
+    Value* result = integer_or_big_integer_from_decimal_string(interp, rendered[:len], message);
+    omni_big_float_string_free(rendered);
+    return result;
 }
 
 fn bool big_float_compare_values(Value* lhs, Value* rhs, int* out) {

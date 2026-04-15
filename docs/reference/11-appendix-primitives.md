@@ -219,6 +219,10 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `log` | 1 | Natural log |
 | `log10` | 1 | Log base 10 |
 | `pow` | 2 | Power |
+| `floor` | 1 | Floor; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `ceiling` | 1 | Ceiling; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `round` | 1 | Round; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `truncate` | 1 | Truncate; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `math/lgamma` | 1 | Natural log of absolute gamma value |
 | `math/erf` | 1 | Error function |
 | `math/erfc` | 1 | Complementary error function |
@@ -230,6 +234,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 Core scalar math functions return `BigFloat` when a `BigFloat` operand
 participates for trigonometric, inverse trigonometric, exponential,
 logarithmic, power/root, gamma/error-function, and standard-normal helpers.
+`floor`, `ceiling`, `round`, and `truncate` instead return exact integer
+values, narrowing to `Integer` when representable and promoting to `BigInteger`
+otherwise. Huge integer materializations fail closed.
 Non-`BigFloat` floating inputs continue to return `Double`.
 
 **Bitwise:**

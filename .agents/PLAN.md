@@ -54,11 +54,12 @@ Minimal scalar-first targets:
   high-precision decimal slice: constructor, printing/String conversion,
   `Number` identity, `Double`/`Integer` narrowing, `+`, `-`, `*`, `/`,
   comparisons, `abs`, `min`, `max`, equality/hash support, scope-boundary
-  cloning, `parse-number` floating overflow promotion, and BigFloat-preserving
+  cloning, `parse-number` floating overflow promotion, BigFloat-preserving
   scalar math for trig, inverse trig, exponential/logarithmic, power/root,
-  gamma/error-function, and standard-normal helpers are implemented.
-  Precision-control APIs, exact BigFloat rounding-to-integer policy, and
-  `BigComplex` remain separate follow-ups.
+  gamma/error-function, standard-normal helpers, and exact BigFloat
+  `floor`/`ceiling`/`round`/`truncate` to `Integer` or `BigInteger` are
+  implemented. Precision-control APIs and `BigComplex` remain separate
+  follow-ups.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
   `stats/normal-quantile` are now validated Boost.Math wrapper slices: C++ shim
   status codes, finite-input/range/domain error mapping, primitive
@@ -101,7 +102,7 @@ next scientific work should pick one narrow slice:
    path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
    rejected; `linalg/` is not yet accepted as the qualifier.
 2. Continue the scalar precision lane with explicit BigFloat precision-control
-   policy, exact BigFloat rounding-to-integer policy, or `BigComplex`.
+   policy or `BigComplex`.
 3. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 

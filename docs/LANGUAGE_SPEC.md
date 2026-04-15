@@ -402,8 +402,11 @@ values, support `String` and finite `Double` conversion, participate in `+`,
 Core scalar math primitives preserve `BigFloat` results when a `BigFloat`
 operand participates for trigonometric, inverse trigonometric, exponential,
 logarithmic, power/root, gamma/error-function, and standard-normal distribution
-helpers. Fixed-width `Double` remains the result type for non-`BigFloat`
-floating inputs.
+helpers. `floor`, `ceiling`, `round`, and `truncate` round `BigFloat` exactly
+to `Integer` or `BigInteger` when the integer result is inside the supported
+allocation cap; huge integer materializations fail closed instead of narrowing
+through `Double`. Fixed-width `Double` remains the result type for
+non-`BigFloat` floating inputs.
 `parse-number` promotes syntactically valid floating inputs that overflow
 `Double` to `BigFloat`.
 
@@ -1245,7 +1248,7 @@ Set order contract:
 | `math/lgamma` | Natural log of absolute gamma value; domain/range failures raise errors |
 | `math/erf`, `math/erfc` | Error function and complementary error function |
 | `stats/normal-cdf`, `stats/normal-quantile` | Standard normal CDF and inverse CDF |
-| `floor`, `ceiling`, `round`, `truncate` | Rounding |
+| `floor`, `ceiling`, `round`, `truncate` | Rounding; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `abs` | Absolute value; exact `Integer` overflow promotes to `BigInteger`; supports `BigFloat` |
 | `min`, `max` | Binary min/max; supports exact `BigInteger` and `BigFloat` comparison |
 | `gcd`, `lcm` | Number theory; supports exact `Integer`/`BigInteger` operands |
@@ -1255,6 +1258,9 @@ When a `BigFloat` operand participates, `sin`, `cos`, `tan`, `asin`, `acos`,
 `math/erf`, `math/erfc`, `stats/normal-cdf`, and `stats/normal-quantile`
 return `BigFloat` results. `stats/normal-quantile` keeps its probability-domain
 contract and raises when the input is not strictly between `0` and `1`.
+`floor`, `ceiling`, `round`, and `truncate` are the exception to the BigFloat
+result rule: they return exact integer values, narrowing to `Integer` when
+representable and promoting to `BigInteger` otherwise.
 
 ### 7.15 Bitwise Operations (6)
 
