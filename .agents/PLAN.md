@@ -89,6 +89,8 @@ as a new public Tensor surface:
   rank-2 contract layouts behind `realize` when dtype, rank, layout, device,
   and aliasing match the backend contract: `[1 0]`, `[0 0]`, `[1 1]`, and
   `[0 1]`.
+- BLAS `Double` GEMV now optimizes contiguous row-major rank-2/rank-1 and
+  rank-1/rank-2 single-axis contract layouts behind the same backend boundary.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing
@@ -106,9 +108,9 @@ as a new public Tensor surface:
 Use the integrated Tensor plan as source of truth before changing code. The
 next scientific work should pick one narrow slice:
 
-1. Continue `TENSOR-090` beyond the landed transpose-capable rank-2 `dgemm`
-   path: decide LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is
-   rejected; `linalg/` is not yet accepted as the qualifier.
+1. Continue `TENSOR-090` beyond the landed `dgemm` and `dgemv` paths: decide
+   LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is rejected;
+   `linalg/` is not yet accepted as the qualifier.
 2. Continue the scalar precision lane with explicit BigFloat precision-control
    policy or BigComplex special-function/distribution policy.
 3. Extend Boost.Math only when there is a concrete next scientific function or

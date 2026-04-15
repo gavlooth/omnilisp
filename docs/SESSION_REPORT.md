@@ -1,3 +1,54 @@
+## 2026-04-15 11:28 CEST - Tensor BLAS `dgemv` Contracts
+- Objective attempted:
+  - Continue `TENSOR-090` by expanding private BLAS acceleration from
+    rank-2/rank-2 `dgemm` contracts to rank-2/rank-1 and rank-1/rank-2
+    `dgemv` contracts without adding a public backend-specific surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_blas_helpers.c` to resolve `cblas_dgemv`, expose a
+    `dgemv` availability probe and call counter, and call the BLAS routine with
+    row-major transpose flags.
+  - Added C3 externs for the new private Tensor BLAS `dgemv` backend functions.
+  - Added Tensor evaluator eligibility for contiguous row-major matrix-vector,
+    transposed matrix-vector, vector-matrix, and vector-transposed-matrix
+    single-axis `Double` contractions.
+  - Added path-sensitive advanced collections/module regressions that require
+    `dgemv` call-count movement when the symbol is available and otherwise
+    validate fallback semantics.
+  - Updated `.agents/PLAN.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for matrix-vector, transposed matrix-vector, vector-matrix,
+    and vector-transposed-matrix contract results
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - `(contract (Tensor Double [2 3] ...) (Tensor Double [3] ...) [1 0])`
+    returns the expected matrix-vector result; direct smoke checked `320.0`.
+  - Transposed matrix-vector direct smoke checked `150.0`.
+  - Vector-matrix direct smoke checked `280.0`.
+  - Vector-transposed-matrix direct smoke checked `320.0`.
+  - Focused advanced collections/module group passed on host:
+    `226 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `226 passed, 0 failed`.
+- Current best recommendation:
+  - `TENSOR-090` now has private BLAS `dgemm` and `dgemv` coverage behind
+    canonical `contract`/`realize`. The next backend step should be a
+    LAPACK/LAPACKE solver/decomposition naming decision before exposing solver
+    conveniences; do not add bare `solve`.
+- Unresolved issues:
+  - LAPACK/LAPACKE public qualifier is still undecided.
+  - CUDA/cuBLAS remains a future explicit-device design slice.
+- Next actions:
+  - Decide the solver/decomposition namespace and first LAPACK primitive, or
+    continue scalar precision policy work.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:21 CEST - BigComplex Component Access
 - Objective attempted:
   - Continue the scientific scalar lane by making BigComplex analytically

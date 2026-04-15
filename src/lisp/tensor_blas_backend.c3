@@ -1,7 +1,9 @@
 module lisp;
 
 extern fn int omni_tensor_backend_blas_available() @extern("omni_tensor_backend_blas_available");
+extern fn int omni_tensor_backend_blas_dgemv_available() @extern("omni_tensor_backend_blas_dgemv_available");
 extern fn long omni_tensor_backend_blas_dgemm_call_count() @extern("omni_tensor_backend_blas_dgemm_call_count");
+extern fn long omni_tensor_backend_blas_dgemv_call_count() @extern("omni_tensor_backend_blas_dgemv_call_count");
 
 extern fn int omni_tensor_backend_blas_dgemm(
     usz m,
@@ -16,3 +18,13 @@ extern fn int omni_tensor_backend_blas_dgemm(
     double* c,
     usz ldc
 ) @extern("omni_tensor_backend_blas_dgemm");
+
+extern fn int omni_tensor_backend_blas_dgemv(
+    usz m,
+    usz n,
+    int trans_a,
+    double* a,
+    usz lda,
+    double* x,
+    double* y
+) @extern("omni_tensor_backend_blas_dgemv");

@@ -144,7 +144,8 @@ Name collision note:
   transport format was already canonical.
 - Current next slices are optional backend follow-ons: the remaining
   `TENSOR-090` BLAS/LAPACK work beyond the transpose-capable rank-2 `dgemm`
-  fast path, and `TENSOR-100` explicit CUDA/cuBLAS design.
+  and rank-2/rank-1 `dgemv` fast paths, and `TENSOR-100` explicit
+  CUDA/cuBLAS design.
 - `TENSOR-090A` is complete: dense rank-2 `Double` contraction equivalent to
   `(contract a b [1 0])` now has a direct native BLAS `dgemm` fast path at the
   Tensor evaluation boundary. The fast path is optional at runtime, uses the
@@ -156,6 +157,11 @@ Name collision note:
   transpose flags and covers all contiguous row-major rank-2 single-axis
   `Double` contractions, including `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
   while still using the pure C3 contraction kernel as the semantic fallback.
+- `TENSOR-090C` is complete: the same private BLAS backend now resolves
+  `cblas_dgemv` and covers contiguous row-major rank-2/rank-1 and rank-1/rank-2
+  single-axis `Double` contractions, including transposed matrix-vector and
+  vector-matrix layouts. Unsupported rank/layout/symbol cases still fall back
+  to the pure C3 contraction kernel.
 - Solver naming checkpoint: future LAPACK/LAPACKE solve/decomposition
   conveniences must not expose a bare `solve`; `linalg/` is not yet locked as
   the base namespace. Backend-module labels such as `tensor/lapack` describe
@@ -648,6 +654,8 @@ Module layering:
   - Status: implemented 2026-04-14 as `TENSOR-090A` through a private
     `dlopen`/`dlsym` C shim for `cblas_dgemm`, with path-sensitive regression
     coverage when a compatible BLAS library is available.
+  - Extended 2026-04-15 as `TENSOR-090C` to rank-2/rank-1 and rank-1/rank-2
+    `cblas_dgemv` contraction layouts through the same private backend seam.
 - cuBLAS first target:
   - require explicit CUDA device placement before invoking cuBLAS,
   - keep host tensors on CPU fallback unless explicitly moved,

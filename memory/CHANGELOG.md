@@ -1,5 +1,26 @@
 ## 2026-04-15
 
+- Completed `TENSOR-090C` BLAS `dgemv` contraction acceleration:
+  - Extended the private Tensor BLAS C shim to resolve `cblas_dgemv`, expose
+    availability and call-count probes, and call `dgemv` without adding a
+    public backend-specific Tensor surface.
+  - Added Tensor evaluator eligibility for contiguous row-major rank-2/rank-1
+    and rank-1/rank-2 single-axis `Double` contracts, including transposed
+    matrix-vector and vector-matrix layouts.
+  - Unsupported rank/layout/symbol cases continue through the pure C3
+    contraction fallback.
+  - Updated Tensor plan/status artifacts and focused path-sensitive advanced
+    collection/module regressions.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for matrix-vector, transposed matrix-vector,
+      vector-matrix, and vector-transposed-matrix contraction results
+    - focused advanced collections/module group on host
+      -> `226 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `226 passed, 0 failed`
+
 - Completed BigComplex component access:
   - Added C++ helper exports for BigComplex real component extraction,
     imaginary component extraction, and conjugation.

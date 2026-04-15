@@ -73,6 +73,9 @@ Implemented slices:
 - `TENSOR-090B`: the optional native BLAS `dgemm` fast path now covers every
   contiguous row-major rank-2 single-axis contract layout by passing transpose
   flags for `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
+- `TENSOR-090C`: the optional native BLAS `dgemv` fast path now covers
+  contiguous row-major rank-2/rank-1 and rank-1/rank-2 single-axis `Double`
+  contracts, including transposed matrix-vector and vector-matrix layouts.
 - `TENSOR-110`: cleanup surface closure; `examples/scicomp_demo.omni` uses
   canonical `Tensor`, `map`, `contract`, and `realize`, with lazy
   expression-return and closure-capture coverage added.
@@ -83,16 +86,16 @@ Deferred by design:
 - No backend-specific tensor types participate in core `map` dispatch; backend
   behavior is resolved at realization and execution layers.
 - BLAS/LAPACK/CUDA/cuBLAS acceleration is optional backend work behind the
-  pure `Tensor` fallback; the first BLAS `dgemm` slices are implemented for
-  dense rank-2 single-axis `Double` contractions only.
+  pure `Tensor` fallback; the current BLAS slices cover dense rank-2/rank-2
+  `dgemm` and rank-2/rank-1 or rank-1/rank-2 `dgemv` `Double` contractions.
 
 ## Next Steps
 
 1. Keep the pure C3 fallback as the validation oracle.
 2. Continue `TENSOR-090` with LAPACK/LAPACKE solver/decomposition surface
    decisions. Do not expose a bare `solve`; `linalg/` is not yet locked as the
-   base namespace. Additional private BLAS eligibility such as rank-2/rank-1
-   `gemv` should keep the pure fallback as the validation oracle.
+   base namespace. Any additional private BLAS eligibility should keep the pure
+   fallback as the validation oracle.
 3. Use `TENSOR-100` for the explicit-device CUDA/cuBLAS design slice after the
    BLAS contract is settled.
 4. Keep ordinary Tensor storage native/scoped; gate only genuinely opaque

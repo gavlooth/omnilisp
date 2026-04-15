@@ -394,6 +394,14 @@ fn bool tensor_rank2_row_major(TensorVal* tensor) @inline {
         tensor.strides[0] == tensor.shape[1];
 }
 
+fn bool tensor_rank1_contiguous(TensorVal* tensor) @inline {
+    return tensor != null &&
+        tensor.rank == 1 &&
+        tensor.shape != null &&
+        tensor.strides != null &&
+        tensor.strides[0] == 1;
+}
+
 fn bool tensor_usz_fits_blas_int(usz value) @inline {
     return value <= 2147483647;
 }
@@ -441,6 +449,62 @@ fn bool tensor_contract_try_blas_dgemm(
         (double*)out_tensor.data,
         out_tensor.strides[0]
     ) != 0;
+}
+
+fn bool tensor_contract_try_blas_dgemv(
+    TensorVal* left,
+    TensorVal* right,
+    usz* left_axes,
+    usz* right_axes,
+    usz axis_count,
+    TensorVal* out_tensor
+) {
+    if (axis_count != 1 || left_axes == null || right_axes == null) return false;
+
+    usz left_axis = left_axes[0];
+    usz right_axis = right_axes[0];
+
+    if (tensor_rank2_row_major(left) && tensor_rank1_contiguous(right) && tensor_rank1_contiguous(out_tensor)) {
+        if (left_axis > 1 || right_axis != 0) return false;
+        usz rows = left.shape[0];
+        usz cols = left.shape[1];
+        usz contracted = left.shape[left_axis];
+        usz result_len = left.shape[left_axis == 0 ? 1 : 0];
+        if (contracted == 0 || result_len == 0 || right.shape[0] != contracted || out_tensor.shape[0] != result_len) return false;
+        if (!tensor_usz_fits_blas_int(rows) || !tensor_usz_fits_blas_int(cols) || !tensor_usz_fits_blas_int(left.strides[0])) return false;
+        int trans_a = left_axis == 0 ? 1 : 0;
+        return omni_tensor_backend_blas_dgemv(
+            rows,
+            cols,
+            trans_a,
+            (double*)left.data,
+            left.strides[0],
+            (double*)right.data,
+            (double*)out_tensor.data
+        ) != 0;
+    }
+
+    if (tensor_rank1_contiguous(left) && tensor_rank2_row_major(right) && tensor_rank1_contiguous(out_tensor)) {
+        if (left_axis != 0 || right_axis > 1) return false;
+        usz rows = right.shape[0];
+        usz cols = right.shape[1];
+        usz contracted = right.shape[right_axis];
+        usz result_len = right.shape[right_axis == 0 ? 1 : 0];
+        if (contracted == 0 || result_len == 0 || left.shape[0] != contracted || out_tensor.shape[0] != result_len) return false;
+        if (!tensor_usz_fits_blas_int(rows) || !tensor_usz_fits_blas_int(cols) || !tensor_usz_fits_blas_int(right.strides[0])) return false;
+        int trans_a = right_axis == 0 ? 1 : 0;
+        return omni_tensor_backend_blas_dgemv(
+            rows,
+            cols,
+            trans_a,
+            (double*)right.data,
+            right.strides[0],
+            (double*)left.data,
+            (double*)out_tensor.data
+        ) != 0;
+    }
+
+    return false;
 }
 
 fn Value* tensor_copy_into_destination(Value* source_value, Value* dest_value, Interp* interp) {
@@ -921,6 +985,9 @@ fn Value* tensor_contract_eval_into(
         return raise_error_with_payload_names(interp, "tensor", "tensor/aliasing", "contract: destination aliases source tensor", null);
     }
     if (tensor_contract_try_blas_dgemm(left, right, left_axes, right_axes, axis_count, out_tensor)) {
+        return null;
+    }
+    if (tensor_contract_try_blas_dgemv(left, right, left_axes, right_axes, axis_count, out_tensor)) {
         return null;
     }
 

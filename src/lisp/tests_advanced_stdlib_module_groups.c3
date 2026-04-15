@@ -307,6 +307,32 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
             (*fail)++;
         }
     }
+    {
+        bool blas_available = omni_tensor_backend_blas_dgemv_available() != 0;
+        long blas_calls_before = omni_tensor_backend_blas_dgemv_call_count();
+        test_eq_double(interp, "contract matrix vector BLAS candidate",
+            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3] [10 20 30]) [1 0]) [1])",
+            320.0, pass, fail);
+        test_eq_double(interp, "contract transposed matrix vector BLAS candidate",
+            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2] [10 20]) [0 0]) [2])",
+            150.0, pass, fail);
+        test_eq_double(interp, "contract vector matrix BLAS candidate",
+            "(ref (contract (Tensor Double [3] [10 20 30]) (Tensor Double [3 2] [1 2 3 4 5 6]) [0 0]) [1])",
+            280.0, pass, fail);
+        test_eq_double(interp, "contract vector transposed matrix BLAS candidate",
+            "(ref (contract (Tensor Double [3] [10 20 30]) (Tensor Double [2 3] [1 2 3 4 5 6]) [0 1]) [1])",
+            320.0, pass, fail);
+        bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dgemv_call_count() >= blas_calls_before + 4;
+        if (blas_path_ok) {
+            emit_pass_literal(blas_available
+                ? "[PASS] tensor BLAS backend dgemv contract paths"
+                : "[PASS] tensor BLAS backend dgemv unavailable; contract fallback paths retained");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor BLAS backend dgemv contract paths");
+            (*fail)++;
+        }
+    }
     test_eq_double(interp, "contract nested axis pair shorthand",
         "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [[1 0]]) [1 1])",
         154.0, pass, fail);
