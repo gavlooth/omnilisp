@@ -517,6 +517,8 @@ Recently Closed is retained below as a short audit trail.
     paths.
   - shipped slice: `TENSOR-090D` added optional runtime `cblas_ddot`
     discovery and a private rank-1/rank-1 `Double` vector dot fast path.
+  - shipped slice: `TENSOR-090E` added optional runtime `cblas_dger`
+    discovery and a private rank-1/rank-1 `Double` outer-product fast path.
   - deferred work:
     - decide LAPACK/LAPACKE solver/decomposition surface names before adding
       public conveniences;
@@ -527,9 +529,9 @@ Recently Closed is retained below as a short audit trail.
   - latest validation:
     - `./scripts/build_omni_chelpers.sh`
     - `c3c build main --output-dir build --build-dir build/obj2`
-    - host targeted `advanced-collections-module` group: `pass=297 fail=0`
+    - host targeted `advanced-collections-module` group: `pass=298 fail=0`
     - bounded container targeted `advanced-collections-module` group:
-      `pass=297 fail=0`
+      `pass=298 fail=0`
     - direct transpose-backed smokes returned `84.0`, `68.0`, and `123.0`
 
 - [x] `LANG-TENSOR-BROADCASTING-093` decide singleton-axis Tensor

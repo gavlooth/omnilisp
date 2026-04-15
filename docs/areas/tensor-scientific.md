@@ -102,6 +102,8 @@ Implemented slices:
   contracts, including transposed matrix-vector and vector-matrix layouts.
 - `TENSOR-090D`: the optional native BLAS `ddot` fast path now covers
   contiguous rank-1/rank-1 single-axis `Double` vector dot contractions.
+- `TENSOR-090E`: the optional native BLAS `dger` fast path now covers
+  contiguous rank-1/rank-1 zero-axis `Double` outer-product contractions.
 - `TENSOR-110`: cleanup surface closure; `examples/scicomp_demo.omni` uses
   canonical `Tensor`, `map`, `contract`, and `realize`, with lazy
   expression-return and closure-capture coverage added.

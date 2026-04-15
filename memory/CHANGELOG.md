@@ -1,5 +1,32 @@
 ## 2026-04-15
 
+- Completed `TENSOR-090E` optional BLAS `dger` outer-product fast path:
+  - Extended the private runtime-loaded BLAS helper to resolve `cblas_dger`
+    alongside existing `cblas_dgemm`/`cblas_dgemv`/`cblas_ddot`, with
+    availability and call-count probes for focused validation.
+  - Added a rank-1/rank-1 `Double` zero-axis contraction fast path for outer
+    product behind existing `contract`/`realize` evaluation. Unsupported
+    dtype, rank, shape, missing-symbol, zero-size, or size-overflow cases keep
+    the pure C3 contraction fallback.
+  - Kept the public Tensor surface unchanged; no public `outer`, `dot`,
+    `solve`, LAPACK, or backend-specific Tensor spelling was added.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - focused advanced collections/module group on host
+      -> `298 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `298 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-090D` optional BLAS `ddot` contract fast path:
   - Extended the private runtime-loaded BLAS helper to resolve `cblas_ddot`
     alongside existing `cblas_dgemm`/`cblas_dgemv`, with availability and

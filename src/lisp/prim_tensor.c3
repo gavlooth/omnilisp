@@ -707,6 +707,28 @@ fn bool tensor_contract_try_blas_ddot(
     ) != 0;
 }
 
+fn bool tensor_contract_try_blas_dger(
+    TensorVal* left,
+    TensorVal* right,
+    usz axis_count,
+    TensorVal* out_tensor
+) {
+    if (axis_count != 0) return false;
+    if (!tensor_rank1_contiguous(left) || !tensor_rank1_contiguous(right) || !tensor_rank2_row_major(out_tensor)) return false;
+    usz m = left.shape[0];
+    usz n = right.shape[0];
+    if (m == 0 || n == 0 || out_tensor.shape[0] != m || out_tensor.shape[1] != n) return false;
+    if (!tensor_usz_fits_blas_int(m) || !tensor_usz_fits_blas_int(n) || !tensor_usz_fits_blas_int(out_tensor.strides[0])) return false;
+    return omni_tensor_backend_blas_dger(
+        m,
+        n,
+        (double*)left.data,
+        (double*)right.data,
+        (double*)out_tensor.data,
+        out_tensor.strides[0]
+    ) != 0;
+}
+
 fn bool tensor_contract_try_blas_dgemm(
     TensorVal* left,
     TensorVal* right,
@@ -1488,6 +1510,9 @@ fn Value* tensor_contract_eval_into(
         return raise_error_with_payload_names(interp, "tensor", "tensor/aliasing", "contract: destination aliases source tensor", null);
     }
     if (left.dtype == TENSOR_DTYPE_DOUBLE) {
+        if (tensor_contract_try_blas_dger(left, right, axis_count, out_tensor)) {
+            return null;
+        }
         if (tensor_contract_try_blas_ddot(left, right, left_axes, right_axes, axis_count, out_tensor)) {
             return null;
         }

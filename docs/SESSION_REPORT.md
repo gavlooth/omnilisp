@@ -1,3 +1,57 @@
+## 2026-04-15 13:08 CEST - Tensor BLAS DGER Fast Path
+- Objective attempted:
+  - Continue optional native BLAS backend coverage behind existing
+    `contract`/`realize` by accelerating the already-supported zero-axis
+    rank-1/rank-1 outer-product contraction.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_blas_helpers.c` to resolve `cblas_dger`, expose
+    availability/call-count probes, and execute rank-1 outer products through
+    the optional BLAS backend when available.
+  - Added C3 extern declarations in `src/lisp/tensor_blas_backend.c3`.
+  - Added `tensor_contract_try_blas_dger(...)` in `src/lisp/prim_tensor.c3`
+    before the existing `ddot`/`dgemm`/`dgemv` fast paths. It only accepts
+    contiguous rank-1/rank-1 `Double` zero-axis contractions into rank-2
+    row-major output; unsupported cases fall back to the pure C3 kernel.
+  - Extended the existing outer-product advanced collections/module regression
+    to verify the private BLAS call counter when `cblas_dger` is available.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=298 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=298 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Keep adding private BLAS kernels only where they are invisible behind the
+    existing Tensor surface and have pure-fallback regressions. Do not unblock
+    public LAPACK solver/decomposition work until the qualifier is accepted.
+- Unresolved issues:
+  - No `TENSOR-090E` runtime blocker remains from this slice.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BLAS dger slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:01 CEST - Tensor BLAS DDOT Fast Path
 - Objective attempted:
   - Continue optional native BLAS backend coverage behind existing

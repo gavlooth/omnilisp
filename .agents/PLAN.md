@@ -93,6 +93,8 @@ as a new public Tensor surface:
   rank-1/rank-2 single-axis contract layouts behind the same backend boundary.
 - BLAS `Double` DDOT now optimizes contiguous rank-1/rank-1 vector dot
   contractions behind the same backend boundary.
+- BLAS `Double` DGER now optimizes contiguous rank-1/rank-1 outer-product
+  contractions behind the same backend boundary.
 - `(Array tensor)` and `(List tensor)` are implemented as explicit Tensor
   collection conversions that realize lazy Tensor expressions and return flat
   row-major values.

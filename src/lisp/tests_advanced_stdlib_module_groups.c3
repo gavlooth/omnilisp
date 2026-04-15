@@ -538,9 +538,23 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "contract zero contracted dimension non-scalar",
         "(ref (contract (Tensor Double [2 0 1] 0.0) (Tensor Double [2 0 1] 0.0) [1] [1]) [1 0 1 0])",
         0.0, pass, fail);
-    test_eq_double(interp, "contract zero axes outer product",
-        "(ref (contract (Tensor Double [2] [1 2]) (Tensor Double [3] [10 20 30]) [] []) [1 2])",
-        60.0, pass, fail);
+    {
+        bool blas_available = omni_tensor_backend_blas_dger_available() != 0;
+        long blas_calls_before = omni_tensor_backend_blas_dger_call_count();
+        test_eq_double(interp, "contract zero axes outer product",
+            "(ref (contract (Tensor Double [2] [1 2]) (Tensor Double [3] [10 20 30]) [] []) [1 2])",
+            60.0, pass, fail);
+        bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dger_call_count() > blas_calls_before;
+        if (blas_path_ok) {
+            emit_pass_literal(blas_available
+                ? "[PASS] tensor BLAS backend dger outer-product path"
+                : "[PASS] tensor BLAS backend dger unavailable; outer-product fallback retained");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor BLAS backend dger outer-product path");
+            (*fail)++;
+        }
+    }
     test_eq_double(interp, "contract multi-axis",
         "(ref (contract (Tensor Double [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Double [2 3 2] 1.0) [1 2] [0 2]) [1 2])",
         26.0, pass, fail);
