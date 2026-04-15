@@ -151,9 +151,10 @@ as a new public Tensor surface:
 - Tensor `gcd` and `lcm` now support native Tensor inputs with tensor-scalar,
   scalar-tensor, and broadcast tensor-tensor exact integer semantics. Tensor
   operands must be native `BigInteger` Tensor storage; results are native
-  `BigInteger` tensors. The raw scalar-handle implementation path was
-  invalidated by corrupted tensor-scalar results; use scoped `Value*`
-  materialization plus scalar BigInteger helpers for this operation family.
+  `BigInteger` tensors. The working fast path borrows Tensor element handles
+  and uses existing `i64`/borrowed BigInteger C ABI helpers for scalars; the
+  manufactured scalar-handle variant was invalidated by corrupted
+  tensor-scalar results.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing

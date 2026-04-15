@@ -9,12 +9,12 @@
   - Results always use native `BigInteger` Tensor storage, matching the exact
     integer scalar contract.
   - Lazy BigInteger Tensor operands are realized before evaluation.
-  - The implementation deliberately routes each element through scoped
-    `Value*` materialization plus the scalar BigInteger binary helper before
-    storing a cloned output element. A raw scalar-handle variant was
+  - The implementation uses a raw BigInteger Tensor kernel: Tensor element
+    handles are borrowed from Tensor storage, `Integer` scalars route through
+    the existing `i64` BigInteger C ABI helpers, and `BigInteger` scalars use
+    their existing scoped handles. A manufactured scalar-handle variant was
     invalidated because tensor-scalar `gcd`/`lcm` returned corrupted values
-    even after function-scope cleanup; do not revive that patch family without
-    first proving the scalar handle lifetime/conversion bug.
+    even after function-scope cleanup.
   - validation:
     - `c3c build main --output-dir build --build-dir build/obj2`
     - `c3c build`

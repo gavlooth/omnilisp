@@ -2839,6 +2839,35 @@ fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min
     return out_value;
 }
 
+fn void* tensor_exact_integer_binary_result(
+    Value* left_scalar,
+    Value* right_scalar,
+    void* left_tensor_handle,
+    void* right_tensor_handle,
+    int op
+) {
+    if (left_tensor_handle != null && right_tensor_handle != null) {
+        return omni_big_integer_binary(left_tensor_handle, right_tensor_handle, op);
+    }
+    if (left_tensor_handle != null) {
+        if (right_scalar == null) return null;
+        if (right_scalar.tag == INT) return omni_big_integer_binary_right_i64(left_tensor_handle, right_scalar.int_val, op);
+        if (right_scalar.tag == BIG_INTEGER && right_scalar.big_integer_val != null) {
+            return omni_big_integer_binary(left_tensor_handle, right_scalar.big_integer_val, op);
+        }
+        return null;
+    }
+    if (right_tensor_handle != null) {
+        if (left_scalar == null) return null;
+        if (left_scalar.tag == INT) return omni_big_integer_binary_left_i64(left_scalar.int_val, right_tensor_handle, op);
+        if (left_scalar.tag == BIG_INTEGER && left_scalar.big_integer_val != null) {
+            return omni_big_integer_binary(left_scalar.big_integer_val, right_tensor_handle, op);
+        }
+        return null;
+    }
+    return null;
+}
+
 fn Value* tensor_exact_integer_binary_value(
     Value* left_value,
     Value* right_value,
@@ -2902,30 +2931,38 @@ fn Value* tensor_exact_integer_binary_value(
 
     TensorVal* out_tensor = out_value.tensor_val;
     void** out_values = (void**)out_tensor.data;
+    void** left_values = left_tensor != null ? (void**)left_tensor.data : null;
+    void** right_values = right_tensor != null ? (void**)right_tensor.data : null;
     for (usz i = 0; i < out_tensor.element_count; i++) {
-        Value* left_arg = left_value;
-        Value* right_arg = right_value;
+        void* left_handle = null;
+        void* right_handle = null;
         if (left_tensor != null) {
             usz left_offset = 0;
             if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", shape_message, null);
             }
-            left_arg = tensor_value_at_offset(left_tensor, left_offset, interp, missing_message);
-            if (left_arg == null || left_arg.tag == ERROR) return left_arg;
+            left_handle = left_values[left_offset];
         }
         if (right_tensor != null) {
             usz right_offset = 0;
             if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", shape_message, null);
             }
-            right_arg = tensor_value_at_offset(right_tensor, right_offset, interp, missing_message);
-            if (right_arg == null || right_arg.tag == ERROR) return right_arg;
+            right_handle = right_values[right_offset];
+        }
+        if ((left_tensor != null && left_handle == null) || (right_tensor != null && right_handle == null)) {
+            return tensor_runtime_raise(interp, missing_message);
         }
 
-        Value* result = big_integer_binary_values(interp, left_arg, right_arg, op, oom_message);
-        if (result == null || result.tag == ERROR) return result;
-        Value* store_err = tensor_store_integer_value(out_values, i, result, interp, oom_message);
-        if (store_err != null) return store_err;
+        void* result = tensor_exact_integer_binary_result(
+            left_tensor == null ? left_value : null,
+            right_tensor == null ? right_value : null,
+            left_handle,
+            right_handle,
+            op);
+        if (result == null) return raise_error(interp, oom_message);
+        if (out_values[i] != null) omni_big_integer_free(out_values[i]);
+        out_values[i] = result;
     }
 
     keep_out = true;

@@ -13,6 +13,10 @@
     Tensor dtypes fail closed.
   - Results are native `BigInteger` tensors.
   - Lazy BigInteger Tensor operands are realized before evaluation.
+  - The final helper uses a raw BigInteger Tensor kernel: Tensor element
+    handles are borrowed from Tensor storage, `Integer` scalars route through
+    the existing `i64` BigInteger C ABI helpers, and `BigInteger` scalars use
+    their existing scoped handles.
   - Added advanced collections/module regressions for exact tensor-scalar
     results, dtype, broadcast tensor-tensor, lazy realization, and Double
     Tensor rejection.
@@ -47,11 +51,12 @@
   - ASAN build attempt failed immediately with the local C3 compiler's
     platform support message.
 - Invalidated assumptions or failed approaches worth preserving:
-  - The raw scalar-handle Tensor helper path is not trustworthy here:
+  - The manufactured scalar-handle Tensor helper path is not trustworthy here:
     tensor-tensor raw handles worked, but tensor-scalar `gcd` returned `"1"`
     and tensor-scalar `lcm` returned corrupted large values even after moving
-    scalar cleanup out to function scope. Keep the `Value*` materialization
-    path unless the handle lifetime/conversion bug is separately proven.
+    scalar cleanup out to function scope. The working fast path does not
+    manufacture scalar handles; it uses existing scalar values through the
+    `i64` or borrowed BigInteger C ABI variants.
 - Current best recommendation:
   - Treat Tensor `gcd` and `lcm` as closed for native BigInteger Tensor
     inputs, with broadcast as an internal shape rule only.
