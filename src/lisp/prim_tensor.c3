@@ -10,6 +10,7 @@ extern fn double tensor_c_tan(double x) @extern("tan");
 extern fn double tensor_c_asin(double x) @extern("asin");
 extern fn double tensor_c_acos(double x) @extern("acos");
 extern fn double tensor_c_atan(double x) @extern("atan");
+extern fn double tensor_c_atan2(double y, double x) @extern("atan2");
 extern fn double tensor_c_sinh(double x) @extern("sinh");
 extern fn double tensor_c_cosh(double x) @extern("cosh");
 extern fn double tensor_c_tanh(double x) @extern("tanh");
@@ -2580,7 +2581,7 @@ fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
     return tensor_unary_math_value(tensor_value, BIG_FLOAT_MATH_SQRT, BIG_COMPLEX_MATH_SQRT, interp);
 }
 
-fn bool tensor_pow_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {
+fn bool tensor_binary_numeric_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {
     if (dtype_out == null) return false;
     if (tensor != null) {
         switch (tensor.dtype) {
@@ -2666,8 +2667,8 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
 
     TensorDType left_dtype = TENSOR_DTYPE_DOUBLE;
     TensorDType right_dtype = TENSOR_DTYPE_DOUBLE;
-    if (!tensor_pow_input_dtype(left_value, left_tensor, &left_dtype)) return primitive_arg_type_raise(interp, "pow", 0, "number or Tensor", left_value);
-    if (!tensor_pow_input_dtype(right_value, right_tensor, &right_dtype)) return primitive_arg_type_raise(interp, "pow", 1, "number or Tensor", right_value);
+    if (!tensor_binary_numeric_input_dtype(left_value, left_tensor, &left_dtype)) return primitive_arg_type_raise(interp, "pow", 0, "number or Tensor", left_value);
+    if (!tensor_binary_numeric_input_dtype(right_value, right_tensor, &right_dtype)) return primitive_arg_type_raise(interp, "pow", 1, "number or Tensor", right_value);
     TensorDType result_dtype = tensor_pow_result_dtype(left_dtype, right_dtype);
 
     usz* result_shape = null;
@@ -2738,6 +2739,118 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
                 if (out[i] != null) omni_big_complex_free(out[i]);
                 out[i] = cloned;
             }
+        }
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
+fn TensorDType tensor_atan2_result_dtype(TensorDType y_dtype, TensorDType x_dtype) @inline {
+    if (y_dtype == TENSOR_DTYPE_BIG_FLOAT || x_dtype == TENSOR_DTYPE_BIG_FLOAT) return TENSOR_DTYPE_BIG_FLOAT;
+    return TENSOR_DTYPE_DOUBLE;
+}
+
+fn Value* tensor_atan2_value(Value* y_value, Value* x_value, Interp* interp) {
+    bool y_is_tensor = is_tensor(y_value);
+    bool x_is_tensor = is_tensor(x_value);
+    if (!y_is_tensor && !x_is_tensor) return tensor_type_raise(interp, "atan2: expected at least one Tensor input");
+
+    Value* y_concrete = y_value;
+    if (y_is_tensor) {
+        y_concrete = tensor_realize_to_value(y_value, interp);
+        if (y_concrete == null || y_concrete.tag == ERROR) return y_concrete;
+    }
+    bool cleanup_y = y_is_tensor && y_concrete != y_value;
+    defer if (cleanup_y) {
+        boundary_cleanup_materialized_value(null, y_concrete, interp.current_scope);
+    }
+
+    Value* x_concrete = x_value;
+    if (x_is_tensor) {
+        x_concrete = tensor_realize_to_value(x_value, interp);
+        if (x_concrete == null || x_concrete.tag == ERROR) return x_concrete;
+    }
+    bool cleanup_x = x_is_tensor && x_concrete != x_value;
+    defer if (cleanup_x) {
+        boundary_cleanup_materialized_value(null, x_concrete, interp.current_scope);
+    }
+
+    TensorVal* y_tensor = y_is_tensor ? y_concrete.tensor_val : null;
+    TensorVal* x_tensor = x_is_tensor ? x_concrete.tensor_val : null;
+    if (y_tensor != null && !tensor_has_valid_storage(y_tensor)) return tensor_runtime_raise(interp, "atan2: y tensor backing storage is missing");
+    if (x_tensor != null && !tensor_has_valid_storage(x_tensor)) return tensor_runtime_raise(interp, "atan2: x tensor backing storage is missing");
+
+    TensorDType y_dtype = TENSOR_DTYPE_DOUBLE;
+    TensorDType x_dtype = TENSOR_DTYPE_DOUBLE;
+    if (!tensor_binary_numeric_input_dtype(y_value, y_tensor, &y_dtype)) return primitive_arg_type_raise(interp, "atan2", 0, "number or Tensor", y_value);
+    if (!tensor_binary_numeric_input_dtype(x_value, x_tensor, &x_dtype)) return primitive_arg_type_raise(interp, "atan2", 1, "number or Tensor", x_value);
+    if (y_dtype == TENSOR_DTYPE_BIG_COMPLEX || x_dtype == TENSOR_DTYPE_BIG_COMPLEX) {
+        return raise_error(interp, "atan2: complex numbers are not supported");
+    }
+    TensorDType result_dtype = tensor_atan2_result_dtype(y_dtype, x_dtype);
+
+    usz* result_shape = null;
+    usz result_rank = 0;
+    Value* err = tensor_map_result_shape(y_tensor, x_tensor, true, interp, &result_shape, &result_rank);
+    if (err != null) return err;
+    defer if (result_shape != null) mem::free(result_shape);
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "atan2: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "atan2: tensor result backing storage is missing");
+    }
+
+    TensorVal* out_tensor = out_value.tensor_val;
+    for (usz i = 0; i < out_tensor.element_count; i++) {
+        Value* y_arg = y_value;
+        Value* x_arg = x_value;
+        if (y_tensor != null) {
+            usz y_offset = 0;
+            if (!tensor_map_operand_offset(y_tensor, out_tensor, i, &y_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "atan2: tensor shape mismatch", null);
+            }
+            y_arg = tensor_value_at_offset(y_tensor, y_offset, interp, "atan2: y tensor element is missing");
+            if (y_arg == null || y_arg.tag == ERROR) return y_arg;
+        }
+        if (x_tensor != null) {
+            usz x_offset = 0;
+            if (!tensor_map_operand_offset(x_tensor, out_tensor, i, &x_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "atan2: tensor shape mismatch", null);
+            }
+            x_arg = tensor_value_at_offset(x_tensor, x_offset, interp, "atan2: x tensor element is missing");
+            if (x_arg == null || x_arg.tag == ERROR) return x_arg;
+        }
+
+        switch (result_dtype) {
+            case TENSOR_DTYPE_DOUBLE: {
+                double y = 0.0;
+                double x = 0.0;
+                if (!try_numeric_to_double(y_arg, &y) || !try_numeric_to_double(x_arg, &x)) {
+                    return raise_error(interp, "atan2: tensor element out of Double range");
+                }
+                ((double*)out_tensor.data)[i] = tensor_c_atan2(y, x);
+            }
+            case TENSOR_DTYPE_BIG_INTEGER:
+                return tensor_runtime_raise(interp, "atan2: unreachable BigInteger result dtype");
+            case TENSOR_DTYPE_BIG_FLOAT: {
+                Value* result = big_float_binary_math_values(interp, y_arg, x_arg, BIG_FLOAT_MATH_ATAN2, "atan2: BigFloat tensor evaluation error");
+                if (result == null || result.tag == ERROR) return result;
+                void** out = (void**)out_tensor.data;
+                void* cloned = omni_big_float_clone(result.big_float_val);
+                if (cloned == null) return raise_error(interp, "atan2: failed to allocate BigFloat tensor element");
+                if (out[i] != null) omni_big_float_free(out[i]);
+                out[i] = cloned;
+            }
+            case TENSOR_DTYPE_BIG_COMPLEX:
+                return tensor_runtime_raise(interp, "atan2: unreachable BigComplex result dtype");
         }
     }
 

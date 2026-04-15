@@ -300,6 +300,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "pow BigInteger tensor rejects out of Double range",
         "(pow (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 2)",
         "pow: tensor element out of Double range", pass, fail);
+    test_str_val(interp, "atan2 Double tensor scalar",
+        "(String (ref (atan2 (Tensor Double [1] [1.0]) 1.0) [0]))", "0.785398163397448", pass, fail);
+    test_str_val(interp, "atan2 scalar Double tensor",
+        "(String (ref (atan2 1.0 (Tensor Double [1] [1.0])) [0]))", "0.785398163397448", pass, fail);
+    test_eq_double(interp, "atan2 BigInteger tensor returns Double tensor",
+        "(ref (atan2 (Tensor BigInteger [1] [0]) 1) [0])", 0.0, pass, fail);
+    test_str_val(interp, "atan2 Tensor broadcast",
+        "(String (ref (atan2 (Tensor Double [2 1] [0 1]) (Tensor Double [1 2] [1 1])) [1 1]))", "0.785398163397448", pass, fail);
+    test_str_val(interp, "atan2 BigFloat tensor preserves dtype",
+        "(String (ref (atan2 (Tensor BigFloat [1] [(BigFloat \"0\")]) 1) [0]))",
+        "0", pass, fail);
+    test_str_val(interp, "atan2 lazy BigFloat tensor realizes source",
+        "(String (ref (atan2 (map + (Tensor BigFloat [1] [(BigFloat \"0\")]) (BigFloat \"0\")) 1) [0]))",
+        "0", pass, fail);
+    test_error_contains(interp, "atan2 BigComplex tensor rejected",
+        "(atan2 (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)",
+        "atan2: complex numbers are not supported", pass, fail);
+    test_error_contains(interp, "atan2 BigInteger tensor rejects out of Double range",
+        "(atan2 (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 1)",
+        "atan2: tensor element out of Double range", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

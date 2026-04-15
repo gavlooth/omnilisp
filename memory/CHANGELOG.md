@@ -1,5 +1,31 @@
 ## 2026-04-15
 
+- Completed `TENSOR-089` Tensor `atan2` semantics:
+  - Extended the existing `atan2` primitive to accept native Tensor inputs.
+  - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor
+    two-argument arctangent.
+  - Matches scalar `atan2` policy: complex operands fail closed.
+  - `BigFloat` Tensor inputs preserve precision dtype; other real/exact inputs
+    return `Double` tensors through the hardened fail-closed finite conversion
+    path.
+  - Lazy Tensor operands are realized before elementwise `atan2` evaluation.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - focused advanced collections/module group on host
+      -> `369 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `369 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-088` Tensor `pow` semantics:
   - Extended the existing `pow` primitive to accept native Tensor inputs.
   - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor powers.

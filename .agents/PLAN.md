@@ -130,6 +130,9 @@ as a new public Tensor surface:
 - Tensor `pow` now supports tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor powers. BigComplex wins result dtype, then BigFloat, otherwise
   the result is a Double tensor.
+- Tensor `atan2` now supports tensor-scalar, scalar-tensor, and broadcast
+  tensor-tensor real-plane arctangent. BigFloat preserves dtype, other
+  real/exact inputs return Double tensors, and complex operands fail closed.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.

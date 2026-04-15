@@ -1,3 +1,64 @@
+## 2026-04-15 14:26 CEST - Tensor Atan2 Semantics
+- Objective attempted:
+  - Continue direct Tensor support for scalar scientific numeric primitives by
+    adding real-plane binary `atan2`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `atan2` through Tensor handling when either argument is a Tensor.
+  - Added Tensor `atan2` runtime handling for tensor-scalar, scalar-tensor, and
+    broadcast tensor-tensor inputs.
+  - Matched scalar `atan2` policy: complex operands fail closed.
+  - `BigFloat` Tensor inputs preserve precision dtype; other real/exact inputs
+    return `Double` tensors through the hardened finite-conversion path.
+  - Lazy Tensor operands are realized before elementwise `atan2` evaluation.
+  - Generalized the Tensor binary input dtype helper used by `pow`.
+  - Added advanced collections/module regressions for Double tensor/scalar,
+    scalar/tensor, BigInteger-to-Double, broadcast Tensor/Tensor, BigFloat,
+    lazy BigFloat, BigComplex rejection, and huge BigInteger rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Initial focused run failed three Double tests because `test_eq_double`
+    compares raw binary equality and decimal source literals did not exactly
+    match `atan2(1, 1)`. The tests now assert the printed Double value.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=369 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=369 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not use `test_eq_double` with a decimal approximation for irrational
+    math results such as `atan2(1, 1)`; use exact stable operations or a string
+    or tolerance-based assertion.
+- Current best recommendation:
+  - Treat Tensor `atan2` as closed for real native Tensor dtypes and current
+    broadcasting semantics.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor `atan2` slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 14:17 CEST - Tensor Pow Semantics
 - Objective attempted:
   - Continue direct Tensor support for scalar scientific numeric primitives by

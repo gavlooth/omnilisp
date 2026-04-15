@@ -120,6 +120,10 @@ Name collision note:
   wins the result dtype if either input is complex, BigFloat wins if either
   input is BigFloat, and remaining Double/BigInteger inputs return Double
   tensors.
+- `TENSOR-089` is complete: Tensor `atan2` applies elementwise real-plane
+  two-argument arctangent for tensor-scalar, scalar-tensor, and broadcast
+  tensor-tensor inputs. BigFloat inputs preserve dtype, remaining real/exact
+  inputs return Double tensors, and complex operands fail closed.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

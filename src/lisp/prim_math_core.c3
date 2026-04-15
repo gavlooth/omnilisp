@@ -299,6 +299,7 @@ fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_atan2_value(args[0], args[1], interp);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) {
         return raise_error(interp, "atan2: complex numbers are not supported");
     }
