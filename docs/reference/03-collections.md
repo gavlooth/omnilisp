@@ -105,6 +105,10 @@ inputs preserve BigFloat, other real/exact inputs return Double tensors, and
 complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`, and
 `truncate` return same-shape BigInteger tensors for real inputs, with exact
 BigFloat rounding for BigFloat tensors; complex Tensor operands fail closed.
+Tensor `min` and `max` support tensor-scalar, scalar-tensor, and broadcast
+tensor-tensor real comparison. `BigFloat` wins if either input is BigFloat,
+`Double` wins if either input is Double, otherwise the result is a
+`BigInteger` tensor.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -136,6 +140,8 @@ BigFloat rounding for BigFloat tensors; complex Tensor operands fail closed.
 (ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1]) ;; => 27.0
 (String (ref (atan2 (Tensor Double [1] [1.0]) 1.0) [0])) ;; => "0.785398163397448"
 (String (ref (ceiling (Tensor BigFloat [1] [(BigFloat "9223372036854775808.1")])) [0])) ;; => "9223372036854775809"
+(String (ref (min (Tensor BigInteger [1] [(BigInteger "5")]) 4) [0])) ;; => "4"
+(String (dtype (max (Tensor BigFloat [1] [(BigFloat "2.5")]) 4))) ;; => "BigFloat"
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))

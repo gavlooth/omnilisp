@@ -478,6 +478,7 @@ fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "min", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], true, "min", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) return raise_error(interp, "min: complex numbers are not ordered");
@@ -502,6 +503,7 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "max", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], false, "max", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
     if (is_big_complex(args[0]) || is_big_complex(args[1])) return raise_error(interp, "max: complex numbers are not ordered");

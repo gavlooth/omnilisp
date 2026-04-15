@@ -22,6 +22,8 @@ extern fn double tensor_c_pow(double x, double y) @extern("pow");
 extern fn double tensor_c_floor(double x) @extern("floor");
 extern fn double tensor_c_ceil(double x) @extern("ceil");
 extern fn double tensor_c_round(double x) @extern("round");
+extern fn double tensor_c_fmin(double x, double y) @extern("fmin");
+extern fn double tensor_c_fmax(double x, double y) @extern("fmax");
 
 fn bool is_tensor(Value* v) @inline {
     return v != null && v.tag == TENSOR;
@@ -2700,6 +2702,141 @@ fn Value* tensor_round_value(Value* tensor_value, Interp* interp) {
 
 fn Value* tensor_truncate_value(Value* tensor_value, Interp* interp) {
     return tensor_rounding_value(tensor_value, BIG_FLOAT_ROUND_TRUNCATE, "truncate: tensor integer result out of supported range", interp);
+}
+
+fn TensorDType tensor_minmax_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {
+    if (dtype_out == null) return TENSOR_DTYPE_DOUBLE;
+    if (tensor != null) {
+        *dtype_out = tensor.dtype;
+        return *dtype_out;
+    }
+    if (is_big_complex(value)) {
+        *dtype_out = TENSOR_DTYPE_BIG_COMPLEX;
+    } else if (is_big_float(value)) {
+        *dtype_out = TENSOR_DTYPE_BIG_FLOAT;
+    } else if (is_big_integer(value) || is_int(value)) {
+        *dtype_out = TENSOR_DTYPE_BIG_INTEGER;
+    } else {
+        *dtype_out = TENSOR_DTYPE_DOUBLE;
+    }
+    return *dtype_out;
+}
+
+fn TensorDType tensor_minmax_result_dtype(TensorDType left_dtype, TensorDType right_dtype) @inline {
+    if (left_dtype == TENSOR_DTYPE_BIG_COMPLEX || right_dtype == TENSOR_DTYPE_BIG_COMPLEX) return TENSOR_DTYPE_BIG_COMPLEX;
+    if (left_dtype == TENSOR_DTYPE_BIG_FLOAT || right_dtype == TENSOR_DTYPE_BIG_FLOAT) return TENSOR_DTYPE_BIG_FLOAT;
+    if (left_dtype == TENSOR_DTYPE_DOUBLE || right_dtype == TENSOR_DTYPE_DOUBLE) return TENSOR_DTYPE_DOUBLE;
+    return TENSOR_DTYPE_BIG_INTEGER;
+}
+
+fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min, char[] op_name, Interp* interp) {
+    bool left_is_tensor = is_tensor(left_value);
+    bool right_is_tensor = is_tensor(right_value);
+    if (!left_is_tensor && !right_is_tensor) return tensor_type_raise(interp, "minmax: expected at least one Tensor input");
+
+    Value* left_concrete = left_value;
+    if (left_is_tensor) {
+        left_concrete = tensor_realize_to_value(left_value, interp);
+        if (left_concrete == null || left_concrete.tag == ERROR) return left_concrete;
+    }
+    bool cleanup_left = left_is_tensor && left_concrete != left_value;
+    defer if (cleanup_left) {
+        boundary_cleanup_materialized_value(null, left_concrete, interp.current_scope);
+    }
+
+    Value* right_concrete = right_value;
+    if (right_is_tensor) {
+        right_concrete = tensor_realize_to_value(right_value, interp);
+        if (right_concrete == null || right_concrete.tag == ERROR) return right_concrete;
+    }
+    bool cleanup_right = right_is_tensor && right_concrete != right_value;
+    defer if (cleanup_right) {
+        boundary_cleanup_materialized_value(null, right_concrete, interp.current_scope);
+    }
+
+    TensorVal* left_tensor = left_is_tensor ? left_concrete.tensor_val : null;
+    TensorVal* right_tensor = right_is_tensor ? right_concrete.tensor_val : null;
+    if (left_tensor != null && !tensor_has_valid_storage(left_tensor)) return tensor_runtime_raise(interp, "minmax: left tensor backing storage is missing");
+    if (right_tensor != null && !tensor_has_valid_storage(right_tensor)) return tensor_runtime_raise(interp, "minmax: right tensor backing storage is missing");
+
+    TensorDType left_dtype = TENSOR_DTYPE_DOUBLE;
+    TensorDType right_dtype = TENSOR_DTYPE_DOUBLE;
+    tensor_minmax_input_dtype(left_value, left_tensor, &left_dtype);
+    tensor_minmax_input_dtype(right_value, right_tensor, &right_dtype);
+    if (left_dtype == TENSOR_DTYPE_BIG_COMPLEX || right_dtype == TENSOR_DTYPE_BIG_COMPLEX) {
+        return raise_error(interp, "minmax: complex numbers are not ordered");
+    }
+    TensorDType result_dtype = tensor_minmax_result_dtype(left_dtype, right_dtype);
+
+    usz* result_shape = null;
+    usz result_rank = 0;
+    Value* err = tensor_map_result_shape(left_tensor, right_tensor, true, interp, &result_shape, &result_rank);
+    if (err != null) return err;
+    defer if (result_shape != null) mem::free(result_shape);
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "minmax: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "minmax: tensor result backing storage is missing");
+    }
+
+    TensorVal* out_tensor = out_value.tensor_val;
+    for (usz i = 0; i < out_tensor.element_count; i++) {
+        Value* left_arg = left_value;
+        Value* right_arg = right_value;
+        if (left_tensor != null) {
+            usz left_offset = 0;
+            if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "minmax: tensor shape mismatch", null);
+            }
+            left_arg = tensor_value_at_offset(left_tensor, left_offset, interp, "minmax: left tensor element is missing");
+            if (left_arg == null || left_arg.tag == ERROR) return left_arg;
+        }
+        if (right_tensor != null) {
+            usz right_offset = 0;
+            if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "minmax: tensor shape mismatch", null);
+            }
+            right_arg = tensor_value_at_offset(right_tensor, right_offset, interp, "minmax: right tensor element is missing");
+            if (right_arg == null || right_arg.tag == ERROR) return right_arg;
+        }
+
+        int cmp = 0;
+        if (!numeric_values_compare(left_arg, right_arg, &cmp)) {
+            return raise_error(interp, "minmax: numeric comparison failed");
+        }
+        Value* chosen = is_min ? (cmp <= 0 ? left_arg : right_arg) : (cmp >= 0 ? left_arg : right_arg);
+        if (result_dtype == TENSOR_DTYPE_BIG_COMPLEX) return raise_error(interp, "minmax: complex numbers are not ordered");
+
+        if (result_dtype == TENSOR_DTYPE_DOUBLE) {
+            double out = 0.0;
+            if (!try_numeric_to_double(chosen, &out)) {
+                return raise_error(interp, op_name);
+            }
+            ((double*)out_tensor.data)[i] = out;
+        } else if (result_dtype == TENSOR_DTYPE_BIG_INTEGER) {
+            void* handle = big_integer_handle_from_value(chosen);
+            if (handle == null) return raise_error(interp, op_name);
+            void** dst = (void**)out_tensor.data;
+            if (dst[i] != null) omni_big_integer_free(dst[i]);
+            dst[i] = handle;
+        } else if (result_dtype == TENSOR_DTYPE_BIG_FLOAT) {
+            void* handle = big_float_handle_from_value(chosen);
+            if (handle == null) return raise_error(interp, op_name);
+            void** dst = (void**)out_tensor.data;
+            if (dst[i] != null) omni_big_float_free(dst[i]);
+            dst[i] = handle;
+        }
+    }
+
+    keep_out = true;
+    return out_value;
 }
 
 fn bool tensor_binary_numeric_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {

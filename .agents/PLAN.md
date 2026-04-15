@@ -144,6 +144,10 @@ as a new public Tensor surface:
   singleton-axis broadcast cases.
 - Tensor-dispatched `contract` now supports native `BigFloat` tensors through
   the pure C3 contraction fallback. BLAS fast paths remain `Double`-only.
+- Tensor `min` and `max` now support native Tensor inputs with tensor-scalar,
+  scalar-tensor, and broadcast tensor-tensor real comparison. BigFloat wins
+  if either input is BigFloat, Double wins if either input is Double, and the
+  remaining exact inputs return native `BigInteger` Tensor results.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing

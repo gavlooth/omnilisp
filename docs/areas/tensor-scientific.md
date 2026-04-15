@@ -121,6 +121,10 @@ Implemented slices:
   same-shape native `BigInteger` Tensor results for real Tensor inputs.
   BigFloat tensors use the existing exact BigFloat rounding path; BigComplex
   tensors fail closed.
+- `TENSOR-091`: Tensor `min` and `max` support tensor-scalar, scalar-tensor,
+  and broadcast tensor-tensor real comparison. `BigFloat` wins if either
+  input is BigFloat, `Double` wins if either input is Double, otherwise the
+  result is native `BigInteger` Tensor storage. Complex operands fail closed.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -196,6 +200,8 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     semantics: `pass=369 fail=0`.
   - host targeted `advanced-collections-module` group after Tensor rounding
     semantics: `pass=379 fail=0`.
+  - host targeted `advanced-collections-module` group after Tensor min/max
+    semantics: `pass=387 fail=0`.
   - bounded container `advanced-collections-module` group after real Tensor
     component semantics: `pass=330 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor `abs`
@@ -210,6 +216,8 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     semantics: `pass=369 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor rounding
     semantics: `pass=379 fail=0`.
+  - bounded container `advanced-collections-module` group after Tensor min/max
+    semantics: `pass=387 fail=0`.
   - bounded container `memory-lifetime-smoke`: `pass=225 fail=0`.
   - bounded container `advanced-collections-module` group after BigComplex
     component kernels: `pass=327 fail=0`.

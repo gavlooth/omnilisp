@@ -1,3 +1,67 @@
+## 2026-04-15 16:34 CEST - Tensor Min/Max Semantics
+- Objective attempted:
+  - Continue precision Tensor work by adding ordered real comparison for
+    native Tensor inputs via `min` and `max`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `min` and `max` through Tensor handling when either argument is a
+    Tensor.
+  - Added native Tensor min/max handling for tensor-scalar, scalar-tensor, and
+    broadcast tensor-tensor inputs.
+  - Result dtype policy is `BigFloat` if either input is BigFloat, `Double` if
+    either input is Double, otherwise `BigInteger`.
+  - Integer scalar comparisons now normalize into BigInteger Tensor storage so
+    exact integer comparisons stay exact.
+  - Lazy Tensor operands are realized before ordered comparison.
+  - Complex Tensor inputs fail closed.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, broadcast tensor-tensor, lazy BigFloat, and complex rejection
+    coverage.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (min (Tensor Double [1] [3.7]) 4.2) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (dtype (min (Tensor BigInteger [1] [(BigInteger \"5\")]) 4)))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (dtype (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4)))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(min (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)'`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes confirmed Double Tensor min/max preserves Double dtype,
+    BigInteger Tensor comparisons stay exact, BigFloat Tensor comparisons
+    preserve BigFloat dtype, and complex operands fail closed.
+  - Host targeted `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=387 fail=0`.
+  - Bounded container `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=387 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed immediately with the local C3 compiler's
+    platform support message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not classify scalar `Int` operands as Double in Tensor min/max when the
+    other side is exact integer storage; preserve BigInteger result dtype.
+- Current best recommendation:
+  - Treat Tensor min/max as closed for real ordered native Tensor dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push the Tensor min/max slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 14:38 CEST - Tensor Rounding Semantics
 - Objective attempted:
   - Continue precision Tensor work by adding exact-integer rounding results for

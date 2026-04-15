@@ -1,5 +1,31 @@
 ## 2026-04-15
 
+- Completed `TENSOR-091` Tensor `min`/`max` semantics:
+  - Extended `min` and `max` to accept native Tensor inputs.
+  - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor
+    comparison for real numeric inputs.
+  - Result dtype policy is `BigFloat` if either input is BigFloat, `Double` if
+    either input is Double, otherwise `BigInteger`.
+  - `BigInteger` Tensor inputs preserve exact integer results, including
+    Integer scalar comparisons that now normalize into BigInteger Tensor
+    storage.
+  - Lazy Tensor operands are realized before comparison.
+  - `BigComplex` Tensor inputs fail closed.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - focused advanced collections/module group on host
+      -> `387 passed, 0 failed`
+    - bounded container advanced collections/module group
+      -> `387 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN build attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed immediately with the local C3 compiler platform support message.
+
 - Completed `TENSOR-090` Tensor rounding semantics:
   - Extended `floor`, `ceiling`, `round`, and `truncate` to accept native
     Tensor inputs.

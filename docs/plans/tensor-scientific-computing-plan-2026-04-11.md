@@ -128,6 +128,11 @@ Name collision note:
   `truncate` apply elementwise rounding for real Tensor inputs and return
   native BigInteger Tensor results. BigFloat inputs use the exact scalar
   BigFloat rounding path; complex operands fail closed.
+- `TENSOR-091` is complete: Tensor `min` and `max` apply tensor-scalar,
+  scalar-tensor, and broadcast tensor-tensor real comparison. BigFloat wins if
+  either input is BigFloat, Double wins if either input is Double, and the
+  remaining exact inputs return native BigInteger Tensor results. Complex
+  operands fail closed.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

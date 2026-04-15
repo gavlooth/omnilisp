@@ -345,6 +345,23 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "floor Double tensor rejects out of Integer range",
         "(floor (Tensor Double [1] [1.0e20]))",
         "floor: tensor integer result out of supported range", pass, fail);
+    test_str_val(interp, "min Double tensor scalar preserves Double dtype",
+        "(String (ref (min (Tensor Double [1] [3.7]) 4.2) [0]))", "3.7", pass, fail);
+    test_str_val(interp, "min BigInteger tensor scalar preserves exact result",
+        "(String (ref (min (Tensor BigInteger [1] [(BigInteger \"5\")]) 4) [0]))", "4", pass, fail);
+    test_str_val(interp, "min BigInteger tensor scalar returns BigInteger dtype",
+        "(String (dtype (min (Tensor BigInteger [1] [(BigInteger \"5\")]) 4)))", "BigInteger", pass, fail);
+    test_str_val(interp, "max BigFloat tensor scalar preserves dtype",
+        "(String (dtype (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4)))", "BigFloat", pass, fail);
+    test_str_val(interp, "max BigFloat tensor scalar returns exact promoted result",
+        "(String (ref (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4) [0]))", "4", pass, fail);
+    test_str_val(interp, "min Tensor broadcast",
+        "(String (ref (min (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [1 4])) [1 1]))", "3.0", pass, fail);
+    test_str_val(interp, "max lazy BigFloat tensor realizes source",
+        "(String (ref (max (map + (Tensor BigFloat [1] [(BigFloat \"2.5\")]) (BigFloat \"0\")) 4) [0]))", "4", pass, fail);
+    test_error_contains(interp, "min BigComplex tensor rejected",
+        "(min (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)",
+        "minmax: complex numbers are not ordered", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",
