@@ -381,18 +381,21 @@ fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_real_part(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "real-part", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], false, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "real-part", 0, "number", args[0]);
     return big_complex_real_part_value(interp, args[0], "real-part: failed to extract numeric real part");
 }
 
 fn Value* prim_imag_part(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "imag-part", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], true, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "imag-part", 0, "number", args[0]);
     return big_complex_imag_part_value(interp, args[0], "imag-part: failed to extract numeric imaginary part");
 }
 
 fn Value* prim_conjugate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "conjugate", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_big_complex_conjugate_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "conjugate", 0, "number", args[0]);
     return big_complex_conjugate_value(interp, args[0], "conjugate: failed to allocate BigComplex result");
 }

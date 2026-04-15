@@ -2315,6 +2315,94 @@ fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
     return result;
 }
 
+fn Value* tensor_big_complex_component_value(Value* tensor_value, bool imaginary, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, imaginary ? "imag-part: expected Tensor" : "real-part: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* source = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(source)) {
+        return tensor_runtime_raise(interp, imaginary ? "imag-part: tensor backing storage is missing" : "real-part: tensor backing storage is missing");
+    }
+    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
+        return tensor_type_raise(interp, imaginary ? "imag-part: expected BigComplex Tensor" : "real-part: expected BigComplex Tensor");
+    }
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_FLOAT, shape_slice, imaginary ? "imag-part: failed to allocate tensor result" : "real-part: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, imaginary ? "imag-part: tensor result backing storage is missing" : "real-part: tensor result backing storage is missing");
+    }
+
+    void** src_values = (void**)source.data;
+    void** dst_values = (void**)out_value.tensor_val.data;
+    for (usz i = 0; i < source.element_count; i++) {
+        if (src_values[i] == null) {
+            return tensor_runtime_raise(interp, imaginary ? "imag-part: tensor BigComplex element is missing" : "real-part: tensor BigComplex element is missing");
+        }
+        void* component = imaginary ? omni_big_complex_imag_part(src_values[i]) : omni_big_complex_real_part(src_values[i]);
+        if (component == null) {
+            return raise_error(interp, imaginary ? "imag-part: failed to extract tensor component" : "real-part: failed to extract tensor component");
+        }
+        if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
+        dst_values[i] = component;
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
+fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "conjugate: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* source = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "conjugate: tensor backing storage is missing");
+    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
+        return tensor_type_raise(interp, "conjugate: expected BigComplex Tensor");
+    }
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_COMPLEX, shape_slice, "conjugate: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "conjugate: tensor result backing storage is missing");
+    }
+
+    void** src_values = (void**)source.data;
+    void** dst_values = (void**)out_value.tensor_val.data;
+    for (usz i = 0; i < source.element_count; i++) {
+        if (src_values[i] == null) return tensor_runtime_raise(interp, "conjugate: tensor BigComplex element is missing");
+        void* conjugated = omni_big_complex_conjugate(src_values[i]);
+        if (conjugated == null) return raise_error(interp, "conjugate: failed to conjugate tensor element");
+        if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
+        dst_values[i] = conjugated;
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
 fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_arg, Value* data_arg, Interp* interp) {
     TensorDType dtype = TENSOR_DTYPE_DOUBLE;
     if (!tensor_dtype_arg_to_dtype(dtype_arg, interp, &dtype)) {

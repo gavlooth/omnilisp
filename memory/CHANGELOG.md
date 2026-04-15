@@ -1,5 +1,31 @@
 ## 2026-04-15
 
+- Completed `TENSOR-083` BigComplex Tensor component kernels:
+  - Extended `real-part`, `imag-part`, and `conjugate` to accept native
+    BigComplex Tensor inputs.
+  - `real-part` and `imag-part` realize lazy BigComplex Tensor sources when
+    needed and return native BigFloat Tensor results.
+  - `conjugate` realizes lazy BigComplex Tensor sources when needed and returns
+    native BigComplex Tensor results.
+  - Non-BigComplex Tensor inputs fail closed instead of guessing result dtype.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigComplex Tensor `real-part`, `imag-part`, and lazy
+      source `conjugate`
+    - focused advanced collections/module group on host
+      -> `327 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `327 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-082` native BigComplex Tensor storage and kernels:
   - Added `TENSOR_DTYPE_BIG_COMPLEX` metadata, dtype symbol/name lookup,
     owned BigComplex handle storage, element cleanup, deep clone, and concrete

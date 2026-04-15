@@ -95,6 +95,10 @@ Name collision note:
   complex tensor work. Integer, Double, BigInteger, and BigFloat leaves promote
   to zero-imaginary BigComplex elements; BigComplex leaves preserve their
   complex components.
+- `TENSOR-083` is complete: BigComplex Tensor component kernels support
+  elementwise `real-part`, `imag-part`, and `conjugate`. Component extraction
+  returns BigFloat tensors, conjugate returns BigComplex tensors, and lazy
+  BigComplex Tensor sources are realized before the component kernel runs.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

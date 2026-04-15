@@ -110,6 +110,9 @@ as a new public Tensor surface:
   flat `(Array tensor)` / `(List tensor)` conversion, concrete `realize`,
   tensor-dispatched `map`, and pure C3 `contract` kernels. Real numeric leaves
   promote to zero-imaginary BigComplex elements.
+- BigComplex Tensor component kernels now support `real-part`, `imag-part`,
+  and `conjugate`. Component extraction returns BigFloat tensors; conjugate
+  returns BigComplex tensors.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.
