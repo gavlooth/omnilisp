@@ -38,12 +38,22 @@ typedef void (*omni_cblas_dgemv_fn)(
     int incy
 );
 
+typedef double (*omni_cblas_ddot_fn)(
+    int n,
+    const double* x,
+    int incx,
+    const double* y,
+    int incy
+);
+
 static void* omni_tensor_blas_handle = NULL;
 static omni_cblas_dgemm_fn omni_tensor_cblas_dgemm = NULL;
 static omni_cblas_dgemv_fn omni_tensor_cblas_dgemv = NULL;
+static omni_cblas_ddot_fn omni_tensor_cblas_ddot = NULL;
 static int omni_tensor_blas_resolution_attempted = 0;
 static long omni_tensor_blas_dgemm_calls = 0;
 static long omni_tensor_blas_dgemv_calls = 0;
+static long omni_tensor_blas_ddot_calls = 0;
 
 static int omni_tensor_blas_resolve(void) {
     if (omni_tensor_cblas_dgemm != NULL) return 1;
@@ -64,10 +74,12 @@ static int omni_tensor_blas_resolve(void) {
 
         void* dgemm_symbol = dlsym(handle, "cblas_dgemm");
         void* dgemv_symbol = dlsym(handle, "cblas_dgemv");
+        void* ddot_symbol = dlsym(handle, "cblas_ddot");
         if (dgemm_symbol != NULL) {
             omni_tensor_blas_handle = handle;
             omni_tensor_cblas_dgemm = (omni_cblas_dgemm_fn)dgemm_symbol;
             omni_tensor_cblas_dgemv = (omni_cblas_dgemv_fn)dgemv_symbol;
+            omni_tensor_cblas_ddot = (omni_cblas_ddot_fn)ddot_symbol;
             return 1;
         }
 
@@ -85,12 +97,20 @@ int omni_tensor_backend_blas_dgemv_available(void) {
     return omni_tensor_blas_resolve() && omni_tensor_cblas_dgemv != NULL;
 }
 
+int omni_tensor_backend_blas_ddot_available(void) {
+    return omni_tensor_blas_resolve() && omni_tensor_cblas_ddot != NULL;
+}
+
 long omni_tensor_backend_blas_dgemm_call_count(void) {
     return omni_tensor_blas_dgemm_calls;
 }
 
 long omni_tensor_backend_blas_dgemv_call_count(void) {
     return omni_tensor_blas_dgemv_calls;
+}
+
+long omni_tensor_backend_blas_ddot_call_count(void) {
+    return omni_tensor_blas_ddot_calls;
 }
 
 int omni_tensor_backend_blas_dgemm(
@@ -163,5 +183,20 @@ int omni_tensor_backend_blas_dgemv(
         1
     );
     omni_tensor_blas_dgemv_calls++;
+    return 1;
+}
+
+int omni_tensor_backend_blas_ddot(
+    size_t n,
+    double* x,
+    double* y,
+    double* out
+) {
+    if (x == NULL || y == NULL || out == NULL) return 0;
+    if (n == 0 || n > INT_MAX) return 0;
+    if (!omni_tensor_blas_resolve() || omni_tensor_cblas_ddot == NULL) return 0;
+
+    *out = omni_tensor_cblas_ddot((int)n, x, 1, y, 1);
+    omni_tensor_blas_ddot_calls++;
     return 1;
 }

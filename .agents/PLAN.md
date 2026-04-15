@@ -91,6 +91,8 @@ as a new public Tensor surface:
   `[0 1]`.
 - BLAS `Double` GEMV now optimizes contiguous row-major rank-2/rank-1 and
   rank-1/rank-2 single-axis contract layouts behind the same backend boundary.
+- BLAS `Double` DDOT now optimizes contiguous rank-1/rank-1 vector dot
+  contractions behind the same backend boundary.
 - `(Array tensor)` and `(List tensor)` are implemented as explicit Tensor
   collection conversions that realize lazy Tensor expressions and return flat
   row-major values.

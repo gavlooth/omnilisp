@@ -675,8 +675,36 @@ fn bool tensor_rank1_contiguous(TensorVal* tensor) @inline {
         tensor.strides[0] == 1;
 }
 
+fn bool tensor_rank0_scalar(TensorVal* tensor) @inline {
+    return tensor != null &&
+        tensor.rank == 0 &&
+        tensor.element_count == 1 &&
+        tensor.data != null;
+}
+
 fn bool tensor_usz_fits_blas_int(usz value) @inline {
     return value <= 2147483647;
+}
+
+fn bool tensor_contract_try_blas_ddot(
+    TensorVal* left,
+    TensorVal* right,
+    usz* left_axes,
+    usz* right_axes,
+    usz axis_count,
+    TensorVal* out_tensor
+) {
+    if (axis_count != 1 || left_axes == null || right_axes == null) return false;
+    if (!tensor_rank1_contiguous(left) || !tensor_rank1_contiguous(right) || !tensor_rank0_scalar(out_tensor)) return false;
+    if (left_axes[0] != 0 || right_axes[0] != 0) return false;
+    usz n = left.shape[0];
+    if (n == 0 || right.shape[0] != n || !tensor_usz_fits_blas_int(n)) return false;
+    return omni_tensor_backend_blas_ddot(
+        n,
+        (double*)left.data,
+        (double*)right.data,
+        (double*)out_tensor.data
+    ) != 0;
 }
 
 fn bool tensor_contract_try_blas_dgemm(
@@ -1460,6 +1488,9 @@ fn Value* tensor_contract_eval_into(
         return raise_error_with_payload_names(interp, "tensor", "tensor/aliasing", "contract: destination aliases source tensor", null);
     }
     if (left.dtype == TENSOR_DTYPE_DOUBLE) {
+        if (tensor_contract_try_blas_ddot(left, right, left_axes, right_axes, axis_count, out_tensor)) {
+            return null;
+        }
         if (tensor_contract_try_blas_dgemm(left, right, left_axes, right_axes, axis_count, out_tensor)) {
             return null;
         }

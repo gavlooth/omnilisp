@@ -437,6 +437,23 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "contract vector dot scalar",
         "(ref (contract (Tensor Double [3] [1 2 3]) (Tensor Double [3] [10 20 30]) [0] [0]) [])",
         140.0, pass, fail);
+    {
+        bool blas_available = omni_tensor_backend_blas_ddot_available() != 0;
+        long blas_calls_before = omni_tensor_backend_blas_ddot_call_count();
+        test_eq_double(interp, "contract vector dot BLAS candidate",
+            "(ref (contract (Tensor Double [3] [1 2 3]) (Tensor Double [3] [10 20 30]) [0 0]) [])",
+            140.0, pass, fail);
+        bool blas_path_ok = !blas_available || omni_tensor_backend_blas_ddot_call_count() > blas_calls_before;
+        if (blas_path_ok) {
+            emit_pass_literal(blas_available
+                ? "[PASS] tensor BLAS backend ddot contract path"
+                : "[PASS] tensor BLAS backend ddot unavailable; contract fallback path retained");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor BLAS backend ddot contract path");
+            (*fail)++;
+        }
+    }
     test_eq_double(interp, "contract list axes",
         "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) '(1) '(0)) [1 1])",
         154.0, pass, fail);

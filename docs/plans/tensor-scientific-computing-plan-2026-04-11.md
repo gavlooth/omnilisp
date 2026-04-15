@@ -189,6 +189,10 @@ Name collision note:
   single-axis `Double` contractions, including transposed matrix-vector and
   vector-matrix layouts. Unsupported rank/layout/symbol cases still fall back
   to the pure C3 contraction kernel.
+- `TENSOR-090D` is complete: the private BLAS backend now resolves
+  `cblas_ddot` and covers contiguous rank-1/rank-1 `Double` vector dot
+  contractions, with unsupported cases still falling back to the pure C3
+  contraction kernel.
 - Solver naming checkpoint: future LAPACK/LAPACKE solve/decomposition
   conveniences must not expose a bare `solve`; `linalg/` is not yet locked as
   the base namespace. Backend-module labels such as `tensor/lapack` describe

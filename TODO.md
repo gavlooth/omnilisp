@@ -512,16 +512,24 @@ Recently Closed is retained below as a short audit trail.
   - shipped slice: `TENSOR-090B` extended that private `dgemm` path with
     transpose flags for all contiguous rank-2 single-axis layouts:
     `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
+  - shipped slice: `TENSOR-090C` added optional runtime `cblas_dgemv`
+    discovery and private rank-2/rank-1 plus rank-1/rank-2 `Double` fast
+    paths.
+  - shipped slice: `TENSOR-090D` added optional runtime `cblas_ddot`
+    discovery and a private rank-1/rank-1 `Double` vector dot fast path.
   - deferred work:
     - decide LAPACK/LAPACKE solver/decomposition surface names before adding
       public conveniences;
-    - consider private `gemv`/vector-specialized BLAS only with focused
-      pure-fallback regressions;
+    - consider additional private BLAS kernels only with focused pure-fallback
+      regressions;
     - do not add public `matmul`, backend-specific Tensor types, or
       `ForeignHandle`-backed ordinary Tensor storage.
   - latest validation:
-    - `c3c build --obj-out obj`
-    - host targeted `advanced-collections-module` group: `pass=221 fail=0`
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - host targeted `advanced-collections-module` group: `pass=297 fail=0`
+    - bounded container targeted `advanced-collections-module` group:
+      `pass=297 fail=0`
     - direct transpose-backed smokes returned `84.0`, `68.0`, and `123.0`
 
 - [x] `LANG-TENSOR-BROADCASTING-093` decide singleton-axis Tensor
