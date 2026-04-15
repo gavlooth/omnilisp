@@ -1,5 +1,26 @@
 ## 2026-04-15
 
+- Completed the first BigComplex scalar math extension:
+  - Extended `csrc/big_complex_helpers.cpp` with BigComplex-preserving
+    `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`,
+    `sqrt`, and `pow`.
+  - Routed the matching math primitives through BigComplex before BigFloat or
+    Double paths. `atan2` remains a real-plane helper and now rejects complex
+    operands explicitly.
+  - Added advanced numeric regressions for BigComplex trigonometric,
+    exponential/logarithmic, square-root, power, and `atan2` rejection paths.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigComplex `sqrt`, `exp`, `log`, `sin`, `cos`, `pow`,
+      and `atan2` rejection
+    - focused advanced numeric float-math group on host
+      -> `152 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `152 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed the first BigComplex numeric slice:
   - Added Boost.Multiprecision decimal complex helper plumbing through
     `csrc/big_complex_helpers.cpp` and the C3 `BIG_COMPLEX` runtime value.

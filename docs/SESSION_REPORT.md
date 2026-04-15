@@ -1,3 +1,52 @@
+## 2026-04-15 11:00 CEST - BigComplex Scalar Math
+- Objective attempted:
+  - Continue the BigComplex scientific scalar lane beyond arithmetic by adding
+    complex-preserving elementary math.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_complex_helpers.cpp` with BigComplex unary math for
+    `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`, and
+    `sqrt`, plus binary `pow`.
+  - Added C3 externs and value helper wrappers for BigComplex math.
+  - Routed the corresponding math primitives through BigComplex before the
+    BigFloat or Double paths.
+  - Kept `atan2` as a real-plane helper and added an explicit complex-operand
+    rejection.
+  - Added focused advanced numeric regressions and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigComplex `sqrt`, `exp`, `log`, `sin`, `cos`, `pow`,
+    and `atan2` rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(String (sqrt (BigComplex -1 0)))` returns `"0+1i"`.
+  - `(String (exp (BigComplex 0 0)))` returns `"1+0i"`.
+  - `(String (log (BigComplex 1 0)))` returns `"0+0i"`.
+  - `(String (sin (BigComplex 0 0)))` returns `"0+0i"`.
+  - `(String (cos (BigComplex 0 0)))` returns `"1+0i"`.
+  - Complex `pow` is validated by magnitude tolerance because the underlying
+    complex algorithm can leave tiny residual imaginary parts.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `152 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Exact string equality is not the right regression contract for complex
+    `pow`; use a magnitude tolerance for identities such as `i^2 = -1`.
+- Current best recommendation/checkpoint:
+  - BigComplex now supports elementary complex math. Next scalar precision
+    work should be BigFloat precision-control policy or a deliberate
+    BigComplex special-function/distribution policy.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 10:58 CEST - BigComplex Numeric Primitive
 - Objective attempted:
   - Continue the scientific scalar precision lane by shipping the first

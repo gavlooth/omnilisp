@@ -170,6 +170,9 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SIN, "sin: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SIN, "sin: BigFloat evaluation error");
     }
@@ -180,6 +183,9 @@ fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "cos", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COS, "cos: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_COS, "cos: BigFloat evaluation error");
     }
@@ -190,6 +196,9 @@ fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "tan", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TAN, "tan: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_TAN, "tan: BigFloat evaluation error");
     }
@@ -200,6 +209,9 @@ fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "asin", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ASIN, "asin: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ASIN, "asin: BigFloat evaluation error");
     }
@@ -210,6 +222,9 @@ fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "acos", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ACOS, "acos: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ACOS, "acos: BigFloat evaluation error");
     }
@@ -220,6 +235,9 @@ fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "atan", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ATAN, "atan: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ATAN, "atan: BigFloat evaluation error");
     }
@@ -230,6 +248,9 @@ fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "atan2", "2 arguments", args.len);
+    if (is_big_complex(args[0]) || is_big_complex(args[1])) {
+        return raise_error(interp, "atan2: complex numbers are not supported");
+    }
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "atan2", 0, "number", args[0]);
         if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "atan2", 1, "number", args[1]);
@@ -245,6 +266,9 @@ fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "exp", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_EXP, "exp: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_EXP, "exp: BigFloat evaluation error");
     }
@@ -255,6 +279,9 @@ fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG, "log: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_LOG, "log: BigFloat evaluation error");
     }
@@ -265,6 +292,9 @@ fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log10", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG10, "log10: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_LOG10, "log10: BigFloat evaluation error");
     }
@@ -275,6 +305,12 @@ fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "pow", "2 arguments", args.len);
+    if (is_big_complex(args[0]) || is_big_complex(args[1])) {
+        if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "pow", 0, "number", args[0]);
+        if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "pow", 1, "number", args[1]);
+        return big_complex_binary_math_values(
+            interp, args[0], args[1], BIG_COMPLEX_MATH_POW, "pow: BigComplex evaluation error");
+    }
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "pow", 0, "number", args[0]);
         if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "pow", 1, "number", args[1]);
@@ -290,6 +326,9 @@ fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sqrt", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SQRT, "sqrt: BigComplex evaluation error");
+    }
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SQRT, "sqrt: BigFloat evaluation error");
     }

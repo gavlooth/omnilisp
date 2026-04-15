@@ -229,6 +229,26 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(< (BigComplex 1 2) (BigComplex 2 3))", "complex numbers are not ordered", pass, fail);
     test_error_contains(interp, "BigComplex division by zero",
         "(/ (BigComplex 1 2) (BigComplex 0 0))", "/: division by zero", pass, fail);
+    test_str_val(interp, "BigComplex sin zero",
+        "(String (sin (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex cos zero",
+        "(String (cos (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex exp zero",
+        "(String (exp (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex log one",
+        "(String (log (BigComplex 1 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex sqrt negative one",
+        "(String (sqrt (BigComplex -1 0)))",
+        "0+1i", pass, fail);
+    test_truthy(interp, "BigComplex pow within tolerance",
+        "(< (abs (- (pow (BigComplex 0 1) 2) (BigComplex -1 0))) (BigFloat \"1e-40\"))",
+        pass, fail);
+    test_error_contains(interp, "BigComplex atan2 rejected",
+        "(atan2 (BigComplex 1 0) 1)", "atan2: complex numbers are not supported", pass, fail);
     test_truthy(interp, "parse-number double overflow type is BigFloat",
         "(= (type-of (parse-number \"1e309\")) 'BigFloat)", pass, fail);
     test_str_val(interp, "parse-number double overflow value",

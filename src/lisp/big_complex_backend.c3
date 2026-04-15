@@ -10,6 +10,8 @@ extern fn char* omni_big_complex_to_string(void* value, usz* out_len) @extern("o
 extern fn void omni_big_complex_string_free(char* value) @extern("omni_big_complex_string_free");
 extern fn void* omni_big_complex_binary(void* lhs, void* rhs, int op) @extern("omni_big_complex_binary");
 extern fn void* omni_big_complex_neg(void* value) @extern("omni_big_complex_neg");
+extern fn void* omni_big_complex_unary_math(void* value, int op) @extern("omni_big_complex_unary_math");
+extern fn void* omni_big_complex_binary_math(void* lhs, void* rhs, int op) @extern("omni_big_complex_binary_math");
 extern fn void* omni_big_complex_abs(void* value) @extern("omni_big_complex_abs");
 extern fn int omni_big_complex_equal(void* lhs, void* rhs) @extern("omni_big_complex_equal");
 extern fn int omni_big_complex_is_zero(void* value) @extern("omni_big_complex_is_zero");

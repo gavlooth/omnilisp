@@ -64,6 +64,35 @@ omni_big_complex apply_binary(const omni_big_complex& lhs, const omni_big_comple
     }
 }
 
+omni_big_complex apply_unary_math(const omni_big_complex& value, int op, bool& ok) {
+    ok = true;
+    switch (op) {
+        case 1: return std::sin(value);
+        case 2: return std::cos(value);
+        case 3: return std::tan(value);
+        case 4: return std::asin(value);
+        case 5: return std::acos(value);
+        case 6: return std::atan(value);
+        case 7: return std::exp(value);
+        case 8: return std::log(value);
+        case 9: return std::log(value) / std::log(omni_big_complex(cpp_dec_float_50(10), cpp_dec_float_50(0)));
+        case 10: return std::sqrt(value);
+        default:
+            ok = false;
+            return omni_big_complex(0, 0);
+    }
+}
+
+omni_big_complex apply_binary_math(const omni_big_complex& lhs, const omni_big_complex& rhs, int op, bool& ok) {
+    ok = true;
+    switch (op) {
+        case 1: return std::pow(lhs, rhs);
+        default:
+            ok = false;
+            return omni_big_complex(0, 0);
+    }
+}
+
 } // namespace
 
 extern "C" {
@@ -167,6 +196,33 @@ void* omni_big_complex_neg(const void* value) {
         const omni_big_complex* src = as_big_complex_const(value);
         if (src == nullptr || !finite_complex(*src)) return nullptr;
         return new omni_big_complex(-(*src));
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_complex_unary_math(const void* value, int op) {
+    try {
+        const omni_big_complex* src = as_big_complex_const(value);
+        if (src == nullptr || !finite_complex(*src)) return nullptr;
+        bool ok = false;
+        omni_big_complex result = apply_unary_math(*src, op, ok);
+        if (!ok || !finite_complex(result)) return nullptr;
+        return new omni_big_complex(result);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_complex_binary_math(const void* lhs, const void* rhs, int op) {
+    try {
+        const omni_big_complex* left = as_big_complex_const(lhs);
+        const omni_big_complex* right = as_big_complex_const(rhs);
+        if (left == nullptr || right == nullptr || !finite_complex(*left) || !finite_complex(*right)) return nullptr;
+        bool ok = false;
+        omni_big_complex result = apply_binary_math(*left, *right, op, ok);
+        if (!ok || !finite_complex(result)) return nullptr;
+        return new omni_big_complex(result);
     } catch (...) {
         return nullptr;
     }

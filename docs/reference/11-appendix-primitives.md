@@ -240,9 +240,11 @@ values, narrowing to `Integer` when representable and promoting to `BigInteger`
 otherwise. Huge integer materializations fail closed.
 Non-`BigFloat` floating inputs continue to return `Double`.
 `BigComplex` participates in `+`, `-`, `*`, `/`, unary `-`, `=`, and `abs`;
-`abs` returns a `BigFloat` magnitude. Ordered comparisons and ordered helpers
-such as `min`, `max`, `positive?`, and `negative?` fail closed for complex
-operands.
+`abs` returns a `BigFloat` magnitude. `sin`, `cos`, `tan`, `asin`, `acos`,
+`atan`, `exp`, `log`, `log10`, `sqrt`, and `pow` preserve BigComplex results
+when a complex operand participates. `atan2` remains real-valued and rejects
+complex operands. Ordered comparisons and ordered helpers such as `min`, `max`,
+`positive?`, and `negative?` fail closed for complex operands.
 
 **Bitwise:**
 
