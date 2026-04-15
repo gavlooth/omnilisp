@@ -244,6 +244,30 @@ fn Value* big_complex_abs_value(Interp* interp, Value* v, char[] message) {
     return make_big_float_from_owned_handle(interp, result, message);
 }
 
+fn Value* big_complex_real_part_value(Interp* interp, Value* v, char[] message) {
+    if (v == null) return raise_error(interp, message);
+    if (v.tag != BIG_COMPLEX) return v;
+
+    void* result = omni_big_complex_real_part(v.big_complex_val);
+    return make_big_float_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_complex_imag_part_value(Interp* interp, Value* v, char[] message) {
+    if (v == null) return raise_error(interp, message);
+    if (v.tag != BIG_COMPLEX) return make_int(interp, 0);
+
+    void* result = omni_big_complex_imag_part(v.big_complex_val);
+    return make_big_float_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_complex_conjugate_value(Interp* interp, Value* v, char[] message) {
+    if (v == null) return raise_error(interp, message);
+    if (v.tag != BIG_COMPLEX) return v;
+
+    void* result = omni_big_complex_conjugate(v.big_complex_val);
+    return make_big_complex_from_owned_handle(interp, result, message);
+}
+
 fn bool big_complex_value_is_zero(Value* v) {
     void* source = big_complex_handle_from_value(v);
     if (source == null) return false;

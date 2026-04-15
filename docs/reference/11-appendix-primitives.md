@@ -223,6 +223,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `log` | 1 | Natural log |
 | `log10` | 1 | Log base 10 |
 | `pow` | 2 | Power |
+| `real-part` | 1 | Real component of any number; returns `BigFloat` for BigComplex inputs |
+| `imag-part` | 1 | Imaginary component of any number; returns `0` for real scalar inputs |
+| `conjugate` | 1 | Complex conjugate; preserves real scalar inputs |
 | `floor` | 1 | Floor; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `ceiling` | 1 | Ceiling; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
 | `round` | 1 | Round; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
@@ -243,12 +246,15 @@ values, narrowing to `Integer` when representable and promoting to `BigInteger`
 otherwise. Huge integer materializations fail closed.
 Non-`BigFloat` floating inputs continue to return `Double`.
 `BigComplex` participates in `+`, `-`, `*`, `/`, unary `-`, `=`, and `abs`;
-`abs` returns a `BigFloat` magnitude. `sin`, `cos`, `tan`, `asin`, `acos`,
-`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, and `pow`
-preserve BigComplex results when a complex operand participates. `atan2`
-remains real-valued and rejects complex operands. Ordered comparisons and
-ordered helpers such as `min`, `max`, `positive?`, and `negative?` fail closed
-for complex operands.
+`abs` returns a `BigFloat` magnitude. `real-part` and `imag-part` return
+`BigFloat` components for BigComplex inputs, while real scalar inputs keep their
+value as the real part and use `0` as the imaginary part. `conjugate` preserves
+real scalar inputs and returns a BigComplex result for BigComplex inputs. `sin`,
+`cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`,
+`log10`, `sqrt`, and `pow` preserve BigComplex results when a complex operand
+participates. `atan2` remains real-valued and rejects complex operands. Ordered
+comparisons and ordered helpers such as `min`, `max`, `positive?`, and
+`negative?` fail closed for complex operands.
 
 **Bitwise:**
 

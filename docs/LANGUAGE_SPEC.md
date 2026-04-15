@@ -420,10 +420,13 @@ string. BigComplex values are `Number` values, support `String`, `+`, `-`,
 `*`, `/`, unary `-`, `=`, hashing/equality, and scope-boundary copy/promotion.
 `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`,
 `log`, `log10`, `sqrt`, and `pow` preserve BigComplex results when a complex
-operand participates. `abs` returns a `BigFloat` magnitude. `atan2` remains a
-real-plane helper and rejects complex operands. Complex values are
-intentionally not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`,
-and `negative?` fail closed for BigComplex operands.
+operand participates. `real-part` and `imag-part` return `BigFloat`
+components for BigComplex inputs, `imag-part` returns `0` for real scalar
+inputs, and `conjugate` preserves real scalars while flipping a BigComplex
+imaginary sign. `abs` returns a `BigFloat` magnitude. `atan2` remains a
+real-plane helper and rejects complex operands. Complex values are intentionally
+not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and
+`negative?` fail closed for BigComplex operands.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
@@ -1251,7 +1254,7 @@ Set order contract:
 - `List` returns elements in deterministic canonical element order
   (same comparator family as dictionary keys).
 
-### 7.14 Math Library (24)
+### 7.14 Math Library (27)
 
 | Prim | Description |
 |------|-------------|
@@ -1260,6 +1263,7 @@ Set order contract:
 | `atan2` | Two-argument arctangent |
 | `exp`, `log`, `log10` | Exponential/logarithmic |
 | `pow`, `sqrt` | Power/root |
+| `real-part`, `imag-part`, `conjugate` | Complex component access and conjugation; accept any numeric value |
 | `math/lgamma` | Natural log of absolute gamma value; domain/range failures raise errors |
 | `math/erf`, `math/erfc` | Error function and complementary error function |
 | `stats/normal-cdf`, `stats/normal-quantile` | Standard normal CDF and inverse CDF |

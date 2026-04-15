@@ -65,7 +65,9 @@ Minimal scalar-first targets:
   scope-boundary cloning/promotion, fail-closed ordered operations, and
   BigComplex-preserving `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`,
   `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, and `pow` are implemented.
-  Broader special functions and distributions remain separate follow-ups.
+  `real-part`, `imag-part`, and `conjugate` are implemented as numeric
+  primitives. Broader special functions and distributions remain separate
+  follow-ups.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
   `stats/normal-quantile` are now validated Boost.Math wrapper slices: C++ shim
   status codes, finite-input/range/domain error mapping, primitive

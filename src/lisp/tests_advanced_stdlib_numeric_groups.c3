@@ -221,6 +221,29 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigComplex abs returns BigFloat magnitude",
         "(String (abs (BigComplex 3 4)))",
         "5", pass, fail);
+    test_str_val(interp, "BigComplex real-part returns BigFloat component",
+        "(String (real-part (BigComplex 1 2)))",
+        "1", pass, fail);
+    test_str_val(interp, "BigComplex imag-part returns BigFloat component",
+        "(String (imag-part (BigComplex 1 2)))",
+        "2", pass, fail);
+    test_str_val(interp, "BigComplex conjugate flips imaginary sign",
+        "(String (conjugate (BigComplex 1 2)))",
+        "1-2i", pass, fail);
+    test_truthy(interp, "BigComplex real-part preserves BigFloat component type",
+        "(= (type-of (real-part (BigComplex 1 2))) 'BigFloat)", pass, fail);
+    test_eq(interp, "real-part on real Integer is identity",
+        "(real-part 42)", 42, pass, fail);
+    test_eq(interp, "imag-part on real Integer is zero",
+        "(imag-part 42)", 0, pass, fail);
+    test_str_val(interp, "real-part on BigFloat preserves scalar value",
+        "(String (real-part (BigFloat \"1.25\")))",
+        "1.25", pass, fail);
+    test_str_val(interp, "conjugate on BigFloat preserves scalar value",
+        "(String (conjugate (BigFloat \"1.25\")))",
+        "1.25", pass, fail);
+    test_error_contains(interp, "real-part rejects non-number",
+        "(real-part \"x\")", "number", pass, fail);
     test_truthy(interp, "BigComplex equality",
         "(= (BigComplex 1 2) (BigComplex 1 2))", pass, fail);
     test_truthy(interp, "BigComplex zero predicate",

@@ -1,3 +1,51 @@
+## 2026-04-15 11:21 CEST - BigComplex Component Access
+- Objective attempted:
+  - Continue the scientific scalar lane by making BigComplex analytically
+    usable without string parsing or ad hoc destructuring.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added C++ helper exports for BigComplex `real-part`, `imag-part`, and
+    `conjugate`.
+  - Added C3 externs and value helpers that return BigFloat components for
+    BigComplex inputs.
+  - Added public numeric primitives `real-part`, `imag-part`, and `conjugate`,
+    plus primitive-table registration and AOT lookup.
+  - Real scalar inputs keep their existing value as the real part, use Integer
+    `0` as the imaginary part, and are preserved by `conjugate`.
+  - Added focused advanced numeric regressions and updated language/reference
+    docs, `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigComplex component access and real-scalar conjugation
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(String (real-part (BigComplex 1 2)))` returns `"1"`.
+  - `(String (imag-part (BigComplex 1 2)))` returns `"2"`.
+  - `(String (conjugate (BigComplex 1 2)))` returns `"1-2i"`.
+  - `(String (conjugate (BigFloat "1.25")))` returns `"1.25"`.
+  - Focused advanced numeric float-math group passed on host:
+    `172 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `172 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - BigComplex now has arithmetic, elementary math, hyperbolic math, magnitude,
+    and component access. The next scalar precision decision should be either a
+    precision-control policy or a deliberate BigComplex special-function /
+    distribution policy.
+- Unresolved issues:
+  - No precision-control API exists for BigFloat/BigComplex yet.
+  - Broader complex special functions and distributions remain unimplemented.
+- Next actions:
+  - Pick and implement the next scalar precision policy slice, or switch back
+    to Tensor backend acceleration once the scalar surface is sufficient.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:10 CEST - Hyperbolic Scalar Math
 - Objective attempted:
   - Continue the scientific scalar math lane by adding standard hyperbolic

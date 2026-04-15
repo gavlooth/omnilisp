@@ -1,5 +1,27 @@
 ## 2026-04-15
 
+- Completed BigComplex component access:
+  - Added C++ helper exports for BigComplex real component extraction,
+    imaginary component extraction, and conjugation.
+  - Added `real-part`, `imag-part`, and `conjugate` as numeric primitives with
+    primitive-table registration and AOT lookup.
+  - `real-part` and `imag-part` return `BigFloat` components for BigComplex
+    inputs. Real scalar inputs keep their existing value as the real part,
+    use `0` as the imaginary part, and are preserved by `conjugate`.
+  - Updated language/reference docs, the scalar numerics plan, and focused
+    advanced numeric regressions.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigComplex `real-part`, `imag-part`, `conjugate`, and
+      real-scalar `conjugate`
+    - focused advanced numeric float-math group on host
+      -> `172 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `172 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed hyperbolic scalar math:
   - Added `sinh`, `cosh`, and `tanh` as standard math primitives.
   - Routed Double inputs through the C math library, BigFloat inputs through

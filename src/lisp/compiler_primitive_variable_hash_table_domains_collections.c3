@@ -80,6 +80,9 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("sinh"), "aot::lookup_prim(\"sinh\")");
     prim_hash_insert(st.intern("cosh"), "aot::lookup_prim(\"cosh\")");
     prim_hash_insert(st.intern("tanh"), "aot::lookup_prim(\"tanh\")");
+    prim_hash_insert(st.intern("real-part"), "aot::lookup_prim(\"real-part\")");
+    prim_hash_insert(st.intern("imag-part"), "aot::lookup_prim(\"imag-part\")");
+    prim_hash_insert(st.intern("conjugate"), "aot::lookup_prim(\"conjugate\")");
     prim_hash_insert(st.intern("pow"), "aot::lookup_prim(\"pow\")");
     prim_hash_insert(st.intern("math/lgamma"), "aot::lookup_prim(\"math/lgamma\")");
     prim_hash_insert(st.intern("math/erf"), "aot::lookup_prim(\"math/erf\")");

@@ -243,6 +243,36 @@ void* omni_big_complex_abs(const void* value) {
     }
 }
 
+void* omni_big_complex_real_part(const void* value) {
+    try {
+        const omni_big_complex* src = as_big_complex_const(value);
+        if (src == nullptr || !finite_complex(*src)) return nullptr;
+        return new cpp_dec_float_50(src->real());
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_complex_imag_part(const void* value) {
+    try {
+        const omni_big_complex* src = as_big_complex_const(value);
+        if (src == nullptr || !finite_complex(*src)) return nullptr;
+        return new cpp_dec_float_50(src->imag());
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void* omni_big_complex_conjugate(const void* value) {
+    try {
+        const omni_big_complex* src = as_big_complex_const(value);
+        if (src == nullptr || !finite_complex(*src)) return nullptr;
+        return new omni_big_complex(src->real(), -src->imag());
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 int omni_big_complex_equal(const void* lhs, const void* rhs) {
     const omni_big_complex* left = as_big_complex_const(lhs);
     const omni_big_complex* right = as_big_complex_const(rhs);

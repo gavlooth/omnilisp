@@ -13,5 +13,8 @@ extern fn void* omni_big_complex_neg(void* value) @extern("omni_big_complex_neg"
 extern fn void* omni_big_complex_unary_math(void* value, int op) @extern("omni_big_complex_unary_math");
 extern fn void* omni_big_complex_binary_math(void* lhs, void* rhs, int op) @extern("omni_big_complex_binary_math");
 extern fn void* omni_big_complex_abs(void* value) @extern("omni_big_complex_abs");
+extern fn void* omni_big_complex_real_part(void* value) @extern("omni_big_complex_real_part");
+extern fn void* omni_big_complex_imag_part(void* value) @extern("omni_big_complex_imag_part");
+extern fn void* omni_big_complex_conjugate(void* value) @extern("omni_big_complex_conjugate");
 extern fn int omni_big_complex_equal(void* lhs, void* rhs) @extern("omni_big_complex_equal");
 extern fn int omni_big_complex_is_zero(void* value) @extern("omni_big_complex_is_zero");
