@@ -1,5 +1,33 @@
 ## 2026-04-15
 
+- Completed `TENSOR-079` native BigFloat Tensor `contract` kernels:
+  - Extended tensor-dispatched `contract` from `Double`-only evaluation to
+    native `BigFloat` evaluation through the pure C3 contraction fallback.
+  - Kept BLAS `dgemm`/`dgemv` fast paths `Double`-only; BigFloat contracts
+    use owned BigFloat sum/product handles and preserve Tensor dtype.
+  - Preserved fail-closed mixed tensor dtype behavior; `Double`/`BigFloat`
+    tensor-tensor `contract` combinations still raise `tensor/dtype-mismatch`.
+  - Added focused advanced collections/module regressions for BigFloat vector
+    dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigFloat dot, matrix product, zero-size identity,
+      destination realization, return-boundary survival, closure-capture
+      survival, and mixed-dtype rejection
+    - focused advanced collections/module group on host
+      -> `271 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `271 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-078` native BigFloat Tensor `map` kernels:
   - Extended lazy tensor `map` evaluation from `Double`-only storage to native
     `BigFloat` storage for unary, tensor-scalar, scalar-tensor,

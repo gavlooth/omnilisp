@@ -76,8 +76,11 @@ Implemented slices:
   tensors for unary, tensor-scalar, scalar-tensor, exact-shape tensor-tensor,
   and right-aligned singleton-axis broadcast cases. BigFloat lazy map payloads
   clone scalar handles across function-return/closure-capture boundaries.
-  `contract` remains `Double`-only pending dedicated BigFloat contraction
-  kernels.
+- `TENSOR-079`: tensor-dispatched `contract` now supports native `BigFloat`
+  tensors through the pure C3 contraction fallback, including vector dot,
+  rank-2 matrix product, zero-size contracted-axis identity, explicit
+  destination realization, and lazy expression boundary survival. BLAS fast
+  paths remain `Double`-only.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque

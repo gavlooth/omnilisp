@@ -447,7 +447,7 @@ return flat row-major element values; use `shape` when rank metadata is needed.
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
 `map` is the elementwise tensor operation for `Double` and `BigFloat` tensors;
-`contract` is the pure `Double` summed-axis operation for tensor contraction.
+`contract` is the summed-axis operation for `Double` and `BigFloat` tensors.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User
@@ -1337,8 +1337,8 @@ Numeric conversion policy:
 
 These primitives are implemented for native `Tensor` values. The current
 concrete storage dtypes are `Double` and `BigFloat`; tensor `map` supports
-both dtypes, while tensor `contract` kernels remain `Double`-only in this
-slice.
+both dtypes, while tensor `contract` supports pure C3 `Double` and `BigFloat`
+kernels.
 
 | Prim | Description |
 |------|-------------|
@@ -1352,13 +1352,11 @@ slice.
 
 Tensor indexing is part of generic `ref`. `BigFloat` tensors support
 constructor/ref/flat collection conversion/concrete `realize` paths and
-tensor-dispatched `map`; `contract` rejects them with `tensor/dtype-mismatch`
-until BigFloat contraction kernels are implemented. Tensor elementwise
-operations are part of generic `map`; unary tensor inputs, tensor-scalar
-inputs, scalar-tensor inputs, exact-shape tensor-tensor inputs, and
-right-aligned singleton-axis tensor-tensor broadcasting are supported for
-`Double` and `BigFloat` tensors. Scalar arguments are coerced into the first
-tensor input's dtype and
+tensor-dispatched `map` and `contract`. Tensor elementwise operations are part
+of generic `map`; unary tensor inputs, tensor-scalar inputs, scalar-tensor
+inputs, exact-shape tensor-tensor inputs, and right-aligned singleton-axis
+tensor-tensor broadcasting are supported for `Double` and `BigFloat` tensors.
+Scalar arguments are coerced into the first tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
 incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
 `contract` may return lazy Tensor expression payloads under the existing

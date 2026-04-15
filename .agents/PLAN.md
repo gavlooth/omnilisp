@@ -103,8 +103,9 @@ as a new public Tensor surface:
   `realize`.
 - Tensor-dispatched `map` now supports native `BigFloat` tensors for unary,
   tensor-scalar, scalar-tensor, exact-shape tensor-tensor, and right-aligned
-  singleton-axis broadcast cases. `contract` remains `Double`-only until
-  dedicated BigFloat contraction kernels land.
+  singleton-axis broadcast cases.
+- Tensor-dispatched `contract` now supports native `BigFloat` tensors through
+  the pure C3 contraction fallback. BLAS fast paths remain `Double`-only.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing
@@ -125,11 +126,9 @@ next scientific work should pick one narrow slice:
 1. Continue `TENSOR-090` beyond the landed `dgemm` and `dgemv` paths: decide
    LAPACK/LAPACKE solver/decomposition naming. Bare `solve` is rejected;
    `linalg/` is not yet accepted as the qualifier.
-2. Continue the Tensor precision lane with BigFloat `contract` kernels if
-   high-precision reductions are the priority.
-3. Continue the scalar precision lane with explicit BigFloat precision-control
+2. Continue the scalar precision lane with explicit BigFloat precision-control
    policy or BigComplex special-function/distribution policy.
-4. Extend Boost.Math only when there is a concrete next scientific function or
+3. Extend Boost.Math only when there is a concrete next scientific function or
    distribution family. The minimal planned scalar wrappers are now complete.
 
 Do not start by binding GSL. Do not implement `linalg/matmul` as canonical.

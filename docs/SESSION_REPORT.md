@@ -1,3 +1,65 @@
+## 2026-04-15 12:31 CEST - Native BigFloat Tensor Contract
+- Objective attempted:
+  - Complete the BigFloat Tensor arithmetic kernel lane by adding summed-axis
+    contraction support after native storage and elementwise `map`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended tensor-dispatched `contract` from `Double`-only evaluation to
+    native `BigFloat` evaluation through the pure C3 contraction fallback.
+  - Kept private BLAS `dgemm`/`dgemv` fast paths `Double`-only; BigFloat
+    contracts use owned BigFloat sum/product handles and preserve Tensor dtype.
+  - Preserved deterministic mixed tensor dtype rejection:
+    `Double`/`BigFloat` tensor-tensor `contract` still raises
+    `tensor/dtype-mismatch`.
+  - Added focused advanced collections/module regressions for BigFloat vector
+    dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat dot, matrix product, zero-size identity,
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - BigFloat vector dot returns `"55"` for `[1.5 2] . [10 20]`.
+  - BigFloat rank-2 matrix product returns `"154"` for the existing Tensor
+    matrix-product smoke shape.
+  - BigFloat zero-size contracted-axis identity returns `"0"`.
+  - Explicit destination `realize` works for BigFloat contract expressions.
+  - Lazy BigFloat contract expressions survive function return and closure
+    capture.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `271 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - ASAN validation could not run: the local C3 compiler rejected the
+    sanitizer build before compilation with `Address sanitizer is only
+    supported on Linux, FreeBSD, NetBSD, Darwin and Windows.`
+- Invalidated assumptions or failed approaches worth preserving:
+  - The previous checkpoint statement that BigFloat Tensor `contract` is
+    unimplemented is now stale for pure C3 Tensor kernels. It remains true for
+    accelerated BLAS-style BigFloat backends and for other unimplemented Tensor
+    storage dtypes.
+- Unresolved issues:
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - BigFloat Tensor contracts are pure C3 and not BLAS-accelerated.
+  - ASAN still cannot run in this environment because the C3 compiler rejects
+    sanitizer builds before producing a binary.
+- Current best recommendation:
+  - Resume the optional LAPACK/LAPACKE solver/decomposition naming decision for
+    `Double` Tensor convenience APIs, or start a separate dtype-storage slice
+    for BigInteger/BigComplex Tensor support if high-precision non-real Tensor
+    work is prioritized.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 12:25 CEST - Native BigFloat Tensor Map
 - Objective attempted:
   - Move BigFloat Tensor support beyond storage/ref/conversion into the

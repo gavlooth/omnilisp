@@ -326,6 +326,27 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "map mixed BigFloat Double tensors rejected",
         "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]))",
         "map: tensor dtype mismatch", pass, fail);
+    test_str_val(interp, "contract BigFloat vector dot",
+        "(String (ref (contract (Tensor BigFloat [2] [(BigFloat \"1.5\") (BigFloat \"2\")]) (Tensor BigFloat [2] [(BigFloat \"10\") (BigFloat \"20\")]) [0] [0]) []))",
+        "55", pass, fail);
+    test_str_val(interp, "contract BigFloat matrix product",
+        "(String (ref (contract (Tensor BigFloat [2 3] [(BigFloat \"1\") (BigFloat \"2\") (BigFloat \"3\") (BigFloat \"4\") (BigFloat \"5\") (BigFloat \"6\")]) (Tensor BigFloat [3 2] [(BigFloat \"7\") (BigFloat \"8\") (BigFloat \"9\") (BigFloat \"10\") (BigFloat \"11\") (BigFloat \"12\")]) [1 0]) [1 1]))",
+        "154", pass, fail);
+    test_str_val(interp, "contract BigFloat zero-size identity",
+        "(String (ref (contract (Tensor BigFloat [0] []) (Tensor BigFloat [0] []) [0] [0]) []))",
+        "0", pass, fail);
+    test_str_val(interp, "realize BigFloat contract into destination",
+        "(let (dst (Tensor BigFloat [2 2] 0)) (block (realize (contract (Tensor BigFloat [2 3] [(BigFloat \"1\") (BigFloat \"2\") (BigFloat \"3\") (BigFloat \"4\") (BigFloat \"5\") (BigFloat \"6\")]) (Tensor BigFloat [3 2] [(BigFloat \"7\") (BigFloat \"8\") (BigFloat \"9\") (BigFloat \"10\") (BigFloat \"11\") (BigFloat \"12\")]) [1 0]) dst) (String (ref dst [1 1]))))",
+        "154", pass, fail);
+    test_str_val(interp, "lazy BigFloat contract survives function return boundary",
+        "(block (define (mk) (contract (Tensor BigFloat [2] [(BigFloat \"1.5\") (BigFloat \"2\")]) (Tensor BigFloat [2] [(BigFloat \"10\") (BigFloat \"20\")]) [0] [0])) (String (ref (mk) [])))",
+        "55", pass, fail);
+    test_str_val(interp, "lazy BigFloat contract survives closure capture",
+        "(let (src (contract (Tensor BigFloat [2] [(BigFloat \"1.5\") (BigFloat \"2\")]) (Tensor BigFloat [2] [(BigFloat \"10\") (BigFloat \"20\")]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
+        "55", pass, fail);
+    test_error_contains(interp, "contract mixed BigFloat Double tensors rejected",
+        "(contract (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]) [0] [0])",
+        "contract: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "map tensor broadcast shape mismatch",
         "(map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [1 2 3 4]))",
         "map: tensor shape mismatch", pass, fail);

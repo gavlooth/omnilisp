@@ -78,8 +78,12 @@ Name collision note:
   `BigFloat` tensors for unary, tensor-scalar, scalar-tensor, exact-shape
   tensor-tensor, and right-aligned singleton-axis broadcast cases, with
   BigFloat scalar operands cloned into lazy map payloads for boundary-safe
-  function-return and closure-capture behavior. `contract` remains
-  `Double`-only until dedicated BigFloat contraction kernels land.
+  function-return and closure-capture behavior.
+- `TENSOR-079` is complete: tensor-dispatched `contract` supports native
+  `BigFloat` tensors through the pure C3 contraction fallback, including vector
+  dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
+  destination realization, and lazy expression boundary survival. BLAS fast
+  paths remain `Double`-only.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a
