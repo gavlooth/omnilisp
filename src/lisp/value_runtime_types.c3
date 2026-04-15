@@ -190,6 +190,7 @@ enum TensorDType : char {
     TENSOR_DTYPE_DOUBLE,
     TENSOR_DTYPE_BIG_INTEGER,
     TENSOR_DTYPE_BIG_FLOAT,
+    TENSOR_DTYPE_BIG_COMPLEX,
 }
 
 /**
@@ -228,6 +229,8 @@ struct TensorVal {
     void* map_right_big_integer_scalar;
     void* map_left_big_float_scalar;
     void* map_right_big_float_scalar;
+    void* map_left_big_complex_scalar;
+    void* map_right_big_complex_scalar;
     bool map_is_binary;
     Value* contract_left;
     Value* contract_right;

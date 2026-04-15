@@ -1,5 +1,37 @@
 ## 2026-04-15
 
+- Completed `TENSOR-082` native BigComplex Tensor storage and kernels:
+  - Added `TENSOR_DTYPE_BIG_COMPLEX` metadata, dtype symbol/name lookup,
+    owned BigComplex handle storage, element cleanup, deep clone, and concrete
+    storage copy support.
+  - Extended `Tensor` constructors to accept `BigComplex` dtype descriptors:
+    `(Tensor BigComplex shape data-or-scalar)`, `(Tensor data BigComplex)`,
+    and `(Tensor BigComplex data)`. BigComplex tensors accept `Integer`,
+    `Double`, `BigInteger`, `BigFloat`, and `BigComplex` numeric values, with
+    real values promoted to zero-imaginary BigComplex elements.
+  - Extended `ref`, flat `(Array tensor)` / `(List tensor)` conversion,
+    scalar `realize` fill, concrete tensor copy realization, tensor-dispatched
+    `map`, and pure C3 `contract` to native BigComplex tensors.
+  - Kept BLAS fast paths `Double`-only; BigComplex contracts use the pure C3
+    contraction fallback and preserve complex results.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - direct smokes for BigComplex Tensor `ref`, lazy `map`, and `contract`
+    - focused advanced collections/module group on host
+      -> `321 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `321 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-090E` optional BLAS `dger` outer-product fast path:
   - Extended the private runtime-loaded BLAS helper to resolve `cblas_dger`
     alongside existing `cblas_dgemm`/`cblas_dgemv`/`cblas_ddot`, with

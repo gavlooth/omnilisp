@@ -89,6 +89,12 @@ Name collision note:
   `realize`, tensor-dispatched `map`, and pure C3 `contract` kernels for exact
   integer tensor work. BigInteger Tensor data must be exact `Integer` or
   `BigInteger` values; inexact `Double` data fails closed.
+- `TENSOR-082` is complete: native `BigComplex` Tensor storage supports
+  constructor, `dtype`, `ref`, flat collection conversion, concrete
+  `realize`, tensor-dispatched `map`, and pure C3 `contract` kernels for
+  complex tensor work. Integer, Double, BigInteger, and BigFloat leaves promote
+  to zero-imaginary BigComplex elements; BigComplex leaves preserve their
+  complex components.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

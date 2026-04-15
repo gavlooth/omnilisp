@@ -86,6 +86,11 @@ Implemented slices:
   `realize`, tensor-dispatched `map`, and pure C3 `contract` for exact
   integer tensor work. BigInteger Tensor data must be exact integers; inexact
   floating data fails closed.
+- `TENSOR-082`: native `BigComplex` Tensor storage and kernels support
+  constructor, `dtype`, `ref`, flat collection conversion, concrete
+  `realize`, tensor-dispatched `map`, and pure C3 `contract` for complex
+  tensor work. Real numeric leaves promote to zero-imaginary BigComplex
+  elements; BLAS fast paths remain `Double`-only.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -115,7 +120,8 @@ Deferred by design:
   behavior is resolved at realization and execution layers.
 - BLAS/LAPACK/CUDA/cuBLAS acceleration is optional backend work behind the
   pure `Tensor` fallback; the current BLAS slices cover dense rank-2/rank-2
-  `dgemm` and rank-2/rank-1 or rank-1/rank-2 `dgemv` `Double` contractions.
+  `dgemm`, rank-2/rank-1 and rank-1/rank-2 `dgemv`, rank-1/rank-1 `ddot`,
+  and rank-1/rank-1 zero-axis `dger` `Double` contractions.
 
 ## Next Steps
 
@@ -124,8 +130,9 @@ Deferred by design:
    decisions. Do not expose a bare `solve`; `linalg/` is not yet locked as the
    base namespace. Any additional private BLAS eligibility should keep the pure
    fallback as the validation oracle.
-3. Continue precision Tensor work with native `BigComplex` storage/kernels only
-   when complex scientific tensor workflows become the active priority.
+3. Continue precision Tensor work only for a concrete next precision contract,
+   such as configurable precision policy, mixed precision promotion rules, or
+   complex-specific scientific kernels.
 4. Use `TENSOR-100` for the explicit-device CUDA/cuBLAS design slice after the
    BLAS contract is settled.
 5. Keep ordinary Tensor storage native/scoped; gate only genuinely opaque
@@ -138,6 +145,11 @@ Deferred by design:
 Recent targeted validation recorded in `memory/CHANGELOG.md`:
 
 - `c3c build --warn-deprecation=no`
+- Latest precision Tensor validation:
+  - host `c3c build main --output-dir build --build-dir build/obj2`: passed
+    with existing deprecation warnings.
+  - host `c3c build`: passed with existing deprecation warnings.
+  - host targeted `advanced-collections-module` group: `pass=321 fail=0`.
 - Latest BLAS-backed contract validation:
   - host `c3c build --obj-out obj`: passed with existing deprecation warnings.
   - host targeted `advanced-collections-module` group: `pass=221 fail=0`.

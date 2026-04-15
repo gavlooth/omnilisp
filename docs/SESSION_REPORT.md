@@ -1,3 +1,62 @@
+## 2026-04-15 13:21 CEST - BigComplex Tensor Kernels
+- Objective attempted:
+  - Continue the scientific precision Tensor lane by adding native BigComplex
+    Tensor storage and pure C3 kernels behind the existing `Tensor`, `map`,
+    `contract`, and `realize` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_COMPLEX`, dtype metadata, owned element cleanup,
+    deep clone, concrete storage copy, and lazy scalar operand cloning.
+  - Extended Tensor constructors to accept `BigComplex` dtype descriptors in
+    explicit shape/data and inferred prefix/suffix forms. Real numeric leaves
+    promote to zero-imaginary BigComplex elements.
+  - Extended `ref`, flat `(Array tensor)` / `(List tensor)` conversion,
+    concrete/scalar `realize`, tensor-dispatched `map`, and pure C3
+    `contract` for BigComplex tensors.
+  - Added advanced collections/module regressions for BigComplex Tensor dtype,
+    ref, constructor forms, collection conversion, scalar fill/copy,
+    lazy map boundaries, contraction boundaries, and mixed-dtype rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `c3c build`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - direct `--eval` smokes for BigComplex Tensor `ref`, lazy `map`, and
+    `contract`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"1+2i"`, `"3+5i"`, and `"11+3i"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=321 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=321 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat native precision Tensor coverage as shipped for BigInteger,
+    BigFloat, and BigComplex. The next precision work should be a concrete
+    policy or kernel slice, not another storage dtype placeholder.
+- Unresolved issues:
+  - BLAS/LAPACK acceleration remains `Double`-only.
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BigComplex Tensor slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:08 CEST - Tensor BLAS DGER Fast Path
 - Objective attempted:
   - Continue optional native BLAS backend coverage behind existing

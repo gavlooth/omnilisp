@@ -37,6 +37,16 @@ fn bool tensor_dtype_arg_is_big_integer(Value* dtype_arg, Interp* interp) @inlin
     return false;
 }
 
+fn bool tensor_dtype_arg_is_big_complex(Value* dtype_arg, Interp* interp) @inline {
+    if (dtype_arg == null) return false;
+    if (dtype_arg.tag == SYMBOL) return dtype_arg.sym_val == interp.sym_BigComplex;
+    if (dtype_arg.tag == PRIMITIVE) return primitive_name_equals(dtype_arg, "BigComplex");
+    if (dtype_arg.tag == METHOD_TABLE && dtype_arg.method_table_val != null) {
+        return dtype_arg.method_table_val.name == interp.sym_BigComplex;
+    }
+    return false;
+}
+
 fn bool tensor_dtype_arg_to_dtype(Value* dtype_arg, Interp* interp, TensorDType* out) @inline {
     if (out == null) return false;
     if (tensor_dtype_arg_is_double(dtype_arg, interp)) {
@@ -49,6 +59,10 @@ fn bool tensor_dtype_arg_to_dtype(Value* dtype_arg, Interp* interp, TensorDType*
     }
     if (tensor_dtype_arg_is_big_float(dtype_arg, interp)) {
         *out = TENSOR_DTYPE_BIG_FLOAT;
+        return true;
+    }
+    if (tensor_dtype_arg_is_big_complex(dtype_arg, interp)) {
+        *out = TENSOR_DTYPE_BIG_COMPLEX;
         return true;
     }
     return false;
@@ -166,9 +180,9 @@ fn bool tensor_value_to_double(Value* value, double* out) @inline {
     return try_numeric_to_double(value, out);
 }
 
-fn bool tensor_value_is_real_numeric_leaf(Value* value) @inline {
+fn bool tensor_value_is_numeric_leaf(Value* value) @inline {
     return value != null &&
-        (value.tag == INT || value.tag == DOUBLE || value.tag == BIG_INTEGER || value.tag == BIG_FLOAT);
+        (value.tag == INT || value.tag == DOUBLE || value.tag == BIG_INTEGER || value.tag == BIG_FLOAT || value.tag == BIG_COMPLEX);
 }
 
 fn bool tensor_infer_shape_from_value(
@@ -185,7 +199,7 @@ fn bool tensor_infer_shape_from_value(
     *out_count = 0;
     *err_out = null;
 
-    if (tensor_value_is_real_numeric_leaf(value)) {
+    if (tensor_value_is_numeric_leaf(value)) {
         *out_count = 1;
         return true;
     }
@@ -297,13 +311,21 @@ fn Value* tensor_store_value_at(TensorVal* tensor, usz index, Value* value, Inte
             values[index] = handle;
             return null;
         }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void* handle = big_complex_handle_from_value(value);
+            if (handle == null) return tensor_type_raise(interp, "Tensor: data elements must be numbers representable as BigComplex");
+            void** values = (void**)tensor.data;
+            if (values[index] != null) omni_big_complex_free(values[index]);
+            values[index] = handle;
+            return null;
+        }
     }
 }
 
 fn Value* tensor_flatten_inferred_data(TensorVal* tensor, Value* value, usz* offset, Interp* interp) {
     if (tensor == null || offset == null) return tensor_runtime_raise(interp, "Tensor: inferred tensor storage is missing");
 
-    if (tensor_value_is_real_numeric_leaf(value)) {
+    if (tensor_value_is_numeric_leaf(value)) {
         Value* err = tensor_store_value_at(tensor, *offset, value, interp, "Tensor: inferred tensor storage is missing");
         if (err != null) return err;
         *offset += 1;
@@ -388,6 +410,38 @@ fn Value* tensor_fill_scalar(TensorVal* tensor, Value* data_arg, Interp* interp)
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to allocate BigInteger fill value", null);
             }
             tensor_big_integer_clear_data(tensor);
+            void** dst = (void**)tensor.data;
+            for (usz i = 0; i < tensor.element_count; i++) {
+                dst[i] = staged[i];
+                staged[i] = null;
+            }
+            return data_arg;
+        }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void* source = big_complex_handle_from_value(data_arg);
+            if (source == null) return null;
+            defer omni_big_complex_free(source);
+            void** staged = (void**)mem::malloc(tensor.byte_len);
+            if (tensor.byte_len > 0 && staged == null) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to allocate BigComplex fill storage", null);
+            }
+            defer if (staged != null) mem::free(staged);
+            for (usz i = 0; i < tensor.element_count; i++) staged[i] = null;
+            bool ok = true;
+            for (usz i = 0; i < tensor.element_count; i++) {
+                staged[i] = omni_big_complex_clone(source);
+                if (staged[i] == null) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) {
+                for (usz i = 0; i < tensor.element_count; i++) {
+                    if (staged[i] != null) omni_big_complex_free(staged[i]);
+                }
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "Tensor: failed to allocate BigComplex fill value", null);
+            }
+            tensor_big_complex_clear_data(tensor);
             void** dst = (void**)tensor.data;
             for (usz i = 0; i < tensor.element_count; i++) {
                 dst[i] = staged[i];
@@ -995,6 +1049,43 @@ fn Value* tensor_map_apply_binary_big_float(Value* func, void* a, void* b, void*
     return null;
 }
 
+fn Value* tensor_map_apply_unary_big_complex(Value* func, void* a, void** out, Interp* interp) {
+    if (out == null) return tensor_runtime_raise(interp, "map: tensor result storage is missing");
+    *out = null;
+    if (a == null) return tensor_runtime_raise(interp, "map: BigComplex tensor input is missing");
+    Value* arg = make_big_complex_from_owned_handle(interp, omni_big_complex_clone(a), "map: failed to allocate tensor call argument");
+    if (arg == null || arg.tag == ERROR) return arg;
+    Value* arg_list = make_cons_or_error(interp, arg, make_nil(interp), "map: failed to allocate tensor call arguments");
+    if (arg_list == null || arg_list.tag == ERROR) return arg_list;
+    Value* result = jit_apply_multi_args(interp, func, arg_list, 1);
+    if (result == null) return tensor_runtime_raise(interp, "map: function returned invalid value");
+    if (result.tag == ERROR) return result;
+    *out = big_complex_handle_from_value(result);
+    if (*out == null) return tensor_map_dtype_raise(interp);
+    return null;
+}
+
+fn Value* tensor_map_apply_binary_big_complex(Value* func, void* a, void* b, void** out, Interp* interp) {
+    if (out == null) return tensor_runtime_raise(interp, "map: tensor result storage is missing");
+    *out = null;
+    if (a == null || b == null) return tensor_runtime_raise(interp, "map: BigComplex tensor input is missing");
+    Value* right = make_big_complex_from_owned_handle(interp, omni_big_complex_clone(b), "map: failed to allocate tensor call argument");
+    if (right == null || right.tag == ERROR) return right;
+    Value* tail = make_cons_or_error(interp, right, make_nil(interp), "map: failed to allocate tensor call arguments");
+    if (tail == null || tail.tag == ERROR) return tail;
+    Value* left = make_big_complex_from_owned_handle(interp, omni_big_complex_clone(a), "map: failed to allocate tensor call argument");
+    if (left == null || left.tag == ERROR) return left;
+    Value* arg_list = make_cons_or_error(interp, left, tail, "map: failed to allocate tensor call arguments");
+    if (arg_list == null || arg_list.tag == ERROR) return arg_list;
+
+    Value* result = jit_apply_multi_args(interp, func, arg_list, 2);
+    if (result == null) return tensor_runtime_raise(interp, "map: function returned invalid value");
+    if (result.tag == ERROR) return result;
+    *out = big_complex_handle_from_value(result);
+    if (*out == null) return tensor_map_dtype_raise(interp);
+    return null;
+}
+
 fn Value* tensor_map_source_storage(Value* source, TensorVal** out_tensor, Interp* interp) {
     if (out_tensor == null) return tensor_runtime_raise(interp, "map: tensor source state is missing");
     *out_tensor = null;
@@ -1004,7 +1095,7 @@ fn Value* tensor_map_source_storage(Value* source, TensorVal** out_tensor, Inter
         *out_tensor = tensor;
         return null;
     }
-    if (tensor_value_is_real_numeric_leaf(source)) return null;
+    if (tensor_value_is_numeric_leaf(source)) return null;
     return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
 }
 
@@ -1127,10 +1218,12 @@ fn Value* tensor_map_eval_into(
     double left_scalar,
     void* left_big_integer_scalar,
     void* left_big_float_scalar,
+    void* left_big_complex_scalar,
     TensorVal* right_tensor,
     double right_scalar,
     void* right_big_integer_scalar,
     void* right_big_float_scalar,
+    void* right_big_complex_scalar,
     bool is_binary,
     TensorVal* out_tensor,
     Interp* interp
@@ -1282,6 +1375,48 @@ fn Value* tensor_map_eval_into(
             }
             return null;
         }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** out = (void**)out_tensor.data;
+            void** left_data = left_tensor != null ? (void**)left_tensor.data : null;
+            void** right_data = right_tensor != null ? (void**)right_tensor.data : null;
+
+            for (usz i = 0; i < out_tensor.element_count; i++) {
+                void* result = null;
+                Value* err = null;
+                if (!is_binary) {
+                    usz left_offset = 0;
+                    if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                    }
+                    err = tensor_map_apply_unary_big_complex(func, left_data[left_offset], &result, interp);
+                } else {
+                    void* a = left_big_complex_scalar;
+                    void* b = right_big_complex_scalar;
+                    if (left_tensor != null) {
+                        usz left_offset = 0;
+                        if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        a = left_data[left_offset];
+                    }
+                    if (right_tensor != null) {
+                        usz right_offset = 0;
+                        if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                            return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: tensor shape mismatch", null);
+                        }
+                        b = right_data[right_offset];
+                    }
+                    err = tensor_map_apply_binary_big_complex(func, a, b, &result, interp);
+                }
+                if (err != null) {
+                    if (result != null) omni_big_complex_free(result);
+                    return err;
+                }
+                if (out[i] != null) omni_big_complex_free(out[i]);
+                out[i] = result;
+            }
+            return null;
+        }
     }
 }
 
@@ -1321,6 +1456,12 @@ fn Value* make_tensor_map_expr(
                     tensor_free_payload(tensor);
                     return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
                 }
+            case TENSOR_DTYPE_BIG_COMPLEX:
+                tensor.map_left_big_complex_scalar = big_complex_handle_from_value(left_value);
+                if (tensor.map_left_big_complex_scalar == null) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
+                }
         }
     }
     if (is_binary && right_tensor == null) {
@@ -1339,6 +1480,12 @@ fn Value* make_tensor_map_expr(
             case TENSOR_DTYPE_BIG_FLOAT:
                 tensor.map_right_big_float_scalar = big_float_handle_from_value(right_value);
                 if (tensor.map_right_big_float_scalar == null) {
+                    tensor_free_payload(tensor);
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
+                }
+            case TENSOR_DTYPE_BIG_COMPLEX:
+                tensor.map_right_big_complex_scalar = big_complex_handle_from_value(right_value);
+                if (tensor.map_right_big_complex_scalar == null) {
                     tensor_free_payload(tensor);
                     return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers");
                 }
@@ -1708,6 +1855,71 @@ fn Value* tensor_contract_eval_into(
             }
             return null;
         }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** out = (void**)out_tensor.data;
+            void** left_data = (void**)left.data;
+            void** right_data = (void**)right.data;
+
+            for (usz out_index = 0; out_index < out_tensor.element_count; out_index++) {
+                usz left_base_offset = 0;
+                usz right_base_offset = 0;
+                usz result_pos = 0;
+
+                for (usz axis = 0; axis < left.rank; axis++) {
+                    if (tensor_axis_is_listed(axis, left_axes, axis_count)) continue;
+                    usz coord = out_tensor.rank == 0 ? 0 : (out_index / out_tensor.strides[result_pos]) % out_tensor.shape[result_pos];
+                    left_base_offset += coord * left.strides[axis];
+                    result_pos++;
+                }
+                for (usz axis = 0; axis < right.rank; axis++) {
+                    if (tensor_axis_is_listed(axis, right_axes, axis_count)) continue;
+                    usz coord = out_tensor.rank == 0 ? 0 : (out_index / out_tensor.strides[result_pos]) % out_tensor.shape[result_pos];
+                    right_base_offset += coord * right.strides[axis];
+                    result_pos++;
+                }
+
+                void* sum = omni_big_complex_from_i64(0);
+                if (sum == null) return raise_error(interp, "contract: failed to allocate BigComplex accumulator");
+                bool ok = true;
+                for (usz contract_index = 0; contract_index < contracted_count; contract_index++) {
+                    usz left_offset = left_base_offset;
+                    usz right_offset = right_base_offset;
+                    usz remainder = contract_index;
+                    for (usz i = axis_count; i > 0; i--) {
+                        usz axis_pos = i - 1;
+                        usz dim = left.shape[left_axes[axis_pos]];
+                        usz coord = remainder % dim;
+                        remainder /= dim;
+                        left_offset += coord * left.strides[left_axes[axis_pos]];
+                        right_offset += coord * right.strides[right_axes[axis_pos]];
+                    }
+                    if (left_data[left_offset] == null || right_data[right_offset] == null) {
+                        ok = false;
+                        break;
+                    }
+                    void* product = omni_big_complex_binary(left_data[left_offset], right_data[right_offset], BIG_COMPLEX_OP_MUL);
+                    if (product == null) {
+                        ok = false;
+                        break;
+                    }
+                    void* next_sum = omni_big_complex_binary(sum, product, BIG_COMPLEX_OP_ADD);
+                    omni_big_complex_free(product);
+                    if (next_sum == null) {
+                        ok = false;
+                        break;
+                    }
+                    omni_big_complex_free(sum);
+                    sum = next_sum;
+                }
+                if (!ok) {
+                    omni_big_complex_free(sum);
+                    return raise_error(interp, "contract: failed to compute BigComplex contraction");
+                }
+                if (out[out_index] != null) omni_big_complex_free(out[out_index]);
+                out[out_index] = sum;
+            }
+            return null;
+        }
     }
 }
 
@@ -1900,10 +2112,12 @@ fn Value* tensor_eval_expr_into(TensorVal* source, TensorVal* dest, Interp* inte
                 source.map_left_scalar,
                 source.map_left_big_integer_scalar,
                 source.map_left_big_float_scalar,
+                source.map_left_big_complex_scalar,
                 right_tensor,
                 source.map_right_scalar,
                 source.map_right_big_integer_scalar,
                 source.map_right_big_float_scalar,
+                source.map_right_big_complex_scalar,
                 source.map_is_binary,
                 dest,
                 interp
@@ -2003,6 +2217,12 @@ fn Value* tensor_ref_value(Value* tensor_value, Value* index_arg, Interp* interp
             void* cloned = omni_big_float_clone(values[offset]);
             return make_big_float_from_owned_handle(interp, cloned, "ref: failed to allocate BigFloat tensor element");
         }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** values = (void**)tensor.data;
+            if (values[offset] == null) return tensor_runtime_raise(interp, "ref: tensor BigComplex element is missing");
+            void* cloned = omni_big_complex_clone(values[offset]);
+            return make_big_complex_from_owned_handle(interp, cloned, "ref: failed to allocate BigComplex tensor element");
+        }
     }
 }
 
@@ -2037,6 +2257,11 @@ fn Value* tensor_to_flat_array_value(Value* tensor_value, Interp* interp) {
                 void** values = (void**)tensor.data;
                 if (values[i] == null) return tensor_runtime_raise(interp, "Array: tensor BigFloat element is missing");
                 elem = make_big_float_from_owned_handle(interp, omni_big_float_clone(values[i]), "Array: failed to allocate BigFloat tensor element");
+            }
+            case TENSOR_DTYPE_BIG_COMPLEX: {
+                void** values = (void**)tensor.data;
+                if (values[i] == null) return tensor_runtime_raise(interp, "Array: tensor BigComplex element is missing");
+                elem = make_big_complex_from_owned_handle(interp, omni_big_complex_clone(values[i]), "Array: failed to allocate BigComplex tensor element");
             }
         }
         if (elem == null || elem.tag == ERROR) return elem;
@@ -2077,6 +2302,11 @@ fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
                 if (values[remaining] == null) return tensor_runtime_raise(interp, "List: tensor BigFloat element is missing");
                 elem = make_big_float_from_owned_handle(interp, omni_big_float_clone(values[remaining]), "List: failed to allocate BigFloat tensor element");
             }
+            case TENSOR_DTYPE_BIG_COMPLEX: {
+                void** values = (void**)tensor.data;
+                if (values[remaining] == null) return tensor_runtime_raise(interp, "List: tensor BigComplex element is missing");
+                elem = make_big_complex_from_owned_handle(interp, omni_big_complex_clone(values[remaining]), "List: failed to allocate BigComplex tensor element");
+            }
         }
         if (elem == null || elem.tag == ERROR) return elem;
         result = make_cons_or_error(interp, elem, result, "List: failed to allocate tensor conversion result");
@@ -2088,7 +2318,7 @@ fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
 fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_arg, Value* data_arg, Interp* interp) {
     TensorDType dtype = TENSOR_DTYPE_DOUBLE;
     if (!tensor_dtype_arg_to_dtype(dtype_arg, interp, &dtype)) {
-        return tensor_type_raise(interp, "Tensor: first argument must be Double or BigFloat");
+        return tensor_type_raise(interp, "Tensor: first argument must be Double, BigInteger, BigFloat, or BigComplex");
     }
 
     usz* shape = null;
@@ -2157,10 +2387,10 @@ fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
         TensorDType dtype = TENSOR_DTYPE_DOUBLE;
         if (tensor_dtype_arg_to_dtype(args[0], interp, &dtype)) return tensor_construct_inferred(args[1], dtype, interp);
         if (tensor_dtype_arg_to_dtype(args[1], interp, &dtype)) return tensor_construct_inferred(args[0], dtype, interp);
-        return tensor_type_raise(interp, "Tensor: expected data with optional Double or BigFloat dtype");
+        return tensor_type_raise(interp, "Tensor: expected data with optional Double, BigInteger, BigFloat, or BigComplex dtype");
     }
     if (args.len == 3) return tensor_construct_from_shape_and_data(args[0], args[1], args[2], interp);
-    return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [Double] or Double shape data-or-scalar", args.len);
+    return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [dtype] or dtype shape data-or-scalar", args.len);
 }
 
 fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
@@ -2180,7 +2410,7 @@ fn Value* prim_realize(Value*[] args, Env* env, Interp* interp) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/immutable-destination", "realize: destination Tensor is immutable", null);
     }
 
-    if (is_numeric_value(args[0]) && args[0].tag != BIG_COMPLEX) {
+    if (is_numeric_value(args[0])) {
         Value* err = tensor_fill_from_data_arg(dest, args[0], interp);
         if (err != null) return err;
         return args[1];

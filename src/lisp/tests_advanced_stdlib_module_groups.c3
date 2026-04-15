@@ -132,7 +132,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "Tensor inferred BigFloat outside Double range rejected",
         "(Tensor [(BigFloat \"1e309\")])", "representable as Double", pass, fail);
     test_error_contains(interp, "Tensor inferred complex data rejected",
-        "(Tensor [(BigComplex 1 2)])", "nested arrays/lists of numbers", pass, fail);
+        "(Tensor [(BigComplex 1 2)])", "representable as Double", pass, fail);
     test_error_contains(interp, "Tensor inferred ragged data rejected",
         "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
     test_error_contains(interp, "Tensor inferred non-numeric data rejected",
@@ -178,6 +178,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "map BigFloat tensor scalar preserves dtype",
         "(String (ref (map + (Tensor BigFloat [2] [(BigFloat \"1.25\") 2]) (BigFloat \"2\")) [0]))",
         "3.25", pass, fail);
+    test_str_val(interp, "Tensor BigComplex dtype",
+        "(format \"%s\" (dtype (Tensor BigComplex [2] [(BigComplex 1 2) 3])))", "BigComplex", pass, fail);
+    test_str_val(interp, "Tensor BigComplex explicit ref preserves complex value",
+        "(String (ref (Tensor BigComplex [1] [(BigComplex 1 2)]) [0]))", "1+2i", pass, fail);
+    test_str_val(interp, "Tensor BigComplex inferred suffix ref",
+        "(String (ref (Tensor [(BigComplex 1 2)] BigComplex) [0]))", "1+2i", pass, fail);
+    test_str_val(interp, "Tensor BigComplex inferred prefix ref",
+        "(String (ref (Tensor BigComplex [(BigComplex 3 -4)]) [0]))", "3-4i", pass, fail);
+    test_str_val(interp, "Array BigComplex tensor conversion preserves element",
+        "(String (ref (Array (Tensor BigComplex [2] [(BigComplex 1 2) 3])) 0))", "1+2i", pass, fail);
+    test_str_val(interp, "List BigComplex tensor conversion preserves element",
+        "(String (ref (List (Tensor BigComplex [2] [(BigComplex 1 2) 3])) 1))", "3+0i", pass, fail);
+    test_str_val(interp, "realize BigComplex scalar fill into tensor",
+        "(let (dst (Tensor BigComplex [2] 0)) (block (realize (BigComplex 3 4) dst) (String (ref dst [1]))))",
+        "3+4i", pass, fail);
+    test_str_val(interp, "realize BigComplex tensor copy",
+        "(let (src (Tensor BigComplex [1] [(BigComplex 7 8)]) dst (Tensor BigComplex [1] 0)) (block (realize src dst) (String (ref dst [0]))))",
+        "7+8i", pass, fail);
+    test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
+        "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",
         "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "Array tensor conversion row-major value",
@@ -411,6 +431,48 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         "55", pass, fail);
     test_error_contains(interp, "contract mixed BigFloat Double tensors rejected",
         "(contract (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]) [0] [0])",
+        "contract: tensor dtype mismatch", pass, fail);
+    test_str_val(interp, "map BigComplex unary preserves complex value",
+        "(String (ref (map (lambda (x) x) (Tensor [(BigComplex 1 2)] BigComplex)) [0]))",
+        "1+2i", pass, fail);
+    test_str_val(interp, "map BigComplex scalar left",
+        "(String (ref (map + (BigComplex 2 1) (Tensor BigComplex [2] [(BigComplex 1 2) 3])) [1]))",
+        "5+1i", pass, fail);
+    test_str_val(interp, "map BigComplex tensor broadcast",
+        "(String (ref (map + (Tensor BigComplex [2 1] [(BigComplex 1 1) (BigComplex 2 2)]) (Tensor BigComplex [1 2] [(BigComplex 10 10) (BigComplex 20 20)])) [1 1]))",
+        "22+22i", pass, fail);
+    test_str_val(interp, "realize mapped BigComplex expression into destination",
+        "(let (dst (Tensor BigComplex [2] 0)) (block (realize (map + (Tensor BigComplex [2] [(BigComplex 1 2) 3]) (BigComplex 2 3)) dst) (String (ref dst [0]))))",
+        "3+5i", pass, fail);
+    test_str_val(interp, "lazy BigComplex map survives function return boundary",
+        "(block (define (mk) (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 3))) (String (ref (mk) [0])))",
+        "3+5i", pass, fail);
+    test_str_val(interp, "lazy BigComplex map survives closure capture",
+        "(let (src (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 3))) (let (f (lambda () (String (ref src [0])))) (f)))",
+        "3+5i", pass, fail);
+    test_error_contains(interp, "map mixed BigComplex Double tensors rejected",
+        "(map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Double [1] [1]))",
+        "map: tensor dtype mismatch", pass, fail);
+    test_str_val(interp, "contract BigComplex vector dot",
+        "(String (ref (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0]) []))",
+        "11+3i", pass, fail);
+    test_str_val(interp, "contract BigComplex matrix product",
+        "(String (ref (contract (Tensor BigComplex [2 2] [(BigComplex 1 1) 2 3 4]) (Tensor BigComplex [2 2] [5 6 7 8]) [1] [0]) [0 1]))",
+        "22+6i", pass, fail);
+    test_str_val(interp, "contract BigComplex zero-size identity",
+        "(String (ref (contract (Tensor BigComplex [0] []) (Tensor BigComplex [0] []) [0] [0]) []))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "realize BigComplex contract into destination",
+        "(let (dst (Tensor BigComplex [] 0)) (block (realize (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0]) dst) (String (ref dst []))))",
+        "11+3i", pass, fail);
+    test_str_val(interp, "lazy BigComplex contract survives function return boundary",
+        "(block (define (mk) (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0])) (String (ref (mk) [])))",
+        "11+3i", pass, fail);
+    test_str_val(interp, "lazy BigComplex contract survives closure capture",
+        "(let (src (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
+        "11+3i", pass, fail);
+    test_error_contains(interp, "contract mixed BigComplex Double tensors rejected",
+        "(contract (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Double [1] [1]) [0] [0])",
         "contract: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "map tensor broadcast shape mismatch",
         "(map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [1 2 3 4]))",

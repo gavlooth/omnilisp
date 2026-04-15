@@ -434,23 +434,26 @@ surface, lifetime copy/promotion paths, tensor `ref`, and introspection
 primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The explicit
 constructor surfaces are `(Tensor Double shape data-or-scalar)`,
 `(Tensor BigInteger shape data-or-scalar)`, and
-`(Tensor BigFloat shape data-or-scalar)`, where `shape` is an array or proper
-list of non-negative integers and `data-or-scalar` is either a scalar numeric
-fill value or an array/proper list with exactly the shape product's element
-count. The inferred-shape constructor surface is `(Tensor data)`,
+`(Tensor BigFloat shape data-or-scalar)`, and
+`(Tensor BigComplex shape data-or-scalar)`, where `shape` is an array or
+proper list of non-negative integers and `data-or-scalar` is either a scalar
+numeric fill value or an array/proper list with exactly the shape product's
+element count. The inferred-shape constructor surface is `(Tensor data)`,
 `(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Double`,
-`BigInteger`, or `BigFloat`. `Double` tensors accept real numeric values that
-can narrow to finite `Double`; `BigInteger` tensors accept exact `Integer` and
-`BigInteger` values; `BigFloat` tensors preserve arbitrary finite `BigFloat`
-range. Complex values fail closed. Tensor `ref` uses `(ref tensor index-array)`.
+`BigInteger`, `BigFloat`, or `BigComplex`. `Double` tensors accept real
+numeric values that can narrow to finite `Double`; `BigInteger` tensors accept
+exact `Integer` and `BigInteger` values; `BigFloat` tensors preserve arbitrary
+finite `BigFloat` range; `BigComplex` tensors preserve complex numeric values
+and promote real numeric leaves to zero-imaginary BigComplex elements. Tensor
+`ref` uses `(ref tensor index-array)`.
 `(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
 return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
-`map` is the elementwise tensor operation for `Double`, `BigInteger`, and
-`BigFloat` tensors; `contract` is the summed-axis operation for `Double`,
-`BigInteger`, and `BigFloat` tensors.
+`map` is the elementwise tensor operation for `Double`, `BigInteger`,
+`BigFloat`, and `BigComplex` tensors; `contract` is the summed-axis operation
+for `Double`, `BigInteger`, `BigFloat`, and `BigComplex` tensors.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User
