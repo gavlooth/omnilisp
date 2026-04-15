@@ -148,6 +148,12 @@ as a new public Tensor surface:
   scalar-tensor, and broadcast tensor-tensor real comparison. BigFloat wins
   if either input is BigFloat, Double wins if either input is Double, and the
   remaining exact inputs return native `BigInteger` Tensor results.
+- Tensor `gcd` and `lcm` now support native Tensor inputs with tensor-scalar,
+  scalar-tensor, and broadcast tensor-tensor exact integer semantics. Tensor
+  operands must be native `BigInteger` Tensor storage; results are native
+  `BigInteger` tensors. The raw scalar-handle implementation path was
+  invalidated by corrupted tensor-scalar results; use scoped `Value*`
+  materialization plus scalar BigInteger helpers for this operation family.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing

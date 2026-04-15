@@ -2839,6 +2839,99 @@ fn Value* tensor_minmax_value(Value* left_value, Value* right_value, bool is_min
     return out_value;
 }
 
+fn Value* tensor_exact_integer_binary_value(
+    Value* left_value,
+    Value* right_value,
+    int op,
+    char[] type_message,
+    char[] missing_message,
+    char[] shape_message,
+    char[] oom_message,
+    Interp* interp
+) {
+    bool left_is_tensor = is_tensor(left_value);
+    bool right_is_tensor = is_tensor(right_value);
+    if (!left_is_tensor && !right_is_tensor) return tensor_type_raise(interp, type_message);
+
+    Value* left_concrete = left_value;
+    if (left_is_tensor) {
+        left_concrete = tensor_realize_to_value(left_value, interp);
+        if (left_concrete == null || left_concrete.tag == ERROR) return left_concrete;
+    }
+    bool cleanup_left = left_is_tensor && left_concrete != left_value;
+    defer if (cleanup_left) {
+        boundary_cleanup_materialized_value(null, left_concrete, interp.current_scope);
+    }
+
+    Value* right_concrete = right_value;
+    if (right_is_tensor) {
+        right_concrete = tensor_realize_to_value(right_value, interp);
+        if (right_concrete == null || right_concrete.tag == ERROR) return right_concrete;
+    }
+    bool cleanup_right = right_is_tensor && right_concrete != right_value;
+    defer if (cleanup_right) {
+        boundary_cleanup_materialized_value(null, right_concrete, interp.current_scope);
+    }
+
+    TensorVal* left_tensor = left_is_tensor ? left_concrete.tensor_val : null;
+    TensorVal* right_tensor = right_is_tensor ? right_concrete.tensor_val : null;
+    if (left_tensor != null && !tensor_has_valid_storage(left_tensor)) return tensor_runtime_raise(interp, "gcd/lcm: left tensor backing storage is missing");
+    if (right_tensor != null && !tensor_has_valid_storage(right_tensor)) return tensor_runtime_raise(interp, "gcd/lcm: right tensor backing storage is missing");
+    if (left_tensor != null && left_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return raise_error(interp, type_message);
+    if (right_tensor != null && right_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return raise_error(interp, type_message);
+    if (left_tensor == null && !is_exact_integer_value(left_value)) return raise_error(interp, type_message);
+    if (right_tensor == null && !is_exact_integer_value(right_value)) return raise_error(interp, type_message);
+
+    usz* result_shape = null;
+    usz result_rank = 0;
+    Value* err = tensor_map_result_shape(left_tensor, right_tensor, true, interp, &result_shape, &result_rank);
+    if (err != null) return err;
+    defer if (result_shape != null) mem::free(result_shape);
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_INTEGER, shape_slice, oom_message);
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "gcd/lcm: tensor result backing storage is missing");
+    }
+
+    TensorVal* out_tensor = out_value.tensor_val;
+    void** out_values = (void**)out_tensor.data;
+    for (usz i = 0; i < out_tensor.element_count; i++) {
+        Value* left_arg = left_value;
+        Value* right_arg = right_value;
+        if (left_tensor != null) {
+            usz left_offset = 0;
+            if (!tensor_map_operand_offset(left_tensor, out_tensor, i, &left_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", shape_message, null);
+            }
+            left_arg = tensor_value_at_offset(left_tensor, left_offset, interp, missing_message);
+            if (left_arg == null || left_arg.tag == ERROR) return left_arg;
+        }
+        if (right_tensor != null) {
+            usz right_offset = 0;
+            if (!tensor_map_operand_offset(right_tensor, out_tensor, i, &right_offset)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", shape_message, null);
+            }
+            right_arg = tensor_value_at_offset(right_tensor, right_offset, interp, missing_message);
+            if (right_arg == null || right_arg.tag == ERROR) return right_arg;
+        }
+
+        Value* result = big_integer_binary_values(interp, left_arg, right_arg, op, oom_message);
+        if (result == null || result.tag == ERROR) return result;
+        Value* store_err = tensor_store_integer_value(out_values, i, result, interp, oom_message);
+        if (store_err != null) return store_err;
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
 fn bool tensor_binary_numeric_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {
     if (dtype_out == null) return false;
     if (tensor != null) {

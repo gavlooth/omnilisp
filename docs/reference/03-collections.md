@@ -108,7 +108,10 @@ BigFloat rounding for BigFloat tensors; complex Tensor operands fail closed.
 Tensor `min` and `max` support tensor-scalar, scalar-tensor, and broadcast
 tensor-tensor real comparison. `BigFloat` wins if either input is BigFloat,
 `Double` wins if either input is Double, otherwise the result is a
-`BigInteger` tensor.
+`BigInteger` tensor. Tensor `gcd` and `lcm` support tensor-scalar,
+scalar-tensor, and broadcast tensor-tensor exact integer operations. Tensor
+operands must be native `BigInteger` tensors, scalar operands must be exact
+integers, and results are native `BigInteger` tensors.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -142,6 +145,8 @@ tensor-tensor real comparison. `BigFloat` wins if either input is BigFloat,
 (String (ref (ceiling (Tensor BigFloat [1] [(BigFloat "9223372036854775808.1")])) [0])) ;; => "9223372036854775809"
 (String (ref (min (Tensor BigInteger [1] [(BigInteger "5")]) 4) [0])) ;; => "4"
 (String (dtype (max (Tensor BigFloat [1] [(BigFloat "2.5")]) 4))) ;; => "BigFloat"
+(String (ref (gcd (Tensor BigInteger [1] [(BigInteger "18")]) 12) [0])) ;; => "6"
+(String (ref (lcm (Tensor BigInteger [2 1] [3 4]) (Tensor BigInteger [1 2] [5 6])) [1 1])) ;; => "12"
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))

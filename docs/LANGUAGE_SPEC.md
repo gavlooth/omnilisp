@@ -479,7 +479,10 @@ operands fail closed. Tensor `min` and `max` support the same tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real comparison surface:
 `BigFloat` wins if either input is BigFloat, `Double` wins if either input is
 Double, otherwise the result is a `BigInteger` tensor. Complex Tensor
-operands fail closed.
+operands fail closed. Tensor `gcd` and `lcm` support tensor-scalar,
+scalar-tensor, and broadcast tensor-tensor exact integer operations. Tensor
+operands must be native `BigInteger` tensors, scalar operands must be exact
+integers, and results are native `BigInteger` tensors.
 Tensor operations may produce lazy Tensor expression payloads under the
 existing `Tensor` value, with backend acceleration left as an optimization
 behind the same semantic surface. User code should not name or depend on a

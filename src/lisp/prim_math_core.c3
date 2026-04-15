@@ -528,6 +528,15 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "gcd", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) {
+        return tensor_exact_integer_binary_value(
+            args[0], args[1], BIG_INTEGER_OP_GCD,
+            "gcd: tensor inputs must be exact integers",
+            "gcd: tensor BigInteger element is missing",
+            "gcd: tensor shape mismatch",
+            "gcd: failed to allocate BigInteger tensor result",
+            interp);
+    }
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "gcd", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "gcd", 1, "integer", args[1]);
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
@@ -546,6 +555,15 @@ fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "lcm", "2 arguments", args.len);
+    if (is_tensor(args[0]) || is_tensor(args[1])) {
+        return tensor_exact_integer_binary_value(
+            args[0], args[1], BIG_INTEGER_OP_LCM,
+            "lcm: tensor inputs must be exact integers",
+            "lcm: tensor BigInteger element is missing",
+            "lcm: tensor shape mismatch",
+            "lcm: failed to allocate BigInteger tensor result",
+            interp);
+    }
     if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "lcm", 0, "integer", args[0]);
     if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "lcm", 1, "integer", args[1]);
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {

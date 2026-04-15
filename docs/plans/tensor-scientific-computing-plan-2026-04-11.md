@@ -133,6 +133,11 @@ Name collision note:
   either input is BigFloat, Double wins if either input is Double, and the
   remaining exact inputs return native BigInteger Tensor results. Complex
   operands fail closed.
+- `TENSOR-092` is complete: Tensor `gcd` and `lcm` apply tensor-scalar,
+  scalar-tensor, and broadcast tensor-tensor exact integer operations.
+  Tensor operands must use native BigInteger Tensor storage; inexact or
+  complex Tensor dtypes fail closed. Results are native BigInteger Tensor
+  values.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

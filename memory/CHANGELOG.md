@@ -1,5 +1,37 @@
 ## 2026-04-15
 
+- Completed `TENSOR-092` Tensor `gcd`/`lcm` semantics:
+  - Extended `gcd` and `lcm` to accept native Tensor inputs.
+  - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor exact
+    integer inputs.
+  - Tensor operands must use native `BigInteger` Tensor storage; `Double`,
+    `BigFloat`, and `BigComplex` Tensor operands fail closed.
+  - Results always use native `BigInteger` Tensor storage, matching the exact
+    integer scalar contract.
+  - Lazy BigInteger Tensor operands are realized before evaluation.
+  - The implementation deliberately routes each element through scoped
+    `Value*` materialization plus the scalar BigInteger binary helper before
+    storing a cloned output element. A raw scalar-handle variant was
+    invalidated because tensor-scalar `gcd`/`lcm` returned corrupted values
+    even after function-scope cleanup; do not revive that patch family without
+    first proving the scalar handle lifetime/conversion bug.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - direct Tensor `gcd`/`lcm` smokes for tensor-scalar, tensor-tensor
+      broadcast, and Double Tensor rejection
+    - focused advanced collections/module group on host
+      -> `392 passed, 0 failed`
+    - bounded container advanced collections/module group
+      -> `392 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - ASAN build attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed immediately with the local C3 compiler platform support message.
+
 - Completed `TENSOR-091` Tensor `min`/`max` semantics:
   - Extended `min` and `max` to accept native Tensor inputs.
   - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor

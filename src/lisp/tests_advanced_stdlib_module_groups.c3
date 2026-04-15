@@ -362,6 +362,18 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "min BigComplex tensor rejected",
         "(min (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)",
         "minmax: complex numbers are not ordered", pass, fail);
+    test_str_val(interp, "gcd BigInteger tensor scalar preserves exact result",
+        "(String (ref (gcd (Tensor BigInteger [2] [(BigInteger \"12\") (BigInteger \"18\")]) 6) [1]))", "6", pass, fail);
+    test_str_val(interp, "gcd BigInteger tensor scalar returns BigInteger dtype",
+        "(String (dtype (gcd (Tensor BigInteger [2] [(BigInteger \"12\") (BigInteger \"18\")]) 6)))", "BigInteger", pass, fail);
+    test_str_val(interp, "lcm BigInteger Tensor broadcast",
+        "(String (ref (lcm (Tensor BigInteger [2 1] [(BigInteger \"3\") (BigInteger \"4\")]) (Tensor BigInteger [1 2] [(BigInteger \"5\") (BigInteger \"6\")])) [1 1]))",
+        "12", pass, fail);
+    test_str_val(interp, "lcm lazy BigInteger tensor realizes source",
+        "(String (ref (lcm (map + (Tensor BigInteger [1] [(BigInteger \"3\")]) (BigInteger \"0\")) 6) [0]))", "6", pass, fail);
+    test_error_contains(interp, "gcd Double tensor rejected",
+        "(gcd (Tensor Double [1] [6.0]) 3)",
+        "gcd: tensor inputs must be exact integers", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

@@ -1,3 +1,68 @@
+## 2026-04-15 19:07 CEST - Tensor GCD/LCM Semantics
+- Objective attempted:
+  - Retry native Tensor `gcd` and `lcm` support after the prior raw-handle
+    attempt produced corrupted tensor-scalar results.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `gcd` and `lcm` through Tensor handling when either argument is a
+    Tensor.
+  - Added a shared exact-integer Tensor binary helper for tensor-scalar,
+    scalar-tensor, and broadcast tensor-tensor operation.
+  - Tensor operands must be native `BigInteger` tensors; inexact and complex
+    Tensor dtypes fail closed.
+  - Results are native `BigInteger` tensors.
+  - Lazy BigInteger Tensor operands are realized before evaluation.
+  - Added advanced collections/module regressions for exact tensor-scalar
+    results, dtype, broadcast tensor-tensor, lazy realization, and Double
+    Tensor rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (gcd (Tensor BigInteger [1] [(BigInteger \"6\")]) 6) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (lcm (Tensor BigInteger [1] [(BigInteger \"6\")]) 6) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (lcm (Tensor BigInteger [2 1] [(BigInteger \"3\") (BigInteger \"4\")]) (Tensor BigInteger [1 2] [(BigInteger \"5\") (BigInteger \"6\")])) [1 1]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(gcd (Tensor Double [1] [6.0]) 3)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"6"` for tensor-scalar `gcd`, `"6"` for
+    tensor-scalar `lcm`, and `"12"` for broadcast Tensor/Tensor `lcm`.
+  - Double Tensor input fails closed with
+    `gcd: tensor inputs must be exact integers`.
+  - Host targeted `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=392 fail=0`.
+  - Bounded container `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=392 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - ASAN build attempt failed immediately with the local C3 compiler's
+    platform support message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The raw scalar-handle Tensor helper path is not trustworthy here:
+    tensor-tensor raw handles worked, but tensor-scalar `gcd` returned `"1"`
+    and tensor-scalar `lcm` returned corrupted large values even after moving
+    scalar cleanup out to function scope. Keep the `Value*` materialization
+    path unless the handle lifetime/conversion bug is separately proven.
+- Current best recommendation:
+  - Treat Tensor `gcd` and `lcm` as closed for native BigInteger Tensor
+    inputs, with broadcast as an internal shape rule only.
+- Unresolved issues:
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push the Tensor `gcd`/`lcm` slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 16:34 CEST - Tensor Min/Max Semantics
 - Objective attempted:
   - Continue precision Tensor work by adding ordered real comparison for
