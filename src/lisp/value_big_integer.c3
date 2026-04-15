@@ -6,6 +6,8 @@ import main;
 const int BIG_INTEGER_OP_ADD = 1;
 const int BIG_INTEGER_OP_SUB = 2;
 const int BIG_INTEGER_OP_MUL = 3;
+const int BIG_INTEGER_OP_DIV = 4;
+const int BIG_INTEGER_OP_MOD = 5;
 
 fn Value* make_big_integer_from_owned_handle(Interp* interp, void* handle, char[] message) {
     if (handle == null) return raise_error(interp, message);
@@ -141,6 +143,16 @@ fn bool big_integer_try_to_double(Value* v, double* out) @inline {
         omni_big_integer_to_double(v.big_integer_val, out) != 0;
 }
 
+fn bool exact_integer_value_is_zero(Value* v) @inline {
+    if (v == null) return false;
+    if (v.tag == INT) return v.int_val == 0;
+    if (v.tag == BIG_INTEGER) {
+        return v.big_integer_val != null &&
+            omni_big_integer_compare_i64(v.big_integer_val, 0) == 0;
+    }
+    return false;
+}
+
 fn Value* big_integer_binary_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
     void* result = null;
     if (lhs.tag == INT && rhs.tag == INT) {
@@ -153,6 +165,52 @@ fn Value* big_integer_binary_values(Interp* interp, Value* lhs, Value* rhs, int 
         result = omni_big_integer_binary(lhs.big_integer_val, rhs.big_integer_val, op);
     }
     return make_big_integer_from_owned_handle(interp, result, message);
+}
+
+fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
+    if (lhs == null || rhs == null || out == null) return false;
+    if (!is_numeric_value(lhs) || !is_numeric_value(rhs)) return false;
+
+    if (lhs.tag == DOUBLE || rhs.tag == DOUBLE) {
+        double left = 0.0;
+        double right = 0.0;
+        if (!try_numeric_to_double(lhs, &left) || !try_numeric_to_double(rhs, &right)) return false;
+        if (left < right) {
+            *out = -1;
+        } else if (left > right) {
+            *out = 1;
+        } else {
+            *out = 0;
+        }
+        return true;
+    }
+
+    if (lhs.tag == BIG_INTEGER && rhs.tag == BIG_INTEGER) {
+        if (lhs.big_integer_val == null || rhs.big_integer_val == null) return false;
+        *out = omni_big_integer_compare(lhs.big_integer_val, rhs.big_integer_val);
+        return true;
+    }
+    if (lhs.tag == BIG_INTEGER && rhs.tag == INT) {
+        if (lhs.big_integer_val == null) return false;
+        *out = omni_big_integer_compare_i64(lhs.big_integer_val, rhs.int_val);
+        return true;
+    }
+    if (lhs.tag == INT && rhs.tag == BIG_INTEGER) {
+        if (rhs.big_integer_val == null) return false;
+        *out = -omni_big_integer_compare_i64(rhs.big_integer_val, lhs.int_val);
+        return true;
+    }
+    if (lhs.tag == INT && rhs.tag == INT) {
+        if (lhs.int_val < rhs.int_val) {
+            *out = -1;
+        } else if (lhs.int_val > rhs.int_val) {
+            *out = 1;
+        } else {
+            *out = 0;
+        }
+        return true;
+    }
+    return false;
 }
 
 fn Value* big_integer_neg_value(Interp* interp, Value* v, char[] message) {

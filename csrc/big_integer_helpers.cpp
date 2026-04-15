@@ -46,12 +46,14 @@ cpp_int apply_binary(const cpp_int& lhs, const cpp_int& rhs, int op) {
         case 1: return lhs + rhs;
         case 2: return lhs - rhs;
         case 3: return lhs * rhs;
+        case 4: return lhs / rhs;
+        case 5: return lhs % rhs;
         default: return 0;
     }
 }
 
 bool valid_binary_op(int op) {
-    return op == 1 || op == 2 || op == 3;
+    return op >= 1 && op <= 5;
 }
 
 } // namespace

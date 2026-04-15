@@ -177,15 +177,19 @@ fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
 }
 
 fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && is_number(a) && is_number(b)) {
-        return to_double(a) < to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
+        int cmp = 0;
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, "<: BigInteger value is out of Double range");
+        return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_LT);
     }
     return raise_error(interp, "<: expected numbers");
 }
 
 fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
-    if (a != null && b != null && is_number(a) && is_number(b)) {
-        return to_double(a) > to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
+        int cmp = 0;
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, ">: BigInteger value is out of Double range");
+        return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_GT);
     }
     return raise_error(interp, ">: expected numbers");
 }

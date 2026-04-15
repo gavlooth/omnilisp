@@ -1,3 +1,64 @@
+## 2026-04-15 05:31 CEST - BigInteger Division Modulo And Ordering
+- Objective attempted:
+  - Continue the scalar precision lane by closing the deferred BigInteger
+    `/`, `%`, and ordering-comparison surface before taking on BigFloat or
+    larger parsing policy.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` so the Boost.Multiprecision
+    `cpp_int` helper supports division and modulo op codes.
+  - Added shared BigInteger-aware numeric comparison helpers in
+    `src/lisp/value_big_integer.c3`.
+  - Updated `src/lisp/prim_math_arithmetic.c3` so `/` supports exact
+    `Integer`/`BigInteger` quotient semantics when no `Double` participates,
+    promotes the `long.min / -1` overflow boundary to `BigInteger`, and keeps
+    mixed `Double` operations on the existing finite-narrowing path.
+  - Updated `%` to accept `Integer` and `BigInteger` operands, with
+    deterministic division-by-zero behavior and `long.min % -1` returning `0`.
+  - Updated `src/lisp/primitives_core.c3` and
+    `src/lisp/jit_jit_apply_multi_prims_tail.c3` so `<`, `>`, `<=`, and `>=`
+    compare BigInteger exactly against Integer/BigInteger; comparisons involving
+    `Double` require finite Double conversion.
+  - Added focused regression coverage in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `docs/LANGUAGE_SPEC.md`, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigInteger "18446744073709551616") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (% (BigInteger "9223372036854775810") 3))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(< (BigInteger "9223372036854775808") (BigInteger "9223372036854775809"))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused advanced numeric float-math group passed at `90 passed, 0 failed`;
+    the group exercises interpreter and JIT paths for the added comparison
+    tests.
+  - Direct smokes returned `"9223372036854775808"` for BigInteger division,
+    `"1"` for BigInteger modulo, and `true` for BigInteger less-than.
+  - An initial test-only attempt used the literal
+    `-9223372036854775808`, which fails at parse time before runtime overflow
+    semantics are exercised. The regression now constructs `long.min` through
+    `(- -9223372036854775807 1)`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not use `-9223372036854775808` as a source literal when testing runtime
+    `long.min` arithmetic; build it from in-range literals instead.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger `/`, `%`, and ordering comparisons as shipped for exact
+    integer operands. Remaining scalar precision work is now `BigFloat` /
+    `BigComplex`, BigInteger bitwise operations, `gcd`/`lcm`, and
+    arbitrary-precision `parse-number` policy.
+- Unresolved issues / blockers:
+  - Comparisons involving `Double` intentionally use finite Double narrowing;
+    exact integer-vs-decimal comparison is a separate BigFloat/decimal policy
+    question.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-14 22:27 CEST - Boost.Math Standard Normal Wrappers
 - Objective attempted:
   - Continue the scalar scientific numerics plan by adding the first

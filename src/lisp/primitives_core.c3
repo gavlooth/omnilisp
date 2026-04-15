@@ -7,6 +7,44 @@ import main;
 // SECTION 7: PRIMITIVES
 // =============================================================================
 
+const int NUMERIC_COMPARE_LT = 1;
+const int NUMERIC_COMPARE_GT = 2;
+const int NUMERIC_COMPARE_LE = 3;
+const int NUMERIC_COMPARE_GE = 4;
+
+fn Value* numeric_compare_bool_result(Interp* interp, int cmp, int op) {
+    bool result = false;
+    switch (op) {
+        case NUMERIC_COMPARE_LT:
+            result = cmp < 0;
+        case NUMERIC_COMPARE_GT:
+            result = cmp > 0;
+        case NUMERIC_COMPARE_LE:
+            result = cmp <= 0;
+        case NUMERIC_COMPARE_GE:
+            result = cmp >= 0;
+        default:
+            return raise_error(interp, "numeric comparison: unknown comparison op");
+    }
+    return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+}
+
+fn Value* numeric_compare_primitive_result(Interp* interp, Value* lhs, Value* rhs, char[] op_name, int op) {
+    if (!is_numeric_value(lhs)) return primitive_arg_type_raise(interp, op_name, 0, "number", lhs);
+    if (!is_numeric_value(rhs)) return primitive_arg_type_raise(interp, op_name, 1, "number", rhs);
+
+    int cmp = 0;
+    if (!numeric_values_compare(lhs, rhs, &cmp)) {
+        char[128] ebuf;
+        char[] msg = "numeric comparison: BigInteger value is out of Double range";
+        if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Double range", (ZString)op_name)) {
+            msg = formatted;
+        }
+        return raise_error(interp, msg);
+    }
+    return numeric_compare_bool_result(interp, cmp, op);
+}
+
 fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "=", "2 arguments", args.len);
     bool eq = values_equal(args[0], args[1]);
@@ -15,34 +53,22 @@ fn Value* prim_eq(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_lt(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "<", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "<", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "<", 1, "number", args[1]);
-    bool lt = to_double(args[0]) < to_double(args[1]);
-    return lt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return numeric_compare_primitive_result(interp, args[0], args[1], "<", NUMERIC_COMPARE_LT);
 }
 
 fn Value* prim_gt(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, ">", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, ">", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, ">", 1, "number", args[1]);
-    bool gt = to_double(args[0]) > to_double(args[1]);
-    return gt ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return numeric_compare_primitive_result(interp, args[0], args[1], ">", NUMERIC_COMPARE_GT);
 }
 
 fn Value* prim_le(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "<=", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "<=", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "<=", 1, "number", args[1]);
-    bool le = to_double(args[0]) <= to_double(args[1]);
-    return le ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return numeric_compare_primitive_result(interp, args[0], args[1], "<=", NUMERIC_COMPARE_LE);
 }
 
 fn Value* prim_ge(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, ">=", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, ">=", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, ">=", 1, "number", args[1]);
-    bool ge = to_double(args[0]) >= to_double(args[1]);
-    return ge ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    return numeric_compare_primitive_result(interp, args[0], args[1], ">=", NUMERIC_COMPARE_GE);
 }
 
 fn Value* prim_cons(Value*[] args, Env* env, Interp* interp) {

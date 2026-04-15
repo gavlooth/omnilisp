@@ -47,6 +47,9 @@ fn Value* numeric_binary_double_result(Interp* interp, Value* lhs, Value* rhs, i
             return make_double(interp, left - right);
         case BIG_INTEGER_OP_MUL:
             return make_double(interp, left * right);
+        case BIG_INTEGER_OP_DIV:
+            if (right == 0.0) return raise_error(interp, "/: division by zero");
+            return make_double(interp, left / right);
         default:
             return raise_error(interp, "numeric operation: unknown binary op");
     }
@@ -127,26 +130,32 @@ fn Value* prim_mul(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_div(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "/", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "/", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "/", 1, "number", args[1]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "/", 0, "number", args[0]);
+    if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "/", 1, "number", args[1]);
     if (is_double(args[0]) || is_double(args[1])) {
-        double b = to_double(args[1]);
-        if (b == 0.0) return raise_error(interp, "/: division by zero");
-        return make_double(interp, to_double(args[0]) / b);
+        return numeric_binary_double_result(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/");
+    }
+    if (exact_integer_value_is_zero(args[1])) return raise_error(interp, "/: division by zero");
+    if (is_big_integer(args[0]) || is_big_integer(args[1])) {
+        return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/: failed to allocate BigInteger result");
     }
     long b = args[1].int_val;
-    if (b == 0) return raise_error(interp, "/: division by zero");
-    if (args[0].int_val == long.min && b == -1) return raise_error(interp, "/: integer overflow");
+    if (args[0].int_val == long.min && b == -1) {
+        return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_DIV, "/: failed to allocate BigInteger overflow result");
+    }
     return make_int(interp, args[0].int_val / b);
 }
 
 fn Value* prim_mod(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "%", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "%", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "%", 1, "integer", args[1]);
+    if (!(is_int(args[0]) || is_big_integer(args[0]))) return primitive_arg_type_raise(interp, "%", 0, "integer", args[0]);
+    if (!(is_int(args[1]) || is_big_integer(args[1]))) return primitive_arg_type_raise(interp, "%", 1, "integer", args[1]);
+    if (exact_integer_value_is_zero(args[1])) return raise_error(interp, "%: division by zero");
+    if (is_big_integer(args[0]) || is_big_integer(args[1])) {
+        return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_MOD, "%: failed to allocate BigInteger result");
+    }
     long a = args[0].int_val;
     long b = args[1].int_val;
-    if (b == 0) return raise_error(interp, "%: division by zero");
-    if (a == long.min && b == -1) return raise_error(interp, "%: integer overflow");
+    if (a == long.min && b == -1) return make_int(interp, 0);
     return make_int(interp, a % b);
 }

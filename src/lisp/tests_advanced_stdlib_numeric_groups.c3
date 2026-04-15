@@ -172,6 +172,32 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigInteger multiplication",
         "(String (* (BigInteger \"9223372036854775808\") 2))",
         "18446744073709551616", pass, fail);
+    test_str_val(interp, "BigInteger division",
+        "(String (/ (BigInteger \"18446744073709551616\") 2))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger modulo",
+        "(String (% (BigInteger \"9223372036854775810\") 3))",
+        "1", pass, fail);
+    test_str_val(interp, "Integer division overflow promotes",
+        "(String (/ (- -9223372036854775807 1) -1))",
+        "9223372036854775808", pass, fail);
+    test_eq(interp, "Integer modulo overflow boundary returns zero",
+        "(% (- -9223372036854775807 1) -1)",
+        0, pass, fail);
+    test_error_contains(interp, "BigInteger division by zero",
+        "(/ (BigInteger \"10\") 0)", "/: division by zero", pass, fail);
+    test_error_contains(interp, "BigInteger modulo by zero",
+        "(% (BigInteger \"10\") 0)", "%: division by zero", pass, fail);
+    test_truthy(interp, "BigInteger less-than",
+        "(< (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775809\"))", pass, fail);
+    test_truthy(interp, "BigInteger greater-than Integer",
+        "(> (BigInteger \"9223372036854775808\") 9223372036854775807)", pass, fail);
+    test_truthy(interp, "BigInteger less-equal equality",
+        "(<= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
+    test_truthy(interp, "BigInteger greater-equal equality",
+        "(>= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
+    test_truthy(interp, "BigInteger compare with Double in range",
+        "(< (BigInteger \"42\") 42.5)", pass, fail);
     test_eq(interp, "Integer ctor accepts in-range BigInteger",
         "(Integer (BigInteger \"9223372036854775807\"))",
         9223372036854775807, pass, fail);

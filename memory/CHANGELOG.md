@@ -1,3 +1,33 @@
+## 2026-04-15
+
+- Completed the next BigInteger exact-arithmetic slice:
+  - Extended the Boost.Multiprecision `cpp_int` helper op set with integer
+    division and modulo.
+  - Updated `/` so `Integer`/`BigInteger` combinations use exact integer
+    quotient semantics when no `Double` participates, while mixed `Double`
+    operations continue to narrow representable `BigInteger` values to finite
+    `Double`.
+  - Updated `%` to accept `Integer` and `BigInteger` operands, with deterministic
+    division-by-zero failures. The `long.min % -1` boundary now returns `0`
+    instead of raising an artificial overflow.
+  - Updated `<`, `>`, `<=`, and `>=` to compare `BigInteger` exactly against
+    `Integer`/`BigInteger`; comparisons involving `Double` require finite
+    `Double` conversion and fail closed if a `BigInteger` is out of range.
+  - Updated the direct JIT `<`/`>` helpers to use the same numeric comparison
+    path as the interpreter.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `90 passed, 0 failed`
+    - direct smokes:
+      - `(String (/ (BigInteger "18446744073709551616") 2))` -> `"9223372036854775808"`
+      - `(String (% (BigInteger "9223372036854775810") 3))` -> `"1"`
+      - `(< (BigInteger "9223372036854775808") (BigInteger "9223372036854775809"))` -> `true`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+
 ## 2026-04-14
 
 - Added standard-normal Boost.Math distribution wrappers:
