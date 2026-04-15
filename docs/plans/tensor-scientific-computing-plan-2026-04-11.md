@@ -103,6 +103,9 @@ Name collision note:
   dtype-preserving. `real-part` and `conjugate` copy Double, BigInteger, and
   BigFloat tensors; `imag-part` returns same-shape zero tensors in the same
   dtype.
+- `TENSOR-085` is complete: Tensor `abs` applies elementwise magnitude for all
+  native tensor dtypes. Real tensor dtypes preserve dtype and shape;
+  BigComplex tensors return same-shape native BigFloat magnitude tensors.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

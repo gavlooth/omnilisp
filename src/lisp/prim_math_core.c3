@@ -442,6 +442,7 @@ fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_abs_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
     if (is_big_complex(args[0])) return big_complex_abs_value(interp, args[0], "abs: failed to allocate BigFloat result");
     if (is_big_float(args[0])) return big_float_abs_value(interp, args[0], "abs: failed to allocate BigFloat result");

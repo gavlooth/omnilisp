@@ -1,5 +1,32 @@
 ## 2026-04-15
 
+- Completed `TENSOR-085` Tensor `abs` semantics:
+  - Extended the existing `abs` primitive to accept native Tensor inputs.
+  - Real Tensor dtypes (`Double`, `BigInteger`, and `BigFloat`) preserve
+    dtype and shape while applying elementwise magnitude.
+  - `BigComplex` Tensor inputs return same-shape native `BigFloat` Tensor
+    magnitudes, matching scalar `BigComplex` `abs`.
+  - Lazy Tensor sources are realized before magnitude extraction, then cleaned
+    through the existing materialized-value boundary.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - direct smoke for `abs` on a BigComplex Tensor
+    - direct smokes for `abs` on BigInteger Tensor and lazy BigComplex Tensor
+    - focused advanced collections/module group on host
+      -> `335 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `335 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-084` real Tensor component semantics:
   - Extended `real-part`, `imag-part`, and `conjugate` from BigComplex-only
     Tensor behavior to all native real Tensor dtypes.

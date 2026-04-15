@@ -116,6 +116,9 @@ as a new public Tensor surface:
 - Real Tensor component semantics are dtype-preserving: `real-part` and
   `conjugate` copy Double, BigInteger, and BigFloat tensors; `imag-part`
   returns same-shape zero tensors in the same dtype.
+- Tensor `abs` now supports elementwise magnitude for all native Tensor dtypes:
+  real Tensor dtypes preserve dtype and shape, while BigComplex tensors return
+  same-shape BigFloat magnitude tensors.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.

@@ -221,6 +221,20 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "imag-part BigFloat tensor returns zero tensor",
         "(String (ref (imag-part (Tensor BigFloat [1] [(BigFloat \"1.25\")])) [0]))",
         "0", pass, fail);
+    test_eq_double(interp, "abs Double tensor preserves dtype and magnitude",
+        "(ref (abs (Tensor Double [2] [-1.5 2.5])) [0])", 1.5, pass, fail);
+    test_str_val(interp, "abs BigInteger tensor preserves exact dtype",
+        "(String (ref (abs (Tensor BigInteger [1] [(BigInteger \"-9223372036854775808\")])) [0]))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "abs BigFloat tensor preserves high precision dtype",
+        "(String (ref (abs (Tensor BigFloat [1] [(BigFloat \"-1e309\")])) [0]))",
+        "1e+309", pass, fail);
+    test_str_val(interp, "abs BigComplex tensor returns BigFloat magnitude tensor",
+        "(String (ref (abs (Tensor BigComplex [1] [(BigComplex 3 4)])) [0]))",
+        "5", pass, fail);
+    test_str_val(interp, "abs lazy BigComplex tensor realizes source",
+        "(String (ref (abs (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 2))) [0]))",
+        "5", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

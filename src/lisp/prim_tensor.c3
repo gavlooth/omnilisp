@@ -3,6 +3,8 @@ module lisp;
 import std::core::mem;
 import main;
 
+extern fn double tensor_c_fabs(double x) @extern("fabs");
+
 fn bool is_tensor(Value* v) @inline {
     return v != null && v.tag == TENSOR;
 }
@@ -2374,6 +2376,80 @@ fn Value* tensor_big_complex_component_value(Value* tensor_value, bool imaginary
         }
         if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
         dst_values[i] = component;
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
+fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "abs: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* source = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "abs: tensor backing storage is missing");
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    TensorDType result_dtype = source.dtype == TENSOR_DTYPE_BIG_COMPLEX ? TENSOR_DTYPE_BIG_FLOAT : source.dtype;
+
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "abs: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "abs: tensor result backing storage is missing");
+    }
+
+    switch (source.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double* src_values = (double*)source.data;
+            double* dst_values = (double*)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                dst_values[i] = tensor_c_fabs(src_values[i]);
+            }
+        }
+        case TENSOR_DTYPE_BIG_INTEGER: {
+            void** src_values = (void**)source.data;
+            void** dst_values = (void**)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "abs: tensor BigInteger element is missing");
+                void* result = omni_big_integer_compare_i64(src_values[i], 0) < 0
+                    ? omni_big_integer_neg(src_values[i])
+                    : omni_big_integer_clone(src_values[i]);
+                if (result == null) return raise_error(interp, "abs: failed to allocate BigInteger tensor element");
+                if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** src_values = (void**)source.data;
+            void** dst_values = (void**)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "abs: tensor BigFloat element is missing");
+                void* result = omni_big_float_abs(src_values[i]);
+                if (result == null) return raise_error(interp, "abs: failed to allocate BigFloat tensor element");
+                if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+        case TENSOR_DTYPE_BIG_COMPLEX: {
+            void** src_values = (void**)source.data;
+            void** dst_values = (void**)out_value.tensor_val.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "abs: tensor BigComplex element is missing");
+                void* result = omni_big_complex_abs(src_values[i]);
+                if (result == null) return raise_error(interp, "abs: failed to allocate BigComplex tensor magnitude");
+                if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
     }
 
     keep_out = true;

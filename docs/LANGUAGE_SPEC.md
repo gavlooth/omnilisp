@@ -457,7 +457,9 @@ for `Double`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For real
 Tensor dtypes, `real-part` and `conjugate` preserve dtype and values, while
 `imag-part` returns a same-shape zero tensor of the same dtype. For
 `BigComplex` tensors, `real-part` and `imag-part` produce `BigFloat` tensors
-and `conjugate` produces a `BigComplex` tensor.
+and `conjugate` produces a `BigComplex` tensor. Tensor `abs` applies
+elementwise magnitude; real Tensor dtypes preserve dtype and `BigComplex`
+tensors return same-shape `BigFloat` tensors.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User

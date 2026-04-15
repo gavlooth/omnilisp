@@ -98,6 +98,9 @@ Implemented slices:
 - `TENSOR-084`: real Tensor component semantics are dtype-preserving:
   `real-part` and `conjugate` copy `Double`, `BigInteger`, and `BigFloat`
   tensors, while `imag-part` returns same-shape zero tensors in the same dtype.
+- `TENSOR-085`: Tensor `abs` supports elementwise magnitude for all native
+  tensor dtypes. Real Tensor dtypes preserve dtype and shape; `BigComplex`
+  Tensor magnitudes return same-shape native `BigFloat` tensors.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -161,8 +164,12 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     component kernels: `pass=327 fail=0`.
   - host targeted `advanced-collections-module` group after real Tensor
     component semantics: `pass=330 fail=0`.
+  - host targeted `advanced-collections-module` group after Tensor `abs`
+    semantics: `pass=335 fail=0`.
   - bounded container `advanced-collections-module` group after real Tensor
     component semantics: `pass=330 fail=0`.
+  - bounded container `advanced-collections-module` group after Tensor `abs`
+    semantics: `pass=335 fail=0`.
   - bounded container `memory-lifetime-smoke`: `pass=225 fail=0`.
   - bounded container `advanced-collections-module` group after BigComplex
     component kernels: `pass=327 fail=0`.

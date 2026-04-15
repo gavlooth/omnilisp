@@ -1,3 +1,59 @@
+## 2026-04-15 13:47 CEST - Tensor Abs Semantics
+- Objective attempted:
+  - Continue the precision Tensor lane with a concrete scalar-to-Tensor
+    numeric primitive extension.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended the existing `abs` primitive to accept Tensor inputs.
+  - Added Tensor `abs` runtime handling for `Double`, `BigInteger`,
+    `BigFloat`, and `BigComplex` tensors in `src/lisp/prim_tensor.c3`.
+  - Real Tensor dtypes preserve dtype and shape under elementwise magnitude.
+  - `BigComplex` Tensor inputs return same-shape `BigFloat` magnitude tensors,
+    matching scalar `BigComplex` `abs`.
+  - Lazy Tensor sources are realized before magnitude extraction and cleaned
+    through the existing materialized-value boundary.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, BigComplex, and lazy BigComplex Tensor `abs`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct `--eval` smokes for BigComplex Tensor `abs`, BigInteger Tensor
+    `abs`, and lazy BigComplex Tensor `abs`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"5"`, `"9223372036854775808"`, and `"5"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=335 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=335 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat Tensor `abs` as closed for native numeric dtypes. The next scientific
+    slice should be another concrete kernel or an explicit naming decision for
+    solver/decomposition conveniences.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this Tensor `abs` slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:40 CEST - Real Tensor Component Semantics
 - Objective attempted:
   - Close the real Tensor component-policy gap left by the BigComplex Tensor
