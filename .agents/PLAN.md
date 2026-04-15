@@ -95,9 +95,9 @@ as a new public Tensor surface:
   collection conversions that realize lazy Tensor expressions and return flat
   row-major values.
 - `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)` now infer
-  native `Double` tensor shape from numeric scalars or rectangular nested
-  arrays/proper lists while preserving the explicit `(Tensor Double shape
-  data-or-scalar)` constructor.
+  native `Double` tensor shape from real numeric scalars or rectangular nested
+  arrays/proper lists whose leaves can narrow to finite `Double`, while
+  preserving the explicit `(Tensor Double shape data-or-scalar)` constructor.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing

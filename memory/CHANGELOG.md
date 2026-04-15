@@ -1,5 +1,28 @@
 ## 2026-04-15
 
+- Completed Tensor real numeric narrowing for native `Double` constructors:
+  - Routed Tensor constructor and Tensor scalar-map conversion through the
+    shared `try_numeric_to_double` path, so native `Double` Tensor inputs now
+    accept `Integer`, `Double`, `BigInteger`, and `BigFloat` values when they
+    can narrow to finite `Double`.
+  - BigComplex values and out-of-`Double`-range BigFloat/BigInteger values
+    fail closed instead of silently truncating or fabricating storage values.
+  - Added focused advanced collections/module regressions for inferred
+    BigInteger/BigFloat leaves, explicit BigFloat scalar fill, explicit
+    BigInteger flat data, out-of-range BigFloat rejection, and BigComplex
+    rejection.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for BigFloat Tensor data, BigInteger Tensor data,
+      out-of-range BigFloat rejection, and BigComplex rejection
+    - focused advanced collections/module group on host
+      -> `248 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `248 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed `TENSOR-076` inferred Tensor constructor overloads:
   - Added `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)`
     as constructor-dispatch surfaces that infer native `Double` tensor shape

@@ -114,16 +114,7 @@ fn bool tensor_parse_shape(Value* shape_arg, Interp* interp, usz** out_shape, us
 }
 
 fn bool tensor_value_to_double(Value* value, double* out) @inline {
-    if (out == null || value == null) return false;
-    if (value.tag == DOUBLE) {
-        *out = value.double_val;
-        return true;
-    }
-    if (value.tag == INT) {
-        *out = (double)value.int_val;
-        return true;
-    }
-    return false;
+    return try_numeric_to_double(value, out);
 }
 
 fn bool tensor_infer_shape_from_value(

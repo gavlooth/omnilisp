@@ -118,8 +118,21 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         "(ref (Tensor Double [1 2]) [1])", 2.0, pass, fail);
     test_eq_double(interp, "Tensor inferred quoted dtype suffix",
         "(ref (Tensor [1 2] 'Double) [1])", 2.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred BigInteger narrows to Double",
+        "(ref (Tensor [(BigInteger \"9223372036854775808\")]) [0])",
+        9223372036854775808.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred BigFloat narrows to Double",
+        "(ref (Tensor [(BigFloat \"1.25\")]) [0])", 1.25, pass, fail);
+    test_eq_double(interp, "Tensor explicit BigFloat scalar fill narrows",
+        "(ref (Tensor Double [2] (BigFloat \"2.5\")) [1])", 2.5, pass, fail);
+    test_eq_double(interp, "Tensor explicit BigInteger data narrows",
+        "(ref (Tensor Double [1] [(BigInteger \"42\")]) [0])", 42.0, pass, fail);
     test_eq(interp, "Tensor inferred empty vector length",
         "(length (Tensor []))", 0, pass, fail);
+    test_error_contains(interp, "Tensor inferred BigFloat outside Double range rejected",
+        "(Tensor [(BigFloat \"1e309\")])", "nested arrays/lists of numbers", pass, fail);
+    test_error_contains(interp, "Tensor inferred complex data rejected",
+        "(Tensor [(BigComplex 1 2)])", "nested arrays/lists of numbers", pass, fail);
     test_error_contains(interp, "Tensor inferred ragged data rejected",
         "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
     test_error_contains(interp, "Tensor inferred non-numeric data rejected",

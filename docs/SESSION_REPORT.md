@@ -1,3 +1,57 @@
+## 2026-04-15 11:57 CEST - Tensor Real Numeric Narrowing
+- Objective attempted:
+  - Close the Tensor constructor contract gap after inferred-shape
+    construction: native `Double` tensors should accept real numeric inputs
+    that can safely narrow to finite `Double`, not only fixed-width
+    `Integer`/`Double` leaves.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed Tensor value-to-`Double` conversion through the shared
+    `try_numeric_to_double` helper.
+  - Native `Double` Tensor constructors now accept `Integer`, `Double`,
+    `BigInteger`, and `BigFloat` inputs when representable as finite `Double`.
+  - BigComplex values and out-of-`Double`-range BigFloat/BigInteger values fail
+    closed.
+  - Added focused advanced collections/module regressions for inferred
+    BigInteger/BigFloat leaves, explicit BigFloat scalar fill, explicit
+    BigInteger flat data, out-of-range BigFloat rejection, and BigComplex
+    rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat Tensor data, BigInteger Tensor data,
+    out-of-range BigFloat rejection, and BigComplex rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Tensor [(BigFloat "1.25")]) [0])` returns `1.25`.
+  - `(ref (Tensor [(BigInteger "9223372036854775808")]) [0])` returns a
+    finite `Double` representation.
+  - `(Tensor [(BigFloat "1e309")])` fails closed.
+  - `(Tensor [(BigComplex 1 2)])` fails closed.
+  - Focused advanced collections/module group passed on host:
+    `248 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `248 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Treat native `Double` Tensor numeric ingress as shipped for all real
+    numeric values representable as finite `Double`. BigFloat/BigInteger
+    preserving Tensor storage remains a separate dtype/storage project.
+- Unresolved issues:
+  - Tensor dtypes beyond native `Double` are still unshipped.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this narrowing slice, then continue with either explicit
+    Tensor dtype work or the LAPACK/decomposition surface decision.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:52 CEST - Tensor Inferred Constructor Overloads
 - Objective attempted:
   - Continue the owner-preferred constructor-dispatch Tensor surface by adding

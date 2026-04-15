@@ -437,8 +437,10 @@ is an array or proper list of non-negative integers and `data-or-scalar` is
 either a scalar numeric fill value or an array/proper list with exactly the
 shape product's element count. The inferred-shape constructor surface is
 `(Tensor data)`, `(Tensor data Double)`, or `(Tensor Double data)`, where
-`data` is a numeric scalar or rectangular nested arrays/proper lists of
-numeric values. Tensor `ref` uses `(ref tensor index-array)`.
+`data` is a real numeric scalar or rectangular nested arrays/proper lists of
+real numeric values that can narrow to finite `Double`. Complex values and
+out-of-`Double`-range values fail closed. Tensor `ref` uses
+`(ref tensor index-array)`.
 `(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
 return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces

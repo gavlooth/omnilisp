@@ -68,9 +68,9 @@ Name collision note:
   data, and `(ref tensor index-array)` indexes tensors with per-axis negative
   index support.
 - `TENSOR-076` is complete: `(Tensor data)`, `(Tensor data Double)`, and
-  `(Tensor Double data)` infer native `Double` tensor shape from numeric
-  scalars or rectangular nested arrays/proper lists while preserving the
-  explicit shape/data constructor.
+  `(Tensor Double data)` infer native `Double` tensor shape from real numeric
+  scalars or rectangular nested arrays/proper lists whose leaves can narrow to
+  finite `Double` while preserving the explicit shape/data constructor.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a
