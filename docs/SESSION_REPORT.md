@@ -1,3 +1,57 @@
+## 2026-04-15 13:40 CEST - Real Tensor Component Semantics
+- Objective attempted:
+  - Close the real Tensor component-policy gap left by the BigComplex Tensor
+    component slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended Tensor `real-part`, `imag-part`, and `conjugate` behavior from
+    BigComplex-only Tensor handling to all native real Tensor dtypes.
+  - `real-part` and `conjugate` now copy `Double`, `BigInteger`, and
+    `BigFloat` tensors while preserving dtype and shape.
+  - `imag-part` now returns same-shape zero tensors in the same real dtype.
+  - Added advanced collections/module regressions for Double Tensor
+    `real-part`, Double Tensor `imag-part`, BigInteger Tensor `conjugate`,
+    and BigFloat Tensor `imag-part`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `c3c build`
+  - direct `--eval` smokes for `imag-part` on Double Tensor and `conjugate`
+    on BigInteger Tensor
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `0.0` and `"9223372036854775808"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=330 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=330 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat Tensor component semantics as closed for current numeric dtypes. The
+    next scientific slice should move to a concrete kernel or accepted naming
+    decision rather than more component-policy cleanup.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this real Tensor component semantics slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:29 CEST - BigComplex Tensor Component Kernels
 - Objective attempted:
   - Continue the complex Tensor lane by making `real-part`, `imag-part`, and

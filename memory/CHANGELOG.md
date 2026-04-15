@@ -1,5 +1,32 @@
 ## 2026-04-15
 
+- Completed `TENSOR-084` real Tensor component semantics:
+  - Extended `real-part`, `imag-part`, and `conjugate` from BigComplex-only
+    Tensor behavior to all native real Tensor dtypes.
+  - `real-part` and `conjugate` copy `Double`, `BigInteger`, and `BigFloat`
+    tensor values while preserving dtype and shape.
+  - `imag-part` returns same-shape zero tensors in the same real dtype.
+  - This supersedes the `TENSOR-083` note that non-BigComplex Tensor component
+    inputs fail closed.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - direct smokes for `imag-part` on Double Tensor and `conjugate` on
+      BigInteger Tensor
+    - focused advanced collections/module group on host
+      -> `330 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `330 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-083` BigComplex Tensor component kernels:
   - Extended `real-part`, `imag-part`, and `conjugate` to accept native
     BigComplex Tensor inputs.

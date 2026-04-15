@@ -99,6 +99,10 @@ Name collision note:
   elementwise `real-part`, `imag-part`, and `conjugate`. Component extraction
   returns BigFloat tensors, conjugate returns BigComplex tensors, and lazy
   BigComplex Tensor sources are realized before the component kernel runs.
+- `TENSOR-084` is complete: real Tensor component semantics are now
+  dtype-preserving. `real-part` and `conjugate` copy Double, BigInteger, and
+  BigFloat tensors; `imag-part` returns same-shape zero tensors in the same
+  dtype.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

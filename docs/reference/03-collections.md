@@ -87,8 +87,10 @@ generic `ref`, tensor-dispatched `map` for all native dtypes, tensor
 `contract`, and `realize` as the explicit storage boundary. `BigInteger`,
 `BigFloat`, and `BigComplex` tensors support constructor/ref/flat collection
 conversion/concrete `realize` paths, elementwise `map`, and summed-axis
-`contract`. BigComplex tensors also support elementwise `real-part`,
-`imag-part`, and `conjugate`; component extraction returns BigFloat tensors.
+`contract`. Tensors also support elementwise `real-part`, `imag-part`, and
+`conjugate`: real Tensor dtypes preserve dtype for real/conjugate and return
+same-dtype zeros for imaginary components, while BigComplex component
+extraction returns BigFloat tensors.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -114,6 +116,7 @@ conversion/concrete `realize` paths, elementwise `map`, and summed-axis
 (String (ref (real-part complex) [0])) ;; => "1"
 (String (ref (imag-part complex) [0])) ;; => "2"
 (String (ref (conjugate complex) [0])) ;; => "1-2i"
+(ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))
 (realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y

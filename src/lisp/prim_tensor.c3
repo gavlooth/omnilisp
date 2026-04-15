@@ -2328,12 +2328,30 @@ fn Value* tensor_big_complex_component_value(Value* tensor_value, bool imaginary
     if (!tensor_has_valid_storage(source)) {
         return tensor_runtime_raise(interp, imaginary ? "imag-part: tensor backing storage is missing" : "real-part: tensor backing storage is missing");
     }
-    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
-        return tensor_type_raise(interp, imaginary ? "imag-part: expected BigComplex Tensor" : "real-part: expected BigComplex Tensor");
-    }
-
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+
+    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
+        Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, imaginary ? "imag-part: failed to allocate tensor result" : "real-part: failed to allocate tensor result");
+        if (out_value == null || out_value.tag == ERROR) return out_value;
+        bool keep_out = false;
+        defer if (!keep_out) {
+            boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+        }
+        if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+            return tensor_runtime_raise(interp, imaginary ? "imag-part: tensor result backing storage is missing" : "real-part: tensor result backing storage is missing");
+        }
+        if (imaginary) {
+            Value* zero = make_int(interp, 0);
+            Value* err = tensor_fill_from_data_arg(out_value.tensor_val, zero, interp);
+            if (err != null) return err;
+        } else if (!tensor_copy_concrete_storage(out_value.tensor_val, source)) {
+            return tensor_runtime_raise(interp, "real-part: failed to copy tensor storage");
+        }
+        keep_out = true;
+        return out_value;
+    }
+
     Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_FLOAT, shape_slice, imaginary ? "imag-part: failed to allocate tensor result" : "real-part: failed to allocate tensor result");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
@@ -2373,12 +2391,26 @@ fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp
 
     TensorVal* source = concrete_value.tensor_val;
     if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "conjugate: tensor backing storage is missing");
-    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
-        return tensor_type_raise(interp, "conjugate: expected BigComplex Tensor");
-    }
-
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+
+    if (source.dtype != TENSOR_DTYPE_BIG_COMPLEX) {
+        Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "conjugate: failed to allocate tensor result");
+        if (out_value == null || out_value.tag == ERROR) return out_value;
+        bool keep_out = false;
+        defer if (!keep_out) {
+            boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+        }
+        if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+            return tensor_runtime_raise(interp, "conjugate: tensor result backing storage is missing");
+        }
+        if (!tensor_copy_concrete_storage(out_value.tensor_val, source)) {
+            return tensor_runtime_raise(interp, "conjugate: failed to copy tensor storage");
+        }
+        keep_out = true;
+        return out_value;
+    }
+
     Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_COMPLEX, shape_slice, "conjugate: failed to allocate tensor result");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;

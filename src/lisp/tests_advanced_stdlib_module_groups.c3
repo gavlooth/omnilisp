@@ -211,8 +211,16 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "conjugate lazy BigComplex tensor realizes source",
         "(String (ref (conjugate (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 3 4))) [0]))",
         "4-6i", pass, fail);
-    test_error_contains(interp, "real-part non-complex tensor rejected",
-        "(real-part (Tensor Double [1] [1]))", "expected BigComplex Tensor", pass, fail);
+    test_eq_double(interp, "real-part Double tensor preserves dtype and value",
+        "(ref (real-part (Tensor Double [1] [1.5])) [0])", 1.5, pass, fail);
+    test_eq_double(interp, "imag-part Double tensor returns zero tensor",
+        "(ref (imag-part (Tensor Double [1] [1.5])) [0])", 0.0, pass, fail);
+    test_str_val(interp, "conjugate BigInteger tensor preserves exact value",
+        "(String (ref (conjugate (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")])) [0]))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "imag-part BigFloat tensor returns zero tensor",
+        "(String (ref (imag-part (Tensor BigFloat [1] [(BigFloat \"1.25\")])) [0]))",
+        "0", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

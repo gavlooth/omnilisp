@@ -113,6 +113,9 @@ as a new public Tensor surface:
 - BigComplex Tensor component kernels now support `real-part`, `imag-part`,
   and `conjugate`. Component extraction returns BigFloat tensors; conjugate
   returns BigComplex tensors.
+- Real Tensor component semantics are dtype-preserving: `real-part` and
+  `conjugate` copy Double, BigInteger, and BigFloat tensors; `imag-part`
+  returns same-shape zero tensors in the same dtype.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.

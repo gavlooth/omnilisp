@@ -453,10 +453,11 @@ lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
 `map` is the elementwise tensor operation for `Double`, `BigInteger`,
 `BigFloat`, and `BigComplex` tensors; `contract` is the summed-axis operation
-for `Double`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For
+for `Double`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For real
+Tensor dtypes, `real-part` and `conjugate` preserve dtype and values, while
+`imag-part` returns a same-shape zero tensor of the same dtype. For
 `BigComplex` tensors, `real-part` and `imag-part` produce `BigFloat` tensors
-and `conjugate` produces a `BigComplex` tensor; non-`BigComplex` tensor inputs
-to those component operations fail closed instead of guessing a result dtype.
+and `conjugate` produces a `BigComplex` tensor.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User
