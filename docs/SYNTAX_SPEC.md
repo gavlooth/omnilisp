@@ -22,7 +22,7 @@
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
 | T_COMMA_AT | `,@` | Unquote-splicing shorthand |
-| T_INT | `-?[0-9]+` | Integer literals |
+| T_INT | `-?[0-9]+` | Fixed-width signed integer literals in `long.min..long.max` |
 | T_FLOAT | `-?[0-9]+\.[0-9]+` | Floating-point literals |
 | T_STRING | `"..."` | String literals with escapes: `\n`, `\t`, `\\`, `\"` |
 | T_REGEX | `#r"..."` | Regex literal payload, represented as a string value |

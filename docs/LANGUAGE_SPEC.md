@@ -386,6 +386,9 @@ division overflow case promote overflowing `Integer` results to `BigInteger`.
 `/`, `%`, ordering comparisons, `min`, and `max` support `BigInteger` values;
 bitwise operations and `parse-number` arbitrary-precision parsing remain
 explicit follow-up work.
+Integer source literals cover the full signed fixed-width range, including
+`-9223372036854775808`; positive overflow and negative underflow still fail at
+lex time.
 Use `(BigInteger "...")` to parse large decimal integers.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The

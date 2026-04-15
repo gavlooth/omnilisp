@@ -1,10 +1,10 @@
 module lisp;
 
-fn bool Lexer.scan_number_float(Lexer* self, usz start, long int_part, bool negative) {
+fn bool Lexer.scan_number_float(Lexer* self, usz start, double int_part, bool negative) {
     if (self.pos >= self.len || self.source[self.pos] != '.') return false;
     if (self.pos + 1 >= self.len || self.source[self.pos + 1] < '0' || self.source[self.pos + 1] > '9') return false;
 
-    double dval = (double)int_part;
+    double dval = int_part;
     self.next_char();  // consume '.'
     dval = self.scan_number_fraction(dval);
     dval = self.scan_number_exponent(dval);

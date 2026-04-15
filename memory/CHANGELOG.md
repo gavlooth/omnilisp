@@ -1,5 +1,31 @@
 ## 2026-04-15
 
+- Fixed the signed integer lexer boundary:
+  - `Lexer.scan_number(...)` now allows exactly the negative `long.min`
+    magnitude while preserving overflow rejection for positive
+    `9223372036854775808` and negative `-9223372036854775809`.
+  - The scanner keeps a separate floating integer-part accumulator so
+    `-9223372036854775808.0` does not accidentally flip sign while supporting
+    the `long.min` integer token boundary.
+  - Added a basic-suite regression for the raw `-9223372036854775808` literal
+    and negative-underflow rejection.
+  - The previous operational warning to avoid source literal
+    `-9223372036854775808` is now superseded for current source; it remains
+    relevant only when interpreting older checkpoints before this lexer fix.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct smokes:
+      - `-9223372036854775808` -> `-9223372036854775808`
+      - `-9223372036854775809` -> `integer literal overflow`
+      - `9223372036854775808` -> `integer literal overflow`
+      - `-9223372036854775808.0` -> `-9.22337203685478e+18`
+    - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `144 passed, 0 failed`
+    - bounded container basic slice -> `144 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+
 - Completed the next BigInteger exact-number primitive slice:
   - Extended the Boost.Multiprecision `cpp_int` helper op set with `gcd` and
     `lcm`.

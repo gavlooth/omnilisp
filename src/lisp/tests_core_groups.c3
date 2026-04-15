@@ -6,6 +6,9 @@ import std::io;
 fn void run_basic_intro_tests(Interp* interp, int* pass, int* fail) {
     // Literals & bindings
     test_eq(interp, "integer literal 42", "42", 42, pass, fail);
+    test_eq(interp, "integer literal long min", "-9223372036854775808", long.min, pass, fail);
+    test_error_contains(interp, "integer literal underflow rejects",
+        "-9223372036854775809", "integer literal overflow", pass, fail);
     setup(interp, "(define x 10)");
     test_eq(interp, "variable binding x => 10", "x", 10, pass, fail);
     test_eq(interp, "lambda identity", "((lambda (x) x) 5)", 5, pass, fail);

@@ -1,3 +1,53 @@
+## 2026-04-15 06:31 CEST - Signed Long-Min Lexer Boundary
+- Objective attempted:
+  - Fix the raw source literal `-9223372036854775808` after the prior
+    BigInteger primitive slice identified it as a lexer boundary failure.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/parser_lexer_symbol_number.c3` so decimal integer
+    scanning permits exactly the negative `long.min` magnitude while still
+    rejecting positive overflow and negative underflow.
+  - Updated `src/lisp/parser_lexer_number_helpers.c3` so float scanning uses a
+    separate `double` integer-part accumulator. This avoids accidentally
+    mis-signing `-9223372036854775808.0` while the integer scanner handles the
+    `long.min` token boundary.
+  - Added basic-suite regressions in `src/lisp/tests_core_groups.c3`.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775809'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808.0'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Raw `-9223372036854775808` now parses and evaluates to the fixed-width
+    integer minimum.
+  - Raw `-9223372036854775809` and `9223372036854775808` still fail with
+    `integer literal overflow`.
+  - Raw `-9223372036854775808.0` parses as a negative `Double`.
+  - Host and bounded-container basic slices both passed at `144 passed,
+    0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - The prior operational warning that source literal `-9223372036854775808`
+    cannot be used is superseded after this commit. It remains true only for
+    older checkpoints before the lexer fix.
+- Current best recommendation/checkpoint:
+  - Treat fixed-width integer source literals as covering the full signed range
+    `long.min..long.max`. Wider decimal integers should still use the
+    `BigInteger` constructor until arbitrary-precision literal or
+    `parse-number` policy is explicitly implemented.
+- Unresolved issues / blockers:
+  - This does not add BigInteger source literals; positive overflow and
+    negative underflow still intentionally fail in the lexer.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 06:18 CEST - BigInteger Exact Number Primitives
 - Objective attempted:
   - Explain and fix the observed BigInteger `gcd` failure by closing the next
