@@ -8,6 +8,8 @@ const int BIG_INTEGER_OP_SUB = 2;
 const int BIG_INTEGER_OP_MUL = 3;
 const int BIG_INTEGER_OP_DIV = 4;
 const int BIG_INTEGER_OP_MOD = 5;
+const int BIG_INTEGER_OP_GCD = 6;
+const int BIG_INTEGER_OP_LCM = 7;
 
 fn Value* make_big_integer_from_owned_handle(Interp* interp, void* handle, char[] message) {
     if (handle == null) return raise_error(interp, message);
@@ -153,7 +155,11 @@ fn bool exact_integer_value_is_zero(Value* v) @inline {
     return false;
 }
 
-fn Value* big_integer_binary_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
+fn bool is_exact_integer_value(Value* v) @inline {
+    return v != null && (v.tag == INT || v.tag == BIG_INTEGER);
+}
+
+fn void* big_integer_binary_handle(Value* lhs, Value* rhs, int op) {
     void* result = null;
     if (lhs.tag == INT && rhs.tag == INT) {
         result = omni_big_integer_binary_i64(lhs.int_val, rhs.int_val, op);
@@ -164,7 +170,29 @@ fn Value* big_integer_binary_values(Interp* interp, Value* lhs, Value* rhs, int 
     } else if (lhs.tag == BIG_INTEGER && rhs.tag == BIG_INTEGER) {
         result = omni_big_integer_binary(lhs.big_integer_val, rhs.big_integer_val, op);
     }
+    return result;
+}
+
+fn Value* make_integer_or_big_integer_from_owned_handle(Interp* interp, void* handle, bool prefer_integer, char[] message) {
+    if (handle == null) return raise_error(interp, message);
+    if (prefer_integer) {
+        long narrowed = 0;
+        if (omni_big_integer_to_i64(handle, &narrowed) != 0) {
+            omni_big_integer_free(handle);
+            return make_int(interp, narrowed);
+        }
+    }
+    return make_big_integer_from_owned_handle(interp, handle, message);
+}
+
+fn Value* big_integer_binary_values(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
+    void* result = big_integer_binary_handle(lhs, rhs, op);
     return make_big_integer_from_owned_handle(interp, result, message);
+}
+
+fn Value* big_integer_binary_values_or_integer(Interp* interp, Value* lhs, Value* rhs, int op, char[] message) {
+    void* result = big_integer_binary_handle(lhs, rhs, op);
+    return make_integer_or_big_integer_from_owned_handle(interp, result, true, message);
 }
 
 fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {

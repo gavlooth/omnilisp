@@ -244,41 +244,66 @@ fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
     if (is_double(args[0])) return make_double(interp, c_fabs(args[0].double_val));
+    if (args[0].tag == BIG_INTEGER) {
+        int cmp = omni_big_integer_compare_i64(args[0].big_integer_val, 0);
+        if (cmp < 0) return big_integer_neg_value(interp, args[0], "abs: failed to allocate BigInteger result");
+        return args[0];
+    }
     long n = args[0].int_val;
-    if (n == long.min) return raise_error(interp, "abs: integer overflow");
+    if (n == long.min) return big_integer_neg_value(interp, args[0], "abs: failed to allocate BigInteger overflow result");
     return make_int(interp, n < 0 ? -n : n);
 }
 
 fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "min", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
+    if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
     if (is_double(args[0]) || is_double(args[1])) {
-        double a = to_double(args[0]); double b = to_double(args[1]);
+        double a = 0.0;
+        double b = 0.0;
+        if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
+            return raise_error(interp, "min: BigInteger value is out of Double range");
+        }
         return make_double(interp, a < b ? a : b);
     }
+    int cmp = 0;
+    if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) return cmp <= 0 ? args[0] : args[1];
     return make_int(interp, args[0].int_val < args[1].int_val ? args[0].int_val : args[1].int_val);
 }
 
 fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "max", "2 arguments", args.len);
-    if (!is_number(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
-    if (!is_number(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
+    if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
+    if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
     if (is_double(args[0]) || is_double(args[1])) {
-        double a = to_double(args[0]); double b = to_double(args[1]);
+        double a = 0.0;
+        double b = 0.0;
+        if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
+            return raise_error(interp, "max: BigInteger value is out of Double range");
+        }
         return make_double(interp, a > b ? a : b);
     }
+    int cmp = 0;
+    if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) return cmp >= 0 ? args[0] : args[1];
     return make_int(interp, args[0].int_val > args[1].int_val ? args[0].int_val : args[1].int_val);
 }
 
 fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "gcd", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "gcd", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "gcd", 1, "integer", args[1]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "gcd", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "gcd", 1, "integer", args[1]);
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
+        return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_GCD, "gcd: failed to allocate BigInteger result");
+    }
     long a = args[0].int_val; long b = args[1].int_val;
-    if (a == long.min || b == long.min) return raise_error(interp, "gcd: integer overflow");
+    if (a == long.min || b == long.min) {
+        return big_integer_binary_values_or_integer(
+            interp, args[0], args[1], BIG_INTEGER_OP_GCD, "gcd: failed to allocate BigInteger overflow result");
+    }
     if (a < 0) { a = -a; }
     if (b < 0) { b = -b; }
     while (b != 0) { long t = b; b = a % b; a = t; }
@@ -287,18 +312,27 @@ fn Value* prim_gcd(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_lcm(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return primitive_arity_raise(interp, "lcm", "2 arguments", args.len);
-    if (!is_int(args[0])) return primitive_arg_type_raise(interp, "lcm", 0, "integer", args[0]);
-    if (!is_int(args[1])) return primitive_arg_type_raise(interp, "lcm", 1, "integer", args[1]);
+    if (!is_exact_integer_value(args[0])) return primitive_arg_type_raise(interp, "lcm", 0, "integer", args[0]);
+    if (!is_exact_integer_value(args[1])) return primitive_arg_type_raise(interp, "lcm", 1, "integer", args[1]);
+    if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) {
+        return big_integer_binary_values(interp, args[0], args[1], BIG_INTEGER_OP_LCM, "lcm: failed to allocate BigInteger result");
+    }
     long a = args[0].int_val; long b = args[1].int_val;
     if (a == 0 || b == 0) return make_int(interp, 0);
-    if (a == long.min || b == long.min) return raise_error(interp, "lcm: integer overflow");
+    if (a == long.min || b == long.min) {
+        return big_integer_binary_values_or_integer(
+            interp, args[0], args[1], BIG_INTEGER_OP_LCM, "lcm: failed to allocate BigInteger overflow result");
+    }
     if (a < 0) { a = -a; }
     if (b < 0) { b = -b; }
     long ga = a; long gb = b;
     while (gb != 0) { long t = gb; gb = ga % gb; ga = t; }
     long factor = a / ga;
     long result = 0;
-    if (math::overflow_mul(factor, b, &result)) return raise_error(interp, "lcm: integer overflow");
+    if (math::overflow_mul(factor, b, &result)) {
+        return big_integer_binary_values_or_integer(
+            interp, args[0], args[1], BIG_INTEGER_OP_LCM, "lcm: failed to allocate BigInteger overflow result");
+    }
     return make_int(interp, result);
 }
 

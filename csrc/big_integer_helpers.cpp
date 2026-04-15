@@ -41,6 +41,27 @@ bool parse_decimal(const char* chars, size_t len, cpp_int& out) {
     return true;
 }
 
+cpp_int abs_value(const cpp_int& value) {
+    return value < 0 ? -value : value;
+}
+
+cpp_int gcd_value(cpp_int lhs, cpp_int rhs) {
+    lhs = abs_value(lhs);
+    rhs = abs_value(rhs);
+    while (rhs != 0) {
+        cpp_int next = lhs % rhs;
+        lhs = rhs;
+        rhs = next;
+    }
+    return lhs;
+}
+
+cpp_int lcm_value(const cpp_int& lhs, const cpp_int& rhs) {
+    if (lhs == 0 || rhs == 0) return 0;
+    cpp_int gcd = gcd_value(lhs, rhs);
+    return abs_value((lhs / gcd) * rhs);
+}
+
 cpp_int apply_binary(const cpp_int& lhs, const cpp_int& rhs, int op) {
     switch (op) {
         case 1: return lhs + rhs;
@@ -48,12 +69,14 @@ cpp_int apply_binary(const cpp_int& lhs, const cpp_int& rhs, int op) {
         case 3: return lhs * rhs;
         case 4: return lhs / rhs;
         case 5: return lhs % rhs;
+        case 6: return gcd_value(lhs, rhs);
+        case 7: return lcm_value(lhs, rhs);
         default: return 0;
     }
 }
 
 bool valid_binary_op(int op) {
-    return op >= 1 && op <= 5;
+    return op >= 1 && op <= 7;
 }
 
 } // namespace

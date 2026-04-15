@@ -1,3 +1,68 @@
+## 2026-04-15 06:18 CEST - BigInteger Exact Number Primitives
+- Objective attempted:
+  - Explain and fix the observed BigInteger `gcd` failure by closing the next
+    scalar exact-number primitive slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` with Boost.Multiprecision-backed
+    `gcd` and `lcm` op codes.
+  - Added shared helper plumbing in `src/lisp/value_big_integer.c3` for exact
+    integer predicates and optional narrowing of BigInteger helper results back
+    to `Integer` when an overflow-boundary operation's exact result fits.
+  - Updated `src/lisp/prim_math_core.c3` so `abs`, `min`, `max`, `gcd`, and
+    `lcm` use the BigInteger-aware numeric path instead of rejecting
+    `BigInteger` at the older fixed-width-only gates.
+  - Updated advanced numeric tests so the old long-min overflow expectations
+    match the current auto-promotion contract.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(- -9223372036854775807 1)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(gcd (BigInteger "9223372036854775808") 2)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigInteger "18446744073709551616") 2))'`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh bash -lc 'env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (gcd (BigInteger "18446744073709551616") 24))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (lcm (Integer "-9223372036854775808") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (abs (BigInteger "-5")))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (max (BigInteger "9223372036854775808") 1))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results and observed behavior:
+  - The original failure was not a Boost helper issue: `gcd` still required
+    `INT` operands and rejected `BIG_INTEGER` before dispatching to exact
+    arithmetic.
+  - The raw source literal `-9223372036854775808` still fails at parse time as
+    `integer literal overflow`; use `(Integer "-9223372036854775808")` or build
+    long-min from in-range literals for runtime arithmetic tests.
+  - Helper archive rebuild and C3 build passed.
+  - Focused advanced numeric float-math group passed at `98 passed, 0 failed`.
+  - Focused advanced numeric string-predicate-format group passed at
+    `61 passed, 0 failed`.
+  - Bounded container rerun of those two advanced numeric group filters also
+    passed at `98 passed, 0 failed` and `61 passed, 0 failed`.
+  - Direct smokes returned `"8"` for BigInteger `gcd`, `"9223372036854775808"`
+    for long-min `lcm`, `"5"` for BigInteger `abs`, and
+    `"9223372036854775808"` for BigInteger `max`.
+  - Stage 3 source parity passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not treat `is_number`/`is_int` primitive gates as BigInteger-ready. New
+    numeric primitives that should accept exact integers need `is_numeric_value`
+    or `is_exact_integer_value`.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger `abs`, `min`, `max`, `gcd`, and `lcm` as shipped. The next
+    scalar precision follow-up should be BigInteger bitwise operations,
+    arbitrary-precision `parse-number`, or the larger `BigFloat`/`BigComplex`
+    representation work.
+- Unresolved issues / blockers:
+  - The parser still intentionally rejects the raw `-9223372036854775808`
+    source token; changing literal policy is separate from runtime promotion.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 05:31 CEST - BigInteger Division Modulo And Ordering
 - Objective attempted:
   - Continue the scalar precision lane by closing the deferred BigInteger

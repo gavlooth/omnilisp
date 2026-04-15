@@ -381,10 +381,11 @@ singleton type/value used by FFI `^Void` returns as well.
 
 `Integer` is the fixed-width signed integer surface. `BigInteger` is the
 arbitrary-precision exact integer surface backed by Boost.Multiprecision in the
-current runtime. `+`, `-`, `*`, and the `long.min / -1` division overflow case
-promote overflowing `Integer` results to `BigInteger`. `/`, `%`, and ordering
-comparisons support `BigInteger` values; bitwise operations, `gcd`/`lcm`, and
-`parse-number` arbitrary-precision parsing remain explicit follow-up work.
+current runtime. `+`, `-`, `*`, `abs`, `gcd`, `lcm`, and the `long.min / -1`
+division overflow case promote overflowing `Integer` results to `BigInteger`.
+`/`, `%`, ordering comparisons, `min`, and `max` support `BigInteger` values;
+bitwise operations and `parse-number` arbitrary-precision parsing remain
+explicit follow-up work.
 Use `(BigInteger "...")` to parse large decimal integers.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
@@ -1226,9 +1227,9 @@ Set order contract:
 | `math/erf`, `math/erfc` | Error function and complementary error function |
 | `stats/normal-cdf`, `stats/normal-quantile` | Standard normal CDF and inverse CDF |
 | `floor`, `ceiling`, `round`, `truncate` | Rounding |
-| `abs` | Absolute value |
-| `min`, `max` | Binary min/max |
-| `gcd`, `lcm` | Number theory |
+| `abs` | Absolute value; exact `Integer` overflow promotes to `BigInteger` |
+| `min`, `max` | Binary min/max; supports exact `BigInteger` comparison |
+| `gcd`, `lcm` | Number theory; supports exact `Integer`/`BigInteger` operands |
 
 ### 7.15 Bitwise Operations (6)
 

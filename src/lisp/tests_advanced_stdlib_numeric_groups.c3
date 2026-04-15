@@ -178,12 +178,36 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigInteger modulo",
         "(String (% (BigInteger \"9223372036854775810\") 3))",
         "1", pass, fail);
+    test_str_val(interp, "BigInteger abs",
+        "(String (abs (BigInteger \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "Integer abs overflow promotes",
+        "(String (abs (Integer \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger min",
+        "(String (min (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775809\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger max",
+        "(String (max (BigInteger \"9223372036854775808\") 1))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger gcd",
+        "(String (gcd (BigInteger \"18446744073709551616\") 24))",
+        "8", pass, fail);
+    test_str_val(interp, "BigInteger lcm",
+        "(String (lcm (BigInteger \"9223372036854775808\") 3))",
+        "27670116110564327424", pass, fail);
     test_str_val(interp, "Integer division overflow promotes",
         "(String (/ (- -9223372036854775807 1) -1))",
         "9223372036854775808", pass, fail);
     test_eq(interp, "Integer modulo overflow boundary returns zero",
         "(% (- -9223372036854775807 1) -1)",
         0, pass, fail);
+    test_eq(interp, "Integer gcd long-min boundary narrows when possible",
+        "(gcd (Integer \"-9223372036854775808\") 2)",
+        2, pass, fail);
+    test_str_val(interp, "Integer lcm long-min boundary promotes",
+        "(String (lcm (Integer \"-9223372036854775808\") 2))",
+        "9223372036854775808", pass, fail);
     test_error_contains(interp, "BigInteger division by zero",
         "(/ (BigInteger \"10\") 0)", "/: division by zero", pass, fail);
     test_error_contains(interp, "BigInteger modulo by zero",
@@ -405,16 +429,19 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_nil(interp, "even? 3", "(even? 3)", pass, fail);
     test_truthy(interp, "odd? 3", "(odd? 3)", pass, fail);
     test_nil(interp, "odd? 4", "(odd? 4)", pass, fail);
-    test_error_contains(interp, "abs long min overflow",
-        "(abs (Integer \"-9223372036854775808\"))", "abs: integer overflow", pass, fail);
-    test_error_contains(interp, "divide long min by negative one overflow",
-        "(/ (Integer \"-9223372036854775808\") -1)", "/: integer overflow", pass, fail);
-    test_error_contains(interp, "mod long min by negative one overflow",
-        "(% (Integer \"-9223372036854775808\") -1)", "%: integer overflow", pass, fail);
-    test_error_contains(interp, "gcd long min overflow",
-        "(gcd (Integer \"-9223372036854775808\") 2)", "gcd: integer overflow", pass, fail);
-    test_error_contains(interp, "lcm long min overflow",
-        "(lcm (Integer \"-9223372036854775808\") 2)", "lcm: integer overflow", pass, fail);
+    test_str_val(interp, "abs long min promotes",
+        "(String (abs (Integer \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "divide long min by negative one promotes",
+        "(String (/ (Integer \"-9223372036854775808\") -1))",
+        "9223372036854775808", pass, fail);
+    test_eq(interp, "mod long min by negative one returns zero",
+        "(% (Integer \"-9223372036854775808\") -1)", 0, pass, fail);
+    test_eq(interp, "gcd long min narrows when possible",
+        "(gcd (Integer \"-9223372036854775808\") 2)", 2, pass, fail);
+    test_str_val(interp, "lcm long min promotes",
+        "(String (lcm (Integer \"-9223372036854775808\") 2))",
+        "9223372036854775808", pass, fail);
 
     // === FORMAT & DISPLAY TESTS (Phase 5) ===
     test_str_val(interp, "cl-format ~a", "(cl-format \"~a\" 42)", "42", pass, fail);

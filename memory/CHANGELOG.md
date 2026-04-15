@@ -1,5 +1,34 @@
 ## 2026-04-15
 
+- Completed the next BigInteger exact-number primitive slice:
+  - Extended the Boost.Multiprecision `cpp_int` helper op set with `gcd` and
+    `lcm`.
+  - Updated `abs`, `min`, `max`, `gcd`, and `lcm` to use the BigInteger-aware
+    exact numeric path instead of the older fixed-width-only `is_number` /
+    `is_int` gates.
+  - `gcd`/`lcm` now accept `Integer`/`BigInteger` operands. `Integer`
+    overflow boundaries use the BigInteger helper path and narrow back to
+    `Integer` when the exact result fits; otherwise they return `BigInteger`.
+  - Stale advanced tests that expected `long.min / -1`, `long.min % -1`,
+    `gcd(long.min, ...)`, and `lcm(long.min, ...)` to fail were updated to the
+    current auto-promotion contract.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `98 passed, 0 failed`
+    - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+      -> `61 passed, 0 failed`
+    - bounded container rerun of the same two advanced numeric group filters
+      -> `98 passed, 0 failed` and `61 passed, 0 failed`
+    - direct smokes:
+      - `(String (gcd (BigInteger "18446744073709551616") 24))` -> `"8"`
+      - `(String (lcm (Integer "-9223372036854775808") 2))` -> `"9223372036854775808"`
+      - `(String (abs (BigInteger "-5")))` -> `"5"`
+      - `(String (max (BigInteger "9223372036854775808") 1))` -> `"9223372036854775808"`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+
 - Completed the next BigInteger exact-arithmetic slice:
   - Extended the Boost.Multiprecision `cpp_int` helper op set with integer
     division and modulo.
