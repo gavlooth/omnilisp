@@ -12,6 +12,9 @@ extern fn double c_atan2(double y, double x) @extern("atan2");
 extern fn double c_exp(double x) @extern("exp");
 extern fn double c_log(double x) @extern("log");
 extern fn double c_log10(double x) @extern("log10");
+extern fn double c_sinh(double x) @extern("sinh");
+extern fn double c_cosh(double x) @extern("cosh");
+extern fn double c_tanh(double x) @extern("tanh");
 extern fn double c_pow(double x, double y) @extern("pow");
 extern fn double c_sqrt(double x) @extern("sqrt");
 extern fn double c_floor(double x) @extern("floor");
@@ -205,6 +208,45 @@ fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
     double x = 0.0;
     if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tan", 0, "number representable as Double", args[0]);
     return make_double(interp, c_tan(x));
+}
+
+fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "sinh", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SINH, "sinh: BigComplex evaluation error");
+    }
+    if (is_big_float(args[0])) {
+        return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SINH, "sinh: BigFloat evaluation error");
+    }
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sinh", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_sinh(x));
+}
+
+fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "cosh", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COSH, "cosh: BigComplex evaluation error");
+    }
+    if (is_big_float(args[0])) {
+        return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_COSH, "cosh: BigFloat evaluation error");
+    }
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cosh", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_cosh(x));
+}
+
+fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1) return primitive_arity_raise(interp, "tanh", "1 argument", args.len);
+    if (is_big_complex(args[0])) {
+        return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TANH, "tanh: BigComplex evaluation error");
+    }
+    if (is_big_float(args[0])) {
+        return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_TANH, "tanh: BigFloat evaluation error");
+    }
+    double x = 0.0;
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tanh", 0, "number representable as Double", args[0]);
+    return make_double(interp, c_tanh(x));
 }
 
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {

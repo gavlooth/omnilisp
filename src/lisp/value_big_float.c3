@@ -25,6 +25,9 @@ const int BIG_FLOAT_MATH_ERF = 14;
 const int BIG_FLOAT_MATH_ERFC = 15;
 const int BIG_FLOAT_MATH_NORMAL_CDF = 16;
 const int BIG_FLOAT_MATH_NORMAL_QUANTILE = 17;
+const int BIG_FLOAT_MATH_SINH = 18;
+const int BIG_FLOAT_MATH_COSH = 19;
+const int BIG_FLOAT_MATH_TANH = 20;
 
 const int BIG_FLOAT_MATH_POW = 1;
 const int BIG_FLOAT_MATH_ATAN2 = 2;

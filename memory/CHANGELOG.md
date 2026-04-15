@@ -1,5 +1,23 @@
 ## 2026-04-15
 
+- Completed hyperbolic scalar math:
+  - Added `sinh`, `cosh`, and `tanh` as standard math primitives.
+  - Routed Double inputs through the C math library, BigFloat inputs through
+    Boost.Multiprecision-preserving helper ops, and BigComplex inputs through
+    complex-preserving helper ops.
+  - Added primitive registration, AOT lookup, and focused advanced numeric
+    regressions for Double, BigFloat, and BigComplex behavior.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for Double, BigFloat, and BigComplex hyperbolic results
+    - focused advanced numeric float-math group on host
+      -> `163 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `163 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed the first BigComplex scalar math extension:
   - Extended `csrc/big_complex_helpers.cpp` with BigComplex-preserving
     `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`,

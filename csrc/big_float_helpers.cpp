@@ -81,6 +81,9 @@ cpp_dec_float_50 apply_unary_math(const cpp_dec_float_50& value, int op, bool& o
             boost::math::normal_distribution<cpp_dec_float_50> normal;
             return boost::math::quantile(normal, value);
         }
+        case 18: return sinh(value);
+        case 19: return cosh(value);
+        case 20: return tanh(value);
         default:
             ok = false;
             return 0;

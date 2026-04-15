@@ -18,6 +18,9 @@ const int BIG_COMPLEX_MATH_EXP = 7;
 const int BIG_COMPLEX_MATH_LOG = 8;
 const int BIG_COMPLEX_MATH_LOG10 = 9;
 const int BIG_COMPLEX_MATH_SQRT = 10;
+const int BIG_COMPLEX_MATH_SINH = 11;
+const int BIG_COMPLEX_MATH_COSH = 12;
+const int BIG_COMPLEX_MATH_TANH = 13;
 
 const int BIG_COMPLEX_MATH_POW = 1;
 

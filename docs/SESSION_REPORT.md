@@ -1,3 +1,46 @@
+## 2026-04-15 11:10 CEST - Hyperbolic Scalar Math
+- Objective attempted:
+  - Continue the scientific scalar math lane by adding standard hyperbolic
+    functions across existing scalar numeric backends.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `sinh`, `cosh`, and `tanh` primitives.
+  - Routed Double inputs through the C math library.
+  - Added BigFloat helper op codes so hyperbolic functions preserve BigFloat
+    results.
+  - Added BigComplex helper op codes so hyperbolic functions preserve
+    BigComplex results.
+  - Added primitive registration, AOT lookup, focused regressions, and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for Double, BigFloat, and BigComplex hyperbolic results
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(sinh 0.0)` returns `0.0`; `(cosh 0.0)` returns `1.0`.
+  - `(String (sinh (BigFloat "0")))` returns `"0"`.
+  - `(= (type-of (sinh (BigFloat "0"))) 'BigFloat)` returns `true`.
+  - `(String (sinh (BigComplex 0 0)))` returns `"0+0i"`.
+  - `(String (cosh (BigComplex 0 0)))` returns `"1+0i"`.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `163 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - No failed implementation path required negative memory for this slice.
+- Current best recommendation/checkpoint:
+  - Hyperbolic math is implemented for Double, BigFloat, and BigComplex. Next
+    scalar precision work should be BigFloat precision-control policy or a
+    deliberate BigComplex special-function/distribution policy.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-15 11:00 CEST - BigComplex Scalar Math
 - Objective attempted:
   - Continue the BigComplex scientific scalar lane beyond arithmetic by adding

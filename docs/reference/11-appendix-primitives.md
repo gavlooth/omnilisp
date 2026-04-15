@@ -212,6 +212,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `sin` | 1 | Sine |
 | `cos` | 1 | Cosine |
 | `tan` | 1 | Tangent |
+| `sinh` | 1 | Hyperbolic sine |
+| `cosh` | 1 | Hyperbolic cosine |
+| `tanh` | 1 | Hyperbolic tangent |
 | `asin` | 1 | Arc sine |
 | `acos` | 1 | Arc cosine |
 | `atan` | 1 | Arc tangent |
@@ -233,7 +236,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `lcm` | 2 | Least common multiple |
 
 Core scalar math functions return `BigFloat` when a `BigFloat` operand
-participates for trigonometric, inverse trigonometric, exponential,
+participates for trigonometric, inverse trigonometric, hyperbolic, exponential,
 logarithmic, power/root, gamma/error-function, and standard-normal helpers.
 `floor`, `ceiling`, `round`, and `truncate` instead return exact integer
 values, narrowing to `Integer` when representable and promoting to `BigInteger`
@@ -241,10 +244,11 @@ otherwise. Huge integer materializations fail closed.
 Non-`BigFloat` floating inputs continue to return `Double`.
 `BigComplex` participates in `+`, `-`, `*`, `/`, unary `-`, `=`, and `abs`;
 `abs` returns a `BigFloat` magnitude. `sin`, `cos`, `tan`, `asin`, `acos`,
-`atan`, `exp`, `log`, `log10`, `sqrt`, and `pow` preserve BigComplex results
-when a complex operand participates. `atan2` remains real-valued and rejects
-complex operands. Ordered comparisons and ordered helpers such as `min`, `max`,
-`positive?`, and `negative?` fail closed for complex operands.
+`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, and `pow`
+preserve BigComplex results when a complex operand participates. `atan2`
+remains real-valued and rejects complex operands. Ordered comparisons and
+ordered helpers such as `min`, `max`, `positive?`, and `negative?` fail closed
+for complex operands.
 
 **Bitwise:**
 

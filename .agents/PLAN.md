@@ -55,17 +55,17 @@ Minimal scalar-first targets:
   `Number` identity, `Double`/`Integer` narrowing, `+`, `-`, `*`, `/`,
   comparisons, `abs`, `min`, `max`, equality/hash support, scope-boundary
   cloning, `parse-number` floating overflow promotion, BigFloat-preserving
-  scalar math for trig, inverse trig, exponential/logarithmic, power/root,
-  gamma/error-function, standard-normal helpers, and exact BigFloat
-  `floor`/`ceiling`/`round`/`truncate` to `Integer` or `BigInteger` are
-  implemented. Precision-control APIs remain a separate follow-up.
+  scalar math for trig, inverse trig, hyperbolic, exponential/logarithmic,
+  power/root, gamma/error-function, standard-normal helpers, and exact
+  BigFloat `floor`/`ceiling`/`round`/`truncate` to `Integer` or `BigInteger`
+  are implemented. Precision-control APIs remain a separate follow-up.
 - `BigComplex` is now the first high-precision complex scalar slice:
   constructor, printing/String conversion, `Number` identity, `+`, `-`, `*`,
   `/`, unary `-`, equality/hash support, `zero?`, `abs` to `BigFloat`,
   scope-boundary cloning/promotion, fail-closed ordered operations, and
-  BigComplex-preserving `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`,
-  `log`, `log10`, `sqrt`, and `pow` are implemented. Broader special
-  functions and distributions remain separate follow-ups.
+  BigComplex-preserving `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`,
+  `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, and `pow` are implemented.
+  Broader special functions and distributions remain separate follow-ups.
 - `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
   `stats/normal-quantile` are now validated Boost.Math wrapper slices: C++ shim
   status codes, finite-input/range/domain error mapping, primitive

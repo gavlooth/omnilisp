@@ -401,13 +401,14 @@ values, support `String` and finite `Double` conversion, participate in `+`,
 `-`, `*`, `/`, ordering comparisons, `abs`, `min`, and `max`, and preserve
 `BigFloat` results when mixed with `Integer`, `BigInteger`, or `Double`.
 Core scalar math primitives preserve `BigFloat` results when a `BigFloat`
-operand participates for trigonometric, inverse trigonometric, exponential,
-logarithmic, power/root, gamma/error-function, and standard-normal distribution
-helpers. `floor`, `ceiling`, `round`, and `truncate` round `BigFloat` exactly
-to `Integer` or `BigInteger` when the integer result is inside the supported
-allocation cap; huge integer materializations fail closed instead of narrowing
-through `Double`. Fixed-width `Double` remains the result type for
-non-`BigFloat` floating inputs.
+operand participates for trigonometric, inverse trigonometric, hyperbolic,
+exponential, logarithmic, power/root, gamma/error-function, and
+standard-normal distribution helpers. `floor`, `ceiling`, `round`, and
+`truncate` round `BigFloat` exactly to `Integer` or `BigInteger` when the
+integer result is inside the supported allocation cap; huge integer
+materializations fail closed instead of narrowing through `Double`.
+Fixed-width `Double` remains the result type for non-`BigFloat` floating
+inputs.
 `parse-number` promotes syntactically valid floating inputs that overflow
 `Double` to `BigFloat`.
 
@@ -417,12 +418,12 @@ constructs a complex value from non-complex numeric parts; a one-argument
 constructor creates a zero-imaginary value from a number or finite decimal
 string. BigComplex values are `Number` values, support `String`, `+`, `-`,
 `*`, `/`, unary `-`, `=`, hashing/equality, and scope-boundary copy/promotion.
-`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`, `sqrt`,
-and `pow` preserve BigComplex results when a complex operand participates.
-`abs` returns a `BigFloat` magnitude. `atan2` remains a real-plane helper and
-rejects complex operands. Complex values are intentionally not ordered, so
-`<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and `negative?` fail closed
-for BigComplex operands.
+`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`,
+`log`, `log10`, `sqrt`, and `pow` preserve BigComplex results when a complex
+operand participates. `abs` returns a `BigFloat` magnitude. `atan2` remains a
+real-plane helper and rejects complex operands. Complex values are
+intentionally not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`,
+and `negative?` fail closed for BigComplex operands.
 
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print

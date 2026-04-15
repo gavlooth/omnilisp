@@ -77,6 +77,9 @@ omni_big_complex apply_unary_math(const omni_big_complex& value, int op, bool& o
         case 8: return std::log(value);
         case 9: return std::log(value) / std::log(omni_big_complex(cpp_dec_float_50(10), cpp_dec_float_50(0)));
         case 10: return std::sqrt(value);
+        case 11: return std::sinh(value);
+        case 12: return std::cosh(value);
+        case 13: return std::tanh(value);
         default:
             ok = false;
             return omni_big_complex(0, 0);

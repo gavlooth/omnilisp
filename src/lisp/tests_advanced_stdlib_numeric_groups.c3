@@ -238,6 +238,17 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "BigComplex exp zero",
         "(String (exp (BigComplex 0 0)))",
         "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex sinh zero",
+        "(String (sinh (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex cosh zero",
+        "(String (cosh (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex tanh zero",
+        "(String (tanh (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_truthy(interp, "BigComplex sinh preserves type",
+        "(= (type-of (sinh (BigComplex 0 0))) 'BigComplex)", pass, fail);
     test_str_val(interp, "BigComplex log one",
         "(String (log (BigComplex 1 0)))",
         "0+0i", pass, fail);
@@ -353,6 +364,9 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "sin 0", "(sin 0.0)", 0.0, pass, fail);
     test_double(interp, "cos 0", "(cos 0.0)", 1.0, pass, fail);
     test_double(interp, "tan 0", "(tan 0.0)", 0.0, pass, fail);
+    test_double(interp, "sinh 0", "(sinh 0.0)", 0.0, pass, fail);
+    test_double(interp, "cosh 0", "(cosh 0.0)", 1.0, pass, fail);
+    test_double(interp, "tanh 0", "(tanh 0.0)", 0.0, pass, fail);
     test_double(interp, "asin 0", "(asin 0.0)", 0.0, pass, fail);
     test_double(interp, "acos 1", "(acos 1.0)", 0.0, pass, fail);
     test_double(interp, "atan 0", "(atan 0.0)", 0.0, pass, fail);
@@ -388,6 +402,14 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(String (cos (BigFloat \"0\")))", "1", pass, fail);
     test_str_val(interp, "BigFloat exp zero",
         "(String (exp (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat sinh zero",
+        "(String (sinh (BigFloat \"0\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat cosh zero",
+        "(String (cosh (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat tanh zero",
+        "(String (tanh (BigFloat \"0\")))", "0", pass, fail);
+    test_truthy(interp, "BigFloat sinh preserves type",
+        "(= (type-of (sinh (BigFloat \"0\"))) 'BigFloat)", pass, fail);
     test_str_val(interp, "BigFloat sqrt exact",
         "(String (sqrt (BigFloat \"4\")))", "2", pass, fail);
     test_str_val(interp, "BigFloat pow exact",

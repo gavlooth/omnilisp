@@ -33,7 +33,7 @@ fn bool register_language_constants(Interp* interp) {
 }
 
 fn bool register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 46;
+    const DISPATCHED_PRIM_COUNT = 49;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
         { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
@@ -60,6 +60,8 @@ fn bool register_dispatched_primitives(Interp* interp) {
         { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
+        { "sinh", &prim_sinh, 1 }, { "cosh", &prim_cosh, 1 },
+        { "tanh", &prim_tanh, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
         // Callable type symbols / constructors
         { "Integer", &prim_ctor_int, 1 },
