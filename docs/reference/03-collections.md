@@ -102,7 +102,9 @@ powers; `BigComplex` wins the result dtype, then `BigFloat`, otherwise the
 result is a Double tensor. Tensor `atan2` supports tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real-plane arctangent; `BigFloat`
 inputs preserve BigFloat, other real/exact inputs return Double tensors, and
-complex Tensor operands fail closed.
+complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`, and
+`truncate` return same-shape BigInteger tensors for real inputs, with exact
+BigFloat rounding for BigFloat tensors; complex Tensor operands fail closed.
 
 ```lisp
 (define x (Tensor [[1.0 2.0 3.0] [4.0 5.0 6.0]]))
@@ -133,6 +135,7 @@ complex Tensor operands fail closed.
 (ref (exp (Tensor BigInteger [1] [0])) [0]) ;; => 1.0
 (ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1]) ;; => 27.0
 (String (ref (atan2 (Tensor Double [1] [1.0]) 1.0) [0])) ;; => "0.785398163397448"
+(String (ref (ceiling (Tensor BigFloat [1] [(BigFloat "9223372036854775808.1")])) [0])) ;; => "9223372036854775809"
 (ref (imag-part x) [0 0]) ;; => 0.0
 
 (define y (Tensor Double [2 3] 0.0))

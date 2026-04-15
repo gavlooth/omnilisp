@@ -133,6 +133,9 @@ as a new public Tensor surface:
 - Tensor `atan2` now supports tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor real-plane arctangent. BigFloat preserves dtype, other
   real/exact inputs return Double tensors, and complex operands fail closed.
+- Tensor `floor`, `ceiling`, `round`, and `truncate` now return BigInteger
+  Tensor results for real Tensor inputs. BigFloat tensors use exact rounding;
+  BigComplex tensors fail closed.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.

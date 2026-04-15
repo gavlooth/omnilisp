@@ -1,3 +1,68 @@
+## 2026-04-15 14:38 CEST - Tensor Rounding Semantics
+- Objective attempted:
+  - Continue precision Tensor work by adding exact-integer rounding results for
+    real Tensor inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `floor`, `ceiling`, `round`, and `truncate` through Tensor handling.
+  - Added a shared Tensor rounding helper in `src/lisp/prim_tensor.c3`.
+  - Real Tensor inputs return same-shape native `BigInteger` Tensor results.
+  - `Double` Tensor inputs round through the C math operation and fail closed
+    when the rounded result cannot narrow to Omni `Integer`.
+  - `BigInteger` Tensor inputs clone exact integer values.
+  - `BigFloat` Tensor inputs use the exact scalar BigFloat rounding path and
+    preserve large integer results in BigInteger Tensor storage.
+  - `BigComplex` Tensor inputs fail closed.
+  - Lazy Tensor operands are realized before elementwise rounding.
+  - Added advanced collections/module regressions for all four rounding
+    primitives, result dtype, BigInteger clone behavior, large BigFloat
+    promotion, lazy BigFloat realization, complex rejection, and Double
+    out-of-range rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes confirmed Double Tensor rounding returns BigInteger dtype,
+    BigFloat Tensor rounding preserves huge exact integer results, and
+    BigComplex Tensor rounding fails closed.
+  - Initial negative test used `1e20`, which the reader treated as non-numeric
+    for Tensor construction; changed it to `1.0e20` so the Tensor constructs
+    and the rounding range check is actually exercised.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=379 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=379 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not use integer-looking exponent literals such as `1e20` when testing
+    Tensor Double construction; use `1.0e20` to force the floating literal path.
+- Current best recommendation:
+  - Treat Tensor rounding as closed for real native Tensor dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor rounding slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 14:26 CEST - Tensor Atan2 Semantics
 - Objective attempted:
   - Continue direct Tensor support for scalar scientific numeric primitives by

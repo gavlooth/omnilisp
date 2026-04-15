@@ -417,6 +417,7 @@ fn Value* prim_conjugate(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "floor", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_floor_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_FLOOR, "floor: BigFloat integer result out of supported range");
     }
@@ -427,6 +428,7 @@ fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "ceiling", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_ceiling_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_CEILING, "ceiling: BigFloat integer result out of supported range");
     }
@@ -437,6 +439,7 @@ fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "round", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_round_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_ROUND, "round: BigFloat integer result out of supported range");
     }
@@ -447,6 +450,7 @@ fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "truncate", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_truncate_value(args[0], interp);
     if (is_big_float(args[0])) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_TRUNCATE, "truncate: BigFloat integer result out of supported range");
     }

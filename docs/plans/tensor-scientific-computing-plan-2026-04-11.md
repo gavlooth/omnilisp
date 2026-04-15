@@ -124,6 +124,10 @@ Name collision note:
   two-argument arctangent for tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor inputs. BigFloat inputs preserve dtype, remaining real/exact
   inputs return Double tensors, and complex operands fail closed.
+- `TENSOR-090` is complete: Tensor `floor`, `ceiling`, `round`, and
+  `truncate` apply elementwise rounding for real Tensor inputs and return
+  native BigInteger Tensor results. BigFloat inputs use the exact scalar
+  BigFloat rounding path; complex operands fail closed.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

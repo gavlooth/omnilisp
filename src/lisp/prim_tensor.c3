@@ -19,6 +19,9 @@ extern fn double tensor_c_log(double x) @extern("log");
 extern fn double tensor_c_log10(double x) @extern("log10");
 extern fn double tensor_c_sqrt(double x) @extern("sqrt");
 extern fn double tensor_c_pow(double x, double y) @extern("pow");
+extern fn double tensor_c_floor(double x) @extern("floor");
+extern fn double tensor_c_ceil(double x) @extern("ceil");
+extern fn double tensor_c_round(double x) @extern("round");
 
 fn bool is_tensor(Value* v) @inline {
     return v != null && v.tag == TENSOR;
@@ -2579,6 +2582,124 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
 
 fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
     return tensor_unary_math_value(tensor_value, BIG_FLOAT_MATH_SQRT, BIG_COMPLEX_MATH_SQRT, interp);
+}
+
+fn double tensor_apply_double_rounding(double input, int op) {
+    switch (op) {
+        case BIG_FLOAT_ROUND_FLOOR:
+            return tensor_c_floor(input);
+        case BIG_FLOAT_ROUND_CEILING:
+            return tensor_c_ceil(input);
+        case BIG_FLOAT_ROUND_ROUND:
+            return tensor_c_round(input);
+        case BIG_FLOAT_ROUND_TRUNCATE:
+            return input;
+        default:
+            return input;
+    }
+}
+
+fn Value* tensor_store_integer_value(void** out_values, usz index, Value* integer_value, Interp* interp, char[] message) {
+    void* handle = null;
+    if (integer_value == null) return raise_error(interp, message);
+    if (integer_value.tag == INT) {
+        handle = omni_big_integer_from_i64(integer_value.int_val);
+    } else if (integer_value.tag == BIG_INTEGER) {
+        handle = omni_big_integer_clone(integer_value.big_integer_val);
+    } else {
+        return raise_error(interp, message);
+    }
+    if (handle == null) return raise_error(interp, message);
+    if (out_values[index] != null) omni_big_integer_free(out_values[index]);
+    out_values[index] = handle;
+    return null;
+}
+
+fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_message, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "rounding: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* source = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "rounding: tensor backing storage is missing");
+    if (source.dtype == TENSOR_DTYPE_BIG_COMPLEX) {
+        return raise_error(interp, "rounding: complex numbers are not supported");
+    }
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    Value* out_value = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_BIG_INTEGER, shape_slice, "rounding: failed to allocate tensor result");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "rounding: tensor result backing storage is missing");
+    }
+
+    void** dst_values = (void**)out_value.tensor_val.data;
+    switch (source.dtype) {
+        case TENSOR_DTYPE_DOUBLE: {
+            double* src_values = (double*)source.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                double rounded = tensor_apply_double_rounding(src_values[i], op);
+                long narrowed = 0;
+                if (!math_try_double_to_int(rounded, &narrowed)) return raise_error(interp, range_message);
+                void* result = omni_big_integer_from_i64(narrowed);
+                if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+                if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+        case TENSOR_DTYPE_BIG_INTEGER: {
+            void** src_values = (void**)source.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "rounding: tensor BigInteger element is missing");
+                void* result = omni_big_integer_clone(src_values[i]);
+                if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+                if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
+                dst_values[i] = result;
+            }
+        }
+        case TENSOR_DTYPE_BIG_FLOAT: {
+            void** src_values = (void**)source.data;
+            for (usz i = 0; i < source.element_count; i++) {
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "rounding: tensor BigFloat element is missing");
+                Value* arg = make_big_float_from_owned_handle(interp, omni_big_float_clone(src_values[i]), range_message);
+                if (arg == null || arg.tag == ERROR) return arg;
+                Value* rounded = big_float_round_to_integer_value(interp, arg, op, range_message);
+                if (rounded == null || rounded.tag == ERROR) return rounded;
+                Value* err = tensor_store_integer_value(dst_values, i, rounded, interp, "rounding: failed to allocate BigInteger tensor element");
+                if (err != null) return err;
+            }
+        }
+        case TENSOR_DTYPE_BIG_COMPLEX:
+            return raise_error(interp, "rounding: complex numbers are not supported");
+    }
+
+    keep_out = true;
+    return out_value;
+}
+
+fn Value* tensor_floor_value(Value* tensor_value, Interp* interp) {
+    return tensor_rounding_value(tensor_value, BIG_FLOAT_ROUND_FLOOR, "floor: tensor integer result out of supported range", interp);
+}
+
+fn Value* tensor_ceiling_value(Value* tensor_value, Interp* interp) {
+    return tensor_rounding_value(tensor_value, BIG_FLOAT_ROUND_CEILING, "ceiling: tensor integer result out of supported range", interp);
+}
+
+fn Value* tensor_round_value(Value* tensor_value, Interp* interp) {
+    return tensor_rounding_value(tensor_value, BIG_FLOAT_ROUND_ROUND, "round: tensor integer result out of supported range", interp);
+}
+
+fn Value* tensor_truncate_value(Value* tensor_value, Interp* interp) {
+    return tensor_rounding_value(tensor_value, BIG_FLOAT_ROUND_TRUNCATE, "truncate: tensor integer result out of supported range", interp);
 }
 
 fn bool tensor_binary_numeric_input_dtype(Value* value, TensorVal* tensor, TensorDType* dtype_out) {

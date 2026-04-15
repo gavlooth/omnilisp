@@ -1,5 +1,35 @@
 ## 2026-04-15
 
+- Completed `TENSOR-090` Tensor rounding semantics:
+  - Extended `floor`, `ceiling`, `round`, and `truncate` to accept native
+    Tensor inputs.
+  - Real Tensor inputs return same-shape native `BigInteger` Tensor results,
+    matching the scalar contract that rounding returns exact integers.
+  - `Double` Tensor inputs round through the C math operation and fail closed
+    when the rounded result cannot narrow to Omni `Integer` before storing in
+    the BigInteger Tensor.
+  - `BigInteger` Tensor inputs clone exact integer values.
+  - `BigFloat` Tensor inputs use the existing exact BigFloat rounding path and
+    preserve large integer results in BigInteger Tensor storage.
+  - `BigComplex` Tensor inputs fail closed.
+  - Lazy Tensor operands are realized before elementwise rounding.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - focused advanced collections/module group on host
+      -> `379 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `379 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-089` Tensor `atan2` semantics:
   - Extended the existing `atan2` primitive to accept native Tensor inputs.
   - Supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor

@@ -320,6 +320,31 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "atan2 BigInteger tensor rejects out of Double range",
         "(atan2 (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 1)",
         "atan2: tensor element out of Double range", pass, fail);
+    test_str_val(interp, "floor Double tensor returns BigInteger tensor",
+        "(String (ref (floor (Tensor Double [1] [3.7])) [0]))", "3", pass, fail);
+    test_str_val(interp, "ceiling Double tensor returns BigInteger tensor",
+        "(String (ref (ceiling (Tensor Double [1] [3.2])) [0]))", "4", pass, fail);
+    test_str_val(interp, "round Double tensor returns BigInteger tensor",
+        "(String (ref (round (Tensor Double [1] [3.5])) [0]))", "4", pass, fail);
+    test_str_val(interp, "truncate Double tensor returns BigInteger tensor",
+        "(String (ref (truncate (Tensor Double [1] [3.9])) [0]))", "3", pass, fail);
+    test_str_val(interp, "rounding dtype is BigInteger",
+        "(String (dtype (floor (Tensor Double [1] [3.7]))))", "BigInteger", pass, fail);
+    test_str_val(interp, "floor BigInteger tensor clones exact values",
+        "(String (ref (floor (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")])) [0]))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "ceiling BigFloat tensor promotes large exact integer",
+        "(String (ref (ceiling (Tensor BigFloat [1] [(BigFloat \"9223372036854775808.1\")])) [0]))",
+        "9223372036854775809", pass, fail);
+    test_str_val(interp, "round lazy BigFloat tensor realizes source",
+        "(String (ref (round (map + (Tensor BigFloat [1] [(BigFloat \"3.5\")]) (BigFloat \"0\"))) [0]))",
+        "4", pass, fail);
+    test_error_contains(interp, "floor BigComplex tensor rejected",
+        "(floor (Tensor BigComplex [1] [(BigComplex 1 0)]))",
+        "rounding: complex numbers are not supported", pass, fail);
+    test_error_contains(interp, "floor Double tensor rejects out of Integer range",
+        "(floor (Tensor Double [1] [1.0e20]))",
+        "floor: tensor integer result out of supported range", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

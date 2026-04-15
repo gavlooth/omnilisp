@@ -472,7 +472,10 @@ complex, otherwise `BigFloat` wins if either input is BigFloat, otherwise the
 result is a `Double` tensor. Tensor `atan2` supports tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real-plane arctangent: `BigFloat`
 inputs preserve `BigFloat`, other real/exact inputs return `Double` tensors,
-and complex Tensor operands fail closed.
+and complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`,
+and `truncate` return same-shape `BigInteger` tensors for real inputs, using
+exact BigFloat rounding when the source dtype is `BigFloat`; complex Tensor
+operands fail closed.
 Tensor operations may produce lazy Tensor expression payloads under the
 existing `Tensor` value, with backend acceleration left as an optimization
 behind the same semantic surface. User code should not name or depend on a
