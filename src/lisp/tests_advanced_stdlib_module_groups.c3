@@ -250,7 +250,36 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         "0+1i", pass, fail);
     test_error_contains(interp, "sqrt BigInteger tensor rejects out of Double range",
         "(sqrt (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]))",
-        "sqrt: BigInteger tensor element out of Double range", pass, fail);
+        "math: BigInteger tensor element out of Double range", pass, fail);
+    test_eq_double(interp, "sin Double tensor",
+        "(ref (sin (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "cos BigInteger tensor returns Double tensor",
+        "(ref (cos (Tensor BigInteger [1] [0])) [0])", 1.0, pass, fail);
+    test_eq_double(interp, "tan Double tensor",
+        "(ref (tan (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "asin Double tensor",
+        "(ref (asin (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "acos Double tensor",
+        "(ref (acos (Tensor Double [1] [1.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "atan Double tensor",
+        "(ref (atan (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
+    test_str_val(interp, "sinh BigFloat tensor preserves dtype",
+        "(String (ref (sinh (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
+        "0", pass, fail);
+    test_str_val(interp, "cosh BigFloat tensor preserves dtype",
+        "(String (ref (cosh (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
+        "1", pass, fail);
+    test_str_val(interp, "tanh BigComplex tensor preserves dtype",
+        "(String (ref (tanh (Tensor BigComplex [1] [(BigComplex 0 0)])) [0]))",
+        "0+0i", pass, fail);
+    test_eq_double(interp, "exp BigInteger tensor returns Double tensor",
+        "(ref (exp (Tensor BigInteger [1] [0])) [0])", 1.0, pass, fail);
+    test_str_val(interp, "log BigFloat tensor preserves dtype",
+        "(String (ref (log (Tensor BigFloat [1] [(BigFloat \"1\")])) [0]))",
+        "0", pass, fail);
+    test_str_val(interp, "log10 lazy BigComplex tensor realizes source",
+        "(String (ref (log10 (map + (Tensor BigComplex [1] [(BigComplex 0 0)]) (BigComplex 1 0))) [0]))",
+        "0+0i", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",

@@ -173,6 +173,7 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sin", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_SIN, BIG_COMPLEX_MATH_SIN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SIN, "sin: BigComplex evaluation error");
     }
@@ -186,6 +187,7 @@ fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "cos", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_COS, BIG_COMPLEX_MATH_COS, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COS, "cos: BigComplex evaluation error");
     }
@@ -199,6 +201,7 @@ fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "tan", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_TAN, BIG_COMPLEX_MATH_TAN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TAN, "tan: BigComplex evaluation error");
     }
@@ -212,6 +215,7 @@ fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "sinh", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_SINH, BIG_COMPLEX_MATH_SINH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_SINH, "sinh: BigComplex evaluation error");
     }
@@ -225,6 +229,7 @@ fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "cosh", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_COSH, BIG_COMPLEX_MATH_COSH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_COSH, "cosh: BigComplex evaluation error");
     }
@@ -238,6 +243,7 @@ fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "tanh", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_TANH, BIG_COMPLEX_MATH_TANH, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_TANH, "tanh: BigComplex evaluation error");
     }
@@ -251,6 +257,7 @@ fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "asin", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ASIN, BIG_COMPLEX_MATH_ASIN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ASIN, "asin: BigComplex evaluation error");
     }
@@ -264,6 +271,7 @@ fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "acos", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ACOS, BIG_COMPLEX_MATH_ACOS, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ACOS, "acos: BigComplex evaluation error");
     }
@@ -277,6 +285,7 @@ fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "atan", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ATAN, BIG_COMPLEX_MATH_ATAN, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_ATAN, "atan: BigComplex evaluation error");
     }
@@ -308,6 +317,7 @@ fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "exp", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_EXP, BIG_COMPLEX_MATH_EXP, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_EXP, "exp: BigComplex evaluation error");
     }
@@ -321,6 +331,7 @@ fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_LOG, BIG_COMPLEX_MATH_LOG, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG, "log: BigComplex evaluation error");
     }
@@ -334,6 +345,7 @@ fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "log10", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_LOG10, BIG_COMPLEX_MATH_LOG10, interp);
     if (is_big_complex(args[0])) {
         return big_complex_unary_math_value(interp, args[0], BIG_COMPLEX_MATH_LOG10, "log10: BigComplex evaluation error");
     }

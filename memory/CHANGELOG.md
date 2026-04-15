@@ -1,5 +1,34 @@
 ## 2026-04-15
 
+- Completed `TENSOR-087` Tensor unary scientific math semantics:
+  - Added a shared Tensor unary-math helper for scalar scientific primitives.
+  - Extended `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,
+    `tanh`, `exp`, `log`, and `log10` to accept native Tensor inputs.
+  - `Double` Tensor inputs return same-shape `Double` tensors.
+  - `BigInteger` Tensor inputs return same-shape `Double` tensors through the
+    hardened fail-closed finite conversion path.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, including
+    lazy source realization before evaluation.
+  - Folded Tensor `sqrt` onto the shared unary helper while preserving the
+    `TENSOR-086` result dtype contract.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - `c3c build`
+    - focused advanced collections/module group on host
+      -> `353 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `353 passed, 0 failed`
+    - bounded container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
+    - ASAN attempt:
+      `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+      failed before compile with the local C3 compiler sanitizer platform
+      message.
+
 - Completed `TENSOR-086` Tensor `sqrt` semantics:
   - Extended the existing `sqrt` primitive to accept native Tensor inputs.
   - `Double` Tensor inputs return same-shape `Double` Tensor results.

@@ -4,6 +4,18 @@ import std::core::mem;
 import main;
 
 extern fn double tensor_c_fabs(double x) @extern("fabs");
+extern fn double tensor_c_sin(double x) @extern("sin");
+extern fn double tensor_c_cos(double x) @extern("cos");
+extern fn double tensor_c_tan(double x) @extern("tan");
+extern fn double tensor_c_asin(double x) @extern("asin");
+extern fn double tensor_c_acos(double x) @extern("acos");
+extern fn double tensor_c_atan(double x) @extern("atan");
+extern fn double tensor_c_sinh(double x) @extern("sinh");
+extern fn double tensor_c_cosh(double x) @extern("cosh");
+extern fn double tensor_c_tanh(double x) @extern("tanh");
+extern fn double tensor_c_exp(double x) @extern("exp");
+extern fn double tensor_c_log(double x) @extern("log");
+extern fn double tensor_c_log10(double x) @extern("log10");
 extern fn double tensor_c_sqrt(double x) @extern("sqrt");
 
 fn bool is_tensor(Value* v) @inline {
@@ -2457,8 +2469,41 @@ fn Value* tensor_abs_value(Value* tensor_value, Interp* interp) {
     return out_value;
 }
 
-fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
-    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "sqrt: expected Tensor");
+fn double tensor_apply_double_unary_math(double input, int big_float_op) {
+    switch (big_float_op) {
+        case BIG_FLOAT_MATH_SIN:
+            return tensor_c_sin(input);
+        case BIG_FLOAT_MATH_COS:
+            return tensor_c_cos(input);
+        case BIG_FLOAT_MATH_TAN:
+            return tensor_c_tan(input);
+        case BIG_FLOAT_MATH_ASIN:
+            return tensor_c_asin(input);
+        case BIG_FLOAT_MATH_ACOS:
+            return tensor_c_acos(input);
+        case BIG_FLOAT_MATH_ATAN:
+            return tensor_c_atan(input);
+        case BIG_FLOAT_MATH_SINH:
+            return tensor_c_sinh(input);
+        case BIG_FLOAT_MATH_COSH:
+            return tensor_c_cosh(input);
+        case BIG_FLOAT_MATH_TANH:
+            return tensor_c_tanh(input);
+        case BIG_FLOAT_MATH_EXP:
+            return tensor_c_exp(input);
+        case BIG_FLOAT_MATH_LOG:
+            return tensor_c_log(input);
+        case BIG_FLOAT_MATH_LOG10:
+            return tensor_c_log10(input);
+        case BIG_FLOAT_MATH_SQRT:
+            return tensor_c_sqrt(input);
+        default:
+            return input;
+    }
+}
+
+fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big_complex_op, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "math: expected Tensor");
     Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
     if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
     bool cleanup_concrete_value = concrete_value != tensor_value;
@@ -2467,19 +2512,19 @@ fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
     }
 
     TensorVal* source = concrete_value.tensor_val;
-    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "sqrt: tensor backing storage is missing");
+    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "math: tensor backing storage is missing");
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
     TensorDType result_dtype = source.dtype == TENSOR_DTYPE_BIG_INTEGER ? TENSOR_DTYPE_DOUBLE : source.dtype;
 
-    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "sqrt: failed to allocate tensor result");
+    Value* out_value = make_tensor_uninitialized_checked(interp, result_dtype, shape_slice, "math: failed to allocate tensor result");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
     defer if (!keep_out) {
         boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
     }
     if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
-        return tensor_runtime_raise(interp, "sqrt: tensor result backing storage is missing");
+        return tensor_runtime_raise(interp, "math: tensor result backing storage is missing");
     }
 
     switch (source.dtype) {
@@ -2487,28 +2532,28 @@ fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
             double* src_values = (double*)source.data;
             double* dst_values = (double*)out_value.tensor_val.data;
             for (usz i = 0; i < source.element_count; i++) {
-                dst_values[i] = tensor_c_sqrt(src_values[i]);
+                dst_values[i] = tensor_apply_double_unary_math(src_values[i], big_float_op);
             }
         }
         case TENSOR_DTYPE_BIG_INTEGER: {
             void** src_values = (void**)source.data;
             double* dst_values = (double*)out_value.tensor_val.data;
             for (usz i = 0; i < source.element_count; i++) {
-                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigInteger element is missing");
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigInteger element is missing");
                 double input = 0.0;
                 if (omni_big_integer_to_double(src_values[i], &input) == 0) {
-                    return raise_error(interp, "sqrt: BigInteger tensor element out of Double range");
+                    return raise_error(interp, "math: BigInteger tensor element out of Double range");
                 }
-                dst_values[i] = tensor_c_sqrt(input);
+                dst_values[i] = tensor_apply_double_unary_math(input, big_float_op);
             }
         }
         case TENSOR_DTYPE_BIG_FLOAT: {
             void** src_values = (void**)source.data;
             void** dst_values = (void**)out_value.tensor_val.data;
             for (usz i = 0; i < source.element_count; i++) {
-                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigFloat element is missing");
-                void* result = omni_big_float_unary_math(src_values[i], BIG_FLOAT_MATH_SQRT);
-                if (result == null) return raise_error(interp, "sqrt: failed to evaluate BigFloat tensor element");
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigFloat element is missing");
+                void* result = omni_big_float_unary_math(src_values[i], big_float_op);
+                if (result == null) return raise_error(interp, "math: failed to evaluate BigFloat tensor element");
                 if (dst_values[i] != null) omni_big_float_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -2517,9 +2562,9 @@ fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
             void** src_values = (void**)source.data;
             void** dst_values = (void**)out_value.tensor_val.data;
             for (usz i = 0; i < source.element_count; i++) {
-                if (src_values[i] == null) return tensor_runtime_raise(interp, "sqrt: tensor BigComplex element is missing");
-                void* result = omni_big_complex_unary_math(src_values[i], BIG_COMPLEX_MATH_SQRT);
-                if (result == null) return raise_error(interp, "sqrt: failed to evaluate BigComplex tensor element");
+                if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigComplex element is missing");
+                void* result = omni_big_complex_unary_math(src_values[i], big_complex_op);
+                if (result == null) return raise_error(interp, "math: failed to evaluate BigComplex tensor element");
                 if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -2528,6 +2573,10 @@ fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
 
     keep_out = true;
     return out_value;
+}
+
+fn Value* tensor_sqrt_value(Value* tensor_value, Interp* interp) {
+    return tensor_unary_math_value(tensor_value, BIG_FLOAT_MATH_SQRT, BIG_COMPLEX_MATH_SQRT, interp);
 }
 
 fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp) {

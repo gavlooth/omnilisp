@@ -1,3 +1,67 @@
+## 2026-04-15 14:06 CEST - Tensor Unary Scientific Math
+- Objective attempted:
+  - Extend direct Tensor support from single scalar primitives to a broader
+    unary scientific-math family.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added a shared Tensor unary-math helper in `src/lisp/prim_tensor.c3`.
+  - Routed `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,
+    `tanh`, `exp`, `log`, and `log10` through the helper when their argument
+    is a Tensor.
+  - Folded Tensor `sqrt` onto the shared helper while preserving its result
+    dtype policy.
+  - `Double` Tensor inputs return same-shape `Double` tensors.
+  - `BigInteger` Tensor inputs return same-shape `Double` tensors through the
+    hardened finite-conversion path.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, including
+    lazy source realization.
+  - Added advanced collections/module regressions for every newly routed
+    primitive family and a lazy BigComplex `log10` source.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Initial focused run caught a real omission: inverse trig routes were wired
+    at the primitive level but missing from the Double helper switch. Added
+    `asin`/`acos`/`atan` C bindings and switch cases.
+  - Host focused advanced collections/module group passed after the fix:
+    `OMNI_TEST_SUMMARY suite=unified pass=353 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=353 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not assume routing a primitive through the shared Tensor helper is
+    enough; every routed operation must have a Double switch case when real
+    Tensor dtypes can produce `Double`.
+- Current best recommendation:
+  - Treat the Tensor unary scientific-math implementation as closed for the
+    routed primitive set.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor unary scientific-math slice.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-15 13:56 CEST - Tensor Sqrt Semantics
 - Objective attempted:
   - Continue direct Tensor support for scalar scientific numeric primitives.

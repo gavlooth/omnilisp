@@ -104,6 +104,11 @@ Implemented slices:
 - `TENSOR-086`: Tensor `sqrt` supports elementwise square root for all native
   tensor dtypes. `Double` and `BigInteger` Tensor inputs return `Double`
   tensors; `BigFloat` and `BigComplex` Tensor inputs preserve dtype.
+- `TENSOR-087`: Tensor unary scientific math supports `sin`, `cos`, `tan`,
+  `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10`
+  through a shared elementwise helper. `Double` and `BigInteger` Tensor inputs
+  return `Double` tensors; `BigFloat` and `BigComplex` Tensor inputs preserve
+  dtype.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
@@ -171,12 +176,16 @@ Recent targeted validation recorded in `memory/CHANGELOG.md`:
     semantics: `pass=335 fail=0`.
   - host targeted `advanced-collections-module` group after Tensor `sqrt`
     semantics: `pass=341 fail=0`.
+  - host targeted `advanced-collections-module` group after Tensor unary
+    scientific math semantics: `pass=353 fail=0`.
   - bounded container `advanced-collections-module` group after real Tensor
     component semantics: `pass=330 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor `abs`
     semantics: `pass=335 fail=0`.
   - bounded container `advanced-collections-module` group after Tensor `sqrt`
     semantics: `pass=341 fail=0`.
+  - bounded container `advanced-collections-module` group after Tensor unary
+    scientific math semantics: `pass=353 fail=0`.
   - bounded container `memory-lifetime-smoke`: `pass=225 fail=0`.
   - bounded container `advanced-collections-module` group after BigComplex
     component kernels: `pass=327 fail=0`.

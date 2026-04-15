@@ -110,6 +110,11 @@ Name collision note:
   all native tensor dtypes. Double and BigInteger tensor inputs return
   same-shape Double tensors; BigFloat and BigComplex tensor inputs preserve
   dtype.
+- `TENSOR-087` is complete: Tensor unary scientific math applies elementwise
+  `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`,
+  `log`, and `log10` for all native tensor dtypes. Double and BigInteger
+  tensor inputs return same-shape Double tensors; BigFloat and BigComplex
+  tensor inputs preserve dtype.
 - `TENSOR-030` is complete for concrete tensor realization: concrete
   tensors satisfy the tensor-expression boundary, `(realize tensor)`
   returns the already-concrete tensor, `(realize tensor out)` copies into a

@@ -462,7 +462,11 @@ elementwise magnitude; real Tensor dtypes preserve dtype and `BigComplex`
 tensors return same-shape `BigFloat` tensors. Tensor `sqrt` applies
 elementwise square root; `Double` and `BigInteger` Tensor inputs return
 `Double` tensors, `BigFloat` tensors preserve `BigFloat`, and `BigComplex`
-tensors preserve `BigComplex`.
+tensors preserve `BigComplex`. Tensor `sin`, `cos`, `tan`, `asin`, `acos`,
+`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10` apply the same
+elementwise unary scientific-math contract: `Double` and `BigInteger` inputs
+return `Double` tensors, while `BigFloat` and `BigComplex` tensors preserve
+their dtype.
 Both may produce lazy Tensor
 expression payloads under the existing `Tensor` value, with backend
 acceleration left as an optimization behind the same semantic surface. User

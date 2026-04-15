@@ -122,6 +122,11 @@ as a new public Tensor surface:
 - Tensor `sqrt` now supports elementwise square root for all native Tensor
   dtypes: Double and BigInteger tensors return same-shape Double tensors,
   while BigFloat and BigComplex tensors preserve dtype.
+- Tensor unary scientific math now supports elementwise `sin`, `cos`, `tan`,
+  `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10`
+  for all native Tensor dtypes. Double and BigInteger tensors return
+  same-shape Double tensors, while BigFloat and BigComplex tensors preserve
+  dtype.
 - Native `BigFloat` concrete Tensor storage now supports constructor, `dtype`,
   `ref`, flat `(Array tensor)` / `(List tensor)` conversion, and concrete
   `realize`.
