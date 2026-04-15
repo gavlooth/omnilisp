@@ -1320,6 +1320,64 @@ fn Value* tensor_ref_value(Value* tensor_value, Value* index_arg, Interp* interp
     }
 }
 
+fn Value* tensor_to_flat_array_value(Value* tensor_value, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "Array: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* tensor = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(tensor)) return tensor_runtime_raise(interp, "Array: tensor backing storage is missing");
+    if (tensor.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "Array: tensor dtype mismatch", null);
+    }
+
+    Value* result = make_array_checked(interp, tensor.element_count, "Array: failed to allocate tensor conversion result");
+    if (result == null || result.tag == ERROR) return result;
+    if (result.tag != ARRAY || result.array_val == null) {
+        return tensor_runtime_raise(interp, "Array: result array backing storage is missing");
+    }
+
+    double* data = (double*)tensor.data;
+    for (usz i = 0; i < tensor.element_count; i++) {
+        Value* elem = make_double(interp, data[i]);
+        Value* promoted = array_promote_or_error(elem, interp);
+        if (promoted == null || promoted.tag == ERROR) return promoted;
+        result.array_val.items[i] = promoted;
+    }
+    result.array_val.length = tensor.element_count;
+    return result;
+}
+
+fn Value* tensor_to_flat_list_value(Value* tensor_value, Interp* interp) {
+    if (!is_tensor(tensor_value)) return tensor_type_raise(interp, "List: expected Tensor");
+    Value* concrete_value = tensor_realize_to_value(tensor_value, interp);
+    if (concrete_value == null || concrete_value.tag == ERROR) return concrete_value;
+    bool cleanup_concrete_value = concrete_value != tensor_value;
+    defer if (cleanup_concrete_value) {
+        boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
+    }
+
+    TensorVal* tensor = concrete_value.tensor_val;
+    if (!tensor_has_valid_storage(tensor)) return tensor_runtime_raise(interp, "List: tensor backing storage is missing");
+    if (tensor.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "List: tensor dtype mismatch", null);
+    }
+
+    Value* result = make_nil(interp);
+    double* data = (double*)tensor.data;
+    usz remaining = tensor.element_count;
+    while (remaining > 0) {
+        remaining--;
+        result = make_cons_or_error(interp, make_double(interp, data[remaining]), result, "List: failed to allocate tensor conversion result");
+        if (result == null || result.tag == ERROR) return result;
+    }
+    return result;
+}
+
 fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3) return primitive_arity_raise(interp, "Tensor", "3 arguments: dtype, shape, data-or-scalar", args.len);
     if (!tensor_dtype_arg_is_double(args[0], interp)) {

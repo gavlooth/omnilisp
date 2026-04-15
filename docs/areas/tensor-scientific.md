@@ -62,6 +62,9 @@ Implemented slices:
 - `TENSOR-070`: tensor-tensor `map` supports right-aligned singleton-axis
   broadcasting, including rank-0 tensor scalar broadcasting and deterministic
   `tensor/shape-mismatch` failures for incompatible axes.
+- `TENSOR-075`: `(Array tensor)` and `(List tensor)` now realize Tensor
+  expressions and expose flat row-major element values through the canonical
+  collection constructor/conversion surfaces.
 - `TENSOR-080`: optional backend boundary contract is closed as a design-only
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque

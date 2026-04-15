@@ -124,6 +124,11 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
         return prim_to_array(one[0:1], env, interp);
     }
 
+    // Single tensor arg -> realize and expose flat row-major values.
+    if (args.len == 1 && is_tensor(args[0])) {
+        return tensor_to_flat_array_value(args[0], interp);
+    }
+
     // Single list/nil arg → convert to array
     if (args.len == 1 && (is_cons(args[0]) || is_nil(args[0]))) {
         usz count = 0;

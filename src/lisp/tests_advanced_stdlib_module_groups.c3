@@ -104,6 +104,18 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "ref tensor rank-2", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 2])", 6.0, pass, fail);
     test_eq_double(interp, "ref tensor negative axis", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 -1])", 6.0, pass, fail);
     test_eq_double(interp, "ref tensor list index", "(ref (Tensor Double '(2 3) '(1 2 3 4 5 6)) '(1 2))", 6.0, pass, fail);
+    test_eq(interp, "Array tensor conversion length",
+        "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
+    test_eq_double(interp, "Array tensor conversion row-major value",
+        "(ref (Array (Tensor Double [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
+    test_eq(interp, "List tensor conversion length",
+        "(length (List (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
+    test_eq_double(interp, "List tensor conversion row-major value",
+        "(ref (List (Tensor Double [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
+    test_eq_double(interp, "Array lazy tensor map conversion realizes",
+        "(ref (Array (map + (Tensor Double [2] [1 2]) 1)) 1)", 3.0, pass, fail);
+    test_eq_double(interp, "List lazy tensor contract conversion realizes",
+        "(ref (List (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) 0)", 50.0, pass, fail);
     test_error_contains(interp, "ref tensor wrong rank",
         "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1])", "ref: tensor index rank mismatch", pass, fail);
     test_error_contains(interp, "ref tensor oob",

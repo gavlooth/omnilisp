@@ -1,5 +1,25 @@
 ## 2026-04-15
 
+- Completed Tensor collection constructor conversions:
+  - Added `(Array tensor)` and `(List tensor)` support to the canonical
+    collection constructor/conversion surfaces.
+  - Tensor conversions force lazy tensor expressions when needed and return
+    flat row-major element values. Shape/rank metadata remains explicit through
+    `shape` and `rank`; conversion does not synthesize nested collections.
+  - Added focused advanced collections/module regressions for concrete Tensor
+    conversion, lazy `map` conversion, and lazy `contract` conversion.
+  - Updated language/reference docs and Tensor plan/status artifacts.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for `(Array tensor)`, `(List tensor)`, lazy map
+      conversion, and zero-size Tensor conversion
+    - focused advanced collections/module group on host
+      -> `232 passed, 0 failed`
+    - bounded container rerun of the same focused group
+      -> `232 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
 - Completed `TENSOR-090C` BLAS `dgemv` contraction acceleration:
   - Extended the private Tensor BLAS C shim to resolve `cblas_dgemv`, expose
     availability and call-count probes, and call `dgemv` without adding a

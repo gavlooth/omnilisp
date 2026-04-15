@@ -436,6 +436,8 @@ constructor surface is `(Tensor Double shape data-or-scalar)`, where `shape`
 is an array or proper list of non-negative integers and `data-or-scalar` is
 either a scalar numeric fill value or an array/proper list with exactly the
 shape product's element count. Tensor `ref` uses `(ref tensor index-array)`.
+`(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
+return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
@@ -1118,7 +1120,7 @@ Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` 
 | `car` | 1 | First element |
 | `cdr` | 1 | Rest element |
 | `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (Iterator ...))`) |
-| `List` | variadic | Canonical list constructor/conversion surface (`list` remains a public helper) |
+| `List` | variadic | Canonical list constructor/conversion surface; single Tensor input realizes to a flat row-major list (`list` remains a public helper) |
 | `length` | 1 | Generic: list, array, dict, string, or tensor element count |
 | `null?` | 1 | Check if nil |
 | `pair?` | 1 | Check if cons |
@@ -1213,7 +1215,7 @@ Style guidance:
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `Array` | variadic | Create array; `[1 2 3]` is equivalent to this; single collection arg dispatches conversion (`(Array '(1 2 3))`, `(Array (Iterator ...))`) |
+| `Array` | variadic | Create array; `[1 2 3]` is equivalent to this; single collection arg dispatches conversion (`(Array '(1 2 3))`, `(Array (Iterator ...))`, `(Array tensor)`) |
 
 Canonical constructor surface is `Array`.
 
@@ -1352,8 +1354,12 @@ incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
 by allocating concrete storage or by writing directly into an exact-shape/dtype
 destination tensor. Elementwise `map` destination realization may update
 an input tensor in place; `contract` destination realization rejects
-destinations that alias either source tensor. Tensor contraction uses paired
-axes as `(contract a b [left-axis right-axis])` for one contracted pair or
+destinations that alias either source tensor. `(Array tensor)` and
+`(List tensor)` are explicit collection conversions: they force lazy tensor
+expressions if needed and return flat row-major element values. They do not
+encode shape nesting; use `shape` alongside the converted data when preserving
+rank is required. Tensor contraction uses paired axes as
+`(contract a b [left-axis right-axis])` for one contracted pair or
 `(contract a b [[left-axis right-axis] ...])` for multiple pairs. The explicit
 left/right axis-list form `(contract a b left-axes right-axes)` is also
 accepted. Axis lists may be arrays or proper lists of integers, negative axes

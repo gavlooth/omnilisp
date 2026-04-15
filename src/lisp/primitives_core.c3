@@ -136,6 +136,11 @@ fn Value* prim_list(Value*[] args, Env* env, Interp* interp) {
         return result;
     }
 
+    // Single tensor arg -> realize and expose flat row-major values.
+    if (args.len == 1 && is_tensor(args[0])) {
+        return tensor_to_flat_list_value(args[0], interp);
+    }
+
     // Single set arg -> deterministic canonical list of set elements.
     if (args.len == 1 && args[0].tag == SET) {
         return prim_set_to_list(args, env, interp);

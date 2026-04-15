@@ -1,3 +1,55 @@
+## 2026-04-15 11:41 CEST - Tensor Collection Conversions
+- Objective attempted:
+  - Implement the owner-preferred constructor-dispatch Tensor conversion
+    surface through `(Array tensor)` and `(List tensor)` rather than adding a
+    Tensor-only materialization helper.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `tensor_to_flat_array_value` and `tensor_to_flat_list_value` helpers.
+  - Extended `Array` and `List` constructors to accept a single Tensor input.
+  - Tensor conversions force lazy Tensor expressions when needed and return
+    flat row-major element values.
+  - Shape/rank metadata remains explicit through `shape` and `rank`; collection
+    conversion does not synthesize nested arrays/lists.
+  - Added focused advanced collections/module regressions for concrete Tensor
+    conversion, lazy `map` conversion, and lazy `contract` conversion.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for `(Array tensor)`, `(List tensor)`, lazy map conversion,
+    and zero-size Tensor conversion
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Array (Tensor Double [2 2] [1 2 3 4])) 2)` returns `3.0`.
+  - `(ref (List (Tensor Double [2 2] [1 2 3 4])) 2)` returns `3.0`.
+  - `(ref (Array (map + (Tensor Double [2] [1 2]) 1)) 1)` returns `3.0`.
+  - `(length (Array (Tensor Double [0] 0.0)))` returns `0`.
+  - Focused advanced collections/module group passed on host:
+    `232 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `232 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Tensor now participates in the same constructor/conversion dispatch model
+    as other collection-like values. Continue with LAPACK naming/surface
+    decision or scalar precision policy; do not add Tensor-only conversion
+    helper names for this already-shipped behavior.
+- Unresolved issues:
+  - Tensor-to-collection conversion is flat row-major only; nested shape
+    reconstruction remains intentionally unshipped.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this conversion slice, then choose between LAPACK naming
+    and scalar precision policy work.
+Signature: GPT-5 Codex
+
 ## 2026-04-15 11:28 CEST - Tensor BLAS `dgemv` Contracts
 - Objective attempted:
   - Continue `TENSOR-090` by expanding private BLAS acceleration from

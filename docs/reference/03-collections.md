@@ -92,6 +92,8 @@ tensor `contract`, and `realize` as the explicit storage boundary.
 (rank x)                   ;; => 2
 (dtype x)                  ;; => Double
 (ref x [1 -1])             ;; => 6.0
+(Array x)                  ;; => [1.0 2.0 3.0 4.0 5.0 6.0]
+(List x)                   ;; => (1.0 2.0 3.0 4.0 5.0 6.0)
 
 (define y (Tensor Double [2 3] 0.0))
 (realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y
@@ -117,8 +119,11 @@ the explicit left/right axis-list form remains available when it is clearer.
 Contraction over a zero-size contracted axis produces the additive identity for
 the output cell. Zero-size dimensions are valid shape dimensions. Scalar
 broadcasting and right-aligned singleton-axis tensor-tensor broadcasting are
-supported; optional backend acceleration remains future work behind the pure
-`Tensor` fallback.
+supported. `(Array tensor)` and `(List tensor)` are explicit collection
+conversions: they force lazy tensor expressions if needed and return flat
+row-major element values. They do not encode shape nesting; use `shape`
+alongside the converted data when preserving rank is required. Optional backend
+acceleration remains behind the pure `Tensor` fallback.
 
 ### Generic Operations
 

@@ -79,6 +79,11 @@ Name collision note:
   singleton-axis broadcasting for tensor-tensor inputs, with rank-0 tensors
   treated as broadcast-compatible tensor scalars and deterministic
   `tensor/shape-mismatch` failures for incompatible shapes.
+- `TENSOR-075` is complete: the canonical collection constructor/conversion
+  surfaces now accept Tensor values. `(Array tensor)` and `(List tensor)`
+  force lazy Tensor expressions if needed and expose flat row-major element
+  values; shape/rank metadata remains available through `shape` and `rank`
+  rather than nested collection conversion.
 - `TENSOR-050` is complete for pure `Double` `contract`: paired-axis arrays
   and explicit axis-list contraction support one or more axis pairs, rank-0
   scalar results, multi-axis contractions, per-axis negative normalization,

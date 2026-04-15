@@ -91,6 +91,9 @@ as a new public Tensor surface:
   `[0 1]`.
 - BLAS `Double` GEMV now optimizes contiguous row-major rank-2/rank-1 and
   rank-1/rank-2 single-axis contract layouts behind the same backend boundary.
+- `(Array tensor)` and `(List tensor)` are implemented as explicit Tensor
+  collection conversions that realize lazy Tensor expressions and return flat
+  row-major values.
 - Unsupported strides, dtypes, aliasing, device placement, or missing libraries
   must fall back or fail deterministically without changing Tensor semantics.
 - Direct native backend calls are preferred for hot Tensor kernels. User-facing
