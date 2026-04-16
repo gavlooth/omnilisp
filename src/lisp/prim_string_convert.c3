@@ -15,12 +15,20 @@ fn Value* conversion_runtime_raise(Interp* interp, char[] code, char[] message) 
 }
 
 const double CONVERSION_DOUBLE_FINITE_LIMIT = 1.7976931348623157e308;
+const double CONVERSION_FLOAT32_FINITE_LIMIT = 3.4028234663852886e38;
 const double CONVERSION_INT_MAX_DOUBLE = (double)long.max;
 const double CONVERSION_INT_MIN_DOUBLE = (double)long.min;
 
 fn bool conversion_double_is_finite(double v) @inline {
     if (v != v) return false; // NaN
     return v <= CONVERSION_DOUBLE_FINITE_LIMIT && v >= -CONVERSION_DOUBLE_FINITE_LIMIT;
+}
+
+fn bool conversion_try_double_to_float32(double v, float* out) @inline {
+    if (out == null || !conversion_double_is_finite(v)) return false;
+    if (v > CONVERSION_FLOAT32_FINITE_LIMIT || v < -CONVERSION_FLOAT32_FINITE_LIMIT) return false;
+    *out = (float)v;
+    return true;
 }
 
 fn bool conversion_try_double_to_int(double v, long* out) @inline {
@@ -78,6 +86,12 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
             arg.double_val,
             "Integer: expected int, finite double, or in-range numeric string");
     }
+    if (arg.tag == FLOAT32) {
+        return conversion_int_from_double_or_raise(
+            interp,
+            (double)arg.float32_val,
+            "Integer: expected int, finite double, or in-range numeric string");
+    }
     if (arg.tag == STRING) {
         Value* parsed = prim_string_to_number(args, env, interp);
         if (parsed != null && parsed.tag != NIL) {
@@ -86,6 +100,12 @@ fn Value* prim_ctor_int(Value*[] args, Env* env, Interp* interp) {
                 return conversion_int_from_double_or_raise(
                     interp,
                     parsed.double_val,
+                    "Integer: expected int, finite double, or in-range numeric string");
+            }
+            if (parsed.tag == FLOAT32) {
+                return conversion_int_from_double_or_raise(
+                    interp,
+                    (double)parsed.float32_val,
                     "Integer: expected int, finite double, or in-range numeric string");
             }
             if (parsed.tag == BIG_FLOAT) {
@@ -110,7 +130,7 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "String: expected string, number, symbol, or list of strings");
     }
     if (arg.tag == STRING) return arg;
-    if (is_number(arg) || is_big_integer(arg) || is_big_float(arg) || is_big_complex(arg)) return prim_number_to_string(args, env, interp);
+    if (is_number(arg) || is_big_integer(arg) || is_big_float(arg) || is_big_complex(arg) || is_fixed_complex(arg)) return prim_number_to_string(args, env, interp);
     if (arg.tag == SYMBOL) return prim_symbol_to_string(args, env, interp);
     if (is_nil(arg) || is_cons(arg)) {
         return list_to_string_value(arg, interp,
@@ -129,6 +149,7 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
         return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
     }
     if (arg.tag == DOUBLE) return arg;
+    if (arg.tag == FLOAT32) return make_double(interp, (double)arg.float32_val);
     if (arg.tag == INT) return make_double(interp, (double)arg.int_val);
     if (arg.tag == BIG_INTEGER) {
         double out = 0.0;
@@ -144,6 +165,7 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
         Value* parsed = prim_string_to_number(args, env, interp);
         if (parsed != null && parsed.tag != NIL) {
             if (parsed.tag == DOUBLE) return parsed;
+            if (parsed.tag == FLOAT32) return make_double(interp, (double)parsed.float32_val);
             if (parsed.tag == INT) return make_double(interp, (double)parsed.int_val);
             if (parsed.tag == BIG_INTEGER) {
                 double out = 0.0;
@@ -165,28 +187,66 @@ fn Value* prim_ctor_float(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 1) return prim_ctor_double(args, env, interp);
     Value* precision = args[1];
     if (precision == null) {
-        return conversion_type_raise(interp, "Float: precision must be 64 or \"64\"; Float32 is not implemented yet");
+        return conversion_type_raise(interp, "Float: precision must be 32, 64, \"32\", or \"64\"");
     }
     if (precision.tag == STRING) {
         char[] text = precision.str_chars[:precision.str_len];
         if (string_equals(text, "64")) return prim_ctor_double(args[0:1], env, interp);
-        if (string_equals(text, "32")) {
-            return conversion_type_raise(interp, "Float: precision 32 requires Float32 runtime storage, which is not implemented yet");
-        }
-        return conversion_type_raise(interp, "Float: unsupported precision; expected 64");
+        if (string_equals(text, "32")) return prim_ctor_float32(args[0:1], env, interp);
+        return conversion_type_raise(interp, "Float: unsupported precision; expected 32 or 64");
     }
     if (precision.tag != INT) {
-        return conversion_type_raise(interp, "Float: precision must be 64 or \"64\"; Float32 is not implemented yet");
+        return conversion_type_raise(interp, "Float: precision must be 32, 64, \"32\", or \"64\"");
     }
     if (precision.int_val == 64) return prim_ctor_double(args[0:1], env, interp);
-    if (precision.int_val == 32) {
-        return conversion_type_raise(interp, "Float: precision 32 requires Float32 runtime storage, which is not implemented yet");
-    }
-    return conversion_type_raise(interp, "Float: unsupported precision; expected 64");
+    if (precision.int_val == 32) return prim_ctor_float32(args[0:1], env, interp);
+    return conversion_type_raise(interp, "Float: unsupported precision; expected 32 or 64");
 }
 
 fn Value* prim_ctor_float32(Value*[] args, Env* env, Interp* interp) {
-    return conversion_type_raise(interp, "Float32: runtime storage is not implemented yet");
+    if (args.len < 1) return conversion_type_raise(interp, "Float32: expected integer, float, BigFloat in Float32 range, or numeric string");
+
+    Value* arg = args[0];
+    if (arg == null || arg.tag == NIL) {
+        return conversion_type_raise(interp, "Float32: expected integer, float, BigFloat in Float32 range, or numeric string");
+    }
+    if (arg.tag == FLOAT32) return arg;
+
+    double wide = 0.0;
+    bool have_wide = false;
+    if (arg.tag == DOUBLE) {
+        wide = arg.double_val;
+        have_wide = true;
+    } else if (arg.tag == INT) {
+        wide = (double)arg.int_val;
+        have_wide = true;
+    } else if (arg.tag == BIG_INTEGER) {
+        have_wide = big_integer_try_to_double(arg, &wide);
+    } else if (arg.tag == BIG_FLOAT) {
+        have_wide = big_float_try_to_double(arg, &wide);
+    } else if (arg.tag == STRING) {
+        Value* parsed = prim_string_to_number(args, env, interp);
+        if (parsed != null && parsed.tag != NIL) {
+            if (parsed.tag == FLOAT32) return parsed;
+            if (parsed.tag == DOUBLE) {
+                wide = parsed.double_val;
+                have_wide = true;
+            } else if (parsed.tag == INT) {
+                wide = (double)parsed.int_val;
+                have_wide = true;
+            } else if (parsed.tag == BIG_INTEGER) {
+                have_wide = big_integer_try_to_double(parsed, &wide);
+            } else if (parsed.tag == BIG_FLOAT) {
+                have_wide = big_float_try_to_double(parsed, &wide);
+            }
+        }
+    }
+
+    float narrowed = 0.0f;
+    if (have_wide && conversion_try_double_to_float32(wide, &narrowed)) {
+        return make_float32(interp, narrowed);
+    }
+    return conversion_type_raise(interp, "Float32: expected integer, float, BigFloat in Float32 range, or numeric string");
 }
 
 fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
@@ -224,6 +284,7 @@ fn Value* prim_ctor_big_float(Value*[] args, Env* env, Interp* interp) {
     if (arg.tag == BIG_FLOAT) return arg;
     if (arg.tag == INT) return make_big_float_from_i64(interp, arg.int_val);
     if (arg.tag == DOUBLE) return make_big_float_from_double(interp, arg.double_val);
+    if (arg.tag == FLOAT32) return make_big_float_from_double(interp, (double)arg.float32_val);
     if (arg.tag == BIG_INTEGER) return big_float_from_value(interp, arg, "BigFloat: expected numeric value or finite decimal string");
     if (arg.tag == STRING) return make_big_float_from_string(interp, arg.str_chars[:arg.str_len]);
     return conversion_type_raise(interp, "BigFloat: expected numeric value or finite decimal string");
@@ -264,6 +325,38 @@ fn Value* prim_ctor_big_complex(Value*[] args, Env* env, Interp* interp) {
         return big_complex_from_parts(interp, real, imag, "BigComplex: expected numeric real and imaginary parts");
     }
     return conversion_type_raise(interp, "BigComplex: expected numeric real and imaginary parts");
+}
+
+fn Value* prim_ctor_complex128(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "Complex128: expected real part and optional imaginary part");
+
+    Complex128Val real_part;
+    if (!fixed_complex_value_to_complex128(args[0], &real_part) || real_part.imag != 0.0) {
+        return conversion_type_raise(interp, "Complex128: expected finite real numeric part");
+    }
+    if (args.len == 1) return make_complex128(interp, real_part.real, real_part.imag);
+
+    Complex128Val imag_part;
+    if (!fixed_complex_value_to_complex128(args[1], &imag_part) || imag_part.imag != 0.0) {
+        return conversion_type_raise(interp, "Complex128: expected finite imaginary numeric part");
+    }
+    return make_complex128(interp, real_part.real, imag_part.real);
+}
+
+fn Value* prim_ctor_complex64(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args.len > 2) return conversion_type_raise(interp, "Complex64: expected real part and optional imaginary part");
+
+    Complex64Val real_part;
+    if (!fixed_complex_value_to_complex64(args[0], &real_part) || real_part.imag != 0.0f) {
+        return conversion_type_raise(interp, "Complex64: expected finite Float32-range real numeric part");
+    }
+    if (args.len == 1) return make_complex64(interp, real_part.real, real_part.imag);
+
+    Complex64Val imag_part;
+    if (!fixed_complex_value_to_complex64(args[1], &imag_part) || imag_part.imag != 0.0f) {
+        return conversion_type_raise(interp, "Complex64: expected finite Float32-range imaginary numeric part");
+    }
+    return make_complex64(interp, real_part.real, imag_part.real);
 }
 
 fn Value* prim_ctor_bool(Value*[] args, Env* env, Interp* interp) {
@@ -357,7 +450,7 @@ fn Value* prim_string_to_number(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]) && !is_big_complex(args[0]))) return conversion_type_raise(interp, "String: expected number");
+    if (args.len < 1 || (!is_number(args[0]) && !is_big_integer(args[0]) && !is_big_float(args[0]) && !is_big_complex(args[0]) && !is_fixed_complex(args[0]))) return conversion_type_raise(interp, "String: expected number");
     if (is_big_integer(args[0])) {
         return big_integer_to_string_value(args[0], interp, "String: failed to render BigInteger");
     }
@@ -367,15 +460,21 @@ fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
     if (is_big_complex(args[0])) {
         return big_complex_to_string_value(args[0], interp, "String: failed to render BigComplex");
     }
+    if (is_complex128(args[0])) return fixed_complex128_to_string_value(args[0], interp);
+    if (is_complex64(args[0])) return fixed_complex64_to_string_value(args[0], interp);
     char[64] buf;
     if (is_double(args[0])) {
         return make_string(interp, double_to_string(args[0].double_val, &buf));
+    }
+    if (is_float32(args[0])) {
+        return make_string(interp, double_to_string((double)args[0].float32_val, &buf));
     }
     return make_string(interp, int_to_string(args[0].int_val, &buf));
 }
 
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Float64: expected number");
+    if (is_fixed_complex(args[0])) return conversion_type_raise(interp, "Float64: expected real number");
     double out = 0.0;
     if (!try_numeric_to_double(args[0], &out)) return conversion_type_raise(interp, "Float64: expected number in Float64 range");
     return make_double(interp, out);
@@ -383,7 +482,7 @@ fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_inexact_to_exact(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Integer: expected number");
-    if (is_big_complex(args[0])) return conversion_type_raise(interp, "Integer: expected real number");
+    if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return conversion_type_raise(interp, "Integer: expected real number");
     if (is_big_integer(args[0])) return prim_ctor_int(args, env, interp);
     return conversion_int_from_double_or_raise(interp, to_double(args[0]), "Integer: expected finite number in Integer range");
 }

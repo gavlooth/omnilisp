@@ -30,7 +30,7 @@ fn Expr* Compiler.make_synthetic_lambda(Compiler* self, Expr* source_expr, Symbo
     wrapper.lambda.params[0] = param;
     wrapper.lambda.param_annotations = null;
     wrapper.lambda.has_rest = false;
-    wrapper.lambda.rest_param = 0;
+    wrapper.lambda.rest_param = (SymbolId)0;
     wrapper.lambda.has_typed_params = false;
     wrapper.lambda.body = body;
     return wrapper;

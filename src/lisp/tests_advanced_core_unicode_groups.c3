@@ -49,12 +49,45 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_double(interp, "Float precision 64 ctor from string", "(Float \"3.5\" 64)", 3.5, pass, fail);
     test_double(interp, "Float string precision 64 ctor", "(Float \"3.5\" \"64\")", 3.5, pass, fail);
     test_truthy(interp, "Float64 ctor type", "(= (type-of (Float64 3)) 'Float64)", pass, fail);
-    test_error_contains(interp, "Float precision 32 fails closed",
-        "(Float 3 32)", "Float: precision 32 requires Float32 runtime storage", pass, fail);
-    test_error_contains(interp, "Float string precision 32 fails closed",
-        "(Float 3 \"32\")", "Float: precision 32 requires Float32 runtime storage", pass, fail);
-    test_error_contains(interp, "Float32 ctor fails closed",
-        "(Float32 3)", "Float32: runtime storage is not implemented yet", pass, fail);
+    test_truthy(interp, "Float32 ctor type", "(= (type-of (Float32 3)) 'Float32)", pass, fail);
+    test_truthy(interp, "Float32 ctor is Number", "(is? (Float32 3) 'Number)", pass, fail);
+    test_truthy(interp, "Float32 predicate", "(float32? (Float32 3))", pass, fail);
+    test_truthy(interp, "Float32 is not Float64 predicate", "(not (float64? (Float32 3)))", pass, fail);
+    test_truthy(interp, "Float32 decimal literal remains Float64", "(not (float32? 3.0))", pass, fail);
+    test_truthy(interp, "Complex128 ctor type and predicate",
+        "(and (= (type-of (Complex128 1 2)) 'Complex128) (complex128? (Complex128 1 2)) (is? (Complex128 1 2) 'Number))", pass, fail);
+    test_truthy(interp, "Complex64 ctor type and predicate",
+        "(and (= (type-of (Complex64 1 2)) 'Complex64) (complex64? (Complex64 1 2)) (is? (Complex64 1 2) 'Number))", pass, fail);
+    test_truthy(interp, "fixed complex predicates do not match BigComplex",
+        "(and (not (complex128? (BigComplex 1 2))) (not (complex64? (BigComplex 1 2))))", pass, fail);
+    test_str_val(interp, "Complex128 String conversion",
+        "(String (Complex128 1 -2))", "1.0-2.0i", pass, fail);
+    test_str_val(interp, "Complex64 String conversion",
+        "(String (Complex64 1 2))", "1.0+2.0i", pass, fail);
+    test_truthy(interp, "Float precision 32 ctor type", "(= (type-of (Float 3 32)) 'Float32)", pass, fail);
+    test_truthy(interp, "Float string precision 32 ctor type", "(= (type-of (Float \"3.5\" \"32\")) 'Float32)", pass, fail);
+    test_truthy(interp, "Float32 arithmetic preserves Float32 without Float64 operand",
+        "(and (= (+ (Float32 1.25) 1) 2.25) (= (type-of (+ (Float32 1.25) 1)) 'Float32))", pass, fail);
+    test_truthy(interp, "Float32 mixed Float64 arithmetic widens",
+        "(and (= (+ (Float32 1.25) 1.0) 2.25) (= (type-of (+ (Float32 1.25) 1.0)) 'Float64))", pass, fail);
+    test_truthy(interp, "Float32 survives function return boundary",
+        "(block (define (mk-f32) (Float32 1.25)) (= (type-of (mk-f32)) 'Float32))", pass, fail);
+    test_truthy(interp, "Float32 survives closure capture boundary",
+        "(let (x (Float32 1.25)) (let (f (lambda () x)) (= (type-of (f)) 'Float32)))", pass, fail);
+    test_truthy(interp, "Float32 type annotation accepts Float32",
+        "(= ((lambda ((^Float32 x)) (type-of x)) (Float32 1.25)) 'Float32)", pass, fail);
+    test_str_val(interp, "Float32 String conversion", "(String (Float32 1.25))", "1.25", pass, fail);
+    test_truthy(interp, "Float32 format numeric directive", "(= (format \"%0.2f\" (Float32 1.25)) \"1.25\")", pass, fail);
+    test_truthy(interp, "sort-by Float32 comparator uses numeric sign",
+        "(= (sort-by (lambda (a) (lambda (b) (Float32 (- a b)))) '(1 2 3)) '(1 2 3))", pass, fail);
+    test_truthy(interp, "schema float32 atom accepts Float32",
+        "(validate 'float32 (Float32 1.25))", pass, fail);
+    test_truthy(interp, "schema numeric equality accepts Float32",
+        "(validate (List '= (Float32 1.25)) (Float32 1.25))", pass, fail);
+    test_error_contains(interp, "Float precision rejects unsupported",
+        "(Float 3 16)", "Float: unsupported precision", pass, fail);
+    test_error_contains(interp, "Float32 rejects out-of-range string",
+        "(Float32 \"1e39\")", "Float32: expected integer, float, BigFloat in Float32 range, or numeric string", pass, fail);
     test_error_contains(interp, "old Double ctor removed",
         "(Double 3)", "unbound variable 'Double'", pass, fail);
     test_str_val(interp, "String ctor from int", "(String 3)", "3", pass, fail);

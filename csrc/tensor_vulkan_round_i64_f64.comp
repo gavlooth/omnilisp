@@ -1,0 +1,64 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+#extension GL_ARB_gpu_shader_int64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint padding0;
+    uint padding1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    double input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    int64_t output_data[];
+};
+
+layout(set = 0, binding = 2, std430) buffer StatusBuffer {
+    uint status_data[];
+};
+
+double round_away_from_zero(double value) {
+    return value < 0.0lf ? ceil(value - 0.5lf) : floor(value + 0.5lf);
+}
+
+double truncate_toward_zero(double value) {
+    return value < 0.0lf ? ceil(value) : floor(value);
+}
+
+double apply_rounding(double value) {
+    if (params.op == 1u) return floor(value);
+    if (params.op == 2u) return ceil(value);
+    if (params.op == 3u) return round_away_from_zero(value);
+    if (params.op == 4u) return truncate_toward_zero(value);
+    atomicMax(status_data[0], 2u);
+    return 0.0lf;
+}
+
+bool rounding_in_i64_range(double value) {
+    const double min_i64 = -9223372036854775808.0lf;
+    const double max_i64_exclusive = 9223372036854775808.0lf;
+    if (isnan(value) || isinf(value)) return false;
+    return value >= min_i64 && value < max_i64_exclusive;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= params.count) return;
+    if (params.op < 1u || params.op > 4u) {
+        atomicMax(status_data[0], 2u);
+        return;
+    }
+
+    double rounded = apply_rounding(input_data[index]);
+    if (!rounding_in_i64_range(rounded)) {
+        atomicMax(status_data[0], 1u);
+        return;
+    }
+    output_data[index] = int64_t(rounded);
+}

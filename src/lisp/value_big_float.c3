@@ -174,6 +174,7 @@ fn Value* big_float_from_value(Interp* interp, Value* v, char[] message) {
     if (v.tag == BIG_FLOAT) return copy_big_float_to_parent(v, interp);
     if (v.tag == INT) return make_big_float_from_i64(interp, v.int_val);
     if (v.tag == DOUBLE) return make_big_float_from_double(interp, v.double_val);
+    if (v.tag == FLOAT32) return make_big_float_from_double(interp, (double)v.float32_val);
     if (v.tag == BIG_INTEGER) {
         Value* rendered = big_integer_to_string_value(v, interp, "BigFloat: failed to render BigInteger");
         if (rendered == null || rendered.tag != STRING) return raise_error(interp, message);
@@ -191,6 +192,8 @@ fn void* big_float_handle_from_value(Value* v) {
             return omni_big_float_from_i64(v.int_val);
         case DOUBLE:
             return omni_big_float_from_double(v.double_val);
+        case FLOAT32:
+            return omni_big_float_from_double((double)v.float32_val);
         case BIG_INTEGER: {
             usz len = 0;
             char* rendered = omni_big_integer_to_string(v.big_integer_val, &len);
@@ -299,9 +302,19 @@ fn bool big_float_compare_values(Value* lhs, Value* rhs, int* out) {
         *out = omni_big_float_compare_double(lhs.big_float_val, rhs.double_val);
         return true;
     }
+    if (lhs.tag == BIG_FLOAT && rhs.tag == FLOAT32) {
+        if (lhs.big_float_val == null) return false;
+        *out = omni_big_float_compare_double(lhs.big_float_val, (double)rhs.float32_val);
+        return true;
+    }
     if (lhs.tag == DOUBLE && rhs.tag == BIG_FLOAT) {
         if (rhs.big_float_val == null) return false;
         *out = -omni_big_float_compare_double(rhs.big_float_val, lhs.double_val);
+        return true;
+    }
+    if (lhs.tag == FLOAT32 && rhs.tag == BIG_FLOAT) {
+        if (rhs.big_float_val == null) return false;
+        *out = -omni_big_float_compare_double(rhs.big_float_val, (double)lhs.float32_val);
         return true;
     }
 

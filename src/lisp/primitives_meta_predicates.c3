@@ -27,6 +27,8 @@ fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "zero?: expected number");
     if (is_big_complex(args[0])) return big_complex_value_is_zero(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (is_complex128(args[0])) return complex128_is_zero(args[0].complex128_val) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (is_complex64(args[0])) return complex64_is_zero(args[0].complex64_val) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
     int cmp = 0;
     Value* zero = make_int(interp, 0);
     if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "zero?: numeric comparison failed");
@@ -35,7 +37,7 @@ fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "positive?: expected number");
-    if (is_big_complex(args[0])) return raise_error(interp, "positive?: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return raise_error(interp, "positive?: complex numbers are not ordered");
     int cmp = 0;
     Value* zero = make_int(interp, 0);
     if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "positive?: numeric comparison failed");
@@ -44,7 +46,7 @@ fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "negative?: expected number");
-    if (is_big_complex(args[0])) return raise_error(interp, "negative?: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return raise_error(interp, "negative?: complex numbers are not ordered");
     int cmp = 0;
     Value* zero = make_int(interp, 0);
     if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "negative?: numeric comparison failed");

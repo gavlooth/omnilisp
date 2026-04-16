@@ -360,6 +360,8 @@ parser/lexer error.
 | BigInteger | `BIG_INTEGER` | Arbitrary-precision exact integer | `(BigInteger "9223372036854775808")` |
 | BigFloat | `BIG_FLOAT` | High-precision decimal float | `(BigFloat "1.25")` |
 | BigComplex | `BIG_COMPLEX` | High-precision decimal complex value | `(BigComplex 1 2)` |
+| Complex128 | `COMPLEX128` | Fixed-width complex value with two Float64 components | `(Complex128 1 2)` |
+| Complex64 | `COMPLEX64` | Fixed-width complex value with two Float32 components | `(Complex64 1 2)` |
 | string | `STRING` | Immutable string (heap-allocated) | `"hello"` |
 | symbol | `SYMBOL` | Interned identifier | `'foo`, `'hello` |
 | cons | `CONS` | Pair / list cell | `(cons 1 2)`, `'(1 2 3)` |
@@ -428,38 +430,67 @@ real-plane helper and rejects complex operands. Complex values are intentionally
 not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and
 `negative?` fail closed for BigComplex operands.
 
+`Complex128` and `Complex64` are fixed-width complex-number surfaces.
+`(Complex128 real [imag])` constructs a complex value from finite numeric
+parts representable as `Float64`; `(Complex64 real [imag])` constructs from
+finite numeric parts representable as `Float32`. The optional imaginary part
+defaults to zero. Fixed-width complex values are `Number` values, support
+`String`, `+`, `-`, `*`, `/`, unary `-`, `=`, hashing/equality, and
+scope-boundary copy/promotion. `real-part` and `imag-part` return `Float64`
+components for `Complex128` and `Float32` components for `Complex64`;
+`conjugate` preserves the fixed-width complex dtype and `abs` returns the
+matching floating magnitude. Scientific/transcendental scalar math beyond
+these component/arithmetic helpers remains fail-closed for fixed-width complex
+until a dedicated complex approximation contract is defined.
+
 `Tensor` is the canonical rank-polymorphic scientific numeric aggregate. The
 current runtime slice registers the type descriptor, constructor, print
 surface, lifetime copy/promotion paths, tensor `ref`, and introspection
-primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The explicit
+primitives (`tensor?`, `dtype`, `shape`, `rank`, `length`, and
+`tensor-layout`). The explicit
 constructor surfaces are `(Tensor Float64 shape data-or-scalar)`,
-`(Tensor BigInteger shape data-or-scalar)`, and
-`(Tensor BigFloat shape data-or-scalar)`, and
-`(Tensor BigComplex shape data-or-scalar)`, where `shape` is an array or
+`(Tensor Float32 shape data-or-scalar)`,
+`(Tensor BigInteger shape data-or-scalar)`,
+`(Tensor BigFloat shape data-or-scalar)`,
+`(Tensor BigComplex shape data-or-scalar)`,
+`(Tensor Complex128 shape data-or-scalar)`, and
+`(Tensor Complex64 shape data-or-scalar)`, where `shape` is an array or
 proper list of non-negative integers and `data-or-scalar` is either a scalar
 numeric fill value or an array/proper list with exactly the shape product's
 element count. The inferred-shape constructor surface is `(Tensor data)`,
 `(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Float64`,
-`BigInteger`, `BigFloat`, or `BigComplex`. `Float64` tensors accept real
-numeric values that can narrow to finite `Float64`; `BigInteger` tensors accept
-exact `Integer` and `BigInteger` values; `BigFloat` tensors preserve arbitrary
-finite `BigFloat` range; `BigComplex` tensors preserve complex numeric values
-and promote real numeric leaves to zero-imaginary BigComplex elements. Tensor
-`ref` uses `(ref tensor index-array)`.
-`(Array tensor)` and `(List tensor)` realize tensor expressions when needed and
-return flat row-major element values; use `shape` when rank metadata is needed.
-`realize` treats concrete tensors as already realized values, forces
-lazy Tensor expression payloads, and can write a tensor expression, concrete
-tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
-`map` is the elementwise tensor operation for `Float64`, `BigInteger`,
-`BigFloat`, and `BigComplex` tensors; `contract` is the summed-axis operation
-for `Float64`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For real
+`Float32`, `BigInteger`, `BigFloat`, `BigComplex`, `Complex128`, or
+`Complex64`. `Float64` and `Float32` tensors accept real numeric values that
+can narrow to the target finite float width; `BigInteger` tensors accept exact
+`Integer` and `BigInteger` values; `BigFloat` tensors preserve arbitrary finite
+`BigFloat` range; `BigComplex` tensors preserve complex numeric values and
+promote real numeric leaves to zero-imaginary BigComplex elements;
+`Complex128` and `Complex64` tensors preserve fixed-width complex numeric
+values and promote representable real numeric leaves to zero-imaginary
+fixed-width complex elements. Tensor
+`ref` uses `(ref tensor index-array)`. Constructor dispatch is the public
+materialization model: `(Array iterator)` and `(List iterator)` consume
+iterators, `(Tensor iterator)` consumes a finite numeric iterator into tensor
+storage, and `(Array tensor)` / `(List tensor)` convert tensor values to flat
+row-major element collections. Use `shape` when rank metadata is needed.
+`realize` remains a low-level Tensor storage primitive for exact destination
+writes and compatibility with existing tensor-storage tests; it is not the
+general lazy-computation counterpart to iterators. Unary `+` is the identity
+operation for Tensor values and preserves the Tensor's current placement.
+Tensor-dispatched `map` is
+the elementwise tensor operation for `Float64`, `Float32`, `BigInteger`,
+`BigFloat`, `BigComplex`, `Complex128`, and `Complex64` tensors; `contract` is
+the summed-axis operation for `Float64`, `Float32`, `BigInteger`, `BigFloat`,
+`BigComplex`, `Complex128`, and `Complex64` tensors. For real
 Tensor dtypes, `real-part` and `conjugate` preserve dtype and values, while
 `imag-part` returns a same-shape zero tensor of the same dtype. For
 `BigComplex` tensors, `real-part` and `imag-part` produce `BigFloat` tensors
-and `conjugate` produces a `BigComplex` tensor. Tensor `abs` applies
-elementwise magnitude; real Tensor dtypes preserve dtype and `BigComplex`
-tensors return same-shape `BigFloat` tensors. Tensor `sqrt` applies
+and `conjugate` produces a `BigComplex` tensor. For `Complex128` tensors,
+`real-part`, `imag-part`, and `abs` produce `Float64` tensors; for `Complex64`
+tensors they produce `Float32` tensors. `conjugate` preserves fixed-width
+complex Tensor dtype. Tensor `abs` applies elementwise magnitude; real Tensor
+dtypes preserve dtype and complex tensors return same-shape component-width
+floating tensors. Tensor `sqrt` applies
 elementwise square root; `Float64` and `BigInteger` Tensor inputs return
 `Float64` tensors, `BigFloat` tensors preserve `BigFloat`, and `BigComplex`
 tensors preserve `BigComplex`. Tensor `sin`, `cos`, `tan`, `asin`, `acos`,
@@ -472,21 +503,387 @@ complex, otherwise `BigFloat` wins if either input is BigFloat, otherwise the
 result is a `Float64` tensor. Tensor `atan2` supports tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real-plane arctangent: `BigFloat`
 inputs preserve `BigFloat`, other real/exact inputs return `Float64` tensors,
-and complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`,
+and complex Tensor operands fail closed. Fixed-width complex Tensor operands
+also fail closed for Tensor scientific/transcendental operations that do not
+have an explicit component-width complex contract. Tensor `floor`, `ceiling`, `round`,
 and `truncate` return same-shape `BigInteger` tensors for real inputs, using
 exact BigFloat rounding when the source dtype is `BigFloat`; complex Tensor
-operands fail closed. Tensor `min` and `max` support the same tensor-scalar,
-scalar-tensor, and broadcast tensor-tensor real comparison surface:
+operands fail closed. GPU support for these rounding primitives must preserve
+that dtype-changing contract; it must not expose them as same-dtype floating
+Tensor map results. CUDA and Vulkan dense row-major `Float64`/`Float32`
+support is reported with the backend `rounding-big-integer` capability and
+materializes CPU `Tensor BigInteger` output after checked device integer
+copyback. Vulkan rounding is additionally gated by Vulkan integer shader
+support. Generic Vulkan `available`, `float64`, or `float32` capability is not
+sufficient proof of dtype-changing rounding.
+Tensor `min` and `max` support the
+same tensor-scalar, scalar-tensor, and broadcast tensor-tensor real comparison surface:
 `BigFloat` wins if either input is BigFloat, `Float64` wins if either input is
 Float64, otherwise the result is a `BigInteger` tensor. Complex Tensor
 operands fail closed. Tensor `gcd` and `lcm` support tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor exact integer operations. Tensor
 operands must be native `BigInteger` tensors, scalar operands must be exact
 integers, and results are native `BigInteger` tensors.
+`matrix/transpose` transposes rank-2 Tensor values, preserving native dtype
+and cloning owned high-precision element handles for `BigInteger`, `BigFloat`,
+and `BigComplex` tensors. For ordinary concrete Tensor inputs it remains a
+materializing transform. If the input is already a transpose view,
+`matrix/transpose` composes structurally by returning the source orientation
+rather than materializing a second transposed buffer. `matrix/transpose-view`
+constructs an explicit read-only rank-2 transpose view over a source Tensor.
+The view swaps logical shape and strides, keeps the source Tensor as the view
+owner, reports `owner` `view-source`, `owns-storage` false, and uses
+`write-policy` `read-only-view`. CPU `ref`, `(Array view)`, `(List view)`,
+and CPU `realize` materialization observe the transposed logical indexing.
+Mutation and destination writes through the view fail closed. GPU and raw
+contiguous copy kernels do not consume arbitrary view offset/stride metadata.
+Vulkan supports the explicit `matrix/transpose-view` materialization boundary:
+direct rank-2 transpose views over dense zero-offset Vulkan storage can be
+materialized into dense Vulkan tensors by `realize`, `to-device 'vulkan`, and
+`to-device 'cpu` copyback. CUDA and all broader strided/view-backed GPU kernel
+execution still fail closed with Tensor backend diagnostics. `matrix/diagonal`
+extracts the main diagonal from a
+rank-2 Tensor into a rank-1 Tensor of length `min(rows, columns)`, preserving
+native dtype and cloning owned high-precision element handles. `matrix/trace`
+sums the diagonal of a square rank-2 Tensor and returns a scalar in the
+Tensor's public scalar family: `Float64` for `Float64` and `Float32` Tensor
+storage, or `BigInteger`, `BigFloat`, and `BigComplex` for the matching
+high-precision Tensor dtypes.
+`matrix/diagonal-matrix` builds a square rank-2 Tensor from a rank-1 Tensor,
+placing cloned input values on the main diagonal and the dtype's zero value in
+off-diagonal cells. `matrix/identity` builds a square identity Tensor from a
+non-negative integer size, defaulting to `Float64` and accepting an optional
+`Float64`, `Float32`, `BigInteger`, `BigFloat`, or `BigComplex` dtype
+argument. `matrix/rank` returns the numerical rank of a rectangular rank-2
+`Float64`, `Float32`, `Complex128`, or `Complex64` Tensor as an `Integer`,
+using a default tolerance of `1e-12` or an optional non-negative finite numeric
+tolerance. Complex rank uses magnitude-based pivoting. `matrix/norm` returns a
+`Float64` scalar norm for rank-2 `Float64`, `Float32`, `Complex128`, or
+`Complex64` Tensors. It defaults to the Frobenius norm and accepts an optional
+selector: `'frobenius`, `'one`, `'infinity`, `'max`, `'spectral`, or
+`'nuclear`. `Float64`, `Float32`, `Complex128`, and `Complex64` support every
+selector. `Float32` spectral/nuclear selectors use native `Float32`
+singular-value kernels on CPU and eligible Vulkan placement; complex
+spectral/nuclear selectors use fixed-width complex singular values while direct
+complex selectors use complex magnitudes. `matrix/solve` solves rank-2
+`Float64`, `Float32`,
+`Complex128`, or `Complex64`
+Tensor linear systems with a square coefficient matrix and a rank-1 or rank-2
+matching right-hand Tensor; the result preserves the right-hand side rank and
+Tensor dtype, and singular systems raise `tensor/singular-matrix`.
+`matrix/solve` is the public surface;
+backend labels such as `tensor/lapack` are implementation ownership, not
+user-facing solver names. `matrix/lu` factors a square rank-2 `Float64`,
+`Float32`, `Complex128`, or `Complex64`
+Tensor with partial pivoting and returns a dictionary containing `lu` for the
+combined factors, `pivots` for the final 0-based row order, and `swap-count`
+for permutation parity; singular inputs raise `tensor/singular-matrix`.
+`matrix/determinant` uses the same partial-pivot LU semantics to return a
+scalar determinant preserving the numerical family for square rank-2
+`Float64`, `Float32`, `Complex128`, or `Complex64` Tensors; singular
+matrices return the dtype's zero scalar. `matrix/inverse` returns the inverse
+of a nonsingular square rank-2 `Float64`, `Float32`, `Complex128`, or
+`Complex64` Tensor with the same shape and dtype; singular inputs raise
+`tensor/singular-matrix`. `matrix/qr` computes a reduced QR decomposition for
+rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensors with rows
+greater than or equal to columns, returning a dictionary containing `q` with
+shape `[rows columns]` and `r` with shape `[columns columns]`; rank-deficient
+inputs raise `tensor/singular-matrix`. Complex QR uses the Hermitian inner
+product. `matrix/cholesky` computes the lower-triangular Cholesky factor for
+square symmetrical positive-definite real tensors or square Hermitian
+positive-definite complex tensors and returns a Tensor with the same shape and
+dtype; nonsymmetric, non-Hermitian, or non-positive-definite inputs raise
+`tensor/not-positive-definite`. `matrix/singular-values` returns the
+descending singular values of a rank-2 `Float64` or `Float32` Tensor as a
+rank-1 Tensor with the input dtype and shape `[min(rows, columns)]`.
+`matrix/svd` computes a reduced singular value decomposition for
+rank-2 `Float64` or `Float32` Tensors and returns a dictionary containing `u` with shape
+`[rows k]`, `s` with shape `[k]`, and `v` with shape `[columns k]`, where
+`k = min(rows, columns)` and the input reconstructs as
+`u * diag(s) * transpose(v)`. Tensor factor outputs preserve input dtype and
+eligible Vulkan placement. `matrix/eigenvalues` computes
+descending real eigenvalues for square symmetric rank-2 `Float64` Tensors.
+`matrix/eigenvectors` returns a dictionary containing `values` and `vectors`
+for the same symmetric-real contract; eigenvectors are stored as columns
+aligned with `values`. Nonsymmetric inputs raise `tensor/not-symmetric`.
+`matrix/eigenpairs` computes general nonsymmetric eigenpairs for square
+rank-2 `Float64` Tensors and returns a dictionary containing `values` as a
+rank-1 `BigComplex` Tensor with shape `[n]` and `vectors` as a rank-2
+`BigComplex` Tensor with shape `[n n]`. The `vectors` columns align with
+`values`, eigenpairs are sorted by descending eigenvalue magnitude with
+deterministic real/imaginary tie-breakers, and empty square matrices return
+empty `[0]` values and `[0 0]` vectors. The implementation may use runtime
+`LAPACKE_dgeev` when available and otherwise retains a pure fallback under the
+same public contract.
 Tensor operations may produce lazy Tensor expression payloads under the
 existing `Tensor` value, with backend acceleration left as an optimization
 behind the same semantic surface. User code should not name or depend on a
-separate `TensorExpr` type.
+separate `TensorExpr` type. `tensor-layout` returns metadata for the current
+Tensor representation as a `Dictionary` with keys `dtype`, `device`,
+`payload`, `layout`, `dense-row-major`, `shape`, `strides`, `rank`,
+`element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+`storage-bytes`, `is-view`, `owns-storage`, `owner`, and `write-policy`.
+Values are ordinary Omni symbols, arrays, booleans, and numbers. Current
+payload symbols are `concrete`, `map`, `contract`, and `view`; current layout
+symbols are `dense-row-major` and `strided`; current owner symbols are `self`,
+`view-source`, and `expression`; current write-policy symbols are `mutable`,
+`immutable`, `mutable-view`, and `read-only-view`. Read-only transpose views
+report payload `view`, layout `strided`, `is-view` true, `owns-storage` false,
+owner `view-source`, and write-policy `read-only-view`. Lazy expression payloads
+report logical `element-count` and `byte-length`, but `storage-elements` and
+`storage-bytes` are `0` until the expression is realized into concrete
+storage. `tensor-layout` is descriptive metadata, not permission for every
+kernel to consume view storage. Dense GPU kernels and raw copy helpers still
+require zero-offset dense row-major inputs and destinations unless a later
+kernel explicitly says otherwise. Device placement is explicit:
+`device` reports the
+current Tensor placement, ordinary CPU tensors report `'cpu`, and `to-device`
+with target `'cpu` realizes to CPU Tensor storage. Destination-form
+`(realize expr out)` writes into an existing CPU Tensor destination, or into
+an existing dense row-major CUDA or Vulkan `Float64`, `Float32`, `Complex128`,
+or `Complex64` destination when that backend is usable and supports the
+requested storage dtype. CPU destinations still reject device-placed sources;
+copy those with explicit `to-device 'cpu` first. CUDA destinations accept
+matching CPU/CUDA/lazy supported CUDA `Float64` or `Float32` Tensor sources,
+matching raw-copyable `Complex128` or `Complex64` CPU/CUDA Tensor sources, and
+matching scalar fills. Vulkan destinations accept matching CPU/Vulkan/lazy
+Vulkan `Float64` or `Float32` Tensor sources, matching raw-copyable
+`Complex128` or `Complex64` CPU/Vulkan Tensor sources, and matching scalar
+fills. Unsupported dtypes, unsupported lazy device expressions, and
+cross-backend sources fail closed with Tensor backend diagnostics.
+CUDA/cuBLAS support
+remains explicit-device only: ordinary Tensor operations do not imply CPU/GPU
+transfer, and GPU support stays behind `Tensor` rather than introducing a
+public `GpuTensor` or `CudaTensor` type. When runtime-loaded CUDA support is
+usable, `to-device` with target `'cuda` copies concrete zero-offset dense
+row-major `Float64`, `Float32`, `Complex128`, or `Complex64` CPU Tensor
+storage to CUDA and `to-device` with target `'cpu` copies CUDA storage back to
+native CPU Tensor storage. Missing or unusable CUDA fails
+closed with a Tensor backend diagnostic. `tensor-backends` reports structured
+backend availability dictionaries; CPU is available in normal builds, while
+CUDA availability depends on runtime CUDA probing. cuBLAS reports
+dtype-specific `float64` and `float32` capability bits. CPU, Vulkan, and CUDA
+entries report `elementwise-map-float64`, `elementwise-map-float32`,
+`scientific-map-float64`, and `scientific-map-float32` operation capability
+keys; CUDA and Vulkan also report `complex128` and `complex64` storage
+capability bits. Vulkan reports `elementwise-map-complex128` and
+`elementwise-map-complex64` when its fixed-width complex elementwise map
+kernels are available; CUDA reports the same operation bits when its generated
+PTX/status complex map helper is available. CUDA and Vulkan report
+`contract-complex128` and `contract-complex64` only when their fixed-width
+complex contraction kernels are available; complex storage capability and
+complex elementwise-map capability do not imply complex contraction support.
+CUDA and Vulkan also report the dtype-changing
+`rounding-big-integer` capability when their integer-result rounding path is
+available. CUDA-placed dense row-major
+`Float64` and `Float32` tensors support
+binary elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
+arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,
+`real-part`, `imag-part`, and `conjugate`; and, when the scientific module
+loads, scientific unary `map` for `sin`, `cos`, `tan`, `asin`, `acos`,
+`atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `math/erf`,
+`math/erfc`, `stats/normal-cdf`, and `stats/normal-quantile`. Arithmetic
+kernels use embedded PTX; scientific kernels use PTX generated from CUDA C and
+libdevice, and CUDA quantile uses a device status word so invalid
+probabilities fail before result exposure. Supported CUDA map operand shapes are tensor/scalar, scalar/tensor,
+exact-shape tensor/tensor, and right-aligned singleton-axis tensor/tensor
+broadcasting for binary map, and exact-shape Tensor input for unary map;
+direct public `map`, lazy CUDA map realization, and CUDA destination
+realization from lazy CUDA maps preserve CUDA placement. Direct Tensor `abs`,
+unary `-`, `sqrt`, `real-part`, `imag-part`, `conjugate`, and supported
+scientific unary primitives preserve CUDA placement for eligible real CUDA
+tensors. Unsupported callables, mixed CPU/CUDA operands, mixed dtype/device
+operands, and unsupported layouts fail closed with Tensor backend diagnostics
+rather than staging through CPU. When cuBLAS is available
+for the input dtype,
+CUDA-placed dense row-major matching `Float64` or matching `Float32`
+rank-2/rank-2 single-axis contractions may execute through cuBLAS GEMM for
+`[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`; rank-2/rank-1, rank-1/rank-2, and
+rank-1/rank-1 dot contractions may execute through cuBLAS GEMV. Results are
+CUDA-placed Tensors. In the same supported CUDA layout family, zero free
+dimensions produce CUDA-placed zero-length outputs and zero contracted
+dimensions produce dtype-preserving additive-identity outputs without
+requiring a cuBLAS call. Unsupported CUDA contract cases fail with backend
+diagnostics rather than silently copying to CPU. Destination-form `realize`
+can write matching dense row-major `Float64` or `Float32` CPU sources, CUDA
+sources, supported lazy CUDA map or contract results, and scalar fills into an
+existing CUDA-placed destination without changing the public API. Concrete
+CUDA Tensor clone/copy support applies to Omni-owned CUDA payloads and valid
+foreign CUDA concrete payloads; foreign CUDA clones allocate fresh Omni-owned
+CUDA storage and keep fake or invalid CUDA handles fail-closed.
+When `tensor-backends` reports `elementwise-map-complex128` or
+`elementwise-map-complex64`, CUDA `Complex128` and `Complex64` tensors support
+dense row-major elementwise `map` for binary `+`, `-`, `*`, and `/`, plus
+unary `+`, `abs`, unary `-`, `real-part`, `imag-part`, and `conjugate`.
+Generic CUDA complex `map` preserves the complex Tensor dtype; map
+`real-part`, `imag-part`, and `abs` use zero imaginary components where
+applicable. Direct CUDA complex `abs`, `real-part`, and `imag-part` return
+component-width real CUDA tensors (`Float64` for `Complex128`, `Float32` for
+`Complex64`), while direct unary `-` and `conjugate` preserve complex dtype.
+CUDA complex division by zero reports structured `tensor/domain-error`;
+nonrepresentable CUDA complex results fail as invalid arguments before result
+exposure.
+When `tensor-backends` reports `contract-complex128` or
+`contract-complex64`, CUDA `Complex128` and `Complex64` tensors support the
+same dense row-major single-axis contract families as the CUDA cuBLAS real
+path, using non-conjugating complex multiply-add. Results remain CUDA-placed
+fixed-width complex tensors and require explicit `to-device 'cpu` before CPU
+inspection. Unsupported complex contraction layouts, axis families, mixed
+devices, mixed dtypes, missing capability, and matrix operations fail closed
+without hidden CPU fallback or lowering through real tensors or `BigComplex`.
+Vulkan is the portable
+explicit GPU backend direction: `tensor-backends` reports a structured
+`vulkan` entry with explicit `Float64` and `Float32` kernel capability.
+`to-device` with target `'vulkan` copies concrete zero-offset dense row-major
+`Float64`, `Float32`, `Complex128`, or `Complex64` CPU Tensor storage into
+opaque Vulkan storage when runtime-loaded Vulkan support is usable, and
+`to-device` with target `'cpu` copies Vulkan storage back to native CPU Tensor
+storage.
+Missing or unusable Vulkan fails closed with a Tensor backend diagnostic;
+destination-form `realize` can write matching dense row-major `Float64` or
+`Float32` CPU or Vulkan sources, matching raw-copyable `Complex128` or
+`Complex64` CPU or Vulkan sources, lazy Vulkan results, and scalar fills into
+an existing Vulkan-placed destination without changing the public API; complex
+Vulkan storage capability is separate from complex operation capability;
+`map` supports dense row-major Vulkan `Float64` and `Float32` elementwise
+arithmetic `+`, `-`, `*`, `/`, `min`, and `max` plus unary helpers for
+Tensor/scalar, scalar/Tensor, exact-shape Tensor/Tensor inputs, and
+right-aligned singleton-axis Tensor/Tensor broadcasting through embedded SPIR-V
+kernels, returning Vulkan-placed tensors. When `tensor-backends` reports
+`elementwise-map-complex128` or `elementwise-map-complex64`, Vulkan
+`Complex128` and `Complex64` tensors support dense row-major elementwise
+`map` for `+`, `-`, `*`, and `/` across tensor/scalar, scalar/tensor,
+exact-shape tensor/tensor, and right-aligned singleton-axis broadcast forms.
+Generic complex `map` supports unary `+`, `abs`, unary `-`, `real-part`,
+`imag-part`, and `conjugate` while preserving the complex Tensor dtype;
+`abs`, `real-part`, and `imag-part` called directly on Vulkan complex tensors
+return component-width real Vulkan tensors. Complex Vulkan division reports a
+structured `tensor/domain-error` for zero denominators and fails before
+exposing non-representable results. Vulkan `Float32` tensors also support
+direct and mapped `stats/normal-cdf` through a same-dtype shader approximation
+and direct/mapped `stats/normal-quantile` through a status-bearing inverse-CDF
+shader. Vulkan `Float64` tensors support direct and mapped `stats/normal-cdf`
+through a double piecewise polynomial approximation and direct/mapped
+`stats/normal-quantile` through a Float64 status-bearing inverse-CDF helper.
+Direct Vulkan `floor`, `ceiling`, `round`, and `truncate` require
+`tensor-backends` Vulkan `rounding-big-integer`; same-dtype Vulkan float
+rounding output is not a valid Tensor rounding contract.
+Public Vulkan `contract` supports Vulkan-placed dense row-major rank-N
+matching `Float64` or `Float32` tensors with zero or more explicit contracted
+axis pairs. When `tensor-backends` reports `contract-complex128` or
+`contract-complex64`, the same public `contract` surface also supports
+dense row-major fixed-width complex contraction for matching `Complex128` or
+`Complex64` tensors, using non-conjugating complex multiply-add. Output axes
+are ordered as free left axes followed by free right axes. Results are
+Vulkan-placed tensors and require explicit `to-device 'cpu` before CPU
+inspection. Unsupported Vulkan map and contract cases, including unsupported
+callables, incompatible broadcasting shapes, unsupported layouts/dtypes,
+missing complex contract capability, unsupported fixed-width complex
+contraction families, and mixed CPU/Vulkan operands, fail closed rather than
+silently copying to CPU.
+`matrix/transpose` supports Vulkan-placed dense row-major `Float64`, `Float32`,
+`Complex128`, or `Complex64` rank-2 concrete tensors through embedded SPIR-V
+kernels, returning a Vulkan-placed materialized transposed Tensor that
+preserves the input dtype.
+CUDA and broad Vulkan kernels do not consume arbitrary `matrix/transpose-view`
+payloads yet; view-backed matrix kernels fail closed rather than interpreting
+offset/stride metadata. Direct rank-2 transpose views over dense zero-offset
+Vulkan storage can be explicitly materialized to dense Vulkan tensors through
+placement, destination `realize`, and copyback boundaries.
+`matrix/diagonal` and `matrix/diagonal-matrix` support Vulkan-placed dense
+row-major `Float64`, `Float32`, `Complex128`, or `Complex64` inputs through
+embedded SPIR-V structural kernels, returning Vulkan-placed Tensor results that
+preserve the input dtype. CUDA and Vulkan fixed-width complex structural
+matrix support is reported separately as `matrix-structural-complex128` and
+`matrix-structural-complex64`; when the selected backend reports the relevant
+capability, dense row-major `Complex128` or `Complex64` tensors support
+`matrix/transpose`, `matrix/diagonal`, `matrix/diagonal-matrix`, and
+`matrix/trace` on that backend. `matrix/trace` reads back only the scalar
+result required by the public scalar return contract. CUDA complex numerical
+matrix kernels and Vulkan complex numerical matrix kernels outside
+`matrix/lu`, `matrix/determinant`, `matrix/solve`, and `matrix/inverse`
+remain fail-closed
+unless a specific matrix operation has its own backend contract and capability
+reporting. Matrix support is not implied by complex storage, complex
+elementwise `map`, complex `contract`, or structural matrix capability.
+`matrix/rank` supports Vulkan-placed dense row-major `Float64`, `Float32`,
+`Complex128`, or `Complex64` rank-2 inputs through embedded SPIR-V reducers
+and reads back only the scalar `Integer` result required by the public scalar
+return contract. Complex rank uses magnitude-based pivoting and tolerance.
+`matrix/lu` supports Vulkan-placed dense row-major square `Float64`,
+`Float32`, `Complex128`, or `Complex64` inputs through embedded SPIR-V
+partial-pivot factorization kernels.
+The returned dictionary keeps `lu` as a Vulkan-placed Tensor preserving the
+input dtype while `pivots` and `swap-count` remain ordinary host metadata
+required by the public contract. Complex support is reported through
+`matrix-numerical-complex128` and `matrix-numerical-complex64`.
+`matrix/solve` supports Vulkan-placed dense row-major square `Float64` or
+`Float32`, `Complex128`, or `Complex64` coefficient tensors with matching
+Vulkan-placed rank-1 or rank-2 right-hand tensors through embedded SPIR-V
+Gaussian-elimination kernels.
+Results remain Vulkan-placed tensors preserving RHS dtype; singular systems
+raise `tensor/singular-matrix`. `Float64` larger systems route through the
+measured thresholded parallel Vulkan solve helper; `Float32` larger systems
+route through the native staged parallel Vulkan solve helper at the matched
+parity threshold.
+`matrix/determinant` supports Vulkan-placed dense row-major square `Float64`,
+`Float32`, `Complex128`, or `Complex64` inputs through embedded SPIR-V reducers
+and reads back only the scalar result required by the public scalar return
+contract.
+`matrix/inverse` supports CPU and Vulkan-placed dense row-major square
+`Float64`, `Float32`, `Complex128`, or `Complex64` inputs through
+Gauss-Jordan kernels, returning an inverse Tensor preserving input dtype and
+placement for Vulkan inputs and raising `tensor/singular-matrix` for singular
+inputs.
+`matrix/cholesky` supports Vulkan-placed dense row-major square `Float64`,
+`Float32`, `Complex128`, or `Complex64` inputs through embedded SPIR-V
+Cholesky factorization kernels, returning a Vulkan-placed lower factor Tensor
+preserving input dtype and raising `tensor/not-positive-definite` for
+nonsymmetric, non-Hermitian, or non-SPD inputs.
+`matrix/qr` supports Vulkan-placed dense row-major rank-2 `Float64`,
+`Float32`, `Complex128`, or `Complex64` inputs with rows greater than or equal
+to columns through embedded SPIR-V reduced QR kernels, returning Vulkan-placed
+`q` and `r` factor Tensors preserving input dtype and raising
+`tensor/singular-matrix` for rank-deficient inputs.
+`matrix/norm` supports Vulkan-placed dense row-major `Float64`, `Float32`,
+`Complex128`, and `Complex64` inputs for default/`'frobenius`, `'one`,
+`'infinity`, `'max`, `'spectral`, and `'nuclear`. Complex direct selectors use
+complex magnitudes; complex spectral/nuclear selectors use native Vulkan
+complex singular-value helpers. These Vulkan paths read back only the scalar
+result required by the public scalar return contract.
+`matrix/singular-values` supports Vulkan-placed dense row-major rank-2
+`Float64`, `Float32`, `Complex128`, and `Complex64` inputs through embedded
+storage-backed Gram/Jacobi singular-value shaders, returning a Vulkan-placed
+rank-1 component-width real Tensor for `k = min(rows, columns)`, including
+`k > 64`, without hidden CPU/LAPACK fallback. Direct `matrix/svd` uses the same storage-backed Gram
+strategy for Vulkan-placed factor outputs and preserves the input float dtype.
+Shader non-convergence raises `tensor/no-convergence`.
+Public `contract` supports Vulkan-placed dense row-major rank-N matching
+`Float64` or `Float32` tensors with zero or more explicit contracted axis
+pairs. Output axes are ordered as free left axes followed by free right axes.
+Results are Vulkan-placed tensors and require explicit `to-device 'cpu` before
+CPU inspection.
+Unsupported Vulkan map and contract cases, including unsupported callables,
+incompatible broadcasting shapes, unsupported layouts/dtypes, and mixed
+CPU/Vulkan operands, fail closed rather than silently copying to CPU.
+Direct `matrix/svd` supports Vulkan-placed dense row-major rank-2 `Float64` or
+`Float32` inputs for `k = min(rows, columns)`, including `k > 64`, returns
+Vulkan-placed reduced `u`, `s`, and `v` factors preserving the input float
+dtype, and uses storage-backed Gram scratch without hidden CPU/LAPACK fallback.
+CPU `Float32` SVD is supported through native CPU `Float32` oracles. Direct `matrix/eigenvalues` and
+`matrix/eigenvectors` support Vulkan-placed dense row-major square symmetric
+`Float64` inputs, including `n > 64` within helper resource limits, 32-bit
+shader index guards, and the Jacobi iteration guard. They return Vulkan-placed
+values and aligned vector columns, raise `tensor/not-symmetric` for
+nonsymmetric Vulkan inputs, and map shader non-convergence to
+`tensor/no-convergence`, without hidden CPU/LAPACK fallback. Missing
+Vulkan/Float64 capability, unsupported shapes/layouts/dtypes, resource bounds,
+and stride/view-backed inputs fail closed with Tensor backend diagnostics.
+Direct `matrix/eigenpairs` remains CPU-only/fail-closed on Vulkan while its
+public output contract is pointer-backed `BigComplex`.
+Zero-size contracted axes in supported Vulkan layouts produce
+additive-identity output, matching CPU Tensor semantics.
+Backend-flavored mathematical names are not part of the normal Tensor surface.
 
 ### 2.2 Truthiness
 
@@ -1135,13 +1532,15 @@ removal) are maintained in `docs/SURFACE_COMPATIBILITY.md`.
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `+` | 2 | Addition (int or Float64) |
+| `+` | 1-2 | Addition (int or Float64); `(+ n)` is identity |
 | `-` | 1-2 | Subtraction; `(- n)` negates |
 | `*` | 2 | Multiplication |
 | `/` | 2 | Integer/float division |
 | `%` | 2 | Modulo |
 
-Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` is an arity error outside rewrite contexts such as `|>`. Use `_` / `_n` placeholders, `|>` pipe, or `partial` for partial application.
+Binary primitives no longer auto-partial. A bare one-argument call to a binary-only
+primitive like `(* 3)` is an arity error outside rewrite contexts such as `|>`.
+Use `_` / `_n` placeholders, `|>` pipe, or `partial` for partial application.
 
 ### 7.2 Comparison (5)
 
@@ -1161,7 +1560,7 @@ Binary primitives no longer auto-partial. A bare one-argument call like `(+ 3)` 
 | `car` | 1 | First element |
 | `cdr` | 1 | Rest element |
 | `list` | variadic | Create list; single collection arg dispatches conversion (`(list [1 2 3])`, `(list (Iterator ...))`) |
-| `List` | variadic | Canonical list constructor/conversion surface; single Tensor input realizes to a flat row-major list (`list` remains a public helper) |
+| `List` | variadic | Canonical list constructor/conversion surface; single Iterator input is consumed and single Tensor input materializes to a flat row-major list (`list` remains a public helper) |
 | `length` | 1 | Generic: list, array, dict, string, or tensor element count |
 | `null?` | 1 | Check if nil |
 | `pair?` | 1 | Check if cons |
@@ -1208,8 +1607,11 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 |------|-------------|
 | `string?` | Is string? |
 | `int?` | Is integer? |
+| `float32?` | Is Float32? |
 | `float64?` | Is Float64? |
-| `number?` | Is int, BigInteger, BigFloat, or Float64? |
+| `complex64?` | Is Complex64? |
+| `complex128?` | Is Complex128? |
+| `number?` | Is int, Float32, Float64, BigInteger, BigFloat, BigComplex, Complex128, or Complex64? |
 | `symbol?` | Is symbol? |
 | `closure?` | Is closure? |
 | `continuation?` | Is continuation? |
@@ -1324,6 +1726,26 @@ contract and raises when the input is not strictly between `0` and `1`.
 result rule: they return exact integer values, narrowing to `Integer` when
 representable and promoting to `BigInteger` otherwise.
 
+CPU Tensor `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+`stats/normal-quantile` apply elementwise. `Float64` and `Float32` Tensor
+inputs preserve their float dtype for these operations, `BigInteger` Tensor
+inputs return `Float64` tensors where the operation's domain permits it,
+`BigFloat` Tensor inputs preserve `BigFloat`, and `BigComplex` Tensor inputs
+fail closed until complex error-function or distribution contracts are
+defined. CPU Tensor `stats/normal-quantile` fails the whole operation on the
+first probability outside `0 < p < 1`. CUDA-placed dense row-major `Float64`
+and `Float32` Tensor inputs route `math/erf`, `math/erfc`,
+`stats/normal-cdf`, and `stats/normal-quantile` through the CUDA scientific
+unary helper when that capability is available; CUDA quantile preserves
+placement/dtype for valid probabilities and reports the same probability
+diagnostic before exposing output for invalid probabilities. Vulkan-placed
+dense row-major `Float32` Tensor inputs route `stats/normal-cdf` and
+`stats/normal-quantile` through Vulkan helpers; Vulkan quantile uses a
+status-bearing inverse-CDF shader with the same diagnostics. Vulkan
+`Float64` Tensor inputs route `stats/normal-cdf` through the Vulkan Float64
+shader approximation and `stats/normal-quantile` through the Vulkan Float64
+inverse-CDF helper. Unsupported devices/layouts still fail closed.
+
 ### 7.15 Bitwise Operations (6)
 
 | Prim | Description |
@@ -1338,12 +1760,15 @@ representable and promoting to `BigInteger` otherwise.
 |------|-------------|
 | `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Float` | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` and `(Float x "64")` are explicit binary64, and precision `32`/`"32"` fails closed until native `Float32` storage exists |
-| `Float32` | Reserved native 32-bit float constructor; currently fails closed because runtime storage is not implemented |
+| `Float` | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` and `(Float x "64")` are explicit binary64, and `(Float x 32)` / `(Float x "32")` produce scalar `Float32` |
+| `Float32` | Native 32-bit float scalar constructor; accepts representable numeric and numeric-string inputs and fails closed on non-finite or out-of-range narrowing. |
 | `Float64` | Canonical Float64 constructor/coercion surface; accepts finite BigInteger and BigFloat inputs when representable as a finite Float64 |
 | `Integer` | Canonical integer constructor/coercion surface; truncates finite numeric inputs toward zero and accepts in-range BigInteger/BigFloat inputs |
 | `BigInteger` | Canonical arbitrary-precision exact integer constructor/coercion surface; accepts integers and decimal strings |
 | `BigFloat` | Canonical high-precision decimal float constructor/coercion surface; accepts numeric values and finite decimal strings |
+| `BigComplex` | Canonical high-precision complex constructor; accepts one numeric value or explicit real/imaginary numeric parts |
+| `Complex128` | Fixed-width complex constructor; accepts one or two finite numeric parts representable as Float64 |
+| `Complex64` | Fixed-width complex constructor; accepts one or two finite numeric parts representable as Float32 |
 | `Symbol` | Canonical symbol constructor/coercion surface |
 
 Numeric conversion policy:
@@ -1373,40 +1798,94 @@ Numeric conversion policy:
 ### 7.17.1 Tensor Construction And Introspection
 
 These primitives are implemented for native `Tensor` values. The current
-concrete storage dtypes are `Float64`, `BigInteger`, and `BigFloat`; tensor
-`map` supports all three dtypes, while tensor `contract` supports pure C3
-`Float64`, `BigInteger`, and `BigFloat` kernels.
+concrete storage dtypes are `Float64`, `Float32`, `BigInteger`, `BigFloat`,
+`BigComplex`, `Complex128`, and `Complex64`; tensor `map` and `contract`
+support all seven dtypes on CPU. Scalar `Float32`, `Complex128`, and
+`Complex64` are runtime values, so `ref`, `Array`, `List`, and `Iterator`
+expose matching Tensor elements as scalar values.
+`to-device 'cpu` preserves `Float32`; Vulkan also supports `Float32`
+placement/copyback, destination `realize`, dense row-major elementwise `map`,
+unary helpers, direct `min`/`max`, rank-N `contract`, fixed-width complex
+structural matrix operations when `tensor-backends` reports
+`matrix-structural-complex128` or `matrix-structural-complex64`, direct
+`matrix/rank`, direct `matrix/norm` selectors, direct
+`matrix/singular-values`, direct `matrix/svd`, and serial matrix factor/solve
+surfaces (`matrix/determinant`, `matrix/lu`, `matrix/solve`,
+`matrix/inverse`, `matrix/cholesky`, and `matrix/qr`) plus staged parallel
+Vulkan `matrix/solve` when `tensor-backends` reports `float32 true`. CPU
+`Float32` factor/SVD routines are landed. CUDA `Float32` placement/copyback,
+destination `realize`, matching cuBLAS contract layouts, and fixed-width
+complex structural matrix operations are landed.
 
 | Prim | Description |
 |------|-------------|
-| `Tensor` | Construct a native tensor as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor dtype data)`, or `(Tensor dtype shape data-or-scalar)` |
+| `Tensor` | Construct a native tensor as `(Tensor data)`, `(Tensor iterator)`, `(Tensor data dtype)`, `(Tensor dtype data)`, or `(Tensor dtype shape data-or-scalar)` |
 | `tensor?` | Predicate for native tensor values |
-| `dtype` | Return the tensor dtype symbol, currently `'Float64`, `'BigInteger`, or `'BigFloat` |
+| `dtype` | Return the tensor dtype symbol, currently `'Float64`, `'Float32`, `'BigInteger`, `'BigFloat`, `'BigComplex`, `'Complex128`, or `'Complex64` |
 | `shape` | Return the tensor shape as an array of dimensions |
 | `rank` | Return the tensor rank |
+| `tensor-layout` | Return a metadata dictionary describing dtype, device, payload kind, layout, shape, strides, storage offset/extent, ownership, view status, and write policy |
 | `contract` | Contract two tensors as `(contract a b axis-pairs)` or `(contract a b left-axes right-axes)` |
-| `realize` | Return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(realize expr [out])` |
+| `matrix/transpose` | Transpose a rank-2 Tensor while preserving native dtype |
+| `matrix/transpose-view` | Construct a read-only rank-2 transpose view over a Tensor source |
+| `matrix/diagonal` | Extract the main diagonal of a rank-2 Tensor as a rank-1 Tensor while preserving native dtype |
+| `matrix/diagonal-matrix` | Build a square rank-2 Tensor from a rank-1 diagonal Tensor while preserving native dtype |
+| `matrix/identity` | Build a square identity Tensor, defaulting to `Float64` with optional dtype selection |
+| `matrix/trace` | Return the scalar diagonal sum of a square rank-2 Tensor while preserving native numeric family |
+| `matrix/rank` | Return the numerical rank of a rectangular rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor as an `Integer` |
+| `matrix/norm` | Return a `Float64` matrix norm for a rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor; defaults to Frobenius and accepts `'frobenius`, `'one`, `'infinity`, `'max`, `'spectral`, or `'nuclear` |
+| `matrix/solve` | Solve a rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` linear system with rank-1 or rank-2 matching right-hand side, preserving RHS rank and dtype |
+| `matrix/lu` | Factor a square rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor with partial pivoting; returns dtype-preserving `lu` factors plus host metadata |
+| `matrix/determinant` | Return the determinant of a square rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor using partial-pivot LU semantics |
+| `matrix/inverse` | Return the inverse of a nonsingular square rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor while preserving Tensor dtype |
+| `matrix/qr` | Compute reduced QR for a rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor with rows >= columns, preserving Tensor dtype |
+| `matrix/cholesky` | Compute the lower-triangular Cholesky factor of a square symmetric positive-definite real Tensor or Hermitian positive-definite complex Tensor, preserving Tensor dtype |
+| `matrix/singular-values` | Return descending singular values for a rank-2 `Float64`, `Float32`, `Complex128`, or `Complex64` Tensor; complex inputs return component-width real tensors |
+| `matrix/svd` | Compute reduced SVD for a rank-2 `Float64` or `Float32` Tensor; returns `u`, `s`, and `v` |
+| `matrix/eigenvalues` | Compute descending real eigenvalues for a square symmetric rank-2 `Float64` Tensor |
+| `matrix/eigenvectors` | Compute real eigenvalues and aligned eigenvector columns for a square symmetric rank-2 `Float64` Tensor |
+| `matrix/eigenpairs` | Compute general eigenvalues and aligned eigenvector columns for a square rank-2 `Float64` Tensor; returns `BigComplex` tensors |
+| `realize` | Low-level tensor storage primitive: return a concrete tensor, or write a tensor/scalar source into a destination tensor as `(realize expr [out])` |
 
-Tensor indexing is part of generic `ref`. `BigInteger` and `BigFloat` tensors
-support constructor/ref/flat collection conversion/concrete `realize` paths
+Tensor indexing is part of generic `ref`. `BigInteger`, `BigFloat`,
+`BigComplex`, `Complex128`, and `Complex64` tensors
+support constructor/ref/flat collection conversion/concrete storage paths
 and tensor-dispatched `map` and `contract`. Tensor elementwise operations are
 part of generic `map`; unary tensor inputs, tensor-scalar inputs,
 scalar-tensor inputs, exact-shape tensor-tensor inputs, and right-aligned
 singleton-axis tensor-tensor broadcasting are supported for `Float64`,
-`BigInteger`, and `BigFloat` tensors.
+`Float32`, `BigInteger`, `BigFloat`, `BigComplex`, `Complex128`, and
+`Complex64` tensors.
 Scalar arguments are coerced into the first tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
 incompatible tensor shapes raise `tensor/shape-mismatch`. Tensor `map` and
 `contract` may return lazy Tensor expression payloads under the existing
-`Tensor` value; `realize` forces them either
-by allocating concrete storage or by writing directly into an exact-shape/dtype
-destination tensor. Elementwise `map` destination realization may update
-an input tensor in place; `contract` destination realization rejects
-destinations that alias either source tensor. `(Array tensor)` and
-`(List tensor)` are explicit collection conversions: they force lazy tensor
-expressions if needed and return flat row-major element values. They do not
-encode shape nesting; use `shape` alongside the converted data when preserving
-rank is required. Tensor contraction uses paired axes as
+`Tensor` value; there is no public `TensorExpr` type and no separate
+`delay`/`force` protocol for tensor laziness. `tensor-layout` reports Tensor
+metadata as a `Dictionary`; concrete CPU/CUDA/Vulkan dense tensors report
+zero storage offset, physical row-major strides such as `[3 1]` for shape
+`[2 3]`, and `owner` `self`, lazy map/contract tensors report expression
+payload metadata without exposing a public expression type, and
+`matrix/transpose-view` tensors report payload `view`, owner `view-source`,
+and write-policy `read-only-view`. Transpose views are CPU-readable through
+`ref`, `Array`, `List`, and `realize`, but they do not relax the current GPU
+requirement for zero-offset dense row-major storage. Constructor dispatch
+is the canonical materialization boundary: `(Array iterator)` and `(List iterator)`
+consume iterators, `(Tensor iterator)` consumes a finite numeric iterator into
+Tensor storage, and `(Tensor lazy-tensor)` normalizes a Tensor expression
+through the ordinary Tensor constructor path. `(Iterator tensor)`,
+`(Array tensor)`, and `(List tensor)` are explicit collection conversions:
+they materialize lazy CPU tensor expressions if needed and expose flat
+row-major element values. They do not encode shape nesting; use `shape`
+alongside the converted data when preserving rank is required. Tensor iteration
+over non-CPU device storage fails closed until the caller explicitly copies with
+`to-device 'cpu`; it is not a hidden CPU/GPU transfer boundary. The `realize`
+primitive remains a low-level Tensor storage operation, mainly for
+exact-shape/dtype destination writes; it is not the general lazy sequence
+abstraction. Elementwise destination realization may
+update an input tensor in place; contraction destination realization rejects
+destinations that alias either source tensor. Tensor contraction uses paired
+axes as
 `(contract a b [left-axis right-axis])` for one contracted pair or
 `(contract a b [[left-axis right-axis] ...])` for multiple pairs. The explicit
 left/right axis-list form `(contract a b left-axes right-axes)` is also
@@ -1422,16 +1901,59 @@ all non-contracted right axes.
 
 (define z (map + x 1.0))
 (ref z [1 2])   ; => 7.0
+(ref (Tensor (map (lambda (v) (+ v 1)) (Iterator [1 2 3]))) [1]) ; => 3.0
 
 (define a (Tensor Float64 [2 3] [1 2 3 4 5 6]))
 (define b (Tensor Float64 [3 2] [7 8 9 10 11 12]))
 (ref (contract a b [1 0]) [1 1]) ; => 154.0
 
-(realize x)                 ; => x, because x is already concrete
+(ref
+  (to-device
+    (contract
+      (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan)
+      (to-device (Tensor Float64 [3] [10 20 30]) 'vulkan)
+      [0 0])
+    'cpu)
+  []) ; => 140.0
+
+(define coeffs (Tensor Float64 [2 2] [2 1 1 3]))
+(define rhs (Tensor Float64 [2] [1 2]))
+(ref (matrix/transpose (Tensor Float64 [2 3] [1 2 3 4 5 6])) [2 1]) ; => 6.0
+(ref (matrix/diagonal (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1]) ; => 5.0
+(ref (matrix/diagonal-matrix (Tensor Float64 [3] [1 2 3])) [2 2]) ; => 3.0
+(ref (matrix/identity 3) [2 2]) ; => 1.0
+(matrix/trace (Tensor Float64 [2 2] [1 2 3 4])) ; => 5.0
+(matrix/rank (Tensor Float64 [2 3] [1 2 3 2 4 6])) ; => 1
+(matrix/rank (Tensor Complex128 [2 3] [(Complex128 1 1) (Complex128 0 0) (Complex128 0 0) (Complex128 0 0) (Complex128 2 -1) (Complex128 0 0)])) ; => 2
+(matrix/norm (Tensor Float64 [2 2] [3 4 0 0])) ; => 5.0
+(matrix/norm (Tensor Complex128 [2 2] [(Complex128 3 4) (Complex128 0 0) (Complex128 0 0) (Complex128 0 0)])) ; => 5.0
+(matrix/norm (Tensor Float64 [2 3] [1 -2 3 -4 5 -6]) 'one) ; => 9.0
+(matrix/norm (Tensor Float64 [2 2] [3 0 0 2]) 'spectral) ; => 3.0
+(matrix/norm (Tensor Float64 [2 2] [3 0 0 2]) 'nuclear) ; => 5.0
+(ref (matrix/solve coeffs rhs) [1]) ; => 0.6
+(define factors (matrix/lu (Tensor Float64 [2 2] [4 3 2 1])))
+(ref (ref factors 'lu) [1 0]) ; => 0.5
+(ref factors 'pivots) ; => [0 1]
+(matrix/determinant (Tensor Float64 [2 2] [4 3 2 1])) ; => -2.0
+(ref (matrix/inverse (Tensor Float64 [2 2] [4 7 2 6])) [0 0]) ; => 0.6
+(define qr (matrix/qr (Tensor Float64 [3 2] [1 1 0 1 0 0])))
+(ref (ref qr 'r) [0 1]) ; => 1.0
+(define chol (matrix/cholesky (Tensor Float64 [2 2] [4 2 2 2])))
+(ref chol [1 0]) ; => 1.0
+(ref (matrix/singular-values (Tensor Float64 [2 2] [3 0 0 2])) [0]) ; => 3.0
+(define svd (matrix/svd (Tensor Float64 [2 2] [3 0 0 2])))
+(ref (ref svd 's) [0]) ; => 3.0
+(ref (matrix/eigenvalues (Tensor Float64 [2 2] [2 1 1 2])) [0]) ; => 3.0
+(define eigen (matrix/eigenvectors (Tensor Float64 [2 2] [3 0 0 2])))
+(ref (ref eigen 'vectors) [0 0]) ; => 1.0
+(define general-eigen (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])))
+(String (ref (ref general-eigen 'values) [0])) ; => "0+1i"
+
+(Tensor z)                  ; constructor-normalized Tensor storage
 (define y (Tensor Float64 [2 3] 0.0))
 (realize x y)               ; => y, after copying x into y
 (realize 1.0 y)             ; => y, after filling y with 1.0
-(realize (map + x 1.0) y)   ; => y, after evaluating into y
+(realize z y)               ; low-level destination write into y
 ```
 
 ### 7.18 Error Handling (2)
@@ -1714,12 +2236,16 @@ Equivalent low-level form using `match` + guards:
 | `yield` | Macro for generator-style values |
 | `stream-take` | Take N values from a generator stream |
 
-### 8.3 Lazy Evaluation
+### 8.3 Lazy Iteration And Constructor Materialization
 
-| Name | Description |
-|------|-------------|
-| `delay` | `(delay thunk)` -- create lazy value (memoized) |
-| `force` | `(force promise)` -- force lazy evaluation |
+Omni does not use a general public `delay` / `force` pair for collection or
+Tensor laziness. Iterators are already suspended pull computations, and
+constructors are the terminal materialization boundary: `(Array iterator)`,
+`(List iterator)`, `(Dictionary iterator)` where key/value shape applies, and
+`(Tensor iterator)` consume finite iterators through dispatch. Conversely,
+`(Iterator tensor)` exposes Tensor values as flat row-major iterator elements,
+matching `(Array tensor)` and `(List tensor)`, and requires explicit
+`to-device 'cpu` before iterating non-CPU device tensors.
 
 ---
 
@@ -2098,8 +2624,9 @@ omni --repl --load demo.omni
 ; Constructor dispatch
 (Array '(1 2 3))        ; list → array conversion
 (list [1 2 3])          ; array → list conversion
-(Array (take 5 (range-from 0))) ; force iterator into array
-(list (take 5 (range-from 0)))  ; force iterator into list
+(Array (take 5 (range-from 0))) ; consume iterator into array
+(list (take 5 (range-from 0)))  ; consume iterator into list
+(Tensor (take 3 (range-from 1))) ; consume iterator into rank-1 tensor
 
 ; Cons mutation via dot-path
 (define p (cons 1 2))

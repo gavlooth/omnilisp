@@ -1,0 +1,27 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint n;
+    uint count;
+    uint padding0;
+    uint padding1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    vec2 output_data[];
+};
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    if (out_index >= params.count) return;
+
+    uint row = out_index / params.n;
+    uint col = out_index % params.n;
+    output_data[out_index] = row == col ? input_data[row] : vec2(0.0, 0.0);
+}

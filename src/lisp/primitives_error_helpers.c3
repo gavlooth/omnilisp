@@ -44,7 +44,7 @@ fn Value* primitive_arity_raise(Interp* interp, char[] prim_name, char[] expecte
     char[] msg;
     if (try formatted = io::bprintf(
         &msg_buf,
-        "%s: expected %s, got %d",
+        "%s: arity mismatch: expected %s, got %d",
         (ZString)prim_name,
         (ZString)expected,
         (int)got

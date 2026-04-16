@@ -398,6 +398,19 @@ fn Value* make_raise_payload(
     return payload;
 }
 
+fn Value* make_raise_payload_rooted_no_data(
+    Interp* interp,
+    SymbolId domain_sym,
+    SymbolId code_sym,
+    char[] message
+) {
+    if (interp == null || interp.root_scope == null) return null;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    defer interp.current_scope = saved_scope;
+    return make_raise_payload(interp, domain_sym, code_sym, message, null);
+}
+
 fn Value* make_raise_payload_names(
     Interp* interp,
     char[] domain_name,
@@ -425,7 +438,7 @@ fn bool raise_error_can_consume_payload(Interp* interp) @inline {
     return false;
 }
 
-fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null, bool payload_failed = false) {
+fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null, bool payload_failed = false, bool payload_already_rooted = false) {
     // Fast path: no handlers at all → just return error
     if (interp.handler_count == 0) {
         return make_error(interp, msg);
@@ -453,11 +466,15 @@ fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = 
                 }
                 Value* promoted_payload = null;
                 if (payload != null) {
-                    promoted_payload = boundary_promote_to_root(payload, interp);
-                    if (promoted_payload == null) {
-                        return make_error(interp, "raise: failed to promote payload");
+                    if (payload_already_rooted) {
+                        promoted_payload = payload;
+                    } else {
+                        promoted_payload = boundary_promote_to_root(payload, interp);
+                        if (promoted_payload == null) {
+                            return make_error(interp, "raise: failed to promote payload");
+                        }
+                        if (promoted_payload.tag == ERROR) return promoted_payload;
                     }
-                    if (promoted_payload.tag == ERROR) return promoted_payload;
                 }
                 interp.flags.raise_pending = true;
                 interp.raise_payload = promoted_payload;
@@ -483,8 +500,11 @@ fn Value* raise_error_with_payload(
     if (!raise_error_can_consume_payload(interp)) {
         return raise_error_pending_impl(interp, message, null, false);
     }
-    Value* payload = make_raise_payload(interp, domain_sym, code_sym, message, data);
-    return raise_error_pending_impl(interp, message, payload, payload == null);
+    bool payload_already_rooted = data == null;
+    Value* payload = payload_already_rooted
+        ? make_raise_payload_rooted_no_data(interp, domain_sym, code_sym, message)
+        : make_raise_payload(interp, domain_sym, code_sym, message, data);
+    return raise_error_pending_impl(interp, message, payload, payload == null, payload_already_rooted);
 }
 
 fn Value* raise_error_with_payload_names(

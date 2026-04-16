@@ -188,6 +188,9 @@ struct Array {
  */
 enum TensorDType : char {
     TENSOR_DTYPE_DOUBLE,
+    TENSOR_DTYPE_FLOAT32,
+    TENSOR_DTYPE_COMPLEX128,
+    TENSOR_DTYPE_COMPLEX64,
     TENSOR_DTYPE_BIG_INTEGER,
     TENSOR_DTYPE_BIG_FLOAT,
     TENSOR_DTYPE_BIG_COMPLEX,
@@ -200,7 +203,19 @@ enum TensorPayloadKind : char {
     TENSOR_PAYLOAD_CONCRETE,
     TENSOR_PAYLOAD_MAP,
     TENSOR_PAYLOAD_CONTRACT,
+    TENSOR_PAYLOAD_VIEW,
 }
+
+/**
+ * TensorDeviceKind — Physical placement for Tensor storage.
+ */
+enum TensorDeviceKind : char {
+    TENSOR_DEVICE_CPU,
+    TENSOR_DEVICE_CUDA,
+    TENSOR_DEVICE_VULKAN,
+}
+
+alias TensorDeviceFinalizer = fn void(void* handle);
 
 /**
  * TensorVal — Rank-polymorphic numeric aggregate payload.
@@ -211,13 +226,19 @@ enum TensorPayloadKind : char {
  */
 struct TensorVal {
     TensorPayloadKind kind;
+    TensorDeviceKind device;
     TensorDType dtype;
     usz rank;
     usz* shape;
     usz* strides;
     usz element_count;
     usz byte_len;
+    usz storage_offset;
+    usz storage_element_count;
+    usz storage_byte_len;
     void* data;
+    void* device_handle;
+    TensorDeviceFinalizer device_finalizer;
     bool mutable;
     bool is_view;
     Value* map_func;
@@ -231,10 +252,15 @@ struct TensorVal {
     void* map_right_big_float_scalar;
     void* map_left_big_complex_scalar;
     void* map_right_big_complex_scalar;
+    Complex128Val map_left_complex128_scalar;
+    Complex128Val map_right_complex128_scalar;
+    Complex64Val map_left_complex64_scalar;
+    Complex64Val map_right_complex64_scalar;
     bool map_is_binary;
     Value* contract_left;
     Value* contract_right;
     usz* contract_left_axes;
     usz* contract_right_axes;
     usz contract_axis_count;
+    Value* view_source;
 }

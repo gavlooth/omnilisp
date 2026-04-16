@@ -118,6 +118,17 @@ void* omni_big_complex_from_double(double real) {
     }
 }
 
+void* omni_big_complex_from_doubles(double real, double imag) {
+    try {
+        cpp_dec_float_50 real_part(real);
+        cpp_dec_float_50 imag_part(imag);
+        if (!boost::math::isfinite(real_part) || !boost::math::isfinite(imag_part)) return nullptr;
+        return new omni_big_complex(real_part, imag_part);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 void* omni_big_complex_from_big_float_parts(const void* real, const void* imag) {
     try {
         const cpp_dec_float_50* real_part = as_big_float_const(real);

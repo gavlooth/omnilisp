@@ -71,15 +71,16 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
  */
 fn bool register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[22] builtin_names = {
+    SymbolId[24] builtin_names = {
         interp.sym_Float, interp.sym_Float32,
-        interp.sym_Integer, interp.sym_BigInteger, interp.sym_BigFloat, interp.sym_BigComplex, interp.sym_Double, interp.sym_String,
+        interp.sym_Integer, interp.sym_BigInteger, interp.sym_BigFloat, interp.sym_BigComplex,
+        interp.sym_Complex128, interp.sym_Complex64, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
         interp.sym_Nil, interp.sym_Void, interp.sym_Closure, interp.sym_Array,
         interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
         interp.sym_TimePoint, interp.sym_Coroutine, interp.sym_Tensor
     };
-    for (usz i = 0; i < 22; i++) {
+    for (usz i = 0; i < 24; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -121,7 +122,10 @@ fn bool register_builtin_types(Interp* interp) {
     interp.tid_BigInteger = interp.types.lookup(interp.sym_BigInteger, &interp.symbols);
     interp.tid_BigFloat = interp.types.lookup(interp.sym_BigFloat, &interp.symbols);
     interp.tid_BigComplex = interp.types.lookup(interp.sym_BigComplex, &interp.symbols);
+    interp.tid_Complex128 = interp.types.lookup(interp.sym_Complex128, &interp.symbols);
+    interp.tid_Complex64 = interp.types.lookup(interp.sym_Complex64, &interp.symbols);
     interp.tid_Double = interp.types.lookup(interp.sym_Double, &interp.symbols);
+    interp.tid_Float32 = interp.types.lookup(interp.sym_Float32, &interp.symbols);
     interp.tid_String = interp.types.lookup(interp.sym_String, &interp.symbols);
     interp.tid_Symbol = interp.types.lookup(interp.sym_Symbol, &interp.symbols);
     interp.tid_List = interp.types.lookup(interp.sym_List, &interp.symbols);
@@ -142,7 +146,10 @@ fn bool register_builtin_types(Interp* interp) {
     if (interp.tid_Integer == INVALID_TYPE_ID || interp.tid_BigInteger == INVALID_TYPE_ID ||
         interp.tid_BigFloat == INVALID_TYPE_ID ||
         interp.tid_BigComplex == INVALID_TYPE_ID ||
+        interp.tid_Complex128 == INVALID_TYPE_ID ||
+        interp.tid_Complex64 == INVALID_TYPE_ID ||
         interp.tid_Double == INVALID_TYPE_ID ||
+        interp.tid_Float32 == INVALID_TYPE_ID ||
         interp.tid_String == INVALID_TYPE_ID || interp.tid_Symbol == INVALID_TYPE_ID ||
         interp.tid_List == INVALID_TYPE_ID || interp.tid_Boolean == INVALID_TYPE_ID ||
         interp.tid_Nil == INVALID_TYPE_ID || interp.tid_Void == INVALID_TYPE_ID ||
@@ -155,13 +162,16 @@ fn bool register_builtin_types(Interp* interp) {
         return false;
     }
 
-    // Set parent chains: Integer/BigInteger/BigFloat/BigComplex/Float64 -> Number, List/Array/Dictionary/Set → Collection,
+    // Set parent chains: Integer/BigInteger/BigFloat/BigComplex/Complex*/Float64/Float32 -> Number, List/Array/Dictionary/Set → Collection,
     // Nil → List, and standalone runtime leaf types under Any.
     interp.types.types[(usz)interp.tid_Integer].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_BigInteger].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_BigFloat].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_BigComplex].parent = interp.tid_Number;
+    interp.types.types[(usz)interp.tid_Complex128].parent = interp.tid_Number;
+    interp.types.types[(usz)interp.tid_Complex64].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_Double].parent = interp.tid_Number;
+    interp.types.types[(usz)interp.tid_Float32].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_List].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Array].parent = interp.tid_Collection;
     interp.types.types[(usz)interp.tid_Dictionary].parent = interp.tid_Collection;
@@ -190,7 +200,10 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case BIG_INTEGER: return interp.tid_BigInteger;
         case BIG_FLOAT: return interp.tid_BigFloat;
         case BIG_COMPLEX: return interp.tid_BigComplex;
+        case COMPLEX128: return interp.tid_Complex128;
+        case COMPLEX64:  return interp.tid_Complex64;
         case DOUBLE:    return interp.tid_Double;
+        case FLOAT32:   return interp.tid_Float32;
         case STRING:    return interp.tid_String;
         case SYMBOL:    return interp.tid_Symbol;
         case CONS:      return interp.tid_List;
@@ -225,7 +238,10 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
         case BIG_INTEGER: return interp.sym_BigInteger;
         case BIG_FLOAT: return interp.sym_BigFloat;
         case BIG_COMPLEX: return interp.sym_BigComplex;
+        case COMPLEX128: return interp.sym_Complex128;
+        case COMPLEX64:  return interp.sym_Complex64;
         case DOUBLE:    return interp.sym_Double;
+        case FLOAT32:   return interp.sym_Float32;
         case STRING:    return interp.sym_String;
         case SYMBOL:
             // true/false are symbols but semantically Boolean

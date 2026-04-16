@@ -158,6 +158,8 @@ fn void* big_complex_handle_from_value(Value* v) {
             return omni_big_complex_from_i64(v.int_val);
         case DOUBLE:
             return omni_big_complex_from_double(v.double_val);
+        case FLOAT32:
+            return omni_big_complex_from_double((double)v.float32_val);
         case BIG_INTEGER:
         case BIG_FLOAT: {
             void* real = big_float_handle_from_value(v);

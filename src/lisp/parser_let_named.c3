@@ -56,7 +56,7 @@ fn Expr* Parser.build_named_let_lambda(Parser* self, Expr* e, List{SymbolId}* pa
         lambda_expr.lambda.params[i] = (*params)[i];
     }
     lambda_expr.lambda.has_rest = false;
-    lambda_expr.lambda.rest_param = 0;
+    lambda_expr.lambda.rest_param = (SymbolId)0;
     lambda_expr.lambda.has_typed_params = false;
     lambda_expr.lambda.param_annotations = null;
     lambda_expr.lambda.body = body;

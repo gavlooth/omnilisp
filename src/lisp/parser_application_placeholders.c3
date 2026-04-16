@@ -97,7 +97,7 @@ fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId
     }
     lam.lambda.param_annotations = null;
     lam.lambda.has_rest = false;
-    lam.lambda.rest_param = 0;
+    lam.lambda.rest_param = (SymbolId)0;
     lam.lambda.has_typed_params = false;
     lam.lambda.body = body;
     return lam;

@@ -36,6 +36,30 @@ fn uint hash_value(Value* key) {
     if (key == null) return 0;
     switch (key.tag) {
         case INT: return murmur_finalizer((uint)key.int_val);
+        case FLOAT32: {
+            char[64] buf;
+            return fnv1a(double_to_string((double)key.float32_val, &buf));
+        }
+        case COMPLEX128: {
+            char[160] buf;
+            PrintBuf pb;
+            pb.buf = &buf[0];
+            pb.pos = 0;
+            pb.capacity = buf.len;
+            fixed_complex_append_f64(key.complex128_val.real, key.complex128_val.imag, &pb);
+            buf[pb.pos] = 0;
+            return fnv1a(buf[0:pb.pos]);
+        }
+        case COMPLEX64: {
+            char[160] buf;
+            PrintBuf pb;
+            pb.buf = &buf[0];
+            pb.pos = 0;
+            pb.capacity = buf.len;
+            fixed_complex_append_f64((double)key.complex64_val.real, (double)key.complex64_val.imag, &pb);
+            buf[pb.pos] = 0;
+            return fnv1a(buf[0:pb.pos]);
+        }
         case BIG_INTEGER: {
             if (key.big_integer_val == null) return 0;
             usz len = 0;
@@ -103,6 +127,14 @@ fn bool hashmap_key_equals(Value* left, Value* right) {
             return left.int_val == right.int_val;
         case DOUBLE:
             return left.double_val == right.double_val;
+        case FLOAT32:
+            return left.float32_val == right.float32_val;
+        case COMPLEX128:
+            return left.complex128_val.real == right.complex128_val.real &&
+                left.complex128_val.imag == right.complex128_val.imag;
+        case COMPLEX64:
+            return left.complex64_val.real == right.complex64_val.real &&
+                left.complex64_val.imag == right.complex64_val.imag;
         case BIG_INTEGER:
             return big_integer_values_equal(left, right);
         case BIG_FLOAT:
@@ -176,6 +208,18 @@ fn int hashmap_iteration_key_compare(Value* left, Value* right, Interp* interp) 
         case DOUBLE: {
             double l = left.double_val;
             double r = right.double_val;
+            bool l_nan = l != l;
+            bool r_nan = r != r;
+            if (l_nan && r_nan) return 0;
+            if (l_nan) return 1;
+            if (r_nan) return -1;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        }
+        case FLOAT32: {
+            float l = left.float32_val;
+            float r = right.float32_val;
             bool l_nan = l != l;
             bool r_nan = r != r;
             if (l_nan && r_nan) return 0;

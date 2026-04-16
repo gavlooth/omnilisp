@@ -85,16 +85,16 @@ fn void run_jit_policy_tco_stale_generation_moved_binding_copy_test(Interp* inte
     Closure* source_payload = (Closure*)source.alloc(Closure.sizeof);
     bool setup_ok = source_payload != null;
     if (setup_ok) {
-        source_payload.param = 0;
+        source_payload.param = (SymbolId)0;
         source_payload.params = null;
         source_payload.param_count = 0;
         source_payload.has_rest = false;
-        source_payload.rest_param = 0;
+        source_payload.rest_param = (SymbolId)0;
         source_payload.body = null;
         source_payload.env = interp.global_env;
         source_payload.has_param = false;
         source_payload.has_typed_params = false;
-        source_payload.name = 0;
+        source_payload.name = (SymbolId)0;
         source_payload.env_scope = null;
         source_payload.scope_gen = interp.root_scope.generation; // stale on purpose
         source_payload.type_sig = null;
@@ -446,16 +446,16 @@ fn void run_jit_policy_cross_scope_alias_policy_test(Interp* interp, int* pass, 
     Closure* foreign_payload = (Closure*)foreign.alloc(Closure.sizeof);
     bool setup_ok = foreign_payload != null;
     if (setup_ok) {
-        foreign_payload.param = 0;
+        foreign_payload.param = (SymbolId)0;
         foreign_payload.params = null;
         foreign_payload.param_count = 0;
         foreign_payload.has_rest = false;
-        foreign_payload.rest_param = 0;
+        foreign_payload.rest_param = (SymbolId)0;
         foreign_payload.body = null;
         foreign_payload.env = interp.global_env;
         foreign_payload.has_param = false;
         foreign_payload.has_typed_params = false;
-        foreign_payload.name = 0;
+        foreign_payload.name = (SymbolId)0;
         foreign_payload.env_scope = null;
         foreign_payload.scope_gen = foreign.generation;
         foreign_payload.type_sig = null;
@@ -1233,7 +1233,7 @@ fn void run_jit_policy_rec_closure_type_sig_copy_failure_test(Interp* interp, in
             sig.has_val_literal[0] = false;
             sig.val_literals[0].tag = NIL;
             sig.val_literals[0].int_value = 0;
-            sig.val_literals[0].sym_value = 0;
+            sig.val_literals[0].sym_value = (SymbolId)0;
             closure.closure_val.has_typed_params = true;
             closure.closure_val.type_sig = sig;
         } else {

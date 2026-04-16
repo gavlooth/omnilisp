@@ -35,7 +35,7 @@ fn Value* numeric_compare_primitive_result(Interp* interp, Value* lhs, Value* rh
 
     int cmp = 0;
     if (!numeric_values_compare(lhs, rhs, &cmp)) {
-        if (is_big_complex(lhs) || is_big_complex(rhs)) {
+        if (is_big_complex(lhs) || is_big_complex(rhs) || is_fixed_complex(lhs) || is_fixed_complex(rhs)) {
             return raise_error(interp, "numeric comparison: complex numbers are not ordered");
         }
         char[128] ebuf;

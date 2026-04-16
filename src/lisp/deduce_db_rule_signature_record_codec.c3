@@ -52,6 +52,8 @@ fn usz? deduce_tuple_encoded_size(Value*[] vals) {
             increment = 1;
         } else if (v.tag == INT || v.tag == DOUBLE) {
             increment = 9;
+        } else if (v.tag == FLOAT32) {
+            increment = 5;
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;

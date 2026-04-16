@@ -69,6 +69,8 @@ fn Value* root_store_route_to_scope(
         case BIG_INTEGER:
         case BIG_FLOAT:
         case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
         case STRING:
         case SYMBOL:
         case CONS:
@@ -77,6 +79,7 @@ fn Value* root_store_route_to_scope(
         case PARTIAL_PRIM:
         case ERROR:
         case DOUBLE:
+        case FLOAT32:
         case FFI_HANDLE:
         case TYPE_INFO:
         case INSTANCE:

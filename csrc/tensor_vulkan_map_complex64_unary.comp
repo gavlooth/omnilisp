@@ -1,0 +1,33 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint padding0;
+    uint padding1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    vec2 output_data[];
+};
+
+vec2 apply_unary(vec2 value) {
+    if (params.op == 0) return vec2(sqrt(value.x * value.x + value.y * value.y), 0.0);
+    if (params.op == 1) return -value;
+    if (params.op == 3) return vec2(value.x, 0.0);
+    if (params.op == 4) return vec2(value.y, 0.0);
+    if (params.op == 5) return vec2(value.x, -value.y);
+    return value;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= params.count) return;
+    output_data[index] = apply_unary(input_data[index]);
+}

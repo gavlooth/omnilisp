@@ -4,7 +4,7 @@ import std::collections::list;
 
 fn bool Parser.parse_shorthand_rest_param(Parser* self, bool* has_rest_out, SymbolId* rest_param_out) {
     *has_rest_out = false;
-    *rest_param_out = 0;
+    *rest_param_out = (SymbolId)0;
     if (self.lexer.current.type != T_DOTDOT) return true;
 
     self.lexer.advance();  // consume '..'

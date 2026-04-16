@@ -1,4 +1,3827 @@
+## 2026-04-18
+
+- Completed Vulkan fixed-width complex singular-values and spectral/nuclear
+  norms:
+  - Current implementation status: CPU `Complex128` and `Complex64`
+    `matrix/singular-values` support is landed via realification and
+    duplicate-pair collapse. Complex singular values return component-width
+    real tensors (`Float64` for `Complex128`, `Float32` for `Complex64`).
+  - CPU complex `matrix/norm` selectors `'spectral` and `'nuclear` now route
+    through the fixed-complex singular-value oracle and return the existing
+    public `Float64` scalar result.
+  - Vulkan dense row-major zero-offset `Complex128`/`Complex64` tensors route
+    `matrix/singular-values` and spectral/nuclear `matrix/norm` through native
+    SPIR-V helpers behind `matrix-numerical-complex128` and
+    `matrix-numerical-complex64`. Tensor singular-value results stay
+    Vulkan-placed with component-width real dtype; norm reads back only the
+    public scalar result.
+  - Preserved boundary: full complex `matrix/svd` factor output remains
+    fail-closed because its contract requires complex `u`/`v` and
+    component-width real `s`. CUDA complex singular-values/norm/SVD and
+    complex eigen result contracts remain separate work.
+  - Validation:
+    - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
+      `csrc/tensor_vulkan_singular_values_complex128.comp` and
+      `csrc/tensor_vulkan_singular_values_complex64.comp`
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct Vulkan smokes: Complex128 singular-values
+      `("Float64" 5.0 2.0)`, Complex64 singular-values
+      `("Float32" 5.0 2.0)`, complex spectral/nuclear norm `(5.0 7.0)`
+    - host focused `advanced-collections-module` passed `1598/0`
+    - bounded-container focused `advanced-collections-module` passed `1581/0`
+    - primitive docs parity, Stage 3 source parity, and targeted diff hygiene
+      passed
+    - Review follow-up added a native guard for fixed-complex realified Jacobi
+      iteration-count overflow and tests for non-diagonal lazy, wide,
+      zero-size, spectral/nuclear, and guard paths.
+  - Current best next step: either full complex `matrix/svd` factor output,
+    CUDA complex singular-values/norm selectors, or complex eigen/eigenpair
+    result contracts, with no-hidden-fallback validation.
+
+- Completed Vulkan fixed-width complex matrix QR and Cholesky:
+  - Current implementation status: CPU `Complex128` and `Complex64`
+    `matrix/qr` and `matrix/cholesky` oracle support is landed. Complex QR
+    uses the Hermitian inner product and returns dtype-preserving `q`/`r`.
+    Complex Cholesky accepts Hermitian positive-definite inputs and returns
+    dtype-preserving lower factors with zero upper triangles.
+  - Vulkan dense row-major zero-offset `Complex128`/`Complex64` tensors route
+    `matrix/qr` and `matrix/cholesky` through native SPIR-V helpers behind
+    `matrix-numerical-complex128` and `matrix-numerical-complex64`.
+  - Added generated Vulkan complex QR/Cholesky shaders and SPIR-V C
+    embeddings, native helper exports, C3 externs/routing, and guarded
+    regression tests for CPU/Vulkan dtype/device/shape preservation,
+    Hermitian QR projection, Cholesky values, singular/non-Hermitian/non-HPD
+    diagnostics, no-LAPACK behavior, lazy Vulkan inputs, and fail-closed
+    storage-only paths.
+  - CPU fixed-complex QR and Cholesky tolerances now match the Vulkan shader
+    thresholds for near-rank-deficient QR and near-Hermitian Cholesky inputs.
+    Vulkan Cholesky diagnostics use symmetric/Hermitian positive-definite
+    wording while preserving `tensor/not-positive-definite`.
+  - Preserved boundary: the Vulkan complex numerical subset now covers
+    LU/determinant/solve/inverse/rank/direct-norm/QR/Cholesky. Complex
+    singular-value/SVD, spectral/nuclear complex norm selectors, complex eigen
+    routines, and CUDA fixed-width complex numerical matrix variants remain
+    separate operation families.
+  - Validation: complex QR/Cholesky shaders compiled with
+    `glslangValidator` and passed `spirv-val`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    CPU/Vulkan smokes for Complex128 and Complex64 QR/Cholesky; host focused
+    `advanced-collections-module` `1570 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module`
+    `1553 passed, 0 failed`; primitive docs parity; Stage 3 source parity;
+    targeted diff hygiene.
+
+- Completed Vulkan fixed-width complex matrix rank and direct norms:
+  - Current implementation status: CPU `Complex128` and `Complex64`
+    `matrix/rank` and direct `matrix/norm` oracle support is landed.
+    Complex rank uses magnitude-based pivoting and tolerance. Direct complex
+    norms use magnitudes for default/`'frobenius`, `'one`, `'infinity`, and
+    `'max`; complex spectral/nuclear selectors fail closed until complex
+    singular-value/SVD support lands.
+  - Vulkan dense row-major zero-offset `Complex128`/`Complex64` tensors route
+    `matrix/rank` and direct `matrix/norm` through native SPIR-V reducers
+    behind `matrix-numerical-complex128` and
+    `matrix-numerical-complex64`.
+  - Added generated Vulkan complex rank/norm shaders and SPIR-V C embeddings,
+    native helper exports, C3 externs/routing, and guarded regression tests
+    for CPU/Vulkan rank full-rank, deficient, tolerance, zero-tolerance, norm
+    selector, no-LAPACK, fail-closed storage-only, and complex spectral/nuclear
+    unsupported cases.
+  - Preserved boundary: the Vulkan complex numerical subset now covers
+    LU/determinant/solve/inverse/rank/direct-norm, but QR, Cholesky, complex
+    singular-value/SVD, spectral/nuclear complex norm selectors, and complex
+    eigen routines remain separate operation families. Do not infer them from
+    complex storage, complex map, complex contract, structural matrix
+    capability, or the broad numerical capability bits.
+  - Validation: complex rank/norm shaders compiled with `glslangValidator`
+    and passed `spirv-val`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CPU/Vulkan smokes for Complex128 and
+    Complex64 rank/norm plus spectral fail-closed behavior; host focused
+    `advanced-collections-module` `1540 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module`
+    `1523 passed, 0 failed`.
+
+- Completed Vulkan fixed-width complex matrix inverse:
+  - Current implementation status: CPU `Complex128` and `Complex64`
+    `matrix/inverse` oracle support is landed, and Vulkan dense row-major
+    zero-offset `Complex128`/`Complex64` tensors route through native
+    Gauss-Jordan inverse SPIR-V kernels behind
+    `matrix-numerical-complex128` and `matrix-numerical-complex64`.
+  - Added generated Vulkan complex inverse shaders and SPIR-V C embeddings,
+    native helper exports, C3 externs and routing, and guarded regression tests
+    for values, dtype, Vulkan placement, product identity, singular
+    diagnostics, and fail-closed unsupported numerical capability cases.
+  - Tensor-returning inverse operations preserve fixed-width complex dtype and
+    Vulkan placement for Vulkan inputs; CPU inspection still requires explicit
+    `to-device 'cpu`. Singular matrices raise `tensor/singular-matrix`;
+    unsupported layouts/devices/dtypes fail closed without hidden CPU fallback
+    or lowering through real tensors.
+  - Preserved boundary at this checkpoint: the Vulkan complex numerical subset
+    covered LU/determinant/solve/inverse. A later rank/direct-norm checkpoint
+    extends that subset; QR, Cholesky, complex singular-value/SVD,
+    spectral/nuclear complex norm selectors, and complex eigen routines remain
+    separate operation families. Do not infer them from complex storage,
+    complex map, complex contract, structural matrix capability, or the broad
+    numerical capability bits.
+  - Validation: complex inverse shaders compiled with `glslangValidator` and
+    passed `spirv-val`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CPU/Vulkan smokes for Complex128 and
+    Complex64 inverse plus singular diagnostics; host focused
+    `advanced-collections-module` `1496 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module`
+    `1479 passed, 0 failed`; primitive docs parity, Stage 3 source parity,
+    and targeted diff hygiene passed.
+
+- Completed CUDA fixed-width complex structural matrix kernels:
+  - Current implementation status: CUDA dense row-major zero-offset
+    `Complex128` and `Complex64` Tensor `matrix/transpose`,
+    `matrix/diagonal`, `matrix/diagonal-matrix`, and `matrix/trace` support is
+    landed behind explicit `matrix-structural-complex128` and
+    `matrix-structural-complex64` operation capability bits.
+  - Added generated CUDA C/PTX kernels, native helper exports, C3 externs and
+    routing, `tensor-backends` capability reporting, and guarded regression
+    tests that exercise positive CUDA results when the helper resolves and
+    preserve fail-closed behavior otherwise.
+  - Tensor-returning structural operations compute on CUDA, preserve
+    fixed-width complex dtype and CUDA placement, and require explicit
+    `to-device 'cpu` for CPU inspection. `matrix/trace` computes on CUDA and
+    reads back only the fixed-width complex scalar required by the public
+    scalar return contract.
+  - Preserved boundary at this checkpoint: remaining fixed-width complex
+    numerical matrix families beyond the landed Vulkan
+    LU/determinant/solve/inverse lane remained separate operation families.
+    The later rank/direct-norm checkpoint extends that subset. Do not infer
+    QR/Cholesky, complex singular-value/SVD, spectral/nuclear complex norm, or
+    complex eigenvector support from complex storage, complex map, complex
+    contract, or CUDA/Vulkan structural matrix capability bits.
+  - Validation: CUDA PTX generation with `nvcc` and `ptxas`; CUDA helper
+    compile and exported-symbol checks; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CUDA smokes for Complex128 transpose,
+    Complex64 diagonal-matrix, and Complex128 trace; host focused
+    `advanced-collections-module` `1482 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module`
+    `1465 passed, 0 failed`.
+
+- Completed Vulkan transpose-view materialization and fixed-width complex
+  LU/determinant/solve numerical matrix checkpoint:
+  - Direct rank-2 `matrix/transpose-view` values over dense zero-offset Vulkan
+    storage now explicitly materialize to dense Vulkan tensors through
+    `realize`, `to-device 'vulkan`, and `to-device 'cpu` copyback. This is not
+    general strided/view-backed Vulkan execution; arbitrary views still require
+    a separate offset/stride/backing-extent ABI and validation.
+  - Historical checkpoint: CPU `matrix/lu`, `matrix/determinant`, and
+    `matrix/solve` support `Complex128` and `Complex64` as the oracle family.
+    Vulkan dense row-major zero-offset `Complex128`/`Complex64` tensors support
+    the same public operations behind `matrix-numerical-complex128` and
+    `matrix-numerical-complex64`. The later inverse entry above extends this
+    numerical subset to `matrix/inverse`.
+  - `matrix/lu` keeps fixed-width complex `lu` factors on Vulkan and returns
+    host `pivots`/`swap-count`; `matrix/determinant` computes on Vulkan and
+    reads back only the public scalar; `matrix/solve` returns a Vulkan-placed
+    Tensor preserving RHS rank and dtype. Singular systems raise
+    `tensor/singular-matrix`; unsupported layouts, devices, and dtypes fail
+    closed without hidden CPU fallback.
+  - Validation: complex LU/determinant/solve shaders compiled with
+    `glslangValidator` and passed `spirv-val`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CPU/Vulkan smokes; host focused
+    `advanced-collections-module` `1475 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module`
+    `1458 passed, 0 failed`; targeted diff hygiene passed.
+  - Historical next-step note, superseded by the inverse entry above: keep
+    broader view-aware Vulkan kernels and remaining CUDA/Vulkan complex
+    numerical families as explicit future operation slices. Do not infer them
+    from this materialization/numerical matrix checkpoint.
+
+- Superseded documentation/backlog checkpoint for active Vulkan lanes:
+  - Updated the TODO, active plan, session report, Vulkan roadmap,
+    dtype/layout policy, fixed-width complex contract note, plan index, and
+    tensor area status for two then-implementation-in-progress lanes:
+    Vulkan transpose-view materialization and Vulkan fixed-width complex
+    `matrix/lu` / `matrix/determinant` / `matrix/solve`.
+  - Vulkan transpose-view materialization is recorded as a narrower boundary
+    than arbitrary view-aware GPU execution: it may explicitly materialize a
+    rank-2 transpose view into dense Vulkan storage at placement/realization
+    boundaries. The runtime lane above has since validated that explicit
+    materialization boundary, but it does not make all strided/view-backed
+    Vulkan kernels eligible.
+  - Vulkan fixed-width complex LU/determinant/solve later landed with
+    capability reporting, shader/helper status mapping, public routing, CPU
+    oracle parity, singular diagnostics, placement/copyback checks,
+    no-hidden-CPU-fallback checks, and host/container validation recorded in
+    the current entry above.
+  - This was a docs-only pass. No source/runtime/tests/C helpers were edited,
+    and runtime behavior was not validated in this pass.
+
+- Completed Vulkan fixed-width complex structural matrix kernels:
+  - Current implementation status: Vulkan dense row-major `Complex128` and
+    `Complex64` Tensor `matrix/transpose`, `matrix/diagonal`,
+    `matrix/diagonal-matrix`, and `matrix/trace` support is landed behind
+    explicit `matrix-structural-complex128` and
+    `matrix-structural-complex64` operation capability bits.
+  - Tensor-returning structural operations compute on Vulkan, preserve
+    fixed-width complex dtype and placement, and require explicit
+    `to-device 'cpu` for CPU inspection. `matrix/trace` computes on Vulkan and
+    reads back only the fixed-width complex scalar required by the public scalar
+    return contract.
+  - Preserved boundary at this checkpoint: CUDA structural complex matrix
+    kernels were still separate and later landed in the current CUDA
+    structural entry above. CUDA/Vulkan complex numerical matrix kernels remain
+    separate operation families and still fail closed unless a specific matrix
+    operation has its own helper/shader/PTX ABI, backend contract/capability,
+    status/error contract, and validation coverage.
+  - Negative constraint: do not infer structural or numerical matrix support
+    from complex storage, complex elementwise `map`, or complex `contract`, and
+    do not lower complex backend matrix kernels through `Float64`, `Float32`,
+    pointer-backed `BigComplex`, or hidden CPU fallback.
+  - Validation: eight complex Vulkan structural shaders compiled with
+    `glslangValidator` and passed `spirv-val`; Vulkan helper syntax check;
+    `./scripts/build_omni_chelpers.sh`; `c3c build`; host focused
+    `advanced-collections-module` `1449 passed, 0 failed`; bounded-container
+    focused `advanced-collections-module` `1432 passed, 0 failed`; primitive
+    docs parity, Stage 3 source parity, and targeted diff hygiene passed.
+  - Current best next step: either add a CUDA structural matrix helper family
+    for `matrix/transpose`, `matrix/diagonal`, `matrix/diagonal-matrix`, and
+    `matrix/trace`, or choose a named complex numerical matrix family with
+    explicit operation ABIs/status contracts.
+
+- Completed CUDA/Vulkan fixed-width complex contract:
+  - Current implementation status: CUDA and Vulkan dense row-major
+    `Complex128` and `Complex64` Tensor `contract` support is landed behind
+    explicit `contract-complex128` and `contract-complex64` operation
+    capability bits.
+  - CUDA routes supported single-axis rank-1/rank-2 fixed-width complex
+    contractions through cuBLAS `Zgemm`/`Cgemm` and `Zgemv`/`Cgemv` without
+    conjugation. Vulkan routes generic dense row-major rank-N complex
+    contractions through native SPIR-V shaders.
+  - The shipped contract computes supported contractions on the selected
+    device, preserves fixed-width complex dtype and placement, follows public
+    Tensor paired-axis / explicit left-right axis-list semantics, and requires
+    explicit `to-device 'cpu` for CPU inspection.
+  - Superseded stale wording that CUDA/Vulkan fixed-width complex `contract`
+    remains fail-closed. Preserved boundary: fixed-width complex matrix
+    kernels remain separate operation families and still fail closed unless a
+    specific matrix operation has its own backend contract/capability. Complex
+    matrix support is not implied by complex storage, complex elementwise
+    `map`, or complex `contract`.
+  - Negative constraint: do not lower complex backend contractions or future
+    complex matrix kernels through `Float64`, `Float32`, pointer-backed
+    `BigComplex`, or hidden CPU fallback.
+  - Validation: complex Vulkan shaders compiled with `glslangValidator` and
+    passed `spirv-val`; C helper syntax checks for CUDA and Vulkan;
+    `./scripts/build_omni_chelpers.sh`; `c3c build`; host focused
+    `advanced-collections-module` `1438 passed, 0 failed`.
+  - Current best next step: split remaining complex GPU work into explicit
+    matrix-operation slices, starting with a structural matrix family or
+    another named operation family, rather than keeping a combined
+    contract/matrix backlog item.
+
+- Completed CUDA fixed-width complex elementwise map:
+  - Added generated CUDA C/PTX-backed `Complex128` and `Complex64` binary,
+    unary, and component-to-real kernels plus status-bearing native launchers.
+  - Routed CUDA fixed-width complex `map` through explicit capability bits
+    (`elementwise-map-complex128` and `elementwise-map-complex64`) so storage
+    capability no longer implies operation capability. Runtime C3 routing now
+    fails closed as `tensor/backend-unsupported` when the optional complex map
+    helper is unavailable.
+  - Supported CUDA complex map operations are binary `+`, `-`, `*`, `/`;
+    unary `abs`, unary `-`, identity/`+`, `real-part`, `imag-part`, and
+    `conjugate`. Generic map preserves complex dtype, including
+    zero-imaginary component/magnitude results where applicable.
+  - Direct CUDA complex `real-part`, `imag-part`, and `abs` return
+    component-width real CUDA tensors (`Float64` for `Complex128`, `Float32`
+    for `Complex64`); direct unary `-` and `conjugate` preserve complex dtype.
+  - CUDA complex division by zero maps through native status to
+    `tensor/domain-error`; nonrepresentable complex results map to invalid
+    argument before result exposure. Empty CUDA complex unary/component maps
+    accept null zero-byte device handles.
+  - Preserved boundary: CUDA/Vulkan fixed-width complex `contract` and matrix
+    kernels remain fail-closed and must get separate helper ABIs/capability
+    bits before being claimed.
+  - Validation: CUDA PTX generation and `ptxas` for
+    `csrc/tensor_cuda_complex_map.cu`; C helper syntax check;
+    `./scripts/build_omni_chelpers.sh`; `c3c build`; host focused
+    `advanced-collections-module` `1433 passed, 0 failed`; bounded container
+    focused `advanced-collections-module` `1416 passed, 0 failed`; primitive
+    docs parity; Stage 3 source parity; targeted diff check.
+
+- Completed Vulkan fixed-width complex elementwise map:
+  - Added dedicated Vulkan `Complex128` and `Complex64` binary, unary, and
+    component-to-real shaders plus checked-in SPIR-V C sources for dense
+    row-major tensors.
+  - Routed Vulkan complex `map` for `+`, `-`, `*`, `/`, unary `+`, `abs`,
+    unary `-`, `real-part`, `imag-part`, and `conjugate` through explicit
+    helper entrypoints. Tensor/scalar, scalar/tensor, tensor/tensor, and
+    right-aligned singleton-axis broadcast forms preserve Vulkan placement.
+  - Direct Vulkan complex `abs`, `real-part`, and `imag-part` now return
+    component-width real Vulkan tensors; direct unary minus and `conjugate`
+    preserve the complex dtype and placement.
+  - `tensor-backends` now reports Vulkan `elementwise-map-complex128` and
+    `elementwise-map-complex64` as operation capability bits independently
+    from raw `complex128`/`complex64` storage bits. Historical note:
+    CUDA complex map was still false at this checkpoint, but this is
+    superseded by the later CUDA complex map checkpoint below.
+  - Division uses a shader status buffer: zero denominators map to structured
+    `tensor/domain-error`, and non-representable complex results fail before
+    exposing output.
+  - Historical negative memory, now partially superseded: do not infer CUDA
+    complex map from storage bits or from the Vulkan complex helper. The later
+    CUDA checkpoint landed generated PTX plus status ABI; complex contract and
+    matrix kernels remain separate operation families.
+  - Validation: six Vulkan complex shaders compiled with `glslangValidator`
+    and passed `spirv-val`; helper rebuild passed; `c3c build` passed; host
+    focused `advanced-collections-module` passed `1415 passed, 0 failed`;
+    bounded-container focused `advanced-collections-module` passed
+    `1398 passed, 0 failed`; primitive docs parity passed; targeted diff
+    hygiene passed.
+
+- Completed TENSOR-100F read-only Tensor transpose views:
+  - Added `TENSOR_PAYLOAD_VIEW` and `TensorVal.view_source`.
+  - Added public `matrix/transpose-view` for CPU rank-2 Tensor sources. It
+    swaps logical shape/strides, borrows source storage, keeps the source as an
+    ownership edge, is immutable, and reports `tensor-layout` payload `view`,
+    owner `view-source`, `owns-storage` false, and write-policy
+    `read-only-view`.
+  - CPU `ref`, flat `(Array view)`, flat `(List view)`, and CPU `realize`
+    materialization observe transposed logical indexing, including views over
+    materialized lazy sources that cross return/closure boundaries.
+  - Boundary copy, ESCAPE promotion, graph audit, provenance, and JIT temp-lane
+    walkers now traverse `view_source`.
+  - Existing `matrix/transpose` remains materializing for concrete tensors but
+    composes structurally when the input is already a transpose view.
+  - Writes through the view fail closed. CUDA/Vulkan placement and
+    device-destination `realize` reject view payloads before hidden
+    materialization, including dense double-transpose views; post-realization
+    backend copies require concrete zero-offset dense row-major storage.
+  - This first public view contract is CPU-only. Vulkan/device views remain
+    deferred until a helper ABI explicitly accepts offset, stride, backing
+    extent, alias, and write-policy metadata.
+  - Negative memory: do not treat `matrix/transpose-view` as arbitrary
+    `as-strided`/slice/diagonal view support or as GPU view execution support.
+    The shipped operation is a CPU-readable read-only transpose view with
+    fail-closed backend copy/kernel behavior.
+  - Validation: `c3c build --obj-out obj` passed; direct smokes passed for
+    `tensor-layout` view metadata, CPU `ref`, `(Array view)`, `(List view)`,
+    CPU `realize`, double-transpose structural composition, return/closure
+    capture, and read-only destination rejection; host focused
+    `advanced-collections-module` passed `pass=1343 fail=0`;
+    bounded-container focused `advanced-collections-module` passed
+    `pass=1326 fail=0`; bounded-container `memory-lifetime-smoke` passed
+    `pass=229 fail=0`.
+
+- Completed TENSOR-100F Tensor layout metadata:
+  - Added storage-offset and backing-extent metadata to `TensorVal`
+    (`storage_offset`, `storage_element_count`, and `storage_byte_len`) and
+    initialized the fields for newly allocated concrete Tensor payloads.
+  - Lazy expression payloads now expose zero storage extent until realization,
+    while retaining logical `element_count` and `byte_len` metadata.
+  - Concrete Tensor clones reset to compact storage metadata, and device
+    payload clone eligibility now fails closed through zero-offset device
+    storage validation.
+  - Tightened Tensor metadata/storage validation so concrete backing byte
+    extent must cover `storage_element_count * dtype_size`, and CUDA/Vulkan
+    device helpers reject nonzero storage offsets until offset-aware kernels
+    exist.
+  - CPU/device copy paths now require zero-offset dense row-major storage
+    before raw contiguous copies.
+  - Added public `tensor-layout`, registered it for interpreter and AOT lookup,
+    and documented its metadata dictionary fields: `dtype`, `device`,
+    `payload`, `layout`, `dense-row-major`, `shape`, `strides`, `rank`,
+    `element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+    `storage-bytes`, `is-view`, `owns-storage`, `owner`, and `write-policy`.
+  - At this metadata-only checkpoint, value domains were payload
+    `concrete`/`map`/`contract`, layout `dense-row-major`/`strided`, owner
+    `self`/`view-source`/`expression`, and write-policy
+    `mutable`/`immutable`/`mutable-view`/`read-only-view`. The later
+    transpose-view documentation checkpoint above adds payload `view`.
+  - Added focused advanced stdlib assertions for CPU dense tensors, rank-0
+    tensors, zero-size tensors, lazy map payload metadata, and CUDA/Vulkan
+    copied dense metadata when those backends are available.
+  - Preserved boundary at that checkpoint: this slice was metadata-only and
+    did not ship a public view constructor, recursive/view-backed GPU kernels,
+    or relaxed CUDA/Vulkan dense row-major preconditions. The later
+    `matrix/transpose-view` slice adds a CPU-readable view constructor, but
+    dense GPU kernels still require zero-offset dense row-major storage.
+  - Negative memory: do not treat `tensor-layout` or `matrix/transpose-view`
+    as GPU view execution support, and do not pass offset/stride metadata into
+    GPU helpers until a view-aware helper ABI plus CPU oracle and alias/bounds
+    tests exist.
+  - Validation: `c3c build --obj-out obj` passed; direct `tensor-layout`
+    smokes passed for dense, rank-0, lazy map, and non-Tensor fail-closed
+    behavior; host focused `advanced-collections-module` passed
+    `pass=1332 fail=0`; bounded-container focused `advanced-collections-module`
+    passed `pass=1315 fail=0`; bounded-container `memory-lifetime-smoke`
+    passed `pass=229 fail=0`; primitive docs parity, Stage 3 source parity,
+    and targeted diff hygiene passed.
+
+- Completed TENSOR-100F Vulkan dtype-changing Tensor rounding:
+  - Added dedicated Vulkan `Float64` and `Float32` rounding shaders plus
+    checked-in SPIR-V C sources for dense row-major `floor`, `ceiling`,
+    `round`, and `truncate` into temporary signed 64-bit integer storage.
+  - Vulkan backend probing now records `shaderInt64`, enables it during device
+    creation when available, and reports a dedicated `rounding-big-integer`
+    capability. Generic Vulkan `available`/`float64`/`float32` remains
+    insufficient proof of dtype-changing rounding support.
+  - Direct Tensor rounding that touches Vulkan now uses a status-bearing helper
+    and materializes CPU `Tensor BigInteger` output after checked host copyback.
+    Vulkan BigInteger storage is not claimed.
+  - Advanced stdlib module coverage now validates Vulkan `Float64`/`Float32`
+    `floor`, `ceiling`, `round`, and `truncate` when
+    `rounding-big-integer` is true, while keeping fail-closed assertions for
+    backends without that key.
+  - Negative memory: do not add `floor`, `ceiling`, `round`, or `truncate` to
+    same-dtype Vulkan float unary/map opcode tables. Tensor rounding is
+    dtype-changing and must go through the `rounding-big-integer` result path.
+  - Validation: Vulkan shader `glslangValidator` and `spirv-val` passed for
+    both rounding shaders; helper rebuild passed; `c3c build --obj-out obj`
+    passed; direct Vulkan smokes returned CPU `Tensor BigInteger` results for
+    `Float64` floor/ceiling and `Float32` round/truncate; overflow reports
+    `floor: tensor integer result out of supported range`; `map floor` remains
+    Vulkan backend-unsupported; host focused advanced collections
+    `pass=1326 fail=0`; bounded-container focused advanced collections
+    `pass=1309 fail=0`; primitive docs parity, Stage 3 source parity, and
+    targeted diff hygiene all passed.
+
+- Completed TENSOR-100F CUDA dtype-changing Tensor rounding:
+  - Added a dedicated CUDA rounding kernel source/PTX include plus helper
+    loader/launcher entrypoints that compute dense row-major `Float64` and
+    `Float32` `floor`, `ceiling`, `round`, and `truncate` on CUDA into
+    temporary fixed-width integer device storage, propagate status, and copy
+    checked `int64` results back to host.
+  - Routed direct Tensor rounding primitives that touch CUDA through the new
+    helper and materialize native CPU `Tensor BigInteger` results. Current
+    `BigInteger` Tensor storage remains CPU pointer-owned, so the CUDA result
+    contract is compute-on-CUDA plus explicit integer copyback, not
+    CUDA-resident BigInteger storage.
+  - Added the CUDA backend capability key `rounding-big-integer`; focused
+    tests gate on that capability, require `BigInteger` dtype, and validate
+    `Float64`/`Float32` values after explicit `to-device 'cpu` copyback.
+  - Negative memory: do not add `floor`, `ceiling`, `round`, or `truncate` to
+    the same-dtype CUDA unary map opcode table. Tensor rounding is
+    dtype-changing, and generic CUDA availability is not enough to prove this
+    result path.
+  - Validation: CUDA direct smokes passed for `floor`, `ceiling`, `round`, and
+    `truncate`; CUDA non-finite status returns the Tensor integer range
+    diagnostic; `map floor` remains CUDA backend-unsupported; helper rebuild,
+    `c3c build --obj-out obj`, host focused advanced collections
+    `pass=1322 fail=0`, bounded-container focused advanced collections
+    `pass=1305 fail=0`, docs parity, Stage 3 source parity, and targeted diff
+    hygiene all passed.
+
+- Superseded TENSOR-100F CUDA dtype-changing Tensor rounding test/docs
+  preparation:
+  - Added focused advanced stdlib module assertions for direct `floor`,
+    `ceiling`, `round`, and `truncate` on dense row-major CUDA-placed
+    `Float64` and `Float32` Tensor inputs, gated by the CUDA backend
+    `rounding-big-integer` capability bit.
+  - The staged assertions require `Tensor BigInteger` dtype and verify values
+    after explicit `to-device 'cpu` copyback with `ref`, `Array`, and `List`.
+  - This preparation record is superseded by the runtime landing above. Do not
+    implement rounding as same-dtype CUDA float map opcodes.
+  - Negative-memory note: do not gate these tests on ordinary CUDA
+    `available`/`float64`/`float32`; a local focused run with those gates
+    enabled failed because CUDA visibility does not prove the dtype-changing
+    `Tensor BigInteger` result path exists. Gate on a dedicated
+    `rounding-big-integer` capability bit or equivalent runtime proof.
+  - Validation for this preparation checkpoint: `c3c build --obj-out obj`
+    passed with existing deprecation warnings; host focused
+    `advanced-collections-module` passed `pass=1322 fail=0`; targeted
+    `git diff --check` passed.
+
+- TENSOR-100F Vulkan `Float64` `stats/normal-quantile` checkpoint:
+  - Dense row-major Vulkan `Float64` Tensor `stats/normal-quantile` now routes
+    through a dedicated status-bearing inverse-CDF shader/helper. Public direct
+    Tensor unary math and `map stats/normal-quantile` preserve Vulkan placement
+    and `Float64` dtype for valid probabilities.
+  - The shader avoids unavailable Vulkan 1.0 double `log` by inverting the
+    landed Float64 normal-CDF polynomial approximation with bounded bisection.
+    Status semantics match CUDA/Vulkan Float32: status `1` reports finite
+    probability outside `0 < p < 1`, status `2` reports non-finite input, and
+    nonzero status destroys the output before surfacing a result.
+  - Added advanced stdlib module coverage for direct and mapped values at
+    `0.025`, `0.5`, and `0.975`, probability `0`/`1` domain diagnostics, and
+    non-finite status priority. The implementation does not downcast Float64 to
+    Float32 and does not route through hidden CPU fallback.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_normal_quantile_f64.comp -o
+    /tmp/omni_tensor_vulkan_normal_quantile_f64.spv`; `spirv-val --target-env
+    vulkan1.0 /tmp/omni_tensor_vulkan_normal_quantile_f64.spv`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    Vulkan direct/map Float64 quantile smokes plus domain/non-finite smokes;
+    host focused `advanced-collections-module` `pass=1317 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1300 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+
+- TENSOR-100F Vulkan `Float64` `stats/normal-cdf` checkpoint:
+  - Dense row-major Vulkan `Float64` Tensor `stats/normal-cdf` now routes
+    through fixed op id `19` in the existing two-buffer Float64 unary
+    shader/helper. Public direct Tensor unary math and
+    `map stats/normal-cdf` preserve Vulkan placement and `Float64` dtype.
+  - The shader uses a bounded piecewise degree-7 polynomial approximation over
+    `|x| < 8`, applies CDF symmetry for negative inputs, and saturates outside
+    that range. The approximation was sampled against the CPU double oracle
+    with maximum absolute error below `6e-8`; checked-in tests use `1e-6`
+    tolerance around `-1.0`, `0.0`, and `1.0`.
+  - Preserved boundary: Vulkan `Float64` `stats/normal-quantile` remains
+    fail-closed pending a separate double inverse-CDF/status policy. Do not
+    infer Float64 quantile support from CDF support, do not downcast Float64
+    tensors to Float32, and do not route Vulkan distribution operands through
+    hidden CPU fallback.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f64.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`; `spirv-val --target-env
+    vulkan1.0 /tmp/omni_tensor_vulkan_map_unary_f64.spv`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    Vulkan direct/map Float64 CDF smokes; Float64 quantile fail-closed smoke;
+    host focused `advanced-collections-module` `pass=1313 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1300 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+
+- TENSOR-100F Vulkan `Float32` `stats/normal-quantile` checkpoint:
+  - Dense row-major Vulkan `Float32` Tensor `stats/normal-quantile` now routes
+    through a dedicated status-bearing inverse-CDF shader/helper. The shader
+    uses a three-binding ABI: input buffer, output buffer, and a `uint32`
+    status buffer. Public direct Tensor unary math and
+    `map stats/normal-quantile` preserve Vulkan placement and `Float32` dtype
+    for valid probabilities.
+  - Status semantics match the CUDA probability-domain ABI: raw status `0`
+    means success, `1` means finite probability outside `0 < p < 1`, and `2`
+    means non-finite probability. The shader uses `atomicMax`, so non-finite
+    status takes priority over a domain endpoint in mixed invalid tensors.
+    Nonzero status destroys the output buffer and maps to scalar-compatible
+    diagnostics before a result Tensor is exposed.
+  - Preserved boundary: Vulkan `Float64` `stats/normal-quantile` remains
+    fail-closed pending a separate double inverse-CDF/status policy. Do not
+    assign op `20` to the existing statusless Vulkan unary helper, downcast
+    Float64 to Float32, or route invalid/unsupported inputs through CPU.
+  - Test maintenance: the stale `map vulkan unsupported callable fails closed`
+    assertion now uses `test_error_contains`, matching the lazy-map fail-closed
+    contract. Deferred follow-up is recorded in `TODO.md` for the separate
+    `handle` interaction where wrapping unsupported Vulkan `map floor` can
+    report `stack overflow in handle body`.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_normal_quantile_f32.comp -o
+    /tmp/omni_tensor_vulkan_normal_quantile_f32.spv`; `spirv-val
+    --target-env vulkan1.0 /tmp/omni_tensor_vulkan_normal_quantile_f32.spv`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    Vulkan valid/domain/non-finite/mixed-invalid and Float64 fail-closed
+    smokes; host focused `advanced-collections-module` `pass=1311 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1298 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+
+- TENSOR-100F CUDA `stats/normal-quantile` probability-status checkpoint:
+  - CUDA dense row-major `Float64`/`Float32` Tensor
+    `stats/normal-quantile` now routes through generated CUDA C/libdevice PTX
+    scientific unary op id `20`, using libdevice `normcdfinv` after
+    probability validation.
+  - The CUDA scientific unary helper now has a typed device `uint32` status
+    word for data-dependent distribution math. Status `0` means success,
+    status `1` means probability outside `0 < p < 1`, and status `2` means
+    non-finite input. The raw device word remains `0` on success, and higher
+    status wins for mixed invalid tensors so non-finite input takes priority
+    over a domain endpoint. Nonzero status maps to the scalar-compatible
+    diagnostic before an output Tensor is exposed.
+  - Public direct Tensor unary math and `map stats/normal-quantile` preserve
+    CUDA placement and `Float64`/`Float32` dtype for eligible dense row-major
+    CUDA tensors. Unsupported callables, mixed CPU/CUDA operands, unsupported
+    layouts, and invalid probability inputs fail closed without CPU fallback.
+  - Supersedes the earlier CUDA/CDF checkpoint statement that
+    `stats/normal-quantile` was scalar-only or CUDA fail-closed. Superseded for
+    Vulkan Float32 by the later Vulkan quantile checkpoint above. Vulkan
+    Float64 quantile remains fail-closed until a separate double inverse-CDF
+    status policy lands.
+  - Validation passed: `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_scientific_unary.cu -o
+    /tmp/omni_tensor_cuda_scientific_unary.ptx`;
+    `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75
+    /tmp/omni_tensor_cuda_scientific_unary.ptx -o
+    /tmp/omni_tensor_cuda_scientific_unary.cubin`; helper C compile;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    CUDA valid/invalid probability smokes including non-finite and mixed
+    invalid priority; direct Vulkan fail-closed smoke; host focused
+    `advanced-collections-module` `pass=1307 fail=0`; bounded container
+    focused `advanced-collections-module` `pass=1294 fail=0` with
+    `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+
+- TENSOR-100F Vulkan `map` / `minmax` preflight hardening checkpoint:
+  - Vulkan public `map` lowering and lazy map realization now perform
+    callable, recursive device-placement, dtype-family, and exact dtype
+    preflight before resolving concrete Tensor storage. Mixed CPU/Vulkan lazy
+    operands fail with `map: Vulkan operands must remain Vulkan-placed` before
+    CPU lazy materialization can run.
+  - Direct Tensor `min` / `max` now applies the same recursive Vulkan
+    placement preflight before resolving operands, so map-backed min/max
+    kernels do not materialize CPU lazy operands before rejecting mixed
+    CPU/Vulkan execution.
+  - Preserved boundary: no hidden CPU/GPU transfers, no mixed-device execution
+    support, no generic Vulkan unary mode-3 revival, and no new Vulkan callable
+    coverage. Unsupported Vulkan callables remain fail-closed.
+  - Validation passed: `c3c build --obj-out obj`; direct Vulkan smokes for
+    mixed CPU/Vulkan lazy `map`, unsupported binary Vulkan callable preflight,
+    unsupported unary callable preflight, and mixed CPU/Vulkan lazy `min`;
+    bounded-container focused `advanced-collections-module` `pass=1287 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; targeted
+    `git diff --check`.
+
+- TENSOR-100F Tensor `stats/normal-quantile` CPU and Vulkan `Float32`
+  `stats/normal-cdf` checkpoint:
+  - CPU Tensor `stats/normal-quantile` now applies elementwise through the
+    checked Boost.Math wrapper. `Float64` and `Float32` tensors preserve float
+    dtype, `BigFloat` preserves `BigFloat`, `BigInteger` inputs convert through
+    the Float64 probability path and therefore fail for non-empty integer
+    probabilities outside `0 < p < 1`, and `BigComplex` remains unsupported.
+    CPU Tensor quantile fails the whole operation on the first invalid
+    probability instead of producing sentinel values.
+  - Superseded for CUDA by the later CUDA probability-status checkpoint above
+    and for Vulkan Float32 by the later Vulkan quantile checkpoint above:
+    CUDA `stats/normal-quantile` is now shipped for eligible dense row-major
+    `Float64`/`Float32` tensors, and Vulkan `Float32`
+    `stats/normal-quantile` is shipped through a separate status-bearing
+    helper. Vulkan Float64 quantile remains fail-closed pending a double
+    inverse-CDF/status policy.
+  - Vulkan dense row-major `Float32` `stats/normal-cdf` now routes through the
+    existing Vulkan unary helper as fixed op id `19`, matching the CUDA
+    distribution opcode. The shader uses a same-dtype Float32 erf-based
+    approximation and preserves Vulkan placement for public `map` and direct
+    Tensor unary math. Vulkan `Float64` `stats/normal-cdf` remains fail-closed
+    because the current Vulkan 1.0 GLSL path still lacks double `erf`/`erfc`
+    and double transcendental support.
+  - CUDA construction-time fail-closed map diagnostics are now asserted from
+    the C test harness with `test_error_contains` for the affected cases,
+    avoiding the known Lisp `handle` stack-overflow path around immediate
+    CUDA map construction errors.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f32.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f32.spv`; `spirv-val --target-env
+    vulkan1.0 /tmp/omni_tensor_vulkan_map_unary_f32.spv`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; direct
+    CPU/CUDA/Vulkan smokes; host focused `advanced-collections-module`
+    `pass=1296 fail=0`; bounded-container focused
+    `advanced-collections-module` `pass=1283 fail=0` with
+    `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; primitive docs
+    parity; Stage 3 source parity; targeted `git diff --check`.
+
+- TENSOR-100F Tensor `stats/normal-cdf` CUDA scientific opcode checkpoint:
+  - CPU Tensor `stats/normal-cdf` now applies elementwise. `Float64` and
+    `Float32` tensors preserve float dtype, `BigInteger` tensors return
+    `Float64`, `BigFloat` tensors preserve `BigFloat`, lazy CPU Tensor sources
+    realize through the shared Tensor unary math path, and `BigComplex` tensors
+    fail closed because no complex distribution Tensor contract is shipped.
+  - CUDA scientific unary map/direct math now recognizes fixed op id `19` for
+    `stats/normal-cdf`, extending the generated CUDA C/libdevice PTX family
+    from `5..18` to `5..19`.
+  - Public `map stats/normal-cdf`, direct Tensor `stats/normal-cdf`, lazy CUDA
+    map realization, and destination-form `realize` now preserve CUDA placement
+    for eligible dense row-major `Float64`/`Float32` CUDA tensors when
+    `scientific-map-float64` / `scientific-map-float32` are available.
+  - Direct CUDA `map` now rejects unsupported CUDA callables and mixed
+    CPU/CUDA operands before returning a lazy Tensor expression, preserving the
+    existing payload diagnostics and no-hidden-materialization contract.
+  - Preserved boundary: `stats/normal-cdf` is a fixed recognized opcode, not
+    arbitrary GPU callable support. Vulkan remains unchanged and fail-closed
+    for `stats/normal-cdf`. Superseded for CUDA by the later probability-status
+    checkpoint above: eligible CUDA Tensor `stats/normal-quantile` is no longer
+    scalar-only, while Vulkan quantile still needs a Tensor probability-domain
+    and GPU error/status contract.
+  - Helper hardening: restored the runtime CUDA Driver API resolver in
+    `csrc/tensor_cuda_helpers.c`, so direct `c3c build` links the helper object
+    and CUDA map modules load through `libcuda` symbols instead of depending on
+    stale helper archive state.
+  - Validation passed: `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_scientific_unary.cu -o
+    /tmp/omni_tensor_cuda_scientific_unary.ptx`;
+    `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75
+    /tmp/omni_tensor_cuda_scientific_unary.ptx -o
+    /tmp/omni_tensor_cuda_scientific_unary.cubin`; `cc -O2 -fPIC
+    -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o
+    /tmp/tensor_cuda_helpers.o`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CPU/CUDA/Vulkan-boundary smokes; host
+    focused `advanced-collections-module` `pass=1282 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1269 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; primitive
+    docs parity; Stage 3 source parity; targeted `git diff --check`.
+
+- TENSOR-100F Tensor `math/erf` / `math/erfc` CUDA scientific opcode checkpoint:
+  - CPU Tensor `math/erf` and `math/erfc` now apply elementwise. `Float64` and
+    `Float32` tensors preserve float dtype, `BigInteger` tensors return
+    `Float64`, `BigFloat` tensors preserve `BigFloat`, and `BigComplex` tensors
+    fail closed because no complex error-function Tensor contract is shipped.
+  - CUDA scientific unary map/direct math now recognizes fixed op ids `17` and
+    `18` for `math/erf` and `math/erfc`, extending the generated CUDA
+    C/libdevice PTX family from `5..16` to `5..18`.
+  - Public `map math/erf`, `map math/erfc`, direct Tensor `math/erf` /
+    `math/erfc`, lazy CUDA map realization, and destination-form `realize` now
+    preserve CUDA placement for eligible dense row-major `Float64`/`Float32`
+    CUDA tensors when `scientific-map-float64` / `scientific-map-float32` are
+    available.
+  - Preserved boundary: `math/erf` and `math/erfc` are fixed recognized opcodes,
+    not arbitrary GPU callable support. Vulkan remains unchanged and fail-closed
+    for these callables. Tensor rounding remains a dtype-changing
+    `Tensor BigInteger` contract and must not be added to CUDA same-dtype map
+    opcodes without a matching result-dtype path.
+  - Helper hardening: restored the runtime CUDA library resolver in
+    `csrc/tensor_cuda_helpers.c`, so direct `c3c build` links the C helper object
+    instead of relying on stale helper archive state.
+  - Validation passed: `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_scientific_unary.cu -o
+    /tmp/omni_tensor_cuda_scientific_unary.ptx`;
+    `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75
+    /tmp/omni_tensor_cuda_scientific_unary.ptx -o
+    /tmp/omni_tensor_cuda_scientific_unary.cubin`; `cc -O2 -fPIC
+    -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o
+    /tmp/tensor_cuda_helpers.o`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; direct CPU/CUDA/Vulkan-boundary smokes; host
+    focused `advanced-collections-module` `pass=1271 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1258 fail=0`
+    with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; primitive docs
+    parity; Stage 3 source parity; targeted `git diff --check`.
+
+- TENSOR-100F CUDA map mixed-operand diagnostic checkpoint:
+  - Mixed CPU/CUDA Tensor operands in CUDA `map` now fail with the explicit
+    `map: CUDA operands must remain CUDA-placed` diagnostic instead of falling
+    through to a generic dense-kernel unsupported message.
+  - Mixed CUDA Tensor dtypes now report `tensor/dtype-mismatch` from the CUDA map
+    helper path, preserving the existing direct-map dtype contract for both direct
+    and lazy-realized CUDA map expressions.
+  - CUDA and Vulkan map probes now check whether an expression tree actually
+    touches the probed device before calling `tensor_expr_resolve_concrete_any_device`.
+    This prevents unsupported mixed CPU/CUDA lazy operands from being CPU-realized
+    before the CUDA placement diagnostic is raised.
+  - This is a fail-closed policy hardening slice only: it preserves the
+    no-hidden-transfer rule and does not add mixed-device execution support.
+  - Validation passed: `c3c build --obj-out obj`; host focused
+    `advanced-collections-module` `pass=1261 fail=0`; bounded-container focused
+    `advanced-collections-module` `pass=1248 fail=0` using
+    `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+
+- TENSOR-100F foreign CUDA payload clone checkpoint:
+  - Valid foreign CUDA concrete Tensor payloads now clone by allocating fresh
+    Omni-owned CUDA storage and copying the source device bytes through the CUDA
+    device-to-device helper.
+  - The cloned payload always installs `tensor_cuda_device_finalizer`; the source
+    payload's foreign finalizer remains responsible only for the source handle.
+  - Fake, stale, malformed, or otherwise invalid CUDA handles remain
+    fail-closed: the fake CUDA storage regression still rejects cloning and only
+    exercises destruction through the source finalizer.
+  - During implementation review, the Vulkan retain/clone branch was corrected
+    to keep `tensor_vulkan_device_finalizer`; CUDA clone finalizer installation is
+    now explicit to the CUDA branch only.
+  - Validation passed: `c3c build --obj-out obj`; bounded-container
+    `memory-lifetime-smoke` `pass=229 fail=0` using
+    `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; host focused
+    `advanced-collections-module` `pass=1258 fail=0`.
+
+- TENSOR-100F CUDA scientific unary map checkpoint:
+  - CUDA now has generated CUDA C/libdevice PTX kernels for dense row-major
+    `Float64` and `Float32` scientific unary op ids `5..16`: `sin`, `cos`,
+    `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and
+    `log10`.
+  - Public direct `map`, lazy CUDA map realization, CUDA destination-form
+    `realize` from lazy scientific maps, and direct Tensor scientific
+    primitives preserve CUDA placement for eligible real CUDA tensors without
+    hidden CPU materialization.
+  - The generated PTX is loaded as a separate optional CUDA Driver API module,
+    so existing CUDA binary/arithmetic map availability does not depend on
+    scientific module loading. `tensor-backends` reports separate
+    `scientific-map-float64` and `scientific-map-float32` capability bits.
+  - Preserved fail-closed boundaries: unsupported layouts, mixed CPU/CUDA
+    operands, mixed CUDA dtypes/devices, and unsupported callables remain outside
+    this slice.
+  - Negative constraint update: the prior "do not fake scientific CUDA math
+    with partial raw PTX approximations" constraint remains active for any
+    future scientific broadening. This checkpoint satisfies it by generating PTX
+    from CUDA C and libdevice, not by hand-maintaining transcendental PTX.
+  - Validation passed: `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75
+    csrc/tensor_cuda_scientific_unary.cu -o
+    /tmp/omni_tensor_cuda_scientific_unary.ptx`;
+    `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75
+    /tmp/omni_tensor_cuda_scientific_unary.ptx -o
+    /tmp/omni_tensor_cuda_scientific_unary.cubin`; `cc -O2 -fPIC
+    -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o
+    /tmp/tensor_cuda_helpers.o`; `./scripts/build_omni_chelpers.sh`;
+    `c3c build --obj-out obj`; CUDA-gated runtime smokes for capability
+    reporting, Float64 `map sin`, Float32 direct `log10`, direct `sin`,
+    Float64 `acos`/`log10`, and lazy destination `realize` returned true; host
+    focused `advanced-collections-module` `pass=1258 fail=0`;
+    bounded-container focused `advanced-collections-module` `pass=1245 fail=0`
+    using `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`; primitive docs
+    parity; Stage 3 source parity; targeted `git diff --check`.
+  - Validation-image note: rebuilding `omni-validation:2026-03-10` still leaves
+    `/opt/c3/c3c` as an x86-64 binary inside an arm64 image because
+    `docker/validation.Dockerfile` downloads `c3-linux.tar.gz`. Use the host
+    toolchain mount on this arm64 host until the Dockerfile selects a native C3
+    compiler artifact or builds C3 from source.
+
+## 2026-04-17
+
+- TENSOR-100F CUDA arithmetic unary map checkpoint:
+  - CUDA now has separate embedded-PTX CUDA Driver API unary map kernels and C
+    ABI helpers for dense row-major `Float64` and `Float32` tensors.
+  - Supported unary op ids are `0..4`: `abs`, unary `-`, `sqrt`, identity
+    (`map +`, `real-part`, and `conjugate` on real tensors), and zero-fill
+    (`imag-part` on real tensors).
+  - Public direct `map`, lazy CUDA map realization, CUDA destination-form
+    `realize` from lazy unary maps, and direct Tensor primitives `abs`, unary
+    `-`, `sqrt`, `real-part`, `imag-part`, and `conjugate` now preserve CUDA
+    placement for eligible dense row-major `Float64`/`Float32` tensors without
+    hidden CPU materialization.
+  - Superseded boundary note: scientific CUDA unary op ids `5..16` and valid
+    foreign CUDA payload clone semantics are covered by later checkpoints above.
+    Unsupported callables, unsupported layouts, mixed CPU/CUDA operands, and
+    mixed CUDA dtypes/devices remain explicit fail-closed residuals.
+  - Negative constraint: do not implement CUDA scientific unary by composing
+    partial raw PTX approximations such as approximate trig/log fragments.
+    Prefer a deliberate libdevice/NVRTC/fatbin strategy, or explicitly
+    documented approximation kernels with tolerances, before wiring op ids
+    `5..16`.
+  - Validation passed: `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c
+    csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`;
+    `./scripts/build_omni_chelpers.sh`; `c3c build --obj-out obj`; CUDA
+    backend probe returned `[true true true nil]`; direct CUDA-gated smokes for
+    `map abs`, direct `sqrt`, Float32 `map sqrt`, `imag-part`, CUDA destination
+    realization from lazy unary `map sqrt`, and Float64/Float32 scientific
+    fail-closed behavior all returned `true`; host focused
+    `advanced-collections-module` `pass=1256 fail=0`; bounded-container
+    focused `advanced-collections-module` `pass=1243 fail=0`; primitive docs
+    parity; Stage 3 source parity; targeted `git diff --check`.
+    `ptxas` was not installed in the current environment, so no standalone PTX
+    assembler check was run beyond runtime CUDA execution.
+
+- TENSOR-100F CUDA elementwise binary map checkpoint:
+  - CUDA now has embedded-PTX CUDA Driver API elementwise binary map kernels
+    for dense row-major `Float64` and `Float32` tensors.
+  - Public `map`, lazy map realization, and CUDA destination-form `realize`
+    now route eligible CUDA operands through the CUDA map helper without
+    hidden CPU materialization. Supported operations are `+`, `-`, `*`, `/`,
+    `min`, and `max`; supported operand shapes are Tensor/scalar,
+    scalar/Tensor, exact-shape Tensor/Tensor, and right-aligned singleton-axis
+    Tensor/Tensor broadcasting.
+  - `tensor-backends` reports `elementwise-map-float64` and
+    `elementwise-map-float32` capability keys for CPU, Vulkan, and CUDA.
+  - CUDA-owned concrete Tensor clone/copy now copies Omni-owned CUDA payloads
+    through the existing device-to-device helper so direct CUDA map results can
+    cross the existing return/copy boundary. Valid foreign CUDA clone semantics
+    are covered by the later checkpoint above.
+  - Preserved fail-closed boundaries now narrowed by later checkpoints above:
+    unsupported layouts, mixed CPU/CUDA operands, mixed CUDA dtypes/devices, and
+    unsupported callables remain outside this slice.
+  - Validation passed: `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c
+    csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`;
+    `c3c build --obj-out obj`; direct CUDA-gated smokes for capability
+    reporting, direct `Float64` and `Float32` scalar maps, binary
+    `-`/`*`/`/`/`min`/`max`/`+` Tensor maps, right-aligned broadcast maps,
+    broadcast CUDA destination realization, lazy map CUDA destination
+    realization, unsupported callable rejection, mixed CPU operand rejection,
+    and incompatible-broadcast rejection; host focused
+    `advanced-collections-module` `pass=1240 fail=0`; bounded-container
+    `memory-lifetime-smoke` `pass=228 fail=0`; bounded-container focused
+    `advanced-collections-module` `pass=1224 fail=0`; primitive docs parity;
+    Stage 3 source parity.
+    `c3c build --sanitize=address --obj-out obj-asan` could not run because
+    this `c3c` build reports address sanitizer as unavailable on the current
+    platform/toolchain.
+
+- TENSOR-100F CUDA rank-1 dot checkpoint:
+  - CUDA-placed contiguous matching `Float64` or matching `Float32`
+    rank-1/rank-1 single-axis contractions now return CUDA-placed scalar
+    Tensor outputs through the existing explicit-device `contract` surface.
+  - The implementation reuses the existing cuBLAS GEMV helper by treating the
+    left vector as a one-row row-major matrix; no new CUDA helper ABI was
+    required.
+  - Zero-size rank-1 dots use the existing CUDA additive-identity fill path.
+    Nonzero rank-1 dots still require the matching cuBLAS GEMV helper and fail
+    unavailable when cuBLAS is forced unavailable for tests.
+  - Preserved fail-closed boundaries: CUDA `map`, CUDA rank-1/rank-1
+    zero-axis outer product, multi-axis CUDA contract, unsupported
+    layouts/ranks, mixed devices, and mixed CUDA dtypes remain outside this
+    slice.
+  - Validation passed: `c3c build --obj-out obj`; direct CUDA-gated smokes for
+    `Float64` rank-1 dot, explicit-axis rank-1 dot, `Float32` rank-1 dot with
+    scalar `Float32` extraction, zero-size rank-1 dot identity, `Float64`
+    rank-1 dot destination realization into a rank-0 CUDA tensor, and
+    `Float32` rank-1 dot destination realization into a rank-0 CUDA tensor;
+    bounded-container focused `advanced-collections-module` `pass=1217
+    fail=0`; primitive docs parity; Stage 3 source parity; targeted
+    `git diff --check`.
+
+- Superseded CUDA `map` blocker update:
+  - The earlier helper-layer blocker is superseded by the CUDA elementwise
+    binary map checkpoint above. Do not keep treating dense row-major
+    `Float64`/`Float32` binary CUDA map for scalar, exact-shape, and
+    right-aligned broadcast operands as blocked.
+  - Superseded by the later arithmetic/scientific unary and foreign CUDA clone
+    checkpoints above: remaining CUDA `map` work is now unsupported layouts,
+    mixed devices/dtypes, mixed CPU/CUDA operands, and unsupported callables.
+
+- TENSOR-100F CUDA zero-size contract identity/fill checkpoint:
+  - CUDA-placed dense row-major matching `Float64` or matching `Float32`
+    rank-2/rank-2, rank-2/rank-1, and rank-1/rank-2 single-axis contractions
+    now mirror CPU/Vulkan zero-size contract semantics for the CUDA-supported
+    layout family.
+  - Zero free dimensions return CUDA-placed zero-length Tensor outputs with
+    the exact computed result shape and explicit CPU inspection through
+    `to-device 'cpu`.
+  - Zero contracted dimensions with non-empty outputs allocate CUDA result
+    storage and fill the output with the dtype-preserving additive identity
+    through the existing CUDA fill helpers instead of calling cuBLAS. This
+    keeps zero-size identity independent of cuBLAS availability while nonzero
+    CUDA contractions still require the matching cuBLAS GEMM/GEMV helper.
+  - Preserved fail-closed boundaries: multi-axis CUDA contract, unsupported
+    layouts/ranks, CUDA `map`, mixed devices, and mixed CUDA dtypes remain
+    outside this slice. CUDA rank-1/rank-1 dot is covered by the later
+    checkpoint above.
+  - Validation passed: `c3c build --obj-out obj`; direct CUDA-gated smokes for
+    `Float64` zero-contracted rank-2 identity fill, `Float32`
+    zero-contracted rank-2 identity fill with scalar `Float32` extraction,
+    zero-free rank-2 output preservation, rank-2/rank-1 identity fill, and
+    rank-1/rank-2 identity fill; bounded-container focused
+    `advanced-collections-module` `pass=1210 fail=0`; primitive docs parity;
+    Stage 3 source parity; targeted `git diff --check`. Host focused
+    `advanced-collections-module` was attempted but stayed idle past ten
+    minutes and was terminated as inconclusive.
+
+- Scalar `Float32` runtime value checkpoint:
+  - Added a dedicated scalar `Float32` runtime value tag/payload/constructor,
+    type-id cache, `Number` parent wiring, `type-of`/`is?` support, and
+    stdlib `float32?` predicate.
+  - `Float32`, `(Float x 32)`, and `(Float x "32")` now construct native
+    32-bit float scalar values from representable numeric and numeric-string
+    inputs. Out-of-range, non-finite, or non-numeric inputs fail closed with
+    `type/arg-mismatch`.
+  - Wired scalar `Float32` through region-owned copy/promotion/env-copy paths,
+    boundary graph leaf auditing, printing/string/format conversion, JSON/CSV
+    emission, schema validation, tuple persistence, AOT/native literal
+    lowering, numeric comparison/equality/hash/order helpers, basic arithmetic,
+    min/max/abs, FFI `Double` argument widening, and sleep/random-int numeric
+    consumers.
+  - Tensor `Float32` `ref`, `Array`, `List`, `Iterator`, contract scalar
+    extraction, CPU/copyback extraction, and `matrix/trace` now return scalar
+    `Float32` instead of widening to `Float64`. Matrix determinant and norm
+    keep their documented `Float64` scalar return contract.
+  - Validation passed: `c3c build --obj-out obj`; direct runtime smokes for
+    constructor/type/predicate, arithmetic widening policy, closure capture,
+    schema, format/sort-by numeric comparator, Tensor `Float32` ref/iterator,
+    structural matrix extraction, contract extraction, and `matrix/trace`;
+    focused advanced core semantics `pass=71 fail=0`;
+    arithmetic-comparison `pass=47 fail=0`; bounded-container focused
+    `advanced-collections-module` `pass=1205 fail=0`; primitive docs parity;
+    Stage 3 source parity. Local ASAN compile was attempted but the local `c3c`
+    rejected sanitizer mode with "Address sanitizer is only supported on Linux,
+    FreeBSD, NetBSD, Darwin and Windows."
+
+- TENSOR-100F CUDA `Float32` placement and contract checkpoint:
+  - Extended the explicit CUDA storage boundary to concrete dense row-major
+    `Float32` Tensor storage: `to-device 'cuda`, `to-device 'cpu`,
+    destination-form `realize`, scalar destination fills, and supported lazy
+    CUDA contract destination writes now work for `Float32` alongside
+    `Float64`.
+  - Added runtime-loaded CUDA `Float32` fill support and cuBLAS `sgemm` /
+    `sgemv` contract helpers for matching CUDA-placed `Float32` rank-2/rank-2,
+    rank-2/rank-1, and rank-1/rank-2 single-axis contractions across the same
+    row-major layout family already supported by the `Float64` cuBLAS path.
+  - `tensor-backends` now reports CUDA and cuBLAS `float64` / `float32`
+    capability bits. cuBLAS `Float64` availability remains tied to the
+    existing `dgemm` / `dgemv` symbols; `Float32` availability is reported
+    separately from `sgemm` / `sgemv` and does not weaken the older contract.
+  - Preserved explicit-device semantics: ordinary CPU `map`, `contract`,
+    one-argument `realize`, CPU-destination `realize`, and `matrix/*` do not
+    silently transfer between CPU and CUDA. CUDA `map` and mixed CUDA dtypes
+    remain fail-closed/deferred; zero-size CUDA contract identity/fill is
+    superseded by the checkpoint above. The
+    scalar `Float32` runtime value boundary is superseded by the scalar
+    checkpoint above.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`, `c3c build
+    --obj-out obj`, host focused `advanced-collections-module` `pass=1218
+    fail=0`, bounded-container focused `advanced-collections-module`
+    `pass=1205 fail=0`, primitive docs parity, Stage 3 source parity, and
+    targeted `git diff --check`.
+
+- TENSOR-100F Vulkan `Float32` scientific unary checkpoint:
+  - Extended the dedicated Vulkan `Float32` unary shader/helper ABI with
+    opcodes for `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,
+    `tanh`, `exp`, `log`, and `log10`.
+  - Public `(map <unary> <vulkan-float32-tensor>)` and direct Tensor unary
+    math route through the `Float32` helper, preserve `Float32` dtype and
+    Vulkan placement, and require explicit `(to-device ... 'cpu)` for CPU
+    inspection.
+  - Vulkan `Float64` scientific unary remains fail-closed; `glslangValidator`
+    rejected double transcendental builtins under the current Vulkan 1.0
+    validation path, and no hidden `Float32` downcast was introduced.
+  - Validation passed: `glslangValidator`/`spirv-val` for the unary
+    shaders, regenerated the `Float32` SPIR-V C embed, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan smokes for `sin`/`cos`/`exp`/`log`
+    and `log10`, direct Vulkan `Float64` `map sin` fail-closed smoke, and host
+    focused `advanced-collections-module` `pass=1198 fail=0`, plus
+    bounded-container focused `advanced-collections-module` `pass=1185 fail=0`.
+
+- TENSOR-100F CPU `Float32` matrix factor/SVD checkpoint:
+  - Added native CPU `Float32` matrix helpers/workspaces for LU, solve,
+    inverse, QR, Cholesky, and SVD/Jacobi singular-value paths in
+    `src/lisp/prim_tensor_matrix.c3`.
+  - Public CPU `Tensor Float32` matrix surfaces now support
+    `matrix/determinant`, `matrix/lu`, `matrix/solve`, `matrix/inverse`,
+    `matrix/cholesky`, `matrix/qr`, `matrix/singular-values`, `matrix/svd`,
+    and `matrix/norm` `'spectral` / `'nuclear`.
+  - Tensor outputs preserve `Float32`; determinant and norm scalars preserve
+    the existing public `Float64` scalar return behavior. The CPU `Float32`
+    paths do not call the existing Float64 `dgesv`/`dgetrf`/`dgeqrf`/`dpotrf`
+    / `dgesvd` LAPACK helpers and do not silently widen Tensor outputs through
+    Float64 workspaces.
+  - Replaced CPU `Float32` fail-closed tests with positive value/dtype tests
+    and no-hidden-Float64-LAPACK counter guards for factor/solve/SVD paths.
+  - Supersedes earlier notes that listed CPU `Float32` factor/SVD public
+    contracts as deferred. The later scalar and CUDA checkpoints also supersede
+    the earlier scalar/CUDA deferred boundaries. Remaining deferred adjacent
+    boundaries are fixed-width complex, stride/view-backed Vulkan layouts, and
+    measured Vulkan SVD performance work beyond the validated correctness path.
+  - Validation passed: `c3c build --obj-out obj`, direct CPU `Float32` smokes
+    for determinant/solve/inverse/LU/QR/Cholesky/singular-values/SVD/norm,
+    host focused `advanced-collections-module` `pass=1195 fail=0`, and
+    bounded-container focused `advanced-collections-module` `pass=1182
+    fail=0`.
+
+- TENSOR-100F Vulkan `Float32` large-dense SVD robustness checkpoint:
+  - Fixed the previously failing dense all-ones / rank-deficient `65x65`
+    Vulkan `Float32` SVD path with scale-aware eigenvalue tolerance and
+    orthonormal completion in the `Float32` singular-values/SVD shaders.
+  - The repair preserves Vulkan placement and `Float32` Tensor output dtype
+    for Tensor results, keeps the public norm scalar return behavior, and does
+    not add hidden CPU/LAPACK fallback or hidden `Float64` widening.
+  - Added availability-gated regressions for `65x65` zero, identity/diagonal,
+    and all-ones/rank-deficient `Float32` singular-values/SVD paths, plus
+    all-ones reconstruction spot-checks, spectral/nuclear norm coverage, and
+    no-`LAPACKE_dgesvd` counter checks.
+  - Supersedes the earlier negative validation note that dense all-ones
+    `65x65` Vulkan `Float32` SVD returned `tensor/backend-execution-failed`.
+    Do not resume staged/tiled `Float32` SVD as a correctness blocker unless
+    new validation regresses this result.
+  - Superseded by the CPU `Float32` matrix checkpoint above: remaining
+    deferred `Float32` boundaries are scalar `Float32`, CUDA `Float32`
+    placement/contract, fixed-width complex, and stride/view-backed Vulkan
+    layouts.
+  - Validation passed: `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_singular_values_f32.comp` and
+    `csrc/tensor_vulkan_svd_f32.comp`, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan `Float32` smokes
+    (`(65 64.9999694824219 0.0)`,
+    `(vulkan vulkan vulkan 64.9999694824219 0.0)`,
+    `(64.9999694824219 65.1197662353516)`, and `(65 1.0 1.0)`), host focused
+    `advanced-collections-module` `pass=1177 fail=0`, and bounded-container
+    focused `advanced-collections-module` `pass=1164 fail=0`.
+
+- TENSOR-100F Vulkan `Float32` staged parallel solve checkpoint:
+  - Added dedicated `Float32` ports of the staged Vulkan solve shader family
+    (`solve_parallel_init`, pivot scan/reduce/commit, row swap, factor,
+    eliminate, and backsolve), generated SPIR-V C embeds, and helper/build
+    wiring.
+  - Reworked the staged solve C helper into an explicit dtype-aware dispatch
+    ABI and added `omni_tensor_backend_vulkan_solve_parallel_f32` without
+    hidden `Float64` widening, hidden CPU transfer, or LAPACK fallback.
+  - Public `matrix/solve` now routes dense row-major Vulkan `Float32` systems
+    with `n >= 65` through the staged parallel helper and keeps `2x2` / `9x9`
+    systems on the serial `Float32` helper.
+  - Added dtype-specific diagnostic counters for staged/serial `Float32` and
+    `Float64` solve paths. Focused tests prove `Float32` staged solves move
+    only the `Float32` staged counters, keep `Float64` and LAPACK counters
+    unchanged, preserve Vulkan placement and `Float32` dtype, support matrix
+    RHS shape/rank, reject mixed dtype, and return `tensor/singular-matrix`
+    for a staged `65x65` singular system.
+  - Local timing logs are recorded under
+    `build/vulkan_solve_f32_threshold_20260417_*`. On this stack, `65x65`
+    staged and forced-serial `Float32` identity/dense runs were tied within
+    measurement noise (`0.92s/0.89s` staged vs `0.94s/0.89s` forced serial for
+    the higher-iteration identity/dense probes), so `65` is documented as a
+    parity threshold, not a decisive speedup claim.
+  - Superseded by the later large-dense SVD robustness and CPU `Float32`
+    matrix checkpoints: remaining deferred `Float32` boundaries are scalar
+    `Float32`, CUDA `Float32` placement, fixed-width complex, and
+    stride/view-backed Vulkan layouts.
+  - Validation passed: `glslangValidator` and `spirv-val` for the nine
+    `Float32` solve shaders, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct staged Vulkan `Float32` solve smokes
+    (`(vulkan "Float32" 1.0)`, dense value `1.00000011920929`, and
+    `tensor/singular-matrix`), local Float32 threshold timing probes, and host
+    focused `advanced-collections-module` `pass=1166 fail=0`.
+
+- TENSOR-100F Vulkan `Float32` serial factor/solve checkpoint:
+  - Added dedicated Vulkan `Float32` serial matrix factor/solve shader/helper
+    paths for `matrix/determinant`, `matrix/lu`, `matrix/solve`,
+    `matrix/inverse`, `matrix/cholesky`, and `matrix/qr`.
+  - Updated public Vulkan routing so eligible dense row-major `Float32`
+    operands use native `_f32` kernels. Tensor results preserve Vulkan
+    placement and `Float32` dtype; determinant and LU metadata preserve the
+    existing public scalar/host metadata contracts.
+  - Kept CPU `Float32` factor/solve routines fail-closed and kept Vulkan
+    `Float32` solve on the serial helper. This slice does not silently widen
+    through `Float64`, call LAPACK, or copy Vulkan operands to CPU.
+  - Added availability-gated Vulkan regressions for values, dtype/device
+    preservation, lazy operands, singular/rank-deficient/non-SPD diagnostics,
+    CPU `Float32` fail-closed behavior, and no-LAPACK counter preservation
+    across `matrix/determinant`, `matrix/lu`, `matrix/solve`,
+    `matrix/inverse`, `matrix/cholesky`, and `matrix/qr`.
+  - Superseded by the later staged parallel solve, large-dense SVD robustness,
+    and CPU `Float32` matrix checkpoints: remaining deferred `Float32`
+    boundaries are CUDA `Float32` placement, scalar `Float32` values,
+    fixed-width complex, and stride/view-backed Vulkan layouts.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan `Float32` smokes (`-2.0`,
+    `0.199999988079071`, `"Float32"`, `0.5`, `2.0`, and `1.0`), host focused
+    `advanced-collections-module` `pass=1156 fail=0`, and bounded-container
+    focused `advanced-collections-module` `pass=1143 fail=0`.
+
+- TENSOR-100F Vulkan `Float32` SVD-backed checkpoint:
+  - Added dedicated Vulkan `Float32` singular-value shader/helper paths for
+    `matrix/singular-values`, direct `matrix/svd`, and `matrix/norm`
+    `'spectral` / `'nuclear`: `csrc/tensor_vulkan_singular_values_f32.comp`,
+    `csrc/tensor_vulkan_svd_f32.comp`, generated `_spv.c` sources, C helper
+    ABI exports, C3 externs, and build manifest wiring.
+  - Updated public Vulkan routing so dense row-major `Float32` tensors use the
+    native `_f32` singular-value and SVD helpers. `matrix/singular-values` and
+    `matrix/svd` preserve `Float32` dtype and Vulkan placement for Tensor
+    outputs; `matrix/norm` keeps the public `Float64` scalar return while
+    computing the singular values in `Float32` storage.
+  - Kept CPU `Float32` `matrix/singular-values`, CPU `Float32` `matrix/svd`,
+    and CPU `Float32` spectral/nuclear `matrix/norm` fail-closed until that
+    public CPU contract is explicitly chosen. This slice does not silently
+    widen CPU `Float32` SVD workspaces or narrow results.
+  - Added availability-gated Vulkan regressions for `Float32`
+    spectral/nuclear norms, lazy operands, singular-values value/dtype/device
+    preservation, empty and large-`k` zero matrices, direct SVD output
+    value/dtype/device preservation, no-LAPACK routing, and an
+    over-previous-max-k direct SVD zero-matrix path. Added explicit CPU
+    `Float32` fail-closed tests for `matrix/singular-values` and `matrix/svd`.
+  - Renamed the shared Vulkan two-output and three-output dispatch helpers
+    from misleading `_f64` names to dtype-neutral byte-sized names; the
+    `Float32` SVD paths do not route through hidden Float64 widening.
+  - Superseded by the later large-dense SVD robustness checkpoint: the dense
+    all-ones / rank-deficient `65x65` failure is fixed by scale-aware
+    eigenvalue tolerance plus orthonormal completion.
+  - Superseded by the later serial factor/solve, staged parallel solve,
+    large-dense SVD robustness, and CPU `Float32` matrix checkpoints:
+    remaining deferred `Float32` boundaries are CUDA `Float32` placement,
+    scalar `Float32` values, fixed-width complex, and stride/view-backed
+    Vulkan layouts.
+  - Validation passed: `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_singular_values_f32.comp` and
+    `csrc/tensor_vulkan_svd_f32.comp`, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan `Float32` smokes (`3.0`, `2.0`,
+    and `"Float32"`), host focused `advanced-collections-module`
+    `pass=1121 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=1108 fail=0`, primitive docs parity,
+    Stage 3 source parity, stale-current docs scan, and targeted
+    `git diff --check`.
+
+- TENSOR-100F Vulkan `Float32` direct reducer checkpoint:
+  - Added dedicated Vulkan `Float32` direct reducer shader/helper paths for
+    `matrix/norm` default/`'frobenius`, `'one`, `'infinity`, and `'max`, plus
+    `matrix/rank`: `csrc/tensor_vulkan_norm_f32.comp`,
+    `csrc/tensor_vulkan_rank_f32.comp`, generated `_spv.c` sources, C helper
+    ABI exports, C3 externs, and build manifest wiring.
+  - Updated CPU/runtime matrix reducers so native `Tensor Float32` has public
+    oracles for `matrix/rank` and direct `matrix/norm` selectors without
+    routing through `Float64` LAPACK/SVD helpers. Rank uses the pure elimination
+    path with `Float32` values widened only into the local numeric workspace;
+    direct norms read `float*` storage and return the existing public
+    `Float64` scalar result shape.
+  - Updated Vulkan public routing to accept matching dense row-major `Float32`
+    operands for direct reducers, preserve `Float64` behavior, read back only
+    scalar payloads, and avoid hidden `Float64` downcast, hidden widening, or
+    CPU fallback.
+  - Later checkpoints supersede this boundary: `Float32` SVD-backed norm
+    selectors, `matrix/singular-values`, `matrix/svd`, and serial factor/solve
+    kernels now have Vulkan paths. Staged parallel `Float32` solve/performance
+    parity remains deferred.
+  - Added CPU and availability-gated Vulkan regressions for eager and lazy
+    `Float32` rank/norm operands, zero-size shapes, tolerance behavior,
+    vector-shape rejection, no-LAPACK routing, and fail-closed `Float32`
+    spectral/nuclear selectors.
+  - Superseded by later deferred-boundary wording: SVD-backed reducers,
+    singular-value/SVD outputs, serial factor/solve kernels, staged parallel
+    solve, and large-dense SVD robustness now have Vulkan `Float32` paths.
+    CUDA `Float32` placement, scalar `Float32` values, CPU `Float32`
+    factor/SVD contracts, fixed-width complex, and stride/view-backed Vulkan
+    layouts remain deferred.
+  - Validation passed: `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_norm_f32.comp` and
+    `csrc/tensor_vulkan_rank_f32.comp`, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct CPU/Vulkan `Float32` smokes (`2`,
+    `5.0`, `tensor/backend-unsupported` for SVD-backed norm selectors), host
+    focused `advanced-collections-module` `pass=1098 fail=0`,
+    bounded-container focused `advanced-collections-module` `pass=1085
+    fail=0`, primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check`.
+
+- TENSOR-100F Vulkan `Float32` structural matrix checkpoint:
+  - Added dedicated Vulkan `Float32` structural matrix shader/helper paths for
+    `matrix/transpose`, `matrix/diagonal`, `matrix/diagonal-matrix`, and
+    `matrix/trace`: `csrc/tensor_vulkan_transpose_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_matrix_f32.comp`,
+    `csrc/tensor_vulkan_trace_f32.comp`, generated `_spv.c` sources, C helper
+    ABI exports, and C3 externs.
+  - Updated public Vulkan matrix routing to accept matching dense row-major
+    `Float32` operands, preserve `Float32` dtype for Tensor outputs, keep scalar
+    trace readback as the existing public `Float64` scalar shape, and avoid
+    hidden `Float64` downcast, hidden widening, or CPU fallback.
+  - Added availability-gated regressions for eager and lazy Vulkan `Float32`
+    structural operands across copyback, placement, dtype preservation,
+    zero-size behavior, scalar trace readback, and `Float64` no-downcast
+    preservation.
+  - Superseded by later checkpoints above: Vulkan `Float32` structural matrix,
+    reducer, SVD-backed, serial factor/solve, and staged parallel solve paths
+    are active. Remaining deferred Vulkan `Float32` boundary is robust
+    large-dense SVD execution, plus CUDA `Float32` placement and scalar
+    `Float32` values.
+  - Validation passed: `glslangValidator` and `spirv-val` for all four
+    structural `Float32` shaders, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan `Float32` structural smokes
+    (`6.0`, `"Float32"`, `0.0`, `5.0`), host focused
+    `advanced-collections-module` `pass=1059 fail=0`, bounded-container
+    focused `advanced-collections-module` `pass=1046 fail=0`, primitive docs
+    parity, Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F Vulkan `Float32` rank-N contract checkpoint:
+  - Added `csrc/tensor_vulkan_contract_f32.comp` and generated
+    `csrc/tensor_vulkan_contract_f32_spv.c` as a distinct dense row-major
+    generic `Float32` contract shader path.
+  - Added `omni_tensor_backend_vulkan_contract_f32` and C3 extern wiring while
+    preserving the existing `Float64` helper and keeping the rank-1 dot fast
+    path `Float64`-only.
+  - Updated public Vulkan `contract` dispatch to accept matching dense
+    row-major `Float32` operands, allocate `Float32` result metadata, and call
+    the `Float32` helper without hidden widening, hidden downcast, or CPU
+    fallback.
+  - Added availability-gated regressions for eager and lazy Vulkan `Float32`
+    contract operands across rank-1 dot, rank-2, rank-N single-axis,
+    multi-axis, zero-axis, zero-size, zero-free output, dtype preservation,
+    result placement, mixed-device rejection, and mixed-dtype rejection.
+  - Superseded by later checkpoints above: deferred `Float32` boundaries now
+    exclude Vulkan structural matrix, reducer, SVD-backed, serial
+    factor/solve kernels, staged parallel solve, and large-dense SVD
+    robustness. CUDA `Float32` placement, scalar `Float32` values, CPU
+    `Float32` factor/SVD contracts, fixed-width complex, and
+    stride/view-backed Vulkan layouts remain deferred/fail-closed.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_contract_f32.comp -o
+    /tmp/omni_tensor_vulkan_contract_f32.spv`, `spirv-val --target-env
+    vulkan1.0 /tmp/omni_tensor_vulkan_contract_f32.spv`,
+    `./scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, direct
+    Vulkan `Float32` contract smokes (`154.0`, `"Float32"`, `vulkan`, `0.0`,
+    `460.0`, `210.0`, zero-free length `0`, and
+    `tensor/dtype-mismatch` for mixed dtype), host focused
+    `advanced-collections-module` `pass=1039 fail=0`, bounded-container
+    focused `advanced-collections-module` `pass=1026 fail=0`, primitive docs
+    parity, Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F Vulkan `Float32` placement/map/unary/minmax checkpoint:
+  - Added explicit Vulkan `Float32` capability reporting through
+    `tensor-backends` and `omni_tensor_backend_vulkan_float32_available`.
+  - `to-device 'vulkan` and `to-device 'cpu` now support concrete
+    `Tensor Float32` placement and copyback when Vulkan is available.
+  - Vulkan destination-form `realize` now accepts matching dense row-major
+    `Float32` CPU/Vulkan/lazy sources and scalar fills without adding a
+    backend-specific public API.
+  - Added distinct `Float32` Vulkan shader/helper ABI paths for dense
+    row-major binary `map` arithmetic/min/max and unary map operations:
+    `csrc/tensor_vulkan_map_f32.comp`,
+    `csrc/tensor_vulkan_map_unary_f32.comp`,
+    `omni_tensor_backend_vulkan_map_f32`,
+    `omni_tensor_backend_vulkan_map_unary_f32`, and
+    `omni_tensor_backend_vulkan_fill_f32`.
+  - Public `map`, direct unary Tensor operations, and direct `min`/`max` now
+    dispatch eligible matching `Float32` Vulkan operands to real Vulkan
+    helpers. `Float64` remains `Float64`; no hidden `Float64` downcast to
+    `Float32`, hidden widening, or CPU fallback was added.
+  - Added focused availability-gated regressions for `Float32` backend
+    capability, placement/copyback dtype preservation, Vulkan destination
+    `realize`, elementwise `map`, unary helpers, direct `min`/`max`, and
+    `Float64` no-downcast preservation.
+  - Superseded by later checkpoints above: deferred `Float32` boundaries now
+    exclude Vulkan rank-N `contract`, structural matrix, reducer, SVD-backed,
+    serial factor/solve kernels, staged parallel solve, and large-dense SVD
+    robustness. CUDA `Float32` placement, scalar `Float32` values, CPU
+    `Float32` factor/SVD contracts, fixed-width complex, and
+    stride/view-backed Vulkan layouts remain deferred/fail-closed.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_f32.comp -o /tmp/omni_map_f32.spv`, `spirv-val
+    --target-env vulkan1.0 /tmp/omni_map_f32.spv`, `glslangValidator -V
+    --target-env vulkan1.0 csrc/tensor_vulkan_map_unary_f32.comp -o
+    /tmp/omni_map_unary_f32.spv`, `spirv-val --target-env vulkan1.0
+    /tmp/omni_map_unary_f32.spv`, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct Vulkan `Float32` smokes, host focused
+    `advanced-collections-module` `pass=1025 fail=0`, and bounded-container
+    focused `advanced-collections-module` `pass=1012 fail=0`, primitive docs
+    parity, Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F Vulkan symmetric eigen large-`n` checkpoint:
+  - Removed the old `n <= 64` Vulkan `matrix/eigenvalues` /
+    `matrix/eigenvectors` private-array cap for dense row-major square
+    symmetric `Float64` inputs.
+  - `csrc/tensor_vulkan_symmetric_eigen_f64.comp` now stores Jacobi matrix
+    scratch in hidden storage behind the public eigenvector output payload
+    instead of a fixed private `double[4096]` array.
+  - `omni_tensor_backend_vulkan_symmetric_eigen_f64` now validates visible
+    value/vector counts separately from vector backing storage, allocates
+    `2 * n * n` vector storage, preserves the public `[n]` and `[n n]`
+    Tensor shapes, and rejects resource sizes that would exceed 32-bit shader
+    indices or wrap the shader's `64 * n * n` Jacobi iteration guard.
+  - Public behavior remains backend-neutral: concrete and lazy Vulkan
+    symmetric inputs return Vulkan-placed values/vectors; nonsymmetric inputs
+    map to `tensor/not-symmetric`; no-convergence maps to
+    `tensor/no-convergence`; unsupported dtype/layout/resource/capability
+    cases fail closed; and there is no hidden CPU/LAPACK fallback.
+  - Added availability-gated `65x65` regressions for direct and lazy
+    eigenvalues/eigenvectors, Vulkan output placement, large nonsymmetric
+    diagnostics, and unchanged `LAPACKE_dsyev` counter behavior.
+  - Large sparse nonsymmetric tests should not use a recursive
+    `(range 4225)` list fixture; that stack-overflowed in a handle body.
+    Build sparse large fixtures from `(Array (Tensor Float64 [65 65] 0.0))`
+    plus `set!` instead.
+  - Deferred performance work is tracked in `TODO.md` as measurement-driven
+    tiling or staged execution for the storage-backed large-`n` path, not as a
+    semantic support blocker.
+  - Validation passed: `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_symmetric_eigen_f64.comp -o
+    /tmp/omni_symmetric_eigen.spv`, `spirv-val --target-env vulkan1.0
+    /tmp/omni_symmetric_eigen.spv`, `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct `65x65` Vulkan smokes, host focused
+    `advanced-collections-module` `pass=1006 fail=0`, and bounded-container
+    focused `advanced-collections-module` `pass=993 fail=0`, primitive docs
+    parity, Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F Vulkan status-readback helper factoring checkpoint:
+  - Factored shared `Float64` Vulkan status payload readback boilerplate into a
+    common copy-to-host path plus mapper-based status decoding.
+  - Migrated compatible trailing-status, SVD/singular-values, and
+    symmetric-eigen status readers through the shared readback path while
+    preserving distinct domain mappings: generic trailing nonzero still maps to
+    singular, SVD/singular-values status still distinguishes no-convergence, and
+    symmetric eigen status still distinguishes not-symmetric.
+  - LU metadata validation now reuses the generic trailing-status mapper while
+    keeping pivot and swap-count validation LU-specific. Parallel solve remains
+    on its separate `uint32_t` status-buffer ABI by design.
+  - Public Tensor behavior is unchanged: Vulkan result placement, diagnostics,
+    output ownership, no hidden CPU/LAPACK fallback, and explicit CPU
+    inspection requirements are preserved.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, host focused `advanced-collections-module`
+    `pass=995 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=982 fail=0`, primitive docs parity,
+    Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F Vulkan serial dispatch helper factoring checkpoint:
+  - Factored shared sequential storage-buffer descriptor layout creation,
+    descriptor pool/allocation/update, and standard one-time command
+    recording/submission for the mature serial Vulkan dispatch helper family:
+    two-buffer, three-buffer, one-input/two-output, and one-input/three-output.
+  - Preserved public Tensor behavior: descriptor binding order, synchronous
+    submit/wait behavior, Vulkan result placement, output-buffer ownership,
+    diagnostics, and no hidden CPU/LAPACK fallback are unchanged.
+  - Later checkpoint above factored compatible `Float64` status-readback
+    boilerplate while keeping parallel solve's typed `uint32_t` status-buffer
+    ABI separate by design.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, host focused `advanced-collections-module`
+    `pass=995 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=982 fail=0`, primitive docs parity,
+    Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-100F native CPU `Tensor Float32` storage checkpoint:
+  - Added `TENSOR_DTYPE_FLOAT32` as native Tensor storage with 32-bit element
+    allocation, zeroing, copy/clone, dtype name, and dtype symbol support.
+  - `Tensor Float32` constructors now narrow finite numeric data into
+    homogeneous 32-bit storage and reject non-finite or out-of-range elements.
+    Historical note, superseded by the scalar checkpoint above: scalar
+    `Float32` / `(Float x 32)` constructors were fail-closed until a scalar
+    value representation existed.
+  - CPU `map`, `contract`, `realize`, `to-device 'cpu`, `ref`, `Array`,
+    `List`, and `Iterator` now support `Float32` Tensor storage. Historical
+    note, superseded by the scalar checkpoint above: element extraction
+    originally widened to scalar `Float64` values before the scalar `Float32`
+    value tag landed.
+  - Structural CPU matrix helpers now support `Float32` where they preserve
+    dtype or return scalar readback: `matrix/transpose`, `matrix/diagonal`,
+    `matrix/diagonal-matrix`, `matrix/identity`, and `matrix/trace`. Heavier
+    LAPACK-style routines remain explicit non-`Float32` lanes and must not
+    silently widen and narrow.
+  - Historical note, superseded by later Vulkan and CUDA checkpoints:
+    CUDA/Vulkan placement remained fail-closed for `Float32`; the then-remaining
+    `Float32` TODO was explicit device copy paths, Vulkan kernels, backend
+    capability reporting, and no-downcast tests.
+  - Validation passed: `c3c build --obj-out obj`, host focused
+    `advanced-collections-module` `pass=995 fail=0`, host focused
+    `advanced-unicode-iterator` `pass=159 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=982 fail=0`, bounded-container
+    `memory-lifetime-smoke` `pass=228 fail=0`, primitive docs parity, Stage 3
+    source parity, and targeted `git diff --check`. ASAN build was attempted
+    but the local `c3c` rejected sanitizer mode with
+    "Address sanitizer is only supported on Linux, FreeBSD, NetBSD, Darwin and
+    Windows."
+
+- TENSOR-100F Vulkan unary identity and helper factoring checkpoint:
+  - Routed unary Tensor `map +` for dense row-major Vulkan `Float64` operands
+    through the existing separate unary helper identity opcode. This preserves
+    Vulkan placement and keeps the invalidated generic unary map branch out of
+    use.
+  - Made public unary `+` a scalar/Tensor identity surface by registering `+`
+    as one-or-two-argument dispatched primitive and keeping `prim_add` explicit
+    about over-arity rejection. `(+ 1 2 3)` still raises arity instead of
+    silently becoming variadic addition.
+  - Updated tests for the changed unary `+` contract, including no-auto-partial
+    coverage on `*`, over-arity rejection for `+`, typed unary `+` method
+    dispatch, Vulkan unary `map +` roundtrip/placement, and direct Tensor
+    unary `+` placement preservation.
+  - Reused `omni_tensor_vulkan_create_compute_pipeline_for_shader` across the
+    mature serial Vulkan dispatch helper family: two-buffer, three-buffer,
+    one-input/two-output, and one-input/three-output helpers. Descriptor,
+    command-buffer, and status-copy helper factoring remain open.
+  - Validation passed: `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_map_unary_f64.comp`,
+    `./scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, host
+    focused `advanced-unicode-iterator` `pass=159 fail=0`, host focused
+    `advanced-collections-module` `pass=972 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=959 fail=0`, primitive docs parity,
+    Stage 3 source parity, and targeted `git diff --check`.
+
+- TENSOR-076B constructor-driven iterator materialization checkpoint:
+  - Design priority changed: constructor dispatch is the canonical public
+    materialization boundary. Iterators are already lazy pull computations, and
+    Tensor lazy expression payloads stay internal to `Tensor`; do not introduce
+    public `delay` / `force` or treat `realize` as the general lazy protocol.
+  - `realize` is now documented as a low-level Tensor storage primitive for
+    exact-shape/dtype destination writes and compatibility with existing
+    storage tests, including the primitive appendix row that previously used
+    stale force-style wording.
+  - Implemented `(Tensor iterator)`, `(Tensor iterator dtype)`, and
+    `(Tensor dtype shape iterator)` by consuming finite numeric iterators
+    through constructor dispatch. This covers lazy iterator pipelines such as
+    `(Tensor (map f (Iterator xs)))`.
+  - Added regressions for inferred iterator Tensor construction, lazy iterator
+    `map` into `Tensor`, explicit-shape iterator data, BigInteger dtype
+    preservation, and fail-closed non-numeric iterator elements.
+  - `TENSOR-076C` follow-up completed in the same session:
+    `Iterator(^Tensor)` now yields flat row-major Tensor elements, matching
+    `(Array tensor)` and `(List tensor)`. Lazy CPU Tensor expressions are
+    realized once into Tensor storage for iteration, and non-CPU device tensors
+    fail closed until explicitly copied with `to-device 'cpu`.
+  - Validation passed: `c3c build --obj-out obj`, direct iterator-to-Tensor
+    smokes (`3.0`, `3.0`, `6.0`, and `"9223372036854775808"`), and host
+    focused `advanced-collections-module` `pass=969 fail=0`,
+    bounded-container focused `advanced-collections-module` `pass=956 fail=0`,
+    primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check`.
+
+- TENSOR-100F CUDA destination-form `realize` checkpoint:
+  - Added existing-buffer CUDA helpers:
+    `omni_tensor_backend_cuda_copy_to_existing_device`,
+    `omni_tensor_backend_cuda_copy_device_to_existing_device`, and
+    `omni_tensor_backend_cuda_fill_f64`, with C3 externs in
+    `src/lisp/tensor_cuda_backend.c3`.
+  - Destination-form `(realize source destination)` now supports existing
+    dense row-major CUDA `Float64` destinations for matching CPU sources,
+    CUDA sources, supported lazy CUDA contract results, lazy CPU expressions,
+    and scalar fills. The public surface remains backend-neutral; CPU
+    destinations still reject CUDA sources until the caller explicitly copies
+    with `to-device 'cpu`.
+  - Hardened unsupported device `map` construction so CUDA map operands fail
+    immediately with `tensor/backend-unsupported` instead of producing a lazy
+    expression that later fails at boundary copy time.
+  - Added availability-gated regressions for CPU source -> CUDA destination,
+    CUDA source -> CUDA destination, lazy CPU source -> CUDA destination,
+    scalar fill -> CUDA destination, lazy cuBLAS contract -> CUDA destination,
+    CUDA source -> CPU destination fail-closed behavior, unsupported CUDA map
+    fail-closed behavior, and CUDA/Vulkan cross-backend destination rejection.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct runtime smokes for CUDA destination cases
+    and unsupported CUDA map diagnostics, host focused
+    `advanced-collections-module` `pass=959 fail=0`, bounded-container focused
+    `advanced-collections-module` `pass=946 fail=0`, primitive docs parity,
+    and Stage 3 source parity.
+
+- TENSOR-100F Vulkan destination-form `realize` checkpoint:
+  - Added existing-buffer Vulkan copy/fill helpers:
+    `omni_tensor_backend_vulkan_copy_to_existing_device`,
+    `omni_tensor_backend_vulkan_copy_device_to_existing_device`, and
+    `omni_tensor_backend_vulkan_fill_f64`, with C3 externs in
+    `src/lisp/tensor_vulkan_backend.c3`.
+  - Destination-form `(realize source destination)` now supports existing
+    dense row-major Vulkan `Float64` destinations for matching CPU sources,
+    Vulkan sources, lazy Vulkan results, and scalar fills. The public surface
+    remains backend-neutral; CPU destinations still reject device sources until
+    the caller explicitly copies with `to-device 'cpu`.
+  - Added availability-gated regressions for CPU source -> Vulkan destination,
+    Vulkan source -> Vulkan destination, lazy Vulkan source -> Vulkan
+    destination, and scalar fill -> Vulkan destination, while preserving
+    Vulkan source -> CPU destination fail-closed behavior.
+  - Validation passed: `./scripts/build_omni_chelpers.sh`,
+    `c3c build --obj-out obj`, direct runtime smokes for the four supported
+    Vulkan destination cases plus preserved CPU-destination failure, host
+    focused `advanced-collections-module` `pass=949 fail=0`, bounded-container
+    focused `advanced-collections-module` `pass=936 fail=0`, primitive docs
+    parity, and Stage 3 source parity.
+
+- TENSOR-100F direct Vulkan `matrix/svd` factor-output checkpoint:
+  - Added `csrc/tensor_vulkan_svd_f64.comp`, generated
+    `csrc/tensor_vulkan_svd_f64_spv.c`, and wired
+    `omni_tensor_backend_vulkan_svd_f64` through the helper build and
+    `project.json`.
+  - Public `matrix/svd` now routes dense row-major Vulkan `Float64` rank-2
+    tensors through Vulkan before CPU fallback, including lazy Vulkan inputs,
+    and returns Vulkan-placed `u`, `s`, and `v` tensors with shapes
+    `[rows k]`, `[k]`, and `[cols k]` for `k = min(rows, columns) <= 64`.
+  - The Vulkan SVD path keeps CPU copyback explicit through `to-device 'cpu`,
+    rejects `k > 64` with `tensor/backend-unsupported`, maps shader
+    non-convergence through the Vulkan status path, and asserts no hidden
+    `LAPACKE_dgesvd` counter movement for direct, lazy, and exact-`k == 64`
+    Vulkan inputs.
+  - Negative memory: do not restore a second private `double[4096]`
+    eigenvector array in the shader. That approach compiled but failed at
+    runtime on this Vulkan stack with `tensor/backend-execution-failed`; the
+    current shader stores the driving eigenvectors in the eventual output
+    buffer and keeps only the Gram matrix plus eigenvalues in private storage.
+  - Validation passed: SVD shader compile/`spirv-val`,
+    `./scripts/build_omni_chelpers.sh`, `c3c build --obj-out obj`, focused
+    `advanced-collections-module` `pass=945 fail=0`, JSON/shell syntax checks,
+    and `git diff --check`.
+
+- TENSOR-100F audit-hardening implementation checkpoint:
+  - Updated generic Vulkan contract failure context from
+    `contract: Vulkan single-axis kernel failed` to
+    `contract: Vulkan Float64 contract kernel failed`, matching the current
+    zero-or-more-axis dense row-major helper.
+  - Added public zero-size Vulkan `matrix/norm` `'spectral` / `'nuclear`
+    regressions for empty rows and empty columns, plus unchanged `dgesvd`
+    counter coverage.
+  - Added unchanged LAPACK counter guards for direct and lazy Vulkan
+    fail-closed `matrix/eigenvalues`, `matrix/eigenvectors`, and
+    `matrix/eigenpairs`; the earlier `matrix/svd` fail-closed guard was later
+    superseded by direct Vulkan `Float64` factor-output support.
+  - Added diagnostic-order regressions proving invalid-but-Vulkan SVD/eigen
+    operands return `tensor/backend-unsupported` before CPU shape or symmetry
+    diagnostics.
+  - Added internal lazy-contract helper coverage for zero-axis and multi-axis
+    Vulkan contractions.
+  - Validation passed: `c3c build --obj-out obj`, focused
+    `advanced-collections-module` `pass=935 fail=0`, targeted
+    `git diff --check`, primitive docs parity, and Stage 3 source parity.
+
+- Vulkan direct SVD/eigen/Float32 planning checkpoint:
+  - Added `docs/plans/vulkan-svd-factor-output-plan-2026-04-17.md` for direct
+    Vulkan `matrix/svd` under the existing backend-neutral surface.
+  - Added `docs/plans/vulkan-eigensolver-plan-2026-04-17.md` for direct Vulkan
+    `matrix/eigenvalues`, `matrix/eigenvectors`, and `matrix/eigenpairs`.
+    Symmetric real `Float64` eigenvalues/eigenvectors are the first eligible
+    phase; general `matrix/eigenpairs` remains blocked for Vulkan while the
+    public output contract is pointer-backed `BigComplex`.
+  - Added `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`.
+    `Float32` remains a future native Tensor dtype and Vulkan kernel tier, not
+    a downcast fallback for current `Float64` execution.
+  - Updated the Vulkan roadmap, plan index, TODO, and area status so direct
+    `matrix/svd` is now tracked as implemented for dense row-major Vulkan
+    `Float64` rank-2 inputs with `k <= 64`, while eigen and `Float32` remain
+    planned/fail-closed until their gates land.
+  - Normalized stale planning text that still claimed Vulkan spectral/nuclear
+    norms or zero-axis contractions were unsupported.
+
+- Advanced `TENSOR-100F1` Vulkan SVD-backed scalar/vector slice:
+  - Added dense row-major Vulkan `Float64` `matrix/singular-values` through a
+    checked-in Gram/Jacobi singular-value shader, returning a Vulkan-placed
+    rank-1 Tensor and preserving explicit `to-device 'cpu` inspection.
+  - Extended Vulkan `matrix/norm` `'spectral` and `'nuclear` selectors to reuse
+    the same singular-value helper and read back only the scalar norm result.
+  - Direct `matrix/svd` has since landed as a dedicated Vulkan factor-output
+    path for dense row-major `Float64` rank-2 inputs with `k <= 64`; direct
+    `matrix/eigenvalues`, `matrix/eigenvectors`, and `matrix/eigenpairs`
+    remain CPU-only/fail-closed pending Vulkan eigensolver gates.
+  - Fixed the unsupported direct SVD/eigen entrypoints so non-CPU Tensor
+    placement is rejected before generic realization can silently copy a Vulkan
+    input through the CPU path.
+  - Hardened the public realization boundary so one-argument `realize` preserves
+    concrete Vulkan placement, while explicit destination `realize` rejects
+    concrete or lazy Vulkan sources with `tensor/backend-unsupported` instead
+    of a misleading missing CPU backing-storage error.
+  - Hardened destination `realize` diagnostics so valid non-CPU destination
+    tensors, including Vulkan destinations, fail closed with
+    `tensor/backend-unsupported` instead of the missing CPU backing-storage
+    runtime error.
+  - Hardened the Vulkan singular-values helper:
+    - dispatches only one work item because the shader is single-invocation;
+    - keeps `output_count = k + 2` for the output/status/nuclear payload;
+    - maps shader non-convergence status to `tensor/no-convergence` through a
+      dedicated Vulkan status code instead of collapsing it into generic
+      backend execution failure;
+    - rejects logical matrices whose element count exceeds the shader's
+      32-bit index space before dispatch.
+  - Added availability-gated regressions for `k > 64` fail-closed behavior,
+    `k == 64` boundary support, wide/rank-deficient/empty Vulkan singular
+    values, spectral/nuclear norms, lazy Vulkan eigen fail-closed inputs,
+    explicit-destination `realize` fail-closed behavior, CPU-only numeric Tensor
+    helpers on Vulkan operands, status-payload non-convergence mapping, and the
+    oversized-index validation guard; lazy Vulkan `matrix/svd` is now covered
+    by the direct Vulkan factor-output slice.
+  - Normalized Vulkan zero-axis `contract` docs so current public references
+    say zero or more explicit contracted axis pairs instead of the stale
+    one-or-more wording.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_singular_values_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_singular_values_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - durable advanced regressions now cover `k == 64`, `k == 65`
+      fail-closed, wide `2x65`, empty `0x65`, status mapping, and oversized
+      index validation
+    - host focused `advanced-collections-module` -> `907 passed, 0 failed`
+    - host focused `advanced-stdlib-numeric` -> `411 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and targeted
+      `git diff --check` passed
+
+- Advanced `TENSOR-100E` Vulkan zero-axis contract:
+  - Enabled public `(contract left right [] [])` for Vulkan-placed dense
+    row-major `Float64` tensors through the existing generic Vulkan contract
+    shader and metadata layout.
+  - Relaxed the public Vulkan `contract` gate and
+    `omni_tensor_backend_vulkan_contract_f64` so `axis_count == 0` with null
+    axis arrays is accepted. Rank-0 scalar tensors are also accepted by the
+    helper for scalar-scalar no-axis products.
+  - Kept the rank-1 dot fast path limited to the one-contracted-axis case so
+    rank-1/rank-1 zero-axis contractions fall through to the generic outer
+    product shader path.
+  - Added availability-gated regressions for rank-1/rank-1 outer products,
+    rank-2/rank-1 outer products, rank-0 scalar products, Vulkan result
+    residency, and zero-free-dimension zero-length output.
+  - Stride-aware/non-contiguous layouts, unsupported dtypes, and mixed
+    CPU/Vulkan operands still fail closed with Tensor backend diagnostics.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_contract_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_contract_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan smokes returned `60.0`, `12.0`, `vulkan`, and `0`
+    - host focused `advanced-collections-module` -> `851 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `838 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+
+- Advanced `TENSOR-100E/F` Vulkan `Float64` `min` / `max`:
+  - Extended the existing `csrc/tensor_vulkan_map_f64.comp` binary map helper
+    so op `4` is `min(left, right)` and op `5` is `max(left, right)`, then
+    regenerated `csrc/tensor_vulkan_map_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_f64` validation to accept opcodes
+    `0..5` while preserving the existing binary descriptor and metadata ABI.
+  - Routed public direct Tensor `min` / `max` through the Vulkan binary helper
+    for dense row-major Vulkan `Float64` tensor/scalar, scalar/Tensor, and
+    Tensor/Tensor broadcast cases. Results remain Vulkan-placed and require
+    explicit `(to-device ... 'cpu)` for CPU inspection.
+  - Added `map min` / `map max` Vulkan opcode selection on the same binary
+    map path.
+  - Changed Tensor `min` / `max` operand resolution to use the any-device
+    concrete resolver before CPU-storage checks, so eligible Vulkan operands
+    execute on Vulkan while mixed CPU/Vulkan operands fail closed instead of
+    triggering hidden CPU materialization.
+  - Added Vulkan direct, Vulkan map, lazy Vulkan input, mixed-device
+    fail-closed, broadcast, and CPU map parity regressions.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_map_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_map_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct smokes returned Vulkan `map min` value `-2.0`, direct Vulkan
+      `min` value `0.0`, lazy direct Vulkan `max` device `vulkan`, and mixed
+      CPU/Vulkan `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `846 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `833 passed, 0 failed`
+
+- Advanced `TENSOR-100E/F` Vulkan `Float64` real-valued component operations:
+  - Extended the separate `csrc/tensor_vulkan_map_unary_f64.comp` helper so
+    op `3` is identity and op `4` is zero-fill, then regenerated
+    `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_unary_f64` validation to accept
+    opcodes `0..4` while keeping the same two-buffer descriptor ABI and
+    without reviving the invalidated generic Vulkan `map` mode-3 branch.
+  - Routed public `(map real-part <vulkan-tensor>)`,
+    `(map imag-part <vulkan-tensor>)`, `(map conjugate <vulkan-tensor>)`, and
+    direct Tensor `real-part` / `imag-part` / `conjugate` through the unary
+    Vulkan helper for dense row-major Vulkan `Float64` tensors. Results remain
+    Vulkan-placed and require explicit `(to-device ... 'cpu)` for CPU
+    inspection.
+  - Changed the direct Tensor component paths to resolve concrete tensors on
+    any device before the CPU-storage branch, avoiding hidden CPU fallback and
+    avoiding host-storage copy helpers for Vulkan buffers.
+  - Added Vulkan direct, Vulkan map, lazy Vulkan input, and CPU map parity
+    regressions for `real-part`, `imag-part`, and `conjugate`.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_map_unary_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_map_unary_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct smokes returned direct Vulkan `real-part` value `-2.5`,
+      direct Vulkan `imag-part` value `0.0`, direct Vulkan `conjugate` device
+      `vulkan`, and Vulkan `map imag-part` value `0.0`
+    - host focused `advanced-collections-module` -> `836 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `823 passed, 0 failed`
+
+- Advanced `TENSOR-100E/F` Vulkan `Float64` unary square root:
+  - Extended the separate `csrc/tensor_vulkan_map_unary_f64.comp` helper so
+    op `2` is `sqrt(value)`, then regenerated
+    `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_unary_f64` validation to accept
+    opcodes `0..2` while keeping the same two-buffer descriptor ABI and
+    without reviving the invalidated generic Vulkan `map` mode-3 branch.
+  - Routed public `(map sqrt <vulkan-tensor>)` and direct Tensor
+    `(sqrt <vulkan-tensor>)` through the unary Vulkan helper for dense
+    row-major Vulkan `Float64` tensors. Results remain Vulkan-placed and
+    require explicit `(to-device ... 'cpu)` for CPU inspection.
+  - Changed direct Tensor unary math on Vulkan to fail closed for unsupported
+    operations instead of materializing hidden CPU results. `map sin` remains
+    unsupported on Vulkan and returns `tensor/backend-unsupported`.
+  - Added positive finite-input Vulkan tests for `map sqrt`, result placement,
+    direct Tensor `sqrt`, and lazy direct Tensor `sqrt`, plus CPU
+    `(map sqrt <Float64 tensor>)` parity coverage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_map_unary_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_map_unary_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct smokes returned Vulkan `map sqrt` value `3.0`, Vulkan result
+      device `vulkan`, direct Vulkan `sqrt` value `2.0`, lazy direct Vulkan
+      `sqrt` device `vulkan`, and unsupported `map sin`
+      `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `824 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `811 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E/F` Vulkan `Float64` unary negation:
+  - Extended the separate `csrc/tensor_vulkan_map_unary_f64.comp` helper so
+    op `0` remains absolute value and op `1` is unary negation, then
+    regenerated `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_unary_f64` validation to accept
+    the negation opcode while keeping the same two-buffer descriptor ABI and
+    without reviving the invalidated generic Vulkan `map` mode-3 branch.
+  - Fixed the documented scalar unary `-` surface by registering `-` so the
+    existing unary branch in `prim_sub` is reachable; `prim_sub` now rejects
+    calls outside the `1..2` argument contract itself.
+  - Added direct Tensor unary `-` for CPU tensors, preserving native Tensor
+    dtype for `Float64`, `BigInteger`, `BigFloat`, and `BigComplex`.
+  - Routed public `(map - <vulkan-tensor>)` and direct Tensor
+    `(- <vulkan-tensor>)` through the unary Vulkan helper for dense row-major
+    Vulkan `Float64` tensors. Results remain Vulkan-placed and require
+    explicit `(to-device ... 'cpu)` for CPU inspection.
+  - Preserved fail-closed behavior for unsupported Vulkan unary callables:
+    `(map sqrt <vulkan-tensor>)` still returns `tensor/backend-unsupported`.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_map_unary_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_map_unary_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct smokes returned scalar `-1`, CPU Tensor `2.5`, Big* Tensor
+      strings `-9223372036854775808`, `-1e+309`, `-3+4i`, Vulkan map value
+      `2.0`, Vulkan result device `vulkan`, direct Vulkan value `-1.5`, and
+      `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `819 passed, 0 failed`
+    - host `basic` slice -> `144 passed, 0 failed`
+    - host `compiler` slice -> `277 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `806 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E/F` Vulkan `Float64` unary absolute value:
+  - Added `csrc/tensor_vulkan_map_unary_f64.comp` plus generated
+    `csrc/tensor_vulkan_map_unary_f64_spv.c`, wired through `project.json`
+    and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_map_unary_f64`, a separate two-buffer
+    helper with its own push-constant ABI. This does not reuse or resurrect
+    the invalidated generic Vulkan `map` mode-3 unary branch.
+  - Added the C3 Vulkan extern and a shared C3 result constructor for dense
+    row-major Vulkan `Float64` unary helper outputs.
+  - Routed public `(map abs <vulkan-tensor>)` and direct Tensor
+    `(abs <vulkan-tensor>)` through the helper for Vulkan-placed dense
+    row-major `Float64` tensors. Results remain Vulkan-placed and require
+    explicit `(to-device ... 'cpu)` for CPU inspection.
+  - Preserved fail-closed behavior for unsupported Vulkan unary callables:
+    `(map sqrt <vulkan-tensor>)` still returns `tensor/backend-unsupported`.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0
+      csrc/tensor_vulkan_map_unary_f64.comp` passed
+    - `spirv-val --target-env vulkan1.0
+      /tmp/omni_tensor_vulkan_map_unary_f64.spv` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan smokes returned `1.5`, `vulkan`, `1.5`, `vulkan`, and
+      `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `810 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `797 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` measured threshold routing for Vulkan `Float64`
+  solve:
+  - Replaced the fixed `n >= 3` bring-up condition in public `matrix/solve`
+    routing with private `OMNI_TENSOR_VULKAN_SOLVE_PARALLEL_MIN_N = 65`.
+    Vulkan dense row-major `Float64` solve systems below `65` use the serial
+    helper; systems at or above `65` use the staged parallel helper.
+  - Added `omni_tensor_backend_vulkan_solve_serial_call_count` as a private
+    test/diagnostic counter so below-threshold tests can prove direct serial
+    execution, not just unchanged parallel counters.
+  - Local in-process measurements are recorded under
+    `build/vulkan_solve_threshold_20260417_*`: `3`, `9`, `16`, and `32` were
+    tied or serial-favorable, while `65` was the first tested size where the
+    staged parallel route won across identity and dense fixtures.
+  - Added availability-gated regressions proving `2x2` and `9x9` stay serial,
+    `65x65` enters the staged parallel helper without LAPACK, pivot-reduce and
+    factor-stage counters still move, and a `65x65` singular system exercises
+    the parallel status path.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned `9.0`, `1.0`, `1.0`, and
+      `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `806 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `793 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` tiled LU staging for Vulkan `Float64` solve:
+  - Added `csrc/tensor_vulkan_solve_multi_factor_f64.comp` plus generated
+    `csrc/tensor_vulkan_solve_multi_factor_f64_spv.c`, and wired the generated
+    shader through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Expanded the private multi-dispatch solve ABI with a factor scratch buffer
+    at descriptor binding `5`, a factor pipeline, and four-buffer barriers
+    covering output, typed status, pivot scratch, and factor scratch.
+  - The command buffer now runs a per-pivot panel-factor dispatch after row
+    swap and before elimination. The factor stage computes `L[row,pivot]`,
+    stores it in factor scratch and the lower-triangular coefficient workspace,
+    then elimination consumes the staged factor instead of recomputing it for
+    every coefficient/RHS update.
+  - Added `omni_tensor_backend_vulkan_solve_factor_stage_call_count` as a
+    private test/diagnostic counter and a dense 65x65 `I + J` solve regression
+    proving the factor stage executes without LAPACK.
+  - Remaining `TENSOR-100G` work is measurement-backed threshold routing. The
+    solver now has staged panel factors, cross-workgroup pivot selection, and
+    multi-workgroup elimination/backsolve, but it is still not a fully blocked
+    trailing-update LU.
+  - validation:
+    - all solve-multi pivot/reduce/commit/swap/factor/eliminate/backsolve
+      shaders passed `glslangValidator -V --target-env vulkan1.0`
+    - all affected solve-multi shaders passed `spirv-val --target-env
+      vulkan1.0`
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned dense 9x9 value `1.0`,
+      65x65 identity value `1.0`, dense 65x65 `I + J` value `1.0`, and
+      `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `801 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `788 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` cross-workgroup pivot Vulkan `Float64` solve:
+  - Split parallel pivot handling into scan, reduce, commit, and row-swap
+    stages. `csrc/tensor_vulkan_solve_multi_pivot_f64.comp` now scans pivot
+    candidates into scratch instead of doing one-workgroup scan/swap, and new
+    `csrc/tensor_vulkan_solve_multi_pivot_reduce_f64.comp`,
+    `csrc/tensor_vulkan_solve_multi_pivot_commit_f64.comp`, and
+    `csrc/tensor_vulkan_solve_multi_row_swap_f64.comp` handle recursive
+    candidate reduction, final pivot commit, and row swaps.
+  - Added generated SPIR-V C sources for the new shader stages and wired them
+    through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Reworked the private multi-dispatch solve helper to allocate a private
+    `double` pivot-magnitude scratch buffer and expanded typed `uint` status
+    buffer with ping-pong candidate row lanes.
+  - The command buffer now scans pivot candidates across workgroups, recursively
+    reduces them through ping-pong scratch offsets with explicit barriers,
+    commits the selected pivot row, runs row swap as a separate dispatch, then
+    continues through elimination and backsolve.
+  - Added `omni_tensor_backend_vulkan_solve_pivot_reduce_call_count` as a
+    private test/diagnostic counter and a 65x65 Vulkan solve regression proving
+    the cross-workgroup pivot-reduction path executes without LAPACK.
+  - Negative memory: do not zero `A[row,pivot]` inside the same elimination
+    dispatch that reads it to compute row factors. That in-dispatch zeroing
+    raced the coefficient/RHS update invocations and changed the dense 9x9
+    `J + I` solve result from `1.0` to `1.35`. If explicit cleanup is needed,
+    it must be a separate dispatch after a barrier.
+  - At this checkpoint, remaining `TENSOR-100G` work was tiled LU
+    scratch-buffer staging and a measurement-backed threshold. Cross-workgroup
+    pivot selection was landed, but the solver was still a straightforward
+    Gaussian-elimination path rather than a blocked/tiled LU factorization.
+  - validation:
+    - all solve-multi pivot/reduce/commit/swap/eliminate/backsolve shaders
+      passed `glslangValidator -V --target-env vulkan1.0`
+    - all affected solve-multi shaders passed `spirv-val --target-env
+      vulkan1.0`
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned `0.2`, `3.0`, `1.0` for the
+      65x65 cross-workgroup case, and `tensor/singular-matrix`
+    - an initial host focused run failed the dense 9x9 test after the
+      in-dispatch zeroing attempt; removing that zeroing restored the result
+    - host focused `advanced-collections-module` -> `800 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `787 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` multi-dispatch Vulkan `Float64` solve:
+  - Added `csrc/tensor_vulkan_solve_multi_pivot_f64.comp`,
+    `csrc/tensor_vulkan_solve_multi_eliminate_f64.comp`, and
+    `csrc/tensor_vulkan_solve_multi_backsolve_f64.comp`, plus generated
+    SPIR-V C sources for all three kernels.
+  - Wired the new generated shader sources through `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Reworked the private parallel solve helper so
+    `omni_tensor_backend_vulkan_solve_parallel_f64` now records a
+    multi-dispatch command buffer: init/copy, per-pivot pivot/swap,
+    per-pivot multi-workgroup elimination, and descending per-row backsolve.
+  - Kept the public `matrix/solve` and C3 helper surface unchanged. The serial
+    `n < 3` Vulkan helper still uses its private trailing `double` status
+    sentinel; the parallel helper still uses private typed `uint` status.
+  - Added `omni_tensor_backend_vulkan_solve_multi_dispatch_call_count` as a
+    private test/diagnostic counter and wired it through the C3 Vulkan backend
+    externs.
+  - Added tests proving the serial 2x2 threshold stays off both parallel and
+    multi-dispatch counters, the parallel path increments the multi-dispatch
+    counter without LAPACK, and a dense 9x9 `J + I` system solves through the
+    multi-workgroup elimination path.
+  - Remaining `TENSOR-100G` work is full cross-workgroup pivot reduction,
+    scratch-buffered/tiled LU, and measurement-backed thresholds. This slice
+    parallelizes elimination and RHS backsolve dispatches across workgroups,
+    but pivot selection/swap remains one workgroup for now.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed for pivot,
+      elimination, and backsolve shaders
+    - `spirv-val --target-env vulkan1.0` passed for pivot, elimination, and
+      backsolve shaders
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned `0.2`, `3.0`, `18.0`,
+      dense 9x9 value `1.0`, and `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `799 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `786 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` staged Vulkan `Float64` parallel matrix solve:
+  - Added `csrc/tensor_vulkan_solve_parallel_init_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_parallel_init_f64_spv.c`, then wired the new
+    SPIR-V source through `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Split the parallel solve path into two Vulkan compute dispatches recorded
+    in one command buffer: an init/copy stage that fills
+    `[solution/RHS][coefficient workspace]` plus a private typed status buffer,
+    followed by the existing workgroup-parallel factor/back-solve stage.
+  - Added a Vulkan 1.0 `vkCmdPipelineBarrier` path using buffer-memory
+    barriers on the output workspace and private `uint` status buffer between
+    the two dispatches. The helper uses `COMPUTE_SHADER` pipeline-stage masks
+    and `SHADER_WRITE -> SHADER_READ|SHADER_WRITE` access masks.
+  - Kept public `matrix/solve` routing unchanged: Vulkan dense row-major
+    `Float64` systems with `n >= 3` use the parallel helper; `n < 3` remains
+    on the serial Vulkan helper and still uses its private trailing `double`
+    status sentinel.
+  - Updated tests so the 2x2 serial threshold does not increment the parallel
+    helper counter, staged pivoting is exercised, a 9x9 identity solve copies
+    more than one 64-lane workgroup of coefficient data, post-elimination
+    singular systems raise `tensor/singular-matrix`, and LAPACK remains unused
+    on the Vulkan parallel path.
+  - Remaining `TENSOR-100G` work is now tiled/multi-workgroup solver design and
+    measurement-backed thresholds; the staged barrier helper is landed but is
+    still a single-workgroup factor/back-solve algorithm.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed for init and
+      factor/solve shaders
+    - `spirv-val --target-env vulkan1.0` passed for init and factor/solve
+      shaders
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned serial value `0.2`,
+      staged value `1.0`, staged 9x9 multi-RHS value `18.0`, and
+      `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `798 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `785 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100G` first Vulkan `Float64` parallel matrix solve slice:
+  - Added `csrc/tensor_vulkan_solve_parallel_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_parallel_f64_spv.c`, then wired the generated
+    SPIR-V source through `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_solve_parallel_f64` plus
+    `omni_tensor_backend_vulkan_solve_parallel_call_count` in the
+    runtime-loaded Vulkan helper layer, and exposed them through
+    `src/lisp/tensor_vulkan_backend.c3`.
+  - Added a two-input/two-output Vulkan dispatch helper for kernels that bind
+    coefficient input, RHS input, result/workspace output, and a private status
+    output. The parallel solve path uses an explicit private `uint` status
+    buffer instead of extending the serial solver's trailing `double` status
+    sentinel.
+  - Routed public `matrix/solve` for Vulkan dense row-major `Float64` systems
+    with `n >= 3` through the new parallel helper. The existing serial Vulkan
+    solve helper remains the small-size path for `n < 3`.
+  - Implemented a 64-invocation single-workgroup partial-pivot Gaussian
+    elimination shader. It parallelizes pivot reduction, row swaps,
+    elimination updates, and RHS-column back-substitution while preserving the
+    existing public `matrix/solve` contract.
+  - Added availability-gated tests for the parallel Vulkan vector RHS path,
+    rank-1 preservation, matrix RHS path, rank-2/shape preservation, singular
+    diagnostics, helper call-count movement, and unchanged LAPACK `dgesv`
+    counter.
+  - The remaining `TENSOR-100G` boundary is a staged/tiled multi-kernel solver
+    helper with explicit Vulkan memory barriers and a measurement-backed
+    threshold. Do not treat this first single-workgroup slice as the final
+    large-system solver.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned serial value `0.2`,
+      parallel value `1.0`, and `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `793 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `780 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100F1` Vulkan `Float64` matrix QR:
+  - Added `csrc/tensor_vulkan_qr_f64.comp` and generated
+    `csrc/tensor_vulkan_qr_f64_spv.c`, then wired the SPIR-V source through
+    `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_qr_f64` in the runtime-loaded Vulkan
+    helper plus a one-input/two-output dispatch helper so QR can return
+    independent Vulkan buffers for `q` and `r`.
+  - The Vulkan helper computes reduced modified Gram-Schmidt QR on Vulkan for
+    dense row-major rank-2 `Float64` input with rows greater than or equal to
+    columns. `q` is stored in a Vulkan buffer of shape `[rows columns]`; `r`
+    is stored in a Vulkan buffer of shape `[columns columns]` with a private
+    trailing status word that is not exposed through the public Tensor shape.
+  - Routed public `matrix/qr` for concrete or realized Vulkan-placed dense
+    row-major `Float64` input through the new helper before the CPU-only
+    storage check. CPU tensors keep the existing dgeqrf-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - Added a near-zero QR diagonal guard in the shader to preserve the existing
+    public rank-deficient diagnostic for the canonical dependent-column test.
+  - Added availability-gated regressions for Vulkan QR factor values, output
+    placement, output shapes, lazy Vulkan input, empty result placement,
+    wide-input diagnostics, rank-deficient diagnostics, and no-LAPACK path
+    usage. Added CPU empty QR shape coverage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/qr` smokes returned `1.0`, `1.0`, `vulkan`,
+      `vulkan`, zero-size shape `0`, and `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `787 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `774 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100F1` Vulkan `Float64` matrix Cholesky:
+  - Added `csrc/tensor_vulkan_cholesky_f64.comp` and generated
+    `csrc/tensor_vulkan_cholesky_f64_spv.c`, then wired the SPIR-V source
+    through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_cholesky_f64` in the runtime-loaded
+    Vulkan helper. The helper computes a lower-triangular Cholesky factor on
+    Vulkan for dense row-major square `Float64` input, keeps the factor
+    payload in a Vulkan buffer, and copies back only trailing status metadata
+    for nonsymmetric or non-SPD detection.
+  - Factored shared trailing-status copyback for serial Vulkan solve, inverse,
+    and Cholesky helpers.
+  - Routed public `matrix/cholesky` for concrete or realized Vulkan-placed
+    dense row-major square `Float64` input through the new helper before the
+    CPU-only storage check. CPU tensors keep the existing dpotrf-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - Fixed the CPU pure Cholesky fallback to accept empty square tensors whose
+    zero-size backing data pointer is null.
+  - Added availability-gated regressions for Vulkan Cholesky factor values,
+    upper-zeroing, Vulkan result placement, lazy Vulkan input, empty square
+    result placement, non-square diagnostics, nonsymmetric and indefinite
+    diagnostics, and no-LAPACK path usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/cholesky` smokes returned `1.0`, `2.0`, `0.0`,
+      `vulkan`, `vulkan`, zero-size shape `0`,
+      `tensor/not-positive-definite`, `tensor/not-positive-definite`, and
+      `tensor/shape-mismatch`
+    - direct CPU empty Cholesky shape smoke returned `0`
+    - host focused `advanced-collections-module` -> `775 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `762 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix solve:
+  - Added `csrc/tensor_vulkan_solve_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_f64_spv.c`, then wired the SPIR-V source
+    through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_solve_f64` in the runtime-loaded Vulkan
+    helper. The helper performs Gaussian elimination with partial pivoting on
+    Vulkan for square coefficient tensors and rank-1 or rank-2 right-hand
+    tensors, keeps the solution payload in a Vulkan buffer, and copies back
+    only trailing status metadata for singular detection.
+  - Routed public `matrix/solve` for concrete or realized Vulkan-placed dense
+    row-major square `Float64` coefficient tensors and Vulkan-placed matching
+    `Float64` right-hand tensors through the new helper before the CPU-only
+    storage check. CPU tensors keep the existing dgesv-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - The public result shape is unchanged: rank-1 RHS returns a rank-1
+    solution Tensor and rank-2 RHS returns a rank-2 solution Tensor. For
+    Vulkan inputs, the returned solution remains Vulkan-placed and must be
+    copied back explicitly with `to-device 'cpu` for CPU inspection.
+  - Added availability-gated regressions for Vulkan solve vector RHS, matrix
+    RHS, Vulkan result placement, lazy Vulkan coefficients, lazy Vulkan RHS,
+    singular diagnostics, mismatched RHS diagnostics, mixed-device
+    fail-closed diagnostics, empty-system singular behavior, and no-LAPACK
+    path usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/solve` smokes returned `0.2`, `0.6`, `vulkan`,
+      `1.0`, `0.2`, `0.6`, `tensor/singular-matrix`,
+      `tensor/shape-mismatch`, `tensor/backend-unsupported`, and
+      `tensor/singular-matrix`
+    - host focused `advanced-collections-module` -> `763 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `750 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix inverse:
+  - Added `csrc/tensor_vulkan_inverse_f64.comp` and generated
+    `csrc/tensor_vulkan_inverse_f64_spv.c`, then wired the SPIR-V source
+    through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_inverse_f64` in the runtime-loaded
+    Vulkan helper. The helper performs Gauss-Jordan elimination with partial
+    pivoting on Vulkan, keeps the inverse payload in a Vulkan buffer, and
+    copies back only trailing status metadata for singular detection.
+  - Routed public `matrix/inverse` for concrete or realized Vulkan-placed
+    dense row-major square `Float64` inputs through the new helper before the
+    CPU-only storage check. CPU tensors keep the existing dgesv-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - The public result shape is unchanged: a same-shape `Float64` Tensor
+    inverse for nonsingular input. For Vulkan input, the returned inverse
+    remains Vulkan-placed and must be copied back explicitly with
+    `to-device 'cpu` for CPU inspection.
+  - Added availability-gated regressions for Vulkan inverse values, product
+    identity, Vulkan result placement, lazy Vulkan input, empty square
+    results, singular diagnostics, non-square diagnostics, and no-LAPACK path
+    usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/inverse` smokes returned `0.6`, `-0.7`,
+      `vulkan`, `tensor/singular-matrix`, `0.4`, `vulkan`,
+      `tensor/shape-mismatch`, and `1.0`
+    - host focused `advanced-collections-module` -> `751 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `738 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix LU factorization:
+  - Added `csrc/tensor_vulkan_lu_f64.comp` and generated
+    `csrc/tensor_vulkan_lu_f64_spv.c`, then wired the SPIR-V source through
+    `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_lu_f64` in the runtime-loaded Vulkan
+    helper. The helper performs partial-pivot LU on Vulkan, returns the
+    combined LU factor as a Vulkan buffer, and copies back only the `pivots`
+    plus `swap-count` metadata required by the public dictionary contract.
+  - Routed public `matrix/lu` for concrete or realized Vulkan-placed dense
+    row-major square `Float64` inputs through the new helper before the
+    CPU-only storage check. CPU tensors keep the existing LAPACK-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - The public result shape is unchanged: a dictionary with `lu`, `pivots`,
+    and `swap-count`. For Vulkan input, `lu` remains a Vulkan-placed Tensor;
+    metadata values are host-side `Array`/`Integer` values.
+  - Added availability-gated regressions for Vulkan LU factor values, pivot
+    order, swap count, Vulkan factor placement, lazy Vulkan input, empty square
+    factors, singular diagnostics, non-square diagnostics, and no-LAPACK path
+    usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/lu` smokes returned `0.5`, `-0.5`, `1`, `1`,
+      `vulkan`, `3.0`, `vulkan`, `0`, `tensor/singular-matrix`, and
+      `tensor/shape-mismatch`
+    - host focused `advanced-collections-module` -> `740 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `727 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix determinant reducer:
+  - Added `csrc/tensor_vulkan_determinant_f64.comp` and generated
+    `csrc/tensor_vulkan_determinant_f64_spv.c`, then wired the SPIR-V source
+    through `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_determinant_f64` in the runtime-loaded
+    Vulkan helper. The helper performs partial-pivot LU on a Vulkan work
+    buffer and copies back only the scalar determinant payload required by the
+    public `matrix/determinant` contract.
+  - Routed public `matrix/determinant` for concrete or realized Vulkan-placed
+    dense row-major square `Float64` inputs through the new helper before the
+    CPU-only storage check. CPU tensors keep the existing LAPACK-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - Preserved CPU determinant edge semantics on Vulkan: singular matrices
+    return `0.0`, empty square matrices return `1.0`, and non-finite
+    determinant payloads are not rejected after scalar readback.
+  - Added availability-gated regressions for Vulkan determinant values,
+    pivot-parity behavior, singular matrices, lazy Vulkan input, empty square
+    matrices, non-square diagnostics, and no-LAPACK path usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/determinant` smokes returned `-2.0`, `-2.0`,
+      `0.0`, `-2.0`, `1.0`, and `tensor/shape-mismatch`
+    - direct CPU determinant smoke returned `-2.0`
+    - direct Vulkan transpose regression smoke returned `6.0`
+    - host focused `advanced-collections-module` -> `730 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `717 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix rank reducer:
+  - Added `csrc/tensor_vulkan_rank_f64.comp` and generated
+    `csrc/tensor_vulkan_rank_f64_spv.c`, then wired the SPIR-V source through
+    `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_rank_f64` in the runtime-loaded Vulkan
+    helper. The helper computes a partial-pivot row-elimination rank on Vulkan
+    and copies back only the scalar rank payload required by the public
+    `matrix/rank` contract.
+  - Routed public `matrix/rank` for concrete or realized Vulkan-placed dense
+    row-major `Float64` rank-2 inputs through the new helper before the
+    CPU-only storage check. CPU tensors keep the existing LAPACK-then-pure
+    implementation; Vulkan inputs do not silently copy to CPU or call LAPACK.
+  - Added availability-gated regressions for Vulkan full/deficient rank,
+    lazy Vulkan input, tolerance behavior, empty rows/columns, rank-2 shape
+    diagnostics, and no-LAPACK path usage.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/rank` smokes returned `2`, `1`, `2`, `1`, `2`,
+      `0`, `0`, and `tensor/shape-mismatch`
+    - direct CPU rank smoke returned `2`
+    - host focused `advanced-collections-module` -> `722 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `709 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix norm reducers:
+  - Added `csrc/tensor_vulkan_norm_f64.comp` as the checked-in GLSL source for
+    dense row-major Vulkan `Float64` `matrix/norm` direct reducers.
+  - Added `csrc/tensor_vulkan_norm_f64_spv.c`, generated from that GLSL
+    source, and wired it through `project.json` plus
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_norm_f64` in the runtime-loaded Vulkan
+    helper. The helper computes on Vulkan and copies back only the single
+    `Float64` scalar result required by the public `matrix/norm` contract.
+  - Routed public `matrix/norm` for concrete or realized Vulkan-placed dense
+    row-major `Float64` rank-2 inputs through the new helper before the
+    CPU-only storage check.
+  - At this checkpoint, Vulkan supported default/`'frobenius`, `'one`,
+    `'infinity`, and `'max`; a later `TENSOR-100F1` slice extended
+    `'spectral` and `'nuclear` through the Vulkan singular-value helper.
+  - Kept the Frobenius reduction numerically aligned with the CPU shape by
+    using a scaled sum-of-squares payload in the shader and applying the final
+    square root after scalar readback.
+  - Added availability-gated regressions for Vulkan norm selectors, lazy
+    Vulkan input realization, empty input, and SVD-selector fail-closed
+    behavior.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/norm` smokes returned `5.0`,
+      `9.53939201416946`, `9.0`, `15.0`, `6.0`, `5.0`, `0.0`, and
+      `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `712 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `699 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix trace:
+  - Added `csrc/tensor_vulkan_trace_f64.comp` as the checked-in GLSL source
+    for dense row-major Vulkan `Float64` square-matrix trace.
+  - Added `csrc/tensor_vulkan_trace_f64_spv.c`, generated from that GLSL
+    source, and wired it through `project.json` plus
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_trace_f64` in the runtime-loaded Vulkan
+    helper. The helper computes on Vulkan and copies back only the single
+    `Float64` scalar result required by the public `matrix/trace` contract.
+  - Routed public `matrix/trace` for concrete or realized Vulkan-placed dense
+    row-major square `Float64` inputs through the new helper before the CPU-only
+    storage check. CPU tensors and Big* tensors keep the existing CPU scalar
+    implementation; unsupported GPU/device cases fail closed instead of
+    copying the input tensor silently.
+  - Added availability-gated regressions for Vulkan trace scalar result, lazy
+    Vulkan input realization, and empty-square trace.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/trace` smokes returned `5.0`, `5.0`, and `0.0`
+    - direct CPU trace smoke still returned `5.0`
+    - direct non-rank-2 trace error smoke preserved the existing shape
+      diagnostic
+    - host focused `advanced-collections-module` -> `705 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `692 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix diagonal structural pair:
+  - Added `csrc/tensor_vulkan_diagonal_f64.comp` and
+    `csrc/tensor_vulkan_diagonal_matrix_f64.comp` as checked-in GLSL sources
+    for dense row-major Vulkan `Float64` diagonal extraction and diagonal
+    matrix construction.
+  - Added generated SPIR-V C sources for both kernels and wired them through
+    `project.json` plus `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_diagonal_f64` and
+    `omni_tensor_backend_vulkan_diagonal_matrix_f64` in the runtime-loaded
+    Vulkan helper, using the input tensor's existing Vulkan context and
+    probing Vulkan/Float64 support before zero-size success.
+  - Routed public `matrix/diagonal` and `matrix/diagonal-matrix` for concrete
+    or realized Vulkan-placed dense row-major `Float64` inputs through the new
+    helpers. CPU tensors and Big* tensors keep the existing CPU implementation;
+    unsupported GPU/device cases fail closed instead of copying silently.
+  - Added availability-gated regressions for Vulkan diagonal roundtrip,
+    placement preservation, lazy Vulkan input realization, off-diagonal zero
+    fill, and zero-size copyback.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed for both shaders
+    - `spirv-val --target-env vulkan1.0` passed for both shaders
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan `matrix/diagonal` smokes returned `5.0`, `vulkan`,
+      `vulkan`, and zero-size length `0`
+    - direct Vulkan `matrix/diagonal-matrix` smokes returned `3.0`, `0.0`,
+      `vulkan`, `vulkan`, and zero-size length `0`
+    - direct CPU diagonal/diagonal-matrix smokes still returned `5.0`, `3.0`,
+      and `0.0`
+    - direct rank-error smokes preserved the existing shape diagnostics
+    - host focused `advanced-collections-module` -> `702 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `689 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan `Float64` matrix transpose:
+  - Added `csrc/tensor_vulkan_transpose_f64.comp` as the checked-in GLSL source
+    for dense row-major Vulkan `Float64` rank-2 transpose.
+  - Added `csrc/tensor_vulkan_transpose_f64_spv.c`, generated from that GLSL
+    source, and wired it through `project.json` plus
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_transpose_f64` in the runtime-loaded
+    Vulkan helper with a two-buffer SPIR-V dispatch on the input tensor's
+    existing Vulkan context.
+  - Routed public `matrix/transpose` for concrete Vulkan-placed dense row-major
+    `Float64` rank-2 tensors through the new helper. CPU tensors and Big*
+    tensors keep the existing CPU implementation; unsupported GPU/device cases
+    fail closed instead of copying silently.
+  - Added availability-gated regressions for Vulkan transpose roundtrip,
+    placement preservation, lazy Vulkan input realization, and zero-size
+    transpose copyback.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan transpose smokes returned `6.0`, `vulkan`, `vulkan`, and
+      zero-size length `0`
+    - direct CPU transpose smoke still returned `6.0`
+    - direct non-rank-2 transpose error smoke returned `tensor/shape-mismatch`
+    - host focused `advanced-collections-module` -> `693 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `680 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+
+- Advanced `TENSOR-100E` Vulkan rank-N multi-axis contract:
+  - Extended the Vulkan `Float64` dense row-major `contract` path from exactly
+    one contracted axis pair to one or more explicit contracted axis pairs.
+  - Updated `csrc/tensor_vulkan_contract_f64.comp` so the metadata-buffer shader
+    stores left/right contracted-axis lists and flattens the full contracted
+    coordinate space inside each output element.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c`.
+  - Updated `omni_tensor_backend_vulkan_contract_f64`, the C3 Vulkan extern, and
+    the public Vulkan `contract` gate to pass axis-list metadata while preserving
+    free-left-then-free-right output axis order.
+  - Added availability-gated regressions for scalar and rank-3 multi-axis
+    Vulkan contractions.
+  - At this checkpoint, unsupported dtypes, mixed CPU/Vulkan operands,
+    zero-axis contractions, and unsupported layouts still failed closed with
+    Tensor backend diagnostics. The zero-axis restriction was superseded by
+    the later Vulkan zero-axis contract slice on 2026-04-17.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan smokes returned `70.0` for a scalar multi-axis contraction,
+      `210.0` for a rank-3 multi-axis contraction, `460.0` for the existing
+      rank-N single-axis contraction, `8.0` for binary `map +`, and
+      `tensor/backend-unsupported` for unsupported Vulkan `map sqrt`
+    - host focused `advanced-collections-module` -> `689 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `676 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan rank-N single-axis contract:
+  - Replaced the fixed rank-1/rank-2 Vulkan `Float64` contract shader with a
+    rank/shape/stride metadata-buffer shader for dense row-major tensors.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c` from the checked-in
+    `csrc/tensor_vulkan_contract_f64.comp` source.
+  - Extended `omni_tensor_backend_vulkan_contract_f64` and the C3 Vulkan
+    extern to pass operand/output rank, shape, and stride metadata.
+  - Relaxed the public Vulkan `contract` dispatch gate to accept dense
+    row-major `Float64` tensors of arbitrary rank with exactly one contracted
+    axis, preserving output order as free left axes followed by free right
+    axes.
+  - Fixed the generic contract descriptor pool size to match the four-buffer
+    descriptor layout used by left, right, output, and metadata buffers.
+  - Multi-axis contractions, unsupported layouts/dtypes, and mixed CPU/Vulkan
+    operands still fail closed with Tensor backend diagnostics.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan rank-N contract smokes returned `460.0`, `139.0`,
+      `3340.0`, `vulkan`, and `0.0`
+    - host focused `advanced-collections-module` -> `688 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `675 passed, 0 failed`
+	    - primitive docs parity and Stage 3 source parity passed
+	    - `git diff --check` passed
+
+- Invalidated a generic Vulkan unary `map` direction:
+  - A follow-up attempt to extend the binary Vulkan `Float64` map shader with a
+    generic mode-3 unary branch was rolled back before landing.
+  - GLSL `double` transcendental calls such as `sin(double)` failed shader
+    compilation, invalidating the assumption that the current Vulkan GLSL path
+    can directly use double-precision transcendental builtins.
+  - An arithmetic-only unary variant for `abs`/negation compiled but still
+    failed at runtime with `map: Vulkan Float64 kernel failed`, while binary
+    Vulkan `map` and rank-N Vulkan `contract` remained healthy.
+  - Do not resume the generic mode-3 branch as the default next step. Prefer a
+    separately debugged unary shader/helper entrypoint, or first diagnose the
+    descriptor/dispatch failure. Do not use `Float32` casts or hidden CPU
+    fallback to mask unsupported Vulkan unary behavior.
+  - After rollback, `c3c build --obj-out obj` passed, binary Vulkan `map +`
+    returned `8.0`, rank-N Vulkan `contract` returned `460.0`, unsupported
+    Vulkan `map sqrt` returned `tensor/backend-unsupported`, host focused
+    `advanced-collections-module` passed `688/0`, and bounded-container focused
+    `advanced-collections-module` passed `675/0`.
+
+- Advanced `TENSOR-100E` Vulkan `Float64` map broadcasting:
+  - Updated `csrc/tensor_vulkan_map_f64.comp` so the shader computes
+    right-aligned broadcast operand offsets from rank/shape/stride metadata
+    instead of indexing both operands with the flat output index.
+  - Regenerated `csrc/tensor_vulkan_map_f64_spv.c` from the checked-in shader.
+  - Extended `omni_tensor_backend_vulkan_map_f64` with a fourth metadata buffer
+    containing output shape/strides plus left/right operand shape/strides.
+  - Relaxed the C3 Vulkan `map` dispatch gates to accept the same dense
+    row-major right-aligned singleton-axis Tensor/Tensor broadcasting supported
+    by the CPU Tensor map oracle.
+  - Public behavior remains backend-neutral: callers use `map`, results stay
+    Vulkan-placed, and CPU inspection still requires explicit `to-device 'cpu`.
+  - Incompatible broadcast shapes, unsupported callables, unsupported dtypes,
+    and mixed CPU/Vulkan operands still fail closed with Tensor backend
+    diagnostics.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan broadcast smokes returned `36.0`, `32.0`, `11.0`, and
+      `vulkan`
+    - host focused `advanced-collections-module` -> `683 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `670 passed, 0 failed`
+
+- Advanced `TENSOR-100E` Vulkan `Float64` map arithmetic family:
+  - Added `csrc/tensor_vulkan_map_f64.comp` as the checked-in GLSL source for
+    the Vulkan `Float64` elementwise map shader family.
+  - Added `csrc/tensor_vulkan_map_f64_spv.c`, generated from that GLSL source.
+  - Added the runtime-loaded C ABI helper
+    `omni_tensor_backend_vulkan_map_f64` with Tensor/scalar, scalar/Tensor, and
+    Tensor/Tensor dispatch modes and `+`, `-`, `*`, `/` arithmetic op codes.
+  - Routed public `map` for Vulkan-placed dense row-major `Float64` operands
+    through the new generic helper when operands are Tensor/scalar,
+    scalar/Tensor, or exact-shape Tensor/Tensor.
+  - Results stay Vulkan-placed and still require explicit `to-device 'cpu` for
+    CPU inspection.
+  - Unsupported map callables, unary map callables, non-`Float64` dtypes, mixed
+    CPU/Vulkan operands, and broadcasting shapes fail closed with Tensor backend
+    diagnostics rather than silently copying to CPU.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan map smokes returned `8.0`, `12.0`, `26.0`, `80.0`,
+      `90.0`, `4.0`, `vulkan`, and `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `679 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `666 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+
+- Advanced `TENSOR-100E` Vulkan dtype/layout policy:
+  - Added `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`.
+  - Policy: keep extending fixed-width `Float64` dense row-major Vulkan kernels
+    first; do not downcast `Float64` to `Float32`; do not lower pointer-backed
+    `BigInteger`, `BigFloat`, or `BigComplex` Tensor dtypes to Vulkan; defer
+    fixed-width complex and stride-aware layouts until those language/runtime
+    contracts exist.
+  - Superseded follow-up: the policy-backed `Float64` dense row-major `map`
+    kernel family for Tensor/scalar and Tensor/Tensor elementwise arithmetic
+    landed in the later Vulkan map arithmetic slice.
+  - Also corrected the primitive appendix Tensor row so it lists the current
+    four native Tensor dtypes.
+  - validation: primitive docs parity, Stage 3 source parity, and
+    `git diff --check` passed.
+
+- Advanced `TENSOR-100E` Vulkan generic contract dispatch hardening:
+  - Added `csrc/tensor_vulkan_contract_f64.comp` as the checked-in GLSL source
+    for the generic Vulkan `Float64` contract shader.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c` from that GLSL source.
+  - Updated `omni_tensor_backend_vulkan_contract_f64` to dispatch rank-2
+    outputs with shape-aware 16x4 workgroups instead of flattening every output
+    through a one-dimensional launch.
+  - Public Tensor behavior is unchanged: Vulkan `contract` remains gated to
+    dense row-major `Float64` rank-1/rank-2 single-axis layouts, with broader
+    dtype/layout support reserved for a separate policy slice.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0` passed
+    - `spirv-val --target-env vulkan1.0` passed
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan contract smokes returned `154.0`, `60.0`, `167.0`,
+      `69.0`, `122.0`, `69.0`, `46.0`, `43.0`, `vulkan`,
+      `tensor/backend-unsupported`, and zero-free length `0`
+    - host focused `advanced-collections-module` -> `674 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `661 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+
 ## 2026-04-16
+
+- Advanced `TENSOR-100E` Vulkan zero-size contract semantics:
+  - Vulkan single-axis `contract` now mirrors the CPU Tensor zero-size oracle
+    for the supported rank-1/rank-2 `Float64` layouts.
+  - Zero-size contracted axes produce additive-identity output in Vulkan
+    storage, and zero-size free dimensions preserve zero-length result shapes
+    while remaining Vulkan-placed.
+  - Updated `omni_tensor_backend_vulkan_contract_f64` so zero-element results
+    can succeed without a buffer handle and zero-contracted non-empty results
+    allocate a Vulkan buffer and zero-fill it explicitly.
+  - validation:
+    - direct Vulkan zero-size contract smokes returned `0.0`, `0.0`, `0`,
+      `vulkan`, `0.0`, `0`, `0.0`, and `0`
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - host focused `advanced-collections-module` -> `674 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `661 passed, 0 failed`
+    - bounded-container full `advanced` slice -> `1978 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `227 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+    - `c3c build --sanitize=address --obj-out obj` remains blocked by the
+      local C3 sanitizer platform guard
+
+- Advanced `TENSOR-100E` Vulkan generic `Float64` single-axis contract support:
+  - Added `csrc/tensor_vulkan_contract_f64_spv.c`, an embedded SPIR-V generic
+    contract shader for dense row-major Vulkan `Float64` Tensor layouts.
+  - Added `omni_tensor_backend_vulkan_contract_f64` in the runtime-loaded
+    Vulkan helper.
+  - Public `contract` now supports Vulkan-placed dense row-major `Float64`
+    tensors of ranks 1 and 2 with exactly one contracted axis.
+  - Supported layouts are rank-1/rank-1 dot (`[0 0]` or explicit `[0] [0]`),
+    rank-2/rank-2 orientations `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
+    rank-2/rank-1 orientations `[1 0]` and `[0 0]`, and rank-1/rank-2
+    orientations `[0 0]` and `[0 1]`.
+  - Results are Vulkan-placed tensors; callers must still copy explicitly with
+    `to-device 'cpu` before CPU inspection.
+  - Unsupported Vulkan contract cases, including multi-axis contractions,
+    unsupported ranks/layouts/dtypes, and mixed CPU/Vulkan operands, fail
+    closed with Tensor backend diagnostics rather than silently copying to CPU.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh` passed
+    - `c3c build --obj-out obj` passed with existing deprecation warnings
+    - direct Vulkan contract smokes returned `154.0`, `60.0`, `167.0`,
+      `69.0`, `122.0`, `69.0`, `46.0`, `43.0`, `vulkan`, and
+      `tensor/backend-unsupported`
+    - host focused `advanced-collections-module` -> `668 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `655 passed, 0 failed`
+    - bounded-container full `advanced` slice -> `1972 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `227 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+    - `c3c build --sanitize=address --obj-out obj` remains blocked by the
+      local C3 sanitizer platform guard
+
+- Advanced `TENSOR-100E` portable Vulkan Tensor backend:
+  - Added `docs/plans/vulkan-backend-decision-2026-04-16.md`, recording
+    Vulkan as the portable explicit GPU execution substrate behind the existing
+    `Tensor` surface.
+  - Added `csrc/tensor_vulkan_helpers.c`, a runtime-loaded `libvulkan` probe
+    with no link-time Vulkan SDK dependency.
+  - Added `src/lisp/tensor_vulkan_backend.c3` extern bindings.
+  - Wired the Vulkan helper into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - `tensor-backends` now includes a structured `vulkan` entry with explicit
+    `float64` capability reporting.
+  - `to-device 'vulkan` now copies concrete `Float64` CPU Tensor storage into
+    opaque host-visible coherent Vulkan buffers when runtime-loaded Vulkan
+    support is usable.
+  - `to-device 'cpu` copies Vulkan Tensor storage back to native CPU Tensor
+    storage.
+  - Missing or unusable Vulkan fails with `tensor/backend-unavailable`;
+    unsupported dtypes fail with `tensor/backend-unsupported`.
+  - Unsupported Vulkan contract shapes fail closed with
+    `tensor/backend-unsupported`; ordinary Tensor operations still do not
+    silently transfer between CPU and GPU.
+  - Added `csrc/tensor_vulkan_map_add_scalar_f64_spv.c`, an embedded SPIR-V
+    compute shader generated from a checked GLSL add-scalar kernel.
+  - Refactored Vulkan helper storage around a shared context and refcounted
+    buffer handles so kernel outputs can share the input Vulkan device safely
+    across boundary copies and deterministic finalization.
+  - `map +` with one Vulkan `Float64` Tensor operand and one Float64 scalar now
+    dispatches through the embedded SPIR-V kernel and returns a Vulkan-placed
+    Tensor. Callers copy back explicitly with `to-device 'cpu`.
+  - Unsupported Vulkan map callables/shapes fail closed with
+    `tensor/backend-unsupported` instead of silently copying to CPU.
+  - Added `csrc/tensor_vulkan_contract_dot_f64_spv.c`, an embedded SPIR-V
+    compute reduction shader for rank-1/rank-1 `Float64` dot.
+  - Public `contract` now supports two Vulkan `Float64` rank-1 tensors with
+    one contracted axis (`[0 0]` or explicit `[0] [0]`), returning a
+    Vulkan-placed scalar Tensor. Callers copy back explicitly with
+    `to-device 'cpu`.
+  - Rank-2 Vulkan contract support landed in the 2026-04-16 generic
+    single-axis slice; zero-size contracted-axis support landed in the
+    follow-up zero-size slice. Unsupported Vulkan contract shapes from this
+    point are multi-axis, unsupported rank/layout/dtype, and mixed-device
+    cases. They fail closed with `tensor/backend-unsupported` instead of
+    silently copying to CPU.
+  - Added memory-lifetime coverage for opaque Vulkan device finalizers and
+    retained fail-closed boundary cloning for unsupported non-CPU device
+    handles while allowing real Vulkan buffer handles to be retained.
+  - The Vulkan probe suppresses noisy backend-driver stderr during the one-time
+    availability check and reports failures through the structured backend
+    entry instead.
+  - negative finding:
+    - Do not accept merely host-visible non-coherent Vulkan memory in this
+      helper unless explicit flush/invalidate support is added. The placement
+      path currently requires host-visible coherent memory.
+    - Zero-size Vulkan placement must still probe availability; it must not
+      silently create a Vulkan-placed Tensor on hosts where Vulkan is missing.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - direct host Vulkan map smokes returned `8.0` and `12.0`
+    - direct host Vulkan rank-1 dot smokes returned `140.0`, `140.0`,
+      `vulkan`, and `tensor/backend-unsupported`
+    - `c3c build --obj-out obj`
+    - host focused `advanced-collections-module` -> `659 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `646 passed, 0 failed`
+    - bounded-container full `advanced` slice -> `1963 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `227 passed, 0 failed`
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+    - `c3c build --sanitize=address --obj-out obj` was attempted but the local
+      C3 toolchain reported address sanitizer unsupported on this platform
+
+- Completed `TENSOR-100D` cuBLAS rank-2 CUDA contract fast path:
+  - Extended `csrc/tensor_cuda_helpers.c` with runtime-loaded cuBLAS symbols
+    (`cublasCreate_v2`, `cublasDestroy_v2`, `cublasDgemm_v2`,
+    `cublasDgemv_v2`).
+  - cuBLAS handle lifecycle is deterministic per operation: create, execute,
+    destroy.
+  - `tensor-backends` now includes a structured `cublas` entry in addition to
+    `cpu` and `cuda`.
+  - CUDA-placed dense row-major `Float64` rank-2/rank-2 single-axis
+    contractions route to `cublasDgemm_v2` for `[1 0]`, `[0 0]`, `[1 1]`,
+    and `[0 1]`; rank-2/rank-1 and rank-1/rank-2 single-axis contractions
+    route to `cublasDgemv_v2`, returning CUDA-placed Tensors.
+  - CUDA contract results must be copied back explicitly with `to-device 'cpu`
+    for CPU inspection.
+  - Unsupported CUDA contract dtypes, ranks, axis pairs, mixed CPU/CUDA
+    operands, zero-size dimensions, or missing cuBLAS fail with Tensor backend
+    diagnostics instead of silently copying to CPU.
+  - Focused regressions cover all four cuBLAS rank-2/rank-2 single-axis
+    layouts plus matrix-vector and vector-matrix layouts when available, then
+    force cuBLAS unavailable through the private backend-disable hook and
+    assert both backend inventory reporting and
+    `tensor/backend-unavailable` contract failure.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct host `tensor-backends` smoke reported CPU, CUDA, and cuBLAS
+      available
+    - direct host CUDA/cuBLAS contract smoke returned `154.0`
+    - host focused `advanced-collections-module` -> `646 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `633 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `226 passed, 0 failed`
+    - bounded-container full `advanced` slice -> `1950 passed, 0 failed`
+    - `./scripts/build_omni_chelpers.sh` passed
+    - primitive docs parity and Stage 3 source parity passed
+    - `git diff --check` passed
+  - validation note:
+    - `c3c build --sanitize=address --obj-out obj` was attempted but the local
+      C3 toolchain reported address sanitizer unsupported on this platform.
+
+- Completed `TENSOR-100C` optional CUDA Tensor copy backend:
+  - Added `csrc/tensor_cuda_helpers.c`, a runtime-loaded `libcudart` helper
+    with no required CUDA link dependency.
+  - Added `src/lisp/tensor_cuda_backend.c3` extern bindings.
+  - Wired helper compilation into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - CUDA availability now requires runtime symbol resolution, visible device
+    count, and a successful allocation/free probe; a weak device-count-only
+    probe was invalidated because it could report available while copy paths
+    still returned errors.
+  - `to-device` with target `'cuda` realizes CPU Tensor expressions and copies
+    concrete `Float64` storage to CUDA when available.
+  - `to-device` with target `'cpu` copies CUDA Tensor storage back to native CPU
+    Tensor storage.
+  - Unsupported CUDA dtypes fail with `tensor/backend-unsupported`.
+  - Missing or unusable CUDA fails with `tensor/backend-unavailable`.
+  - Focused tests now accept both CUDA-visible and CUDA-unavailable validation
+    environments and assert a CUDA roundtrip value when CUDA is available.
+  - validation:
+    - `c3c build --obj-out obj`
+    - host focused `advanced-collections-module` -> `633 passed, 0 failed`
+    - direct host `tensor-backends` smoke reported CUDA available
+    - direct host CUDA roundtrip `to-device 'cuda` -> `to-device 'cpu`
+      returned `2.0`
+    - bounded-container focused `advanced-collections-module`
+      -> `619 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `226 passed, 0 failed`
+    - `git diff --check` passed
+  - negative finding:
+    - Do not treat `cudaGetDeviceCount` alone as CUDA copy availability. It was
+      observed to make `tensor-backends` report available while the first copy
+      smoke returned error values. Keep the allocation/free probe as part of
+      backend availability.
+
+- Completed `TENSOR-100B` Tensor placement metadata and backend inventory:
+  - Added internal `TensorDeviceKind` placement metadata to `TensorVal`.
+  - Added an opaque device handle/finalizer slot for future CUDA buffers.
+  - Ordinary Tensor allocation initializes CPU placement.
+  - `device` now reports the Tensor payload's stored placement instead of
+    hardcoding CPU.
+  - `tensor-backends` is now registered in the interpreter table and AOT
+    primitive hash. It returns structured backend dictionaries: CPU is
+    available, CUDA is listed as unavailable with reason `backend-unavailable`.
+  - CPU Tensor kernels reject non-CPU storage through `tensor_has_valid_storage`
+    instead of silently reading backend handles.
+  - Boundary cloning refuses opaque non-CPU Tensor payloads until explicit copy
+    semantics are implemented.
+  - `tensor_free_payload` is the single release authority for opaque device
+    handles, with a memory-lifetime regression covering fake CUDA storage
+    destruction.
+  - validation:
+    - `c3c build --obj-out obj`
+    - host focused `advanced-collections-module` -> `633 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `619 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke` -> `226 passed, 0 failed`
+    - direct `tensor-backends` smoke returned structured CPU/CUDA entries
+    - direct `to-device 'cpu` + `device` smoke -> `"cpu"`
+  - validation note:
+    - host `memory-lifetime-smoke` intentionally refused under the
+      container-only memory-slice policy; the bounded container run is the
+      governing signal.
+
+- Completed `TENSOR-100A` CPU-only Tensor placement/introspection surface:
+  - Added public `device` and `to-device` primitives.
+  - `device` reports `'cpu` for current Tensor values.
+  - `to-device` with target `'cpu` realizes Tensor expressions to CPU Tensor
+    storage.
+  - `to-device` with target `'cuda` fails closed with
+    `tensor/backend-unavailable`; no CUDA runtime dependency was added.
+  - Registered both primitives in the interpreter table and AOT primitive hash.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused `advanced-collections-module` -> `629 passed, 0 failed`
+    - bounded-container focused `advanced-collections-module`
+      -> `616 passed, 0 failed`
+    - bounded-container full `advanced` slice -> `1933 passed, 0 failed`
+    - direct `device` smoke -> `"cpu"`
+    - direct handled CUDA smoke -> `"tensor/backend-unavailable"`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+  - validation note:
+    - host monolithic `advanced` still exits without a summary; focused host
+      groups and the bounded-container full `advanced` policy path pass, so do
+      not treat the monolithic host run as the governing Tensor gate.
+
+- Completed `TENSOR-100` explicit-device CUDA/cuBLAS backend design:
+  - Added `docs/plans/cuda-cublas-backend-decision-2026-04-16.md`.
+  - Locked future GPU support behind the existing `Tensor` value instead of a
+    public `GpuTensor`, `CudaTensor`, or backend-specific Tensor subtype.
+  - Chose `to-device`, `device`, and `tensor-backends` as the first future
+    placement/introspection surface.
+  - Rejected backend-flavored math names, `tensor-use-backend!` as the first
+    control surface, and implicit CPU/GPU transfer inside ordinary `map`,
+    `contract`, `realize`, or `matrix/*` operations.
+  - Defined the next implementation boundary: Tensor placement metadata,
+    CPU-only `device`, fail-closed `to-device` diagnostics when CUDA is
+    unavailable, CUDA buffer ownership/destruction tests, explicit CPU/CUDA
+    copies, cuBLAS handle lifecycle, then CUDA-placed `Float64` rank-2
+    contraction.
+  - validation:
+    - documentation/reference grep checks
+    - `git diff --check`
+
+- Completed `ADV-STACK-001` macro-hygiene non-tail recursion headroom
+  calibration:
+  - Lowered the `advanced-macro-hygiene-string-number` non-tail recursion probe
+    from the environment-specific `896`/`1200` split to a single portable depth
+    of `512`.
+  - The test remains a substantial non-tail interpreter-recursion probe, but no
+    longer treats high stack-depth calibration values as language/runtime
+    contracts.
+  - negative finding:
+    - do not keep using `896` or `1200` as portable recursion headroom on this
+      ARM64 workspace; the host crashed at `640`, `768`, `896`, and `1200`,
+      and the bounded validation container crashed at `1200`.
+  - validation:
+    - `c3c build --obj-out obj`
+    - host and bounded-container `advanced-macro-hygiene-string-number`
+      -> `9 passed, 0 failed`
+    - host and bounded-container `advanced-macro-hygiene`
+      -> `83 passed, 0 failed`
+    - bounded-container full `advanced` slice
+      -> `1928 passed, 0 failed`
+    - bounded-container `memory-lifetime-smoke`
+      -> `225 passed, 0 failed`
+
+- Verified installed LAPACKE backend visibility after `liblapacke` became
+  available on the host:
+  - `ldconfig -p` now reports `liblapacke.so` and `liblapacke.so.3` under
+    `/lib/aarch64-linux-gnu`.
+  - host `advanced-collections-module` with
+    `LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/aarch64-linux-gnu`
+    -> `624 passed, 0 failed`
+  - bounded-container `advanced-collections-module` with the mounted aarch64
+    host toolchain and LAPACK library path
+    -> `611 passed, 0 failed`
+  - bounded-container `memory-lifetime-smoke` with the same runtime library
+    path -> `225 passed, 0 failed`
+
+- Completed `TENSOR-090AQ` pure `matrix/eigenpairs` fallback stabilization:
+  - The bounded validation container exposed a host-hidden bug where the pure
+    no-`dgeev` fallback could corrupt the trailing real eigenvalue for a 3x3
+    real-plus-complex-block matrix, returning a value like `6146+0i` instead
+    of `2+0i`.
+  - Updated the pure QR eigenvalue convergence check to treat isolated
+    subdiagonal 2x2 real-Schur blocks as converged, so the fallback does not
+    apply shifted QR iteration to an already-settled complex block.
+  - Preserved the existing tolerance-based LAPACK QR rank guard.
+  - validation:
+    - `c3c build --obj-out obj`
+    - host focused advanced collections/module group
+      -> `624 passed, 0 failed`
+    - bounded container focused advanced collections/module group with mounted
+      aarch64 host toolchain -> `611 passed, 0 failed`
+    - forced no-`dgeev` direct value smoke for the 3x3 real-plus-complex block
+      -> `"2+0i"`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Completed `TENSOR-090AP` forced pure fallback coverage for the
+  `dgeqrf`/`dorgqr`-backed QR matrix routine:
+  - Added a private test-only QR backend disable hook behind the Tensor
+    LAPACK backend boundary, including the `OMNI_TENSOR_DISABLE_LAPACK_DGEQRF`
+    environment switch.
+  - Added focused forced-fallback coverage for `matrix/qr`, proving the pure
+    reduced QR fallback preserves expected public results when the runtime QR
+    LAPACK backend is disabled.
+  - Preserved the existing tolerance-based LAPACK QR rank guard.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `624 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Completed `TENSOR-090AO` forced pure fallback coverage for `dpotrf`-backed
+  matrix routines:
+  - Added a private test-only `LAPACKE_dpotrf` disable hook behind the Tensor
+    LAPACK backend boundary, including the `OMNI_TENSOR_DISABLE_LAPACK_DPOTRF`
+    environment switch.
+  - Added focused forced-fallback coverage for `matrix/cholesky`, proving the
+    pure lower-triangular Cholesky fallback preserves expected public results
+    when runtime `dpotrf` is disabled.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `622 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Completed `TENSOR-090AN` forced pure fallback coverage for `dgetrf`-backed
+  matrix routines:
+  - Added a private test-only `LAPACKE_dgetrf` disable hook behind the Tensor
+    LAPACK backend boundary, including the `OMNI_TENSOR_DISABLE_LAPACK_DGETRF`
+    environment switch.
+  - Added focused forced-fallback coverage for `matrix/lu` and
+    `matrix/determinant`, proving the pure partial-pivot LU fallback preserves
+    expected public results when runtime `dgetrf` is disabled.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `620 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Completed `TENSOR-090AM` forced pure fallback coverage for `dgesv`-backed
+  matrix routines:
+  - Added a private test-only `LAPACKE_dgesv` disable hook behind the Tensor
+    LAPACK backend boundary, including the `OMNI_TENSOR_DISABLE_LAPACK_DGESV`
+    environment switch.
+  - Decoupled the `dgesv` backend path from the unrelated `dgeev` disable
+    state so `matrix/solve` and `matrix/inverse` fallback validation has its
+    own backend control.
+  - Added focused forced-fallback coverage for `matrix/solve` and
+    `matrix/inverse`, proving the pure Gaussian solver fallback preserves
+    expected public results when runtime `dgesv` is disabled.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `616 passed, 0 failed`
+    - primitive docs parity, Stage 3 source parity, and `git diff --check`
+      passed
+
+- Completed `TENSOR-090AL` forced pure fallback coverage for symmetric eigen
+  matrix routines:
+  - Added a private test-only `LAPACKE_dsyev` disable hook behind the Tensor
+    LAPACK backend boundary, including the `OMNI_TENSOR_DISABLE_LAPACK_DSYEV`
+    environment switch.
+  - Added focused forced-fallback coverage for `matrix/eigenvalues` and
+    `matrix/eigenvectors`, proving the symmetric Jacobi fallback preserves
+    expected values and vector columns when runtime `dsyev` is disabled.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `612 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090AK` forced pure fallback coverage for SVD-backed matrix
+  routines:
+  - Reused the private `dgesvd` disable hook to add focused forced-fallback
+    coverage for `matrix/rank`, `matrix/singular-values`, and `matrix/svd`.
+  - The tests prove those already-shipped public contracts keep their expected
+    results when runtime `LAPACKE_dgesvd` is disabled and the pure
+    row-echelon or Gram/Jacobi fallback paths are used.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `606 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090AJ` matrix norm SVD backend/fallback coverage:
+  - Added a private test-only `LAPACKE_dgesvd` disable hook behind the Tensor
+    LAPACK backend boundary, including the
+    `OMNI_TENSOR_DISABLE_LAPACK_DGESVD` environment switch.
+  - Added focused `matrix/norm` coverage proving `'spectral` and `'nuclear`
+    use the runtime `dgesvd` backend when available and preserve the same
+    public results through the forced pure SVD fallback.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `598 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090AI` matrix norm spectral/nuclear selectors:
+  - Extended public `matrix/norm` with `'spectral` and `'nuclear` selectors
+    for rank-2 `Float64` Tensor inputs.
+  - `'spectral` returns the largest singular value and `'nuclear` returns the
+    sum of singular values, reusing the existing `matrix_svd_factor`
+    pure/LAPACK machinery.
+  - Preserved lazy input realization, empty-axis behavior as `0.0`, and
+    invalid selector validation.
+  - validation:
+    - direct spectral smoke on diagonal `[3 0; 0 2]` -> `3.0`
+    - direct nuclear smoke on diagonal `[3 0; 0 2]` -> `5.0`
+    - direct empty spectral smoke -> `0.0`
+    - direct empty nuclear smoke -> `0.0`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `592 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090AH` matrix norm surface:
+  - Added public `matrix/norm` for rank-2 `Float64` Tensor inputs.
+  - The operation realizes lazy inputs, supports empty axes as `0.0`, returns
+    a `Float64`, defaults to the Frobenius norm, and accepts explicit
+    `'frobenius`, `'one`, `'infinity`, or `'max` selectors.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Added focused advanced collections/module coverage for default and
+    explicit Frobenius, one-norm, infinity-norm, max-absolute norm, empty
+    axes, lazy input realization, rank validation, dtype validation, and
+    selector validation.
+  - validation:
+    - direct default Frobenius smoke -> `5.0`
+    - direct one-norm smoke -> `9.0`
+    - direct infinity-norm smoke -> `15.0`
+    - direct lazy Frobenius smoke -> `5.0`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `590 passed, 0 failed`
+
+- Completed `TENSOR-090AG` eigenpairs residual harness:
+  - Added reusable Lisp-side helpers in the advanced collections/module tests
+    to validate all three returned vector columns for 3x3
+    `matrix/eigenpairs` inputs.
+  - Added backend and forced-fallback harness checks covering both the
+    non-normal upper-triangular matrix `[5 7 0; 0 3 2; 0 0 1]` and the
+    real-plus-complex-block matrix `[0 -1 0; 1 0 0; 0 0 2]`.
+  - Each harness verifies every returned column satisfies `A*v ~= lambda*v`,
+    reducing reliance on hand-expanded one-column residual assertions.
+  - validation:
+    - prototype backend and forced-fallback helper smokes -> `true`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `580 passed, 0 failed`
+
+- Completed `TENSOR-090AF` non-normal eigenpairs residual coverage:
+  - Added focused residual checks for the non-normal upper-triangular matrix
+    `[5 7 0; 0 3 2; 0 0 1]`.
+  - Both the accelerated `LAPACKE_dgeev` path and forced pure fallback now
+    validate the middle returned vector column satisfies `A*v ~= lambda*v`.
+  - This exercises a non-basis eigenvector alignment case beyond diagonal and
+    simple rotation examples.
+  - validation:
+    - direct backend and forced-fallback non-normal residual smokes -> `true`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `578 passed, 0 failed`
+
+- Completed `TENSOR-090AE` accelerated eigenpairs residual coverage:
+  - Added focused `LAPACKE_dgeev`-path residual checks for
+    `matrix/eigenpairs` when the runtime backend is available.
+  - The accelerated path now validates representative real and complex vector
+    columns satisfy `A*v ~= lambda*v`, complementing the pure fallback residual
+    checks from `TENSOR-090AD`.
+  - validation:
+    - direct backend residual smokes for real diagonal and complex rotation
+      matrices -> `true`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `576 passed, 0 failed`
+
+- Completed `TENSOR-090AD` broader pure eigenpairs fallback coverage:
+  - Added focused regressions for forced no-`dgeev` fallback on:
+    - 3x3 diagonal matrices with three real eigenvalues.
+    - 3x3 upper-triangular matrices where eigenvalues are the diagonal.
+    - 3x3 real matrices containing a 2x2 complex-conjugate block plus one
+      real eigenvalue.
+  - These tests harden the `TENSOR-090AC` pure QR/nullspace fallback beyond
+    the initial 2x2 real/complex cases while preserving the same public
+    `matrix/eigenpairs` contract.
+  - Added forced-fallback residual checks that validate representative
+    returned vector columns satisfy `A*v ~= lambda*v`.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `574 passed, 0 failed`
+
+- Completed `TENSOR-090AC` pure fallback for general matrix eigenpairs:
+  - `matrix/eigenpairs` now treats runtime `LAPACKE_dgeev` as optional
+    acceleration rather than a hard dependency.
+  - When `dgeev` is unavailable or explicitly disabled for validation, the
+    runtime uses a pure QR eigenvalue pass plus complex nullspace solving for
+    aligned right eigenvectors.
+  - The fallback preserves the public contract from `TENSOR-090AB`:
+    `BigComplex` `values` shape `[n]`, `BigComplex` `vectors` shape `[n n]`,
+    deterministic value sorting, and aligned vector columns.
+  - Added a test-only `dgeev` disable hook and
+    `OMNI_TENSOR_DISABLE_LAPACK_DGEEV` CLI validation switch.
+  - Updated docs, TODO, and agent handoff artifacts to remove the
+    backend-required status.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `568 passed, 0 failed`
+    - forced no-`dgeev` complex eigenvalue smoke -> `"0+1i"`
+    - forced no-`dgeev` vector dtype smoke -> `"BigComplex"`
+    - forced no-`dgeev` real diagonal smoke -> `true`
+
+- Completed `TENSOR-090AB` general matrix eigenpairs surface:
+  - Added public `matrix/eigenpairs` for square rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs, calls runtime-loaded
+    `LAPACKE_dgeev`, and returns a dictionary with:
+    - `values`: a rank-1 `BigComplex` Tensor with shape `[n]`.
+    - `vectors`: a rank-2 `BigComplex` Tensor with shape `[n n]`; vector
+      columns align with the same-position eigenvalue.
+  - Real and complex eigenvalues share the same `BigComplex` output type.
+  - Eigenpairs are sorted by descending eigenvalue magnitude with deterministic
+    real/imaginary tie-breakers.
+  - Right eigenvector columns are phase-normalized for stable display.
+  - Empty square matrices return empty `[0]` values and `[0 0]` vectors without
+    requiring a backend call.
+  - Hosts without `LAPACKE_dgeev` now retain the pure fallback shipped in
+    `TENSOR-090AC`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Added focused advanced collection/module coverage for complex eigenvalues,
+    real diagonal eigenpairs, vector dtype/shape, lazy input realization, empty
+    shape, backend call-count coverage, rank validation, and dtype validation.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, live TODO, and
+    agent handoff plan/report.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `564 passed, 0 failed`
+    - direct complex eigenvalue smoke -> `"0+1i"`
+    - direct vector dtype smoke -> `"BigComplex"`
+    - direct empty-vector-shape smoke -> `0`
+    - direct dtype validation smoke ->
+      `matrix/eigenpairs: expected a square rank-2 Float64 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090AA` matrix singular-values surface:
+  - Added public `matrix/singular-values` for rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs, computes the existing reduced SVD
+    workspaces, and returns the descending singular values as a rank-1
+    `Float64` Tensor with shape `[min(rows, columns)]`.
+  - Rectangular and rank-deficient matrices are supported.
+  - Empty axes return an empty rank-1 Tensor.
+  - Optional runtime-loaded `LAPACKE_dgesvd` acceleration is reused when
+    available; missing backend support retains the pure Gram/Jacobi fallback.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Added focused backend-path coverage that asserts the `dgesvd` call counter
+    advances when `liblapacke` is available and otherwise accepts fallback
+    retention.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `550 passed, 0 failed`
+    - direct leading singular value smoke -> `3.0`
+    - direct wide-shape smoke -> `2`
+    - direct empty-shape smoke -> `0`
+    - direct lazy-input smoke -> `2.0`
+    - direct dtype validation smoke ->
+      `matrix/singular-values: expected a rank-2 Float64 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090Z` matrix rank LAPACK coverage:
+  - Routed public `matrix/rank` through optional runtime-loaded
+    `LAPACKE_dgesvd` when available.
+  - The backend path copies the input, computes singular values, and counts
+    values above the caller/default tolerance.
+  - The pure partial-pivot row-echelon rank counter remains the fallback when
+    LAPACK is unavailable, rejects the input, or fails to converge.
+  - The public `matrix/rank` contract is unchanged: rectangular rank-2
+    `Float64` input, lazy realization, optional non-negative finite tolerance,
+    empty axes returning `0`, and `Integer` result.
+  - Added focused backend-path coverage that asserts the `dgesvd` call counter
+    advances when `liblapacke` is available and otherwise accepts fallback
+    retention.
+  - Updated Tensor scientific plan, Tensor area page, matrix surface decision
+    note, plan index, and agent handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `540 passed, 0 failed`
+
+- Completed `TENSOR-090Y` matrix rank surface:
+  - Added public `matrix/rank` for rectangular rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs and computes numerical rank with
+    partial-pivot row-echelon elimination over a copied scratch buffer.
+  - The default tolerance is `1e-12`.
+  - Optional tolerance selection accepts any numeric value that can narrow to a
+    non-negative finite `Float64`.
+  - Empty axes return rank `0`.
+  - The result is an `Integer`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `538 passed, 0 failed`
+    - direct `matrix/rank` full rectangular smoke -> `2`
+    - direct `matrix/rank` deficient rectangular smoke -> `1`
+    - direct `matrix/rank` empty-axis smoke -> `0`
+    - direct tolerance-suppressed small pivot smoke -> `1`
+    - direct zero-tolerance small pivot smoke -> `2`
+    - direct lazy-input smoke -> `2`
+    - direct dtype validation smoke ->
+      `matrix/rank: expected a rank-2 Float64 Tensor`
+    - direct negative-tolerance validation smoke ->
+      `matrix/rank: tolerance must be a non-negative finite number`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090X` matrix identity surface:
+  - Added public `matrix/identity` for non-negative integer sizes.
+  - The implementation builds a square rank-2 Tensor with shape `[n n]`.
+  - The default dtype is `Float64`.
+  - Optional dtype selection supports `Float64`, `BigInteger`, `BigFloat`, and
+    `BigComplex`, matching the existing Tensor dtype parser.
+  - Diagonal cells are filled with the dtype's one value; off-diagonal cells
+    are filled with the dtype's zero value.
+  - Empty size `0` returns an empty square Tensor with shape `[0 0]`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `529 passed, 0 failed`
+    - direct `matrix/identity` default Float64 diagonal smoke -> `1.0`
+    - direct `matrix/identity` default Float64 off-diagonal smoke -> `0.0`
+    - direct `matrix/identity` empty shape smoke -> `[0 0]`
+    - direct `matrix/identity` BigInteger one smoke -> `"1"`
+    - direct `matrix/identity` BigInteger zero smoke -> `"0"`
+    - direct `matrix/identity` BigFloat one smoke -> `"1"`
+    - direct `matrix/identity` BigComplex one smoke -> `"1+0i"`
+    - direct dtype preservation smoke -> `"BigComplex"`
+    - direct negative-size validation smoke ->
+      `matrix/identity: size must be a non-negative Integer`
+    - direct invalid-dtype validation smoke ->
+      `matrix/identity: dtype must be Float64, BigInteger, BigFloat, or BigComplex`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090W` matrix diagonal-matrix surface:
+  - Added public `matrix/diagonal-matrix` for rank-1 Tensor inputs.
+  - The implementation realizes lazy inputs and builds a square rank-2 Tensor
+    with shape `[n n]`.
+  - Native dtype is preserved for `Float64`, `BigInteger`, `BigFloat`, and
+    `BigComplex`.
+  - High-precision diagonal element handles are cloned into the result instead
+    of being shallow-copied.
+  - Off-diagonal cells are filled with the dtype's zero value.
+  - Empty rank-1 inputs return an empty square Tensor with shape `[0 0]`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `517 passed, 0 failed`
+    - direct `matrix/diagonal-matrix` Float64 diagonal smoke -> `3.0`
+    - direct `matrix/diagonal-matrix` Float64 off-diagonal smoke -> `0.0`
+    - direct `matrix/diagonal-matrix` empty shape smoke -> `[0 0]`
+    - direct `matrix/diagonal-matrix` BigInteger clone smoke ->
+      `"9223372036854775808"`
+    - direct `matrix/diagonal-matrix` BigInteger off-diagonal zero smoke ->
+      `"0"`
+    - direct `matrix/diagonal-matrix` BigFloat clone smoke -> `"2.5"`
+    - direct `matrix/diagonal-matrix` BigComplex clone smoke -> `"3+4i"`
+    - direct dtype preservation smoke -> `"BigComplex"`
+    - direct lazy-input smoke -> `2.0`
+    - direct rank validation smoke ->
+      `matrix/diagonal-matrix: expected a rank-1 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090V` matrix diagonal surface:
+  - Added public `matrix/diagonal` for rank-2 Tensor inputs.
+  - The implementation realizes lazy inputs and extracts the main diagonal
+    into a rank-1 Tensor with length `min(rows, columns)`.
+  - Native dtype is preserved for `Float64`, `BigInteger`, `BigFloat`, and
+    `BigComplex`.
+  - High-precision Tensor element handles are cloned into the diagonal result
+    instead of being shallow-copied, preserving Tensor ownership invariants.
+  - Empty rectangular inputs return an empty rank-1 Tensor with shape `[0]`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `505 passed, 0 failed`
+    - direct `matrix/diagonal` rectangular Float64 smoke -> `5.0`
+    - direct `matrix/diagonal` empty shape smoke -> `[0]`
+    - direct `matrix/diagonal` BigInteger clone smoke ->
+      `"9223372036854775808"`
+    - direct `matrix/diagonal` BigFloat clone smoke -> `"2.5"`
+    - direct `matrix/diagonal` BigComplex clone smoke -> `"3+4i"`
+    - direct dtype preservation smoke -> `"BigComplex"`
+    - direct lazy-input smoke -> `4.0`
+    - direct rank validation smoke ->
+      `matrix/diagonal: expected a rank-2 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090U` matrix trace surface:
+  - Added public `matrix/trace` for square rank-2 Tensor inputs.
+  - The implementation realizes lazy inputs and sums the diagonal.
+  - The result is a scalar in the Tensor's native numeric family: `Double`
+    for `Float64`, or `BigInteger`, `BigFloat`, and `BigComplex` for matching
+    high-precision Tensor dtypes.
+  - Empty square matrices return the dtype's zero scalar.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `496 passed, 0 failed`
+    - direct `matrix/trace` Float64 smoke -> `5.0`
+    - direct `matrix/trace` empty square smoke -> `0.0`
+    - direct `matrix/trace` BigInteger smoke -> `"9223372036854775812"`
+    - direct `matrix/trace` BigFloat smoke -> `"3.75"`
+    - direct `matrix/trace` BigComplex smoke -> `"4+6i"`
+    - direct lazy-input smoke -> `5.0`
+    - direct rectangular validation smoke ->
+      `matrix/trace: expected a square rank-2 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090T` matrix transpose surface:
+  - Added public `matrix/transpose` for rank-2 Tensor inputs.
+  - The implementation realizes lazy inputs and returns a Tensor with shape
+    `[columns rows]`.
+  - Native dtype is preserved for `Float64`, `BigInteger`, `BigFloat`, and
+    `BigComplex`.
+  - High-precision Tensor element handles are cloned into the transposed result
+    instead of being shallow-copied, preserving Tensor ownership invariants.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `488 passed, 0 failed`
+    - direct `matrix/transpose` Float64 value smoke -> `6.0`
+    - direct `matrix/transpose` shape smoke -> `[3 2]`
+    - direct `matrix/transpose` BigInteger clone smoke ->
+      `"9223372036854775808"`
+    - direct `matrix/transpose` BigFloat clone smoke -> `"2.5"`
+    - direct `matrix/transpose` BigComplex clone smoke -> `"3+4i"`
+    - direct rank validation smoke ->
+      `matrix/transpose: expected a rank-2 Tensor`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090S` matrix inverse surface:
+  - Added public `matrix/inverse` for nonsingular square rank-2 `Float64`
+    Tensor inputs.
+  - The implementation realizes lazy inputs, solves against an identity RHS,
+    and returns a same-shape `Float64` Tensor inverse.
+  - `matrix/inverse` uses optional runtime-loaded `LAPACKE_dgesv` acceleration
+    when available, while the pure Gaussian solve remains the semantic oracle.
+  - Singular inputs raise `tensor/singular-matrix`; non-square and non-Float64
+    Tensor inputs raise the existing Tensor shape/type diagnostics.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, matrix surface decision note, plan index, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `479 passed, 0 failed`
+    - direct `matrix/inverse` first-entry smoke -> `0.6`
+    - direct `matrix/inverse` off-diagonal smoke -> `-0.7`
+    - direct inverse product identity smoke -> `1.0`
+    - direct singular inverse handler smoke ->
+      `matrix/inverse: input matrix is singular`
+    - direct empty square inverse shape smoke -> `0`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090R` optional LAPACK SVD acceleration:
+  - Installed `liblapacke-dev` on the host so runtime-loaded LAPACKE paths can
+    be validated live instead of only through fallback retention.
+  - Extended the private runtime-loaded LAPACK helper to resolve
+    `LAPACKE_dgesvd`, with separate availability and call-count probes.
+  - Routed `matrix/svd` through the LAPACK helper when `liblapacke` provides
+    `LAPACKE_dgesvd`.
+  - Preserved the existing reduced SVD public contract: `u` shape `[rows k]`,
+    `s` shape `[k]`, `v` shape `[columns k]`, descending singular values, and
+    rank-deficient inputs supported with zero singular values.
+  - The backend uses reduced `jobu='S'`/`jobvt='S'`, transposes LAPACK's `vt`
+    into Omni's `v` column-factor layout, and normalizes signs for stable
+    factor output.
+  - Missing LAPACKE, missing symbols, unsupported LAPACK ABI widths, or
+    unavailable backend paths keep the pure C3 Gram/Jacobi SVD fallback as the
+    semantic oracle.
+  - Live LAPACKE validation also exposed a previous QR backend bug: exact-zero
+    diagonal rank checks are too weak after `LAPACKE_dgeqrf`; the QR helper now
+    rejects diagonals with absolute value at or below `1e-12`.
+  - validation:
+    - `sudo apt-get update && sudo apt-get install -y liblapacke-dev`
+    - `ldconfig -p | rg -i 'lapacke|lapack|openblas|blas'`
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - focused advanced collections/module group on host
+      -> `469 passed, 0 failed`
+    - direct `matrix/svd` leading singular value smoke -> `3.0`
+    - direct `matrix/svd` U-column smoke -> `1.0`
+    - direct `matrix/svd` V-column smoke -> `1.0`
+    - direct wide `matrix/svd` V-column smoke -> `1.0`
+    - direct rank-deficient `matrix/svd` singular value smoke -> `0.0`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090Q` optional LAPACK symmetric eigen acceleration:
+  - Extended the private runtime-loaded LAPACK helper to resolve
+    `LAPACKE_dsyev`, with separate availability and call-count probes.
+  - Routed `matrix/eigenvalues` and `matrix/eigenvectors` through the LAPACK
+    helper when `liblapacke` provides `LAPACKE_dsyev`.
+  - Preserved the existing symmetric-real public contract: exact symmetry is
+    checked before the backend call, eigenvalues are descending, eigenvector
+    columns align with values, and nonsymmetric inputs raise
+    `tensor/not-symmetric`.
+  - The backend sorts LAPACK's ascending eigenpairs into descending order,
+    normalizes eigenvector signs for stable output, and maps LAPACK
+    non-convergence to the existing `tensor/no-convergence` failure path.
+  - Missing LAPACKE, missing symbols, unsupported LAPACK ABI widths, or
+    unavailable backend paths keep the pure C3 symmetric Jacobi fallback as the
+    semantic oracle.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct `matrix/eigenvalues` diagonal smoke -> `3.0`
+    - direct `matrix/eigenvalues` symmetric off-diagonal smoke -> `3.0`
+    - direct `matrix/eigenvectors` aligned-value smoke -> `3.0`
+    - direct `matrix/eigenvectors` vector-column smoke -> `1.0`
+    - direct nonsymmetric eigen handler smoke ->
+      `matrix/eigenvalues: input matrix is not symmetric`
+    - focused advanced collections/module group on host
+      -> `467 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+    - local `ldconfig -p` showed `liblapack.so.3` and BLAS libraries but no
+      `liblapacke`, so the focused LAPACK path regressions validated fallback
+      retention on this host.
+
+- Completed `TENSOR-090P` optional LAPACK QR acceleration:
+  - Extended the private runtime-loaded LAPACK helper to resolve
+    `LAPACKE_dgeqrf` and `LAPACKE_dorgqr` as a paired QR backend capability,
+    with separate availability and call-count probes.
+  - Routed `matrix/qr` through the LAPACK helper when `liblapacke` provides
+    both symbols.
+  - Preserved the existing reduced QR public contract: `q` shape
+    `[rows columns]`, `r` shape `[columns columns]`, full-column-rank inputs
+    only, and `tensor/singular-matrix` for rank-deficient inputs.
+  - The backend extracts reduced `R`, forms reduced `Q`, and sign-normalizes
+    factor columns so the existing positive-diagonal orientation is preserved.
+  - Missing LAPACKE, missing symbols, unsupported LAPACK ABI widths, or
+    unavailable backend paths keep the pure C3 QR fallback as the semantic
+    oracle.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct `matrix/qr` Q first-column smoke -> `1.0`
+    - direct `matrix/qr` Q second-column smoke -> `1.0`
+    - direct `matrix/qr` R projection smoke -> `1.0`
+    - direct `matrix/qr` shape smoke -> `3`
+    - direct rank-deficient QR handler smoke ->
+      `matrix/qr: input matrix is rank deficient`
+    - focused advanced collections/module group on host
+      -> `463 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+    - local `ldconfig -p` showed `liblapack.so.3` and BLAS libraries but no
+      `liblapacke`, so the focused LAPACK path regression validated fallback
+      retention on this host.
+
+- Completed `TENSOR-090O` optional LAPACK `dpotrf` Cholesky acceleration:
+  - Extended the private runtime-loaded LAPACK helper to resolve
+    `LAPACKE_dpotrf`, with separate availability and call-count probes.
+  - Routed `matrix/cholesky` through the LAPACK helper when `liblapacke` and
+    `LAPACKE_dpotrf` are available.
+  - Preserved the existing public contract: exact symmetry is checked before
+    the backend call, the result is a lower-triangular `Float64` Tensor with
+    zero entries above the diagonal, and nonsymmetric or non-positive-definite
+    inputs raise `tensor/not-positive-definite`.
+  - Missing LAPACKE, missing symbols, unsupported LAPACK ABI widths, or
+    unavailable backend paths keep the pure C3 Cholesky fallback as the
+    semantic oracle.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct `matrix/cholesky` diagonal smoke -> `2.0`
+    - direct `matrix/cholesky` lower-entry smoke -> `1.0`
+    - direct `matrix/cholesky` upper-zero smoke -> `0.0`
+    - direct nonsymmetric Cholesky handler smoke ->
+      `matrix/cholesky: input matrix is not symmetric positive definite`
+    - direct indefinite Cholesky handler smoke ->
+      `matrix/cholesky: input matrix is not symmetric positive definite`
+    - focused advanced collections/module group on host
+      -> `461 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+    - local `ldconfig -p` showed `liblapack.so.3` and BLAS libraries but no
+      `liblapacke`, so the focused LAPACK path regression validated fallback
+      retention on this host.
+
+- Completed `TENSOR-090N` optional LAPACK `dgetrf` LU/determinant
+  acceleration:
+  - Extended the private runtime-loaded LAPACK helper to resolve
+    `LAPACKE_dgetrf` alongside `LAPACKE_dgesv`, with separate availability and
+    call-count probes.
+  - Routed `matrix/lu` through the LAPACK helper when `liblapacke` and
+    `LAPACKE_dgetrf` are available, preserving the public dictionary contract:
+    combined `lu` factor tensor, final 0-based pivot row order, and
+    `swap-count`.
+  - Routed `matrix/determinant` through the same optional `dgetrf`
+    factorization path when available, preserving determinant parity and the
+    existing singular `0.0` contract.
+  - Missing LAPACKE, missing symbols, unsupported LAPACK ABI widths, or
+    unavailable backend paths keep the pure C3 LU fallback as the semantic
+    oracle.
+  - LAPACK singular results still map to the existing public contracts:
+    `matrix/lu` raises `tensor/singular-matrix`, while
+    `matrix/determinant` returns `0.0`.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct `matrix/lu` factor smoke -> `0.5`
+    - direct `matrix/determinant` smoke -> `-2.0`
+    - direct singular `matrix/lu` handler smoke ->
+      `matrix/lu: coefficient matrix is singular`
+    - direct singular `matrix/determinant` smoke -> `0.0`
+    - focused advanced collections/module group on host
+      -> `459 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+    - local `ldconfig -p` showed `liblapack.so.3` and BLAS libraries but no
+      `liblapacke`, so the focused LAPACK path regression validated fallback
+      retention on this host.
+
+- Completed `TENSOR-090M` first symmetric-real Matrix eigen surfaces:
+  - Added public `matrix/eigenvalues` and `matrix/eigenvectors` for square
+    symmetric rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs and reuses the pure symmetric
+    Jacobi eigensolver.
+  - `matrix/eigenvalues` returns a descending rank-1 `Float64` Tensor.
+  - `matrix/eigenvectors` returns a dictionary with:
+    - `values`: descending rank-1 `Float64` Tensor.
+    - `vectors`: rank-2 `Float64` Tensor with normalized eigenvectors stored
+      as columns aligned with `values`.
+  - Nonsymmetric inputs raise `tensor/not-symmetric`.
+  - General nonsymmetric eigenpairs with complex-valued output remain a
+    separate contract decision.
+  - Registered the primitives in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct symmetric `matrix/eigenvalues` smoke -> `3.0`
+    - direct `matrix/eigenvectors` vector-column smoke -> `1.0`
+    - direct nonsymmetric eigen handler smoke -> `tensor/not-symmetric`
+    - focused advanced collections/module group on host
+      -> `455 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090L` first rectangular Matrix decomposition surface:
+  - Added public `matrix/svd` for rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs and computes a pure reduced SVD
+    through a symmetric Jacobi eigensolver on the smaller Gram matrix.
+  - The result is a dictionary with:
+    - `u`: a `Float64` Tensor with shape `[rows k]`.
+    - `s`: a `Float64` Tensor with shape `[k]`, sorted descending.
+    - `v`: a `Float64` Tensor with shape `[columns k]`.
+  - `k = min(rows, columns)`, and rank-deficient inputs are supported with
+    zero singular values.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/svd` leading singular value smoke -> `3.0`
+    - direct wide `matrix/svd` V-column smoke -> `1.0`
+    - direct rank-deficient `matrix/svd` singular value smoke -> `0.0`
+    - focused advanced collections/module group on host
+      -> `445 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090K` first symmetric positive-definite Matrix
+  decomposition surface:
+  - Added public `matrix/cholesky` for square symmetric positive-definite
+    rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs and computes a pure
+    lower-triangular Cholesky factor.
+  - The result is a same-shape `Float64` Tensor, with entries above the
+    diagonal set to zero.
+  - Nonsymmetric or non-positive-definite inputs raise
+    `tensor/not-positive-definite`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/cholesky` diagonal smoke -> `2.0`
+    - direct `matrix/cholesky` lower-entry smoke -> `1.0`
+    - direct indefinite Cholesky handler smoke ->
+      `tensor/not-positive-definite`
+    - focused advanced collections/module group on host
+      -> `435 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090J` first non-LU Matrix decomposition surface:
+  - Added public `matrix/qr` for full-column-rank rank-2 `Float64` Tensor
+    inputs with rows greater than or equal to columns.
+  - The implementation realizes lazy inputs and computes a pure reduced QR
+    factorization.
+  - The result is a dictionary with:
+    - `q`: a `Float64` Tensor with shape `[rows columns]`.
+    - `r`: a `Float64` Tensor with shape `[columns columns]`.
+  - Rank-deficient inputs raise `tensor/singular-matrix`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/qr` R projection smoke -> `1.0`
+    - direct `matrix/qr` Q column smoke -> `1.0`
+    - direct rank-deficient QR handler smoke -> `tensor/singular-matrix`
+    - focused advanced collections/module group on host
+      -> `426 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090I` first Matrix decomposition consumer:
+  - Added public `matrix/determinant` for square rank-2 `Float64` Tensor
+    inputs.
+  - The implementation realizes lazy inputs, reuses the pure C3 partial-pivot
+    LU factorization kernel, returns a `Float64` scalar determinant, returns
+    `0.0` for singular matrices, and uses the empty square convention `1.0`.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - The canonical public name is `matrix/determinant`; no abbreviated
+    `matrix/det` alias was added.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/determinant` smoke -> `-2.0`
+    - direct singular determinant smoke -> `0.0`
+    - direct empty-square determinant smoke -> `1.0`
+    - focused advanced collections/module group on host
+      -> `417 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090H` first Matrix decomposition surface:
+  - Added public `matrix/lu` for square rank-2 `Float64` Tensor inputs.
+  - The implementation realizes lazy inputs, computes pure C3 LU
+    factorization with partial pivoting, and raises `tensor/singular-matrix`
+    for singular inputs.
+  - The result is a dictionary with:
+    - `lu`: combined factors, with L below the diagonal and implicit unit
+      diagonal, and U on/above the diagonal.
+    - `pivots`: final 0-based row order after partial pivoting.
+    - `swap-count`: row-swap count for permutation parity.
+  - Registered the primitive in interpreter and AOT primitive lookup tables.
+  - Updated the language spec, collection reference, Tensor scientific plan,
+    Tensor area page, plan index, matrix surface decision note, and agent
+    handoff plan.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/lu` factor smoke -> `0.5`
+    - direct `matrix/lu` pivot smoke -> `1`
+    - direct singular LU handler smoke -> `tensor/singular-matrix`
+    - focused advanced collections/module group on host
+      -> `410 passed, 0 failed`
+    - `scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - `git diff --check`
+
+- Completed `TENSOR-090G` optional LAPACK `dgesv` matrix solver acceleration:
+  - Added private runtime-loaded `LAPACKE_dgesv` discovery through
+    `csrc/tensor_lapack_helpers.c`, with availability and call-count probes for
+    focused validation.
+  - Routed `matrix/solve` through the LAPACK helper when `liblapacke` is
+    available and the rank/size contract fits the LAPACKE integer ABI.
+  - Missing LAPACKE, oversized LAPACK inputs, unsupported layouts, or missing
+    symbols keep the pure runtime solver fallback.
+  - LAPACK singular results still raise `tensor/singular-matrix`; backend OOM
+    and invalid backend results fail closed instead of suppressing a broken
+    contract.
+  - The public surface remains `matrix/solve`; no backend-flavored public
+    solver name was added.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct `matrix/solve` vector RHS smoke -> `0.2`
+    - direct singular solve handler smoke -> `tensor/singular-matrix`
+    - focused advanced collections/module group on host
+      -> `401 passed, 0 failed`
+    - local `ldconfig -p` showed `liblapack.so.3` but no `liblapacke`, so the
+      focused LAPACK path regression validated fallback retention on this host.
+
+- Completed `TENSOR-090F` first Matrix solver surface:
+  - Locked the first rank-2 Tensor solver namespace as `matrix/`, with
+    `matrix/solve` as the public operation.
+  - Rejected bare `solve`, `linalg/solve`, `tensor/solve`, and
+    backend-flavored `tensor/lapack/solve` as first-surface names.
+  - Added a pure runtime Float64 Gaussian-elimination solver for square
+    rank-2 coefficient tensors and rank-1/rank-2 RHS tensors.
+  - Lazy Tensor operands are realized before solving; the result preserves RHS
+    rank, and singular systems raise `tensor/singular-matrix`.
+  - LAPACK/LAPACKE remains an optional backend acceleration path behind
+    `matrix/solve`; the pure solver is the semantic oracle.
+  - Added `docs/plans/matrix-solver-surface-decision-2026-04-16.md` to record
+    the naming decision and future `matrix/lu`, `matrix/qr`,
+    `matrix/cholesky`, `matrix/svd`, `matrix/eigenvalues`, and
+    `matrix/eigenvectors` direction.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct `matrix/solve` vector RHS smoke -> `0.6`
+    - direct `matrix/solve` matrix RHS smoke -> `1.0`
+    - direct singular solve handler smoke -> `tensor/singular-matrix`
+    - focused advanced collections/module group on host
+      -> `399 passed, 0 failed`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+      -> passed
+    - `git diff --check`
 
 - Canonicalized the public binary64 numeric surface from `Double` to `Float64`:
   - `Float64` is now the callable constructor/type spelling and tensor dtype
@@ -15528,3 +19351,242 @@ Older sessions are archived in [archive/CHANGELOG_ARCHIVE_2026-03-08.md](archive
     - host `c3c build --warn-deprecation=no`
     - host `scripts/run_ftxui_smoke.sh`
     - bounded normal+ASAN `async`: `pass=65 fail=0`
+
+- Vulkan math library and parallel solver roadmap:
+  - Added `docs/plans/vulkan-math-library-roadmap-2026-04-17.md` as the
+    durable forward plan for `TENSOR-100F` / `TENSOR-100G`.
+  - The roadmap keeps Vulkan behind backend-neutral `Tensor`, `map`,
+    `contract`, `matrix/*`, `to-device`, `device`, and `tensor-backends`
+    surfaces. It rejects public `VulkanTensor`, backend-named solver APIs,
+    hidden CPU/GPU transfers, and silent dtype downcasts.
+  - `Float64` dense row-major remains the first Vulkan math-library tier.
+    `Float32` and fixed-width complex are deferred until native Tensor storage
+    and public dtype semantics exist. `BigInteger`, `BigFloat`, and
+    `BigComplex` must not be lowered to Vulkan.
+  - The current serial Vulkan `matrix/solve`, `matrix/lu`, and
+    `matrix/inverse` shaders are recorded as correctness-preserving
+    small-system/backend bring-up paths, not the performance solver target.
+  - `TENSOR-100G` now requires a separate thresholded parallel solver helper
+    with a typed buffer/status contract, staged helper shape, parallel pivot
+    search, row swaps, elimination, RHS-column back-substitution, and tests
+    proving both serial and parallel Vulkan solve paths execute without LAPACK.
+  - Updated `TODO.md`, `.agents/PLAN.md`, session reports, Vulkan plan index,
+    dtype/layout policy, backend decision note, matrix solver surface decision,
+    Tensor scientific plan, and Tensor area status to point at the roadmap.
+
+- Vulkan lazy contract and singular-norm audit hardening:
+  - `src/lisp/prim_tensor.c3` now realizes lazy `TENSOR_PAYLOAD_CONTRACT`
+    operands through any-device resolution before CPU fallback. Lazy contract
+    operands that materialize to Vulkan/CUDA storage can route through backend
+    contract helpers, and any unresolved non-CPU operand path fails closed with
+    `tensor/backend-unsupported` instead of falling into CPU-only expression
+    evaluation.
+  - `src/lisp/tests_advanced_stdlib_module_groups.c3` now covers the public
+    eager Vulkan map/contract route and internal C3 harness construction of
+    lazy map/contract payloads that directly exercise
+    `tensor_contract_try_device_value`, including the mixed CPU/Vulkan
+    rejection path.
+  - `csrc/tensor_vulkan_helpers.c` now validates Vulkan availability, Float64
+    support, and shared singular-values shape metadata before the
+    `omni_tensor_backend_vulkan_singular_norm_f64` zero-size success path. A
+    test-only probe verifies a zero-byte invalid-shape call no longer returns
+    success ahead of backend/status validation.
+  - `TODO.md` now reports one live actionable item: `TENSOR-100F`. `TENSOR-100E`
+    is closed as the correctness-first Vulkan baseline and `TENSOR-100G` is
+    closed as the measured parallel-solve baseline; plan and area docs now
+    point remaining live Vulkan work at `TENSOR-100F`.
+  - validation:
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - host focused `advanced-collections-module`: `pass=913 fail=0`
+    - `./scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - targeted `git diff --check`
+
+- Direct Vulkan symmetric eigen checkpoint:
+  - `csrc/tensor_vulkan_symmetric_eigen_f64.comp` and generated
+    `csrc/tensor_vulkan_symmetric_eigen_f64_spv.c` now implement the first
+    dense row-major Vulkan `Float64` Jacobi symmetric eigensolver helper.
+  - `omni_tensor_backend_vulkan_symmetric_eigen_f64` returns separate
+    Vulkan-placed values and vector buffers, maps shader status
+    `not-symmetric` to `tensor/not-symmetric`, and is bounded to `n <= 64`.
+  - Public `matrix/eigenvalues` and `matrix/eigenvectors` now route concrete
+    and lazy Vulkan inputs through that helper before CPU fallback. Returned
+    values and vector columns remain Vulkan-placed; CPU inspection still
+    requires explicit `to-device 'cpu`.
+  - `matrix/eigenpairs` remains fail-closed on Vulkan because its public output
+    contract is pointer-backed `BigComplex`.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_symmetric_eigen_f64.comp -o /tmp/omni_tensor_vulkan_symmetric_eigen_f64.spv`
+    - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_symmetric_eigen_f64.spv`
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - direct Vulkan smokes for values, vectors, device placement, and
+      nonsymmetric `tensor/not-symmetric`
+    - host focused `advanced-collections-module`: `pass=948 fail=0`
+    - bounded container focused `advanced-collections-module`: `pass=935 fail=0`
+    - `python3 -m json.tool project.json`
+    - `bash -n scripts/build_omni_chelpers.sh`
+    - `./scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - targeted `git diff --check`
+
+- 2026-04-17 18:42 CEST: direct Vulkan large-`k` SVD/singular-values
+  checkpoint:
+  - `csrc/tensor_vulkan_singular_values_f64.comp` now uses hidden
+    storage-buffer Gram scratch in the output payload instead of fixed private
+    `double[4096]` / `double[64]` arrays.
+  - `csrc/tensor_vulkan_svd_f64.comp` now uses hidden storage-buffer Gram
+    scratch behind the public `u` payload and stores eigenvalues in the
+    existing `s` payload, removing the original `k <= 64` private-array cap
+    while preserving reduced `u`, `s`, and `v` output shapes.
+  - `csrc/tensor_vulkan_helpers.c` removed the shared SVD/singular-values
+    `k <= 64` validation, allocates hidden Gram scratch, and preserves 32-bit
+    shader index/storage-count guards and no hidden CPU/LAPACK fallback.
+  - Public `matrix/norm` `'spectral` and `'nuclear` inherit the expanded
+    singular-values helper and continue to read back only scalar norm results.
+  - Tests now cover `65x65` Vulkan singular-values, spectral/nuclear norms,
+    and direct `matrix/svd` output placement/no-LAPACK behavior.
+  - Deferred performance work is now explicit in `TODO.md`: measure and, if
+    justified, replace the correctness-first storage-backed single-dispatch
+    path with tiled Gram or staged Jacobi execution.
+  - validation:
+    - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_singular_values_f64.comp -o /tmp/omni_singular_values.spv`
+    - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_svd_f64.comp -o /tmp/omni_svd.spv`
+    - `spirv-val --target-env vulkan1.0 /tmp/omni_singular_values.spv`
+    - `spirv-val --target-env vulkan1.0 /tmp/omni_svd.spv`
+    - `./scripts/build_omni_chelpers.sh`
+    - `c3c build --obj-out obj`
+    - host focused `advanced-collections-module`: `pass=999 fail=0`
+    - direct smokes: `65x65` all-ones Vulkan SVD singular value `65.0`; `65x65`
+      zero SVD outputs `(vulkan vulkan vulkan 65)`
+    - bounded container focused `advanced-collections-module`: `pass=986 fail=0`
+    - `./scripts/check_primitive_docs_parity.sh`
+    - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+    - targeted `git diff --check`
+
+- 2026-04-18 11:12 CEST: Vulkan unsupported map handler and lazy-realize stack
+  checkpoint:
+  - Unsupported Vulkan `map` callables still fail closed with
+    `tensor/backend-unsupported`, but `handle` now receives the structured
+    payload for direct `map`, nested lazy Vulkan map sources, and one-argument
+    `realize` of unsupported lazy Vulkan map expressions.
+  - Recoverable raises with no `data` construct their canonical payload
+    directly in root scope before setting `raise_pending`, avoiding
+    stack-heavy root promotion inside constrained handle body stacks.
+  - Compiled one-argument and multi-argument primitive apply paths now
+    propagate evaluated `ERROR` arguments before invoking the callee, so
+    `realize` no longer masks source errors with Tensor type diagnostics.
+  - Normal StackCtx usable size is now 256KB. This closes the independent
+    handled CPU lazy Tensor map realization overflow on small tensors without
+    changing Vulkan callable support.
+  - Preserved boundary: Vulkan `floor`/rounding support was not widened
+    through generic `map`, unsupported callables remain outside the Vulkan
+    whitelist, and no hidden CPU/GPU fallback was added.
+  - validation:
+    - `c3c build --obj-out obj`
+    - direct smokes for handled Vulkan direct/lazy-source `map`, direct and
+      handled `realize`, handled CPU lazy-map `realize`, and destination-form
+      `realize` source-error propagation
+    - host focused `advanced-collections-module`: `pass=1352 fail=0`
+    - host `advanced-effect-continuation`: `pass=56 fail=0`
+    - host `advanced-effect-union-limit`: `pass=68 fail=0`
+  - bounded-container focused `advanced-collections-module`: `pass=1335 fail=0`
+  - stack suite: `pass=23 fail=0`
+  - targeted `git diff --check`
+
+- 2026-04-18 11:53 CEST: CPU fixed-width complex scalar and Tensor checkpoint:
+  - Added native scalar `Complex128` and `Complex64` value families with
+    constructors, stdlib predicates, dispatch/type integration, printing/String
+    conversion, equality/hash support, AOT/literal serialization, and
+    scope-boundary copy/promotion handling.
+  - Added CPU Tensor `Complex128`/`Complex64` storage and oracle behavior for
+    explicit and inferred construction, scalar fill, `ref`, `Array`/`List`
+    conversion, `realize`, mixed fixed-complex `map` promotion, `contract`,
+    `real-part`, `imag-part`, `abs`, `conjugate`, unary minus, and structural
+    matrix operations (`matrix/transpose`,
+    `matrix/diagonal`, `matrix/diagonal-matrix`, `matrix/identity`, and
+    `matrix/trace`).
+  - Preserved fail-closed policy for CUDA/Vulkan fixed-width complex placement
+    and backend execution. Real `float64`/`float32` backend capability bits do
+    not imply complex support; future GPU complex work needs explicit backend
+    capability bits, device layout/copy semantics, status contracts, and
+    kernels.
+  - Updated the fixed-width complex contract note, language/reference docs,
+    Tensor/Vulkan planning docs, TODO, and active plan wording so fixed-width
+    complex CPU support is no longer described as deferred.
+  - Validation:
+    - `c3c build`
+    - direct `--eval` smokes for scalar `String`, Tensor `ref`, component dtype,
+      and Complex128 `contract`
+    - host focused advanced scalar tests:
+      `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator ./build/main --test-suite lisp`
+      (`180 passed, 0 failed`)
+    - host focused advanced Tensor tests:
+      `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+      (`1383 passed, 0 failed`)
+    - bounded-container focused advanced Tensor tests:
+      `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+      (`1366 passed, 0 failed`)
+    - targeted `git diff --check`
+  - Current best next step: design and implement CUDA/Vulkan
+    `Complex128`/`Complex64` backend capability and device-layout ABI for a
+    first operation family, with the CPU Tensor oracle as the semantic baseline.
+
+- 2026-04-18 12:13 CEST: CUDA/Vulkan fixed-width complex storage and copyback
+  checkpoint:
+  - Added separate CUDA/Vulkan storage dtype predicates so raw copy paths can
+    accept `Complex128` and `Complex64` while existing real-only compute gates
+    remain unchanged.
+  - CUDA/Vulkan `to-device` placement now accepts concrete zero-offset dense
+    row-major `Complex128` and `Complex64` CPU Tensor storage when the backend
+    is available. Explicit `to-device 'cpu` copyback preserves dtype and
+    values.
+  - CUDA/Vulkan destination `realize` now accepts matching CPU or same-device
+    complex Tensor storage and scalar fills for existing complex device
+    destinations by staging fixed-complex values through raw host-to-device
+    copy helpers.
+  - `tensor-backends` reports CUDA/Vulkan `complex128` and `complex64` storage
+    capability bits separately from real dtype and operation capability bits.
+    Complex `elementwise-map-*` and `contract-*` bits remain false.
+  - Preserved boundary: CUDA/Vulkan complex `map`, `contract`, and matrix
+    kernels still fail closed. Do not infer kernel support from storage
+    capability bits.
+  - Validation:
+    - `c3c build`
+    - host focused `advanced-collections-module`: `pass=1399 fail=0`
+    - bounded-container focused `advanced-collections-module`: `pass=1382 fail=0`
+    - `./scripts/check_primitive_docs_parity.sh`
+    - targeted `git diff --check`
+  - Current best next step: choose and implement the first complex CUDA/Vulkan
+    operation family, likely elementwise `map`, with explicit helper ABI,
+    status/capability bits, and no hidden lowering through real or
+    pointer-backed complex storage.
+
+- 2026-04-18 13:10 CEST: CUDA fixed-width complex elementwise map
+  documentation checkpoint:
+  - Current implementation status: CUDA dense row-major `Complex128` and
+    `Complex64` elementwise `map` exists behind
+    `elementwise-map-complex128` and `elementwise-map-complex64` capability
+    bits.
+  - Supported CUDA complex map operations are binary `+`, `-`, `*`, `/`;
+    unary `abs`, unary `-`, identity/`+`, `real-part`, `imag-part`, and
+    `conjugate`. Generic map `real-part`, `imag-part`, and `abs` preserve the
+    map dtype as complex with zero imaginary components where applicable.
+  - Direct CUDA complex `real-part`, `imag-part`, and `abs` return
+    component-width real CUDA tensors (`Float64` for `Complex128`, `Float32`
+    for `Complex64`). Direct unary `-` and `conjugate` preserve complex dtype.
+  - CUDA complex division by zero maps through native status to
+    `tensor/domain-error`; nonrepresentable complex results map to invalid
+    argument.
+  - Superseded stale wording that CUDA complex `map` remains fail-closed.
+    Preserved boundary: CUDA/Vulkan fixed-width complex `contract` and matrix
+    kernels remain fail-closed.
+  - Validation already passed: `./scripts/build_omni_chelpers.sh`; `c3c
+    build`; host focused `env LD_LIBRARY_PATH=/usr/local/lib
+    OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main
+    --test-suite lisp` (`1433 passed, 0 failed`); bounded container focused
+    `advanced-collections-module` (`1416 passed, 0 failed`); CUDA PTX
+    generation and `ptxas` for `csrc/tensor_cuda_complex_map.cu`; C helper
+    syntax check; docs parity; Stage 3 source parity; targeted diff-check.

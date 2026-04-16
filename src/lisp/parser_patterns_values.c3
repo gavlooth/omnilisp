@@ -25,7 +25,7 @@ fn Pattern* Parser.parse_seq_pattern(Parser* self) {
     if (p == null) return null;
     p.tag = PAT_SEQ;
     p.rest_pos = REST_NONE;
-    p.rest_binding = 0;
+    p.rest_binding = (SymbolId)0;
 
     List{Pattern*} elems = {};
 

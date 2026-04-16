@@ -8,14 +8,14 @@ fn TypeAnnotation parser_empty_type_annotation() @inline {
     ann.has_annotation = false;
     ann.is_compound = false;
     ann.is_dict = false;
-    ann.base_type = 0;
+    ann.base_type = (SymbolId)0;
     ann.params = null;
     ann.param_count = 0;
     ann.meta = null;
     ann.meta_count = 0;
     ann.val_literal.tag = NIL;
     ann.val_literal.int_value = 0;
-    ann.val_literal.sym_value = 0;
+    ann.val_literal.sym_value = (SymbolId)0;
     ann.has_val_literal = false;
     return ann;
 }
@@ -52,7 +52,7 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
     if (self.lexer.current.type == T_INT) {
         ann.val_literal.tag = INT;
         ann.val_literal.int_value = self.lexer.current.int_value;
-        ann.val_literal.sym_value = 0;
+        ann.val_literal.sym_value = (SymbolId)0;
         ann.has_val_literal = true;
         self.lexer.advance();
         return true;
@@ -77,7 +77,7 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
             sym_name[2] == 'l') {
             ann.val_literal.tag = NIL;
             ann.val_literal.int_value = 0;
-            ann.val_literal.sym_value = 0;
+            ann.val_literal.sym_value = (SymbolId)0;
             ann.has_val_literal = true;
             self.lexer.advance();
             return true;

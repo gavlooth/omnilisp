@@ -314,7 +314,7 @@ fn void run_test_group_boundary_reset(Interp* interp) {
     interp.flags.raise_pending = false;
     interp.raise_msg_len = 0;
     interp.raise_payload = null;
-    interp.last_call_name = 0;
+    interp.last_call_name = (SymbolId)0;
     interp.jit_env = null;
     interp.match_env = null;
     interp.flags.jit_tco_bounce = false;

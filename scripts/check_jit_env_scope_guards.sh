@@ -3,8 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if [[ -z "${OMNI_VALIDATION_TOOLCHAIN_ROOT:-}" && -d /usr/local ]]; then
-  export OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local
+if [[ -z "${OMNI_VALIDATION_TOOLCHAIN_ROOT:-}" ]]; then
+  c3c_path="$(command -v c3c || true)"
+  if [[ -n "$c3c_path" ]]; then
+    export OMNI_VALIDATION_TOOLCHAIN_ROOT="$(cd "$(dirname "$c3c_path")/.." && pwd)"
+  elif [[ -x "$HOME/.local/bin/c3c" ]]; then
+    export OMNI_VALIDATION_TOOLCHAIN_ROOT="$HOME/.local"
+  elif [[ -x /usr/local/bin/c3c ]]; then
+    export OMNI_VALIDATION_TOOLCHAIN_ROOT=/usr/local
+  fi
 fi
 
 if [[ -z "${OMNI_VALIDATION_EXTRA_ARGS:-}" && -e /usr/lib/libreplxx.so.0 ]]; then

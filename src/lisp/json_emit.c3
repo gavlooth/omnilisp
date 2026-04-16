@@ -158,6 +158,8 @@ fn Value* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp, Yyjson
             return json_emit_set_allocated_value(omni_yyjson_mut_sint(doc, val.int_val), "JSON integer", out_json, interp);
         case DOUBLE:
             return json_emit_set_allocated_value(omni_yyjson_mut_real(doc, val.double_val), "JSON number", out_json, interp);
+        case FLOAT32:
+            return json_emit_set_allocated_value(omni_yyjson_mut_real(doc, (double)val.float32_val), "JSON number", out_json, interp);
         case STRING:
             return json_emit_set_allocated_value(
                 omni_yyjson_mut_strn(doc, val.str_chars, val.str_len),

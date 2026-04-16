@@ -1,0 +1,67 @@
+#version 450
+const float OMNI_MATRIX_F32_EPS = 0.000001;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 2) buffer Output {
+    float out_data[];
+};
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint pivot;
+    uint work_count;
+    uint scratch_src;
+    uint scratch_dst;
+    uint scratch_count;
+} pc;
+
+float omni_abs(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    uint work = gl_GlobalInvocationID.x;
+    if (work >= pc.work_count) return;
+    if (status_code[0] != 2u) return;
+    if (pc.n == 0u || pc.rhs_cols == 0u || pc.pivot >= pc.n) return;
+
+    uint coeff_offset = pc.result_count;
+    uint swap_row = status_code[1];
+    if (swap_row >= pc.n) {
+        status_code[0] = 1u;
+        return;
+    }
+
+    if (swap_row != pc.pivot) {
+        if (work < pc.n) {
+            uint pivot_index = coeff_offset + pc.pivot * pc.n + work;
+            uint swap_index = coeff_offset + swap_row * pc.n + work;
+            float tmp = out_data[pivot_index];
+            out_data[pivot_index] = out_data[swap_index];
+            out_data[swap_index] = tmp;
+        } else {
+            uint rhs_col = work - pc.n;
+            if (rhs_col < pc.rhs_cols) {
+                uint pivot_index = pc.pivot * pc.rhs_cols + rhs_col;
+                uint swap_index = swap_row * pc.rhs_cols + rhs_col;
+                float tmp = out_data[pivot_index];
+                out_data[pivot_index] = out_data[swap_index];
+                out_data[swap_index] = tmp;
+            }
+        }
+    }
+
+    if (work == 0u) {
+        float pivot_value = out_data[coeff_offset + pc.pivot * pc.n + pc.pivot];
+        if (!(omni_abs(pivot_value) > OMNI_MATRIX_F32_EPS)) {
+            status_code[0] = 1u;
+        }
+    }
+}

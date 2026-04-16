@@ -135,7 +135,9 @@ fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
         if (curr == null || curr.tag != CONS) break;
-        args[actual_count++] = curr.cons_val.car;
+        Value* arg = curr.cons_val.car;
+        if (arg != null && arg.tag == ERROR) return arg;
+        args[actual_count++] = arg;
         curr = curr.cons_val.cdr;
     }
     if (actual_count < arg_count) {

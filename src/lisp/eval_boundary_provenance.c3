@@ -305,6 +305,11 @@ fn bool boundary_alias_graph_reaches_scope(Value* root, main::ScopeRegion* scope
                                     return true;
                                 }
                                 break;
+                            case TENSOR_PAYLOAD_VIEW:
+                                if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, tensor.view_source)) {
+                                    return true;
+                                }
+                                break;
                         }
                     }
                     break;
@@ -606,6 +611,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                                 return true;
                             }
                             break;
+                        case TENSOR_PAYLOAD_VIEW:
+                            if (boundary_alias_push_child(&scan.stack[0], &stack_len, &scan.seen[0], &seen_len, &scan.fast_set, tensor.view_source, interp, cur_depth)) {
+                                return true;
+                            }
+                            break;
                     }
                 }
                 break;
@@ -704,9 +714,12 @@ fn bool boundary_nonunique_destination_retry_allowed(Value* v) @inline {
         case VOID:
         case INT:
         case DOUBLE:
+        case FLOAT32:
         case BIG_INTEGER:
         case BIG_FLOAT:
         case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
         case SYMBOL:
         case TIME_POINT:
         case TENSOR:

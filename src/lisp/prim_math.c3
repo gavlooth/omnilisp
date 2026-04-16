@@ -33,6 +33,11 @@ fn Value* prim_random_int(Value*[] args, Env* env, Interp* interp) {
             return raise_error(interp, "random-int: expected finite max value in Integer range");
         }
     }
+    else if (args[0].tag == FLOAT32) {
+        if (!math_try_double_to_int((double)args[0].float32_val, &n)) {
+            return raise_error(interp, "random-int: expected finite max value in Integer range");
+        }
+    }
     else { return primitive_arg_type_raise(interp, "random-int", 0, "number", args[0]); }
     if (n <= 0) return make_int(interp, 0);
 

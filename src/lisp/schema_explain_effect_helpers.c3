@@ -14,7 +14,7 @@ fn SymbolId explain_effect_clause_tag(EffectHandler* handler, usz clause_index) 
     if (handler.clauses != null) {
         return handler.clauses[clause_index].effect_tag;
     }
-    return 0;
+    return (SymbolId)0;
 }
 
 fn Expr* explain_effect_clause_body(EffectHandler* handler, usz clause_index) {
@@ -40,7 +40,7 @@ fn SymbolId explain_effect_clause_arg_name(EffectHandler* handler, usz clause_in
     if (handler.clauses != null) {
         return handler.clauses[clause_index].arg_name;
     }
-    return 0;
+    return (SymbolId)0;
 }
 
 fn isz explain_effect_find_clause_index(EffectHandler* handler, SymbolId effect_tag) {

@@ -236,10 +236,12 @@ fn void run_arithmetic_basic_ops_tests(Interp* interp, int* pass, int* fail) {
     test_eq(interp, "(+ 1000000 2000000) => 3000000", "(+ 1000000 2000000)", 3000000, pass, fail);
 
     // Subtraction
+    test_eq(interp, "(- 5) => -5", "(- 5)", -5, pass, fail);
     test_eq(interp, "(- 10 3) => 7", "(- 10 3)", 7, pass, fail);
     test_eq(interp, "(- 3 10) => -7", "(- 3 10)", -7, pass, fail);
     test_eq(interp, "(- 0 0) => 0", "(- 0 0)", 0, pass, fail);
     test_eq(interp, "(- -5 -3) => -2", "(- -5 -3)", -2, pass, fail);
+    test_error_contains(interp, "(- 1 2 3) rejects extra args", "(- 1 2 3)", "1 or 2 arguments", pass, fail);
 
     // Multiplication
     test_eq(interp, "(* 3 4) => 12", "(* 3 4)", 12, pass, fail);

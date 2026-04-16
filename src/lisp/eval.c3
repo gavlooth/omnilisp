@@ -57,6 +57,8 @@ fn void copy_to_parent_note_tag(ValueTag tag) @inline {
             g_copy_to_parent_stats.int_calls++;
         case DOUBLE:
             g_copy_to_parent_stats.double_calls++;
+        case FLOAT32:
+            g_copy_to_parent_stats.double_calls++;
         case STRING:
             g_copy_to_parent_stats.string_calls++;
         case SYMBOL:

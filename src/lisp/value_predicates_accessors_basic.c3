@@ -75,6 +75,10 @@ fn bool is_double(Value* v) @inline {
     return v != null && v.tag == DOUBLE;
 }
 
+fn bool is_float32(Value* v) @inline {
+    return v != null && v.tag == FLOAT32;
+}
+
 fn bool is_big_integer(Value* v) @inline {
     return v != null && v.tag == BIG_INTEGER;
 }
@@ -87,16 +91,32 @@ fn bool is_big_complex(Value* v) @inline {
     return v != null && v.tag == BIG_COMPLEX;
 }
 
+fn bool is_complex128(Value* v) @inline {
+    return v != null && v.tag == COMPLEX128;
+}
+
+fn bool is_complex64(Value* v) @inline {
+    return v != null && v.tag == COMPLEX64;
+}
+
+fn bool is_fixed_complex(Value* v) @inline {
+    return v != null && (v.tag == COMPLEX128 || v.tag == COMPLEX64);
+}
+
 fn bool is_number(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE);
+    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == FLOAT32 || v.tag == COMPLEX128 || v.tag == COMPLEX64);
 }
 
 fn bool is_numeric_value(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == BIG_INTEGER || v.tag == BIG_FLOAT || v.tag == BIG_COMPLEX);
+    return v != null && (
+        v.tag == INT || v.tag == DOUBLE || v.tag == FLOAT32 ||
+        v.tag == BIG_INTEGER || v.tag == BIG_FLOAT || v.tag == BIG_COMPLEX ||
+        v.tag == COMPLEX128 || v.tag == COMPLEX64);
 }
 
 fn double to_double(Value* v) @inline {
     if (v.tag == DOUBLE) return v.double_val;
+    if (v.tag == FLOAT32) return (double)v.float32_val;
     if (v.tag == BIG_FLOAT) {
         double out = 0.0;
         if (big_float_try_to_double(v, &out)) return out;
@@ -111,6 +131,11 @@ fn bool try_numeric_to_double(Value* v, double* out) @inline {
         *out = v.double_val;
         return true;
     }
+    if (v.tag == FLOAT32) {
+        *out = (double)v.float32_val;
+        return true;
+    }
+    if (v.tag == COMPLEX128 || v.tag == COMPLEX64 || v.tag == BIG_COMPLEX) return false;
     if (v.tag == INT) {
         *out = (double)v.int_val;
         return true;

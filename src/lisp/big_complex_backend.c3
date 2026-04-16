@@ -2,6 +2,7 @@ module lisp;
 
 extern fn void* omni_big_complex_from_i64(long real) @extern("omni_big_complex_from_i64");
 extern fn void* omni_big_complex_from_double(double real) @extern("omni_big_complex_from_double");
+extern fn void* omni_big_complex_from_doubles(double real, double imag) @extern("omni_big_complex_from_doubles");
 extern fn void* omni_big_complex_from_big_float_parts(void* real, void* imag) @extern("omni_big_complex_from_big_float_parts");
 extern fn void* omni_big_complex_from_chars(char* real_chars, usz real_len, char* imag_chars, usz imag_len) @extern("omni_big_complex_from_chars");
 extern fn void* omni_big_complex_clone(void* value) @extern("omni_big_complex_clone");

@@ -48,6 +48,7 @@ fn Value* prim_ctor_iterator(Value*[] args, Env* env, Interp* interp) {
     if (is_cons(args[0]) || is_nil(args[0])) return iterator_from_list_value(args[0], interp);
     if (is_array(args[0])) return iterator_from_array_value(args[0], 0, interp);
     if (args[0].tag == HASHMAP) return iterator_from_dict_value(args[0], interp);
+    if (is_tensor(args[0])) return iterator_from_tensor_value(args[0], interp);
     return iterator_ctor_raise(interp, "type/arg-mismatch", "Iterator: expected closure thunk, iterator, or collection");
 }
 

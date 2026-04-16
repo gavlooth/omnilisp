@@ -87,6 +87,7 @@ fn Value* jit_apply_value_impl(Value* func, Value* arg, Interp* interp) {
 
     // Propagate errors from function evaluation (e.g. unbound variable)
     if (func.tag == ERROR) return func;
+    if (arg != null && arg.tag == ERROR) return arg;
 
     switch (func.tag) {
         case CLOSURE:
@@ -140,6 +141,7 @@ fn Value* jit_apply_value_tail(Value* func, Value* arg, Interp* interp) {
 
     // Propagate errors from function evaluation (e.g. unbound variable)
     if (func.tag == ERROR) return func;
+    if (arg != null && arg.tag == ERROR) return arg;
 
     if (func.tag == CLOSURE) {
         Env* new_env;
@@ -201,7 +203,6 @@ fn EvalResult jit_eval_to_result(Expr* expr, Env* env, Interp* interp) {
     return eval_ok(v);
 }
 
-// Variable lookup that checks jit_env first (for sub-expression evaluation with local bindings)
 fn Value* jit_lookup_var(Interp* interp, uint sym_id) {
     SymbolId name = (SymbolId)sym_id;
     // Check JIT env first (set during jit_eval sub-expression evaluation)

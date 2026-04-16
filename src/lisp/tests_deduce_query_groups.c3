@@ -95,10 +95,16 @@ bool deduce_query_filter_why_result_ran = false;
 fn bool deduce_query_filter_try_run_targeted_why_result(Interp* interp, int* pass, int* fail) {
     char* query_filter = test_c_getenv("OMNI_DEDUCE_QUERY_FILTER");
     bool run_bounded = deduce_query_filter_matches(query_filter, "why-result-bounded");
-    if (!run_bounded) return false;
+    bool run_admin_multi_rule = deduce_query_filter_matches(query_filter, "why-result-admin-multi-rule");
+    if (!run_bounded && !run_admin_multi_rule) return false;
     if (!deduce_query_filter_why_result_ran) {
         deduce_query_filter_why_result_ran = true;
-        run_deduce_query_why_result_bounded_context_test(interp, pass, fail);
+        if (run_bounded) {
+            run_deduce_query_why_result_bounded_context_test(interp, pass, fail);
+        }
+        if (run_admin_multi_rule) {
+            run_deduce_admin_surface_recursive_proof_tests(interp, pass, fail);
+        }
     }
     return true;
 }

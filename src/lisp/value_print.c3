@@ -20,12 +20,35 @@ fn void print_value(Value* v, SymbolTable* syms) {
             char[] dstr = double_to_string(v.double_val, &dbuf);
             dbuf[dstr.len] = 0;
             io::printf("%s", (ZString)&dbuf);
+        case FLOAT32:
+            char[64] fbuf;
+            char[] fstr = double_to_string((double)v.float32_val, &fbuf);
+            fbuf[fstr.len] = 0;
+            io::printf("%s", (ZString)&fbuf);
         case BIG_INTEGER:
             print_big_integer_value(v);
         case BIG_FLOAT:
             print_big_float_value(v);
         case BIG_COMPLEX:
             print_big_complex_value(v);
+        case COMPLEX128:
+            char[160] c128buf;
+            PrintBuf c128pb;
+            c128pb.buf = &c128buf[0];
+            c128pb.pos = 0;
+            c128pb.capacity = c128buf.len;
+            fixed_complex_append_f64(v.complex128_val.real, v.complex128_val.imag, &c128pb);
+            c128buf[c128pb.pos] = 0;
+            io::printf("%s", (ZString)&c128buf);
+        case COMPLEX64:
+            char[160] c64buf;
+            PrintBuf c64pb;
+            c64pb.buf = &c64buf[0];
+            c64pb.pos = 0;
+            c64pb.capacity = c64buf.len;
+            fixed_complex_append_f64((double)v.complex64_val.real, (double)v.complex64_val.imag, &c64pb);
+            c64buf[c64pb.pos] = 0;
+            io::printf("%s", (ZString)&c64buf);
         case STRING:
             io::printf("\"%s\"", (ZString)v.str_chars);
         case SYMBOL:

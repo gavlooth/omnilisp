@@ -253,6 +253,19 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
                             );
                         }
                         break;
+                    case TENSOR_PAYLOAD_VIEW:
+                        if (!boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.view_source)) {
+                            return boundary_graph_audit_result(
+                                emit,
+                                BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
+                                target_scope,
+                                root_tag,
+                                BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+                                root_scope_gen,
+                                0
+                            );
+                        }
+                        break;
                 }
             }
             break;
@@ -264,9 +277,12 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
         case PRIMITIVE:
         case ERROR:
         case DOUBLE:
+        case FLOAT32:
         case BIG_INTEGER:
         case BIG_FLOAT:
         case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
         case FFI_HANDLE:
         case TYPE_INFO:
         case COROUTINE:

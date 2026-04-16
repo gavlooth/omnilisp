@@ -1,0 +1,100 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const float OMNI_CHOLESKY_COMPLEX64_EPS = 0.000001;
+const float OMNI_CHOLESKY_COMPLEX64_HERMITIAN_EPS = 0.00001;
+
+layout(push_constant) uniform Params {
+    uint n;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    vec2 output_data[];
+};
+
+float abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+float complex_abs2(vec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+bool complex_close(vec2 a, vec2 b, float tolerance) {
+    return abs_f32(a.x - b.x) <= tolerance && abs_f32(a.y - b.y) <= tolerance;
+}
+
+vec2 complex_conj(vec2 value) {
+    return vec2(value.x, -value.y);
+}
+
+vec2 complex_mul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    uint element_count = params.n * params.n;
+    uint status_offset = element_count;
+    output_data[status_offset] = vec2(1.0, 0.0);
+
+    for (uint i = 0u; i < element_count; i++) {
+        output_data[i] = vec2(0.0, 0.0);
+    }
+
+    if (params.n == 0u) {
+        output_data[status_offset] = vec2(0.0, 0.0);
+        return;
+    }
+
+    for (uint row = 0u; row < params.n; row++) {
+        for (uint col = 0u; col <= row; col++) {
+            vec2 lower_value = input_data[row * params.n + col];
+            vec2 upper_conj = complex_conj(input_data[col * params.n + row]);
+            if (!complex_close(lower_value, upper_conj, OMNI_CHOLESKY_COMPLEX64_HERMITIAN_EPS)) {
+                return;
+            }
+
+            vec2 sum = lower_value;
+            for (uint k = 0u; k < col; k++) {
+                sum -= complex_mul(
+                    output_data[row * params.n + k],
+                    complex_conj(output_data[col * params.n + k])
+                );
+            }
+
+            if (row == col) {
+                if (abs_f32(sum.y) > OMNI_CHOLESKY_COMPLEX64_HERMITIAN_EPS) {
+                    return;
+                }
+                if (!(sum.x > OMNI_CHOLESKY_COMPLEX64_EPS)) {
+                    return;
+                }
+                float diagonal = sqrt(sum.x);
+                if (!(diagonal > OMNI_CHOLESKY_COMPLEX64_EPS)) {
+                    return;
+                }
+                output_data[row * params.n + col] = vec2(diagonal, 0.0);
+            } else {
+                float diagonal = output_data[col * params.n + col].x;
+                if (!(diagonal > OMNI_CHOLESKY_COMPLEX64_EPS)) {
+                    return;
+                }
+                output_data[row * params.n + col] = sum / diagonal;
+            }
+        }
+    }
+
+    output_data[status_offset] = vec2(0.0, 0.0);
+}

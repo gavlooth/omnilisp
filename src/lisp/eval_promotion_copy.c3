@@ -11,6 +11,9 @@ enum CopyParentRoute : char {
     CP_ROUTE_VOID,
     CP_ROUTE_INT,
     CP_ROUTE_DOUBLE,
+    CP_ROUTE_FLOAT32,
+    CP_ROUTE_COMPLEX128,
+    CP_ROUTE_COMPLEX64,
     CP_ROUTE_BIG_INTEGER,
     CP_ROUTE_BIG_FLOAT,
     CP_ROUTE_BIG_COMPLEX,
@@ -43,6 +46,12 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
             return CP_ROUTE_INT;
         case DOUBLE:
             return CP_ROUTE_DOUBLE;
+        case FLOAT32:
+            return CP_ROUTE_FLOAT32;
+        case COMPLEX128:
+            return CP_ROUTE_COMPLEX128;
+        case COMPLEX64:
+            return CP_ROUTE_COMPLEX64;
         case BIG_INTEGER:
             return CP_ROUTE_BIG_INTEGER;
         case BIG_FLOAT:
@@ -95,6 +104,9 @@ fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
         case CP_ROUTE_VOID:
         case CP_ROUTE_INT:
         case CP_ROUTE_DOUBLE:
+        case CP_ROUTE_FLOAT32:
+        case CP_ROUTE_COMPLEX128:
+        case CP_ROUTE_COMPLEX64:
         case CP_ROUTE_BIG_INTEGER:
         case CP_ROUTE_BIG_FLOAT:
         case CP_ROUTE_BIG_COMPLEX:
@@ -143,6 +155,12 @@ fn Value* copy_to_parent_by_route(
             return make_int(interp, v.int_val);
         case CP_ROUTE_DOUBLE:
             return make_double(interp, v.double_val);
+        case CP_ROUTE_FLOAT32:
+            return make_float32(interp, v.float32_val);
+        case CP_ROUTE_COMPLEX128:
+            return make_complex128(interp, v.complex128_val.real, v.complex128_val.imag);
+        case CP_ROUTE_COMPLEX64:
+            return make_complex64(interp, v.complex64_val.real, v.complex64_val.imag);
         case CP_ROUTE_BIG_INTEGER:
             return copy_big_integer_to_parent(v, interp, fault_out);
         case CP_ROUTE_BIG_FLOAT:

@@ -75,8 +75,8 @@ fn bool string_contains_char(String text, char needle) @inline {
 }
 
 fn bool should_skip_aot_source(String directory, String relative_name) @inline {
-    if (string_has_prefix(directory, "src/lisp") && string_has_prefix(relative_name, "tests")) return true;
-    if (string_has_prefix(directory, "src/lisp") && string_contains(relative_name, "/tests")) return true;
+    (void)directory;
+    (void)relative_name;
     return false;
 }
 
@@ -131,13 +131,11 @@ fn bool append_matching_sources(
 }
 
 fn int run_spawned_command(String[] command_line, bool search_user_path = false) {
-    process::SubProcessOptions opts = {
-        .inherit_stdio = true,
-        .inherit_environment = true,
-        .search_user_path = search_user_path
-    };
+    process::SpawnOptions opts = INHERIT_STDIO | INHERIT_ENV;
+    if (!search_user_path) opts |= NO_PATH_SEARCH;
 
-    if (try proc = process::create(command_line, opts)) {
+    if (try proc = process::spawn(command_line, opts)) {
+        defer (void)proc.destroy();
         if (try status = proc.join()) return status;
         io::eprintfn("Error: failed waiting for command '%s'", (ZString)command_line[0].zstr_tcopy());
         return 2;

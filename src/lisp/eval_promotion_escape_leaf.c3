@@ -189,6 +189,15 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
         case DOUBLE:
             result.tag = DOUBLE;
             result.double_val = v.double_val;
+        case FLOAT32:
+            result.tag = FLOAT32;
+            result.float32_val = v.float32_val;
+        case COMPLEX128:
+            result.tag = COMPLEX128;
+            result.complex128_val = v.complex128_val;
+        case COMPLEX64:
+            result.tag = COMPLEX64;
+            result.complex64_val = v.complex64_val;
         case SYMBOL:
             result.tag = SYMBOL;
             result.sym_val = v.sym_val;

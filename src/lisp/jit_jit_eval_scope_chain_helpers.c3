@@ -349,6 +349,11 @@ fn bool jit_graph_binding_reaches_temp_scope(
                                     return true;
                                 }
                                 break;
+                            case TENSOR_PAYLOAD_VIEW:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.view_source)) {
+                                    return true;
+                                }
+                                break;
                         }
                     }
                     break;
@@ -450,6 +455,8 @@ fn bool jit_binding_payload_in_releasing_scope(Value* v, main::ScopeRegion* rele
             case TENSOR_PAYLOAD_CONTRACT:
                 return value_in_temp_lane(tensor.contract_left, releasing_scope) ||
                     value_in_temp_lane(tensor.contract_right, releasing_scope);
+            case TENSOR_PAYLOAD_VIEW:
+                return value_in_temp_lane(tensor.view_source, releasing_scope);
         }
     }
     return false;

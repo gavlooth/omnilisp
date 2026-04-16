@@ -107,6 +107,8 @@ struct Interp {
     SymbolId sym_BigInteger;
     SymbolId sym_BigFloat;
     SymbolId sym_BigComplex;
+    SymbolId sym_Complex128;
+    SymbolId sym_Complex64;
     SymbolId sym_Float;
     SymbolId sym_Float32;
     SymbolId sym_Double;
@@ -151,7 +153,10 @@ struct Interp {
     TypeId tid_BigInteger;
     TypeId tid_BigFloat;
     TypeId tid_BigComplex;
+    TypeId tid_Complex128;
+    TypeId tid_Complex64;
     TypeId tid_Double;
+    TypeId tid_Float32;
     TypeId tid_String;
     TypeId tid_Symbol;
     TypeId tid_List;

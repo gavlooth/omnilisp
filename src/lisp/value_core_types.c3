@@ -173,6 +173,16 @@ struct MethodTable {
     Value* fallback;  // untyped catch-all
 }
 
+struct Complex128Val {
+    double real;
+    double imag;
+}
+
+struct Complex64Val {
+    float real;
+    float imag;
+}
+
 /**
  * Value — Tagged union for all Lisp values.
  */
@@ -185,9 +195,12 @@ struct Value {
     union {
         long          int_val;
         double        double_val;     // Floating-point value
+        float         float32_val;    // 32-bit floating-point value
         void*         big_integer_val; // Boost.Multiprecision cpp_int handle
         void*         big_float_val;   // Boost.Multiprecision cpp_dec_float handle
         void*         big_complex_val; // Boost.Multiprecision complex handle
+        Complex128Val complex128_val;  // Fixed-width two-Float64 complex value
+        Complex64Val  complex64_val;   // Fixed-width two-Float32 complex value
         struct {
             char* str_chars;
             usz   str_len;

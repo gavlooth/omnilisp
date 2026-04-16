@@ -108,7 +108,7 @@ fn bool eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, 
 fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, Interp* interp) {
     // Dictionary annotation like ^{'T Number} — extract constraints.
     out_field.field_type = INVALID_TYPE_ID;
-    out_field.annotation_sym = 0;
+    out_field.annotation_sym = (SymbolId)0;
     for (usz m = 0; m < field.type_ann.meta_count; m++) {
         if (field.type_ann.meta[m].is_int) continue;
         info.constraints[info.constraint_count].param_sym = field.type_ann.meta[m].key;
@@ -128,7 +128,7 @@ fn void eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, Interp* interp
 
         if (!src_field.type_ann.has_annotation) {
             dst_field.field_type = INVALID_TYPE_ID;  // Any
-            dst_field.annotation_sym = 0;
+            dst_field.annotation_sym = (SymbolId)0;
             continue;
         }
 

@@ -79,7 +79,7 @@ fn TypeId eval_defunion_register_variant_type(UnionVariant* variant, TypeId unio
     for (usz j = 0; j < variant.field_count; j++) {
         var_info.fields[j].name = variant.fields[j];
         var_info.fields[j].field_type = INVALID_TYPE_ID;
-        var_info.fields[j].annotation_sym = 0;
+        var_info.fields[j].annotation_sym = (SymbolId)0;
     }
     TypeId type_id = interp.types.register_type(var_info, &interp.symbols);
     if (type_id == INVALID_TYPE_ID) {

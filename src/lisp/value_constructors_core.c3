@@ -59,6 +59,32 @@ fn Value* make_double(Interp* interp, double d) @inline {
 }
 
 <* @ensure return != null *>
+fn Value* make_float32(Interp* interp, float f) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = FLOAT32;
+    v.float32_val = f;
+    return v;
+}
+
+<* @ensure return != null *>
+fn Value* make_complex128(Interp* interp, double real, double imag) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = COMPLEX128;
+    v.complex128_val.real = real;
+    v.complex128_val.imag = imag;
+    return v;
+}
+
+<* @ensure return != null *>
+fn Value* make_complex64(Interp* interp, float real, float imag) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = COMPLEX64;
+    v.complex64_val.real = real;
+    v.complex64_val.imag = imag;
+    return v;
+}
+
+<* @ensure return != null *>
 fn Value* make_string(Interp* interp, char[] str) {
     usz len = str.len;
     if (len == usz.max) return make_string_alloc_error(interp);
@@ -238,7 +264,7 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     v.closure_val.params = params;
     v.closure_val.param_count = 1;
     v.closure_val.has_rest = false;
-    v.closure_val.rest_param = 0;
+    v.closure_val.rest_param = (SymbolId)0;
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = true;
@@ -259,11 +285,11 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
-    v.closure_val.param = 0;
+    v.closure_val.param = (SymbolId)0;
     v.closure_val.params = null;
     v.closure_val.param_count = 0;
     v.closure_val.has_rest = false;
-    v.closure_val.rest_param = 0;
+    v.closure_val.rest_param = (SymbolId)0;
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = false;

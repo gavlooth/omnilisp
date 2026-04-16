@@ -176,6 +176,7 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
 
             Value* recycle_err = runtime_prepare_tco_recycle_env(&env, saved_env, interp);
             if (recycle_err != null) {
+                interp.jit_env = saved_env;
                 return recycle_err;
             }
             continue;

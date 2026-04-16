@@ -108,6 +108,7 @@ fn Value* prim_sleep(Value*[] args, Env* env, Interp* interp) {
     double secs;
     if (args[0].tag == INT) { secs = (double)args[0].int_val; }
     else if (args[0].tag == DOUBLE) { secs = args[0].double_val; }
+    else if (args[0].tag == FLOAT32) { secs = (double)args[0].float32_val; }
     else { return raise_error(interp, "sleep: expected number"); }
     uint usec = (uint)(secs * 1000000.0);
     c_usleep(usec);

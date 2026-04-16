@@ -23,6 +23,8 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
     if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
     if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
     if (zstr_eq(name, "BigComplex")) return (ZString)"BigComplex";
+    if (zstr_eq(name, "Complex128")) return (ZString)"Complex128";
+    if (zstr_eq(name, "Complex64")) return (ZString)"Complex64";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
     if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
@@ -31,6 +33,9 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
         zstr_eq(name, "BigInteger") ||
         zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "BigComplex") ||
+        zstr_eq(name, "Complex128") ||
+        zstr_eq(name, "Complex64") ||
+        zstr_eq(name, "Float32") ||
         zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
@@ -58,6 +63,8 @@ fn ZString symbol_type_descriptor_name(char* name) {
     if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
     if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
     if (zstr_eq(name, "BigComplex")) return (ZString)"BigComplex";
+    if (zstr_eq(name, "Complex128")) return (ZString)"Complex128";
+    if (zstr_eq(name, "Complex64")) return (ZString)"Complex64";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
     if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
@@ -66,6 +73,9 @@ fn ZString symbol_type_descriptor_name(char* name) {
         zstr_eq(name, "BigInteger") ||
         zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "BigComplex") ||
+        zstr_eq(name, "Complex128") ||
+        zstr_eq(name, "Complex64") ||
+        zstr_eq(name, "Float32") ||
         zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||

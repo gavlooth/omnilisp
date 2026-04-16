@@ -28,6 +28,50 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             }
             self.emit(")");
 
+        case FLOAT32:
+            self.emit("aot::make_float32((float)");
+            char[64] fbuf;
+            if (try rendered_float = io::bprintf(&fbuf, "%.9g", (double)v.float32_val)) {
+                self.emit(rendered_float);
+            } else {
+                self.emit("0.0");
+            }
+            self.emit(")");
+
+        case COMPLEX128:
+            self.emit("aot::make_complex128(");
+            char[64] c128rbuf;
+            if (try rendered_c128r = io::bprintf(&c128rbuf, "%.17g", v.complex128_val.real)) {
+                self.emit(rendered_c128r);
+            } else {
+                self.emit("0.0");
+            }
+            self.emit(", ");
+            char[64] c128ibuf;
+            if (try rendered_c128i = io::bprintf(&c128ibuf, "%.17g", v.complex128_val.imag)) {
+                self.emit(rendered_c128i);
+            } else {
+                self.emit("0.0");
+            }
+            self.emit(")");
+
+        case COMPLEX64:
+            self.emit("aot::make_complex64((float)");
+            char[64] c64rbuf;
+            if (try rendered_c64r = io::bprintf(&c64rbuf, "%.9g", (double)v.complex64_val.real)) {
+                self.emit(rendered_c64r);
+            } else {
+                self.emit("0.0");
+            }
+            self.emit(", (float)");
+            char[64] c64ibuf;
+            if (try rendered_c64i = io::bprintf(&c64ibuf, "%.9g", (double)v.complex64_val.imag)) {
+                self.emit(rendered_c64i);
+            } else {
+                self.emit("0.0");
+            }
+            self.emit(")");
+
         case STRING:
             self.emit("aot::make_string(\"");
             // Emit string with escaping

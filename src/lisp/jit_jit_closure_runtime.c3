@@ -182,6 +182,6 @@ fn void jit_copy_lambda_variadic_info(Interp* interp, Value* closure, Expr* expr
 
     if (expr.lambda.has_rest && expr.lambda.param_count == 0) {
         closure.closure_val.has_param = false;
-        closure.closure_val.param = 0;
+        closure.closure_val.param = (SymbolId)0;
     }
 }

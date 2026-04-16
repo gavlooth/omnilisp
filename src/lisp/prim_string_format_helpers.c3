@@ -225,6 +225,15 @@ fn bool format_append_display(StringVal* sv, Value* a, Interp* interp) {
             usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
             return strval_append(sv, rendered[:rendered_len]);
         }
+    } else if (is_float32(a)) {
+        char[64] nbuf;
+        if (try nslice = io::bprintf(&nbuf, "%.15g", (double)a.float32_val)) {
+            return strval_append(sv, nslice);
+        } else {
+            char[64] rendered;
+            usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
+            return strval_append(sv, rendered[:rendered_len]);
+        }
     } else if (a.tag == STRING) {
         return strval_append(sv, a.str_chars[:a.str_len]);
     } else if (is_symbol(a)) {
@@ -245,6 +254,10 @@ fn bool value_as_double(Value* a, double* out) {
     }
     if (is_double(a)) {
         *out = a.double_val;
+        return true;
+    }
+    if (is_float32(a)) {
+        *out = (double)a.float32_val;
         return true;
     }
     return false;

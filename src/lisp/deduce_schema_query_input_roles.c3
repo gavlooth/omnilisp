@@ -39,9 +39,9 @@ fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args
         bool has_index_role = false;
         bool has_ref_role = false;
         bool has_check_role = false;
-        SymbolId ref_target_relation = 0;
-        SymbolId ref_target_column = 0;
-        SymbolId check_predicate = 0;
+        SymbolId ref_target_relation = (SymbolId)0;
+        SymbolId ref_target_column = (SymbolId)0;
+        SymbolId check_predicate = (SymbolId)0;
         while (i < args.len) {
             Value* marker = args[i];
             if (marker == null || marker.tag != SYMBOL) break;

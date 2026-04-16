@@ -28,6 +28,12 @@ fn usz tensor_dtype_size(TensorDType dtype) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return double.sizeof;
+        case TENSOR_DTYPE_FLOAT32:
+            return float.sizeof;
+        case TENSOR_DTYPE_COMPLEX128:
+            return Complex128Val.sizeof;
+        case TENSOR_DTYPE_COMPLEX64:
+            return Complex64Val.sizeof;
         case TENSOR_DTYPE_BIG_INTEGER:
             return void*.sizeof;
         case TENSOR_DTYPE_BIG_FLOAT:
@@ -41,6 +47,12 @@ fn char[] tensor_dtype_name(TensorDType dtype) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return "Float64";
+        case TENSOR_DTYPE_FLOAT32:
+            return "Float32";
+        case TENSOR_DTYPE_COMPLEX128:
+            return "Complex128";
+        case TENSOR_DTYPE_COMPLEX64:
+            return "Complex64";
         case TENSOR_DTYPE_BIG_INTEGER:
             return "BigInteger";
         case TENSOR_DTYPE_BIG_FLOAT:
@@ -54,6 +66,12 @@ fn SymbolId tensor_dtype_symbol(TensorDType dtype, Interp* interp) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
             return interp.sym_Double;
+        case TENSOR_DTYPE_FLOAT32:
+            return interp.sym_Float32;
+        case TENSOR_DTYPE_COMPLEX128:
+            return interp.sym_Complex128;
+        case TENSOR_DTYPE_COMPLEX64:
+            return interp.sym_Complex64;
         case TENSOR_DTYPE_BIG_INTEGER:
             return interp.sym_BigInteger;
         case TENSOR_DTYPE_BIG_FLOAT:
@@ -137,6 +155,11 @@ fn void tensor_free_payload(TensorVal* tensor) {
     tensor_map_big_integer_scalar_clear(tensor);
     tensor_map_big_float_scalar_clear(tensor);
     tensor_map_big_complex_scalar_clear(tensor);
+    if (tensor.device_handle != null && !tensor.is_view) {
+        if (tensor.device_finalizer != null) tensor.device_finalizer(tensor.device_handle);
+        tensor.device_handle = null;
+        tensor.device_finalizer = null;
+    }
     if (tensor.shape != null) {
         mem::free(tensor.shape);
         tensor.shape = null;
@@ -145,7 +168,7 @@ fn void tensor_free_payload(TensorVal* tensor) {
         mem::free(tensor.strides);
         tensor.strides = null;
     }
-    if (!tensor.is_view && tensor.data != null) {
+    if (!tensor.is_view && tensor.data != null && tensor.device == TENSOR_DEVICE_CPU) {
         if (tensor.kind == TENSOR_PAYLOAD_CONCRETE) {
             tensor_big_integer_clear_data(tensor);
             tensor_big_float_clear_data(tensor);
@@ -214,9 +237,13 @@ fn TensorVal* tensor_alloc_payload_base_checked(
 
     tensor.dtype = dtype;
     tensor.kind = allocate_data ? TENSOR_PAYLOAD_CONCRETE : TENSOR_PAYLOAD_MAP;
+    tensor.device = TENSOR_DEVICE_CPU;
     tensor.rank = shape.len;
     tensor.element_count = element_count;
     tensor.byte_len = byte_len;
+    tensor.storage_offset = 0;
+    tensor.storage_element_count = element_count;
+    tensor.storage_byte_len = byte_len;
     tensor.mutable = mutable;
     tensor.is_view = false;
 
@@ -260,6 +287,24 @@ fn TensorVal* tensor_alloc_payload_base_checked(
             case TENSOR_DTYPE_DOUBLE: {
                 double* values = (double*)tensor.data;
                 for (usz i = 0; i < element_count; i++) values[i] = 0.0;
+            }
+            case TENSOR_DTYPE_FLOAT32: {
+                float* values = (float*)tensor.data;
+                for (usz i = 0; i < element_count; i++) values[i] = 0.0f;
+            }
+            case TENSOR_DTYPE_COMPLEX128: {
+                Complex128Val* values = (Complex128Val*)tensor.data;
+                for (usz i = 0; i < element_count; i++) {
+                    values[i].real = 0.0;
+                    values[i].imag = 0.0;
+                }
+            }
+            case TENSOR_DTYPE_COMPLEX64: {
+                Complex64Val* values = (Complex64Val*)tensor.data;
+                for (usz i = 0; i < element_count; i++) {
+                    values[i].real = 0.0f;
+                    values[i].imag = 0.0f;
+                }
             }
             case TENSOR_DTYPE_BIG_INTEGER:
             case TENSOR_DTYPE_BIG_FLOAT:
@@ -317,10 +362,14 @@ fn bool tensor_clone_big_complex_data(TensorVal* dst, TensorVal* src) {
 fn bool tensor_copy_concrete_storage(TensorVal* dest, TensorVal* source) {
     if (dest == null || source == null || dest.dtype != source.dtype) return false;
     if (dest.element_count != source.element_count || dest.byte_len != source.byte_len) return false;
+    if (!tensor_dense_row_major(dest) || !tensor_dense_row_major(source)) return false;
     if (source.byte_len == 0) return true;
     if (dest.data == null || source.data == null) return false;
     switch (source.dtype) {
         case TENSOR_DTYPE_DOUBLE:
+        case TENSOR_DTYPE_FLOAT32:
+        case TENSOR_DTYPE_COMPLEX128:
+        case TENSOR_DTYPE_COMPLEX64:
             mem::copy(dest.data, source.data, source.byte_len);
             return true;
         case TENSOR_DTYPE_BIG_INTEGER: {
@@ -432,19 +481,40 @@ fn TensorVal* tensor_alloc_expression_payload_checked(
     char[] oom_message
 ) {
     TensorVal* tensor = tensor_alloc_payload_base_checked(dtype, shape, false, false, oom_message);
-    if (tensor != null) tensor.kind = kind;
+    if (tensor != null) {
+        tensor.kind = kind;
+        tensor.storage_offset = 0;
+        tensor.storage_element_count = 0;
+        tensor.storage_byte_len = 0;
+    }
     return tensor;
 }
 
 fn TensorVal* tensor_clone_payload(TensorVal* src) {
     if (src == null) return null;
+    bool clone_view_payload = src.kind == TENSOR_PAYLOAD_VIEW && src.is_view;
+    bool clone_cuda_device_payload = tensor_has_valid_device_storage(src, TENSOR_DEVICE_CUDA);
+    bool clone_vulkan_device_payload = tensor_has_valid_device_storage(src, TENSOR_DEVICE_VULKAN) &&
+        (src.device_handle == null || src.device_finalizer == &tensor_vulkan_device_finalizer);
+    if ((src.device != TENSOR_DEVICE_CPU || src.device_handle != null) && !clone_view_payload && !clone_cuda_device_payload && !clone_vulkan_device_payload) return null;
     TensorVal* tensor = (TensorVal*)mem::malloc(TensorVal.sizeof);
     if (tensor == null) return null;
     *tensor = *src;
     tensor.shape = null;
     tensor.strides = null;
     tensor.data = null;
+    tensor.device_handle = null;
+    tensor.device_finalizer = null;
     tensor.is_view = false;
+    tensor.storage_offset = 0;
+    if (src.kind == TENSOR_PAYLOAD_VIEW) {
+        tensor.storage_offset = src.storage_offset;
+        tensor.storage_element_count = src.storage_element_count;
+        tensor.storage_byte_len = src.storage_byte_len;
+    } else {
+        tensor.storage_element_count = tensor.kind == TENSOR_PAYLOAD_CONCRETE ? src.element_count : 0;
+        tensor.storage_byte_len = tensor.kind == TENSOR_PAYLOAD_CONCRETE ? src.byte_len : 0;
+    }
     tensor.map_left_big_integer_scalar = null;
     tensor.map_right_big_integer_scalar = null;
     tensor.map_left_big_float_scalar = null;
@@ -453,6 +523,7 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
     tensor.map_right_big_complex_scalar = null;
     tensor.contract_left_axes = null;
     tensor.contract_right_axes = null;
+    tensor.view_source = null;
 
     if (src.rank > 0) {
         if (src.shape == null || src.strides == null) {
@@ -477,6 +548,53 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         mem::copy(tensor.strides, src.strides, usz.sizeof * src.rank);
     }
 
+    if (src.kind == TENSOR_PAYLOAD_VIEW) {
+        tensor.data = src.data;
+        tensor.device_handle = src.device_handle;
+        tensor.device_finalizer = null;
+        tensor.is_view = true;
+        tensor.mutable = false;
+        return tensor;
+    }
+
+    if (clone_vulkan_device_payload) {
+        if (src.byte_len > 0 && src.device_handle == null) {
+            tensor_free_payload(tensor);
+            return null;
+        }
+        tensor.device_handle = omni_tensor_backend_vulkan_retain(src.device_handle);
+        if (src.byte_len > 0 && tensor.device_handle == null) {
+            tensor_free_payload(tensor);
+            return null;
+        }
+        tensor.device_finalizer = tensor.device_handle != null ? &tensor_vulkan_device_finalizer : null;
+        return tensor;
+    }
+
+    if (clone_cuda_device_payload) {
+        if (src.byte_len > 0 && src.device_handle == null) {
+            tensor_free_payload(tensor);
+            return null;
+        }
+        if (src.byte_len > 0) {
+            void* device_handle = null;
+            int status = omni_tensor_backend_cuda_alloc(src.byte_len, &device_handle);
+            if (status != OMNI_TENSOR_CUDA_SUCCESS || device_handle == null) {
+                tensor_free_payload(tensor);
+                return null;
+            }
+            status = omni_tensor_backend_cuda_copy_device_to_existing_device(src.device_handle, src.byte_len, device_handle);
+            if (status != OMNI_TENSOR_CUDA_SUCCESS) {
+                omni_tensor_backend_cuda_free(device_handle);
+                tensor_free_payload(tensor);
+                return null;
+            }
+            tensor.device_handle = device_handle;
+        }
+        tensor.device_finalizer = tensor.device_handle != null ? &tensor_cuda_device_finalizer : null;
+        return tensor;
+    }
+
     if (src.kind == TENSOR_PAYLOAD_CONCRETE && src.byte_len > 0) {
         if (src.data == null) {
             tensor_free_payload(tensor);
@@ -489,6 +607,9 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         }
         switch (src.dtype) {
             case TENSOR_DTYPE_DOUBLE:
+            case TENSOR_DTYPE_FLOAT32:
+            case TENSOR_DTYPE_COMPLEX128:
+            case TENSOR_DTYPE_COMPLEX64:
                 mem::copy(tensor.data, src.data, src.byte_len);
             case TENSOR_DTYPE_BIG_INTEGER: {
                 void** values = (void**)tensor.data;
@@ -625,6 +746,16 @@ fn bool tensor_copy_expr_edges_to_parent(TensorVal* dst, TensorVal* src, Interp*
             dst.contract_right = tensor_copy_expr_child_to_parent(src.contract_right, interp, fault_out, "boundary: failed to copy tensor contract right input");
             if (src.contract_right != null && (dst.contract_right == null || is_error(dst.contract_right))) return false;
             return true;
+        case TENSOR_PAYLOAD_VIEW:
+            dst.view_source = tensor_copy_expr_child_to_parent(src.view_source, interp, fault_out, "boundary: failed to copy tensor view source");
+            if (src.view_source != null && (dst.view_source == null || is_error(dst.view_source) || dst.view_source.tag != TENSOR || dst.view_source.tensor_val == null)) return false;
+            if (dst.view_source != null) {
+                TensorVal* source_tensor = dst.view_source.tensor_val;
+                dst.data = source_tensor.data;
+                dst.device_handle = source_tensor.device_handle;
+                dst.device_finalizer = null;
+            }
+            return true;
     }
 }
 
@@ -665,6 +796,14 @@ fn void tensor_cleanup_materialized_expr_edges(
                 boundary_cleanup_materialized_value(src.contract_right, copied_right, target_scope, escape_lane);
             }
             dst.contract_right = null;
+            return;
+        case TENSOR_PAYLOAD_VIEW:
+            Value* copied_source = dst.view_source;
+            boundary_cleanup_materialized_value(src.view_source, copied_source, target_scope, escape_lane);
+            dst.view_source = null;
+            dst.data = null;
+            dst.device_handle = null;
+            dst.device_finalizer = null;
             return;
     }
 }
@@ -712,6 +851,16 @@ fn bool tensor_promote_expr_edges_to_escape(TensorVal* dst, TensorVal* src, Inte
             if (src.contract_left != null && (dst.contract_left == null || is_error(dst.contract_left))) return false;
             dst.contract_right = tensor_promote_expr_child_to_escape(src.contract_right, interp, "boundary: failed to promote tensor contract right input");
             if (src.contract_right != null && (dst.contract_right == null || is_error(dst.contract_right))) return false;
+            return true;
+        case TENSOR_PAYLOAD_VIEW:
+            dst.view_source = tensor_promote_expr_child_to_escape(src.view_source, interp, "boundary: failed to promote tensor view source");
+            if (src.view_source != null && (dst.view_source == null || is_error(dst.view_source) || dst.view_source.tag != TENSOR || dst.view_source.tensor_val == null)) return false;
+            if (dst.view_source != null) {
+                TensorVal* source_tensor = dst.view_source.tensor_val;
+                dst.data = source_tensor.data;
+                dst.device_handle = source_tensor.device_handle;
+                dst.device_finalizer = null;
+            }
             return true;
     }
 }

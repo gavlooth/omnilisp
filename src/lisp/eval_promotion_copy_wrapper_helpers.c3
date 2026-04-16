@@ -300,6 +300,8 @@ fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inl
             case TENSOR_PAYLOAD_CONTRACT:
                 return boundary_value_in_releasing_scope(tensor.contract_left, interp) ||
                     boundary_value_in_releasing_scope(tensor.contract_right, interp);
+            case TENSOR_PAYLOAD_VIEW:
+                return boundary_value_in_releasing_scope(tensor.view_source, interp);
         }
     }
     return false;

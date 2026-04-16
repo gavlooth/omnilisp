@@ -22,11 +22,27 @@ fn Value* runtime_alloc_null_iterator_next(Value*[] args, Env* env, Interp* inte
 }
 
 int g_runtime_alloc_ffi_finalizer_calls = 0;
+int g_runtime_alloc_tensor_device_finalizer_calls = 0;
+int g_runtime_alloc_tensor_cuda_free_finalizer_calls = 0;
 
 fn void runtime_alloc_ffi_finalizer(void* payload) {
     g_runtime_alloc_ffi_finalizer_calls += 1;
     if (payload != null) {
         *(int*)payload = 0;
+    }
+}
+
+fn void runtime_alloc_tensor_device_finalizer(void* payload) {
+    g_runtime_alloc_tensor_device_finalizer_calls += 1;
+    if (payload != null) {
+        *(int*)payload = 0;
+    }
+}
+
+fn void runtime_alloc_tensor_cuda_free_finalizer(void* payload) {
+    g_runtime_alloc_tensor_cuda_free_finalizer_calls += 1;
+    if (payload != null) {
+        omni_tensor_backend_cuda_free(payload);
     }
 }
 
@@ -1634,6 +1650,208 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 length_val != null && length_val.tag == INT ? "yes" : "no",
                 printed_len > 0 ? (ZString)&printed : (ZString)"<none>");
             (*fail)++;
+        }
+    }
+
+    {
+        usz[1] shape_dims = { 3 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_FLOAT32, shape_dims[0:1], true, "test tensor allocation failed");
+        bool zero_initialized = false;
+        if (tensor != null && tensor.data != null) {
+            float* values = (float*)tensor.data;
+            zero_initialized = values[0] == 0.0f && values[1] == 0.0f && values[2] == 0.0f;
+            values[1] = 2.5f;
+        }
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        bool clone_valid = clone != null &&
+            clone != tensor &&
+            clone.data != tensor.data &&
+            clone.dtype == TENSOR_DTYPE_FLOAT32 &&
+            clone.rank == 1 &&
+            clone.element_count == 3 &&
+            clone.byte_len == float.sizeof * 3 &&
+            clone.data != null &&
+            ((float*)clone.data)[1] == 2.5f;
+
+        bool ok = tensor != null &&
+            tensor.dtype == TENSOR_DTYPE_FLOAT32 &&
+            tensor.rank == 1 &&
+            tensor.shape != null &&
+            tensor.shape[0] == 3 &&
+            tensor.strides != null &&
+            tensor.strides[0] == 1 &&
+            tensor.element_count == 3 &&
+            tensor.byte_len == float.sizeof * 3 &&
+            zero_initialized &&
+            clone_valid;
+
+        tensor_free_payload(clone);
+        tensor_free_payload(tensor);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor Float32 payload clone and byte length");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor Float32 payload clone and byte length (tensor=%s clone=%s zero=%s)",
+                tensor != null ? "yes" : "no",
+                clone_valid ? "yes" : "no",
+                zero_initialized ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_device_finalizer_calls = 0;
+        int device_marker = 123;
+        usz[1] shape_dims = { 1 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+        bool cpu_storage_valid = tensor_has_valid_storage(tensor);
+        if (tensor != null) {
+            if (tensor.data != null) {
+                mem::free(tensor.data);
+                tensor.data = null;
+            }
+            tensor.device = TENSOR_DEVICE_CUDA;
+            tensor.device_handle = (void*)&device_marker;
+            tensor.device_finalizer = &runtime_alloc_tensor_device_finalizer;
+        }
+        bool cuda_device_metadata_valid = tensor_has_valid_device_storage(tensor, TENSOR_DEVICE_CUDA);
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        tensor_free_payload(tensor);
+
+        bool ok = cpu_storage_valid &&
+            cuda_device_metadata_valid &&
+            clone == null &&
+            g_runtime_alloc_tensor_device_finalizer_calls == 1 &&
+            device_marker == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor opaque device payload finalizer");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor opaque device payload finalizer (cpu_valid=%s cuda_metadata=%s clone_null=%s calls=%d marker=%d)",
+                cpu_storage_valid ? "yes" : "no",
+                cuda_device_metadata_valid ? "yes" : "no",
+                clone == null ? "yes" : "no",
+                g_runtime_alloc_tensor_device_finalizer_calls,
+                device_marker);
+            (*fail)++;
+            tensor_free_payload(clone);
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_cuda_free_finalizer_calls = 0;
+        bool cuda_available = omni_tensor_backend_cuda_available() != 0;
+        bool ok = true;
+
+        if (cuda_available) {
+            usz[1] shape_dims = { 2 };
+            double[2] host_values = { 1.25, 2.5 };
+            double[2] clone_values = { 0.0, 0.0 };
+            void* source_device = null;
+            int alloc_status = omni_tensor_backend_cuda_alloc(double.sizeof * 2, &source_device);
+            int copy_status = alloc_status == OMNI_TENSOR_CUDA_SUCCESS
+                ? omni_tensor_backend_cuda_copy_to_existing_device((void*)&host_values[0], double.sizeof * 2, source_device)
+                : OMNI_TENSOR_CUDA_UNAVAILABLE;
+
+            TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+            bool source_owned_by_tensor = false;
+            if (tensor != null && copy_status == OMNI_TENSOR_CUDA_SUCCESS && source_device != null) {
+                if (tensor.data != null) {
+                    mem::free(tensor.data);
+                    tensor.data = null;
+                }
+                tensor.device = TENSOR_DEVICE_CUDA;
+                tensor.device_handle = source_device;
+                tensor.device_finalizer = &runtime_alloc_tensor_cuda_free_finalizer;
+                source_owned_by_tensor = true;
+            }
+
+            TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+            int copyback_status = clone != null && clone.device_handle != null
+                ? omni_tensor_backend_cuda_copy_to_host(clone.device_handle, clone.byte_len, (void*)&clone_values[0])
+                : OMNI_TENSOR_CUDA_UNAVAILABLE;
+
+            ok = alloc_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                copy_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                source_device != null &&
+                tensor != null &&
+                clone != null &&
+                clone.device == TENSOR_DEVICE_CUDA &&
+                clone.device_handle != null &&
+                clone.device_handle != source_device &&
+                clone.device_finalizer == &tensor_cuda_device_finalizer &&
+                copyback_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                clone_values[0] == 1.25 &&
+                clone_values[1] == 2.5;
+
+            if (clone != null && clone.device_handle == source_device) {
+                clone.device_handle = null;
+                clone.device_finalizer = null;
+            }
+
+            tensor_free_payload(tensor);
+            tensor_free_payload(clone);
+            if (!source_owned_by_tensor && source_device != null) {
+                omni_tensor_backend_cuda_free(source_device);
+            }
+
+            ok = ok && g_runtime_alloc_tensor_cuda_free_finalizer_calls == 1;
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor foreign CUDA payload clone deep-copies to Omni-owned storage");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor foreign CUDA payload clone deep-copies to Omni-owned storage (cuda=%s calls=%d)",
+                cuda_available ? "yes" : "no",
+                g_runtime_alloc_tensor_cuda_free_finalizer_calls);
+            (*fail)++;
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_device_finalizer_calls = 0;
+        int device_marker = 124;
+        usz[1] shape_dims = { 1 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+        bool cpu_storage_valid = tensor_has_valid_storage(tensor);
+        if (tensor != null) {
+            if (tensor.data != null) {
+                mem::free(tensor.data);
+                tensor.data = null;
+            }
+            tensor.device = TENSOR_DEVICE_VULKAN;
+            tensor.device_handle = (void*)&device_marker;
+            tensor.device_finalizer = &runtime_alloc_tensor_device_finalizer;
+        }
+        bool vulkan_storage_rejected = tensor != null && !tensor_has_valid_storage(tensor);
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        tensor_free_payload(tensor);
+
+        bool ok = cpu_storage_valid &&
+            vulkan_storage_rejected &&
+            clone == null &&
+            g_runtime_alloc_tensor_device_finalizer_calls == 1 &&
+            device_marker == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor opaque Vulkan device payload finalizer");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor opaque Vulkan device payload finalizer (cpu_valid=%s vulkan_rejected=%s clone_null=%s calls=%d marker=%d)",
+                cpu_storage_valid ? "yes" : "no",
+                vulkan_storage_rejected ? "yes" : "no",
+                clone == null ? "yes" : "no",
+                g_runtime_alloc_tensor_device_finalizer_calls,
+                device_marker);
+            (*fail)++;
+            tensor_free_payload(clone);
         }
     }
 

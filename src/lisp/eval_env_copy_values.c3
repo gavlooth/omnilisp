@@ -74,6 +74,12 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             return copy_big_complex_to_parent(v, interp);
         case DOUBLE:
             return make_double(interp, v.double_val);
+        case FLOAT32:
+            return make_float32(interp, v.float32_val);
+        case COMPLEX128:
+            return make_complex128(interp, v.complex128_val.real, v.complex128_val.imag);
+        case COMPLEX64:
+            return make_complex64(interp, v.complex64_val.real, v.complex64_val.imag);
         case SYMBOL:
             return make_symbol(interp, v.sym_val);
         case STRING:

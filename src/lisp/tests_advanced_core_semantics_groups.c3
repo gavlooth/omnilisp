@@ -127,7 +127,7 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "/: division by zero", pass, fail);
     test_str_val(interp, "try catch arity error",
         "(try (lambda (xx) (+ )) (lambda (payload) (ref payload 'message)))",
-        "arity mismatch: expected 2 argument(s), got 0", pass, fail);
+        "+: arity mismatch: expected 1 or 2 arguments, got 0", pass, fail);
     test_str_val(interp, "try catch type error",
         "(try (lambda (xx) (+ \"a\" 1)) (lambda (payload) (ref payload 'message)))",
         "+: argument 1 expected number, got \"a\"", pass, fail);

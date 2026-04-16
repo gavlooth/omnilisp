@@ -57,6 +57,7 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "math/erf", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERF, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
@@ -86,6 +87,7 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "math/erfc", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_ERFC, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "math/erfc", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
@@ -115,6 +117,7 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-cdf", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_CDF, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-cdf", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
@@ -144,6 +147,7 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "stats/normal-quantile", "1 argument", args.len);
+    if (is_tensor(args[0])) return tensor_unary_math_value(args[0], BIG_FLOAT_MATH_NORMAL_QUANTILE, 0, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "stats/normal-quantile", 0, "number", args[0]);
     if (is_big_float(args[0])) {
         return big_float_unary_math_value(
@@ -398,6 +402,8 @@ fn Value* prim_real_part(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "real-part", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], false, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "real-part", 0, "number", args[0]);
+    if (is_complex128(args[0])) return make_double(interp, args[0].complex128_val.real);
+    if (is_complex64(args[0])) return make_float32(interp, args[0].complex64_val.real);
     return big_complex_real_part_value(interp, args[0], "real-part: failed to extract numeric real part");
 }
 
@@ -405,6 +411,8 @@ fn Value* prim_imag_part(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "imag-part", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_component_value(args[0], true, interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "imag-part", 0, "number", args[0]);
+    if (is_complex128(args[0])) return make_double(interp, args[0].complex128_val.imag);
+    if (is_complex64(args[0])) return make_float32(interp, args[0].complex64_val.imag);
     return big_complex_imag_part_value(interp, args[0], "imag-part: failed to extract numeric imaginary part");
 }
 
@@ -412,6 +420,8 @@ fn Value* prim_conjugate(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "conjugate", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_big_complex_conjugate_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "conjugate", 0, "number", args[0]);
+    if (is_complex128(args[0])) return make_complex128(interp, args[0].complex128_val.real, -args[0].complex128_val.imag);
+    if (is_complex64(args[0])) return make_complex64(interp, args[0].complex64_val.real, -args[0].complex64_val.imag);
     return big_complex_conjugate_value(interp, args[0], "conjugate: failed to allocate BigComplex result");
 }
 
@@ -463,9 +473,12 @@ fn Value* prim_abs(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return primitive_arity_raise(interp, "abs", "1 argument", args.len);
     if (is_tensor(args[0])) return tensor_abs_value(args[0], interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "abs", 0, "number", args[0]);
+    if (is_complex128(args[0])) return make_double(interp, complex128_abs_value(args[0].complex128_val));
+    if (is_complex64(args[0])) return make_float32(interp, complex64_abs_value(args[0].complex64_val));
     if (is_big_complex(args[0])) return big_complex_abs_value(interp, args[0], "abs: failed to allocate BigFloat result");
     if (is_big_float(args[0])) return big_float_abs_value(interp, args[0], "abs: failed to allocate BigFloat result");
     if (is_double(args[0])) return make_double(interp, c_fabs(args[0].double_val));
+    if (is_float32(args[0])) return make_float32(interp, (float)c_fabs((double)args[0].float32_val));
     if (args[0].tag == BIG_INTEGER) {
         int cmp = omni_big_integer_compare_i64(args[0].big_integer_val, 0);
         if (cmp < 0) return big_integer_neg_value(interp, args[0], "abs: failed to allocate BigInteger result");
@@ -481,7 +494,7 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], true, "min", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "min", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "min", 1, "number", args[1]);
-    if (is_big_complex(args[0]) || is_big_complex(args[1])) return raise_error(interp, "min: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return raise_error(interp, "min: complex numbers are not ordered");
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         int cmp = 0;
         if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
@@ -495,6 +508,14 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
         }
         return make_double(interp, a < b ? a : b);
     }
+    if (is_float32(args[0]) || is_float32(args[1])) {
+        double a = 0.0;
+        double b = 0.0;
+        if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
+            return raise_error(interp, "min: BigInteger value is out of Float64 range");
+        }
+        return make_float32(interp, (float)(a < b ? a : b));
+    }
     int cmp = 0;
     if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "min: numeric comparison failed");
     if (args[0].tag == BIG_INTEGER || args[1].tag == BIG_INTEGER) return cmp <= 0 ? args[0] : args[1];
@@ -506,7 +527,7 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
     if (is_tensor(args[0]) || is_tensor(args[1])) return tensor_minmax_value(args[0], args[1], false, "max", interp);
     if (!is_numeric_value(args[0])) return primitive_arg_type_raise(interp, "max", 0, "number", args[0]);
     if (!is_numeric_value(args[1])) return primitive_arg_type_raise(interp, "max", 1, "number", args[1]);
-    if (is_big_complex(args[0]) || is_big_complex(args[1])) return raise_error(interp, "max: complex numbers are not ordered");
+    if (is_big_complex(args[0]) || is_big_complex(args[1]) || is_fixed_complex(args[0]) || is_fixed_complex(args[1])) return raise_error(interp, "max: complex numbers are not ordered");
     if (is_big_float(args[0]) || is_big_float(args[1])) {
         int cmp = 0;
         if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");
@@ -519,6 +540,14 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
             return raise_error(interp, "max: BigInteger value is out of Float64 range");
         }
         return make_double(interp, a > b ? a : b);
+    }
+    if (is_float32(args[0]) || is_float32(args[1])) {
+        double a = 0.0;
+        double b = 0.0;
+        if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
+            return raise_error(interp, "max: BigInteger value is out of Float64 range");
+        }
+        return make_float32(interp, (float)(a > b ? a : b));
     }
     int cmp = 0;
     if (!numeric_values_compare(args[0], args[1], &cmp)) return raise_error(interp, "max: numeric comparison failed");

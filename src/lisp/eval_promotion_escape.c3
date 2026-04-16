@@ -71,6 +71,9 @@ fn PromoteEscapeRoute promote_escape_route_for_tag(ValueTag tag) {
         case VOID:
         case INT:
         case DOUBLE:
+        case FLOAT32:
+        case COMPLEX128:
+        case COMPLEX64:
         case SYMBOL:
             return PE_ROUTE_SCALAR;
         case BIG_INTEGER:

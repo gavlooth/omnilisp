@@ -33,10 +33,10 @@ fn bool register_language_constants(Interp* interp) {
 }
 
 fn bool register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 54;
+    const DISPATCHED_PRIM_COUNT = 56;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
-        { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
+        { "+", &prim_add, -1 }, { "-", &prim_sub, -1 }, { "*", &prim_mul, 2 },
         { "/", &prim_div, 2 }, { "%", &prim_mod, 2 },
         // Comparison
         { "=", &prim_eq, 2 }, { "<", &prim_lt, 2 }, { ">", &prim_gt, 2 },
@@ -71,6 +71,8 @@ fn bool register_dispatched_primitives(Interp* interp) {
         { "BigInteger", &prim_ctor_big_integer, 1 },
         { "BigFloat", &prim_ctor_big_float, 1 },
         { "BigComplex", &prim_ctor_big_complex, -1 },
+        { "Complex128", &prim_ctor_complex128, -1 },
+        { "Complex64", &prim_ctor_complex64, -1 },
         { "Float", &prim_ctor_float, -1 },
         { "Float32", &prim_ctor_float32, 1 },
         { "Float64", &prim_ctor_double, 1 },

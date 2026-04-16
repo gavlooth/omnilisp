@@ -28,15 +28,15 @@ fn bool classify_file_read_path(char[] path, EntryFileReadKind* kind_out) {
     }
 
     switch (libc::errno()) {
-        case errno::ENOENT:
+        case ENOENT:
             *kind_out = ENTRY_FILE_READ_NOT_FOUND;
-        case errno::EACCES:
-        case errno::EPERM:
+        case EACCES:
+        case EPERM:
             *kind_out = ENTRY_FILE_READ_PERMISSION_DENIED;
-        case errno::ENOTDIR:
-        case errno::EISDIR:
-        case errno::ELOOP:
-        case errno::ENAMETOOLONG:
+        case ENOTDIR:
+        case EISDIR:
+        case ELOOP:
+        case ENAMETOOLONG:
             *kind_out = ENTRY_FILE_READ_PATH_FAILURE;
         default:
             *kind_out = ENTRY_FILE_READ_GENERIC_FAILURE;
@@ -46,17 +46,17 @@ fn bool classify_file_read_path(char[] path, EntryFileReadKind* kind_out) {
 
 fn EntryFileWriteKind classify_file_write_errno() {
     switch (libc::errno()) {
-        case errno::EACCES:
-        case errno::EPERM:
-        case errno::EROFS:
+        case EACCES:
+        case EPERM:
+        case EROFS:
             return ENTRY_FILE_WRITE_PERMISSION_DENIED;
-        case errno::ENOENT:
-        case errno::ENOTDIR:
-        case errno::EISDIR:
-        case errno::ELOOP:
-        case errno::ENAMETOOLONG:
+        case ENOENT:
+        case ENOTDIR:
+        case EISDIR:
+        case ELOOP:
+        case ENAMETOOLONG:
             return ENTRY_FILE_WRITE_PATH_FAILURE;
-        case errno::ENOSPC:
+        case ENOSPC:
             return ENTRY_FILE_WRITE_NO_SPACE;
         default:
             return ENTRY_FILE_WRITE_GENERIC_FAILURE;

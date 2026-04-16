@@ -176,6 +176,8 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
         case FFI_TYPE_DOUBLE:
             if (arg != null && arg.tag == DOUBLE) {
                 *dbl_slot = arg.double_val;
+            } else if (arg != null && arg.tag == FLOAT32) {
+                *dbl_slot = (double)arg.float32_val;
             } else if (arg != null && arg.tag == INT) {
                 *dbl_slot = (double)arg.int_val;
             } else {

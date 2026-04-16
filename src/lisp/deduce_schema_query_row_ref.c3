@@ -12,7 +12,7 @@ fn bool deduce_query_expr_try_extract_row_column_ref(
     *out_column_index = 0;
 
     Expr* unwrapped_expr = null;
-    SymbolId unwrapped_row_param = 0;
+    SymbolId unwrapped_row_param = (SymbolId)0;
     Env* unwrapped_env = null;
     if (deduce_query_expr_try_unwrap_preserved_row_call_chain(
             expr,

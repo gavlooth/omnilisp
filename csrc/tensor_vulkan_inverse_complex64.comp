@@ -1,0 +1,98 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint n;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    vec2 output_data[];
+};
+
+float complex_abs2(vec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+vec2 complex_mul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+vec2 complex_div(vec2 a, vec2 b) {
+    float denom = complex_abs2(b);
+    return vec2((a.x * b.x + a.y * b.y) / denom, (a.y * b.x - a.x * b.y) / denom);
+}
+
+void main() {
+    uint count = params.n * params.n;
+    uint work_offset = count;
+    uint status_offset = count * 2u;
+
+    for (uint row = 0u; row < params.n; row++) {
+        for (uint col = 0u; col < params.n; col++) {
+            uint index = row * params.n + col;
+            output_data[index] = row == col ? vec2(1.0, 0.0) : vec2(0.0, 0.0);
+            output_data[work_offset + index] = input_data[index];
+        }
+    }
+    output_data[status_offset] = vec2(0.0, 0.0);
+
+    for (uint pivot = 0u; pivot < params.n; pivot++) {
+        uint pivot_row = pivot;
+        float pivot_abs = complex_abs2(output_data[work_offset + pivot * params.n + pivot]);
+        for (uint row = pivot + 1u; row < params.n; row++) {
+            float candidate_abs = complex_abs2(output_data[work_offset + row * params.n + pivot]);
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+
+        if (!(pivot_abs > 0.0)) {
+            output_data[status_offset] = vec2(1.0, 0.0);
+            return;
+        }
+
+        if (pivot_row != pivot) {
+            for (uint col = 0u; col < params.n; col++) {
+                uint pivot_index = pivot * params.n + col;
+                uint row_index = pivot_row * params.n + col;
+
+                vec2 work_tmp = output_data[work_offset + pivot_index];
+                output_data[work_offset + pivot_index] = output_data[work_offset + row_index];
+                output_data[work_offset + row_index] = work_tmp;
+
+                vec2 inverse_tmp = output_data[pivot_index];
+                output_data[pivot_index] = output_data[row_index];
+                output_data[row_index] = inverse_tmp;
+            }
+        }
+
+        vec2 pivot_value = output_data[work_offset + pivot * params.n + pivot];
+        for (uint col = 0u; col < params.n; col++) {
+            output_data[work_offset + pivot * params.n + col] = complex_div(output_data[work_offset + pivot * params.n + col], pivot_value);
+            output_data[pivot * params.n + col] = complex_div(output_data[pivot * params.n + col], pivot_value);
+        }
+
+        for (uint row = 0u; row < params.n; row++) {
+            if (row == pivot) {
+                continue;
+            }
+            vec2 factor = output_data[work_offset + row * params.n + pivot];
+            if (!(complex_abs2(factor) > 0.0)) {
+                continue;
+            }
+            for (uint col = 0u; col < params.n; col++) {
+                output_data[work_offset + row * params.n + col] -= complex_mul(factor, output_data[work_offset + pivot * params.n + col]);
+                output_data[row * params.n + col] -= complex_mul(factor, output_data[pivot * params.n + col]);
+            }
+        }
+    }
+}

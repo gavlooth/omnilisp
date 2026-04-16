@@ -1,0 +1,27 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint n;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    dvec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    dvec2 output_data[];
+};
+
+void main() {
+    dvec2 sum = dvec2(0.0, 0.0);
+    for (uint i = 0; i < params.n; i++) {
+        sum += input_data[i * params.n + i];
+    }
+    output_data[0] = sum;
+}

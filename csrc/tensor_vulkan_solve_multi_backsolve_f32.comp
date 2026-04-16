@@ -1,0 +1,55 @@
+#version 450
+const float OMNI_MATRIX_F32_EPS = 0.000001;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 2) buffer Output {
+    float out_data[];
+};
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint pivot;
+    uint work_count;
+    uint scratch_src;
+    uint scratch_dst;
+    uint scratch_count;
+} pc;
+
+float omni_abs(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    uint work = gl_GlobalInvocationID.x;
+    if (work >= pc.work_count) return;
+    if (status_code[0] != 2u) return;
+    if (pc.n == 0u || pc.rhs_cols == 0u || pc.pivot >= pc.n) return;
+    if (work >= pc.rhs_cols) return;
+
+    uint row = pc.pivot;
+    uint rhs_col = work;
+    uint coeff_offset = pc.result_count;
+    float pivot_value = out_data[coeff_offset + row * pc.n + row];
+    if (!(omni_abs(pivot_value) > OMNI_MATRIX_F32_EPS)) {
+        status_code[0] = 1u;
+        return;
+    }
+
+    float sum = out_data[row * pc.rhs_cols + rhs_col];
+    for (uint col = row + 1u; col < pc.n; col++) {
+        sum -= out_data[coeff_offset + row * pc.n + col] *
+            out_data[col * pc.rhs_cols + rhs_col];
+    }
+    out_data[row * pc.rhs_cols + rhs_col] = sum / pivot_value;
+
+    if (row == 0u) {
+        status_code[0] = 0u;
+    }
+}

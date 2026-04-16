@@ -21,7 +21,7 @@ fn Expr* make_single_lambda_expr(Interp* interp, SymbolId param, Expr* body) {
     if (e.lambda.params == null) return make_error_expr(interp, "macro expansion failed to allocate lambda parameters");
     e.lambda.params[0] = param;
     e.lambda.has_rest = false;
-    e.lambda.rest_param = 0;
+    e.lambda.rest_param = (SymbolId)0;
     e.lambda.has_typed_params = false;
     e.lambda.param_annotations = null;
     e.lambda.body = body;
@@ -38,7 +38,7 @@ fn Expr* make_nullary_lambda_expr(Interp* interp, Expr* body) {
     e.lambda.param_count = 0;
     e.lambda.params = null;
     e.lambda.has_rest = false;
-    e.lambda.rest_param = 0;
+    e.lambda.rest_param = (SymbolId)0;
     e.lambda.has_typed_params = false;
     e.lambda.param_annotations = null;
     e.lambda.body = body;

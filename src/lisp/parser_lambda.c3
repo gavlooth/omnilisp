@@ -12,7 +12,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
 
     if (self.lexer.current.type == T_RPAREN) {
         self.lexer.advance();  // consume ')'
-        return self.finalize_lambda_no_fixed_params(e, false, 0);
+        return self.finalize_lambda_no_fixed_params(e, false, (SymbolId)0);
     }
 
     if (self.lexer.current.type == T_DOTDOT) {
@@ -46,7 +46,7 @@ fn Expr* Parser.parse_lambda(Parser* self) {
     }
 
     self.expect(T_RPAREN, ")");
-    return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, false, 0, lam_destr_patterns, lam_destr_param_names, true);
+    return self.finalize_lambda_with_params(e, params, param_anns, has_any_typed, false, (SymbolId)0, lam_destr_patterns, lam_destr_param_names, true);
 }
 
 fn Expr* Parser.parse_if(Parser* self) {

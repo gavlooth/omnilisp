@@ -212,13 +212,13 @@ fn Value* big_integer_binary_values_or_integer(Interp* interp, Value* lhs, Value
 fn bool numeric_values_compare(Value* lhs, Value* rhs, int* out) {
     if (lhs == null || rhs == null || out == null) return false;
     if (!is_numeric_value(lhs) || !is_numeric_value(rhs)) return false;
-    if (lhs.tag == BIG_COMPLEX || rhs.tag == BIG_COMPLEX) return false;
+    if (lhs.tag == BIG_COMPLEX || rhs.tag == BIG_COMPLEX || is_fixed_complex(lhs) || is_fixed_complex(rhs)) return false;
 
     if (lhs.tag == BIG_FLOAT || rhs.tag == BIG_FLOAT) {
         return big_float_compare_values(lhs, rhs, out);
     }
 
-    if (lhs.tag == DOUBLE || rhs.tag == DOUBLE) {
+    if (lhs.tag == DOUBLE || rhs.tag == DOUBLE || lhs.tag == FLOAT32 || rhs.tag == FLOAT32) {
         double left = 0.0;
         double right = 0.0;
         if (!try_numeric_to_double(lhs, &left) || !try_numeric_to_double(rhs, &right)) return false;

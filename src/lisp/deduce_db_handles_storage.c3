@@ -6,6 +6,7 @@ fn bool deduce_value_supported_by_tuple_codec(Value* v) @inline {
     if (v == null || v.tag == NIL) return true;
     return v.tag == INT ||
         v.tag == DOUBLE ||
+        v.tag == FLOAT32 ||
         v.tag == STRING ||
         v.tag == SYMBOL ||
         v.tag == TIME_POINT;

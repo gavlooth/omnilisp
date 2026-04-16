@@ -4,7 +4,7 @@ module lisp;
 // Tuple encoding: Values → bytes for LMDB storage
 // ============================================================
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
-// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(4 byte id), 5=time-point(1 kind byte + 8 ints LE)
+// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(4 byte id), 5=time-point(1 kind byte + 8 ints LE), 6=float32(4 bytes)
 fn usz write_i32_le(char* buf, usz pos, int value) {
     buf[pos++] = (char)(value & 0xFF);
     buf[pos++] = (char)((value >> 8) & 0xFF);
@@ -41,6 +41,12 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             double dval = v.double_val;
             char* dp = (char*)&dval;
             for (usz j = 0; j < 8; j++) buf[pos++] = dp[j];
+        } else if (v.tag == FLOAT32) {
+            if (pos + 5 > buf_size) return WRITE_FAILED~;
+            buf[pos++] = 6;
+            float fval = v.float32_val;
+            char* fp = (char*)&fval;
+            for (usz j = 0; j < 4; j++) buf[pos++] = fp[j];
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;
@@ -132,6 +138,13 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             int microsecond = read_i32_le(buf, pos); pos += 4;
             int tz_offset = read_i32_le(buf, pos); pos += 4;
             out[count++] = make_time_point(interp, kind, year, month, day, hour, minute, second, microsecond, tz_offset);
+        } else if (tag == 6) {
+            if (pos + 4 > buf_size) return READ_FAILED~;
+            float fval;
+            char* fp = (char*)&fval;
+            for (usz j = 0; j < 4; j++) fp[j] = buf[pos + j];
+            pos += 4;
+            out[count++] = make_float32(interp, fval);
         } else {
             return READ_FAILED~;  // unknown tag = malformed data
         }

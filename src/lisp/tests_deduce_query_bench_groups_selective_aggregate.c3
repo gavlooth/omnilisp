@@ -12,7 +12,7 @@ fn bool deduce_query_bench_seed_selective_join_db(
     if (interp == null || db_out == null || out_rel_out == null || out_sym_out == null || expected_rows_out == null) return false;
     *db_out = null;
     *out_rel_out = null;
-    *out_sym_out = 0;
+    *out_sym_out = (SymbolId)0;
     *expected_rows_out = 0;
 
     Value*[1] open_args;

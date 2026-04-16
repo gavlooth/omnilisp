@@ -31,7 +31,7 @@ fn void deduce_rule_atom_free(DeduceRuleAtom* atom) {
     }
     atom.term_count = 0;
     atom.negated = false;
-    atom.predicate = 0;
+    atom.predicate = (SymbolId)0;
 }
 
 fn void deduce_rule_ir_free(DeduceRuleIr* rule) {
@@ -57,7 +57,7 @@ fn Value* deduce_rule_parse_atom(
     DeduceRuleAtom* out,
     Interp* interp
 ) {
-    out.predicate = 0;
+    out.predicate = (SymbolId)0;
     out.negated = false;
     out.terms = null;
     out.term_count = 0;

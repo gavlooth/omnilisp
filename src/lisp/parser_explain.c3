@@ -48,7 +48,7 @@ fn Expr* Parser.parse_explain(Parser* self) {
     self.expect(T_RPAREN, ")");
     if (self.has_error) return null;
 
-    SymbolId selector = 0;
+    SymbolId selector = (SymbolId)0;
     bool quoted_symbol = false;
     if (!parse_explain_selector_symbol(self, selector_expr, &selector, &quoted_symbol)) {
         if (quoted_symbol) {

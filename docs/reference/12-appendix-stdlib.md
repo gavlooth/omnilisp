@@ -24,7 +24,7 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 
 | Name | Signature | Description |
 |------|-----------|-------------|
-| `map` | `(map f coll)` | Apply f to each element (dispatched: List, Array, Iterator) |
+| `map` | `(map f coll)` | Apply f to each element (dispatched: List, Array, Iterator, Tensor) |
 | `filter` | `(filter pred coll)` | Keep matching elements (dispatched) |
 | `foldl` | `(foldl f acc lst)` | Left fold |
 | `foldr` | `(foldr f init lst)` | Right fold |
@@ -53,14 +53,15 @@ Functions and macros defined in `stdlib/stdlib.lisp`.
 
 | Name | Signature | Description |
 |------|-----------|-------------|
-| `Iterator` | `(Iterator coll)` | Canonical iterator constructor/conversion surface |
+| `Iterator` | `(Iterator coll)` | Canonical iterator constructor/conversion surface; Tensor inputs iterate flat row-major CPU elements |
 | `range-from` | `(range-from n)` | Infinite: n, n+1, n+2... |
 | `repeat` | `(repeat x)` | Infinite repetition |
 | `cycle` | `(cycle coll)` | Infinite cycle |
 
 Note: `map`, `filter`, `take`, `drop`, `zip`, and `foldl` are dispatched and
 operate lazily when passed an `Iterator`.
-Force an iterator with constructors: `(List it)` or `(Array it)`.
+Consume an iterator with constructors: `(List it)`, `(Array it)`, or another
+constructor that accepts finite iterator input such as `Tensor`.
 
 ### Utilities
 
@@ -124,8 +125,12 @@ These redefine I/O to go through effects (fast path when no handler):
 
 ### Type Predicates (Stdlib-Defined)
 
-`int?`, `float64?`, `number?`, `string?`, `symbol?`, `boolean?`, `list?`,
-`closure?`, `array?`, `dict?`
+`int?`, `float32?`, `float64?`, `complex64?`, `complex128?`, `number?`,
+`string?`, `symbol?`, `boolean?`, `list?`, `closure?`, `array?`, `dict?`
+
+`complex64?` recognizes scalar `Complex64` values. `complex128?` recognizes
+scalar `Complex128` values. They do not match `BigComplex`; fixed-width complex
+values and high-precision `BigComplex` values are separate numeric families.
 
 ### Numeric Predicates (Stdlib-Defined)
 

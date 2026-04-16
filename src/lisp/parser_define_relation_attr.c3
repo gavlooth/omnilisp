@@ -23,9 +23,9 @@ fn bool Parser.parse_relation_column_spec(
     bool has_index_role = false;
     bool has_ref_role = false;
     bool has_check_role = false;
-    SymbolId ref_target_relation = 0;
-    SymbolId ref_target_column = 0;
-    SymbolId check_predicate = 0;
+    SymbolId ref_target_relation = (SymbolId)0;
+    SymbolId ref_target_column = (SymbolId)0;
+    SymbolId check_predicate = (SymbolId)0;
     while (self.lexer.current.type == T_SYMBOL) {
         SymbolId current = self.get_current_symbol();
         if ((uint)current == (uint)sym_key) {
@@ -115,7 +115,7 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
     }
     SymbolId db_name = (*attrs)[1];
     bool materialized_view = false;
-    SymbolId materialized_refresh_policy = 0;
+    SymbolId materialized_refresh_policy = (SymbolId)0;
     SymbolId sym_materialized = self.intern_or_error("materialized", "relation definition: failed to intern materialized attribute");
     SymbolId sym_manual = self.intern_or_error("manual", "relation definition: failed to intern materialized refresh policy");
     SymbolId sym_on_read = self.intern_or_error("on-read", "relation definition: failed to intern materialized refresh policy");
@@ -144,8 +144,8 @@ fn Expr* Parser.parse_define_relation_attr(Parser* self, Expr* e, List{SymbolId}
         return null;
     }
 
-    SymbolId key_col = 0;
-    SymbolId index_col = 0;
+    SymbolId key_col = (SymbolId)0;
+    SymbolId index_col = (SymbolId)0;
     SymbolId sym_key = self.intern_or_error("key", "relation definition: failed to intern column role");
     SymbolId sym_unique = self.intern_or_error("unique", "relation definition: failed to intern column role");
     SymbolId sym_index = self.intern_or_error("index", "relation definition: failed to intern column role");

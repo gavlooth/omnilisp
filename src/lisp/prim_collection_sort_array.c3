@@ -95,9 +95,12 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
             if (r2.tag == ERROR) return r2;
             // If result > 0 (or truthy for >), swap
             bool gt = false;
-            if (is_int(r2)) { gt = r2.int_val > 0; }
-            else if (is_double(r2)) { gt = r2.double_val > 0.0; }
-            else { gt = !is_nil(r2); }
+            double cmp_value = 0.0;
+            if (try_numeric_to_double(r2, &cmp_value)) {
+                gt = cmp_value > 0.0;
+            } else {
+                gt = !is_nil(r2);
+            }
             if (!gt) break;
             arr[(usz)(j + 1)] = arr[(usz)j];
             j--;

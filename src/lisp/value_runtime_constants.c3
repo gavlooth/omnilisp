@@ -59,9 +59,12 @@ enum ValueTag : char {
     PARTIAL_PRIM,   // Partially applied primitive (curried)
     ERROR,          // Error value (carries error message in str_val)
     DOUBLE,         // Floating-point number
+    FLOAT32,        // 32-bit floating-point scalar
     BIG_INTEGER,    // Arbitrary-precision exact integer
     BIG_FLOAT,      // Arbitrary-precision decimal float
     BIG_COMPLEX,    // Arbitrary-precision complex decimal float pair
+    COMPLEX128,     // Fixed-width complex scalar with two Float64 components
+    COMPLEX64,      // Fixed-width complex scalar with two Float32 components
     HASHMAP,        // Hash map (mutable dictionary)
     SET,            // Hash map payload with set semantics
     FFI_HANDLE,     // FFI library handle (dlopen result)

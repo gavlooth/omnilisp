@@ -287,6 +287,17 @@ fn Value* cl_format_directive(StringVal* builder, char directive, Value*[] args,
                         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
                     }
                 }
+            } else if (is_float32(a)) {
+                char[64] nbuf;
+                if (try char[] nslice = io::bprintf(&nbuf, "%.15g", (double)a.float32_val)) {
+                    if (!strval_append(builder, nslice)) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
+                } else {
+                    if (!strval_append(builder, "#<fmt-error>")) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
+                }
             } else if (a.tag == STRING) {
                 if (directive == 's') {
                     if (!strval_push(builder, '"')) {

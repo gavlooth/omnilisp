@@ -11,7 +11,99 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## Current TODO-Linked Plans
 
-There are currently no open live-queue entries in `TODO.md`.
+- `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
+  portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
+  is runtime-optional, capability-gated, and owned through an Omni C ABI
+  helper. Probe, explicit CPU<->Vulkan placement/copy, dense row-major
+  `Float64` `map` arithmetic for Tensor/scalar, scalar/Tensor, exact-shape
+  Tensor/Tensor inputs, and right-aligned singleton-axis Tensor/Tensor
+  broadcasting, generic dense row-major rank-N `Float64` multi-axis
+  `contract`, and dense row-major `Float64` matrix kernels for
+  `matrix/transpose`, `matrix/diagonal`, `matrix/diagonal-matrix`,
+  `matrix/trace`, `matrix/rank`, `matrix/lu`, `matrix/solve`,
+  `matrix/determinant`, `matrix/inverse`, `matrix/cholesky`, `matrix/qr`, and
+  `matrix/norm` are
+  landed. The generic contract shader uses checked-in GLSL source and
+  rank/shape/stride metadata-buffer dispatch. No public `VulkanTensor`, backend-named math API,
+  implicit CPU/GPU transfer, or silent `Float64` downcast is allowed.
+- `vulkan-dtype-layout-policy-2026-04-17.md`: locks the Vulkan expansion
+  policy. Keep fixed-width dtype paths explicit; do not downcast between
+  `Float64` and `Float32`; do not lower pointer-backed Big* dtypes to Vulkan.
+  Fixed-width complex CPU storage plus CUDA/Vulkan raw storage, elementwise
+  `map`, `contract`, structural matrix kernels, and the landed Vulkan
+  numerical subset are now capability-gated explicitly. Remaining deferred
+  boundaries are full complex SVD factor output, CUDA complex
+  singular-values/norm/SVD, complex eigen result contracts, and stride-aware
+  layouts. Its next-boundary section now delegates the broader library and
+  parallel solver roadmap to `vulkan-math-library-roadmap-2026-04-17.md` while
+  keeping dtype/layout preconditions local to the policy note.
+- `fixed-width-complex-closure-plan-2026-04-18.md`: active closure plan for
+  the remaining fixed-width complex tensor work. It splits the old umbrella
+  residual into three TODO-backed lanes: `TENSOR-100H-SVD-FACTORS`,
+  `TENSOR-100H-CUDA-SVD-NORMS`, and `TENSOR-100H-COMPLEX-EIGEN`.
+- `vulkan-math-library-roadmap-2026-04-17.md`: active plan for the next
+  Vulkan math work after the correctness-first `TENSOR-100E` baseline. It
+  keeps the residual live direction under `TENSOR-100F`
+  helper/library/dtype/layout work and records `TENSOR-100G` as the measured
+  parallel solver baseline. The plan keeps the public
+  surface backend-neutral, records `Float64` and `Float32` as active Vulkan
+  dtype families where shipped, records `Complex128`/`Complex64` CPU storage,
+  CUDA/Vulkan raw storage, CUDA/Vulkan elementwise `map`, CUDA/Vulkan
+  fixed-width complex `contract`, and CUDA/Vulkan fixed-width complex
+  structural matrix kernels as shipped behind explicit operation capability
+  bits. It also records landed Vulkan transpose-view materialization and Vulkan
+  fixed-width complex LU/determinant/solve/inverse/rank/norm/singular-values
+  reducers and factor kernels.
+  The roadmap rejects Big* lowering
+  and hidden CPU fallback, and requires a separate measured
+  performance item before extending solver algorithms again.
+- `cuda-cublas-backend-decision-2026-04-16.md`: CUDA/cuBLAS stays behind the
+  backend-neutral Tensor surface. Current support includes explicit
+  `to-device` CPU/CUDA copies, cuBLAS rank-2/rank-1 contract fast paths,
+  embedded-PTX CUDA binary elementwise `map` for dense row-major `Float64` and
+  `Float32` scalar, exact-shape, and right-aligned broadcast operands, CUDA
+  arithmetic/component unary `map` for eligible dense row-major real tensors,
+  generated CUDA C/libdevice PTX scientific unary `map` including `math/erf`,
+  `math/erfc`, and `stats/normal-cdf`, and destination-form `realize` into
+  existing dense row-major `Float64` or `Float32` CUDA destinations without
+  implicit CPU fallback.
+  Landed slices include Vulkan `matrix/cholesky`, Vulkan `matrix/qr`, Vulkan
+  `matrix/singular-values`, unary/helper expansion, zero-axis contract, and
+  the staged thresholded Vulkan `matrix/solve` helper.
+- `vulkan-svd-factor-output-plan-2026-04-17.md`: direct Vulkan `matrix/svd`
+  planning under the existing backend-neutral surface. It preserves reduced
+  `u`/`s`/`v` factor-output semantics, keeps outputs Vulkan-placed, forbids
+  hidden CPU/LAPACK fallback, and tracks the storage-backed large-`k`
+  factor-output helper separately from the singular-value-only helper.
+- `vulkan-eigensolver-plan-2026-04-17.md`: direct Vulkan eigen planning for
+  existing `matrix/eigenvalues`, `matrix/eigenvectors`, and `matrix/eigenpairs`
+  surfaces. Symmetric real `Float64` eigenvalues/eigenvectors are the first
+  eligible phase; general `matrix/eigenpairs` stays blocked for Vulkan while
+  its public output contract remains pointer-backed `BigComplex`.
+- `vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`: `Float32` planning
+  split into the landed native `Tensor Float32` CPU storage/oracle phase, the
+  landed CPU `Float32` matrix factor/SVD oracle phase, the landed Vulkan
+  placement/map/unary/minmax, rank-N contract, and structural matrix slices,
+  the landed reducer and SVD-backed slices (`matrix/rank`, all `matrix/norm`
+  selectors, `matrix/singular-values`, and `matrix/svd`), and the landed
+  Vulkan `Float32` serial factor/solve slices (`matrix/determinant`,
+  `matrix/lu`, `matrix/solve`, `matrix/inverse`, `matrix/cholesky`, and
+  `matrix/qr`) plus staged parallel `matrix/solve`. Large-dense SVD robustness
+  is landed through scale-aware eigenvalue tolerance and orthonormal
+  completion. It explicitly rejects using `Float32` as a downcast fallback for
+  current `Float64` Vulkan execution.
+- `fixed-width-complex-tensor-contract-2026-04-18.md`: contract for scalar and
+  Tensor `Complex128`/`Complex64`. It documents constructors, stdlib
+  predicates, Tensor dtype behavior, component helper result dtypes, CPU
+  tensor `map`/`contract`, CUDA/Vulkan raw storage, CUDA/Vulkan fixed-width
+  complex elementwise `map`, CUDA/Vulkan fixed-width complex `contract`, and
+  CUDA/Vulkan fixed-width complex structural matrix kernels behind explicit
+  operation capability bits. Vulkan fixed-width complex
+  LU/determinant/solve/inverse/rank/norm/singular-values/QR/Cholesky is landed
+  behind `matrix-numerical-complex128` and `matrix-numerical-complex64`.
+  Remaining CUDA numerical complex singular-value/norm support, full complex
+  SVD factor output, and complex eigen families remain explicit deferred
+  operation families.
 
 Recently closed TODO-linked plans:
 
@@ -23,8 +115,50 @@ Recently closed TODO-linked plans:
   optional C++ tooling, and polyglot lanes; the common-core lane is closed
   through `FOREIGN-CORE-002R`.
 - `tensor-scientific-computing-plan-2026-04-11.md`: canonical `Tensor`,
-  tensor-dispatched `map`, `contract`, `materialize`; public surface cleanup,
+  tensor-dispatched `map` and `contract`, constructor-driven materialization,
+  flat row-major `Iterator(Tensor)` conversion, public surface cleanup,
   singleton-axis broadcasting, and backend-boundary design are closed.
+  `realize` remains only a low-level Tensor storage primitive for destination
+  reuse.
+- `matrix-solver-surface-decision-2026-04-16.md`: locks `matrix/` as the
+  rank-2 Tensor solver/decomposition namespace, with `matrix/solve` and
+  `matrix/lu` as shipped surfaces plus `matrix/determinant` as the first
+  decomposition consumer, `matrix/transpose` as the first structural matrix
+  transform, `matrix/diagonal` as the second structural matrix transform,
+  `matrix/diagonal-matrix` as the first structural matrix constructor,
+  `matrix/identity` as the first size-driven structural matrix constructor,
+  `matrix/trace` as the first structural matrix reduction, `matrix/rank` as
+  the first numerical structural matrix reduction, `matrix/norm` as the first
+  general matrix norm reducer, `matrix/inverse` as the first solve-derived
+  matrix transform, `matrix/qr` as the first non-LU
+  decomposition, `matrix/cholesky` as the first symmetric positive-definite
+  decomposition, `matrix/singular-values` as the direct singular-value
+  extraction surface, plus `matrix/svd` as the first rectangular decomposition
+  and `matrix/eigenvalues` / `matrix/eigenvectors` as symmetric-real eigen
+  surfaces, `matrix/eigenpairs` as the general nonsymmetric eigen surface,
+  and optional `dgesvd` backend coverage for `matrix/rank`,
+  and rejects bare `solve`, `linalg/solve`, `tensor/solve`, and
+  backend-flavored public solver names for the first slice.
+- `cuda-cublas-backend-decision-2026-04-16.md`: locks the `TENSOR-100`
+  explicit-device CUDA/cuBLAS design. Future GPU support stays behind
+  `Tensor`, uses `to-device`, `device`, and `tensor-backends`, rejects public
+  `GpuTensor`/`CudaTensor` and backend-flavored math names, and forbids
+  implicit CPU/GPU transfer inside ordinary Tensor operations. The first
+  CPU-only implementation slice, `TENSOR-100A`, registers `device` and
+  `to-device` with CPU realization and fail-closed CUDA diagnostics.
+  `TENSOR-100B` adds internal placement metadata, structured
+  `tensor-backends` inventory, CPU-kernel rejection of non-CPU storage, and
+  fake-device destruction coverage for opaque backend handles. `TENSOR-100C`
+  adds optional runtime-loaded CUDA CPU<->device copy support for concrete
+  `Float64` Tensor storage, later extended to `Float32`. `TENSOR-100D` adds runtime-loaded cuBLAS
+  rank-2/rank-2 GEMM plus rank-2/rank-1 and rank-1/rank-2 GEMV contract
+  execution for CUDA-placed dense row-major `Float64` tensors, later extended
+  to matching `Float32` and rank-1/rank-1 dot. `TENSOR-100F` adds embedded-PTX
+  CUDA binary elementwise map kernels for dense row-major `Float64`/`Float32`
+  tensor/scalar, scalar/tensor, exact-shape tensor/tensor, and right-aligned
+  singleton-axis tensor/tensor broadcast operands, then adds arithmetic and
+  component unary CUDA map helpers for unary `+`, `abs`, unary `-`, `sqrt`,
+  `real-part`, `imag-part`, and `conjugate`.
 
 Historical plans in this directory remain useful context, but they are not
 live backlog entries unless `TODO.md` explicitly references them.

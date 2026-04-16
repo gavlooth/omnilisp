@@ -101,7 +101,7 @@ fn void deduce_db_finalizer(void* handle) {
             db.rule_signatures[i].body_term_total_count = 0;
             db.rule_signatures[i].max_var_id = 0;
             db.rule_signatures[i].body_count = 0;
-            db.rule_signatures[i].head_predicate = 0;
+            db.rule_signatures[i].head_predicate = (SymbolId)0;
         }
         mem::free(db.rule_signatures);
         db.rule_signatures = null;

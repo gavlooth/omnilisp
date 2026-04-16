@@ -9,7 +9,7 @@ import main;
 fn Expr* value_to_expr(Value* val, Interp* interp) {
     if (val == null || val.tag == NIL) return make_nil_expr(interp);
 
-    if (val.tag == INT || val.tag == STRING || val.tag == DOUBLE) {
+    if (val.tag == INT || val.tag == STRING || val.tag == DOUBLE || val.tag == FLOAT32) {
         Expr* e = interp.alloc_expr();
         e.tag = E_LIT;
         e.lit.value = val;

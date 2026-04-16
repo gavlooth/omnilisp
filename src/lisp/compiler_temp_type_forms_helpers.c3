@@ -13,6 +13,8 @@ fn void Compiler.emit_value_tag_literal(Compiler* self, ValueTag tag) {
     switch (tag) {
         case INT:
             self.emit("lisp::ValueTag.INT");
+        case FLOAT32:
+            self.emit("lisp::ValueTag.FLOAT32");
         case SYMBOL:
             self.emit("lisp::ValueTag.SYMBOL");
         case STRING:

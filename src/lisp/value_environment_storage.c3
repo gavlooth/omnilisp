@@ -13,7 +13,7 @@ const usz ENV_INITIAL_CAPACITY = 4;
 const usz ENV_HASH_THRESHOLD = 16;
 
 // Sentinel for empty hash table slots
-const SymbolId ENV_HASH_EMPTY = 0xFFFFFFFF;
+const SymbolId ENV_HASH_EMPTY = (SymbolId)0xFFFFFFFF;
 
 bool g_env_force_bindings_alloc_oom = false;
 bool g_env_force_hash_alloc_oom = false;

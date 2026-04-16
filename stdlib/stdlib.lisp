@@ -111,7 +111,10 @@
 ;; =========================================================================
 (define (integer? x) (is? x 'Integer))
 (define (int? x) (integer? x))
+(define (float32? x) (is? x 'Float32))
 (define (float64? x) (is? x 'Float64))
+(define (complex64? x) (is? x 'Complex64))
+(define (complex128? x) (is? x 'Complex128))
 (define (number? x) (is? x 'Number))
 (define (string? x) (is? x 'String))
 (define (symbol? x) (is? x 'Symbol))
@@ -321,6 +324,7 @@
 (define (Iterator (^List lst)) (__iterator-from-list lst))
 (define (Iterator (^Array arr)) (__iterator-from-array arr))
 (define (Iterator (^Dictionary d)) (__iterator-from-dict d))
+(define (Iterator (^Tensor tensor)) (__iterator-from-tensor tensor))
 (define (Iterator (^Iterator it)) it)
 
 ;; Iterator-dispatched map/filter (lazy)

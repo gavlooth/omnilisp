@@ -36,7 +36,7 @@ fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::Scope
             sig.param_type_vars[i] = (SymbolId)0;
             sig.val_literals[i].tag = NIL;
             sig.val_literals[i].int_value = 0;
-            sig.val_literals[i].sym_value = 0;
+            sig.val_literals[i].sym_value = (SymbolId)0;
             sig.has_val_literal[i] = false;
         }
     }
@@ -159,7 +159,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 sig.param_type_vars[i] = (SymbolId)0;
                 sig.val_literals[i].tag = NIL;
                 sig.val_literals[i].int_value = 0;
-                sig.val_literals[i].sym_value = 0;
+                sig.val_literals[i].sym_value = (SymbolId)0;
                 sig.has_val_literal[i] = false;
                 bool saw_type_var = false;
                 for (usz m = 0; m < ann.meta_count; m++) {
@@ -190,7 +190,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 }
                 sig.val_literals[i].tag = NIL;
                 sig.val_literals[i].int_value = 0;
-                sig.val_literals[i].sym_value = 0;
+                sig.val_literals[i].sym_value = (SymbolId)0;
                 sig.has_val_literal[i] = false;
             }
         } else {
@@ -198,7 +198,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
             sig.param_type_vars[i] = (SymbolId)0;
             sig.val_literals[i].tag = NIL;
             sig.val_literals[i].int_value = 0;
-            sig.val_literals[i].sym_value = 0;
+            sig.val_literals[i].sym_value = (SymbolId)0;
             sig.has_val_literal[i] = false;
         }
     }

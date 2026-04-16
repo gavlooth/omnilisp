@@ -225,12 +225,20 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             char[64] dbuf2;
             char[] dstr2 = double_to_string(v.double_val, &dbuf2);
             pb.append_str(dstr2);
+        case FLOAT32:
+            char[64] fbuf2;
+            char[] fstr2 = double_to_string((double)v.float32_val, &fbuf2);
+            pb.append_str(fstr2);
         case BIG_INTEGER:
             print_big_integer_value_buf(v, pb);
         case BIG_FLOAT:
             print_big_float_value_buf(v, pb);
         case BIG_COMPLEX:
             print_big_complex_value_buf(v, pb);
+        case COMPLEX128:
+            fixed_complex_append_f64(v.complex128_val.real, v.complex128_val.imag, pb);
+        case COMPLEX64:
+            fixed_complex_append_f64((double)v.complex64_val.real, (double)v.complex64_val.imag, pb);
         case STRING:
             pb.append_char('"');
             pb.append_zstr((ZString)v.str_chars);
