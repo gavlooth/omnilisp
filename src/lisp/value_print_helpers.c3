@@ -31,7 +31,7 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
         zstr_eq(name, "BigInteger") ||
         zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "BigComplex") ||
-        zstr_eq(name, "Double") ||
+        zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
         zstr_eq(name, "Boolean") ||
@@ -66,7 +66,7 @@ fn ZString symbol_type_descriptor_name(char* name) {
         zstr_eq(name, "BigInteger") ||
         zstr_eq(name, "BigFloat") ||
         zstr_eq(name, "BigComplex") ||
-        zstr_eq(name, "Double") ||
+        zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
         zstr_eq(name, "Boolean") ||

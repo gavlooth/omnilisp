@@ -18,7 +18,7 @@
 (String 'foo)        ;; => "foo"
 
 ;; Conversions
-(Double 42)          ;; => 42.0
+(Float64 42)          ;; => 42.0
 (Integer 42.5)        ;; => 42
 
 ;; Sorting
@@ -32,7 +32,7 @@
 (unsafe-free! obj)           ;; manually free heap backing
 
 ;; Type predicates
-(string? "hi")    (int? 42)      (double? 3.14)
+(string? "hi")    (int? 42)      (float64? 3.14)
 (number? 42)      (symbol? 'x)   (closure? (lambda (x) x))
 (list? '(1 2))    (array? [1])   (dict? {'a 1})
 (pair? '(1 . 2))  (null? nil)    (boolean? true)
@@ -91,11 +91,11 @@ nil               ;; nil value
 (define (reader-inc x) (+ x 1))
 #reader-inc 41    ;; parses as (reader-inc 41), evaluates to 42
 
-(define [reader tag] reader-double
+(define [reader tag] reader-Float64
   (syntax-match
     ([x] (template (+ (insert x) (insert x))))))
 
-#reader-double 21 ;; parses as (reader-double 21), macro-expands to 42
+#reader-Float64 21 ;; parses as (reader-Float64 21), macro-expands to 42
 ```
 
 ### Special Tokens

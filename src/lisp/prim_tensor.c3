@@ -32,7 +32,7 @@ fn bool is_tensor(Value* v) @inline {
 fn bool tensor_dtype_arg_is_double(Value* dtype_arg, Interp* interp) @inline {
     if (dtype_arg == null) return false;
     if (dtype_arg.tag == SYMBOL) return dtype_arg.sym_val == interp.sym_Double;
-    if (dtype_arg.tag == PRIMITIVE) return primitive_name_equals(dtype_arg, "Double");
+    if (dtype_arg.tag == PRIMITIVE) return primitive_name_equals(dtype_arg, "Float64");
     if (dtype_arg.tag == METHOD_TABLE && dtype_arg.method_table_val != null) {
         return dtype_arg.method_table_val.name == interp.sym_Double;
     }
@@ -313,7 +313,7 @@ fn Value* tensor_store_value_at(TensorVal* tensor, usz index, Value* value, Inte
     switch (tensor.dtype) {
         case TENSOR_DTYPE_DOUBLE: {
             double scalar = 0.0;
-            if (!tensor_value_to_double(value, &scalar)) return tensor_type_raise(interp, "Tensor: data elements must be real numbers representable as Double");
+            if (!tensor_value_to_double(value, &scalar)) return tensor_type_raise(interp, "Tensor: data elements must be real numbers representable as Float64");
             ((double*)tensor.data)[index] = scalar;
             return null;
         }
@@ -1464,7 +1464,7 @@ fn Value* make_tensor_map_expr(
             case TENSOR_DTYPE_DOUBLE:
                 if (!tensor_value_to_double(left_value, &tensor.map_left_scalar)) {
                     tensor_free_payload(tensor);
-                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Double");
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Float64");
                 }
             case TENSOR_DTYPE_BIG_INTEGER:
                 tensor.map_left_big_integer_scalar = big_integer_handle_from_value(left_value);
@@ -1491,7 +1491,7 @@ fn Value* make_tensor_map_expr(
             case TENSOR_DTYPE_DOUBLE:
                 if (!tensor_value_to_double(right_value, &tensor.map_right_scalar)) {
                     tensor_free_payload(tensor);
-                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Double");
+                    return tensor_type_raise(interp, "map: tensor inputs must be Tensors or numbers representable as Float64");
                 }
             case TENSOR_DTYPE_BIG_INTEGER:
                 tensor.map_right_big_integer_scalar = big_integer_handle_from_value(right_value);
@@ -2549,7 +2549,7 @@ fn Value* tensor_unary_math_value(Value* tensor_value, int big_float_op, int big
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "math: tensor BigInteger element is missing");
                 double input = 0.0;
                 if (omni_big_integer_to_double(src_values[i], &input) == 0) {
-                    return raise_error(interp, "math: BigInteger tensor element out of Double range");
+                    return raise_error(interp, "math: BigInteger tensor element out of Float64 range");
                 }
                 dst_values[i] = tensor_apply_double_unary_math(input, big_float_op);
             }
@@ -3103,7 +3103,7 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
                 double base = 0.0;
                 double exponent = 0.0;
                 if (!try_numeric_to_double(left_arg, &base) || !try_numeric_to_double(right_arg, &exponent)) {
-                    return raise_error(interp, "pow: tensor element out of Double range");
+                    return raise_error(interp, "pow: tensor element out of Float64 range");
                 }
                 ((double*)out_tensor.data)[i] = tensor_c_pow(base, exponent);
             }
@@ -3222,7 +3222,7 @@ fn Value* tensor_atan2_value(Value* y_value, Value* x_value, Interp* interp) {
                 double y = 0.0;
                 double x = 0.0;
                 if (!try_numeric_to_double(y_arg, &y) || !try_numeric_to_double(x_arg, &x)) {
-                    return raise_error(interp, "atan2: tensor element out of Double range");
+                    return raise_error(interp, "atan2: tensor element out of Float64 range");
                 }
                 ((double*)out_tensor.data)[i] = tensor_c_atan2(y, x);
             }
@@ -3304,7 +3304,7 @@ fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp
 fn Value* tensor_construct_from_shape_and_data(Value* dtype_arg, Value* shape_arg, Value* data_arg, Interp* interp) {
     TensorDType dtype = TENSOR_DTYPE_DOUBLE;
     if (!tensor_dtype_arg_to_dtype(dtype_arg, interp, &dtype)) {
-        return tensor_type_raise(interp, "Tensor: first argument must be Double, BigInteger, BigFloat, or BigComplex");
+        return tensor_type_raise(interp, "Tensor: first argument must be Float64, BigInteger, BigFloat, or BigComplex");
     }
 
     usz* shape = null;
@@ -3373,7 +3373,7 @@ fn Value* prim_tensor(Value*[] args, Env* env, Interp* interp) {
         TensorDType dtype = TENSOR_DTYPE_DOUBLE;
         if (tensor_dtype_arg_to_dtype(args[0], interp, &dtype)) return tensor_construct_inferred(args[1], dtype, interp);
         if (tensor_dtype_arg_to_dtype(args[1], interp, &dtype)) return tensor_construct_inferred(args[0], dtype, interp);
-        return tensor_type_raise(interp, "Tensor: expected data with optional Double, BigInteger, BigFloat, or BigComplex dtype");
+        return tensor_type_raise(interp, "Tensor: expected data with optional Float64, BigInteger, BigFloat, or BigComplex dtype");
     }
     if (args.len == 3) return tensor_construct_from_shape_and_data(args[0], args[1], args[2], interp);
     return primitive_arity_raise(interp, "Tensor", "1, 2, or 3 arguments: data [dtype] or dtype shape data-or-scalar", args.len);

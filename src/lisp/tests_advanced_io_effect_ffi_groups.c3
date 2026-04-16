@@ -425,7 +425,7 @@ fn void run_advanced_io_typed_effect_tests(Interp* interp, int* pass, int* fail)
     run_advanced_signal_dispatch_owner_interp_isolation_test(interp, pass, fail);
     run_advanced_signal_callback_scope_release_test(interp, pass, fail);
     run_advanced_sigint_interrupt_routing_test(interp, pass, fail);
-    // Subtype check: Number accepts Integer and Double
+    // Subtype check: Number accepts Integer and Float64
     test_nil_interp(interp, "defeffect number arg", "(define [effect] (test/num (^Number n)))", pass, fail);
     test_eq_interp(interp, "effect number int",
         "(handle (signal test/num 42) (test/num x x))", 42, pass, fail);
@@ -605,17 +605,17 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
     setup(interp, "(define [ffi λ libc] (getpid) ^Integer)");
     test_gt(interp, "ffi λ getpid", "(getpid)", 0, pass, fail);
 
-    // Math library — double functions
+    // Math library — Float64 functions
     setup(interp, "(define [ffi lib] libm \"libm.so.6\")");
-    setup(interp, "(define [ffi λ libm] (sqrt (^Double x)) ^Double)");
+    setup(interp, "(define [ffi λ libm] (sqrt (^Float64 x)) ^Float64)");
     test_eq_double(interp, "ffi λ sqrt", "(sqrt 4.0)", 2.0, pass, fail);
     test_eq_double(interp, "ffi λ sqrt 9", "(sqrt 9.0)", 3.0, pass, fail);
 
-    setup(interp, "(define [ffi λ libm] (pow (^Double x) (^Double y)) ^Double)");
+    setup(interp, "(define [ffi λ libm] (pow (^Float64 x) (^Float64 y)) ^Float64)");
     test_eq_double(interp, "ffi λ pow", "(pow 2.0 10.0)", 1024.0, pass, fail);
 
-    // Mixed int/double (libffi enables this — old FFI couldn't)
-    setup(interp, "(define [ffi λ libm] (ldexp (^Double x) (^Integer exp)) ^Double)");
+    // Mixed int/Float64 (libffi enables this — old FFI couldn't)
+    setup(interp, "(define [ffi λ libm] (ldexp (^Float64 x) (^Integer exp)) ^Float64)");
     test_eq_double(interp, "ffi λ ldexp", "(ldexp 1.0 10)", 1024.0, pass, fail);
 
     setup(interp, "(define [ffi λ libc] (strtol (^String s) (^ForeignHandle endptr) (^Integer base)) ^Integer)");
@@ -641,7 +641,7 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "argument 1 expected Integer, got Boolean", pass, fail);
     test_error_contains(interp, "ffi λ sqrt rejects boolean arg",
         "(sqrt false)",
-        "argument 1 expected Double, got Boolean", pass, fail);
+        "argument 1 expected Float64, got Boolean", pass, fail);
     test_error_contains(interp, "ffi λ free rejects string arg",
         "(free \"hello\")",
         "argument 1 expected ForeignHandle, got String", pass, fail);
@@ -681,9 +681,9 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "expected return type annotation after [ffi module] function signature", pass, fail);
 
     // === SYSTEM PRIMITIVES TESTS ===
-    // random — returns double in [0,1)
+    // random — returns Float64 in [0,1)
     test_truthy(interp, "random range", "(let (r (random)) (and (>= r 0.0) (< r 1.0)))", pass, fail);
-    test_truthy(interp, "random is double", "(double? (random))", pass, fail);
+    test_truthy(interp, "random is Float64", "(float64? (random))", pass, fail);
     // random-int — returns int in [0,n)
     test_truthy(interp, "random-int range", "(let (r (random-int 10)) (and (>= r 0) (< r 10)))", pass, fail);
     test_truthy(interp, "random-int is int", "(int? (random-int 100))", pass, fail);

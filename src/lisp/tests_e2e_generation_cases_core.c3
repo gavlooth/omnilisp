@@ -107,7 +107,7 @@ const E2ETestCase[] E2E_TESTS_CORE = {
     { "parse-number", `(parse-number "42")` },
     { "Integer ctor double", "(Integer 3.9)" },
     { "Integer shorthand ctor double", "(Integer 3.9)" },
-    { "Double ctor int", "(Double 3)" },
+    { "Float64 ctor int", "(Float64 3)" },
     { "Boolean ctor truthy", "(Boolean 0)" },
     { "Boolean shorthand ctor truthy", "(Boolean 0)" },
     { "Nil ctor nil", "(Nil nil)" },

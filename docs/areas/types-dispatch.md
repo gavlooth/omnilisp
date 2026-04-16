@@ -18,7 +18,7 @@ As of: 2026-04-12
 
 - Language spec presents structural type system and multiple dispatch model.
 - Constructor/coercion surface cleanup is current as of 2026-04-12:
-  - `String`, `Symbol`, `Double`, and `Integer` are the canonical public
+  - `String`, `Symbol`, `Float64`, and `Integer` are the canonical public
     conversion constructors for former direct aliases `number->string`,
     `symbol->string`, `string->symbol`, `exact->inexact`, and
     `inexact->exact`.

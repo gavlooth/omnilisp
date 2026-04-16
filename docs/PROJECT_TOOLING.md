@@ -1158,11 +1158,11 @@ Running `--bind` now produces three files per dependency in `lib/ffi/`:
 
   (define [ffi lib] _lib "libm.so")
 
-  (define [ffi lambda _lib] (cos (^Double x)) ^Double)
+  (define [ffi lambda _lib] (cos (^Float64 x)) ^Float64)
 
-  (define [ffi lambda _lib] (sin (^Double x)) ^Double)
+  (define [ffi lambda _lib] (sin (^Float64 x)) ^Float64)
 
-  (define [ffi lambda _lib] (sqrt (^Double x)) ^Double)
+  (define [ffi lambda _lib] (sqrt (^Float64 x)) ^Float64)
 
 )
 ```
@@ -1178,9 +1178,9 @@ form while preserving the same facade behavior:
 (module ffi-math-raw (export cos sin sqrt)
 
   (define [ffi module] _lib "libm.so"
-    (cos (^Double x)) ^Double
-    (sin (^Double x)) ^Double
-    (sqrt (^Double x)) ^Double
+    (cos (^Float64 x)) ^Float64
+    (sin (^Float64 x)) ^Float64
+    (sqrt (^Float64 x)) ^Float64
   )
 
 )
@@ -1300,7 +1300,7 @@ The binding generator uses libclang to resolve types (including typedefs) and ma
 | `int`, `long`, `unsigned int`, `unsigned long` | `'int` | `^Integer` | All integer-width types |
 | `size_t`, `ssize_t` | `'int` | `^Integer` | Resolved via typedef |
 | `enum` types | `'int` | `^Integer` | Enums are integers |
-| `float`, `double` | `'double` | `^Double` | All floating-point types |
+| `float`, `float64` | `'float64` | `^Float64` | All floating-point types |
 | plain `const char *`, `char *` returns | `'string` | `^String` | Non-null returns are copied into Omni strings; return ownership/nullability is still surfaced via metadata/comments for review |
 | plain mutable `char *` parameters | `'ptr` | `^ForeignHandle` | Fail-closed default for in/out buffers; emitted metadata still marks these as `string-buffer` for facade scaffolding |
 | `signed char *`, `unsigned char *`, byte pointers | `'ptr` | `^ForeignHandle` | Treated as opaque foreign-handle data, not Omni strings or string buffers |

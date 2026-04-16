@@ -10,7 +10,7 @@ fn char[] ffi_manifest_type_name(FfiTypeTag tag) {
         case FFI_TYPE_INT:
             return "Integer";
         case FFI_TYPE_DOUBLE:
-            return "Double";
+            return "Float64";
         case FFI_TYPE_PTR:
             return "ForeignHandle";
         case FFI_TYPE_BOOL:

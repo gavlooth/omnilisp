@@ -32,7 +32,7 @@ Recently Closed is retained below as a short audit trail.
       conversion, hashing/equality, and scope-boundary copy/promotion support.
     - Updated `+`, `-`, and `*` so fixed-width `Integer` overflow promotes to
       `BigInteger`; `BigInteger` combines with `Integer`/`BigInteger`, and
-      mixed `Double` arithmetic uses finite double conversion when possible.
+      mixed `Float64` arithmetic uses finite double conversion when possible.
     - Deferred `/`, `%`, ordering comparisons, bitwise operations, `gcd`/`lcm`,
       `BigFloat`/`BigComplex`, and `parse-number` arbitrary-precision parsing
       until each has an explicit surface contract.
@@ -508,17 +508,17 @@ Recently Closed is retained below as a short audit trail.
   execution backend work behind `contract`/`realize`
   - source plan: `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`
   - shipped slice: `TENSOR-090A` added optional runtime `cblas_dgemm`
-    discovery and a private rank-2 `[1 0]` `Double` fast path.
+    discovery and a private rank-2 `[1 0]` `Float64` fast path.
   - shipped slice: `TENSOR-090B` extended that private `dgemm` path with
     transpose flags for all contiguous rank-2 single-axis layouts:
     `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
   - shipped slice: `TENSOR-090C` added optional runtime `cblas_dgemv`
-    discovery and private rank-2/rank-1 plus rank-1/rank-2 `Double` fast
+    discovery and private rank-2/rank-1 plus rank-1/rank-2 `Float64` fast
     paths.
   - shipped slice: `TENSOR-090D` added optional runtime `cblas_ddot`
-    discovery and a private rank-1/rank-1 `Double` vector dot fast path.
+    discovery and a private rank-1/rank-1 `Float64` vector dot fast path.
   - shipped slice: `TENSOR-090E` added optional runtime `cblas_dger`
-    discovery and a private rank-1/rank-1 `Double` outer-product fast path.
+    discovery and a private rank-1/rank-1 `Float64` outer-product fast path.
   - deferred work:
     - decide LAPACK/LAPACKE solver/decomposition surface names before adding
       public conveniences;
@@ -748,7 +748,7 @@ Recently Closed is retained below as a short audit trail.
     type identity, boundary copy/promotion support, and `tensor?`, `dtype`,
     `shape`, `rank`, and `length`.
   - shipped slice: `TENSOR-020` constructor and indexing:
-    `(Tensor Double shape data-or-scalar)` constructs native double tensors
+    `(Tensor Float64 shape data-or-scalar)` constructs native Float64 tensors
     from scalar fills or exact-length array/proper-list data, and
     `(ref tensor index-array)` indexes tensors with per-axis negative index
     support.
@@ -758,8 +758,8 @@ Recently Closed is retained below as a short audit trail.
     destination, and `(materialize scalar out)` fills a destination tensor.
   - shipped slice: `TENSOR-040` elementwise `map`:
     unary tensor, tensor-scalar, scalar-tensor, and exact-shape tensor-tensor
-    `Double` inputs are routed through generic `map` dispatch.
-  - shipped slice: `TENSOR-050` pure `Double` `contract`:
+    `Float64` inputs are routed through generic `map` dispatch.
+  - shipped slice: `TENSOR-050` pure `Float64` `contract`:
     `(contract a b left-axes right-axes)` supports axis-list contraction,
     rank-0 scalar results, multi-axis contractions, and deterministic
     axis/dimension diagnostics.
@@ -1205,7 +1205,7 @@ Recently Closed is retained below as a short audit trail.
   - closure evidence:
     - `number->string`, `symbol->string`, `string->symbol`,
       `exact->inexact`, and `inexact->exact` are no longer public primitive
-      registrations; `String`, `Symbol`, `Double`, and `Integer` are the
+      registrations; `String`, `Symbol`, `Float64`, and `Integer` are the
       canonical constructor/coercion surfaces.
     - `set-size` and `set->list` are no longer public primitive
       registrations; `length` handles set cardinality and `List(Set ...)`

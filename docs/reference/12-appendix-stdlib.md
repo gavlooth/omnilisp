@@ -124,7 +124,7 @@ These redefine I/O to go through effects (fast path when no handler):
 
 ### Type Predicates (Stdlib-Defined)
 
-`int?`, `double?`, `number?`, `string?`, `symbol?`, `boolean?`, `list?`,
+`int?`, `float64?`, `number?`, `string?`, `symbol?`, `boolean?`, `list?`,
 `closure?`, `array?`, `dict?`
 
 ### Numeric Predicates (Stdlib-Defined)

@@ -479,3 +479,69 @@ Unresolved issues:
   `--obj-out obj` recovery path.
 
 Signature: Codex GPT-5
+## 2026-04-16 05:16 CEST - Float64 Surface Canonicalization
+
+Objective attempted:
+- Replace the public binary64 `Double` surface with canonical `Float64`, while
+  adding the approved `(Float value [precision])` constructor form and keeping
+  unimplemented `Float32` fail-closed.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Added `Float`, `Float32`, and `Float64` callable constructor registrations.
+- Changed the existing binary64 symbol/type/dtype display surface to
+  `Float64`; internal storage names like `DOUBLE`, `sym_Double`,
+  `is_double`, and `TENSOR_DTYPE_DOUBLE` remain implementation names.
+- Added `(Float x)` as default `Float64`, `(Float x 64)` as explicit binary64,
+  and fail-closed errors for `(Float x 32)` / `(Float32 x)`.
+- Removed the public `Double` constructor surface instead of keeping an alias.
+- Renamed the public predicate from `double?` to `float64?`.
+- Updated Tensor dtype spelling, FFI annotation docs, compiler primitive
+  lookup tables, examples, and current reference/spec/planning docs.
+- Added constructor regressions for default `Float`, explicit precision 64,
+  fail-closed `Float32`, `Float64` type identity, and removed `Double`.
+
+Commands run and key results:
+- `c3c build main --output-dir build --build-dir build/obj2`: passed with
+  existing `errno::*` / `process::create` deprecation warnings.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (type-of (Float 1)))'`:
+  returned `"Float64"`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (Float "1.25" 64))'`:
+  returned `"1.25"`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Float32 1)'`:
+  failed closed with `Float32: runtime storage is not implemented yet`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Double 1)'`:
+  failed as `unbound variable 'Double'`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=71 fail=0`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=240 fail=0`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=75 fail=0`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=411 fail=0`.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=392 fail=0`.
+- `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=276 fail=0`.
+
+Invalidated assumptions / failed approaches:
+- Do not preserve `Double` as a public compatibility alias. The current
+  pre-alpha surface intentionally removes it and tests that `(Double 3)` is
+  unbound.
+- Do not treat `Float32` as implemented just because the constructor symbol is
+  registered; it is reserved and must fail closed until storage/kernels exist.
+
+Current best recommendation / checkpoint:
+- Continue scientific numeric work using `Float64` as the native hardware
+  floating dtype and `(Float x [precision])` as the precision-selecting
+  constructor surface. Add real `Float32` only as a storage/kernel slice.
+
+Unresolved issues:
+- Full heavy/container-only memory lifetime gates were not run for this naming
+  cleanup; the touched behavior was covered with focused constructor, Tensor,
+  FFI, dispatch, numeric, collections, and compiler slices.
+
+Signature: Codex GPT-5

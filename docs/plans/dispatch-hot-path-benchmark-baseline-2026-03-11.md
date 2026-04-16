@@ -16,7 +16,7 @@ Implemented in:
 Workload shape:
 - `DISPATCH_HOT_PATH_BENCH_ITERS=32768`
 - dispatch loop expression repeatedly calls `(dispatch-bench-call 7)` with
-  typed method table (`^Int`, `^Double`, fallback).
+  typed method table (`^Int`, `^Float64`, fallback).
 - typed-lambda loop expression repeatedly calls
   `(typed-lambda-bench-call 7)` where call boundary validates `(^Int y)`.
 

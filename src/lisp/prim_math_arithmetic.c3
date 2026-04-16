@@ -34,8 +34,8 @@ fn Value* numeric_binary_double_result(Interp* interp, Value* lhs, Value* rhs, i
     double right = 0.0;
     if (!try_numeric_to_double(lhs, &left) || !try_numeric_to_double(rhs, &right)) {
         char[128] ebuf;
-        char[] msg = "numeric operation: BigInteger value is out of Double range";
-        if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Double range", (ZString)op_name)) {
+        char[] msg = "numeric operation: BigInteger value is out of Float64 range";
+        if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Float64 range", (ZString)op_name)) {
             msg = formatted;
         }
         return raise_error(interp, msg);

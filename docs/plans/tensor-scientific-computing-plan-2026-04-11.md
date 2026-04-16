@@ -63,14 +63,14 @@ Name collision note:
 - `TENSOR-010` is complete: native `Tensor` runtime payloads, destructor,
   printing, type identity, boundary copy/promotion support, and `tensor?`,
   `dtype`, `shape`, `rank`, and `length` are implemented and tested.
-- `TENSOR-020` is complete: `(Tensor Double shape data-or-scalar)` constructs
-  native double tensors from scalar fills or exact-length array/proper-list
+- `TENSOR-020` is complete: `(Tensor Float64 shape data-or-scalar)` constructs
+  native Float64 tensors from scalar fills or exact-length array/proper-list
   data, and `(ref tensor index-array)` indexes tensors with per-axis negative
   index support.
-- `TENSOR-076` is complete: `(Tensor data)`, `(Tensor data Double)`, and
-  `(Tensor Double data)` infer native `Double` tensor shape from real numeric
+- `TENSOR-076` is complete: `(Tensor data)`, `(Tensor data Float64)`, and
+  `(Tensor Float64 data)` infer native `Float64` tensor shape from real numeric
   scalars or rectangular nested arrays/proper lists whose leaves can narrow to
-  finite `Double` while preserving the explicit shape/data constructor.
+  finite `Float64` while preserving the explicit shape/data constructor.
 - `TENSOR-077` is complete: `BigFloat` concrete Tensor storage supports
   constructor, `dtype`, `ref`, flat collection conversion, and concrete
   `realize`.
@@ -83,16 +83,16 @@ Name collision note:
   `BigFloat` tensors through the pure C3 contraction fallback, including vector
   dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
   destination realization, and lazy expression boundary survival. BLAS fast
-  paths remain `Double`-only.
+  paths remain `Float64`-only.
 - `TENSOR-081` is complete: native `BigInteger` Tensor storage supports
   constructor, `dtype`, `ref`, flat collection conversion, concrete
   `realize`, tensor-dispatched `map`, and pure C3 `contract` kernels for exact
   integer tensor work. BigInteger Tensor data must be exact `Integer` or
-  `BigInteger` values; inexact `Double` data fails closed.
+  `BigInteger` values; inexact `Float64` data fails closed.
 - `TENSOR-082` is complete: native `BigComplex` Tensor storage supports
   constructor, `dtype`, `ref`, flat collection conversion, concrete
   `realize`, tensor-dispatched `map`, and pure C3 `contract` kernels for
-  complex tensor work. Integer, Double, BigInteger, and BigFloat leaves promote
+  complex tensor work. Integer, Float64, BigInteger, and BigFloat leaves promote
   to zero-imaginary BigComplex elements; BigComplex leaves preserve their
   complex components.
 - `TENSOR-083` is complete: BigComplex Tensor component kernels support
@@ -100,37 +100,37 @@ Name collision note:
   returns BigFloat tensors, conjugate returns BigComplex tensors, and lazy
   BigComplex Tensor sources are realized before the component kernel runs.
 - `TENSOR-084` is complete: real Tensor component semantics are now
-  dtype-preserving. `real-part` and `conjugate` copy Double, BigInteger, and
+  dtype-preserving. `real-part` and `conjugate` copy Float64, BigInteger, and
   BigFloat tensors; `imag-part` returns same-shape zero tensors in the same
   dtype.
 - `TENSOR-085` is complete: Tensor `abs` applies elementwise magnitude for all
   native tensor dtypes. Real tensor dtypes preserve dtype and shape;
   BigComplex tensors return same-shape native BigFloat magnitude tensors.
 - `TENSOR-086` is complete: Tensor `sqrt` applies elementwise square root for
-  all native tensor dtypes. Double and BigInteger tensor inputs return
-  same-shape Double tensors; BigFloat and BigComplex tensor inputs preserve
+  all native tensor dtypes. Float64 and BigInteger tensor inputs return
+  same-shape Float64 tensors; BigFloat and BigComplex tensor inputs preserve
   dtype.
 - `TENSOR-087` is complete: Tensor unary scientific math applies elementwise
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`,
-  `log`, and `log10` for all native tensor dtypes. Double and BigInteger
-  tensor inputs return same-shape Double tensors; BigFloat and BigComplex
+  `log`, and `log10` for all native tensor dtypes. Float64 and BigInteger
+  tensor inputs return same-shape Float64 tensors; BigFloat and BigComplex
   tensor inputs preserve dtype.
 - `TENSOR-088` is complete: Tensor `pow` applies elementwise power for
   tensor-scalar, scalar-tensor, and broadcast tensor-tensor inputs. BigComplex
   wins the result dtype if either input is complex, BigFloat wins if either
-  input is BigFloat, and remaining Double/BigInteger inputs return Double
+  input is BigFloat, and remaining Float64/BigInteger inputs return Float64
   tensors.
 - `TENSOR-089` is complete: Tensor `atan2` applies elementwise real-plane
   two-argument arctangent for tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor inputs. BigFloat inputs preserve dtype, remaining real/exact
-  inputs return Double tensors, and complex operands fail closed.
+  inputs return Float64 tensors, and complex operands fail closed.
 - `TENSOR-090` is complete: Tensor `floor`, `ceiling`, `round`, and
   `truncate` apply elementwise rounding for real Tensor inputs and return
   native BigInteger Tensor results. BigFloat inputs use the exact scalar
   BigFloat rounding path; complex operands fail closed.
 - `TENSOR-091` is complete: Tensor `min` and `max` apply tensor-scalar,
   scalar-tensor, and broadcast tensor-tensor real comparison. BigFloat wins if
-  either input is BigFloat, Double wins if either input is Double, and the
+  either input is BigFloat, Float64 wins if either input is Float64, and the
   remaining exact inputs return native BigInteger Tensor results. Complex
   operands fail closed.
 - `TENSOR-092` is complete: Tensor `gcd` and `lcm` apply tensor-scalar,
@@ -144,7 +144,7 @@ Name collision note:
   mutable exact-shape/dtype destination, and `(realize scalar out)` fills
   the destination.
 - `TENSOR-040` is complete for elementwise `map`: unary tensor, tensor-scalar,
-  scalar-tensor, and exact-shape tensor-tensor `Double` inputs route through
+  scalar-tensor, and exact-shape tensor-tensor `Float64` inputs route through
   the existing generic `map` dispatch.
 - `TENSOR-070` is complete: Tensor `map` now supports NumPy-style trailing
   singleton-axis broadcasting for tensor-tensor inputs, with rank-0 tensors
@@ -155,7 +155,7 @@ Name collision note:
   force lazy Tensor expressions if needed and expose flat row-major element
   values; shape/rank metadata remains available through `shape` and `rank`
   rather than nested collection conversion.
-- `TENSOR-050` is complete for pure `Double` `contract`: paired-axis arrays
+- `TENSOR-050` is complete for pure `Float64` `contract`: paired-axis arrays
   and explicit axis-list contraction support one or more axis pairs, rank-0
   scalar results, multi-axis contractions, per-axis negative normalization,
   and deterministic axis/dimension diagnostics.
@@ -222,7 +222,7 @@ Name collision note:
   `TENSOR-090` BLAS/LAPACK work beyond the transpose-capable rank-2 `dgemm`
   and rank-2/rank-1 `dgemv` fast paths, and `TENSOR-100` explicit
   CUDA/cuBLAS design.
-- `TENSOR-090A` is complete: dense rank-2 `Double` contraction equivalent to
+- `TENSOR-090A` is complete: dense rank-2 `Float64` contraction equivalent to
   `(contract a b [1 0])` now has a direct native BLAS `dgemm` fast path at the
   Tensor evaluation boundary. The fast path is optional at runtime, uses the
   existing scoped native `TensorVal` storage, does not introduce a public
@@ -231,19 +231,19 @@ Name collision note:
   conditions do not match.
 - `TENSOR-090B` is complete: that private `dgemm` backend now accepts
   transpose flags and covers all contiguous row-major rank-2 single-axis
-  `Double` contractions, including `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
+  `Float64` contractions, including `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
   while still using the pure C3 contraction kernel as the semantic fallback.
 - `TENSOR-090C` is complete: the same private BLAS backend now resolves
   `cblas_dgemv` and covers contiguous row-major rank-2/rank-1 and rank-1/rank-2
-  single-axis `Double` contractions, including transposed matrix-vector and
+  single-axis `Float64` contractions, including transposed matrix-vector and
   vector-matrix layouts. Unsupported rank/layout/symbol cases still fall back
   to the pure C3 contraction kernel.
 - `TENSOR-090D` is complete: the private BLAS backend now resolves
-  `cblas_ddot` and covers contiguous rank-1/rank-1 `Double` vector dot
+  `cblas_ddot` and covers contiguous rank-1/rank-1 `Float64` vector dot
   contractions, with unsupported cases still falling back to the pure C3
   contraction kernel.
 - `TENSOR-090E` is complete: the private BLAS backend now resolves
-  `cblas_dger` and covers contiguous rank-1/rank-1 `Double` zero-axis
+  `cblas_dger` and covers contiguous rank-1/rank-1 `Float64` zero-axis
   contractions as outer products, with unsupported cases still falling back to
   the pure C3 contraction kernel.
 - Solver naming checkpoint: future LAPACK/LAPACKE solve/decomposition
@@ -424,11 +424,11 @@ Preferred first surface:
 
 ```lisp
 (define x
-  (Tensor Double [2 3]
+  (Tensor Float64 [2 3]
     [1.0 2.0 3.0
      4.0 5.0 6.0]))
 
-(dtype x)       ; => 'Double
+(dtype x)       ; => 'Float64
 (shape x)       ; => [2 3]
 (rank x)        ; => 2
 (length x)      ; => 6
@@ -437,9 +437,9 @@ Preferred first surface:
 
 Rationale:
 
-- `Double` already exists as a value-position type descriptor/coercion
+- `Float64` already exists as a value-position type descriptor/coercion
   surface.
-- `^Double` should remain annotation syntax unless a separate type-literal
+- `^Float64` should remain annotation syntax unless a separate type-literal
   expression surface is deliberately added.
 - `(ref x [i j])` keeps `ref` as a two-argument operation instead of forcing a
   variadic `ref` decision in the first slice.
@@ -447,7 +447,7 @@ Rationale:
 Optional constructors after the base constructor is stable:
 
 ```lisp
-(Tensor Double [2 3] 0.0)  ; scalar fill constructor
+(Tensor Float64 [2 3] 0.0)  ; scalar fill constructor
 (Tensor Integer [4] [1 2 3 4])
 ```
 
@@ -464,8 +464,8 @@ Requirements:
   - rank,
   - element count,
   - contiguous or strided numeric storage metadata.
-- Initial dtype target is `Double`.
-- `Integer` can follow after the `Double` path is validated.
+- Initial dtype target is `Float64`.
+- `Integer` can follow after the `Float64` path is validated.
 - `Boolean`, `Complex`, `Float32`, `Float64`, and fixed-width integer dtypes
   are deferred.
 - Shape vectors use zero-based axis numbering, matching Omni's existing index
@@ -634,7 +634,7 @@ Likely code ownership:
 
 Storage and backend policy:
 
-- MVP uses native contiguous CPU `Double` storage; the first follow-up storage
+- MVP uses native contiguous CPU `Float64` storage; the first follow-up storage
   dtype is concrete native `BigFloat`.
 - Strides should be present in the metadata early, even if all MVP tensors are
   contiguous. This avoids painting slicing/views into a corner.
@@ -687,7 +687,7 @@ Capability / fallback contract:
 
 | Operation class | Pure fallback | Optional backend module | Dispatch contract |
 | --- | --- | --- | --- |
-| Dense rank-2 `Double` contraction | pure `contract` kernel | `tensor/blas` | only contiguous `Double`, exact rank-2 layout, no aliasing, no hidden transfer |
+| Dense rank-2 `Float64` contraction | pure `contract` kernel | `tensor/blas` | only contiguous `Float64`, exact rank-2 layout, no aliasing, no hidden transfer |
 | Decomposition and solve routines | pure library routine or no-op fallback if not surfaced | `tensor/lapack` | only when the operation can preserve existing `Tensor` semantics |
 | Explicit host/device movement | none; CPU tensors stay CPU by default | `tensor/cuda` | move only when the caller requests it |
 | Dense GPU contraction | pure `contract` kernel on host | `tensor/cublas` | requires explicit CUDA placement and compatible dtype/layout |
@@ -732,7 +732,7 @@ Module layering:
   Do not introduce implicit CPU-GPU transfer in ordinary `map`, `contract`, or
   `realize`.
 - BLAS first target:
-  - optimize only contiguous `Double` rank-2 contraction equivalent to
+  - optimize only contiguous `Float64` rank-2 contraction equivalent to
     `(contract a b [1 0])`,
   - preserve the C3 fallback as the validation oracle,
   - route unsupported strides, dtypes, aliasing, or shapes back to fallback.
@@ -777,10 +777,10 @@ Rollout slices:
      the boundary graph audit treats tensors as leaf payloads.
 
 3. `TENSOR-020` Constructor and indexing
-   - Implement `(Tensor Double shape data-or-scalar)`.
+   - Implement `(Tensor Float64 shape data-or-scalar)`.
    - Implement `(ref tensor index-array)`.
    - Keep variadic tensor `ref` deferred.
-   - Status: implemented 2026-04-11. The constructor accepts `Double` only,
+   - Status: implemented 2026-04-11. The constructor accepts `Float64` only,
      shape as an array or proper list of non-negative integers, and data as
      a numeric scalar fill or exact-length array/proper list. Tensor `ref`
      accepts array/proper-list indices and supports negative indexing per
@@ -803,16 +803,16 @@ Rollout slices:
    - Defer singleton-axis broadcast until after exact-shape coverage is green.
    - Status: implemented 2026-04-11. The runtime exposes fixed-arity typed
      `map` overloads over an internal `__tensor-map` primitive for unary,
-     tensor-scalar, scalar-tensor, and exact-shape tensor-tensor `Double`
+     tensor-scalar, scalar-tensor, and exact-shape tensor-tensor `Float64`
      inputs. The later `TENSOR-060B` slice changed the returned payload to a
      lazy Tensor expression under the same public `Tensor` value.
 
 6. `TENSOR-050` `contract`
-   - Implement pure C3 fallback contraction for `Double`.
+   - Implement pure C3 fallback contraction for `Float64`.
    - Support one or more axis pairs.
    - Add rank-2 contraction examples through `contract`.
    - Status: implemented 2026-04-11. The runtime exposes public `contract`
-     with pure `Double` fallback, paired-axis shorthand, exact axis-list arity
+     with pure `Float64` fallback, paired-axis shorthand, exact axis-list arity
      validation, duplicate-axis checks, paired-dimension checks, rank-0 scalar
      result support, and lazy Tensor expression realization through
      `TENSOR-060B`.
@@ -926,13 +926,13 @@ Rollout slices:
 
 First implementation decisions:
 
-- `Tensor` constructor accepts value-position dtype descriptors like `Double`
+- `Tensor` constructor accepts value-position dtype descriptors like `Float64`
   and `BigFloat` as the canonical dtype argument. Quoted dtype symbols such as
-  `'Double` and `'BigFloat` are accepted compatibility inputs, but docs should
+  `'Float64` and `'BigFloat` are accepted compatibility inputs, but docs should
   prefer value-position descriptors.
 - Tensor `map` result dtype is the dtype of the first tensor input for the
-  `Double` kernel slice. Explicit conversion can be expressed as another
-  mapped operation once non-Double kernels exist.
+  `Float64` kernel slice. Explicit conversion can be expressed as another
+  mapped operation once non-Float64 kernels exist.
 - Destination `realize` requires exact dtype compatibility in the first
   slice. Explicit conversion must happen before realization.
 - `TENSOR-070` concrete singleton-axis broadcasting is implemented:
@@ -959,7 +959,7 @@ Documentation gates:
     code refinements.
 - `docs/type-system-syntax.md` documents how `Tensor` participates in type
   annotations and dispatch, and that `(Tensor data)` plus
-  `(Tensor Double shape data-or-scalar)` are the constructor surfaces,
+  `(Tensor Float64 shape data-or-scalar)` are the constructor surfaces,
   including Tensor-specific `map`, `contract`, and `realize` behavior.
 - `docs/SURFACE_COMPATIBILITY.md` records any scicomp prototype surface
   removal if old names are removed.
@@ -971,7 +971,7 @@ Documentation gates:
 Test gates:
 
 - Constructor:
-  - valid `Double` tensor construction,
+  - valid `Float64` tensor construction,
   - scalar-fill construction,
   - data length mismatch,
   - invalid shape,
@@ -1071,17 +1071,17 @@ Latest targeted validation for the tensor boundary cleanup audit:
 
 ```lisp
 (define a
-  (Tensor Double [2 3]
+  (Tensor Float64 [2 3]
     [1.0 2.0 3.0
      4.0 5.0 6.0]))
 
 (define b
-  (Tensor Double [3 2]
+  (Tensor Float64 [3 2]
     [7.0  8.0
      9.0  10.0
      11.0 12.0]))
 
-(define c (Tensor Double [2 2] 0.0))
+(define c (Tensor Float64 [2 2] 0.0))
 
 (realize (contract a b [1 0]) c)
 

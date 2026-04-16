@@ -43,8 +43,17 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_eq(interp, "Integer ctor from double", "(Integer 3.9)", 3, pass, fail);
     test_eq(interp, "Integer ctor from string", "(Integer \"42\")", 42, pass, fail);
     test_eq(interp, "Integer shorthand ctor from double", "(Integer 3.9)", 3, pass, fail);
-    test_double(interp, "Double ctor from int", "(Double 3)", 3.0, pass, fail);
-    test_double(interp, "Double ctor from string", "(Double \"3.5\")", 3.5, pass, fail);
+    test_double(interp, "Float64 ctor from int", "(Float64 3)", 3.0, pass, fail);
+    test_double(interp, "Float64 ctor from string", "(Float64 \"3.5\")", 3.5, pass, fail);
+    test_double(interp, "Float default ctor from int", "(Float 3)", 3.0, pass, fail);
+    test_double(interp, "Float precision 64 ctor from string", "(Float \"3.5\" 64)", 3.5, pass, fail);
+    test_truthy(interp, "Float64 ctor type", "(= (type-of (Float64 3)) 'Float64)", pass, fail);
+    test_error_contains(interp, "Float precision 32 fails closed",
+        "(Float 3 32)", "Float: precision 32 requires Float32 runtime storage", pass, fail);
+    test_error_contains(interp, "Float32 ctor fails closed",
+        "(Float32 3)", "Float32: runtime storage is not implemented yet", pass, fail);
+    test_error_contains(interp, "old Double ctor removed",
+        "(Double 3)", "unbound variable 'Double'", pass, fail);
     test_str_val(interp, "String ctor from int", "(String 3)", "3", pass, fail);
     test_str_val(interp, "String ctor from symbol", "(String 'alpha)", "alpha", pass, fail);
     test_truthy(interp, "Symbol ctor from string", "(= (Symbol \"alpha\") 'alpha)", pass, fail);
@@ -82,18 +91,18 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_truthy(interp, "Coroutine ctor type",
         "(= (type-of (Coroutine (lambda () 1))) 'Coroutine)", pass, fail);
     test_str_val(interp, "Tensor type descriptor print", "(format \"%s\" Tensor)", "#<type Tensor>", pass, fail);
-    test_truthy(interp, "Tensor ctor type", "(= (type-of (Tensor Double [2 3] 0.0)) 'Tensor)", pass, fail);
-    test_truthy(interp, "Tensor predicate", "(tensor? (Tensor Double [2 3] 0.0))", pass, fail);
-    test_str_val(interp, "Tensor ctor dtype", "(format \"%s\" (dtype (Tensor Double [2] 0.0)))", "Double", pass, fail);
-    test_str_val(interp, "Tensor ctor shape", "(format \"%s\" (shape (Tensor Double [2 3] 0.0)))", "[2 3]", pass, fail);
-    test_eq(interp, "Tensor ctor rank", "(rank (Tensor Double [2 3] 0.0))", 2, pass, fail);
-    test_eq(interp, "Tensor ctor length", "(length (Tensor Double [2 3] 0.0))", 6, pass, fail);
+    test_truthy(interp, "Tensor ctor type", "(= (type-of (Tensor Float64 [2 3] 0.0)) 'Tensor)", pass, fail);
+    test_truthy(interp, "Tensor predicate", "(tensor? (Tensor Float64 [2 3] 0.0))", pass, fail);
+    test_str_val(interp, "Tensor ctor dtype", "(format \"%s\" (dtype (Tensor Float64 [2] 0.0)))", "Float64", pass, fail);
+    test_str_val(interp, "Tensor ctor shape", "(format \"%s\" (shape (Tensor Float64 [2 3] 0.0)))", "[2 3]", pass, fail);
+    test_eq(interp, "Tensor ctor rank", "(rank (Tensor Float64 [2 3] 0.0))", 2, pass, fail);
+    test_eq(interp, "Tensor ctor length", "(length (Tensor Float64 [2 3] 0.0))", 6, pass, fail);
     test_error_contains(interp, "Tensor ctor rejects data length mismatch",
-        "(Tensor Double [2 3] [1 2])", "Tensor: data length does not match shape product", pass, fail);
+        "(Tensor Float64 [2 3] [1 2])", "Tensor: data length does not match shape product", pass, fail);
     test_error_contains(interp, "Tensor ctor rejects invalid shape",
-        "(Tensor Double [2 -1] 0.0)", "Tensor: shape dimensions must be non-negative integers", pass, fail);
+        "(Tensor Float64 [2 -1] 0.0)", "Tensor: shape dimensions must be non-negative integers", pass, fail);
     test_error_contains(interp, "Tensor ctor rejects unsupported dtype",
-        "(Tensor Integer [2] [1 2])", "Tensor: first argument must be Double", pass, fail);
+        "(Tensor Integer [2] [1 2])", "Tensor: first argument must be Float64", pass, fail);
     test_nil(interp, "tensor? nil", "(tensor? nil)", pass, fail);
     test_error_contains(interp, "dtype rejects non-tensor", "(dtype 1)", "dtype: expected Tensor", pass, fail);
     test_tag(interp, "TimePoint ctor type", "(TimePoint 'date 2026 3 7)", TIME_POINT, pass, fail);
@@ -110,8 +119,8 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
         "(handle (Integer \"abc\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
-        "Double ctor invalid string payload code",
-        "(handle (Double \"abc\") (raise msg (String (ref msg 'code))))",
+        "Float64 ctor invalid string payload code",
+        "(handle (Float64 \"abc\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp,
         "String ctor invalid array payload code",

@@ -149,7 +149,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_truthy(interp, "<= float", "(<= 1.5 1.5)", pass, fail);
     test_truthy(interp, ">= float", "(>= 2.0 1.5)", pass, fail);
     test_double(interp, "unary neg float", "(- 0 3.14)", -3.14, pass, fail);
-    test_double(interp, "Double", "(Double 5)", 5.0, pass, fail);
+    test_double(interp, "Float64", "(Float64 5)", 5.0, pass, fail);
     test_eq(interp, "Integer", "(Integer 3.7)", 3, pass, fail);
     test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
     test_double(interp, "parse-number float", "(parse-number \"3.14\")", 3.14, pass, fail);
@@ -283,13 +283,13 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         pass, fail);
     test_error_contains(interp, "BigComplex atan2 rejected",
         "(atan2 (BigComplex 1 0) 1)", "atan2: complex numbers are not supported", pass, fail);
-    test_truthy(interp, "parse-number double overflow type is BigFloat",
+    test_truthy(interp, "parse-number Float64 overflow type is BigFloat",
         "(= (type-of (parse-number \"1e309\")) 'BigFloat)", pass, fail);
-    test_str_val(interp, "parse-number double overflow value",
+    test_str_val(interp, "parse-number Float64 overflow value",
         "(String (parse-number \"1e309\"))",
         "1e+309", pass, fail);
-    test_str_val(interp, "Double rejects out-of-range BigFloat payload code",
-        "(handle (Double (BigFloat \"1e309\")) (raise msg (String (ref msg 'code))))",
+    test_str_val(interp, "Float64 rejects out-of-range BigFloat payload code",
+        "(handle (Float64 (BigFloat \"1e309\")) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "BigInteger + overflow promotion",
         "(String (+ 9223372036854775807 1))",
@@ -348,7 +348,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(<= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
     test_truthy(interp, "BigInteger greater-equal equality",
         "(>= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
-    test_truthy(interp, "BigInteger compare with Double in range",
+    test_truthy(interp, "BigInteger compare with Float64 in range",
         "(< (BigInteger \"42\") 42.5)", pass, fail);
     test_eq(interp, "Integer ctor accepts in-range BigInteger",
         "(Integer (BigInteger \"9223372036854775807\"))",
@@ -359,10 +359,10 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "Integer ctor underflow payload code",
         "(handle (Integer \"-9223372036854775809\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp, "Integer ctor huge-double payload code",
+    test_str_val(interp, "Integer ctor huge-Float64 payload code",
         "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp, "Integer huge-double payload code",
+    test_str_val(interp, "Integer huge-Float64 payload code",
         "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "BigInteger invalid string payload code",
@@ -371,7 +371,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_str_val(interp, "Integer rejects out-of-range BigInteger payload code",
         "(handle (Integer (BigInteger \"9223372036854775808\")) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str(interp, "String double", "(String 3.14)", pass, fail);
+    test_str(interp, "String Float64", "(String 3.14)", pass, fail);
     test_error_contains(interp, "String rejects trailing arg", "(String 42 99)", "arity mismatch", pass, fail);
     test_str_val(interp, "String invalid array payload domain",
         "(handle (String [1]) (raise msg (String (ref msg 'domain))))",
@@ -404,12 +404,12 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(math/lgamma 0.0)", "math/lgamma: domain error", pass, fail);
     test_error_contains(interp, "math/lgamma rejects out-of-range BigInteger",
         "(math/lgamma (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "math/lgamma: value out of Double range", pass, fail);
+        "math/lgamma: value out of Float64 range", pass, fail);
     test_double(interp, "math/erf 1", "(math/erf 1.0)", 0.84270079295, pass, fail);
     test_double(interp, "math/erfc 1", "(math/erfc 1.0)", 0.15729920705, pass, fail);
     test_error_contains(interp, "math/erf rejects out-of-range BigInteger",
         "(math/erf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "math/erf: value out of Double range", pass, fail);
+        "math/erf: value out of Float64 range", pass, fail);
     test_double(interp, "stats/normal-cdf 0", "(stats/normal-cdf 0.0)", 0.5, pass, fail);
     test_double(interp, "stats/normal-cdf 1.96", "(stats/normal-cdf 1.96)", 0.97500210485, pass, fail);
     test_double(interp, "stats/normal-quantile median", "(stats/normal-quantile 0.5)", 0.0, pass, fail);
@@ -418,7 +418,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
         "(stats/normal-quantile 0.0)", "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
     test_error_contains(interp, "stats/normal-cdf rejects out-of-range BigInteger",
         "(stats/normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
-        "stats/normal-cdf: value out of Double range", pass, fail);
+        "stats/normal-cdf: value out of Float64 range", pass, fail);
     test_str_val(interp, "BigFloat sin zero",
         "(String (sin (BigFloat \"0\")))", "0", pass, fail);
     test_str_val(interp, "BigFloat cos zero",
@@ -448,7 +448,7 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_truthy(interp, "BigFloat lgamma precision",
         "(< (abs (- (math/lgamma (BigFloat \"6\")) (BigFloat \"4.787491742782045994247700934523243048399592315172\"))) (BigFloat \"1e-45\"))",
         pass, fail);
-    test_truthy(interp, "BigFloat exp beyond Double range stays BigFloat",
+    test_truthy(interp, "BigFloat exp beyond Float64 range stays BigFloat",
         "(= (type-of (exp (BigFloat \"1000\"))) 'BigFloat)", pass, fail);
     test_error_contains(interp, "BigFloat normal quantile rejects zero probability",
         "(stats/normal-quantile (BigFloat \"0\"))",
@@ -612,10 +612,10 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
         "(string-join \",\" (quote (\"a\" 1 \"b\")))", "string-join: expected string elements", pass, fail);
 
     // === TYPE PREDICATE TESTS (Phase 5) ===
-    test_truthy(interp, "double? yes", "(double? 3.14)", pass, fail);
-    test_nil(interp, "double? no", "(double? 42)", pass, fail);
+    test_truthy(interp, "float64? yes", "(float64? 3.14)", pass, fail);
+    test_nil(interp, "float64? no", "(float64? 42)", pass, fail);
     test_truthy(interp, "number? int", "(number? 42)", pass, fail);
-    test_truthy(interp, "number? double", "(number? 3.14)", pass, fail);
+    test_truthy(interp, "number? Float64", "(number? 3.14)", pass, fail);
     test_nil(interp, "number? string", "(number? \"hello\")", pass, fail);
     test_truthy(interp, "boolean? true", "(boolean? true)", pass, fail);
     test_nil(interp, "boolean? nil", "(boolean? nil)", pass, fail);

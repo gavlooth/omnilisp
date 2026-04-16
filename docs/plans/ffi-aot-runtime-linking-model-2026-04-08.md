@@ -42,7 +42,7 @@ For declarative forms:
 - `[ffi λ]` lowers to an AOT-generated callsite descriptor:
   - target library descriptor id,
   - symbol name,
-  - canonical ABI signature (`Integer`, `Double`, `String`, `ForeignHandle`, `Boolean`, `Void`),
+  - canonical ABI signature (`Integer`, `Float64`, `String`, `ForeignHandle`, `Boolean`, `Void`),
   - per-arg marshaling policy,
   - return marshaling policy.
 

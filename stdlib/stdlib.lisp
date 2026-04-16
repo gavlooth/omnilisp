@@ -111,7 +111,7 @@
 ;; =========================================================================
 (define (integer? x) (is? x 'Integer))
 (define (int? x) (integer? x))
-(define (double? x) (is? x 'Double))
+(define (float64? x) (is? x 'Float64))
 (define (number? x) (is? x 'Number))
 (define (string? x) (is? x 'String))
 (define (symbol? x) (is? x 'Symbol))

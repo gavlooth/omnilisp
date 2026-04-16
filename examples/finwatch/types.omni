@@ -26,7 +26,7 @@
 ;; PriceEvent: a price tick for a symbol at a given timestamp.
 (define [type] (PriceEvent Event)
   (^String symbol)
-  (^Double price)
+  (^Float64 price)
   (^Integer    ts))
 
 ;; AlertEvent: a triggered alert with severity and message.
@@ -45,7 +45,7 @@
 
 ;; Semantic aliases — makes signatures self-documenting.
 (define [alias] Timestamp Integer)
-(define [alias] Price Double)
+(define [alias] Price Float64)
 
 ;; ── Event dispatch ──────────────────────────────────────────────────────────
 

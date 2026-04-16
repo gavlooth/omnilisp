@@ -24,12 +24,12 @@ Implemented slices:
 
 - `TENSOR-010`: native Tensor runtime payload, descriptor, print surface,
   lifetime copy/promotion paths, and introspection primitives.
-- `TENSOR-020`: `(Tensor Double shape data-or-scalar)` and
+- `TENSOR-020`: `(Tensor Float64 shape data-or-scalar)` and
   `(ref tensor index-array)`.
 - `TENSOR-030`: concrete tensor realization and destination copy/fill.
 - `TENSOR-040`: tensor-dispatched elementwise `map` for unary, tensor-scalar,
-  scalar-tensor, and exact-shape tensor-tensor `Double` cases.
-- `TENSOR-050`: pure `Double` `contract`, including paired-axis array
+  scalar-tensor, and exact-shape tensor-tensor `Float64` cases.
+- `TENSOR-050`: pure `Float64` `contract`, including paired-axis array
   shorthand and explicit left/right axis-list inputs.
 - `TENSOR-060A`: destination-fusion audit.
 - `TENSOR-060B`: lazy Tensor expression payloads under the existing `Tensor`
@@ -65,10 +65,10 @@ Implemented slices:
 - `TENSOR-075`: `(Array tensor)` and `(List tensor)` now realize Tensor
   expressions and expose flat row-major element values through the canonical
   collection constructor/conversion surfaces.
-- `TENSOR-076`: `(Tensor data)`, `(Tensor data Double)`, and
-  `(Tensor Double data)` infer `Double` tensor shape from real numeric scalars
+- `TENSOR-076`: `(Tensor data)`, `(Tensor data Float64)`, and
+  `(Tensor Float64 data)` infer `Float64` tensor shape from real numeric scalars
   or rectangular nested arrays/proper lists whose leaves can narrow to finite
-  `Double`.
+  `Float64`.
 - `TENSOR-077`: native `BigFloat` concrete Tensor storage supports
   constructor, `dtype`, `ref`, flat `(Array tensor)` / `(List tensor)`
   conversion, and concrete `realize`.
@@ -80,7 +80,7 @@ Implemented slices:
   tensors through the pure C3 contraction fallback, including vector dot,
   rank-2 matrix product, zero-size contracted-axis identity, explicit
   destination realization, and lazy expression boundary survival. BLAS fast
-  paths remain `Double`-only.
+  paths remain `Float64`-only.
 - `TENSOR-081`: native `BigInteger` Tensor storage and kernels support
   constructor, `dtype`, `ref`, flat collection conversion, concrete
   `realize`, tensor-dispatched `map`, and pure C3 `contract` for exact
@@ -90,32 +90,32 @@ Implemented slices:
   constructor, `dtype`, `ref`, flat collection conversion, concrete
   `realize`, tensor-dispatched `map`, and pure C3 `contract` for complex
   tensor work. Real numeric leaves promote to zero-imaginary BigComplex
-  elements; BLAS fast paths remain `Double`-only.
+  elements; BLAS fast paths remain `Float64`-only.
 - `TENSOR-083`: BigComplex Tensor component kernels support elementwise
   `real-part`, `imag-part`, and `conjugate`. Component extraction realizes
   lazy BigComplex Tensor sources and returns native BigFloat tensors; conjugate
   returns native BigComplex tensors.
 - `TENSOR-084`: real Tensor component semantics are dtype-preserving:
-  `real-part` and `conjugate` copy `Double`, `BigInteger`, and `BigFloat`
+  `real-part` and `conjugate` copy `Float64`, `BigInteger`, and `BigFloat`
   tensors, while `imag-part` returns same-shape zero tensors in the same dtype.
 - `TENSOR-085`: Tensor `abs` supports elementwise magnitude for all native
   tensor dtypes. Real Tensor dtypes preserve dtype and shape; `BigComplex`
   Tensor magnitudes return same-shape native `BigFloat` tensors.
 - `TENSOR-086`: Tensor `sqrt` supports elementwise square root for all native
-  tensor dtypes. `Double` and `BigInteger` Tensor inputs return `Double`
+  tensor dtypes. `Float64` and `BigInteger` Tensor inputs return `Float64`
   tensors; `BigFloat` and `BigComplex` Tensor inputs preserve dtype.
 - `TENSOR-087`: Tensor unary scientific math supports `sin`, `cos`, `tan`,
   `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10`
-  through a shared elementwise helper. `Double` and `BigInteger` Tensor inputs
-  return `Double` tensors; `BigFloat` and `BigComplex` Tensor inputs preserve
+  through a shared elementwise helper. `Float64` and `BigInteger` Tensor inputs
+  return `Float64` tensors; `BigFloat` and `BigComplex` Tensor inputs preserve
   dtype.
 - `TENSOR-088`: Tensor `pow` supports tensor-scalar, scalar-tensor, and
   broadcast tensor-tensor powers. `BigComplex` wins the result dtype if either
   input is complex, `BigFloat` wins if either input is BigFloat, and remaining
-  real/exact inputs return `Double` tensors.
+  real/exact inputs return `Float64` tensors.
 - `TENSOR-089`: Tensor `atan2` supports tensor-scalar, scalar-tensor, and
   broadcast tensor-tensor real-plane arctangent. `BigFloat` inputs preserve
-  dtype, remaining real/exact inputs return `Double` tensors, and complex
+  dtype, remaining real/exact inputs return `Float64` tensors, and complex
   operands fail closed.
 - `TENSOR-090`: Tensor `floor`, `ceiling`, `round`, and `truncate` return
   same-shape native `BigInteger` Tensor results for real Tensor inputs.
@@ -123,7 +123,7 @@ Implemented slices:
   tensors fail closed.
 - `TENSOR-091`: Tensor `min` and `max` support tensor-scalar, scalar-tensor,
   and broadcast tensor-tensor real comparison. `BigFloat` wins if either
-  input is BigFloat, `Double` wins if either input is Double, otherwise the
+  input is BigFloat, `Float64` wins if either input is Float64, otherwise the
   result is native `BigInteger` Tensor storage. Complex operands fail closed.
 - `TENSOR-092`: Tensor `gcd` and `lcm` support tensor-scalar, scalar-tensor,
   and broadcast tensor-tensor exact integer inputs. Tensor operands must be
@@ -133,7 +133,7 @@ Implemented slices:
   slice; BLAS/LAPACK/CUDA/cuBLAS work stays optional behind the pure `Tensor`
   fallback. Ordinary Tensor storage remains native/scoped; truly opaque
   foreign backend resources still require explicit ownership/finalizer policy.
-- `TENSOR-090A`: dense rank-2 `Double` contraction equivalent to
+- `TENSOR-090A`: dense rank-2 `Float64` contraction equivalent to
   `(contract a b [1 0])` now has an optional native BLAS `dgemm` fast path
   behind the Tensor evaluator, with unsupported cases falling back to the pure
   C3 contraction kernel.
@@ -141,12 +141,12 @@ Implemented slices:
   contiguous row-major rank-2 single-axis contract layout by passing transpose
   flags for `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`.
 - `TENSOR-090C`: the optional native BLAS `dgemv` fast path now covers
-  contiguous row-major rank-2/rank-1 and rank-1/rank-2 single-axis `Double`
+  contiguous row-major rank-2/rank-1 and rank-1/rank-2 single-axis `Float64`
   contracts, including transposed matrix-vector and vector-matrix layouts.
 - `TENSOR-090D`: the optional native BLAS `ddot` fast path now covers
-  contiguous rank-1/rank-1 single-axis `Double` vector dot contractions.
+  contiguous rank-1/rank-1 single-axis `Float64` vector dot contractions.
 - `TENSOR-090E`: the optional native BLAS `dger` fast path now covers
-  contiguous rank-1/rank-1 zero-axis `Double` outer-product contractions.
+  contiguous rank-1/rank-1 zero-axis `Float64` outer-product contractions.
 - `TENSOR-110`: cleanup surface closure; `examples/scicomp_demo.omni` uses
   canonical `Tensor`, `map`, `contract`, and `realize`, with lazy
   expression-return and closure-capture coverage added.
@@ -159,7 +159,7 @@ Deferred by design:
 - BLAS/LAPACK/CUDA/cuBLAS acceleration is optional backend work behind the
   pure `Tensor` fallback; the current BLAS slices cover dense rank-2/rank-2
   `dgemm`, rank-2/rank-1 and rank-1/rank-2 `dgemv`, rank-1/rank-1 `ddot`,
-  and rank-1/rank-1 zero-axis `dger` `Double` contractions.
+  and rank-1/rank-1 zero-axis `dger` `Float64` contractions.
 
 ## Next Steps
 

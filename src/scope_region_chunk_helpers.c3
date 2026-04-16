@@ -15,7 +15,7 @@ fn ScopeChunk* scope_chunk_alloc_raw(usz min_bytes) {
         scope_c_getenv("OMNI_SCOPE_FORCE_CHUNK_ALLOC_OOM") != null) {
         return null;
     }
-    // Double from initial, capped at max
+    // Grow by doubling from the initial size, capped at max.
     usz capacity = SCOPE_CHUNK_INITIAL;
     while (capacity < min_bytes) {
         capacity *= 2;

@@ -195,13 +195,16 @@ that same runtime value.
 |------|-------|-------------|
 | `parse-number` | 1 | Parse number |
 | `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Double` | 1 | Canonical double constructor/coercion surface |
+| `Float` | 1-2 | Canonical floating constructor; `(Float x)` and `(Float x 64)` produce `Float64`, while precision `32` fails closed until native `Float32` storage ships |
+| `Float32` | 1 | Reserved native 32-bit float constructor; currently fails closed because runtime storage is not implemented |
+| `Float64` | 1 | Canonical binary64 constructor/coercion surface |
 | `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
 | `BigComplex` | 1-2 | High-precision complex constructor from a real part and optional imaginary part |
 | `Symbol` | 1 | Canonical symbol constructor/coercion surface |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `BigInteger`, `BigFloat`, `BigComplex`, `Double`, `String`,
+`Integer`, `BigInteger`, `BigFloat`, `BigComplex`, `Float`, `Float32`,
+`Float64`, `String`,
 `Symbol`, `Boolean`, `Nil`, `Void`, `Closure`, `List`, `Array`, `Dictionary`,
 `Dict`, `Set`, `Iterator`, `Coroutine`, `TimePoint`, and `Tensor`.
 
@@ -244,7 +247,7 @@ logarithmic, power/root, gamma/error-function, and standard-normal helpers.
 `floor`, `ceiling`, `round`, and `truncate` instead return exact integer
 values, narrowing to `Integer` when representable and promoting to `BigInteger`
 otherwise. Huge integer materializations fail closed.
-Non-`BigFloat` floating inputs continue to return `Double`.
+Non-`BigFloat` floating inputs continue to return `Float64`.
 `BigComplex` participates in `+`, `-`, `*`, `/`, unary `-`, `=`, and `abs`;
 `abs` returns a `BigFloat` magnitude. `real-part` and `imag-part` return
 `BigFloat` components for BigComplex inputs, while real scalar inputs keep their
@@ -285,13 +288,13 @@ comparisons and ordered helpers such as `min`, `max`, `positive?`, and
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `Tensor` | 1-3 | Construct native `Double` or `BigFloat` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, or `(Tensor dtype shape data-or-scalar)` |
+| `Tensor` | 1-3 | Construct native `Float64` or `BigFloat` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, or `(Tensor dtype shape data-or-scalar)` |
 | `tensor?` | 1 | Predicate for native tensor values |
 | `length` | 1 | Tensor element count |
 | `dtype` | 1 | Tensor dtype symbol |
 | `shape` | 1 | Tensor shape array |
 | `rank` | 1 | Tensor rank |
-| `contract` | 3-4 | Pure `Double` summed-axis tensor contraction |
+| `contract` | 3-4 | Pure `Float64` summed-axis tensor contraction |
 | `realize` | 1-2 | Force a tensor expression or write tensor/scalar source into a destination tensor |
 
 Tensor indexing uses generic `ref`. Tensor length uses generic `length`.

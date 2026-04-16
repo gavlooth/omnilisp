@@ -331,4 +331,4 @@ All network operations go through effects and can be intercepted for testing.
 ```
 
 JSON types map to Omni types: object -> dict, array -> array, string -> string,
-number -> int or double, null -> nil, true/false -> true/false.
+number -> int or Float64, null -> nil, true/false -> true/false.

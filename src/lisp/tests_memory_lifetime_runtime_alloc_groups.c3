@@ -1617,7 +1617,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             length_val.tag == INT &&
             length_val.int_val == 6 &&
             printed_len > 0 &&
-            str_contains(printed[:printed_len], "#<tensor Double shape [2 3]>");
+            str_contains(printed[:printed_len], "#<tensor Float64 shape [2 3]>");
 
         tensor_free_payload(clone);
 
@@ -1681,7 +1681,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
-        EvalResult expr_eval = run("(map + (Tensor Double [2] [1 2]) 3)", interp);
+        EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) 3)", interp);
         EvalResult index_eval = run("[1]", interp);
         bool setup_ok = !expr_eval.error.has_error &&
             expr_eval.value != null &&
@@ -1715,7 +1715,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
-        EvalResult expr_eval = run("(map + (map + (Tensor Double [2] [1 2]) 1) 2)", interp);
+        EvalResult expr_eval = run("(map + (map + (Tensor Float64 [2] [1 2]) 1) 2)", interp);
         bool setup_ok = !expr_eval.error.has_error &&
             expr_eval.value != null &&
             expr_eval.value.tag == TENSOR &&
@@ -1763,7 +1763,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
     {
         EvalResult expr_eval = run(
-            "(contract (contract (Tensor Double [2 2] [1 2 3 4]) (Tensor Double [2 2] [1 0 0 1]) [1] [0]) (Tensor Double [2] [10 20]) [1] [0])",
+            "(contract (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [1 0 0 1]) [1] [0]) (Tensor Float64 [2] [10 20]) [1] [0])",
             interp);
         bool setup_ok = !expr_eval.error.has_error &&
             expr_eval.value != null &&
@@ -1822,7 +1822,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         int saved_force = g_tensor_force_expr_edge_copy_fail_nth;
         if (setup_ok) {
             interp.current_scope = child;
-            EvalResult expr_eval = run("(map + (Tensor Double [2] [1 2]) (Tensor Double [2] [3 4]))", interp);
+            EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [3 4]))", interp);
             setup_ok = !expr_eval.error.has_error &&
                 expr_eval.value != null &&
                 expr_eval.value.tag == TENSOR &&
@@ -1872,7 +1872,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
         if (setup_ok) {
             interp.current_scope = child;
-            EvalResult expr_eval = run("(map + (Tensor Double [2] [1 2]) (Tensor Double [2] [3 4]))", interp);
+            EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [3 4]))", interp);
             setup_ok = !expr_eval.error.has_error &&
                 expr_eval.value != null &&
                 expr_eval.value.tag == TENSOR &&
@@ -1924,7 +1924,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
         if (setup_ok) {
             interp.current_scope = child;
-            EvalResult expr_eval = run("(let (bias 10) (map (lambda (x) (+ x bias)) (Tensor Double [2] [1 2])))", interp);
+            EvalResult expr_eval = run("(let (bias 10) (map (lambda (x) (+ x bias)) (Tensor Float64 [2] [1 2])))", interp);
             setup_ok = !expr_eval.error.has_error &&
                 expr_eval.value != null &&
                 expr_eval.value.tag == TENSOR &&
@@ -1975,7 +1975,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
     {
         usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
-        EvalResult expr_eval = run("(realize (map (lambda (x) 'bad) (Tensor Double [1] [1])))", interp);
+        EvalResult expr_eval = run("(realize (map (lambda (x) 'bad) (Tensor Float64 [1] [1])))", interp);
         usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = expr_eval.error.has_error &&
@@ -1997,11 +1997,11 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
     {
         usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
-        EvalResult expr_eval = run("(Tensor Double [2] [1 'bad])", interp);
+        EvalResult expr_eval = run("(Tensor Float64 [2] [1 'bad])", interp);
         usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
 
         bool ok = expr_eval.error.has_error &&
-            str_starts_with(expr_eval.error.message[:256], "Tensor: data elements must be real numbers representable as Double") &&
+            str_starts_with(expr_eval.error.message[:256], "Tensor: data elements must be real numbers representable as Float64") &&
             active_tensor_dtors_after == active_tensor_dtors_before;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: failed tensor constructor cleans partial tensor result");

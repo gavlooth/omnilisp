@@ -71,14 +71,15 @@ fn bool bind_non_callable_type_symbol(Interp* interp, SymbolId sym) {
  */
 fn bool register_builtin_types(Interp* interp) {
     // Register built-in types with TK_BUILTIN kind
-    SymbolId[20] builtin_names = {
+    SymbolId[22] builtin_names = {
+        interp.sym_Float, interp.sym_Float32,
         interp.sym_Integer, interp.sym_BigInteger, interp.sym_BigFloat, interp.sym_BigComplex, interp.sym_Double, interp.sym_String,
         interp.sym_Symbol, interp.sym_List, interp.sym_Boolean,
         interp.sym_Nil, interp.sym_Void, interp.sym_Closure, interp.sym_Array,
         interp.sym_Dictionary, interp.sym_Set, interp.sym_Any, interp.sym_Iterator,
         interp.sym_TimePoint, interp.sym_Coroutine, interp.sym_Tensor
     };
-    for (usz i = 0; i < 20; i++) {
+    for (usz i = 0; i < 22; i++) {
         TypeInfo info;
         info.name = builtin_names[i];
         info.kind = TK_BUILTIN;
@@ -154,7 +155,7 @@ fn bool register_builtin_types(Interp* interp) {
         return false;
     }
 
-    // Set parent chains: Integer/BigInteger/BigFloat/BigComplex/Double → Number, List/Array/Dictionary/Set → Collection,
+    // Set parent chains: Integer/BigInteger/BigFloat/BigComplex/Float64 -> Number, List/Array/Dictionary/Set → Collection,
     // Nil → List, and standalone runtime leaf types under Any.
     interp.types.types[(usz)interp.tid_Integer].parent = interp.tid_Number;
     interp.types.types[(usz)interp.tid_BigInteger].parent = interp.tid_Number;

@@ -180,7 +180,7 @@ fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
         int cmp = 0;
         if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, "<: complex numbers are not ordered");
-        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, "<: BigInteger value is out of Double range");
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, "<: BigInteger value is out of Float64 range");
         return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_LT);
     }
     return raise_error(interp, "<: expected numbers");
@@ -190,7 +190,7 @@ fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
     if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
         int cmp = 0;
         if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, ">: complex numbers are not ordered");
-        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, ">: BigInteger value is out of Double range");
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, ">: BigInteger value is out of Float64 range");
         return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_GT);
     }
     return raise_error(interp, ">: expected numbers");

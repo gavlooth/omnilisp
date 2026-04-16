@@ -119,7 +119,7 @@ fn void run_compiler_group_type_dispatch_bridge_tests(Interp* interp, usz* pass,
         char[] code = compile_to_c3(
             "(define (route (^Integer x)) (+ x 1)) "
             "(define (route (^String x)) x) "
-            "(define (route (^Double x)) (+ x 1.0))",
+            "(define (route (^Float64 x)) (+ x 1.0))",
             interp
         );
         usz typed_calls = compiler_str_count(code, "aot::define_typed_method(\"route\"");

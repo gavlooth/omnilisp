@@ -464,7 +464,7 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             "(define [ffi λ libc] (strlen (^String s)) ^Integer) "
             "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^ForeignHandle) "
             "(define [ffi λ libc] (isalpha (^Integer c)) ^Boolean) "
-            "(define [ffi λ libc] (cos (^Double x)) ^Double)",
+            "(define [ffi λ libc] (cos (^Float64 x)) ^Float64)",
             interp
         );
         bool ok = code.len > 0
@@ -483,7 +483,7 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
             && str_contains(code, "\"String\"")
             && str_contains(code, "\"ForeignHandle\"")
             && str_contains(code, "\"Boolean\"")
-            && str_contains(code, "\"Double\"");
+            && str_contains(code, "\"Float64\"");
         compiler_test_finish_bool(
             ok,
             "Compiler: declarative ffi emits manifest contract with loading policy and ABI tags",
@@ -513,7 +513,7 @@ fn void run_compiler_group_existing_feature_tests(Interp* interp, usz* pass, usz
         char[] code = compile_to_c3(
             "(define [ffi λ libc] (strchr (^String s) (^Integer c)) ^ForeignHandle) "
             "(define [ffi λ libc] (isalpha (^Integer c)) ^Boolean) "
-            "(define [ffi λ libc] (cos (^Double x)) ^Double)",
+            "(define [ffi λ libc] (cos (^Float64 x)) ^Float64)",
             interp
         );
         bool ok = code.len > 0

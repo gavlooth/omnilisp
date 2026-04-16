@@ -49,7 +49,7 @@ Omni without learning advanced semantics first.
   - falsy: `nil`, `false`
   - truthy: everything else (`0`, `""`, empty collections, symbols, etc.)
 - Start with these value families:
-  - scalars: int, double, string, symbol, nil
+  - scalars: int, Float64, string, symbol, nil
   - functions: closures (`lambda`)
   - collections: list, array, dict
 - Function spelling: `lambda` is canonical; plain `λ` is accepted as an
@@ -356,7 +356,7 @@ parser/lexer error.
 |------|-----|-------------|---------|
 | nil | `NIL` | Empty / absence value | `nil`, `()` |
 | int | `INT` | 64-bit signed integer | `42`, `-17` |
-| double | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
+| Float64 | `DOUBLE` | 64-bit floating point | `3.14`, `-0.5` |
 | BigInteger | `BIG_INTEGER` | Arbitrary-precision exact integer | `(BigInteger "9223372036854775808")` |
 | BigFloat | `BIG_FLOAT` | High-precision decimal float | `(BigFloat "1.25")` |
 | BigComplex | `BIG_COMPLEX` | High-precision decimal complex value | `(BigComplex 1 2)` |
@@ -397,20 +397,20 @@ constructor is needed.
 
 `BigFloat` is the high-precision decimal float surface backed by
 Boost.Multiprecision in the current runtime. `BigFloat` values are `Number`
-values, support `String` and finite `Double` conversion, participate in `+`,
+values, support `String` and finite `Float64` conversion, participate in `+`,
 `-`, `*`, `/`, ordering comparisons, `abs`, `min`, and `max`, and preserve
-`BigFloat` results when mixed with `Integer`, `BigInteger`, or `Double`.
+`BigFloat` results when mixed with `Integer`, `BigInteger`, or `Float64`.
 Core scalar math primitives preserve `BigFloat` results when a `BigFloat`
 operand participates for trigonometric, inverse trigonometric, hyperbolic,
 exponential, logarithmic, power/root, gamma/error-function, and
 standard-normal distribution helpers. `floor`, `ceiling`, `round`, and
 `truncate` round `BigFloat` exactly to `Integer` or `BigInteger` when the
 integer result is inside the supported allocation cap; huge integer
-materializations fail closed instead of narrowing through `Double`.
-Fixed-width `Double` remains the result type for non-`BigFloat` floating
+materializations fail closed instead of narrowing through `Float64`.
+Fixed-width `Float64` remains the result type for non-`BigFloat` floating
 inputs.
 `parse-number` promotes syntactically valid floating inputs that overflow
-`Double` to `BigFloat`.
+`Float64` to `BigFloat`.
 
 `BigComplex` is the high-precision complex-number surface backed by decimal
 real and imaginary parts in the current runtime. `(BigComplex real imag)`
@@ -432,16 +432,16 @@ not ordered, so `<`, `>`, `<=`, `>=`, `min`, `max`, `positive?`, and
 current runtime slice registers the type descriptor, constructor, print
 surface, lifetime copy/promotion paths, tensor `ref`, and introspection
 primitives (`tensor?`, `dtype`, `shape`, `rank`, and `length`). The explicit
-constructor surfaces are `(Tensor Double shape data-or-scalar)`,
+constructor surfaces are `(Tensor Float64 shape data-or-scalar)`,
 `(Tensor BigInteger shape data-or-scalar)`, and
 `(Tensor BigFloat shape data-or-scalar)`, and
 `(Tensor BigComplex shape data-or-scalar)`, where `shape` is an array or
 proper list of non-negative integers and `data-or-scalar` is either a scalar
 numeric fill value or an array/proper list with exactly the shape product's
 element count. The inferred-shape constructor surface is `(Tensor data)`,
-`(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Double`,
-`BigInteger`, `BigFloat`, or `BigComplex`. `Double` tensors accept real
-numeric values that can narrow to finite `Double`; `BigInteger` tensors accept
+`(Tensor data dtype)`, or `(Tensor dtype data)`, where `dtype` is `Float64`,
+`BigInteger`, `BigFloat`, or `BigComplex`. `Float64` tensors accept real
+numeric values that can narrow to finite `Float64`; `BigInteger` tensors accept
 exact `Integer` and `BigInteger` values; `BigFloat` tensors preserve arbitrary
 finite `BigFloat` range; `BigComplex` tensors preserve complex numeric values
 and promote real numeric leaves to zero-imaginary BigComplex elements. Tensor
@@ -451,34 +451,34 @@ return flat row-major element values; use `shape` when rank metadata is needed.
 `realize` treats concrete tensors as already realized values, forces
 lazy Tensor expression payloads, and can write a tensor expression, concrete
 tensor, or scalar fill into an existing destination tensor. Tensor-dispatched
-`map` is the elementwise tensor operation for `Double`, `BigInteger`,
+`map` is the elementwise tensor operation for `Float64`, `BigInteger`,
 `BigFloat`, and `BigComplex` tensors; `contract` is the summed-axis operation
-for `Double`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For real
+for `Float64`, `BigInteger`, `BigFloat`, and `BigComplex` tensors. For real
 Tensor dtypes, `real-part` and `conjugate` preserve dtype and values, while
 `imag-part` returns a same-shape zero tensor of the same dtype. For
 `BigComplex` tensors, `real-part` and `imag-part` produce `BigFloat` tensors
 and `conjugate` produces a `BigComplex` tensor. Tensor `abs` applies
 elementwise magnitude; real Tensor dtypes preserve dtype and `BigComplex`
 tensors return same-shape `BigFloat` tensors. Tensor `sqrt` applies
-elementwise square root; `Double` and `BigInteger` Tensor inputs return
-`Double` tensors, `BigFloat` tensors preserve `BigFloat`, and `BigComplex`
+elementwise square root; `Float64` and `BigInteger` Tensor inputs return
+`Float64` tensors, `BigFloat` tensors preserve `BigFloat`, and `BigComplex`
 tensors preserve `BigComplex`. Tensor `sin`, `cos`, `tan`, `asin`, `acos`,
 `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10` apply the same
-elementwise unary scientific-math contract: `Double` and `BigInteger` inputs
-return `Double` tensors, while `BigFloat` and `BigComplex` tensors preserve
+elementwise unary scientific-math contract: `Float64` and `BigInteger` inputs
+return `Float64` tensors, while `BigFloat` and `BigComplex` tensors preserve
 their dtype. Tensor `pow` supports tensor-scalar, scalar-tensor, and broadcast
 tensor-tensor powers: `BigComplex` wins the result dtype if either input is
 complex, otherwise `BigFloat` wins if either input is BigFloat, otherwise the
-result is a `Double` tensor. Tensor `atan2` supports tensor-scalar,
+result is a `Float64` tensor. Tensor `atan2` supports tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real-plane arctangent: `BigFloat`
-inputs preserve `BigFloat`, other real/exact inputs return `Double` tensors,
+inputs preserve `BigFloat`, other real/exact inputs return `Float64` tensors,
 and complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`,
 and `truncate` return same-shape `BigInteger` tensors for real inputs, using
 exact BigFloat rounding when the source dtype is `BigFloat`; complex Tensor
 operands fail closed. Tensor `min` and `max` support the same tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real comparison surface:
-`BigFloat` wins if either input is BigFloat, `Double` wins if either input is
-Double, otherwise the result is a `BigInteger` tensor. Complex Tensor
+`BigFloat` wins if either input is BigFloat, `Float64` wins if either input is
+Float64, otherwise the result is a `BigInteger` tensor. Complex Tensor
 operands fail closed. Tensor `gcd` and `lcm` support tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor exact integer operations. Tensor
 operands must be native `BigInteger` tensors, scalar operands must be exact
@@ -528,7 +528,7 @@ Contract examples:
 ### 2.4 Equality
 
 `=` performs structural equality:
-- Integers and doubles: numeric comparison
+- Integers and Float64 values: numeric comparison
 - Strings: character-by-character
 - Symbols: identity (interned)
 - Lists: recursive structural equality
@@ -943,7 +943,7 @@ Printing/introspection contract:
 
 ### 4.7 Callable Constructor Failure Semantics
 
-Callable type symbols (`Integer`, `Double`, `String`, `Boolean`, `List`,
+Callable type symbols (`Integer`, `Float64`, `String`, `Boolean`, `List`,
 `Array`, `Dictionary`, `Set`, `Iterator`) follow deterministic recoverable
 failure signaling:
 
@@ -1072,7 +1072,7 @@ Example:
 
 ```lisp
 (define (score (^Integer x) (^Integer y)) (+ x y))
-(define (score (^Double x) (^Double y)) (+ x y))
+(define (score (^Float64 x) (^Float64 y)) (+ x y))
 
 (ref (ref (explain 'dispatch (score 1 2)) 'decision) 'reason)
 ; => 'method-match
@@ -1135,7 +1135,7 @@ removal) are maintained in `docs/SURFACE_COMPATIBILITY.md`.
 
 | Prim | Arity | Description |
 |------|-------|-------------|
-| `+` | 2 | Addition (int or double) |
+| `+` | 2 | Addition (int or Float64) |
 | `-` | 1-2 | Subtraction; `(- n)` negates |
 | `*` | 2 | Multiplication |
 | `/` | 2 | Integer/float division |
@@ -1208,8 +1208,8 @@ I/O primitives go through algebraic effects (`io/print`, `io/println`, etc.). Wh
 |------|-------------|
 | `string?` | Is string? |
 | `int?` | Is integer? |
-| `double?` | Is double? |
-| `number?` | Is int, BigInteger, BigFloat, or double? |
+| `float64?` | Is Float64? |
+| `number?` | Is int, BigInteger, BigFloat, or Float64? |
 | `symbol?` | Is symbol? |
 | `closure?` | Is closure? |
 | `continuation?` | Is continuation? |
@@ -1338,7 +1338,9 @@ representable and promoting to `BigInteger` otherwise.
 |------|-------------|
 | `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Double` | Canonical double constructor/coercion surface; accepts finite BigInteger and BigFloat inputs when representable as a finite double |
+| `Float` | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` is explicit binary64, and `(Float x 32)` fails closed until native `Float32` storage exists |
+| `Float32` | Reserved native 32-bit float constructor; currently fails closed because runtime storage is not implemented |
+| `Float64` | Canonical Float64 constructor/coercion surface; accepts finite BigInteger and BigFloat inputs when representable as a finite Float64 |
 | `Integer` | Canonical integer constructor/coercion surface; truncates finite numeric inputs toward zero and accepts in-range BigInteger/BigFloat inputs |
 | `BigInteger` | Canonical arbitrary-precision exact integer constructor/coercion surface; accepts integers and decimal strings |
 | `BigFloat` | Canonical high-precision decimal float constructor/coercion surface; accepts numeric values and finite decimal strings |
@@ -1347,9 +1349,9 @@ representable and promoting to `BigInteger` otherwise.
 Numeric conversion policy:
 - Narrowing to `Integer` (`Integer`, `truncate`) truncates toward zero.
 - Narrowing requires finite numeric input and an in-range `Integer` result.
-- `parse-number` returns `Integer`, `BigInteger`, `Double`, or `BigFloat`:
+- `parse-number` returns `Integer`, `BigInteger`, `Float64`, or `BigFloat`:
   valid decimal integers that exceed the fixed-width `Integer` range promote to
-  `BigInteger`, and valid floating inputs that overflow `Double` promote to
+  `BigInteger`, and valid floating inputs that overflow `Float64` promote to
   `BigFloat`.
 - `parse-number` returns `nil` on parse failure or floating input outside the
   supported `BigFloat` range.
@@ -1371,15 +1373,15 @@ Numeric conversion policy:
 ### 7.17.1 Tensor Construction And Introspection
 
 These primitives are implemented for native `Tensor` values. The current
-concrete storage dtypes are `Double`, `BigInteger`, and `BigFloat`; tensor
+concrete storage dtypes are `Float64`, `BigInteger`, and `BigFloat`; tensor
 `map` supports all three dtypes, while tensor `contract` supports pure C3
-`Double`, `BigInteger`, and `BigFloat` kernels.
+`Float64`, `BigInteger`, and `BigFloat` kernels.
 
 | Prim | Description |
 |------|-------------|
 | `Tensor` | Construct a native tensor as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor dtype data)`, or `(Tensor dtype shape data-or-scalar)` |
 | `tensor?` | Predicate for native tensor values |
-| `dtype` | Return the tensor dtype symbol, currently `'Double`, `'BigInteger`, or `'BigFloat` |
+| `dtype` | Return the tensor dtype symbol, currently `'Float64`, `'BigInteger`, or `'BigFloat` |
 | `shape` | Return the tensor shape as an array of dimensions |
 | `rank` | Return the tensor rank |
 | `contract` | Contract two tensors as `(contract a b axis-pairs)` or `(contract a b left-axes right-axes)` |
@@ -1390,7 +1392,7 @@ support constructor/ref/flat collection conversion/concrete `realize` paths
 and tensor-dispatched `map` and `contract`. Tensor elementwise operations are
 part of generic `map`; unary tensor inputs, tensor-scalar inputs,
 scalar-tensor inputs, exact-shape tensor-tensor inputs, and right-aligned
-singleton-axis tensor-tensor broadcasting are supported for `Double`,
+singleton-axis tensor-tensor broadcasting are supported for `Float64`,
 `BigInteger`, and `BigFloat` tensors.
 Scalar arguments are coerced into the first tensor input's dtype and
 broadcast over the tensor shape. Rank-0 tensors broadcast as tensor scalars, and
@@ -1421,12 +1423,12 @@ all non-contracted right axes.
 (define z (map + x 1.0))
 (ref z [1 2])   ; => 7.0
 
-(define a (Tensor Double [2 3] [1 2 3 4 5 6]))
-(define b (Tensor Double [3 2] [7 8 9 10 11 12]))
+(define a (Tensor Float64 [2 3] [1 2 3 4 5 6]))
+(define b (Tensor Float64 [3 2] [7 8 9 10 11 12]))
 (ref (contract a b [1 0]) [1 1]) ; => 154.0
 
 (realize x)                 ; => x, because x is already concrete
-(define y (Tensor Double [2 3] 0.0))
+(define y (Tensor Float64 [2 3] 0.0))
 (realize x y)               ; => y, after copying x into y
 (realize 1.0 y)             ; => y, after filling y with 1.0
 (realize (map + x 1.0) y)   ; => y, after evaluating into y
@@ -1471,7 +1473,7 @@ all non-contracted right axes.
 ```
 
 - Uses libffi via C wrapper for portable ABI support
-- Type annotations: `^Integer` -> sint64, `^Double` -> double, `^String`
+- Type annotations: `^Integer` -> sint64, `^Float64` -> Float64, `^String`
   -> copied plain `char*` boundary, `^ForeignHandle` -> boxed opaque foreign
   handle, `^Void` -> void, `^Boolean` -> sint64
 - `^ForeignHandle` is the simple default foreign-handle annotation. It
@@ -1515,13 +1517,13 @@ all non-contracted right axes.
   rejects ordinary non-releasable library or borrowed resource handles. This is
   only for foreign resources and does not add refcount or garbage-collected
   ownership for Omni values.
-- Declarative `ffi λ` accepts only `^Integer`, `^Double`, `^String`,
+- Declarative `ffi λ` accepts only `^Integer`, `^Float64`, `^String`,
   `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation level;
   unsupported annotations fail at definition time instead of defaulting to
   foreign-handle metadata.
 - Argument conversion is fail-closed:
   - `^Integer`: Omni `Integer` only
-  - `^Double`: Omni `Double` or `Integer`
+  - `^Float64`: Omni `Float64` or `Integer`
   - `^Boolean`: Omni `true` / `false` only
   - `^String`: Omni `String`, or `nil` for a null plain `char*`
   - `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
@@ -1843,8 +1845,8 @@ Discipline contract:
 
 ```lisp
 ; Resolve — body continues
-(handle (signal double 5)
-  (double x (resolve (* x 2))))
+(handle (signal Float64 5)
+  (Float64 x (resolve (* x 2))))
 ; => 10
 
 ; Abort — body abandoned

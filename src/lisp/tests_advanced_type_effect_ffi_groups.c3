@@ -67,7 +67,7 @@ fn void run_advanced_consolidation_primitive_hierarchy_tests(Interp* interp, int
     // === ABSTRACT TYPE HIERARCHY TESTS ===
     // Number hierarchy
     test_truthy_interp(interp, "is? int Number", "(is? 42 'Number)", pass, fail);
-    test_truthy_interp(interp, "is? double Number", "(is? 3.14 'Number)", pass, fail);
+    test_truthy_interp(interp, "is? Float64 Number", "(is? 3.14 'Number)", pass, fail);
     test_nil_interp(interp, "is? string not Number", "(is? \"hi\" 'Number)", pass, fail);
     test_nil_interp(interp, "is? nil not Number", "(is? nil 'Number)", pass, fail);
 
@@ -80,7 +80,7 @@ fn void run_advanced_consolidation_primitive_hierarchy_tests(Interp* interp, int
 
     // number? uses abstract hierarchy
     test_truthy_interp(interp, "number? int", "(number? 42)", pass, fail);
-    test_truthy_interp(interp, "number? double", "(number? 3.14)", pass, fail);
+    test_truthy_interp(interp, "number? Float64", "(number? 3.14)", pass, fail);
     test_nil_interp(interp, "number? string", "(number? \"hi\")", pass, fail);
 }
 
@@ -88,8 +88,8 @@ fn void run_advanced_consolidation_predicate_equivalence_tests(Interp* interp, i
     // === PREDICATE EQUIVALENCE TESTS ===
     test_truthy_interp(interp, "int? positive", "(int? 42)", pass, fail);
     test_nil_interp(interp, "int? negative", "(int? 3.14)", pass, fail);
-    test_truthy_interp(interp, "double? positive", "(double? 3.14)", pass, fail);
-    test_nil_interp(interp, "double? negative", "(double? 42)", pass, fail);
+    test_truthy_interp(interp, "float64? positive", "(float64? 3.14)", pass, fail);
+    test_nil_interp(interp, "float64? negative", "(float64? 42)", pass, fail);
     test_truthy_interp(interp, "string? positive", "(string? \"hi\")", pass, fail);
     test_nil_interp(interp, "string? negative", "(string? 42)", pass, fail);
     test_truthy_interp(interp, "symbol? positive", "(symbol? 'foo)", pass, fail);
@@ -121,7 +121,7 @@ fn void run_advanced_consolidation_predicate_equivalence_tests(Interp* interp, i
 
 fn void run_advanced_consolidation_dispatch_extensibility_tests(Interp* interp, int* pass, int* fail) {
     // === DISPATCH EXTENSIBILITY TESTS ===
-    setup(interp, "(define [type] Vec2 (^Double vx) (^Double vy))");
+    setup(interp, "(define [type] Vec2 (^Float64 vx) (^Float64 vy))");
     setup(interp, "(define (+ (^Vec2 a) (^Vec2 b)) (Vec2 (+ a.vx b.vx) (+ a.vy b.vy)))");
     test_truthy_interp(interp, "Vec2 + dispatch x",
         "(= (let (v (+ (Vec2 1.0 2.0) (Vec2 3.0 4.0))) v.vx) 4.0)", pass, fail);

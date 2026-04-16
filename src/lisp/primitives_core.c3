@@ -39,8 +39,8 @@ fn Value* numeric_compare_primitive_result(Interp* interp, Value* lhs, Value* rh
             return raise_error(interp, "numeric comparison: complex numbers are not ordered");
         }
         char[128] ebuf;
-        char[] msg = "numeric comparison: BigInteger value is out of Double range";
-        if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Double range", (ZString)op_name)) {
+        char[] msg = "numeric comparison: BigInteger value is out of Float64 range";
+        if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Float64 range", (ZString)op_name)) {
             msg = formatted;
         }
         return raise_error(interp, msg);

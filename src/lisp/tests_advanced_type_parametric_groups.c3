@@ -7,7 +7,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
 
     // type-of primitive
     test_truthy(interp, "type-of int", "(= (type-of 42) 'Integer)", pass, fail);
-    test_truthy(interp, "type-of double", "(= (type-of 3.14) 'Double)", pass, fail);
+    test_truthy(interp, "type-of double", "(= (type-of 3.14) 'Float64)", pass, fail);
     test_truthy(interp, "type-of string", "(= (type-of \"hello\") 'String)", pass, fail);
     test_truthy(interp, "type-of symbol", "(= (type-of 'foo) 'Symbol)", pass, fail);
     test_truthy(interp, "type-of nil", "(= (type-of nil) 'Nil)", pass, fail);
@@ -245,10 +245,10 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
         pass, fail);
 
     // Cross-test: typed lambda boundaries follow exact-or-subtype semantics (no implicit widening).
-    test_error(interp, "typed lambda numeric no implicit Integer->Double widening",
-        "((lambda ((^Double x)) x) 7)", pass, fail);
+    test_error(interp, "typed lambda numeric no implicit Integer->Float64 widening",
+        "((lambda ((^Float64 x)) x) 7)", pass, fail);
     test_truthy_interp(interp, "typed lambda numeric explicit constructor conversion",
-        "(= ((lambda ((^Double x)) x) (Double 7)) 7.0)", pass, fail);
+        "(= ((lambda ((^Float64 x)) x) (Float64 7)) 7.0)", pass, fail);
 
     // Cross-test: typed lambda boundary checks compose with dispatch-selected methods.
     setup(interp, "(define (l3-dispatch-lam (^Integer x)) ((lambda ((^Integer y)) (+ y 5)) x))");

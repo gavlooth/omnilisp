@@ -1,3 +1,30 @@
+## 2026-04-16
+
+- Canonicalized the public binary64 numeric surface from `Double` to `Float64`:
+  - `Float64` is now the callable constructor/type spelling and tensor dtype
+    spelling for the existing native binary64 storage.
+  - `(Float x)` defaults to `Float64`; `(Float x 64)` is the explicit binary64
+    precision form.
+  - `Float32` and `(Float x 32)` are registered but fail closed until native
+    Float32 runtime/tensor storage exists.
+  - The old public `(Double ...)` constructor is not kept as an alias; direct
+    use now errors as an unbound variable.
+  - The public predicate is now `float64?`, backed by `is?` over `'Float64`.
+  - Internal C3 names such as `DOUBLE`, `sym_Double`, `is_double`, and
+    `TENSOR_DTYPE_DOUBLE` remain implementation/storage names for the current
+    binary64 representation.
+  - validation:
+    - `c3c build main --output-dir build --build-dir build/obj2`
+    - direct smokes for `(Float 1)`, `(Float "1.25" 64)`, `(Float32 1)`, and
+      removed `(Double 1)`
+    - focused advanced groups:
+      - `advanced-core-semantics` -> `71 passed, 0 failed`
+      - `advanced-type-dispatch-mutation-chain` -> `240 passed, 0 failed`
+      - `advanced-ffi-system` -> `75 passed, 0 failed`
+      - `advanced-stdlib-numeric` -> `411 passed, 0 failed`
+      - `advanced-collections-module` -> `392 passed, 0 failed`
+    - compiler slice -> `276 passed, 0 failed`
+
 ## 2026-04-15
 
 - Completed `TENSOR-092` Tensor `gcd`/`lcm` semantics:

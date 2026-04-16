@@ -83,7 +83,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "explain effect decision stable shape",
         "(let (d (ref (explain 'effect (resolve 42)) 'decision)) (and (has? d 'reason) (and (has? d 'outcome) (and (has? d 'handler-index) (and (has? d 'search-order) (and (has? d 'clause-index) (and (has? d 'match-tag) (and (has? d 'strict-handler-index) (and (has? d 'fast-path-index) (and (has? d 'fast-path-primitive) (and (has? d 'arg-name) (and (has? d 'continuation-name) (has? d 'debug_message)))))))))))))", pass, fail);
     setup(interp, "(define (explain-score (^Integer x) (^Integer y)) (+ x y))");
-    setup(interp, "(define (explain-score (^Double x) (^Double y)) (+ x y))");
+    setup(interp, "(define (explain-score (^Float64 x) (^Float64 y)) (+ x y))");
     test_truthy(interp, "explain dispatch status method-match",
         "(= (ref (ref (explain 'dispatch (explain-score 1 2)) 'decision) 'reason) 'method-match)", pass, fail);
     test_eq(interp, "explain dispatch candidate count",

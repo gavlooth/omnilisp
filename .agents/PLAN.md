@@ -40,7 +40,7 @@ Default scalar numerics direction from the owner remains:
 - Keep GNU precision libraries only as possible later performance backends if
   the owner explicitly accepts that dependency path.
 - Keep user-facing scalar names backend-neutral: `Integer`, `BigInteger`,
-  `Double`, `BigFloat`, optional `Complex`, and `BigComplex`.
+  `Float64`, `BigFloat`, optional `Complex`, and `BigComplex`.
 
 Minimal scalar-first targets:
 
@@ -52,7 +52,7 @@ Minimal scalar-first targets:
   cloning are implemented.
 - `BigFloat` through Boost.Multiprecision `cpp_dec_float_50` is now the first
   high-precision decimal slice: constructor, printing/String conversion,
-  `Number` identity, `Double`/`Integer` narrowing, `+`, `-`, `*`, `/`,
+  `Number` identity, `Float64`/`Integer` narrowing, `+`, `-`, `*`, `/`,
   comparisons, `abs`, `min`, `max`, equality/hash support, scope-boundary
   cloning, `parse-number` floating overflow promotion, BigFloat-preserving
   scalar math for trig, inverse trig, hyperbolic, exponential/logarithmic,
@@ -85,23 +85,23 @@ as a new public Tensor surface:
 - The pure C3 Tensor fallback remains the semantic oracle.
 - Ordinary Tensor storage remains C3-native and scoped; do not replace normal
   Tensor storage with `ForeignHandle`.
-- BLAS rank-2 `Double` GEMM now optimizes all contiguous row-major single-axis
+- BLAS rank-2 `Float64` GEMM now optimizes all contiguous row-major single-axis
   rank-2 contract layouts behind `realize` when dtype, rank, layout, device,
   and aliasing match the backend contract: `[1 0]`, `[0 0]`, `[1 1]`, and
   `[0 1]`.
-- BLAS `Double` GEMV now optimizes contiguous row-major rank-2/rank-1 and
+- BLAS `Float64` GEMV now optimizes contiguous row-major rank-2/rank-1 and
   rank-1/rank-2 single-axis contract layouts behind the same backend boundary.
-- BLAS `Double` DDOT now optimizes contiguous rank-1/rank-1 vector dot
+- BLAS `Float64` DDOT now optimizes contiguous rank-1/rank-1 vector dot
   contractions behind the same backend boundary.
-- BLAS `Double` DGER now optimizes contiguous rank-1/rank-1 outer-product
+- BLAS `Float64` DGER now optimizes contiguous rank-1/rank-1 outer-product
   contractions behind the same backend boundary.
 - `(Array tensor)` and `(List tensor)` are implemented as explicit Tensor
   collection conversions that realize lazy Tensor expressions and return flat
   row-major values.
-- `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)` now infer
-  native `Double` tensor shape from real numeric scalars or rectangular nested
-  arrays/proper lists whose leaves can narrow to finite `Double`, while
-  preserving the explicit `(Tensor Double shape data-or-scalar)` constructor.
+- `(Tensor data)`, `(Tensor data Float64)`, and `(Tensor Float64 data)` now infer
+  native `Float64` tensor shape from real numeric scalars or rectangular nested
+  arrays/proper lists whose leaves can narrow to finite `Float64`, while
+  preserving the explicit `(Tensor Float64 shape data-or-scalar)` constructor.
 - Native `BigInteger` Tensor storage now supports constructor, `dtype`, `ref`,
   flat `(Array tensor)` / `(List tensor)` conversion, concrete `realize`,
   tensor-dispatched `map`, and pure C3 `contract` kernels. BigInteger Tensor
@@ -114,25 +114,25 @@ as a new public Tensor surface:
   and `conjugate`. Component extraction returns BigFloat tensors; conjugate
   returns BigComplex tensors.
 - Real Tensor component semantics are dtype-preserving: `real-part` and
-  `conjugate` copy Double, BigInteger, and BigFloat tensors; `imag-part`
+  `conjugate` copy Float64, BigInteger, and BigFloat tensors; `imag-part`
   returns same-shape zero tensors in the same dtype.
 - Tensor `abs` now supports elementwise magnitude for all native Tensor dtypes:
   real Tensor dtypes preserve dtype and shape, while BigComplex tensors return
   same-shape BigFloat magnitude tensors.
 - Tensor `sqrt` now supports elementwise square root for all native Tensor
-  dtypes: Double and BigInteger tensors return same-shape Double tensors,
+  dtypes: Float64 and BigInteger tensors return same-shape Float64 tensors,
   while BigFloat and BigComplex tensors preserve dtype.
 - Tensor unary scientific math now supports elementwise `sin`, `cos`, `tan`,
   `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and `log10`
-  for all native Tensor dtypes. Double and BigInteger tensors return
-  same-shape Double tensors, while BigFloat and BigComplex tensors preserve
+  for all native Tensor dtypes. Float64 and BigInteger tensors return
+  same-shape Float64 tensors, while BigFloat and BigComplex tensors preserve
   dtype.
 - Tensor `pow` now supports tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor powers. BigComplex wins result dtype, then BigFloat, otherwise
-  the result is a Double tensor.
+  the result is a Float64 tensor.
 - Tensor `atan2` now supports tensor-scalar, scalar-tensor, and broadcast
   tensor-tensor real-plane arctangent. BigFloat preserves dtype, other
-  real/exact inputs return Double tensors, and complex operands fail closed.
+  real/exact inputs return Float64 tensors, and complex operands fail closed.
 - Tensor `floor`, `ceiling`, `round`, and `truncate` now return BigInteger
   Tensor results for real Tensor inputs. BigFloat tensors use exact rounding;
   BigComplex tensors fail closed.
@@ -143,10 +143,10 @@ as a new public Tensor surface:
   tensor-scalar, scalar-tensor, exact-shape tensor-tensor, and right-aligned
   singleton-axis broadcast cases.
 - Tensor-dispatched `contract` now supports native `BigFloat` tensors through
-  the pure C3 contraction fallback. BLAS fast paths remain `Double`-only.
+  the pure C3 contraction fallback. BLAS fast paths remain `Float64`-only.
 - Tensor `min` and `max` now support native Tensor inputs with tensor-scalar,
   scalar-tensor, and broadcast tensor-tensor real comparison. BigFloat wins
-  if either input is BigFloat, Double wins if either input is Double, and the
+  if either input is BigFloat, Float64 wins if either input is Float64, and the
   remaining exact inputs return native `BigInteger` Tensor results.
 - Tensor `gcd` and `lcm` now support native Tensor inputs with tensor-scalar,
   scalar-tensor, and broadcast tensor-tensor exact integer semantics. Tensor

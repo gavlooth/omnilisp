@@ -118,20 +118,20 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
     test_truthy_interp(interp, "dispatch multi-arg str", "(= (add2 \"hello\" \" world\") \"hello world\")", pass, fail);
 
     // Numeric dispatch without implicit widening: exact match or subtype only.
-    setup(interp, "(define (num-tag (^Double x)) 10)");
+    setup(interp, "(define (num-tag (^Float64 x)) 10)");
     setup(interp, "(define (num-tag (^Integer x)) 20)");
     setup(interp, "(define (num-tag x) 30)");
     test_eq_interp(interp, "dispatch numeric promotion double exact", "(num-tag 3.5)", 10, pass, fail);
     test_eq_interp(interp, "dispatch numeric exact Integer method", "(num-tag 3)", 20, pass, fail);
 
-    setup(interp, "(define (only-double (^Double x)) 11)");
+    setup(interp, "(define (only-double (^Float64 x)) 11)");
     setup(interp, "(define (only-double x) 22)");
-    test_eq_interp(interp, "dispatch numeric no implicit Integer->Double widening", "(only-double 7)", 22, pass, fail);
-    test_eq_interp(interp, "dispatch numeric explicit constructor conversion", "(only-double (Double 7))", 11, pass, fail);
+    test_eq_interp(interp, "dispatch numeric no implicit Integer->Float64 widening", "(only-double 7)", 22, pass, fail);
+    test_eq_interp(interp, "dispatch numeric explicit constructor conversion", "(only-double (Float64 7))", 11, pass, fail);
 
     setup(interp, "(define (only-int (^Integer x)) 33)");
     setup(interp, "(define (only-int x) 44)");
-    test_eq_interp(interp, "dispatch numeric no implicit Double->Integer narrowing", "(only-int 3.9)", 44, pass, fail);
+    test_eq_interp(interp, "dispatch numeric no implicit Float64->Integer narrowing", "(only-int 3.9)", 44, pass, fail);
     test_eq_interp(interp, "dispatch numeric explicit Integer constructor conversion", "(only-int (Integer 3.9))", 33, pass, fail);
     test_eq_interp(interp, "dispatch numeric explicit Integer constructor conversion alias", "(only-int (Integer 3.9))", 33, pass, fail);
 
@@ -208,7 +208,7 @@ fn void run_advanced_dispatch_constructor_unification_union_tests(Interp* interp
     setup(interp, "(define (num-same (^{'T Number} a) (^{'T Number} b)) 11)");
     setup(interp, "(define (num-same a b) 22)");
     test_eq_interp(interp, "dispatch constrained type-var unification Integer/Integer", "(num-same 3 4)", 11, pass, fail);
-    test_eq_interp(interp, "dispatch constrained type-var unification Integer/Double fallback", "(num-same 3 4.0)", 22, pass, fail);
+    test_eq_interp(interp, "dispatch constrained type-var unification Integer/Float64 fallback", "(num-same 3 4.0)", 22, pass, fail);
 
     // === UNION PARTICIPATION IN DISPATCH APPLICABILITY TESTS ===
     setup(interp, "(define [union] DispatchOpt DNone (DSome Integer) (DText String))");
@@ -256,7 +256,7 @@ fn void run_advanced_dispatch_constructor_ambiguity_parametric_tests(Interp* int
     setup(interp, "(define [type] (NumBox T) (^{'T Number} value))");
     // Integer <: Number — should succeed
     test_eq_interp(interp, "NumBox Integer ok", "(let (b (NumBox 42)) b.value)", 42, pass, fail);
-    // Double <: Number — should succeed
+    // Float64 <: Number — should succeed
     test_truthy_interp(interp, "NumBox Dbl ok", "(= (type-of (NumBox 3.14)) 'NumBox)", pass, fail);
     // String not <: Number — should error
     test_error(interp, "NumBox String fail", "(NumBox \"hi\")", pass, fail);
@@ -281,7 +281,7 @@ fn void run_advanced_dispatch_hot_path_benchmarks(Interp* interp) {
     emit_test_section_banner("Dispatch Hot-Path Benchmarks");
 
     setup(interp, "(define (dispatch-bench-call (^Integer x)) (+ x 1))");
-    setup(interp, "(define (dispatch-bench-call (^Double x)) (+ x 1.0))");
+    setup(interp, "(define (dispatch-bench-call (^Float64 x)) (+ x 1.0))");
     setup(interp, "(define (dispatch-bench-call x) 0)");
     setup(interp, "(define (typed-lambda-bench-call (^Integer x)) ((lambda ((^Integer y)) (+ y 1)) x))");
 

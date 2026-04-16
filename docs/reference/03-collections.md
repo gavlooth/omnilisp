@@ -81,7 +81,7 @@ Ordering contract:
 ### Tensors
 
 `Tensor` is Omni's rank-polymorphic scientific numeric aggregate. The current
-runtime ships native `Double`, `BigInteger`, `BigFloat`, and `BigComplex`
+runtime ships native `Float64`, `BigInteger`, `BigFloat`, and `BigComplex`
 tensor storage, generic `length` introspection, tensor indexing through
 generic `ref`, tensor-dispatched `map` for all native dtypes, tensor
 `contract`, and `realize` as the explicit storage boundary. `BigInteger`,
@@ -93,21 +93,21 @@ same-dtype zeros for imaginary components, while BigComplex component
 extraction returns BigFloat tensors. Tensor `abs` applies elementwise
 magnitude; real Tensor dtypes preserve dtype and BigComplex tensors return
 BigFloat magnitude tensors. Tensor `sqrt` applies elementwise square root:
-Double and BigInteger Tensor inputs return Double tensors, BigFloat tensors
+Float64 and BigInteger Tensor inputs return Float64 tensors, BigFloat tensors
 preserve BigFloat, and BigComplex tensors preserve BigComplex. Tensor `sin`,
 `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`,
 and `log10` follow the same unary scientific-math dtype contract. Tensor
 `pow` supports tensor-scalar, scalar-tensor, and broadcast tensor-tensor
 powers; `BigComplex` wins the result dtype, then `BigFloat`, otherwise the
-result is a Double tensor. Tensor `atan2` supports tensor-scalar,
+result is a Float64 tensor. Tensor `atan2` supports tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor real-plane arctangent; `BigFloat`
-inputs preserve BigFloat, other real/exact inputs return Double tensors, and
+inputs preserve BigFloat, other real/exact inputs return Float64 tensors, and
 complex Tensor operands fail closed. Tensor `floor`, `ceiling`, `round`, and
 `truncate` return same-shape BigInteger tensors for real inputs, with exact
 BigFloat rounding for BigFloat tensors; complex Tensor operands fail closed.
 Tensor `min` and `max` support tensor-scalar, scalar-tensor, and broadcast
 tensor-tensor real comparison. `BigFloat` wins if either input is BigFloat,
-`Double` wins if either input is Double, otherwise the result is a
+`Float64` wins if either input is Float64, otherwise the result is a
 `BigInteger` tensor. Tensor `gcd` and `lcm` support tensor-scalar,
 scalar-tensor, and broadcast tensor-tensor exact integer operations. Tensor
 operands must be native `BigInteger` tensors, scalar operands must be exact
@@ -118,7 +118,7 @@ integers, and results are native `BigInteger` tensors.
 
 (shape x)                  ;; => [2 3]
 (rank x)                   ;; => 2
-(dtype x)                  ;; => Double
+(dtype x)                  ;; => Float64
 (ref x [1 -1])             ;; => 6.0
 (Array x)                  ;; => [1.0 2.0 3.0 4.0 5.0 6.0]
 (List x)                   ;; => (1.0 2.0 3.0 4.0 5.0 6.0)
@@ -140,8 +140,8 @@ integers, and results are native `BigInteger` tensors.
 (String (ref (abs (Tensor BigComplex [1] [(BigComplex 3 4)])) [0])) ;; => "5"
 (String (ref (sqrt (Tensor BigComplex [1] [(BigComplex -1 0)])) [0])) ;; => "0+1i"
 (ref (exp (Tensor BigInteger [1] [0])) [0]) ;; => 1.0
-(ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1]) ;; => 27.0
-(String (ref (atan2 (Tensor Double [1] [1.0]) 1.0) [0])) ;; => "0.785398163397448"
+(ref (pow (Tensor Float64 [2 1] [2 3]) (Tensor Float64 [1 2] [2 3])) [1 1]) ;; => 27.0
+(String (ref (atan2 (Tensor Float64 [1] [1.0]) 1.0) [0])) ;; => "0.785398163397448"
 (String (ref (ceiling (Tensor BigFloat [1] [(BigFloat "9223372036854775808.1")])) [0])) ;; => "9223372036854775809"
 (String (ref (min (Tensor BigInteger [1] [(BigInteger "5")]) 4) [0])) ;; => "4"
 (String (dtype (max (Tensor BigFloat [1] [(BigFloat "2.5")]) 4))) ;; => "BigFloat"
@@ -149,14 +149,14 @@ integers, and results are native `BigInteger` tensors.
 (String (ref (lcm (Tensor BigInteger [2 1] [3 4]) (Tensor BigInteger [1 2] [5 6])) [1 1])) ;; => "12"
 (ref (imag-part x) [0 0]) ;; => 0.0
 
-(define y (Tensor Double [2 3] 0.0))
+(define y (Tensor Float64 [2 3] 0.0))
 (realize (map + x 1.0) y) ;; => y, after elementwise evaluation into y
-(realize (Tensor Double [] 3.0) (Tensor Double [] 0.0))
-(realize 9 (Tensor Double [0] 0.0))
-(realize (map + (Tensor Double [0] 0.0) 1.0) (Tensor Double [0] 0.0))
+(realize (Tensor Float64 [] 3.0) (Tensor Float64 [] 0.0))
+(realize 9 (Tensor Float64 [0] 0.0))
+(realize (map + (Tensor Float64 [0] 0.0) 1.0) (Tensor Float64 [0] 0.0))
 
-(define a (Tensor Double [2 3] [1 2 3 4 5 6]))
-(define b (Tensor Double [3 2] [7 8 9 10 11 12]))
+(define a (Tensor Float64 [2 3] [1 2 3 4 5 6]))
+(define b (Tensor Float64 [3 2] [7 8 9 10 11 12]))
 (ref (contract a b [1 0]) [1 1]) ;; => 154.0
 ```
 

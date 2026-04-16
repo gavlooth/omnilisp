@@ -36,7 +36,7 @@ fn Value* prim_math_lgamma(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/lgamma: value out of Double range");
+        return raise_error(interp, "math/lgamma: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -65,7 +65,7 @@ fn Value* prim_math_erf(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/erf: value out of Double range");
+        return raise_error(interp, "math/erf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -94,7 +94,7 @@ fn Value* prim_math_erfc(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "math/erfc: value out of Double range");
+        return raise_error(interp, "math/erfc: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -123,7 +123,7 @@ fn Value* prim_stats_normal_cdf(Value*[] args, Env* env, Interp* interp) {
 
     double input = 0.0;
     if (!try_numeric_to_double(args[0], &input)) {
-        return raise_error(interp, "stats/normal-cdf: value out of Double range");
+        return raise_error(interp, "stats/normal-cdf: value out of Float64 range");
     }
 
     double output = 0.0;
@@ -152,7 +152,7 @@ fn Value* prim_stats_normal_quantile(Value*[] args, Env* env, Interp* interp) {
 
     double probability = 0.0;
     if (!try_numeric_to_double(args[0], &probability)) {
-        return raise_error(interp, "stats/normal-quantile: probability out of Double range");
+        return raise_error(interp, "stats/normal-quantile: probability out of Float64 range");
     }
 
     double output = 0.0;
@@ -181,7 +181,7 @@ fn Value* prim_sin(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SIN, "sin: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sin", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sin", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_sin(x));
 }
 
@@ -195,7 +195,7 @@ fn Value* prim_cos(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_COS, "cos: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cos", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cos", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_cos(x));
 }
 
@@ -209,7 +209,7 @@ fn Value* prim_tan(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_TAN, "tan: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tan", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tan", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_tan(x));
 }
 
@@ -223,7 +223,7 @@ fn Value* prim_sinh(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SINH, "sinh: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sinh", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sinh", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_sinh(x));
 }
 
@@ -237,7 +237,7 @@ fn Value* prim_cosh(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_COSH, "cosh: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cosh", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "cosh", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_cosh(x));
 }
 
@@ -251,7 +251,7 @@ fn Value* prim_tanh(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_TANH, "tanh: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tanh", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "tanh", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_tanh(x));
 }
 
@@ -265,7 +265,7 @@ fn Value* prim_asin(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ASIN, "asin: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "asin", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "asin", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_asin(x));
 }
 
@@ -279,7 +279,7 @@ fn Value* prim_acos(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ACOS, "acos: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "acos", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "acos", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_acos(x));
 }
 
@@ -293,7 +293,7 @@ fn Value* prim_atan(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_ATAN, "atan: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "atan", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "atan", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_atan(x));
 }
 
@@ -311,8 +311,8 @@ fn Value* prim_atan2(Value*[] args, Env* env, Interp* interp) {
     }
     double y = 0.0;
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &y)) return primitive_arg_type_raise(interp, "atan2", 0, "number representable as Double", args[0]);
-    if (!math_arg_to_double(args[1], &x)) return primitive_arg_type_raise(interp, "atan2", 1, "number representable as Double", args[1]);
+    if (!math_arg_to_double(args[0], &y)) return primitive_arg_type_raise(interp, "atan2", 0, "number representable as Float64", args[0]);
+    if (!math_arg_to_double(args[1], &x)) return primitive_arg_type_raise(interp, "atan2", 1, "number representable as Float64", args[1]);
     return make_double(interp, c_atan2(y, x));
 }
 
@@ -326,7 +326,7 @@ fn Value* prim_exp(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_EXP, "exp: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "exp", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "exp", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_exp(x));
 }
 
@@ -340,7 +340,7 @@ fn Value* prim_log(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_LOG, "log: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_log(x));
 }
 
@@ -354,7 +354,7 @@ fn Value* prim_log10(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_LOG10, "log10: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log10", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "log10", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_log10(x));
 }
 
@@ -375,8 +375,8 @@ fn Value* prim_pow(Value*[] args, Env* env, Interp* interp) {
     }
     double base = 0.0;
     double exp = 0.0;
-    if (!math_arg_to_double(args[0], &base)) return primitive_arg_type_raise(interp, "pow", 0, "number representable as Double", args[0]);
-    if (!math_arg_to_double(args[1], &exp)) return primitive_arg_type_raise(interp, "pow", 1, "number representable as Double", args[1]);
+    if (!math_arg_to_double(args[0], &base)) return primitive_arg_type_raise(interp, "pow", 0, "number representable as Float64", args[0]);
+    if (!math_arg_to_double(args[1], &exp)) return primitive_arg_type_raise(interp, "pow", 1, "number representable as Float64", args[1]);
     return make_double(interp, c_pow(base, exp));
 }
 
@@ -390,7 +390,7 @@ fn Value* prim_sqrt(Value*[] args, Env* env, Interp* interp) {
         return big_float_unary_math_value(interp, args[0], BIG_FLOAT_MATH_SQRT, "sqrt: BigFloat evaluation error");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sqrt", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "sqrt", 0, "number representable as Float64", args[0]);
     return make_double(interp, c_sqrt(x));
 }
 
@@ -422,7 +422,7 @@ fn Value* prim_floor(Value*[] args, Env* env, Interp* interp) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_FLOOR, "floor: BigFloat integer result out of supported range");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "floor", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "floor", 0, "number representable as Float64", args[0]);
     return math_int_from_double_or_raise(interp, c_floor(x), "floor");
 }
 
@@ -433,7 +433,7 @@ fn Value* prim_ceiling(Value*[] args, Env* env, Interp* interp) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_CEILING, "ceiling: BigFloat integer result out of supported range");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "ceiling", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "ceiling", 0, "number representable as Float64", args[0]);
     return math_int_from_double_or_raise(interp, c_ceil(x), "ceiling");
 }
 
@@ -444,7 +444,7 @@ fn Value* prim_round(Value*[] args, Env* env, Interp* interp) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_ROUND, "round: BigFloat integer result out of supported range");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "round", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "round", 0, "number representable as Float64", args[0]);
     return math_int_from_double_or_raise(interp, c_round(x), "round");
 }
 
@@ -455,7 +455,7 @@ fn Value* prim_truncate(Value*[] args, Env* env, Interp* interp) {
         return big_float_round_to_integer_value(interp, args[0], BIG_FLOAT_ROUND_TRUNCATE, "truncate: BigFloat integer result out of supported range");
     }
     double x = 0.0;
-    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "truncate", 0, "number representable as Double", args[0]);
+    if (!math_arg_to_double(args[0], &x)) return primitive_arg_type_raise(interp, "truncate", 0, "number representable as Float64", args[0]);
     return math_int_from_double_or_raise(interp, x, "truncate");
 }
 
@@ -491,7 +491,7 @@ fn Value* prim_min(Value*[] args, Env* env, Interp* interp) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "min: BigInteger value is out of Double range");
+            return raise_error(interp, "min: BigInteger value is out of Float64 range");
         }
         return make_double(interp, a < b ? a : b);
     }
@@ -516,7 +516,7 @@ fn Value* prim_max(Value*[] args, Env* env, Interp* interp) {
         double a = 0.0;
         double b = 0.0;
         if (!try_numeric_to_double(args[0], &a) || !try_numeric_to_double(args[1], &b)) {
-            return raise_error(interp, "max: BigInteger value is out of Double range");
+            return raise_error(interp, "max: BigInteger value is out of Float64 range");
         }
         return make_double(interp, a > b ? a : b);
     }

@@ -40,7 +40,7 @@ fn usz tensor_dtype_size(TensorDType dtype) @inline {
 fn char[] tensor_dtype_name(TensorDType dtype) @inline {
     switch (dtype) {
         case TENSOR_DTYPE_DOUBLE:
-            return "Double";
+            return "Float64";
         case TENSOR_DTYPE_BIG_INTEGER:
             return "BigInteger";
         case TENSOR_DTYPE_BIG_FLOAT:

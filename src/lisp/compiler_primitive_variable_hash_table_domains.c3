@@ -77,7 +77,7 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("symbol?"), "aot::lookup_prim(\"symbol?\")");
     prim_hash_insert(st.intern("closure?"), "aot::lookup_prim(\"closure?\")");
     prim_hash_insert(st.intern("continuation?"), "aot::lookup_prim(\"continuation?\")");
-    prim_hash_insert(st.intern("double?"), "aot::lookup_prim(\"double?\")");
+    prim_hash_insert(st.intern("float64?"), "aot::lookup_prim(\"float64?\")");
     prim_hash_insert(st.intern("list?"), "aot::lookup_prim(\"list?\")");
     prim_hash_insert(st.intern("boolean?"), "aot::lookup_prim(\"boolean?\")");
     prim_hash_insert(st.intern("bool?"), "aot::lookup_prim(\"bool?\")");
@@ -91,7 +91,9 @@ fn void init_prim_hash_core_and_strings(SymbolTable* st) {
     prim_hash_insert(st.intern("BigInteger"), "aot::lookup_prim(\"BigInteger\")");
     prim_hash_insert(st.intern("BigFloat"), "aot::lookup_prim(\"BigFloat\")");
     prim_hash_insert(st.intern("BigComplex"), "aot::lookup_prim(\"BigComplex\")");
-    prim_hash_insert(st.intern("Double"), "aot::lookup_prim(\"Double\")");
+    prim_hash_insert(st.intern("Float"), "aot::lookup_prim(\"Float\")");
+    prim_hash_insert(st.intern("Float32"), "aot::lookup_prim(\"Float32\")");
+    prim_hash_insert(st.intern("Float64"), "aot::lookup_prim(\"Float64\")");
     prim_hash_insert(st.intern("String"), "aot::lookup_prim(\"String\")");
     prim_hash_insert(st.intern("Symbol"), "aot::lookup_prim(\"Symbol\")");
     prim_hash_insert(st.intern("Boolean"), "aot::lookup_prim(\"Boolean\")");

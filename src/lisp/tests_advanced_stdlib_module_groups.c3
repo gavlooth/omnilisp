@@ -93,17 +93,17 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error(interp, "ref string -6 oob", "(ref \"hello\" -6)", pass, fail);
     // ref - tensor
     test_eq_double(interp, "ref tensor rank-0 scalar",
-        "(ref (Tensor Double [] 3.0) [])",
+        "(ref (Tensor Float64 [] 3.0) [])",
         3.0, pass, fail);
     test_error_contains(interp, "ref tensor rank-0 scalar with vector index",
-        "(ref (Tensor Double [] 3.0) [0])",
+        "(ref (Tensor Float64 [] 3.0) [0])",
         "ref: tensor index rank mismatch", pass, fail);
     test_error_contains(interp, "ref tensor rank-0 scalar with scalar index",
-        "(ref (Tensor Double [] 3.0) 0)",
+        "(ref (Tensor Float64 [] 3.0) 0)",
         "ref: tensor requires array or proper list index", pass, fail);
-    test_eq_double(interp, "ref tensor rank-2", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 2])", 6.0, pass, fail);
-    test_eq_double(interp, "ref tensor negative axis", "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1 -1])", 6.0, pass, fail);
-    test_eq_double(interp, "ref tensor list index", "(ref (Tensor Double '(2 3) '(1 2 3 4 5 6)) '(1 2))", 6.0, pass, fail);
+    test_eq_double(interp, "ref tensor rank-2", "(ref (Tensor Float64 [2 3] [1 2 3 4 5 6]) [1 2])", 6.0, pass, fail);
+    test_eq_double(interp, "ref tensor negative axis", "(ref (Tensor Float64 [2 3] [1 2 3 4 5 6]) [1 -1])", 6.0, pass, fail);
+    test_eq_double(interp, "ref tensor list index", "(ref (Tensor Float64 '(2 3) '(1 2 3 4 5 6)) '(1 2))", 6.0, pass, fail);
     test_eq_double(interp, "Tensor inferred vector ref",
         "(ref (Tensor [1 2 3]) [2])", 3.0, pass, fail);
     test_str_val(interp, "Tensor inferred matrix shape",
@@ -113,26 +113,26 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_eq_double(interp, "Tensor inferred scalar rank-0",
         "(ref (Tensor 7) [])", 7.0, pass, fail);
     test_eq_double(interp, "Tensor inferred data dtype suffix",
-        "(ref (Tensor [1 2] Double) [1])", 2.0, pass, fail);
+        "(ref (Tensor [1 2] Float64) [1])", 2.0, pass, fail);
     test_eq_double(interp, "Tensor inferred data dtype prefix",
-        "(ref (Tensor Double [1 2]) [1])", 2.0, pass, fail);
+        "(ref (Tensor Float64 [1 2]) [1])", 2.0, pass, fail);
     test_eq_double(interp, "Tensor inferred quoted dtype suffix",
-        "(ref (Tensor [1 2] 'Double) [1])", 2.0, pass, fail);
-    test_eq_double(interp, "Tensor inferred BigInteger narrows to Double",
+        "(ref (Tensor [1 2] 'Float64) [1])", 2.0, pass, fail);
+    test_eq_double(interp, "Tensor inferred BigInteger narrows to Float64",
         "(ref (Tensor [(BigInteger \"9223372036854775808\")]) [0])",
         9223372036854775808.0, pass, fail);
-    test_eq_double(interp, "Tensor inferred BigFloat narrows to Double",
+    test_eq_double(interp, "Tensor inferred BigFloat narrows to Float64",
         "(ref (Tensor [(BigFloat \"1.25\")]) [0])", 1.25, pass, fail);
     test_eq_double(interp, "Tensor explicit BigFloat scalar fill narrows",
-        "(ref (Tensor Double [2] (BigFloat \"2.5\")) [1])", 2.5, pass, fail);
+        "(ref (Tensor Float64 [2] (BigFloat \"2.5\")) [1])", 2.5, pass, fail);
     test_eq_double(interp, "Tensor explicit BigInteger data narrows",
-        "(ref (Tensor Double [1] [(BigInteger \"42\")]) [0])", 42.0, pass, fail);
+        "(ref (Tensor Float64 [1] [(BigInteger \"42\")]) [0])", 42.0, pass, fail);
     test_eq(interp, "Tensor inferred empty vector length",
         "(length (Tensor []))", 0, pass, fail);
-    test_error_contains(interp, "Tensor inferred BigFloat outside Double range rejected",
-        "(Tensor [(BigFloat \"1e309\")])", "representable as Double", pass, fail);
+    test_error_contains(interp, "Tensor inferred BigFloat outside Float64 range rejected",
+        "(Tensor [(BigFloat \"1e309\")])", "representable as Float64", pass, fail);
     test_error_contains(interp, "Tensor inferred complex data rejected",
-        "(Tensor [(BigComplex 1 2)])", "representable as Double", pass, fail);
+        "(Tensor [(BigComplex 1 2)])", "representable as Float64", pass, fail);
     test_error_contains(interp, "Tensor inferred ragged data rejected",
         "(Tensor [[1] [2 3]])", "rectangular", pass, fail);
     test_error_contains(interp, "Tensor inferred non-numeric data rejected",
@@ -211,18 +211,18 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "conjugate lazy BigComplex tensor realizes source",
         "(String (ref (conjugate (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 3 4))) [0]))",
         "4-6i", pass, fail);
-    test_eq_double(interp, "real-part Double tensor preserves dtype and value",
-        "(ref (real-part (Tensor Double [1] [1.5])) [0])", 1.5, pass, fail);
-    test_eq_double(interp, "imag-part Double tensor returns zero tensor",
-        "(ref (imag-part (Tensor Double [1] [1.5])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "real-part Float64 tensor preserves dtype and value",
+        "(ref (real-part (Tensor Float64 [1] [1.5])) [0])", 1.5, pass, fail);
+    test_eq_double(interp, "imag-part Float64 tensor returns zero tensor",
+        "(ref (imag-part (Tensor Float64 [1] [1.5])) [0])", 0.0, pass, fail);
     test_str_val(interp, "conjugate BigInteger tensor preserves exact value",
         "(String (ref (conjugate (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")])) [0]))",
         "9223372036854775808", pass, fail);
     test_str_val(interp, "imag-part BigFloat tensor returns zero tensor",
         "(String (ref (imag-part (Tensor BigFloat [1] [(BigFloat \"1.25\")])) [0]))",
         "0", pass, fail);
-    test_eq_double(interp, "abs Double tensor preserves dtype and magnitude",
-        "(ref (abs (Tensor Double [2] [-1.5 2.5])) [0])", 1.5, pass, fail);
+    test_eq_double(interp, "abs Float64 tensor preserves dtype and magnitude",
+        "(ref (abs (Tensor Float64 [2] [-1.5 2.5])) [0])", 1.5, pass, fail);
     test_str_val(interp, "abs BigInteger tensor preserves exact dtype",
         "(String (ref (abs (Tensor BigInteger [1] [(BigInteger \"-9223372036854775808\")])) [0]))",
         "9223372036854775808", pass, fail);
@@ -235,9 +235,9 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "abs lazy BigComplex tensor realizes source",
         "(String (ref (abs (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 2))) [0]))",
         "5", pass, fail);
-    test_eq_double(interp, "sqrt Double tensor preserves Double dtype",
-        "(ref (sqrt (Tensor Double [1] [9.0])) [0])", 3.0, pass, fail);
-    test_eq_double(interp, "sqrt BigInteger tensor returns Double tensor",
+    test_eq_double(interp, "sqrt Float64 tensor preserves Float64 dtype",
+        "(ref (sqrt (Tensor Float64 [1] [9.0])) [0])", 3.0, pass, fail);
+    test_eq_double(interp, "sqrt BigInteger tensor returns Float64 tensor",
         "(ref (sqrt (Tensor BigInteger [1] [9])) [0])", 3.0, pass, fail);
     test_str_val(interp, "sqrt BigFloat tensor preserves high precision dtype",
         "(String (ref (sqrt (Tensor BigFloat [1] [(BigFloat \"4\")])) [0]))",
@@ -248,21 +248,21 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "sqrt lazy BigComplex tensor realizes source",
         "(String (ref (sqrt (map + (Tensor BigComplex [1] [(BigComplex -2 0)]) (BigComplex 1 0))) [0]))",
         "0+1i", pass, fail);
-    test_error_contains(interp, "sqrt BigInteger tensor rejects out of Double range",
+    test_error_contains(interp, "sqrt BigInteger tensor rejects out of Float64 range",
         "(sqrt (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]))",
-        "math: BigInteger tensor element out of Double range", pass, fail);
-    test_eq_double(interp, "sin Double tensor",
-        "(ref (sin (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
-    test_eq_double(interp, "cos BigInteger tensor returns Double tensor",
+        "math: BigInteger tensor element out of Float64 range", pass, fail);
+    test_eq_double(interp, "sin Float64 tensor",
+        "(ref (sin (Tensor Float64 [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "cos BigInteger tensor returns Float64 tensor",
         "(ref (cos (Tensor BigInteger [1] [0])) [0])", 1.0, pass, fail);
-    test_eq_double(interp, "tan Double tensor",
-        "(ref (tan (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
-    test_eq_double(interp, "asin Double tensor",
-        "(ref (asin (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
-    test_eq_double(interp, "acos Double tensor",
-        "(ref (acos (Tensor Double [1] [1.0])) [0])", 0.0, pass, fail);
-    test_eq_double(interp, "atan Double tensor",
-        "(ref (atan (Tensor Double [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "tan Float64 tensor",
+        "(ref (tan (Tensor Float64 [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "asin Float64 tensor",
+        "(ref (asin (Tensor Float64 [1] [0.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "acos Float64 tensor",
+        "(ref (acos (Tensor Float64 [1] [1.0])) [0])", 0.0, pass, fail);
+    test_eq_double(interp, "atan Float64 tensor",
+        "(ref (atan (Tensor Float64 [1] [0.0])) [0])", 0.0, pass, fail);
     test_str_val(interp, "sinh BigFloat tensor preserves dtype",
         "(String (ref (sinh (Tensor BigFloat [1] [(BigFloat \"0\")])) [0]))",
         "0", pass, fail);
@@ -272,7 +272,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "tanh BigComplex tensor preserves dtype",
         "(String (ref (tanh (Tensor BigComplex [1] [(BigComplex 0 0)])) [0]))",
         "0+0i", pass, fail);
-    test_eq_double(interp, "exp BigInteger tensor returns Double tensor",
+    test_eq_double(interp, "exp BigInteger tensor returns Float64 tensor",
         "(ref (exp (Tensor BigInteger [1] [0])) [0])", 1.0, pass, fail);
     test_str_val(interp, "log BigFloat tensor preserves dtype",
         "(String (ref (log (Tensor BigFloat [1] [(BigFloat \"1\")])) [0]))",
@@ -280,14 +280,14 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "log10 lazy BigComplex tensor realizes source",
         "(String (ref (log10 (map + (Tensor BigComplex [1] [(BigComplex 0 0)]) (BigComplex 1 0))) [0]))",
         "0+0i", pass, fail);
-    test_eq_double(interp, "pow Double tensor scalar",
-        "(ref (pow (Tensor Double [1] [2.0]) 3.0) [0])", 8.0, pass, fail);
-    test_eq_double(interp, "pow scalar Double tensor",
-        "(ref (pow 2.0 (Tensor Double [1] [3.0])) [0])", 8.0, pass, fail);
-    test_eq_double(interp, "pow BigInteger tensor returns Double tensor",
+    test_eq_double(interp, "pow Float64 tensor scalar",
+        "(ref (pow (Tensor Float64 [1] [2.0]) 3.0) [0])", 8.0, pass, fail);
+    test_eq_double(interp, "pow scalar Float64 tensor",
+        "(ref (pow 2.0 (Tensor Float64 [1] [3.0])) [0])", 8.0, pass, fail);
+    test_eq_double(interp, "pow BigInteger tensor returns Float64 tensor",
         "(ref (pow (Tensor BigInteger [1] [2]) 3) [0])", 8.0, pass, fail);
     test_eq_double(interp, "pow Tensor broadcast",
-        "(ref (pow (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [2 3])) [1 1])", 27.0, pass, fail);
+        "(ref (pow (Tensor Float64 [2 1] [2 3]) (Tensor Float64 [1 2] [2 3])) [1 1])", 27.0, pass, fail);
     test_str_val(interp, "pow BigFloat tensor preserves dtype",
         "(String (ref (pow (Tensor BigFloat [1] [(BigFloat \"2\")]) (BigFloat \"3\")) [0]))",
         "8", pass, fail);
@@ -297,17 +297,17 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "pow lazy BigComplex tensor realizes source",
         "(String (< (abs (- (ref (pow (map + (Tensor BigComplex [1] [(BigComplex 0 1)]) (BigComplex 0 0)) 2) [0]) (BigComplex -1 0))) (BigFloat \"1e-40\")))",
         "true", pass, fail);
-    test_error_contains(interp, "pow BigInteger tensor rejects out of Double range",
+    test_error_contains(interp, "pow BigInteger tensor rejects out of Float64 range",
         "(pow (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 2)",
-        "pow: tensor element out of Double range", pass, fail);
-    test_str_val(interp, "atan2 Double tensor scalar",
-        "(String (ref (atan2 (Tensor Double [1] [1.0]) 1.0) [0]))", "0.785398163397448", pass, fail);
-    test_str_val(interp, "atan2 scalar Double tensor",
-        "(String (ref (atan2 1.0 (Tensor Double [1] [1.0])) [0]))", "0.785398163397448", pass, fail);
-    test_eq_double(interp, "atan2 BigInteger tensor returns Double tensor",
+        "pow: tensor element out of Float64 range", pass, fail);
+    test_str_val(interp, "atan2 Float64 tensor scalar",
+        "(String (ref (atan2 (Tensor Float64 [1] [1.0]) 1.0) [0]))", "0.785398163397448", pass, fail);
+    test_str_val(interp, "atan2 scalar Float64 tensor",
+        "(String (ref (atan2 1.0 (Tensor Float64 [1] [1.0])) [0]))", "0.785398163397448", pass, fail);
+    test_eq_double(interp, "atan2 BigInteger tensor returns Float64 tensor",
         "(ref (atan2 (Tensor BigInteger [1] [0]) 1) [0])", 0.0, pass, fail);
     test_str_val(interp, "atan2 Tensor broadcast",
-        "(String (ref (atan2 (Tensor Double [2 1] [0 1]) (Tensor Double [1 2] [1 1])) [1 1]))", "0.785398163397448", pass, fail);
+        "(String (ref (atan2 (Tensor Float64 [2 1] [0 1]) (Tensor Float64 [1 2] [1 1])) [1 1]))", "0.785398163397448", pass, fail);
     test_str_val(interp, "atan2 BigFloat tensor preserves dtype",
         "(String (ref (atan2 (Tensor BigFloat [1] [(BigFloat \"0\")]) 1) [0]))",
         "0", pass, fail);
@@ -317,19 +317,19 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "atan2 BigComplex tensor rejected",
         "(atan2 (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)",
         "atan2: complex numbers are not supported", pass, fail);
-    test_error_contains(interp, "atan2 BigInteger tensor rejects out of Double range",
+    test_error_contains(interp, "atan2 BigInteger tensor rejects out of Float64 range",
         "(atan2 (Tensor BigInteger [1] [(BigInteger \"100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\")]) 1)",
-        "atan2: tensor element out of Double range", pass, fail);
-    test_str_val(interp, "floor Double tensor returns BigInteger tensor",
-        "(String (ref (floor (Tensor Double [1] [3.7])) [0]))", "3", pass, fail);
-    test_str_val(interp, "ceiling Double tensor returns BigInteger tensor",
-        "(String (ref (ceiling (Tensor Double [1] [3.2])) [0]))", "4", pass, fail);
-    test_str_val(interp, "round Double tensor returns BigInteger tensor",
-        "(String (ref (round (Tensor Double [1] [3.5])) [0]))", "4", pass, fail);
-    test_str_val(interp, "truncate Double tensor returns BigInteger tensor",
-        "(String (ref (truncate (Tensor Double [1] [3.9])) [0]))", "3", pass, fail);
+        "atan2: tensor element out of Float64 range", pass, fail);
+    test_str_val(interp, "floor Float64 tensor returns BigInteger tensor",
+        "(String (ref (floor (Tensor Float64 [1] [3.7])) [0]))", "3", pass, fail);
+    test_str_val(interp, "ceiling Float64 tensor returns BigInteger tensor",
+        "(String (ref (ceiling (Tensor Float64 [1] [3.2])) [0]))", "4", pass, fail);
+    test_str_val(interp, "round Float64 tensor returns BigInteger tensor",
+        "(String (ref (round (Tensor Float64 [1] [3.5])) [0]))", "4", pass, fail);
+    test_str_val(interp, "truncate Float64 tensor returns BigInteger tensor",
+        "(String (ref (truncate (Tensor Float64 [1] [3.9])) [0]))", "3", pass, fail);
     test_str_val(interp, "rounding dtype is BigInteger",
-        "(String (dtype (floor (Tensor Double [1] [3.7]))))", "BigInteger", pass, fail);
+        "(String (dtype (floor (Tensor Float64 [1] [3.7]))))", "BigInteger", pass, fail);
     test_str_val(interp, "floor BigInteger tensor clones exact values",
         "(String (ref (floor (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")])) [0]))",
         "9223372036854775808", pass, fail);
@@ -342,11 +342,11 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_error_contains(interp, "floor BigComplex tensor rejected",
         "(floor (Tensor BigComplex [1] [(BigComplex 1 0)]))",
         "rounding: complex numbers are not supported", pass, fail);
-    test_error_contains(interp, "floor Double tensor rejects out of Integer range",
-        "(floor (Tensor Double [1] [1.0e20]))",
+    test_error_contains(interp, "floor Float64 tensor rejects out of Integer range",
+        "(floor (Tensor Float64 [1] [1.0e20]))",
         "floor: tensor integer result out of supported range", pass, fail);
-    test_str_val(interp, "min Double tensor scalar preserves Double dtype",
-        "(String (ref (min (Tensor Double [1] [3.7]) 4.2) [0]))", "3.7", pass, fail);
+    test_str_val(interp, "min Float64 tensor scalar preserves Float64 dtype",
+        "(String (ref (min (Tensor Float64 [1] [3.7]) 4.2) [0]))", "3.7", pass, fail);
     test_str_val(interp, "min BigInteger tensor scalar preserves exact result",
         "(String (ref (min (Tensor BigInteger [1] [(BigInteger \"5\")]) 4) [0]))", "4", pass, fail);
     test_str_val(interp, "min BigInteger tensor scalar returns BigInteger dtype",
@@ -356,7 +356,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "max BigFloat tensor scalar returns exact promoted result",
         "(String (ref (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4) [0]))", "4", pass, fail);
     test_str_val(interp, "min Tensor broadcast",
-        "(String (ref (min (Tensor Double [2 1] [2 3]) (Tensor Double [1 2] [1 4])) [1 1]))", "3.0", pass, fail);
+        "(String (ref (min (Tensor Float64 [2 1] [2 3]) (Tensor Float64 [1 2] [1 4])) [1 1]))", "3.0", pass, fail);
     test_str_val(interp, "max lazy BigFloat tensor realizes source",
         "(String (ref (max (map + (Tensor BigFloat [1] [(BigFloat \"2.5\")]) (BigFloat \"0\")) 4) [0]))", "4", pass, fail);
     test_error_contains(interp, "min BigComplex tensor rejected",
@@ -371,54 +371,54 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         "12", pass, fail);
     test_str_val(interp, "lcm lazy BigInteger tensor realizes source",
         "(String (ref (lcm (map + (Tensor BigInteger [1] [(BigInteger \"3\")]) (BigInteger \"0\")) 6) [0]))", "6", pass, fail);
-    test_error_contains(interp, "gcd Double tensor rejected",
-        "(gcd (Tensor Double [1] [6.0]) 3)",
+    test_error_contains(interp, "gcd Float64 tensor rejected",
+        "(gcd (Tensor Float64 [1] [6.0]) 3)",
         "gcd: tensor inputs must be exact integers", pass, fail);
     test_error_contains(interp, "Tensor BigComplex rejects non-numeric data",
         "(Tensor BigComplex [1] ['bad])", "numbers representable as BigComplex", pass, fail);
     test_eq(interp, "Array tensor conversion length",
-        "(length (Array (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
+        "(length (Array (Tensor Float64 [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "Array tensor conversion row-major value",
-        "(ref (Array (Tensor Double [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
+        "(ref (Array (Tensor Float64 [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
     test_eq(interp, "List tensor conversion length",
-        "(length (List (Tensor Double [2 2] [1 2 3 4])))", 4, pass, fail);
+        "(length (List (Tensor Float64 [2 2] [1 2 3 4])))", 4, pass, fail);
     test_eq_double(interp, "List tensor conversion row-major value",
-        "(ref (List (Tensor Double [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
+        "(ref (List (Tensor Float64 [2 2] [1 2 3 4])) 2)", 3.0, pass, fail);
     test_eq_double(interp, "Array lazy tensor map conversion realizes",
-        "(ref (Array (map + (Tensor Double [2] [1 2]) 1)) 1)", 3.0, pass, fail);
+        "(ref (Array (map + (Tensor Float64 [2] [1 2]) 1)) 1)", 3.0, pass, fail);
     test_eq_double(interp, "List lazy tensor contract conversion realizes",
-        "(ref (List (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) 0)", 50.0, pass, fail);
+        "(ref (List (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20]) [0] [0])) 0)", 50.0, pass, fail);
     test_error_contains(interp, "ref tensor wrong rank",
-        "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [1])", "ref: tensor index rank mismatch", pass, fail);
+        "(ref (Tensor Float64 [2 3] [1 2 3 4 5 6]) [1])", "ref: tensor index rank mismatch", pass, fail);
     test_error_contains(interp, "ref tensor oob",
-        "(ref (Tensor Double [2 3] [1 2 3 4 5 6]) [2 0])", "ref: tensor index out of bounds", pass, fail);
+        "(ref (Tensor Float64 [2 3] [1 2 3 4 5 6]) [2 0])", "ref: tensor index out of bounds", pass, fail);
     // realize - tensor expression boundary
     test_eq_double(interp, "realize concrete tensor",
-        "(ref (realize (Tensor Double [2 3] [1 2 3 4 5 6])) [1 2])", 6.0, pass, fail);
+        "(ref (realize (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1 2])", 6.0, pass, fail);
     test_eq_double(interp, "realize rank-0 concrete tensor",
-        "(let (dst (Tensor Double [] 0.0)) (block (realize (Tensor Double [] 3.0) dst) (ref dst [])))",
+        "(let (dst (Tensor Float64 [] 0.0)) (block (realize (Tensor Float64 [] 3.0) dst) (ref dst [])))",
         3.0, pass, fail);
     test_eq(interp, "realize scalar into zero-size destination",
-        "(let (dst (Tensor Double [0] 0.0)) (block (realize 9 dst) (length dst)))",
+        "(let (dst (Tensor Float64 [0] 0.0)) (block (realize 9 dst) (length dst)))",
         0, pass, fail);
     test_eq(interp, "realize lazy zero-size source into zero-size destination",
-        "(let (dst (Tensor Double [0] 0.0)) (block (realize (map + (Tensor Double [0] 0.0) 1.0) dst) (length dst)))",
+        "(let (dst (Tensor Float64 [0] 0.0)) (block (realize (map + (Tensor Float64 [0] 0.0) 1.0) dst) (length dst)))",
         0, pass, fail);
     test_eq_double(interp, "realize tensor into destination",
-        "(let (src (Tensor Double [2] [7 8]) dst (Tensor Double [2] 0.0)) (block (realize src dst) (ref dst [1])))",
+        "(let (src (Tensor Float64 [2] [7 8]) dst (Tensor Float64 [2] 0.0)) (block (realize src dst) (ref dst [1])))",
         8.0, pass, fail);
     test_eq_double(interp, "realize scalar fill into destination",
-        "(let (dst (Tensor Double [2 2] 0.0)) (block (realize 9 dst) (ref dst [1 1])))",
+        "(let (dst (Tensor Float64 [2 2] 0.0)) (block (realize 9 dst) (ref dst [1 1])))",
         9.0, pass, fail);
     test_eq_double(interp, "realize aliased destination no-op",
-        "(let (dst (Tensor Double [2] [3 4])) (block (realize dst dst) (ref dst [1])))",
+        "(let (dst (Tensor Float64 [2] [3 4])) (block (realize dst dst) (ref dst [1])))",
         4.0, pass, fail);
     test_error_contains(interp, "realize rejects scalar without destination",
         "(realize 1)", "realize: expected Tensor source", pass, fail);
     test_error_contains(interp, "realize rejects non-tensor destination",
         "(realize 1 [0])", "realize: destination must be a Tensor", pass, fail);
     test_error_contains(interp, "realize tensor destination shape mismatch",
-        "(realize (Tensor Double [2] [1 2]) (Tensor Double [3] 0.0))", "realize: tensor shape mismatch", pass, fail);
+        "(realize (Tensor Float64 [2] [1 2]) (Tensor Float64 [3] 0.0))", "realize: tensor shape mismatch", pass, fail);
     {
         usz[1] tensor_shape = { 2 };
         Value* src = make_tensor_double_uninitialized(interp, tensor_shape[0:1]);
@@ -473,55 +473,55 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     }
     // map - tensor elementwise lazy expression surface
     test_eq_double(interp, "map tensor unary",
-        "(ref (map (lambda (x) (* x 2)) (Tensor Double [2 2] [1 2 3 4])) [1 0])",
+        "(ref (map (lambda (x) (* x 2)) (Tensor Float64 [2 2] [1 2 3 4])) [1 0])",
         6.0, pass, fail);
     test_eq_double(interp, "map tensor scalar right",
-        "(ref (map + (Tensor Double [2] [1 2]) 10) [1])",
+        "(ref (map + (Tensor Float64 [2] [1 2]) 10) [1])",
         12.0, pass, fail);
     test_eq_double(interp, "map tensor scalar left",
-        "(ref (map + 10 (Tensor Double [2] [1 2])) [1])",
+        "(ref (map + 10 (Tensor Float64 [2] [1 2])) [1])",
         12.0, pass, fail);
     test_eq_double(interp, "map tensor tensor exact shape",
-        "(ref (map + (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20])) [1])",
+        "(ref (map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20])) [1])",
         22.0, pass, fail);
     test_eq_double(interp, "map tensor tensor broadcast trailing singleton axis",
-        "(ref (map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [1 3] [10 20 30])) [1 2])",
+        "(ref (map + (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [1 3] [10 20 30])) [1 2])",
         36.0, pass, fail);
     test_eq_double(interp, "map tensor tensor broadcast inner singleton axis",
-        "(ref (map + (Tensor Double [2 1] [1 2]) (Tensor Double [1 3] [10 20 30])) [1 2])",
+        "(ref (map + (Tensor Float64 [2 1] [1 2]) (Tensor Float64 [1 3] [10 20 30])) [1 2])",
         32.0, pass, fail);
     test_eq_double(interp, "map rank-0 tensor with rank-1 tensor",
-        "(ref (map + (Tensor Double [] 7.0) (Tensor Double [2] [1 2])) [1])",
+        "(ref (map + (Tensor Float64 [] 7.0) (Tensor Float64 [2] [1 2])) [1])",
         9.0, pass, fail);
     test_eq_double(interp, "map rank-0 tensor with rank-2 tensor",
-        "(ref (map + (Tensor Double [] 7.0) (Tensor Double [2 2] [1 2 3 4])) [1 1])",
+        "(ref (map + (Tensor Float64 [] 7.0) (Tensor Float64 [2 2] [1 2 3 4])) [1 1])",
         11.0, pass, fail);
     test_eq_double(interp, "realize mapped tensor into destination",
-        "(let (src (map + (Tensor Double [2] [1 2]) 3) dst (Tensor Double [2] 0.0)) (block (realize src dst) (ref dst [1])))",
+        "(let (src (map + (Tensor Float64 [2] [1 2]) 3) dst (Tensor Float64 [2] 0.0)) (block (realize src dst) (ref dst [1])))",
         5.0, pass, fail);
     test_eq_double(interp, "realize mapped expression directly into destination",
-        "(let (dst (Tensor Double [2] 0.0)) (block (realize (map + (Tensor Double [2] [1 2]) 3) dst) (ref dst [1])))",
+        "(let (dst (Tensor Float64 [2] 0.0)) (block (realize (map + (Tensor Float64 [2] [1 2]) 3) dst) (ref dst [1])))",
         5.0, pass, fail);
     test_eq_double(interp, "failed realize mapped expression leaves destination unchanged",
-        "(let (dst (Tensor Double [2] [7 8])) (block (handle (realize (map (lambda (x) (if (= x 2) 'bad (+ x 1))) (Tensor Double [2] [1 2])) dst) (raise msg nil)) (+ (* (ref dst [0]) 10) (ref dst [1]))))",
+        "(let (dst (Tensor Float64 [2] [7 8])) (block (handle (realize (map (lambda (x) (if (= x 2) 'bad (+ x 1))) (Tensor Float64 [2] [1 2])) dst) (raise msg nil)) (+ (* (ref dst [0]) 10) (ref dst [1]))))",
         78.0, pass, fail);
     test_eq_double(interp, "realize aliased map destination",
-        "(let (dst (Tensor Double [2 3] [1 2 3 4 5 6])) (block (realize (map + dst dst) dst) (ref dst [1 1])))",
+        "(let (dst (Tensor Float64 [2 3] [1 2 3 4 5 6])) (block (realize (map + dst dst) dst) (ref dst [1 1])))",
         10.0, pass, fail);
     test_eq_double(interp, "map rank-0 scalar",
-        "(ref (map + (Tensor Double [] 7.0) 1.0) [])",
+        "(ref (map + (Tensor Float64 [] 7.0) 1.0) [])",
         8.0, pass, fail);
     test_eq_double(interp, "realize mapped rank-0 scalar",
-        "(ref (realize (map + (Tensor Double [] 7.0) 1.0)) [])",
+        "(ref (realize (map + (Tensor Float64 [] 7.0) 1.0)) [])",
         8.0, pass, fail);
     test_eq_double(interp, "realize mapped expression aliased destination",
-        "(let (dst (Tensor Double [2] [3 4])) (block (realize (map + dst 1) dst) (ref dst [1])))",
+        "(let (dst (Tensor Float64 [2] [3 4])) (block (realize (map + dst 1) dst) (ref dst [1])))",
         5.0, pass, fail);
     test_eq_double(interp, "lazy map tensor survives function return boundary",
-        "(block (define (mk-map) (map + (Tensor Double [2] [1 2]) 3)) (ref (mk-map) [1]))",
+        "(block (define (mk-map) (map + (Tensor Float64 [2] [1 2]) 3)) (ref (mk-map) [1]))",
         5.0, pass, fail);
     test_eq_double(interp, "lazy map tensor survives closure capture",
-        "(let (src (map + (Tensor Double [2] [1 2]) 3)) (let (f (lambda () (ref src [1]))) (f)))",
+        "(let (src (map + (Tensor Float64 [2] [1 2]) 3)) (let (f (lambda () (ref src [1]))) (f)))",
         5.0, pass, fail);
     test_str_val(interp, "map BigInteger unary preserves exact range",
         "(String (ref (map (lambda (x) x) (Tensor [(BigInteger \"9223372036854775808\")] BigInteger)) [0]))",
@@ -541,8 +541,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigInteger map survives closure capture",
         "(let (src (map + (Tensor BigInteger [1] [(BigInteger \"9223372036854775808\")]) (BigInteger \"2\"))) (let (f (lambda () (String (ref src [0])))) (f)))",
         "9223372036854775810", pass, fail);
-    test_error_contains(interp, "map mixed BigInteger Double tensors rejected",
-        "(map + (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Double [1] [1]))",
+    test_error_contains(interp, "map mixed BigInteger Float64 tensors rejected",
+        "(map + (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Float64 [1] [1]))",
         "map: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "map BigInteger rejects inexact scalar",
         "(map + (Tensor BigInteger [1] [(BigInteger \"1\")]) 1.5)",
@@ -565,10 +565,10 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigInteger contract survives closure capture",
         "(let (src (contract (Tensor BigInteger [2] [(BigInteger \"9223372036854775808\") 2]) (Tensor BigInteger [2] [2 3]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
         "18446744073709551622", pass, fail);
-    test_error_contains(interp, "contract mixed BigInteger Double tensors rejected",
-        "(contract (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Double [1] [1]) [0] [0])",
+    test_error_contains(interp, "contract mixed BigInteger Float64 tensors rejected",
+        "(contract (Tensor BigInteger [1] [(BigInteger \"1\")]) (Tensor Float64 [1] [1]) [0] [0])",
         "contract: tensor dtype mismatch", pass, fail);
-    test_str_val(interp, "map BigFloat unary preserves outside Double range",
+    test_str_val(interp, "map BigFloat unary preserves outside Float64 range",
         "(String (ref (map (lambda (x) x) (Tensor [(BigFloat \"1e309\")] BigFloat)) [0]))",
         "1e+309", pass, fail);
     test_str_val(interp, "map BigFloat scalar left",
@@ -586,8 +586,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigFloat map survives closure capture",
         "(let (src (map + (Tensor BigFloat [1] [(BigFloat \"1.25\")]) (BigFloat \"2\"))) (let (f (lambda () (String (ref src [0])))) (f)))",
         "3.25", pass, fail);
-    test_error_contains(interp, "map mixed BigFloat Double tensors rejected",
-        "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]))",
+    test_error_contains(interp, "map mixed BigFloat Float64 tensors rejected",
+        "(map + (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Float64 [1] [1]))",
         "map: tensor dtype mismatch", pass, fail);
     test_str_val(interp, "contract BigFloat vector dot",
         "(String (ref (contract (Tensor BigFloat [2] [(BigFloat \"1.5\") (BigFloat \"2\")]) (Tensor BigFloat [2] [(BigFloat \"10\") (BigFloat \"20\")]) [0] [0]) []))",
@@ -607,8 +607,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigFloat contract survives closure capture",
         "(let (src (contract (Tensor BigFloat [2] [(BigFloat \"1.5\") (BigFloat \"2\")]) (Tensor BigFloat [2] [(BigFloat \"10\") (BigFloat \"20\")]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
         "55", pass, fail);
-    test_error_contains(interp, "contract mixed BigFloat Double tensors rejected",
-        "(contract (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Double [1] [1]) [0] [0])",
+    test_error_contains(interp, "contract mixed BigFloat Float64 tensors rejected",
+        "(contract (Tensor BigFloat [1] [(BigFloat \"1\")]) (Tensor Float64 [1] [1]) [0] [0])",
         "contract: tensor dtype mismatch", pass, fail);
     test_str_val(interp, "map BigComplex unary preserves complex value",
         "(String (ref (map (lambda (x) x) (Tensor [(BigComplex 1 2)] BigComplex)) [0]))",
@@ -628,8 +628,8 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigComplex map survives closure capture",
         "(let (src (map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (BigComplex 2 3))) (let (f (lambda () (String (ref src [0])))) (f)))",
         "3+5i", pass, fail);
-    test_error_contains(interp, "map mixed BigComplex Double tensors rejected",
-        "(map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Double [1] [1]))",
+    test_error_contains(interp, "map mixed BigComplex Float64 tensors rejected",
+        "(map + (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Float64 [1] [1]))",
         "map: tensor dtype mismatch", pass, fail);
     test_str_val(interp, "contract BigComplex vector dot",
         "(String (ref (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0]) []))",
@@ -649,39 +649,39 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     test_str_val(interp, "lazy BigComplex contract survives closure capture",
         "(let (src (contract (Tensor BigComplex [2] [(BigComplex 1 1) 2]) (Tensor BigComplex [2] [3 4]) [0] [0])) (let (f (lambda () (String (ref src [])))) (f)))",
         "11+3i", pass, fail);
-    test_error_contains(interp, "contract mixed BigComplex Double tensors rejected",
-        "(contract (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Double [1] [1]) [0] [0])",
+    test_error_contains(interp, "contract mixed BigComplex Float64 tensors rejected",
+        "(contract (Tensor BigComplex [1] [(BigComplex 1 2)]) (Tensor Float64 [1] [1]) [0] [0])",
         "contract: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "map tensor broadcast shape mismatch",
-        "(map + (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [1 2 3 4]))",
+        "(map + (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 2] [1 2 3 4]))",
         "map: tensor shape mismatch", pass, fail);
     test_error_contains(interp, "map tensor shape mismatch",
-        "(map + (Tensor Double [2] [1 2]) (Tensor Double [3] [1 2 3]))",
+        "(map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [3] [1 2 3]))",
         "map: tensor shape mismatch", pass, fail);
     test_error_contains(interp, "map tensor function dtype mismatch",
-        "(realize (map (lambda (x) 'bad) (Tensor Double [1] [1])))",
+        "(realize (map (lambda (x) 'bad) (Tensor Float64 [1] [1])))",
         "map: function result dtype mismatch", pass, fail);
     test_error_contains(interp, "map tensor rejects nonnumeric source",
-        "(map + (Tensor Double [1] [1]) 'bad)",
+        "(map + (Tensor Float64 [1] [1]) 'bad)",
         "map: tensor inputs must be Tensors or numbers", pass, fail);
     test_error_contains(interp, "map tensor rejects noncallable",
-        "(map nil (Tensor Double [1] [1]))",
+        "(map nil (Tensor Float64 [1] [1]))",
         "map: function must be callable", pass, fail);
     // contract - tensor summed-index lazy expression surface
     test_eq_double(interp, "contract matrix product rank-2",
-        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [1] [0]) [1 1])",
+        "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) [1] [0]) [1 1])",
         154.0, pass, fail);
     test_eq(interp, "contract matrix product rank",
-        "(rank (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [1] [0]))",
+        "(rank (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) [1] [0]))",
         2, pass, fail);
     test_eq_double(interp, "contract vector dot scalar",
-        "(ref (contract (Tensor Double [3] [1 2 3]) (Tensor Double [3] [10 20 30]) [0] [0]) [])",
+        "(ref (contract (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [3] [10 20 30]) [0] [0]) [])",
         140.0, pass, fail);
     {
         bool blas_available = omni_tensor_backend_blas_ddot_available() != 0;
         long blas_calls_before = omni_tensor_backend_blas_ddot_call_count();
         test_eq_double(interp, "contract vector dot BLAS candidate",
-            "(ref (contract (Tensor Double [3] [1 2 3]) (Tensor Double [3] [10 20 30]) [0 0]) [])",
+            "(ref (contract (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [3] [10 20 30]) [0 0]) [])",
             140.0, pass, fail);
         bool blas_path_ok = !blas_available || omni_tensor_backend_blas_ddot_call_count() > blas_calls_before;
         if (blas_path_ok) {
@@ -695,13 +695,13 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         }
     }
     test_eq_double(interp, "contract list axes",
-        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) '(1) '(0)) [1 1])",
+        "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) '(1) '(0)) [1 1])",
         154.0, pass, fail);
     {
         bool blas_available = omni_tensor_backend_blas_available() != 0;
         long blas_calls_before = omni_tensor_backend_blas_dgemm_call_count();
         test_eq_double(interp, "contract single axis pair shorthand",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [1 0]) [1 1])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) [1 0]) [1 1])",
             154.0, pass, fail);
         bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dgemm_call_count() > blas_calls_before;
         if (blas_path_ok) {
@@ -718,13 +718,13 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         bool blas_available = omni_tensor_backend_blas_available() != 0;
         long blas_calls_before = omni_tensor_backend_blas_dgemm_call_count();
         test_eq_double(interp, "contract rank-2 transpose left axis pair",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 2] [7 8 9 10]) [0 0]) [2 1])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 2] [7 8 9 10]) [0 0]) [2 1])",
             84.0, pass, fail);
         test_eq_double(interp, "contract rank-2 transpose right axis pair",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 3] [7 8 9 10 11 12]) [1 1]) [0 1])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 3] [7 8 9 10 11 12]) [1 1]) [0 1])",
             68.0, pass, fail);
         test_eq_double(interp, "contract rank-2 transpose both axis pair",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [4 2] [7 8 9 10 11 12 13 14]) [0 1]) [2 3])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [4 2] [7 8 9 10 11 12 13 14]) [0 1]) [2 3])",
             123.0, pass, fail);
         bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dgemm_call_count() >= blas_calls_before + 3;
         if (blas_path_ok) {
@@ -741,16 +741,16 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         bool blas_available = omni_tensor_backend_blas_dgemv_available() != 0;
         long blas_calls_before = omni_tensor_backend_blas_dgemv_call_count();
         test_eq_double(interp, "contract matrix vector BLAS candidate",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3] [10 20 30]) [1 0]) [1])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3] [10 20 30]) [1 0]) [1])",
             320.0, pass, fail);
         test_eq_double(interp, "contract transposed matrix vector BLAS candidate",
-            "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2] [10 20]) [0 0]) [2])",
+            "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2] [10 20]) [0 0]) [2])",
             150.0, pass, fail);
         test_eq_double(interp, "contract vector matrix BLAS candidate",
-            "(ref (contract (Tensor Double [3] [10 20 30]) (Tensor Double [3 2] [1 2 3 4 5 6]) [0 0]) [1])",
+            "(ref (contract (Tensor Float64 [3] [10 20 30]) (Tensor Float64 [3 2] [1 2 3 4 5 6]) [0 0]) [1])",
             280.0, pass, fail);
         test_eq_double(interp, "contract vector transposed matrix BLAS candidate",
-            "(ref (contract (Tensor Double [3] [10 20 30]) (Tensor Double [2 3] [1 2 3 4 5 6]) [0 1]) [1])",
+            "(ref (contract (Tensor Float64 [3] [10 20 30]) (Tensor Float64 [2 3] [1 2 3 4 5 6]) [0 1]) [1])",
             320.0, pass, fail);
         bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dgemv_call_count() >= blas_calls_before + 4;
         if (blas_path_ok) {
@@ -764,25 +764,25 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         }
     }
     test_eq_double(interp, "contract nested axis pair shorthand",
-        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [[1 0]]) [1 1])",
+        "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) [[1 0]]) [1 1])",
         154.0, pass, fail);
     test_eq_double(interp, "contract negative axes",
-        "(ref (contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [3 2] [7 8 9 10 11 12]) [-1] [-2]) [1 1])",
+        "(ref (contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [3 2] [7 8 9 10 11 12]) [-1] [-2]) [1 1])",
         154.0, pass, fail);
     test_eq_double(interp, "contract zero contracted dimension scalar",
-        "(ref (contract (Tensor Double [0] 0.0) (Tensor Double [0] 0.0) [0] [0]) [])",
+        "(ref (contract (Tensor Float64 [0] 0.0) (Tensor Float64 [0] 0.0) [0] [0]) [])",
         0.0, pass, fail);
     test_eq_double(interp, "contract rank-0 scalar",
-        "(ref (contract (Tensor Double [] 3.0) (Tensor Double [] 4.0) [] []) [])",
+        "(ref (contract (Tensor Float64 [] 3.0) (Tensor Float64 [] 4.0) [] []) [])",
         12.0, pass, fail);
     test_eq_double(interp, "contract zero contracted dimension non-scalar",
-        "(ref (contract (Tensor Double [2 0 1] 0.0) (Tensor Double [2 0 1] 0.0) [1] [1]) [1 0 1 0])",
+        "(ref (contract (Tensor Float64 [2 0 1] 0.0) (Tensor Float64 [2 0 1] 0.0) [1] [1]) [1 0 1 0])",
         0.0, pass, fail);
     {
         bool blas_available = omni_tensor_backend_blas_dger_available() != 0;
         long blas_calls_before = omni_tensor_backend_blas_dger_call_count();
         test_eq_double(interp, "contract zero axes outer product",
-            "(ref (contract (Tensor Double [2] [1 2]) (Tensor Double [3] [10 20 30]) [] []) [1 2])",
+            "(ref (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [3] [10 20 30]) [] []) [1 2])",
             60.0, pass, fail);
         bool blas_path_ok = !blas_available || omni_tensor_backend_blas_dger_call_count() > blas_calls_before;
         if (blas_path_ok) {
@@ -796,64 +796,64 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
         }
     }
     test_eq_double(interp, "contract multi-axis",
-        "(ref (contract (Tensor Double [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Double [2 3 2] 1.0) [1 2] [0 2]) [1 2])",
+        "(ref (contract (Tensor Float64 [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Float64 [2 3 2] 1.0) [1 2] [0 2]) [1 2])",
         26.0, pass, fail);
     test_eq_double(interp, "contract multi-axis pair shorthand",
-        "(ref (contract (Tensor Double [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Double [2 3 2] 1.0) [[1 0] [2 2]]) [1 2])",
+        "(ref (contract (Tensor Float64 [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Float64 [2 3 2] 1.0) [[1 0] [2 2]]) [1 2])",
         26.0, pass, fail);
     test_eq_double(interp, "realize contracted tensor into destination",
-        "(let (src (contract (Tensor Double [2 2] [1 2 3 4]) (Tensor Double [2 2] [5 6 7 8]) [1] [0]) dst (Tensor Double [2 2] 0.0)) (block (realize src dst) (ref dst [0 1])))",
+        "(let (src (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [5 6 7 8]) [1] [0]) dst (Tensor Float64 [2 2] 0.0)) (block (realize src dst) (ref dst [0 1])))",
         22.0, pass, fail);
     test_eq_double(interp, "realize contracted expression directly into destination",
-        "(let (dst (Tensor Double [2 2] 0.0)) (block (realize (contract (Tensor Double [2 2] [1 2 3 4]) (Tensor Double [2 2] [5 6 7 8]) [1] [0]) dst) (ref dst [0 1])))",
+        "(let (dst (Tensor Float64 [2 2] 0.0)) (block (realize (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [5 6 7 8]) [1] [0]) dst) (ref dst [0 1])))",
         22.0, pass, fail);
     test_eq_double(interp, "failed realize contracted expression leaves destination unchanged",
-        "(let (dst (Tensor Double [] 99.0)) (block (handle (realize (contract (map (lambda (x) (if (= x 2) 'bad x)) (Tensor Double [2] [1 2])) (Tensor Double [2] [10 20]) [0] [0]) dst) (raise msg nil)) (ref dst [])))",
+        "(let (dst (Tensor Float64 [] 99.0)) (block (handle (realize (contract (map (lambda (x) (if (= x 2) 'bad x)) (Tensor Float64 [2] [1 2])) (Tensor Float64 [2] [10 20]) [0] [0]) dst) (raise msg nil)) (ref dst [])))",
         99.0, pass, fail);
     test_eq_double(interp, "lazy contract tensor survives function return boundary",
-        "(block (define (mk-contract) (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) (ref (mk-contract) []))",
+        "(block (define (mk-contract) (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20]) [0] [0])) (ref (mk-contract) []))",
         50.0, pass, fail);
     test_eq_double(interp, "lazy contract tensor survives closure capture",
-        "(let (src (contract (Tensor Double [2] [1 2]) (Tensor Double [2] [10 20]) [0] [0])) (let (f (lambda () (ref src []))) (f)))",
+        "(let (src (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20]) [0] [0])) (let (f (lambda () (ref src []))) (f)))",
         50.0, pass, fail);
     test_error_contains(interp, "realize contracted expression rejects aliased destination",
-        "(let (dst (Tensor Double [2 2] [1 2 3 4])) (realize (contract dst dst [1] [0]) dst))",
+        "(let (dst (Tensor Float64 [2 2] [1 2 3 4])) (realize (contract dst dst [1] [0]) dst))",
         "contract: destination aliases source tensor", pass, fail);
     test_error_contains(interp, "realize nested contracted expression rejects aliased destination",
-        "(let (dst (Tensor Double [2 2] [1 2 3 4])) (let (src (map + dst 0)) (realize (contract src dst [1] [0]) dst)))",
+        "(let (dst (Tensor Float64 [2 2] [1 2 3 4])) (let (src (map + dst 0)) (realize (contract src dst [1] [0]) dst)))",
         "contract: destination aliases source tensor", pass, fail);
     test_eq(interp, "realize zero-size contracted expression into zero-size destination",
-        "(let (dst (Tensor Double [0] 0.0)) (let (src (contract (Tensor Double [0 1] 0.0) (Tensor Double [1] [10]) [1] [0])) (block (realize src dst) (length dst))))",
+        "(let (dst (Tensor Float64 [0] 0.0)) (let (src (contract (Tensor Float64 [0 1] 0.0) (Tensor Float64 [1] [10]) [1] [0])) (block (realize src dst) (length dst))))",
         0, pass, fail);
     test_error_contains(interp, "contract axis length mismatch",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [0] [])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0] [])",
         "contract: axis list length mismatch", pass, fail);
     test_error_contains(interp, "contract left axis out of range",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [1] [0])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [1] [0])",
         "contract: left axis out of range", pass, fail);
     test_error_contains(interp, "contract right axis out of range",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [0] [1])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0] [1])",
         "contract: right axis out of range", pass, fail);
     test_error_contains(interp, "contract duplicate axis",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2 2] 1.0) [0 0] [0 1])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2 2] 1.0) [0 0] [0 1])",
         "contract: duplicate contracted axis", pass, fail);
     test_error_contains(interp, "contract duplicate axis with negative index normalization",
-        "(contract (Tensor Double [2 3] [1 2 3 4 5 6]) (Tensor Double [2 3] [7 8 9 10 11 12]) [1 -1] [0 1])",
+        "(contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 3] [7 8 9 10 11 12]) [1 -1] [0 1])",
         "contract: duplicate contracted axis", pass, fail);
     test_error_contains(interp, "contract dimension mismatch",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [3] [1 2 3]) [0] [0])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [3] [1 2 3]) [0] [0])",
         "contract: contracted dimensions must match", pass, fail);
     test_error_contains(interp, "contract rejects non-tensor operand",
-        "(contract [1 2] (Tensor Double [2] [1 2]) [0] [0])",
+        "(contract [1 2] (Tensor Float64 [2] [1 2]) [0] [0])",
         "contract: expected Tensor operands", pass, fail);
     test_error_contains(interp, "contract rejects scalar axes",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) 0 [0])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) 0 [0])",
         "contract: axes must be arrays or proper lists of integers", pass, fail);
     test_error_contains(interp, "contract rejects malformed axis pair shorthand",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) [0])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0])",
         "contract: axis pairs must contain two-integer arrays or proper lists", pass, fail);
     test_error_contains(interp, "contract rejects non-integer axes",
-        "(contract (Tensor Double [2] [1 2]) (Tensor Double [2] [1 2]) ['bad] [0])",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) ['bad] [0])",
         "contract: axes must be integers", pass, fail);
     // ref on lists (walks cons chain, not just pair 0/1)
     test_eq(interp, "ref list 0", "(ref '(10 20 30) 0)", 10, pass, fail);

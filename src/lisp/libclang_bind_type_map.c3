@@ -34,7 +34,7 @@ fn bool map_c_type(LibclangHandle* h, CXType ty, bool is_return, char* ffi_out, 
     }
     if (kind == CXTYPE_FLOAT || kind == CXTYPE_DOUBLE) {
         copy_str("'double", ffi_out, buf_size);
-        copy_str("Double", omni_out, buf_size);
+        copy_str("Float64", omni_out, buf_size);
         return true;
     }
     if (kind == CXTYPE_POINTER) {

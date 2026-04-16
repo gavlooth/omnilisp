@@ -122,23 +122,23 @@ fn Value* prim_ctor_string(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+    if (args.len < 1) return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
 
     Value* arg = args[0];
     if (arg == null || arg.tag == NIL) {
-        return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+        return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
     }
     if (arg.tag == DOUBLE) return arg;
     if (arg.tag == INT) return make_double(interp, (double)arg.int_val);
     if (arg.tag == BIG_INTEGER) {
         double out = 0.0;
         if (big_integer_try_to_double(arg, &out)) return make_double(interp, out);
-        return conversion_type_raise(interp, "Double: expected int, double, BigInteger in Double range, or numeric string");
+        return conversion_type_raise(interp, "Float64: expected integer, float64, BigInteger in Float64 range, or numeric string");
     }
     if (arg.tag == BIG_FLOAT) {
         double out = 0.0;
         if (big_float_try_to_double(arg, &out)) return make_double(interp, out);
-        return conversion_type_raise(interp, "Double: expected int, double, BigFloat in Double range, or numeric string");
+        return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
     }
     if (arg.tag == STRING) {
         Value* parsed = prim_string_to_number(args, env, interp);
@@ -155,7 +155,27 @@ fn Value* prim_ctor_double(Value*[] args, Env* env, Interp* interp) {
             }
         }
     }
-    return conversion_type_raise(interp, "Double: expected int, double, or numeric string");
+    return conversion_type_raise(interp, "Float64: expected integer, float64, BigFloat in Float64 range, or numeric string");
+}
+
+fn Value* prim_ctor_float(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 1 || args.len > 2) {
+        return conversion_type_raise(interp, "Float: expected value and optional precision 64");
+    }
+    if (args.len == 1) return prim_ctor_double(args, env, interp);
+    Value* precision = args[1];
+    if (precision == null || precision.tag != INT) {
+        return conversion_type_raise(interp, "Float: precision must be the integer 64; Float32 is not implemented yet");
+    }
+    if (precision.int_val == 64) return prim_ctor_double(args[0:1], env, interp);
+    if (precision.int_val == 32) {
+        return conversion_type_raise(interp, "Float: precision 32 requires Float32 runtime storage, which is not implemented yet");
+    }
+    return conversion_type_raise(interp, "Float: unsupported precision; expected 64");
+}
+
+fn Value* prim_ctor_float32(Value*[] args, Env* env, Interp* interp) {
+    return conversion_type_raise(interp, "Float32: runtime storage is not implemented yet");
 }
 
 fn Value* prim_ctor_symbol(Value*[] args, Env* env, Interp* interp) {
@@ -344,9 +364,9 @@ fn Value* prim_number_to_string(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_exact_to_inexact(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Double: expected number");
+    if (args.len < 1 || !is_numeric_value(args[0])) return conversion_type_raise(interp, "Float64: expected number");
     double out = 0.0;
-    if (!try_numeric_to_double(args[0], &out)) return conversion_type_raise(interp, "Double: expected number in Double range");
+    if (!try_numeric_to_double(args[0], &out)) return conversion_type_raise(interp, "Float64: expected number in Float64 range");
     return make_double(interp, out);
 }
 

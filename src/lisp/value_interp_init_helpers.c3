@@ -58,7 +58,9 @@ fn bool interp_init_type_symbols(Interp* self) {
         interp_init_symbol(self, &self.sym_BigInteger, "BigInteger") &&
         interp_init_symbol(self, &self.sym_BigFloat, "BigFloat") &&
         interp_init_symbol(self, &self.sym_BigComplex, "BigComplex") &&
-        interp_init_symbol(self, &self.sym_Double, "Double") &&
+        interp_init_symbol(self, &self.sym_Float, "Float") &&
+        interp_init_symbol(self, &self.sym_Float32, "Float32") &&
+        interp_init_symbol(self, &self.sym_Double, "Float64") &&
         interp_init_symbol(self, &self.sym_String, "String") &&
         interp_init_symbol(self, &self.sym_Symbol, "Symbol") &&
         interp_init_symbol(self, &self.sym_List, "List") &&

@@ -64,7 +64,7 @@ Goodbye!
 |------|-----|---------|-------------|
 | nil | `NIL` | `nil`, `()` | Empty / absence value (`Nil` type symbol) |
 | int | `INT` | `42`, `-17` | 64-bit signed integer |
-| double | `DOUBLE` | `3.14`, `-0.5` | 64-bit floating point |
+| Float64 | `DOUBLE` | `3.14`, `-0.5` | 64-bit floating point |
 | string | `STRING` | `"hello"` | Immutable string |
 | symbol | `SYMBOL` | `'foo` | Interned identifier |
 | cons | `CONS` | `'(1 2 3)` | Pair / linked list cell |

@@ -131,8 +131,8 @@ All concurrency primitives go through effects and can be intercepted.
 
 ```lisp
 (define [ffi lib] libm "libm.so.6")
-(define [ffi λ libm] (sqrt (^Double x)) ^Double)
-(define [ffi λ libm] (pow (^Double x) (^Double y)) ^Double)
+(define [ffi λ libm] (sqrt (^Float64 x)) ^Float64)
+(define [ffi λ libm] (pow (^Float64 x) (^Float64 y)) ^Float64)
 
 (sqrt 4.0)          ;; => 2.0
 (pow 2.0 10.0)      ;; => 1024.0
@@ -143,7 +143,7 @@ All concurrency primitives go through effects and can be intercepted.
 | Omni Annotation | C Type | FFI Type |
 |-----------------|--------|----------|
 | `^Integer` | `int`, `long`, `size_t` | sint64 |
-| `^Double` | `double`, `float` | double |
+| `^Float64` | `double`, `float` | double |
 | `^String` | plain `char*` | copied C-string path |
 | `^ForeignHandle` | `void*`, other opaque pointers | boxed foreign handle |
 | `^Boolean` | `int` (0/1) | sint64 |
@@ -175,13 +175,13 @@ If an internal foreign handle is constructed with both a native finalizer and a
 plain `free_lib_handle` fallback, the finalizer is authoritative and the plain
 free path is disabled at construction. This keeps explicit release
 single-authority for one foreign payload.
-`ffi λ` currently accepts only the canonical annotations `^Integer`, `^Double`,
+`ffi λ` currently accepts only the canonical annotations `^Integer`, `^Float64`,
 `^String`, `^ForeignHandle`, `^Boolean`, and `^Void` at the base annotation
 level; unsupported annotations now raise a definition-time error instead of
 defaulting to foreign-handle metadata.
 Argument conversion is fail-closed:
 - `^Integer`: Omni `Integer` only
-- `^Double`: Omni `Double` or `Integer`
+- `^Float64`: Omni `Float64` or `Integer`
 - `^Boolean`: Omni `true` / `false` only
 - `^String`: Omni `String`, or `nil` for a null `char*`
 - `^ForeignHandle`: live `FFI_HANDLE`, or `nil` for null
@@ -233,7 +233,7 @@ Execution mode contract:
 
 - Uses libffi for portable ABI support
 - Lazy dlsym: symbol resolution deferred to first call and cached
-- Mixed int/double parameters supported
+- Mixed int/Float64 parameters supported
 - Parser recognizes both `lambda` and `λ` in `[ffi λ]`
 - Parser recognizes `[ffi module]` as grouped sugar over `[ffi lib]` plus
   `[ffi λ]` declarations.

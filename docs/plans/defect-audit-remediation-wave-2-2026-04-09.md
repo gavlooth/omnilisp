@@ -287,7 +287,7 @@ Post-wave follow-up (2026-04-10):
     alloc-failure completion materialization fail, instead of returning with
     the entry still running.
   - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
-    now proves the double-failure seam wakes the blocked waiter, clears the
+    now proves the float64-failure seam wakes the blocked waiter, clears the
     join token, and removes the OS-thread entry.
   - `src/lisp/tests_scheduler_groups.c3`
     now wires that regression into the bounded scheduler slice.
@@ -2070,7 +2070,7 @@ Progress update (2026-04-09):
     - public conversion aliases `number->string`, `symbol->string`,
       `string->symbol`, `exact->inexact`, and `inexact->exact` were removed
       in favor of canonical callable constructors `String`, `Symbol`,
-      `Double`, and `Integer`.
+      `Float64`, and `Integer`.
     - `set-size` and `set->list` were removed from public primitive
       registration and compiler primitive maps; `length` now covers set
       cardinality and `List(Set ...)` materializes deterministic canonical set

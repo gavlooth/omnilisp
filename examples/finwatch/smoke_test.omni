@@ -206,7 +206,7 @@
 
 ;; [alias]
 (println (format "Timestamp alias: %s" (is? 100 'Integer)))
-(println (format "Price alias: %s" (is? 3.14 'Double)))
+(println (format "Price alias: %s" (is? 3.14 'Float64)))
 
 ;; parse-number / String
 (println (format "parse-number: %s" (parse-number "42")))

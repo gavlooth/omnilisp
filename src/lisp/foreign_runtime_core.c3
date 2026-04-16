@@ -136,7 +136,7 @@ fn char[] foreign_ffi_surface_type_name(FfiTypeTag tag, FfiHandlePolicy* policy)
         case FFI_TYPE_INT:
             return "Integer";
         case FFI_TYPE_DOUBLE:
-            return "Double";
+            return "Float64";
         case FFI_TYPE_PTR:
             if (policy != null && policy.is_foreign_handle) return "ForeignHandle";
             return "ForeignHandle";

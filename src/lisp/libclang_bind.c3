@@ -83,7 +83,7 @@ struct ParsedParam {
     char[64] name;
     char[64] c_type;      // Original C type string from clang
     char[16] ffi_type;    // Mapped: 'int, 'double, 'string, 'ptr, 'void
-    char[16] omni_type;   // Mapped: Integer, Double, String, ForeignHandle (for ptrs)
+    char[16] omni_type;   // Mapped: Integer, Float64, String, ForeignHandle (for ptrs)
     BindgenOwnershipTag ownership;
     BindgenNullabilityTag nullability;
     BindgenRoleTag role;

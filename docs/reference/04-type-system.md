@@ -66,7 +66,7 @@ None              ;; nullary variant
 
 ```lisp
 (Integer 3.9)        ;; => 3
-(Double 3)           ;; => 3.0
+(Float64 3)           ;; => 3.0
 (String 3)           ;; => "3"
 (Symbol "name")      ;; => 'name
 (Boolean 0)          ;; => true
@@ -112,12 +112,12 @@ still error).
 
 `Tensor` is registered as a builtin type descriptor for annotation, dispatch,
 introspection, and construction. `(format "%s" Tensor)` prints
-`#<type Tensor>`, while `(Tensor data)` infers rectangular native `Double`
+`#<type Tensor>`, while `(Tensor data)` infers rectangular native `Float64`
 tensor storage, `(Tensor data BigFloat)` preserves BigFloat storage, and
 `(Tensor dtype shape data-or-scalar)` keeps the explicit shape/data
 construction path. Tensor-specific `map` methods dispatch through
 `^Tensor` annotations for unary, tensor-scalar, scalar-tensor, and exact-shape
-tensor-tensor elementwise operations. `contract` performs pure `Double`
+tensor-tensor elementwise operations. `contract` performs pure `Float64`
 summed-axis contraction as `(contract a b [left-axis right-axis])`,
 `(contract a b [[left-axis right-axis] ...])`, or the explicit
 `(contract a b left-axes right-axes)` form, with the result shape formed from
@@ -163,9 +163,9 @@ Numeric conversion contract:
 - `Integer` truncates finite doubles toward zero.
 - Narrowing must be finite and within `Integer` range; overflow/non-finite
   inputs raise `type/arg-mismatch`.
-- `parse-number` returns `Integer`, `BigInteger`, `Double`, or `BigFloat`;
+- `parse-number` returns `Integer`, `BigInteger`, `Float64`, or `BigFloat`;
   syntactically valid decimal integer overflow/underflow promotes to
-  `BigInteger`, floating inputs that overflow `Double` promote to `BigFloat`,
+  `BigInteger`, floating inputs that overflow `Float64` promote to `BigFloat`,
   and invalid input returns `nil`.
 
 ### Type Introspection
