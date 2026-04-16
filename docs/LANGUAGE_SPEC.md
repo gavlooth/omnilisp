@@ -1338,7 +1338,7 @@ representable and promoting to `BigInteger` otherwise.
 |------|-------------|
 | `parse-number` | Parse string to number |
 | `String` | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Float` | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` is explicit binary64, and `(Float x 32)` fails closed until native `Float32` storage exists |
+| `Float` | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` and `(Float x "64")` are explicit binary64, and precision `32`/`"32"` fails closed until native `Float32` storage exists |
 | `Float32` | Reserved native 32-bit float constructor; currently fails closed because runtime storage is not implemented |
 | `Float64` | Canonical Float64 constructor/coercion surface; accepts finite BigInteger and BigFloat inputs when representable as a finite Float64 |
 | `Integer` | Canonical integer constructor/coercion surface; truncates finite numeric inputs toward zero and accepts in-range BigInteger/BigFloat inputs |

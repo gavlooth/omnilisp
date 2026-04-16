@@ -47,9 +47,12 @@ fn void run_advanced_callable_type_symbol_constructor_tests(Interp* interp, int*
     test_double(interp, "Float64 ctor from string", "(Float64 \"3.5\")", 3.5, pass, fail);
     test_double(interp, "Float default ctor from int", "(Float 3)", 3.0, pass, fail);
     test_double(interp, "Float precision 64 ctor from string", "(Float \"3.5\" 64)", 3.5, pass, fail);
+    test_double(interp, "Float string precision 64 ctor", "(Float \"3.5\" \"64\")", 3.5, pass, fail);
     test_truthy(interp, "Float64 ctor type", "(= (type-of (Float64 3)) 'Float64)", pass, fail);
     test_error_contains(interp, "Float precision 32 fails closed",
         "(Float 3 32)", "Float: precision 32 requires Float32 runtime storage", pass, fail);
+    test_error_contains(interp, "Float string precision 32 fails closed",
+        "(Float 3 \"32\")", "Float: precision 32 requires Float32 runtime storage", pass, fail);
     test_error_contains(interp, "Float32 ctor fails closed",
         "(Float32 3)", "Float32: runtime storage is not implemented yet", pass, fail);
     test_error_contains(interp, "old Double ctor removed",

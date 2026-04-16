@@ -5,6 +5,9 @@
     spelling for the existing native binary64 storage.
   - `(Float x)` defaults to `Float64`; `(Float x 64)` is the explicit binary64
     precision form.
+  - Follow-up: string precision spellings are also accepted:
+    `(Float x "64")` produces `Float64`, while `(Float x "32")` fails closed
+    with the same Float32-not-implemented error as integer precision `32`.
   - `Float32` and `(Float x 32)` are registered but fail closed until native
     Float32 runtime/tensor storage exists.
   - The old public `(Double ...)` constructor is not kept as an alias; direct

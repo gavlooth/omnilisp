@@ -479,6 +479,50 @@ Unresolved issues:
   `--obj-out obj` recovery path.
 
 Signature: Codex GPT-5
+## 2026-04-16 05:57 CEST - Float String Precision
+
+Objective attempted:
+- Close the approved `Float` constructor precision spelling gap by accepting
+  string precision arguments such as `(Float x "64")`, while preserving the
+  fail-closed `Float32` boundary.
+
+Workspace:
+- `/home/christos/Omni`.
+
+Code/configuration changes made:
+- Updated `prim_ctor_float` so the optional precision argument accepts either
+  integer precision (`64`, `32`) or string precision (`"64"`, `"32"`).
+- `(Float x "64")` delegates to the existing `Float64` constructor.
+- `(Float x "32")` fails closed with the same unimplemented `Float32` storage
+  error as `(Float x 32)`.
+- Added constructor regressions for string precision `64` and string precision
+  `32`.
+- Updated current language/reference docs and `memory/CHANGELOG.md`.
+
+Commands run and key results:
+- `c3c build main --output-dir build --build-dir build/obj2`: passed with
+  existing `errno::*` / `process::create` deprecation warnings.
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+  passed, `pass=71 fail=0`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (Float "1.25" "64"))'`:
+  returned `"1.25"`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Float 1 "32")'`:
+  failed closed with `Float: precision 32 requires Float32 runtime storage, which is not implemented yet`.
+- `LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Float 1 "bad")'`:
+  failed with `Float: unsupported precision; expected 64`.
+- `git diff --check`: passed.
+
+Current best recommendation / checkpoint:
+- Treat integer and string precision spellings as accepted for `Float`.
+  Implementing actual `Float32` remains a separate runtime/tensor storage
+  slice, not a constructor parsing task.
+
+Unresolved issues:
+- Full heavy/container-only gates were not run for this narrow constructor
+  surface slice.
+
+Signature: Codex GPT-5
+
 ## 2026-04-16 05:16 CEST - Float64 Surface Canonicalization
 
 Objective attempted:

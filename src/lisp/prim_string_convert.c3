@@ -164,8 +164,19 @@ fn Value* prim_ctor_float(Value*[] args, Env* env, Interp* interp) {
     }
     if (args.len == 1) return prim_ctor_double(args, env, interp);
     Value* precision = args[1];
-    if (precision == null || precision.tag != INT) {
-        return conversion_type_raise(interp, "Float: precision must be the integer 64; Float32 is not implemented yet");
+    if (precision == null) {
+        return conversion_type_raise(interp, "Float: precision must be 64 or \"64\"; Float32 is not implemented yet");
+    }
+    if (precision.tag == STRING) {
+        char[] text = precision.str_chars[:precision.str_len];
+        if (string_equals(text, "64")) return prim_ctor_double(args[0:1], env, interp);
+        if (string_equals(text, "32")) {
+            return conversion_type_raise(interp, "Float: precision 32 requires Float32 runtime storage, which is not implemented yet");
+        }
+        return conversion_type_raise(interp, "Float: unsupported precision; expected 64");
+    }
+    if (precision.tag != INT) {
+        return conversion_type_raise(interp, "Float: precision must be 64 or \"64\"; Float32 is not implemented yet");
     }
     if (precision.int_val == 64) return prim_ctor_double(args[0:1], env, interp);
     if (precision.int_val == 32) {

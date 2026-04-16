@@ -195,7 +195,7 @@ that same runtime value.
 |------|-------|-------------|
 | `parse-number` | 1 | Parse number |
 | `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
-| `Float` | 1-2 | Canonical floating constructor; `(Float x)` and `(Float x 64)` produce `Float64`, while precision `32` fails closed until native `Float32` storage ships |
+| `Float` | 1-2 | Canonical floating constructor; `(Float x)`, `(Float x 64)`, and `(Float x "64")` produce `Float64`, while precision `32`/`"32"` fails closed until native `Float32` storage ships |
 | `Float32` | 1 | Reserved native 32-bit float constructor; currently fails closed because runtime storage is not implemented |
 | `Float64` | 1 | Canonical binary64 constructor/coercion surface |
 | `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
