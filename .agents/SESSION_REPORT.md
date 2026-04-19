@@ -1,5 +1,60 @@
 # Session Report
 
+## 2026-04-19 18:51 CEST - Manual Old-Master Integration
+
+- Objective attempted:
+  - Manually integrate the old `master` line onto the already-merged
+    `main`/`master` tensor branch without reviving stale APIs or artifacts.
+- Workspace/target:
+  - `/home/christos/Omni`; old master commits from `7e0c698a` through
+    `37b49ff9`, replayed onto merge commit `fbc6bb68`.
+- Code or configuration changes made:
+  - Replayed old-master allocation hardening, audit repairs, validation notes,
+    and grouped Deduce backlog closure onto the current tensor runtime line.
+  - Kept current JIT/FFI/tensor APIs where old-master hunks were stale.
+  - Reconciled `value_interp_init_helpers.c3`,
+    `value_interp_lifecycle.c3`, and `value_type_registry.c3` in the replayed
+    commits so allocation failures remain fail-closed under current symbols.
+  - Added TLS/FFI constructor ownership-out handling in the replayed audit
+    slice so constructor failure does not double-free raw TLS handles.
+  - Restored the current promotion copy route behavior for array/hashmap/method
+    table wrapper allocation order, then added active promotion-context lookup
+    in `copy_to_parent_with_fault`.
+  - Added a narrow env-copy self-referential closure clone gate in
+    `eval_env_copy_values.c3` so self-referential captured env payloads use the
+    memoized clone path while invalid undelimited closure aliases still fail.
+  - Updated `.agents/PLAN.md` to record the integration checkpoint and keep the
+    old `linalg/matmul`/GSL-first plan direction invalidated.
+- Commands run:
+  - `jj duplicate` / `jj squash` / conflict-resolution steps across the old
+    master commit sequence.
+  - `git diff --check`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp`
+- Key results:
+  - `basic` bounded-container slice passed `160/0`.
+  - `deduce` bounded-container slice passed `432/0`.
+  - `memory-lifetime-smoke` bounded-container slice passed `231/0`.
+  - Helper rebuild, C3 build, and diff hygiene passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not broadly treat undelimited closures with captured env frames in the
+    releasing scope as cloneable. That briefly fixed self-referential closure
+    payloads but incorrectly bypassed invalid-alias and rollback tests.
+  - The old final `.agents/PLAN.md` commit is not authoritative for Tensor
+    naming or direction; the current integrated Tensor plan remains the source
+    of truth.
+- Current best recommendation/checkpoint:
+  - Push the replayed integration commits to both `main` and `master` after the
+    final hygiene pass. Future env-copy changes should preserve both
+    self-referential closure payload support and the invalid-undelimited-alias
+    failure contract.
+- Unresolved issues:
+  - Full `OMNI_LISP_TEST_SLICE=all` was not run in this integration turn.
+- Signature: Codex
+
 ## 2026-04-19 00:57 CEST - Helper Rebuild And Entry Audit Repairs
 
 - Objective attempted:

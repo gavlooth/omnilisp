@@ -134,6 +134,24 @@ fn bool copy_env_should_clone_closure(Value* val, Interp* interp) @inline {
     return false;
 }
 
+fn bool copy_env_closure_env_self_references(Value* val, Interp* interp) {
+    if (val == null || interp == null || val.tag != CLOSURE || val.closure_val == null) return false;
+    if (interp.releasing_scope == null || !boundary_ptr_in_scope((void*)val, interp.releasing_scope)) return false;
+    Env* env = val.closure_val.env;
+    if (env == null || env == interp.global_env) return false;
+
+    usz depth = 0;
+    while (env != null && env != interp.global_env) {
+        if (depth++ >= 256) return false;
+        if (env.owner_scope != interp.releasing_scope) return false;
+        for (usz i = 0; i < env.binding_count; i++) {
+            if (env.bindings[i].value == val) return true;
+        }
+        env = env.parent;
+    }
+    return false;
+}
+
 fn bool copy_env_invalid_closure_alias(Value* val, Interp* interp) @inline {
     if (val == null || interp == null || val.tag != CLOSURE || val.closure_val == null) return false;
     return boundary_closure_alias_unsafe_for_reuse(val, interp);
@@ -144,10 +162,11 @@ fn Value* copy_env_clone_closure_if_needed(Value* val, Interp* interp, Promotion
         Value* cached = promotion_context_lookup(ctx, val);
         if (cached != null) return cached;
     }
-    bool safe_undelimited_clone = copy_env_should_clone_closure(val, interp);
-    if (copy_env_invalid_closure_alias(val, interp) && !safe_undelimited_clone) return null;
+    bool should_clone = copy_env_should_clone_closure(val, interp);
+    bool self_referential_clone = !should_clone && copy_env_closure_env_self_references(val, interp);
+    if (copy_env_invalid_closure_alias(val, interp) && !should_clone && !self_referential_clone) return null;
     bool can_track = promotion_context_consume(ctx, 1);
-    if (!copy_env_should_clone_closure(val, interp)) {
+    if (!should_clone && !self_referential_clone) {
         if (can_track && ctx != null) promotion_context_remember(ctx, val, val, interp);
         return val;
     }

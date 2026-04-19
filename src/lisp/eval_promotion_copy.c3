@@ -234,6 +234,12 @@ fn Value* copy_to_parent_with_fault(
         return copy_to_parent_missing_scope_provenance_error(interp);
     }
 
+    PromotionContext* active_ctx = interp.active_promotion_ctx;
+    if (active_ctx != null) {
+        Value* cached = promotion_context_lookup(active_ctx, v);
+        if (cached != null) return cached;
+    }
+
     CopyParentRoute route = copy_parent_route_for_tag(v.tag);
     if (copy_parent_should_skip_reuse_for_stackctx_headroom(route, v.tag)) {
         g_copy_to_parent_stats.defensive_copies++;
@@ -245,8 +251,10 @@ fn Value* copy_to_parent_with_fault(
     // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
     // chunk-transfer paths (scope_splice_escapes) move allocations without
     // rewriting per-value scope_gen stamps.
-    Value* fast_reuse = null;
-    if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
+    if (active_ctx == null) {
+        Value* fast_reuse = null;
+        if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
+    }
     copy_to_parent_note_cons_spine(v);
 
     return copy_to_parent_by_route(v, interp, route, copy_fault_out);

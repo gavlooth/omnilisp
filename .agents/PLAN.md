@@ -3,6 +3,34 @@
 Date: 2026-04-14
 Workspace: `/home/christos/Omni`
 
+## Manual Old-Master Integration Checkpoint
+
+Date: 2026-04-19
+
+Current state:
+
+- Old `master` hardening changes through `37b49ff9` / `vnxlknss` have been
+  manually replayed onto the merged `main` / `master` tensor line.
+- The old final local plan commit is intentionally superseded by this plan's
+  integrated Tensor direction. Do not revive the stale `linalg/matmul` or
+  early GSL-first naming direction from old `master`.
+- Allocation and env-copy hardening were reconciled against the current Tensor
+  runtime APIs instead of restoring stale old-master JIT/FFI implementations.
+- Env-copy self-referential closure payload support must stay narrowly gated:
+  only a releasing-scope closure whose captured env directly self-references
+  the same wrapper enters the memoized clone path. Do not broadly mark all
+  undelimited releasing-scope captured env closures as cloneable; that masks
+  invalid-alias and rollback failures.
+
+Validation checkpoint:
+
+- `git diff --check`
+- `scripts/build_omni_chelpers.sh`
+- `c3c build --obj-out obj`
+- Bounded container `basic` Lisp slice: `160/0`
+- Bounded container `deduce` Lisp slice: `432/0`
+- Bounded container `memory-lifetime-smoke` Lisp slice: `231/0`
+
 ## Active Direction
 
 This operational note now defers Tensor surface authority to the integrated
