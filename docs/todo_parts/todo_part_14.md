@@ -265,3 +265,118 @@ Source: `TODO.md`
     - host `scripts/run_ftxui_smoke.sh`: green
     - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
       green (`pass=192 fail=0`)
+
+- [ ] `ML-VK-001` freeze the backend-neutral Vulkan ML suite contract and capability matrix
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - define public ML operation names without backend-flavored APIs;
+    - add `tensor-backends` capability keys for ML operation families;
+    - document inference-only versus training-capable operations;
+    - specify mixed-device, unsupported-layout, lazy Tensor, and unsupported
+      dtype diagnostics;
+    - add fail-closed tests proving missing Vulkan ML kernels do not copy to CPU.
+  - acceptance:
+    - CPU/Vulkan capability reporting is truthful on Vulkan-visible and
+      Vulkan-unavailable hosts;
+    - unsupported Vulkan ML operations raise Tensor backend diagnostics before
+      any hidden transfer or CPU fallback.
+
+- [ ] `ML-VK-010` add Vulkan batched linear algebra foundations for ML workloads
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - batched matmul;
+    - bias add;
+    - batched reductions;
+    - dense layer forward primitives over explicit Tensor placement.
+  - acceptance:
+    - `Float32` lands first, then `Float64`;
+    - results preserve dtype/device placement;
+    - no-LAPACK/no-CPU-fallback probes cover Vulkan operands;
+    - shape and broadcast diagnostics match the CPU oracle.
+
+- [ ] `ML-VK-020` add Vulkan neural elementwise, reduction, softmax, and loss kernels
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
+    - stable `exp`, `log`, `logsumexp`, and `softmax`;
+    - axis `sum`, `mean`, and `variance`;
+    - cross-entropy and mean-squared-error losses.
+  - negative constraint:
+    - do not reuse invalidated GLSL double-transcendental assumptions for
+      Vulkan `Float64`; use validated approximations or fail closed.
+
+- [ ] `ML-VK-030` add Vulkan convolution, pooling, and image-tensor kernels
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - 1D and 2D convolution;
+    - stride, padding, dilation, groups, and explicit batch/channel layout;
+    - max and average pooling;
+    - backward kernels only after the autograd contract lands.
+  - acceptance:
+    - first supported layout is explicit and capability-gated;
+    - arbitrary views/strides remain fail-closed until a separate ABI lands.
+
+- [ ] `ML-VK-040` add Vulkan normalization and attention primitives
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - batch normalization;
+    - layer normalization;
+    - stable scaled dot-product attention;
+    - mask diagnostics;
+    - optional fused attention kernels only after unfused oracle kernels pass.
+
+- [ ] `ML-VK-050` implement reverse-mode Tensor autograd with explicit Vulkan semantics
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - gradient tape representation and lifetime rules;
+    - gradient accumulation on CPU/Vulkan without hidden transfers;
+    - backward rules for map, contract, matrix, convolution, normalization,
+      softmax, and loss operations;
+    - fail-closed behavior when a Vulkan forward op has no Vulkan backward.
+  - constraint:
+    - preserve the region/scope memory model; do not add per-Tensor ownership.
+
+- [ ] `ML-VK-060` add Vulkan-capable optimizer suite
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - SGD with momentum;
+    - Adam and AdamW;
+    - RMSProp;
+    - gradient clipping;
+    - weight decay;
+    - optimizer state checkpoint and restore.
+  - acceptance:
+    - optimizer state keeps dtype/device placement explicit;
+    - mixed-device parameter groups fail closed unless transfer is explicit.
+
+- [ ] `ML-VK-070` add backend-neutral model/layer library and serialization
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - linear, convolution, embedding, and normalization layers;
+    - sequential/composition helpers;
+    - parameter traversal;
+    - checkpoint serialization and loading.
+  - constraint:
+    - Vulkan execution must follow Tensor placement and capability reporting;
+      do not add backend-specific public layer names.
+
+- [ ] `ML-VK-080` add Vulkan ML graph capture, fusion, and memory planning
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - operation DAG capture;
+    - command-buffer batching;
+    - safe elementwise/reduction fusion;
+    - device buffer reuse and lifetime planning;
+    - deterministic invalidation on shape, dtype, device, or capability change.
+  - constraint:
+    - performance work only; Tensor semantics must not change.
+
+- [ ] `ML-VK-090` add Vulkan ML validation and benchmark suite
+  - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - scope:
+    - CPU oracle comparisons;
+    - gradient finite-difference checks;
+    - no-hidden-CPU-fallback probes;
+    - Vulkan-visible and Vulkan-unavailable host paths;
+    - bounded-container ML test slices;
+    - inference throughput, training step time, and memory reuse benchmarks.

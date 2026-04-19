@@ -174,6 +174,36 @@ The historical content was split mechanically to keep individual files below the
     dependency-install pass.
 - Signature: Codex GPT-5.4
 
+## 2026-04-19 23:23 CEST - Vulkan ML Suite Backlog Added
+
+- Objective attempted:
+  - Convert the owner request for a complete Vulkan-backed ML suite into live,
+    concrete backlog items.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - Vulkan/Tensor roadmap, TODO queue, and operational plan.
+- Code or configuration changes made:
+  - Added `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`.
+  - Added live `ML-VK-*` TODO lanes for capability contracts, batched linear
+    algebra, neural kernels, convolution/pooling, normalization/attention,
+    autograd, optimizers, model/layer serialization, graph execution, and
+    validation/benchmarks.
+  - Updated `docs/plans/README.md` and `.agents/PLAN.md` so the ML suite plan
+    is discoverable.
+- Key results:
+  - The next Vulkan direction is now explicitly an ML suite, not only isolated
+    matrix-kernel expansion.
+  - The plan preserves the backend-neutral Tensor contract: explicit placement,
+    capability reporting, no backend-named public APIs, and no hidden CPU
+    fallback for Vulkan operands.
+- Current best recommendation/checkpoint:
+  - Start implementation with `ML-VK-001` to freeze public ML operation names
+    and `tensor-backends` capability keys before adding ML kernels.
+- Unresolved issues:
+  - No implementation or runtime validation was run for ML kernels in this
+    planning-only pass.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-19 22:34 CEST - Generated SPIR-V Split Follow-Up
 
 - Objective attempted:

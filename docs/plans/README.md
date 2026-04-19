@@ -57,6 +57,14 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   The roadmap rejects Big* lowering
   and hidden CPU fallback, and requires a separate measured
   performance item before extending solver algorithms again.
+- `vulkan-ml-suite-roadmap-2026-04-19.md`: active roadmap for building a
+  complete backend-neutral ML suite on top of explicit Vulkan Tensor
+  placement. It adds live `ML-VK-*` TODO lanes for ML capability reporting,
+  batched linear algebra, neural elementwise/reduction kernels, convolution
+  and pooling, normalization and attention, reverse-mode autograd, optimizers,
+  model/layer serialization, graph capture/fusion/memory planning, and ML
+  validation/benchmarks. The roadmap keeps public APIs backend-neutral and
+  rejects hidden CPU fallback for Vulkan operands.
 - `cuda-cublas-backend-decision-2026-04-16.md`: CUDA/cuBLAS stays behind the
   backend-neutral Tensor surface. Current support includes explicit
   `to-device` CPU/CUDA copies, cuBLAS rank-2/rank-1 contract fast paths,

@@ -86,3 +86,30 @@ Date: 2026-04-19
   SPIR-V, generated PTX, or generated tree-sitter text files. Final raw
   `jj file list` text inventory reports zero files above 700 LOC; the largest
   tracked text file is exactly 700 lines.
+
+## Active Vulkan ML Suite Planning Checkpoint
+
+Date: 2026-04-19
+
+- Owner direction: build toward a complete ML suite on Vulkan, not just
+  individual math kernels.
+- Added active roadmap:
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Added live TODO lanes:
+  - `ML-VK-001` capability matrix and backend-neutral contract;
+  - `ML-VK-010` batched linear algebra foundation;
+  - `ML-VK-020` neural elementwise/reduction/softmax/loss kernels;
+  - `ML-VK-030` convolution, pooling, and image tensor kernels;
+  - `ML-VK-040` normalization and attention primitives;
+  - `ML-VK-050` reverse-mode Tensor autograd with explicit Vulkan semantics;
+  - `ML-VK-060` Vulkan-capable optimizer suite;
+  - `ML-VK-070` model/layer library and serialization;
+  - `ML-VK-080` graph capture, fusion, and memory planning;
+  - `ML-VK-090` ML validation and benchmark suite.
+- Active hypothesis:
+  - complete ML support should preserve the current Tensor/Vulkan contract:
+    backend-neutral public names, explicit placement/copyback, capability
+    reporting, and no hidden CPU fallback for Vulkan operands.
+- Next checkpoint:
+  - start with `ML-VK-001` and freeze the public operation names plus
+    `tensor-backends` capability keys before adding kernels.
