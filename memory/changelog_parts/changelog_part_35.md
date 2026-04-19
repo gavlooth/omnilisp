@@ -195,3 +195,14 @@ Source: `memory/CHANGELOG.md`
   - AOT primitive lookup now includes `ml/linear`.
   - Preserved boundary: this is not a Vulkan ML kernel. Vulkan `ml-linear`
     remains unsupported and capability-gated false.
+
+- 2026-04-20 00:04 CEST: ML linear audit hardening checkpoint:
+  - Added regression coverage for `ml/linear` CPU lazy input realization,
+    rank-3 batch projection, dtype mismatch, Vulkan weights fail-closed, and
+    Vulkan bias fail-closed.
+  - Split `ML-VK-010` into concrete first Vulkan linear-algebra subitems:
+    `ML-VK-010-001` first Vulkan `Float32` `ml/linear` lowering,
+    `ML-VK-010-002` Vulkan `Float32` batched matmul coverage, and
+    `ML-VK-010-003` Vulkan `Float32` batched bias-add/reduction coverage.
+  - Validation passed: `c3c build`, file-size gate, `git diff --check`, and
+    focused advanced collections suite `pass=1611 fail=0`.

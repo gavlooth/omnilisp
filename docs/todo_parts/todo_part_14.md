@@ -278,6 +278,11 @@ Source: `TODO.md`
       first frozen unsupported public ML operation name, asserting the call
       fails closed with no CPU fallback and that the capability key remains
       `false`.
+    - [x] `AUDIT-ML-LINEAR-NONCPU-OPERANDS` cover `ml/linear` fail-closed
+      behavior for Vulkan weights and Vulkan bias operands, not only Vulkan
+      input tensors.
+    - [x] `AUDIT-ML-LINEAR-CPU-ORACLE-SHAPES` cover the CPU oracle for lazy CPU
+      inputs, rank-3 batch projection, and dtype mismatch diagnostics.
     - [x] `AUDIT-VK-SCIENTIFIC-F64-CAPABILITY` split or document partial
       Vulkan Float64 scientific coverage so `stats/normal-*` support is not
       hidden behind the coarse `scientific-map-float64` key.
@@ -296,6 +301,16 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-010` add Vulkan batched linear algebra foundations for ML workloads
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - audit split:
+    - [ ] `ML-VK-010-001` implement the first Vulkan `Float32` lowering path
+      for `ml/linear` through the chosen batched matmul route, preserving
+      Tensor placement and failing closed on mixed-device and
+      unsupported-layout operands.
+    - [ ] `ML-VK-010-002` add Vulkan `Float32` batched matmul coverage with
+      CPU-oracle comparisons, dtype/device preservation checks, and
+      shape/broadcast diagnostics.
+    - [ ] `ML-VK-010-003` add Vulkan `Float32` batched bias-add and
+      batched-reduction coverage with no-CPU-fallback regressions.
   - scope:
     - batched matmul;
     - bias add;

@@ -81,6 +81,17 @@ Add the ML-scale dense linear algebra layer: batched matmul, batched bias add,
 batched reductions, and a stable matrix multiply route suitable for fully
 connected layers and attention blocks.
 
+First executable split:
+
+- `ML-VK-010-001`: implement the first Vulkan `Float32` lowering path for
+  `ml/linear` through the chosen batched matmul route. It must preserve Vulkan
+  Tensor placement, keep `tensor-backends` truthful, and fail closed on
+  mixed-device or unsupported-layout operands.
+- `ML-VK-010-002`: add Vulkan `Float32` batched matmul CPU-oracle coverage,
+  dtype/device preservation checks, and shape/broadcast diagnostics.
+- `ML-VK-010-003`: add Vulkan `Float32` batched bias-add and batched-reduction
+  coverage with no-CPU-fallback regressions.
+
 Acceptance:
 
 - preserves placement and dtype;

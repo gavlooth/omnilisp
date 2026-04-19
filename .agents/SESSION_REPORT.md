@@ -297,6 +297,43 @@ The historical content was split mechanically to keep individual files below the
     false.
 - Signature: Codex GPT-5.4
 
+## 2026-04-20 00:04 CEST - ML Linear Audit Hardening
+
+- Objective attempted:
+  - Continue the strict audit after CPU `ml/linear`, add TODO checkboxes for
+    found gaps, and implement the next safe TODO slice using subagent review.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ml/linear` tests, ML-VK-001 TODO closure, and ML-VK-010 backlog shape.
+- Code or configuration changes made:
+  - Added audit TODO checkboxes for `ml/linear` non-CPU operand coverage and
+    CPU oracle shape coverage, then implemented both through tests.
+  - Added focused tests for lazy CPU input realization, rank-3 batch
+    projection, dtype mismatch diagnostics, Vulkan weights fail-closed, and
+    Vulkan bias fail-closed.
+  - Split `ML-VK-010` into executable subitems for first Vulkan `Float32`
+    `ml/linear` lowering, batched matmul coverage, and bias-add/reduction
+    coverage.
+- Commands run:
+  - Two subagent audits of `ml/linear` correctness and ML-VK TODO shape.
+  - `c3c build`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1611 fail=0`.
+  - File-size gate passed with no tracked text files above 700 LOC.
+  - `c3c build` linked `build/main`.
+- Current best recommendation/checkpoint:
+  - Implement `ML-VK-010-001` next. Do not flip Vulkan `ml-linear` true until
+    placement-preserving Vulkan execution and mixed-device/layout rejection are
+    both tested.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `ml-linear` remains intentionally unsupported and capability-gated
+    false.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-19 22:34 CEST - Generated SPIR-V Split Follow-Up
 
 - Objective attempted:

@@ -165,3 +165,25 @@ Date: 2026-04-19
 - Next checkpoint:
   - start `ML-VK-010` by deciding whether Vulkan `ml/linear` should lower
     through existing `contract` kernels or get a dedicated batched GEMM path.
+
+## Active ML Linear Audit Hardening Checkpoint
+
+Date: 2026-04-20
+
+- Audit result:
+  - subagent review found the `ml/linear` implementation honest after hard
+    CPU-only resolution, but the test surface needed broader operand coverage.
+  - `ML-VK-010` was still too broad to execute directly.
+- Implemented checkpoint:
+  - added `ml/linear` tests for lazy CPU input, rank-3 batch projection, dtype
+    mismatch, Vulkan weights fail-closed, and Vulkan bias fail-closed.
+  - split `ML-VK-010` into concrete `ML-VK-010-001` through
+    `ML-VK-010-003` subitems.
+- Validation:
+  - `c3c build`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - focused advanced collections suite: `pass=1611 fail=0`
+- Next checkpoint:
+  - implement `ML-VK-010-001`, choosing the Vulkan `ml/linear` lowering path
+    explicitly before changing backend capability reporting.

@@ -13,13 +13,26 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
     test_eq_double(interp, "ml/linear Float64 batched bias projection",
         "(ref (ml/linear (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2] [10 100])) [1 1])",
         177.0, pass, fail);
+    test_eq_double(interp, "ml/linear Float64 rank-3 batch projection",
+        "(ref (ml/linear (Tensor Float64 [2 2 3] [1 2 3 4 5 6 7 8 9 10 11 12]) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1 1 1])",
+        167.0, pass, fail);
+    test_eq_double(interp, "ml/linear realizes lazy CPU input",
+        "(ref (ml/linear (map + (Tensor Float64 [3] [1 2 3]) 0.0) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1])",
+        32.0, pass, fail);
     test_truthy(interp, "ml/linear Float32 preserves dtype and values",
         "(let (out (ml/linear (Tensor Float32 [2] [1.5 2.0]) (Tensor Float32 [1 2] [2.0 3.0]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 9.0))))", pass, fail);
+    test_error_contains(interp, "ml/linear rejects dtype mismatch",
+        "(ml/linear (Tensor Float64 [2] [1 2]) (Tensor Float32 [1 2] [1 2]))",
+        "ml/linear: tensor dtype mismatch", pass, fail);
     test_error_contains(interp, "ml/linear rejects incompatible shapes",
         "(ml/linear (Tensor Float64 [2] [1 2]) (Tensor Float64 [3 3] [1 2 3 4 5 6 7 8 9]))",
         "ml/linear: input, weights, and bias shapes are incompatible", pass, fail);
     test_truthy(interp, "ml/linear rejects Vulkan input without CPU fallback",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan) (Tensor Float64 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects Vulkan weights without CPU fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (Tensor Float64 [3] [1 2 3]) (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects Vulkan bias without CPU fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [2 3] [1 2 3 4 5 6]) (to-device (Tensor Float64 [2] [10 100]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_truthy(interp, "ml/linear rejects lazy Vulkan source before CPU realization",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (map + (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan) 0.0) (Tensor Float64 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_truthy(interp, "tensor-backends reports stats normal capability separately",
