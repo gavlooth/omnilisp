@@ -365,3 +365,45 @@ Source: `.agents/SESSION_REPORT.md`
   - Broad Vulkan `ml-linear` remains false; broader dtype and view-backed
     expression support remain incomplete or fail-closed.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 02:18 CEST - Vulkan ML Narrow Expression Lowering
+
+- Objective attempted:
+  - Continue the strict `ML-VK-010-005` audit, add TODO findings, and either
+    implement a safe expression-backed Vulkan `ml/linear` lane or freeze it
+    fail-closed.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_linear.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added a narrow Vulkan-only expression realization lane for `ml/linear` and
+    `ml/linear/batched-reduce`.
+  - Accepted expressions must resolve to concrete dense Vulkan `Float32`
+    storage through existing Tensor realization; current coverage includes
+    direct concrete tensors, supported Vulkan map/contract materialization, and
+    Vulkan transpose views.
+  - Mixed CPU/Vulkan expressions and CPU views are rejected before CPU fallback.
+  - Added TODO checkboxes for the branch decision, scope, diagnostics,
+    capability truth, and spec lock; closed `ML-VK-010-005`.
+  - Added `ML-VK-010-006` for the remaining Vulkan `Float64`
+    linear/batched-reduce lane.
+- Commands run:
+  - Fast subagent audits for view feasibility, tests, and docs/TODO wording.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - A first focused run failed because a weights-view oracle used the wrong
+    transposed matrix values; corrected oracle passed.
+  - Final focused advanced collections suite passed with `pass=1637 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-010-006`: add Vulkan `Float64` `ml/linear` and
+    `ml/linear/batched-reduce` via existing `contract` plus bias `map`, or
+    record a concrete blocker with fail-closed tests.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Broad Vulkan `ml-linear` remains false; arbitrary recursive expression/view
+    lowering is still not supported.
+- Signature: Codex GPT-5.4

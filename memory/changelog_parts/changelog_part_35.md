@@ -268,3 +268,18 @@ Source: `memory/CHANGELOG.md`
     expression/view-backed lowering decision.
   - Validation passed: `c3c build` and focused advanced collections suite
     `pass=1632 fail=0`.
+
+- 2026-04-20 02:18 CEST: Vulkan `ml/linear` narrow expression checkpoint:
+  - Implemented the `ML-VK-010-005` implementation branch for Vulkan-only
+    expressions that existing Tensor realization lowers to concrete dense
+    Vulkan `Float32` storage.
+  - `ml/linear` and `ml/linear/batched-reduce` now accept direct concrete
+    tensors, supported Vulkan map/contract materialization, and Vulkan
+    transpose views before dispatching the existing `contract` plus optional
+    bias `map` route.
+  - Mixed CPU/Vulkan operands and CPU views are rejected before CPU fallback;
+    arbitrary recursive expression/view lowering remains unsupported.
+  - Added `ML-VK-010-006` for the remaining Vulkan `Float64`
+    linear/batched-reduce lane.
+  - Validation passed: `c3c build` and focused advanced collections suite
+    `pass=1637 fail=0`.

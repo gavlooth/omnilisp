@@ -332,10 +332,25 @@ Source: `TODO.md`
       - [x] `AUDIT-ML-VK-010-004-001-DIAGNOSTICS` verify tensor backend
         diagnostics are emitted for unsupported layouts, mixed devices, and
         view-backed/cross-backend operands before any CPU fallback path.
-    - [ ] `ML-VK-010-005` decide and implement expression-backed Vulkan
+    - [x] `ML-VK-010-005` decide and implement expression-backed Vulkan
       `ml/linear` lowering beyond already-materialized direct map results, or
       keep the concrete/view boundary explicit with permanent fail-closed tests
       for view-backed operands.
+      - [x] `ML-VK-010-005-DECISION: IMPLEMENT-NARROW-EXPR-BACKEND` allow
+        only Vulkan-only expressions that existing Tensor realization lowers
+        into concrete dense Vulkan storage.
+      - [x] `ML-VK-010-005-EXPR-SCOPE` cover direct concrete inputs,
+        supported Vulkan map/contract materialization, and Vulkan transpose
+        views; keep arbitrary views and CPU/Vulkan mixes unsupported.
+      - [x] `ML-VK-010-005-DIAGNOSTICS` lock `tensor/backend-unsupported` for
+        mixed-device and non-Vulkan view operands before CPU fallback.
+      - [x] `ML-VK-010-005-CAPABILITY-TRUTH` keep broad Vulkan `ml-linear`
+        false and keep `ml-linear-direct-float32` as the partial Float32 lane.
+      - [x] `ML-VK-010-005-SPEC-LOCK` document the narrow expression/view
+        boundary in the public language/reference docs.
+    - [ ] `ML-VK-010-006` add Vulkan `Float64` `ml/linear` and
+      `ml/linear/batched-reduce` coverage through existing `contract` plus
+      bias `map` paths, or record a concrete blocker with fail-closed tests.
   - scope:
     - batched matmul;
     - bias add;

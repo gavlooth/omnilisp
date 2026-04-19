@@ -288,3 +288,29 @@ Date: 2026-04-20
   - continue `ML-VK-010-005`: decide whether expression/view-backed Vulkan
     `ml/linear` lowering should expand beyond direct materialized map results
     or remain permanently fail-closed.
+
+## Active Vulkan ML Narrow Expression Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - broad arbitrary expression/view lowering would be unsafe without a larger
+    recursive Vulkan realization contract;
+  - the current Tensor realization path already supports a narrow safe lane for
+    Vulkan-only expressions that materialize to concrete dense Vulkan storage.
+- Implemented checkpoint:
+  - `ml/linear` and `ml/linear/batched-reduce` now resolve Vulkan-only
+    expressions before dispatching the existing Vulkan `Float32` contract path;
+  - supported scope is direct concrete tensors, supported Vulkan map/contract
+    materialization, and Vulkan transpose views that realize to dense Vulkan
+    storage;
+  - CPU/Vulkan mixes and non-Vulkan views are rejected before CPU fallback;
+  - `ML-VK-010-005` is closed and `ML-VK-010-006` tracks the remaining
+    Vulkan `Float64` linear/batched-reduce lane.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1637 fail=0`
+- Next checkpoint:
+  - implement `ML-VK-010-006`: Vulkan `Float64` `ml/linear` and
+    `ml/linear/batched-reduce`, or record a concrete blocker with fail-closed
+    tests.

@@ -97,23 +97,49 @@ fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Val
         (has_bias && tensor_expr_has_device(bias_value, TENSOR_DEVICE_VULKAN));
     if (!touches_vulkan) return null;
 
-    TensorVal* input = input_value.tensor_val;
-    TensorVal* weights = weights_value.tensor_val;
-    TensorVal* bias = has_bias ? bias_value.tensor_val : null;
-    if (input == null || weights == null || !tensor_has_valid_metadata(input) || !tensor_has_valid_metadata(weights)) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
-    }
-    if (has_bias && (bias == null || !tensor_has_valid_metadata(bias))) {
-        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
-    }
-    if (input.kind != TENSOR_PAYLOAD_CONCRETE || weights.kind != TENSOR_PAYLOAD_CONCRETE || (has_bias && bias.kind != TENSOR_PAYLOAD_CONCRETE)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan currently supports concrete Tensor operands" : "ml/linear: Vulkan currently supports concrete Tensor operands", null);
-    }
-    if (input.device != TENSOR_DEVICE_VULKAN || weights.device != TENSOR_DEVICE_VULKAN || (has_bias && bias.device != TENSOR_DEVICE_VULKAN)) {
+    if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) ||
+        !tensor_expr_has_device(weights_value, TENSOR_DEVICE_VULKAN) ||
+        (has_bias && !tensor_expr_has_device(bias_value, TENSOR_DEVICE_VULKAN))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must be Vulkan-placed" : "ml/linear: Vulkan operands must be Vulkan-placed", null);
+    }
+    if (tensor_expr_has_non_vulkan_device(input_value) ||
+        tensor_expr_has_non_vulkan_device(weights_value) ||
+        (has_bias && tensor_expr_has_non_vulkan_device(bias_value))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must remain Vulkan-placed" : "ml/linear: Vulkan operands must remain Vulkan-placed", null);
+    }
+
+    TensorVal* input = null;
+    TensorVal* weights = null;
+    TensorVal* bias = null;
+    Value* resolved_input_value = null;
+    Value* resolved_weights_value = null;
+    Value* resolved_bias_value = null;
+    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input, &resolved_input_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+    if (err != null) return err;
+    defer if (resolved_input_value != null && resolved_input_value != input_value) {
+        boundary_cleanup_materialized_value(null, resolved_input_value, interp.current_scope);
+    }
+    err = tensor_expr_resolve_concrete_any_device(weights_value, &weights, &resolved_weights_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+    if (err != null) return err;
+    defer if (resolved_weights_value != null && resolved_weights_value != weights_value) {
+        boundary_cleanup_materialized_value(null, resolved_weights_value, interp.current_scope);
+    }
+    if (has_bias) {
+        err = tensor_expr_resolve_concrete_any_device(bias_value, &bias, &resolved_bias_value, interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
+        if (err != null) return err;
+    }
+    defer if (resolved_bias_value != null && resolved_bias_value != bias_value) {
+        boundary_cleanup_materialized_value(null, resolved_bias_value, interp.current_scope);
+    }
+
+    if (input == null || weights == null || (has_bias && bias == null)) {
+        return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
     }
     if (input.dtype != TENSOR_DTYPE_FLOAT32 || weights.dtype != TENSOR_DTYPE_FLOAT32 || (has_bias && bias.dtype != TENSOR_DTYPE_FLOAT32)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan currently supports Float32 tensors" : "ml/linear: Vulkan currently supports Float32 tensors", null);
+    }
+    if (input.device != TENSOR_DEVICE_VULKAN || weights.device != TENSOR_DEVICE_VULKAN || (has_bias && bias.device != TENSOR_DEVICE_VULKAN)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must realize to Vulkan storage" : "ml/linear: Vulkan operands must realize to Vulkan storage", null);
     }
     if (!tensor_has_valid_device_storage(input, TENSOR_DEVICE_VULKAN) ||
         !tensor_has_valid_device_storage(weights, TENSOR_DEVICE_VULKAN) ||
@@ -124,7 +150,7 @@ fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Val
     usz batch_count = 0;
     usz in_features = 0;
     usz out_features = 0;
-    Value* err = ml_linear_validate(input, weights, bias, &batch_count, &in_features, &out_features, batched_reduce, interp);
+    err = ml_linear_validate(input, weights, bias, &batch_count, &in_features, &out_features, batched_reduce, interp);
     if (err != null) return err;
 
     if (input.rank > usz.max / usz.sizeof) {
@@ -171,7 +197,7 @@ fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Val
         plus_func,
         result,
         result.tensor_val,
-        bias_value,
+        resolved_bias_value,
         bias,
         true,
         TENSOR_DTYPE_FLOAT32,

@@ -336,16 +336,17 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float32`, `ml-convolutio
 `Float32` Tensor execution and remains false for GPU backends until the full
 operation family ships. The narrow `ml-linear-direct-float32` partial
 capability is true for CPU and for Vulkan when `Float32` placement is
-available; the Vulkan route covers only already-materialized direct concrete
-`Float32` `ml/linear` with optional concrete bias through `Tensor` `contract`
-plus broadcast `map`; `ml/linear/batched-reduce` uses the same narrow Vulkan
-entry. The other ML keys stay explicit `false` until a backend ships the named
-operation family.
+available; the Vulkan route covers concrete `Float32` `ml/linear` input,
+weights, and optional bias through `Tensor` `contract` plus broadcast `map`.
+Vulkan-only expressions may participate only when existing Tensor realization
+lowers them to concrete dense Vulkan `Float32` storage without CPU fallback;
+`ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
+stay explicit `false` until a backend ships the named operation family.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
-rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device,
-unsupported-layout, and non-concrete Vulkan operands through
-`tensor/backend-unsupported` diagnostics before any fallback.
+rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device
+or unsupported-layout Vulkan operands through `tensor/backend-unsupported`
+diagnostics before any fallback.
 `ml/linear` computes an affine dense projection:
 `input[..., in_features]` by `weights[out_features, in_features]`, with an
 optional `bias[out_features]`, producing `input[..., out_features]`. Non-CPU
