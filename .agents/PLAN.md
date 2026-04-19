@@ -187,3 +187,30 @@ Date: 2026-04-20
 - Next checkpoint:
   - implement `ML-VK-010-001`, choosing the Vulkan `ml/linear` lowering path
     explicitly before changing backend capability reporting.
+
+## Active Vulkan ML Linear No-Bias Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ml/linear` could not reach Vulkan because the primitive resolved operands
+    through the CPU-only Tensor expression path before any backend dispatch.
+  - The existing Vulkan `contract` helper already matches no-bias
+    `ml/linear` semantics when contracting input axis `rank - 1` with weights
+    axis `1`.
+- Implemented checkpoint:
+  - added a pre-CPU-resolution Vulkan `Float32` no-bias branch for direct
+    concrete Vulkan input and weights;
+  - kept mixed-device operands, Vulkan bias, and view-backed operands
+    fail-closed;
+  - kept broad Vulkan `ml-linear` capability false until the remaining family
+    support lands.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1618 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+- Next checkpoint:
+  - continue `ML-VK-010-003` for Vulkan bias-add/reduction coverage, or decide
+    `ML-VK-010-004` for expression-backed/view-backed `ml/linear` lowering.

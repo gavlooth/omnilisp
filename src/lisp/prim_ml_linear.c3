@@ -90,6 +90,68 @@ fn void ml_linear_eval_f32(TensorVal* input, TensorVal* weights, TensorVal* bias
     }
 }
 
+fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Value* bias_value, bool has_bias, Interp* interp) {
+    bool touches_vulkan = tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) ||
+        tensor_expr_has_device(weights_value, TENSOR_DEVICE_VULKAN) ||
+        (has_bias && tensor_expr_has_device(bias_value, TENSOR_DEVICE_VULKAN));
+    if (!touches_vulkan) return null;
+
+    if (has_bias) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/linear: Vulkan bias path is not implemented", null);
+    }
+
+    TensorVal* input = input_value.tensor_val;
+    TensorVal* weights = weights_value.tensor_val;
+    if (input == null || weights == null || !tensor_has_valid_metadata(input) || !tensor_has_valid_metadata(weights)) {
+        return tensor_runtime_raise(interp, "ml/linear: tensor metadata is missing");
+    }
+    if (input.kind != TENSOR_PAYLOAD_CONCRETE || weights.kind != TENSOR_PAYLOAD_CONCRETE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/linear: Vulkan currently supports concrete Tensor operands", null);
+    }
+    if (input.device != TENSOR_DEVICE_VULKAN || weights.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/linear: Vulkan operands must be Vulkan-placed", null);
+    }
+    if (input.dtype != TENSOR_DTYPE_FLOAT32 || weights.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/linear: Vulkan currently supports Float32 no-bias tensors", null);
+    }
+    if (!tensor_has_valid_device_storage(input, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(weights, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "ml/linear: Vulkan tensor backing storage is missing");
+    }
+
+    usz batch_count = 0;
+    usz in_features = 0;
+    usz out_features = 0;
+    Value* err = ml_linear_validate(input, weights, null, &batch_count, &in_features, &out_features, interp);
+    if (err != null) return err;
+
+    if (input.rank > usz.max / usz.sizeof) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/linear: result rank is too large", null);
+    }
+    usz* result_shape = (usz*)mem::malloc(usz.sizeof * input.rank);
+    if (result_shape == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/linear: failed to allocate result shape", null);
+    }
+    defer mem::free(result_shape);
+    for (usz axis = 0; axis + 1 < input.rank; axis++) {
+        result_shape[axis] = input.shape[axis];
+    }
+    result_shape[input.rank - 1] = out_features;
+
+    usz[1] left_axes = { input.rank - 1 };
+    usz[1] right_axes = { 1 };
+    Value* result = tensor_contract_try_vulkan_value(
+        input,
+        weights,
+        &left_axes[0],
+        &right_axes[0],
+        1,
+        result_shape[0:input.rank],
+        interp
+    );
+    if (result != null) return result;
+    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/linear: Vulkan contract path is unavailable", null);
+}
+
 fn Value* prim_ml_linear(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 3) {
         return primitive_arity_raise(interp, "ml/linear", "2 or 3 arguments: input weights [bias]", args.len);
@@ -97,6 +159,9 @@ fn Value* prim_ml_linear(Value*[] args, Env* env, Interp* interp) {
     if (!is_tensor(args[0]) || !is_tensor(args[1]) || (args.len == 3 && !is_tensor(args[2]))) {
         return tensor_type_raise(interp, "ml/linear: expected Tensor input, Tensor weights, and optional Tensor bias");
     }
+
+    Value* vulkan_result = ml_linear_try_vulkan_f32(args[0], args[1], args.len == 3 ? args[2] : null, args.len == 3, interp);
+    if (vulkan_result != null) return vulkan_result;
 
     TensorVal* input = null;
     Value* input_value = null;

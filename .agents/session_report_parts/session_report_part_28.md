@@ -205,3 +205,48 @@ Source: `.agents/SESSION_REPORT.md`
   - `Doxyfile.in` runtime parsing remains unverified on this machine because
     `doxygen` is absent.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 00:16 CEST - Vulkan ML Linear No-Bias Lowering
+
+- Objective attempted:
+  - Continue the strict ML-VK audit by implementing the first concrete Vulkan
+    `ml/linear` slice after adding TODO checkboxes for the found boundary.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_linear.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added a pre-CPU-resolution Vulkan `Float32` no-bias path for direct
+    concrete `ml/linear` input and weights, lowered through the existing
+    Tensor `contract` helper.
+  - Added primitive-level tests for Vulkan result placement/dtype, rank-3
+    batch projection, mapped-source copyback, mixed-device fail-closed
+    behavior, bias fail-closed behavior, view fail-closed behavior, and shape
+    diagnostics.
+  - Marked `ML-VK-010-001` and `ML-VK-010-002` complete, while keeping
+    `ML-VK-010-003` and `ML-VK-010-004` open for bias/reduction and broader
+    expression/view handling.
+- Commands run:
+  - Subagent audits for routing safety, TODO readiness, and test placement.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+- Key results:
+  - Initial focused test run failed with one malformed test expression and one
+    wrong lazy-source expectation; the latter invalidated the assumption that
+    direct Vulkan `map` inputs must fail closed for this slice.
+  - Final focused advanced collections suite passed with `pass=1618 fail=0`.
+  - File-size gate, whitespace diff check, and primitive docs parity passed.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-010-003`: Vulkan `Float32` bias-add and batched
+    reduction coverage. Keep broad Vulkan `ml-linear` capability false until
+    the operation family is complete enough to advertise truthfully.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `Float64` `ml/linear`, Vulkan bias, and view-backed/expression-backed
+    `ml/linear` remain incomplete or explicitly fail-closed.
+- Signature: Codex GPT-5.4

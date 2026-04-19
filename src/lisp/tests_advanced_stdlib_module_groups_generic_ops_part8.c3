@@ -21,6 +21,20 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         32.0, pass, fail);
     test_truthy(interp, "ml/linear Float32 preserves dtype and values",
         "(let (out (ml/linear (Tensor Float32 [2] [1.5 2.0]) (Tensor Float32 [1 2] [2.0 3.0]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 9.0))))", pass, fail);
+    test_truthy(interp, "ml/linear Vulkan Float32 no-bias stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref (to-device out 'cpu) [1 1]) (Float32 77.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/linear Vulkan Float32 rank-3 batch projection",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear (to-device (Tensor Float32 [2 2 3] [1 2 3 4 5 6 7 8 9 10 11 12]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (and (= (device out) 'vulkan) (= (ref (to-device out 'cpu) [1 1 1]) (Float32 167.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects mixed CPU Vulkan Float32 operands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (to-device (Tensor Float32 [3] [1 2 3]) 'vulkan) (Tensor Float32 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects Vulkan Float32 bias until bias kernel lands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (to-device (Tensor Float32 [3] [1 2 3]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [2] [10 100]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear Vulkan Float32 mapped source stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear (map + (to-device (Tensor Float32 [3] [1 2 3]) 'vulkan) (Float32 0.0)) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (and (= (device out) 'vulkan) (= (ref (to-device out 'cpu) [1]) (Float32 32.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects Vulkan Float32 view source until layout lowering lands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (matrix/transpose-view (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan)) (to-device (Tensor Float32 [1 2] [1 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear Vulkan Float32 shape mismatch preserves oracle diagnostic",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (to-device (Tensor Float32 [2] [1 2]) 'vulkan) (to-device (Tensor Float32 [3 3] [1 2 3 4 5 6 7 8 9]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) true))", pass, fail);
     test_error_contains(interp, "ml/linear rejects dtype mismatch",
         "(ml/linear (Tensor Float64 [2] [1 2]) (Tensor Float32 [1 2] [1 2]))",
         "ml/linear: tensor dtype mismatch", pass, fail);

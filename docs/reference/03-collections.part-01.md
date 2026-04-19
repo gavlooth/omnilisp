@@ -403,8 +403,9 @@ scientific unary map operation exists for the dtype.
 Every backend entry also exposes the backend-neutral ML suite capability keys
 `ml-linear`, `ml-convolution`, `ml-neural-map`, `ml-normalization`,
 `ml-attention`, `ml-autograd`, `ml-optimizer`, and `ml-graph-execution`.
-`ml-linear` is true for CPU dense `Float64`/`Float32` `ml/linear` execution;
-the other keys report explicit `false` until implemented for that backend.
+`ml-linear` is true for complete CPU dense `Float64`/`Float32` `ml/linear`;
+Vulkan keeps the broad key false while direct concrete no-bias `Float32`
+input/weights can execute through Tensor `contract`. Other keys stay false.
 CUDA-placed dense row-major `Float64` or `Float32` tensors support binary
 elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

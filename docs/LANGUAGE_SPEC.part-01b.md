@@ -332,13 +332,15 @@ discoverable without implying every scientific unary map is present. CPU, CUDA,
 cuBLAS, and Vulkan entries also expose the backend-neutral
 ML suite capability keys `ml-linear`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
-`ml-graph-execution`; `ml-linear` is true for CPU dense `Float64` and
-`Float32` Tensor execution and false for GPU backends until backend kernels
-ship. The other ML keys stay explicit `false` until a backend ships the named
-operation family. `ml/linear` computes an affine dense projection:
+`ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
+`Float32` Tensor execution and remains false for GPU backends until the full
+operation family ships. The other ML keys stay explicit `false` until a
+backend ships the named operation family. `ml/linear` computes an affine dense projection:
 `input[..., in_features]` by `weights[out_features, in_features]`, with an
 optional `bias[out_features]`, producing `input[..., out_features]`. Non-CPU
-Tensor operands fail closed with `tensor/backend-unsupported`. CUDA-placed dense row-major
+Tensor operands fail closed with `tensor/backend-unsupported` except for direct
+concrete no-bias Vulkan `Float32` input and weights, which lower through the
+existing Tensor `contract` route. CUDA-placed dense row-major
 `Float64` and `Float32` tensors support
 binary elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

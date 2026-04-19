@@ -206,3 +206,22 @@ Source: `memory/CHANGELOG.md`
     `ML-VK-010-003` Vulkan `Float32` batched bias-add/reduction coverage.
   - Validation passed: `c3c build`, file-size gate, `git diff --check`, and
     focused advanced collections suite `pass=1611 fail=0`.
+
+- 2026-04-20 00:16 CEST: Vulkan Float32 `ml/linear` no-bias checkpoint:
+  - Implemented the first Vulkan `Float32` `ml/linear` lowering path by routing
+    direct concrete no-bias Vulkan input/weights through the existing Tensor
+    `contract` helper with axes `[input.rank - 1]` and `[1]`.
+  - Preserved `tensor-backends` truthfulness: Vulkan `ml-linear` remains false
+    because bias, reductions, and full operation-family support are not
+    complete.
+  - Added primitive-level coverage for Vulkan result placement, dtype, rank-3
+    batch projection, mapped-source copyback, mixed CPU/Vulkan fail-closed
+    behavior, Vulkan bias fail-closed behavior, view fail-closed behavior, and
+    shape diagnostics.
+  - A failed first focused run exposed one malformed test expression and showed
+    that direct Vulkan `map` inputs can already materialize on Vulkan; the
+    shipped tests now preserve that no-CPU-fallback success instead of calling
+    it lazy-fail-closed.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1618 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.
