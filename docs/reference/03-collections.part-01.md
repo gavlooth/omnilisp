@@ -401,13 +401,14 @@ separately from the broader `scientific-map-*` keys; these keys cover
 `stats/normal-cdf` and `stats/normal-quantile` without claiming every
 scientific unary map operation exists for the dtype.
 Every backend entry also exposes backend-neutral ML suite capability keys:
-`ml-linear`, `ml-linear-direct-float64`, `ml-linear-direct-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-linear`, `ml-linear-direct-float64`, `ml-linear-direct-float32`, `ml-neural-relu-float64`, `ml-neural-relu-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and `ml-graph-execution`.
 `ml-linear` is true for complete CPU dense `Float64`/`Float32` `ml/linear`;
 Vulkan keeps the broad key false while the narrow `ml-linear-direct-float64` and `ml-linear-direct-float32`
 partial capabilities are true for CPU and for Vulkan when the matching dtype placement is
 available; the Vulkan route covers same-dtype input/weights with optional bias through `Tensor` `contract` plus `map`; Vulkan-only expressions may participate only when realization lowers them to dense Vulkan storage.
 `ml/linear/batched-reduce` requires rank-`>=2`; rank-1 inputs raise `tensor/shape-mismatch`, while mixed-device or unsupported-layout operands raise `tensor/backend-unsupported` before fallback.
+`ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs, preserves dtype/device placement, and reports narrow `ml-neural-relu-float64`/`ml-neural-relu-float32` capability bits while broad `ml-neural-map` remains false.
 CUDA-placed dense row-major `Float64` or `Float32` tensors support binary
 elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

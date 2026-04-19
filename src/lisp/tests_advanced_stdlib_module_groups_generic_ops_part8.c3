@@ -6,7 +6,21 @@ import main;
 
 fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "tensor-backends reports ML capability contract",
-        "(let (rest-off (lambda (b) (and (= (ref b 'ml-convolution) false) (= (ref b 'ml-neural-map) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cpu 'ml-linear-direct-float64) true) (= (ref cpu 'ml-linear-direct-float32) true) (= (ref cuda 'ml-linear) false) (= (ref cuda 'ml-linear-direct-float64) false) (= (ref cuda 'ml-linear-direct-float32) false) (= (ref cublas 'ml-linear) false) (= (ref cublas 'ml-linear-direct-float64) false) (= (ref cublas 'ml-linear-direct-float32) false) (= (ref vulkan 'ml-linear) false) (= (ref vulkan 'ml-linear-direct-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-linear-direct-float32) (ref vulkan 'float32)) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
+        "(let (rest-off (lambda (b) (and (= (ref b 'ml-convolution) false) (= (ref b 'ml-neural-map) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cpu 'ml-linear-direct-float64) true) (= (ref cpu 'ml-linear-direct-float32) true) (= (ref cpu 'ml-neural-relu-float64) true) (= (ref cpu 'ml-neural-relu-float32) true) (= (ref cuda 'ml-linear) false) (= (ref cuda 'ml-linear-direct-float64) false) (= (ref cuda 'ml-linear-direct-float32) false) (or (= (ref cuda 'ml-neural-relu-float64) true) (= (ref cuda 'ml-neural-relu-float64) false)) (or (= (ref cuda 'ml-neural-relu-float32) true) (= (ref cuda 'ml-neural-relu-float32) false)) (= (ref cublas 'ml-linear) false) (= (ref cublas 'ml-linear-direct-float64) false) (= (ref cublas 'ml-linear-direct-float32) false) (= (ref cublas 'ml-neural-relu-float64) false) (= (ref cublas 'ml-neural-relu-float32) false) (= (ref vulkan 'ml-linear) false) (= (ref vulkan 'ml-linear-direct-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-linear-direct-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-relu-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-neural-relu-float32) (ref vulkan 'float32)) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
+    test_eq_double(interp, "ml/relu Float64 CPU clamps negatives",
+        "(ref (ml/relu (Tensor Float64 [4] [-2 -0.5 0 3])) [3])",
+        3.0, pass, fail);
+    test_eq_double(interp, "ml/relu Float64 CPU zeroes negative",
+        "(ref (ml/relu (Tensor Float64 [4] [-2 -0.5 0 3])) [0])",
+        0.0, pass, fail);
+    test_truthy(interp, "ml/relu Float32 CPU preserves dtype",
+        "(let (out (ml/relu (Tensor Float32 [3] [-1 0 2]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 0.0)) (= (ref out [2]) (Float32 2.0))))", pass, fail);
+    test_truthy(interp, "ml/relu rejects BigInteger tensor",
+        "(= (handle (ml/relu (Tensor BigInteger [2] [-1 2])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)", pass, fail);
+    test_truthy(interp, "ml/relu Vulkan Float32 stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/relu (to-device (Tensor Float32 [3] [-1 0 2]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref (to-device out 'cpu) [0]) (Float32 0.0)) (= (ref (to-device out 'cpu) [2]) (Float32 2.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/relu Vulkan Float64 stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (out (ml/relu (to-device (Tensor Float64 [3] [-1 0 2]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float64\") (= (ref (to-device out 'cpu) [0]) (Float64 0.0)) (= (ref (to-device out 'cpu) [2]) (Float64 2.0)))) true))", pass, fail);
     test_eq_double(interp, "ml/linear Float64 vector projection",
         "(ref (ml/linear (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1])",
         32.0, pass, fail);

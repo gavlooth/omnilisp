@@ -46,6 +46,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("__tensor-map"), "aot::lookup_prim(\"__tensor-map\")");
     prim_hash_insert(st.intern("ml/linear"), "aot::lookup_prim(\"ml/linear\")");
     prim_hash_insert(st.intern("ml/linear/batched-reduce"), "aot::lookup_prim(\"ml/linear/batched-reduce\")");
+    prim_hash_insert(st.intern("ml/relu"), "aot::lookup_prim(\"ml/relu\")");
     prim_hash_insert(st.intern("contract"), "aot::lookup_prim(\"contract\")");
     prim_hash_insert(st.intern("matrix/transpose"), "aot::lookup_prim(\"matrix/transpose\")");
     prim_hash_insert(st.intern("matrix/transpose-view"), "aot::lookup_prim(\"matrix/transpose-view\")");

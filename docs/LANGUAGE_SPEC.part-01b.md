@@ -331,7 +331,8 @@ partial `stats/normal-cdf` and `stats/normal-quantile` support is
 discoverable without implying every scientific unary map is present. CPU, CUDA,
 cuBLAS, and Vulkan entries also expose the backend-neutral
 ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
-`ml-linear-direct-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-linear-direct-float32`, `ml-neural-relu-float64`,
+`ml-neural-relu-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -344,6 +345,11 @@ Vulkan-only expressions may participate only when existing Tensor realization
 lowers them to concrete dense Vulkan storage of the same dtype without CPU fallback;
 `ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
 stay explicit `false` until a backend ships the named operation family.
+`ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs,
+preserving dtype and Tensor placement; CPU, CUDA, and Vulkan expose the narrow
+`ml-neural-relu-float64`/`ml-neural-relu-float32` bits when that route is
+available while broad `ml-neural-map` remains false until the activation family
+ships.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

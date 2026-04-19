@@ -375,6 +375,22 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-020` add Vulkan neural elementwise, reduction, softmax, and loss kernels
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - audit split:
+    - [x] `ML-VK-020-001` freeze `ml/relu` as the first public neural
+      elementwise surface and add truthful narrow capability bits.
+    - [x] `ML-VK-020-002` implement `ml/relu` for `Float64` and `Float32`
+      Tensor inputs through existing Tensor `map max x 0`, preserving
+      CPU/CUDA/Vulkan placement rules.
+    - [x] `ML-VK-020-003` add CPU oracle, Vulkan placement/dtype, and
+      unsupported-dtype regressions for `ml/relu`.
+    - [ ] `ML-VK-020-004` add the remaining Float32 activation surfaces:
+      `sigmoid`, `tanh`, and `gelu`, with no-hidden-CPU-fallback Vulkan tests.
+    - [ ] `ML-VK-020-005` define the Float64 transcendental activation path
+      with validated approximations or explicit fail-closed behavior.
+    - [ ] `ML-VK-020-006` add axis `sum`, `mean`, and `variance` as a real
+      reduction layer instead of misusing matrix `contract`.
+    - [ ] `ML-VK-020-007` add stable `logsumexp`, `softmax`, cross-entropy,
+      and mean-squared-error after the reduction layer lands.
   - scope:
     - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
     - stable `exp`, `log`, `logsumexp`, and `softmax`;

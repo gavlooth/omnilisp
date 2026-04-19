@@ -134,6 +134,21 @@ Acceptance:
 Add numerically stable Vulkan kernels for common neural-network scalar and
 reduction operations:
 
+- `ML-VK-020-001`/`002`/`003`: shipped `ml/relu` as the first public neural
+  elementwise surface. It uses existing Tensor `map max x 0`, reports narrow
+  `ml-neural-relu-float64`/`ml-neural-relu-float32` capability bits, preserves
+  dtype/device placement, and keeps broad `ml-neural-map` false.
+- `ML-VK-020-004`: add the remaining Float32 activation surfaces with
+  no-hidden-CPU-fallback Vulkan tests.
+- `ML-VK-020-005`: define Float64 transcendental activation behavior through
+  validated approximations or explicit fail-closed diagnostics.
+- `ML-VK-020-006`: add axis `sum`, `mean`, and `variance` as a real reduction
+  layer instead of reusing matrix `contract`.
+- `ML-VK-020-007`: add stable `logsumexp`, `softmax`, cross-entropy, and
+  mean-squared-error after the reduction layer lands.
+
+Scope:
+
 - `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
 - `exp`, `log`, `logsumexp`, `softmax`;
 - `sum`, `mean`, `variance`, and axis reductions needed by normalization;

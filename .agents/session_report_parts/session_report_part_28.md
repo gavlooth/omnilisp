@@ -447,3 +447,46 @@ Source: `.agents/SESSION_REPORT.md`
   - Broad Vulkan `ml-linear` remains false until the complete backend family
     ships; arbitrary mixed-device execution remains fail-closed.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 01:42 CEST - Vulkan ML ReLU Tensor Primitive
+
+- Objective attempted:
+  - Continue strict audit from `ML-VK-020`, add concrete TODO checkboxes for
+    the neural elementwise/reduction/softmax/loss lane, and implement the first
+    honest Tensor activation slice using fast subagent review.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_activation.c3`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added `ml/relu` as the first public neural Tensor activation primitive.
+  - Routed `ml/relu` through existing `Tensor.map max` semantics using a
+    dtype-correct zero scalar, preserving CPU/CUDA/Vulkan placement behavior
+    and unsupported-dtype fail-closed diagnostics.
+  - Registered the primitive for runtime and AOT lookup.
+  - Added `ml-neural-relu-float64` and `ml-neural-relu-float32` capability
+    reporting while leaving broad `ml-neural-map` false.
+  - Split `ML-VK-020` into shipped ReLU TODO items and open activation,
+    reduction, softmax, and loss follow-ups.
+- Commands run:
+  - Fast subagent audits for public surface, Vulkan map feasibility, and
+    TODO/docs wording.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1658 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue `ML-VK-020-004` for remaining Float32 activation surfaces with
+    explicit no-hidden-CPU-fallback tests. Do not start softmax/loss until
+    `ML-VK-020-006` provides a real axis reduction substrate.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - `sigmoid`, `tanh`, `gelu`, axis reductions, stable softmax, and losses
+    remain open under `ML-VK-020-004` through `ML-VK-020-007`.
+- Signature: Codex GPT-5.4

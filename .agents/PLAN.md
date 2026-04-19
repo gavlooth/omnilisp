@@ -342,3 +342,34 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue strict audit from `ML-VK-020`: Vulkan neural elementwise,
     reductions, softmax, and loss kernels.
+
+## Active Vulkan ML ReLU Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ML-VK-020` was still an umbrella item. It mixed public naming,
+    activation surfaces, reductions, softmax, and loss kernels without a
+    reviewable first semantic boundary.
+  - The backend already had enough Tensor `map max` support to ship a narrow
+    Tensor ReLU surface honestly, while reductions and stable softmax need a
+    real axis-reduction substrate.
+- Implemented checkpoint:
+  - froze `ml/relu` as the first public neural Tensor activation surface;
+  - implemented `Float64` and `Float32` Tensor ReLU through existing `map max`
+    semantics, preserving CPU/CUDA/Vulkan placement behavior and fail-closed
+    unsupported dtype handling;
+  - added narrow `tensor-backends` capability bits
+    `ml-neural-relu-float64` and `ml-neural-relu-float32`;
+  - split `ML-VK-020` into shipped ReLU items and remaining activation,
+    reduction, softmax, and loss follow-ups.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1658 fail=0`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Next checkpoint:
+  - continue `ML-VK-020-004`: remaining Float32 activation surfaces with
+    explicit no-hidden-CPU-fallback tests, then do `ML-VK-020-006` before
+    softmax/loss work.

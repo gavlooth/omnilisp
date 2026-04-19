@@ -298,3 +298,17 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1652 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 01:42 CEST: Vulkan ML ReLU checkpoint:
+  - Split broad `ML-VK-020` audit work into shipped ReLU items plus remaining
+    activation, reduction, softmax, and loss follow-ups.
+  - Added `ml/relu` as the first public neural Tensor activation primitive.
+    It supports `Float64` and `Float32` tensors by routing through existing
+    `map max input 0` semantics, so CPU/CUDA/Vulkan placement behavior and
+    no-hidden-CPU-fallback rules stay owned by Tensor map.
+  - Added `ml-neural-relu-float64` and `ml-neural-relu-float32` to
+    `tensor-backends`; broad `ml-neural-map` remains false until the larger
+    activation family ships.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1658 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.
