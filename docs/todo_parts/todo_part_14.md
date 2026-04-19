@@ -268,6 +268,16 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-001` freeze the backend-neutral Vulkan ML suite contract and capability matrix
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - audit items:
+    - [x] `AUDIT-ML-VK-001-CAPABILITY-KEYS` add explicit backend-neutral ML
+      capability keys to `tensor-backends` for all backend entries, with
+      regression coverage proving unimplemented ML families report `false`.
+    - [ ] `AUDIT-ML-VK-001-FAIL-CLOSED` add fail-closed regression tests for
+      the first public unsupported Vulkan ML operation once the operation names
+      are frozen.
+    - [x] `AUDIT-VK-SCIENTIFIC-F64-CAPABILITY` split or document partial
+      Vulkan Float64 scientific coverage so `stats/normal-*` support is not
+      hidden behind the coarse `scientific-map-float64` key.
   - scope:
     - define public ML operation names without backend-flavored APIs;
     - add `tensor-backends` capability keys for ML operation families;

@@ -5,6 +5,10 @@ import std::io;
 import main;
 
 fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
+    test_truthy(interp, "tensor-backends reports ML capability contract as explicit false",
+        "(let (ml-off (lambda (b) (and (= (ref b 'ml-linear) false) (= (ref b 'ml-convolution) false) (= (ref b 'ml-neural-map) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) backends (tensor-backends)) (and (ml-off (ref backends 0)) (ml-off (ref backends 1)) (ml-off (ref backends 2)) (ml-off (ref backends 3))))", pass, fail);
+    test_truthy(interp, "tensor-backends reports stats normal capability separately",
+        "(let (backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'stats-normal-float64) true) (= (ref cpu 'stats-normal-float32) true) (or (= (ref cuda 'stats-normal-float64) true) (= (ref cuda 'stats-normal-float64) false)) (or (= (ref cuda 'stats-normal-float32) true) (= (ref cuda 'stats-normal-float32) false)) (= (ref cublas 'stats-normal-float64) false) (= (ref cublas 'stats-normal-float32) false) (= (ref vulkan 'stats-normal-float64) (ref vulkan 'float64)) (= (ref vulkan 'stats-normal-float32) (ref vulkan 'float32))))", pass, fail);
     test_truthy(interp, "matrix eigenvalues vulkan n>64 result stays on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (device (matrix/eigenvalues (to-device (matrix/identity 65) 'vulkan))) 'vulkan) true) true))", pass, fail);
     test_truthy(interp, "matrix eigenvectors vulkan n>64 computes when available",

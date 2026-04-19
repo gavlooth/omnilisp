@@ -59,6 +59,15 @@ Required decisions:
 - capability keys for operation families such as `ml-linear`, `ml-convolution`,
   `ml-autograd`, and `ml-optimizer`.
 
+Initial capability inventory:
+
+- `tensor-backends` exposes `ml-linear`, `ml-convolution`, `ml-neural-map`,
+  `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
+  `ml-graph-execution` for every backend entry.
+- All ML capability keys are explicit `false` until the named operation family
+  has real backend kernels and fail-closed tests. This prevents a hidden CPU
+  fallback from masquerading as Vulkan ML support.
+
 ### `ML-VK-010` Batched Linear Algebra Foundation
 
 Add the ML-scale dense linear algebra layer: batched matmul, batched bias add,

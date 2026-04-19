@@ -113,3 +113,31 @@ Date: 2026-04-19
 - Next checkpoint:
   - start with `ML-VK-001` and freeze the public operation names plus
     `tensor-backends` capability keys before adding kernels.
+
+## Active Vulkan ML Contract Audit Checkpoint
+
+Date: 2026-04-19
+
+- Audit findings from the ML-VK-001 pass:
+  - `tensor-backends` had no backend-neutral ML operation-family keys, so the
+    Vulkan ML roadmap had no runtime-discoverable contract.
+  - Vulkan Float64 `stats/normal-*` support was documented and tested, but
+    discoverability was blurred by the coarse `scientific-map-float64` key.
+- Implemented checkpoint:
+  - `tensor-backends` now exposes explicit false ML capability keys for every
+    backend entry: `ml-linear`, `ml-convolution`, `ml-neural-map`,
+    `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
+    `ml-graph-execution`.
+  - `tensor-backends` now exposes `stats-normal-float64` and
+    `stats-normal-float32` separately from broad `scientific-map-*` coverage.
+    Vulkan keeps `scientific-map-float64` false while reporting
+    `stats-normal-float64` from Vulkan Float64 availability.
+- Validation:
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Next checkpoint:
+  - continue `ML-VK-001` by freezing the first public ML operation names and
+    adding fail-closed tests for unsupported Vulkan ML operations before
+    implementing kernels.

@@ -396,6 +396,15 @@ CUDA and Vulkan also report the dtype-changing `rounding-big-integer`
 capability when their integer-result rounding path is available. Direct Vulkan
 `floor`, `ceiling`, `round`, and `truncate` require that key and fail closed
 rather than returning same-dtype float tensors when it is unavailable.
+Backend entries report `stats-normal-float64` and `stats-normal-float32`
+separately from the broader `scientific-map-*` keys; these keys cover
+`stats/normal-cdf` and `stats/normal-quantile` without claiming every
+scientific unary map operation exists for the dtype.
+Every backend entry also exposes the backend-neutral ML suite capability keys
+`ml-linear`, `ml-convolution`, `ml-neural-map`, `ml-normalization`,
+`ml-attention`, `ml-autograd`, `ml-optimizer`, and `ml-graph-execution`.
+These keys report explicit `false` until the named ML operation family is
+implemented for that backend.
 CUDA-placed dense row-major `Float64` or `Float32` tensors support binary
 elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

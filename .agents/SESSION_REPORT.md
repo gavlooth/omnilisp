@@ -204,6 +204,52 @@ The historical content was split mechanically to keep individual files below the
     planning-only pass.
 - Signature: Codex GPT-5.4
 
+## 2026-04-19 23:41 CEST - Vulkan ML Contract Audit Slice
+
+- Objective attempted:
+  - Audit the Vulkan ML suite readiness, add concrete TODO checkboxes for
+    findings, and implement the first feasible TODO items using subagent
+    review support.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `tensor-backends`, Vulkan/Tensor docs, advanced collections regressions,
+    and `ML-VK-001`.
+- Code or configuration changes made:
+  - Added explicit backend-neutral ML capability keys to every
+    `tensor-backends` entry: `ml-linear`, `ml-convolution`, `ml-neural-map`,
+    `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
+    `ml-graph-execution`. All report `false` until real backend kernels and
+    fail-closed tests exist.
+  - Added `stats-normal-float64` and `stats-normal-float32` capability keys so
+    Vulkan Float64 `stats/normal-*` support is discoverable without widening
+    the broad `scientific-map-float64` contract.
+  - Added TODO audit checkboxes under `ML-VK-001`; completed the capability key
+    and `stats-normal-*` discoverability items, leaving the first public ML
+    fail-closed regression open.
+- Commands run:
+  - Subagent audit for ML-VK-001 capability/reporting gaps.
+  - Subagent review for the narrow `stats-normal-*` capability direction.
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Targeted advanced collections validation passed with `pass=1600 fail=0`.
+  - File-size gate passed with no tracked text files above 700 LOC.
+  - `c3c build` linked `build/main`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not set Vulkan `scientific-map-float64` true just because
+    `stats/normal-cdf` and `stats/normal-quantile` work; that key implies the
+    broader scientific unary family.
+- Current best recommendation/checkpoint:
+  - Continue `ML-VK-001` with public ML operation-name freeze and fail-closed
+    Vulkan tests before claiming or implementing any ML kernel family.
+- Unresolved issues:
+  - No full bounded-container suite was run.
+  - `AUDIT-ML-VK-001-FAIL-CLOSED` remains open because the public unsupported
+    ML operation names still need to be frozen.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-19 22:34 CEST - Generated SPIR-V Split Follow-Up
 
 - Objective attempted:

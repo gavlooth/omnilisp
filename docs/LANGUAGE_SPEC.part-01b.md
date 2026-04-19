@@ -325,7 +325,15 @@ complex contraction kernels are available; complex storage capability and
 complex elementwise-map capability do not imply complex contraction support.
 CUDA and Vulkan also report the dtype-changing
 `rounding-big-integer` capability when their integer-result rounding path is
-available. CUDA-placed dense row-major
+available. Backend entries report `stats-normal-float64` and
+`stats-normal-float32` separately from broad `scientific-map-*` coverage so
+partial `stats/normal-cdf` and `stats/normal-quantile` support is
+discoverable without implying every scientific unary map is present. CPU, CUDA,
+cuBLAS, and Vulkan entries also expose the backend-neutral
+ML suite capability keys `ml-linear`, `ml-convolution`, `ml-neural-map`,
+`ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
+`ml-graph-execution`; these keys are explicit `false` until a backend ships the
+named ML operation family. CUDA-placed dense row-major
 `Float64` and `Float32` tensors support
 binary elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,
