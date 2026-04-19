@@ -1,6 +1,6 @@
 # UI Effects Module Naming Decision (2026-03-27)
 
-Status: `decided`  
+Status: `decided`
 Owner: Codex workflow
 
 ## Problem

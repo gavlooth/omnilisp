@@ -1,6 +1,6 @@
 # UI Library Facade Plan (2026-03-27)
 
-Status: `active`  
+Status: `active`
 Owner: Codex workflow
 
 ## Purpose

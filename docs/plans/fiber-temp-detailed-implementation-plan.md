@@ -1,6 +1,6 @@
 # Fiber Temp Detailed Implementation Plan
 
-Date: 2026-03-05  
+Date: 2026-03-05
 Status: Complete for current architecture target (fiber-temp optional/guarded backing, region-centric ownership unchanged)
 
 ## 1. Objective

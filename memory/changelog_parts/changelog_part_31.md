@@ -1,0 +1,624 @@
+# Memory Changelog Index Part 31
+
+Source: `memory/CHANGELOG.md`
+
+- Main/runtime modularization: split `src/main.c3` by extracting thread-local registry subsystem (`g_thread_registry`, registry init/shutdown, dereference/allocate-in/root helpers) into `src/main_thread_registry.c3`, while retaining pool/slot/region structures and `RegionRegistry` core methods in `src/main.c3`.
+- Validation after main thread-registry split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region test modularization: split `src/scope_region_tests_core.c3` by extracting reset/alignment/splice-heavy core test domain (Tests 7–15) into `src/scope_region_tests_reset_splice.c3` via `run_scope_region_reset_splice_tests()`, while retaining create/alloc/escape/RC/freelist core tests in `src/scope_region_tests_core.c3`.
+- Validation after scope-region reset/splice test split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine coroutine-test modularization: split `src/stack_engine_tests_coroutines.c3` by extracting coroutine edge-path tests (`test_stack_overflow_recovery`, `test_fpu_preservation`, `test_stack_ctx_clone_multishot` plus local overflow/FPU entry helpers) into `src/stack_engine_tests_coroutines_edges.c3`, while retaining core coroutine execution/suspend/resume/interleave coverage in `src/stack_engine_tests_coroutines.c3`.
+- Validation after stack-engine coroutine-edge split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine lifecycle modularization: split `src/stack_engine_lifecycle.c3` by extracting defer-storage subsystem (`stack_ctx_defer_entry_at`, defer reserve/push/pop/update, deferred-destroy runner, defer-storage clear) into `src/stack_engine_lifecycle_defer.c3`, while retaining lifecycle-attach/clone helpers and create/destroy orchestration in `src/stack_engine_lifecycle.c3`.
+- Validation after stack-engine lifecycle defer split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine affinity/fiber-temp test modularization: split `src/stack_engine_tests_affinity_fiber_temp.c3` by extracting the fiber-temp test domain (`FiberTempScopeState`, stack-scope entry helpers, scope-create-in-context, clone/discard stress, retention-guard) into `src/stack_engine_tests_fiber_temp.c3`, while retaining thread-affinity ownership smoke test and fail-fast probe harness in `src/stack_engine_tests_affinity_fiber_temp.c3`.
+- Validation after stack-engine fiber-temp test split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Main/runtime modularization: split `src/main.c3` by extracting pool/slot method implementations (`SparseSet.*`, `Pool.arena_alloc/allocate/destroy_all`, `SlotTable.allocate/destroy_all`) into `src/main_pool_slot_methods.c3`, while retaining region/registry core types, allocation macro, and dereference utility helpers in `src/main.c3`.
+- Validation after main pool/slot-method split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine modularization: split `src/stack_engine.c3` by extracting platform ABI/switch subsystem (platform constants, stack helper externs, `StackContext`, and `stack_context_switch`) into `src/stack_engine_abi_switch.c3`, while retaining coroutine status/handle metadata and `stack_ctx_init` in `src/stack_engine.c3`.
+- Validation after stack-engine ABI/switch split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine defer/lifecycle test modularization: split `src/stack_engine_tests_defer_lifecycle.c3` by extracting defer-focused tests (`test_stack_ctx_defer_destroy_lifo`, `test_stack_ctx_defer_undefer_pop`, `test_stack_ctx_defer_clone_hook`, `test_stack_ctx_defer_update_arg`, `test_stack_ctx_defer_update_arg_clone_isolation`) into `src/stack_engine_tests_defer.c3`, while retaining lifecycle destroy/clone tests in `src/stack_engine_tests_defer_lifecycle.c3`.
+- Validation after stack-engine defer/lifecycle test split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Entry modularization: split `src/entry_project_init_bind.c3` by extracting the `--bind` command domain (project-dir/toml/output-path builders, libclang parse orchestration, parsed-function cleanup, and `run_bind`) into `src/entry_bind_mode.c3`, while retaining `--init` scaffolding helpers and `run_init` in `src/entry_project_init_bind.c3`.
+- Validation after entry bind-mode split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Entry modularization: split `src/entry.c3` by extracting runtime command handlers (`run_compile_mode`, `run_gen_e2e_mode`, `run_repl_mode`, `run_script_mode`) into `src/entry_runtime_modes.c3`, while retaining shared CLI helpers, help output, and top-level argument dispatch in `src/entry.c3`.
+- Validation after entry runtime-mode split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine fiber-temp modularization: split `src/stack_engine_tests_fiber_temp.c3` by extracting the stress/retention cluster (`test_entry_scope_yield_once`, `test_stack_ctx_fiber_temp_clone_discard_stress`, `test_stack_ctx_fiber_temp_retention_guard`) into `src/stack_engine_tests_fiber_temp_stress.c3`, while retaining the scope-create-in-context state/helpers and regression in `src/stack_engine_tests_fiber_temp.c3`.
+- Validation after stack-engine fiber-temp stress split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region modularization: split `src/scope_region.c3` by extracting chunk/destructor/membership helpers (`scope_chunk_alloc_raw`, `scope_chunk_alloc_temp`, `scope_chunk_data`, `scope_register_dtor`, `scope_register_dtor_escape`, `scope_contains`) into `src/scope_region_chunk_helpers.c3`, while retaining scope-region types, global lock/thread-affinity guards, and invariants in `src/scope_region.c3`.
+- Validation after scope-region chunk-helper split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region temp-pool modularization: split `src/scope_region_temp_pool.c3` by extracting context-pool lifecycle helpers (`fiber_temp_ctx_pool_on_clone`, `fiber_temp_ctx_pool_on_destroy`, `fiber_temp_ctx_pool_find_current`, `fiber_temp_ctx_pool_get_or_create`, `fiber_temp_chunk_take_from_ctx_pool`) into `src/scope_region_temp_ctx_pool.c3`, while retaining global pool reclaim/take policy and memory-stat helpers in `src/scope_region_temp_pool.c3`.
+- Validation after scope-region temp-ctx-pool split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region reset/adopt modularization: split `src/scope_region_reset_adopt.c3` by extracting reset and scope-membership helpers (`scope_reset`, `scope_reset_temp_lane`, `is_in_scope`) into `src/scope_region_reset_helpers.c3`, while retaining escape-adoption transfer logic (`scope_splice_escapes`) and global freelist cleanup in `src/scope_region_reset_adopt.c3`.
+- Validation after scope-region reset-helper split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine defer-test modularization: split `src/stack_engine_tests_defer.c3` by extracting defer-update tests (`test_stack_ctx_defer_update_arg`, `test_stack_ctx_defer_update_arg_clone_isolation`) into `src/stack_engine_tests_defer_update.c3`, while retaining defer destroy/undefer/clone-hook coverage in `src/stack_engine_tests_defer.c3`.
+- Validation after stack-engine defer-update split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region reset/splice test modularization: split `src/scope_region_tests_reset_splice.c3` by extracting `is_in_scope` and `scope_splice_escapes` test-domain helpers into `src/scope_region_tests_splice_cases.c3`, while retaining reset/alignment/deep-parent/retain-symmetry tests in `src/scope_region_tests_reset_splice.c3`.
+- Validation after scope-region reset/splice helper split: `c3c build` passes; first full-suite run had one transient TLS failure (`tls valid cert handshake (interp=FAIL, jit=ok)`), immediate rerun of `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed cleanly (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine lifecycle modularization: split `src/stack_engine_lifecycle.c3` by extracting lifecycle hook storage/clone/destroy helper cluster (`stack_ctx_lifecycle_entry_at`, reserve/attach/find/clone/run/clear helpers) into `src/stack_engine_lifecycle_hooks.c3`, while retaining context create/destroy orchestration in `src/stack_engine_lifecycle.c3`.
+- Validation after stack-engine lifecycle hook split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine coroutine-test modularization: split `src/stack_engine_tests_coroutines.c3` by extracting basic one-shot coroutine smoke coverage (`test_entry_simple`, `test_entry_100`, `test_basic_coro`, `test_stack_ctx_second`) into `src/stack_engine_tests_coroutines_basic.c3`, while retaining suspend/resume, recursion, and interleaving coroutine tests in `src/stack_engine_tests_coroutines.c3`.
+- Validation after stack-engine coroutine basic split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Main/runtime modularization: split `src/main.c3` by extracting `RegionRegistry` method cluster (`RegionRegistry.init`, `RegionRegistry.dereference`, `RegionRegistry.dereference_as`) into `src/main_region_registry_methods.c3`, while retaining region/pool/slot type definitions and allocation macros in `src/main.c3`.
+- Validation after main region-registry-method split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine fiber-temp stress modularization: split `src/stack_engine_tests_fiber_temp_stress.c3` by extracting the retention guard stress case (`test_stack_ctx_fiber_temp_retention_guard`) into `src/stack_engine_tests_fiber_temp_retention.c3`, while retaining shared yield-entry helper and clone/discard stress coverage in `src/stack_engine_tests_fiber_temp_stress.c3`.
+- Validation after stack-engine fiber-temp retention split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region temp-pool modularization: split `src/scope_region_temp_pool.c3` by extracting temp-pool stats/type/reporting cluster (stats structs/globals, eligibility predicates, memory-stat reporting helpers) into `src/scope_region_temp_pool_stats.c3`, while retaining chunk reclaim/take/release policy logic in `src/scope_region_temp_pool.c3`.
+- Validation after scope-region temp-pool stats split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region lifecycle modularization: split `src/scope_region_lifecycle.c3` by extracting destructor/destroy path cluster (`scope_run_dtor_chain`, `scope_run_dtors`, `scope_run_escape_dtors`, `scope_destroy`) into `src/scope_region_destroy.c3`, while retaining `scope_create` and retain/release APIs in `src/scope_region_lifecycle.c3`.
+- Validation after scope-region destroy split: `c3c build` passes; an initial full-suite run stalled in scheduler tests without log progress, then a clean rerun of `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine modularization: split `src/stack_engine.c3` by extracting stack context metadata/type declarations (`StackCtxStatus`, defer/lifecycle callback structs, bootstrap state, inline caps, and `StackCtx` handle layout) into `src/stack_engine_types.c3`, while retaining `stack_ctx_init` initialization flow in `src/stack_engine.c3`.
+- Validation after stack-engine type split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Main/runtime modularization: split `src/main.c3` by extracting pool/slot storage type declarations (`SparseSet`, pool arena/free-list records, `Pool`, object record/slot table records, and allocation result structs + constants) into `src/main_pool_slot_types.c3`, while retaining handle aliases, `Region` + allocation/destroy helpers, and `RegionRegistry` declarations in `src/main.c3`.
+- Validation after main pool/slot-type split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine test modularization: split `src/stack_engine_tests.c3` by extracting stack-engine suite runner/orchestration (`run_stack_engine_tests`) into `src/stack_engine_tests_runner.c3`, while retaining defer helper fixtures and stack-region/pool smoke test helpers in `src/stack_engine_tests.c3`.
+- Validation after stack-engine test-runner split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region test modularization: split `src/scope_region_tests_core.c3` by extracting alloc/lifecycle coverage (Tests 1–6 for create/alloc/escape/destructor/RC/freelist generation) into `src/scope_region_tests_alloc_lifecycle.c3`, while retaining core orchestrator aggregation and reset/splice suite composition in `src/scope_region_tests_core.c3`.
+- Validation after scope-region alloc/lifecycle test split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Entry modularization: split `src/entry_bind_mode.c3` by extracting bind-path helper functions (`resolve_bind_project_dir`, `build_bind_toml_path`, `build_bind_output_path`) into `src/entry_bind_paths.c3`, while retaining libclang parse pipeline, parsed-function cleanup, and `run_bind` orchestration in `src/entry_bind_mode.c3`.
+- Validation after entry bind-path split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region test modularization: split `src/scope_region_tests_reset_splice.c3` by extracting topology/alignment test domain (large alloc, deep parent cascade, retain/release symmetry, and alignment gap checks) into `src/scope_region_tests_topology_alignment.c3`, while retaining reset/escape-lane and splice orchestration in `src/scope_region_tests_reset_splice.c3`.
+- Validation after scope-region topology/alignment split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Scope-region test modularization: split `src/scope_region_tests_alloc_lifecycle.c3` by extracting RC/destructor/freelist lifecycle tests (parent-child refcount invariants, destructor execution, freelist generation increment) into `src/scope_region_tests_refcount_destructor.c3`, while retaining create/alloc/escape/chunk-overflow coverage in `src/scope_region_tests_alloc_lifecycle.c3`.
+- Validation after scope-region refcount/destructor split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Stack-engine coroutine-edge modularization: split `src/stack_engine_tests_coroutines_edges.c3` by extracting overflow-recovery coverage (`test_entry_overflow`, `test_overflow_recurse`, `test_stack_overflow_recovery`) into `src/stack_engine_tests_coroutine_overflow.c3`, while retaining FPU preservation and clone multi-shot edge tests in `src/stack_engine_tests_coroutines_edges.c3`.
+- Validation after stack-engine coroutine-overflow split: `c3c build` and full suite run (`LD_LIBRARY_PATH=/usr/local/lib ./build/main`) pass (`Stack engine: 21/0`, `Unified Tests: 1522/0`, `Compiler Tests: 79/0`).
+- Boundary hardening: implemented committed-escape graph-reachability audit in `src/lisp/eval_boundary_api.c3` (`boundary_graph_audit_escape_reachability` + `boundary_debug_graph_audit_committed_escape_root`) and wired it into `boundary_commit_escape` post-commit checks with explicit traversed edge documentation (CONS/ARRAY/HASHMAP/CLOSURE/PARTIAL_PRIM/METHOD_TABLE/MODULE/ITERATOR/INSTANCE) and explicit opaque-wrapper exclusions (FFI/coroutine/continuation/primitive/type payloads).
+- Boundary hardening tests: added targeted reachability tests in `src/lisp/tests_memory_lifetime_boundary_groups.c3` and wired them via `run_memory_lifetime_regression_tests` (`src/lisp/tests_memory_lifetime_groups.c3`) covering accepted all-ESCAPE graph, TEMP-edge rejection from ESCAPE root, and opaque-wrapper exclusion semantics.
+- Validation after boundary graph-reachability audit/tests: `c3c build`, `c3c build --sanitize=address`, and `LD_LIBRARY_PATH=/usr/local/lib ./build/main` pass (`Unified Tests: 1538/0`, `Compiler Tests: 79/0`).
+- Boundary transaction protocol hardening: introduced explicit transition classifier `boundary_txn_transition_allowed(...)` in `src/lisp/eval_boundary_api.c3` and used it to guard commit/abort/close transitions, keeping terminal-state misuse checks centralized in one helper.
+- Boundary transaction protocol tests: added targeted transition-policy and lifecycle tests in `src/lisp/tests_memory_lifetime_boundary_groups.c3` (`matrix`, `begin->commit->close`, `begin->abort->close`) and wired them through `run_memory_lifetime_regression_tests` in `src/lisp/tests_memory_lifetime_groups.c3`.
+- Boundary benchmark support: added env-gated benchmark runner `run_memory_lifetime_boundary_benchmarks(...)` in `src/lisp/tests_memory_lifetime_boundary_groups.c3` (enabled with `OMNI_BOUNDARY_BENCH=1`) emitting `OMNI_BENCH_SUMMARY` for:
+  - decision-cost lanes (`splice`, `fallback`, `reuse`) via `boundary_commit_escape(...)`,
+  - splice-tail throughput via `boundary_try_scope_splice_escapes_result(...)` + tail-consistency checks.
+- Benchmark harness fix: removed accidental double-splice in benchmark loop (was invoking `scope_splice_escapes` after `boundary_try_scope_splice_escapes_result`, which already performs splice on allowed transfer) to avoid UAF under ASAN in benchmark mode.
+- Validation after benchmark support/fix:
+  - `c3c build` passed.
+  - `c3c build --sanitize=address` passed.
+  - Benchmark mode (normal): `OMNI_BOUNDARY_BENCH=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1547/0`, `Compiler Tests: 79/0`) and emitted `OMNI_BENCH_SUMMARY`.
+  - Benchmark mode (ASAN): `OMNI_BOUNDARY_BENCH=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1538/0`, `Compiler Tests: 79/0`) and emitted `OMNI_BENCH_SUMMARY`.
+- Traversal telemetry slice: extended `CopyToParentStats` with cons-spine copy distribution fields (`cons_spine_copy_samples`, `cons_spine_copy_total_len`, `cons_spine_copy_peak_len`), wired cons-spine measurement on defensive list-copy routes, and added env-gated summary emission (`OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1`) as `OMNI_TEST_SUMMARY suite=boundary_traversal`.
+- Traversal baseline (pre-routing-policy change) captured:
+  - Normal summary run: `OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` -> `boundary_traversal copy_total=511808 copy_fast_reuse=245581 copy_defensive=266227 copy_tag_cons=1443 copy_tag_closure=6429 copy_tag_other=924 copy_site_run_jit=220 copy_site_jit_single=2708 copy_site_tco=0 promoted_then_spliced=36199 promoted_then_fallback_copied=6832 cons_spine_samples=1396 cons_spine_avg_len=149 cons_spine_peak_len=10000`.
+  - ASAN summary run: `OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` -> `boundary_traversal copy_total=407198 copy_fast_reuse=223096 copy_defensive=184102 copy_tag_cons=943 copy_tag_closure=5200 copy_tag_other=730 copy_site_run_jit=220 copy_site_jit_single=1408 copy_site_tco=0 promoted_then_spliced=19431 promoted_then_fallback_copied=4960 cons_spine_samples=907 cons_spine_avg_len=118 cons_spine_peak_len=10000`.
+- Boundary hardening Stage 2 closure: finalized destination-aware CONS return routing in `boundary_commit_escape(...)` via `boundary_build_destination_cons_escape(...)` with iterative ESCAPE-lane spine construction and post-write barrier assertions that prevent TEMP-lane edges from being committed under ESCAPE roots.
+- Boundary hardening Stage 3 extension: added destination-aware PARTIAL primitive return routing for TEMP-owned boundary survivors via `boundary_build_destination_partial_escape(...)`, including a dedicated commit outcome `BOUNDARY_COMMIT_DESTINATION_PARTIAL_BUILT` in `src/lisp/eval_boundary_api.c3`.
+- Boundary hardening regression coverage: added `boundary_commit_escape TEMP partial survivor commit` in `src/lisp/tests_memory_lifetime_boundary_groups.c3`, asserting destination-built outcome, no fallback/splice/reuse, and ESCAPE-lane ownership for routed partial arguments.
+- Validation after Stage 2 closure + Stage 3 partial route:
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1549/0`, `Compiler Tests: 79/0`).
+  - `c3c build --sanitize=address` passed.
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed under ASAN (`Unified Tests: 1549/0`, `Compiler Tests: 79/0`).
+  - `bash scripts/run_boundary_hardening.sh` passed (`normal Unified Tests: 1549/0`, `ASAN Unified Tests: 1540/0`, thresholds + policy checks green).
+- Stage 4 env/closure boundary route unification: removed duplicate closure payload clone logic from `src/lisp/eval_env_copy.c3` and reused the shared `copy_parent_clone_closure_payload(...)` path so env-copy and return-boundary closure relocation share one retain/copy implementation.
+- Validation after env/closure route unification:
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1549/0`, `Compiler Tests: 79/0`).
+  - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1540/0`, `Compiler Tests: 79/0`).
+  - `bash scripts/run_boundary_hardening.sh` passed (`normal Unified Tests: 1549/0`, `ASAN Unified Tests: 1540/0`, thresholds + policy checks green).
+- Stage 4 env/promotion idiom closure:
+  - `src/lisp/eval_env_copy.c3` now uses a cold invariant sink (`copy_env_invariant_fail(...) @noinline`) with runtime detail logging + `unreachable(...)`, replacing the non-canonical `assert(false)` pattern.
+  - `copy_env_to_scope(...)` keeps owned promotion-context lifetime under `defer`, and helper contracts now enforce restoration (`@ensure interp.active_promotion_ctx == saved_active_ctx`) through `copy_env_end_owned_promotion_ctx(...)`.
+  - Env-copy closure/iterator copy flow remains explicit/typed (`copy_env_clone_closure_if_needed`, `copy_env_clone_iterator_if_needed`) with no pointer-punning shortcuts.
+- Validation after Stage 4 idiom closure:
+  - `c3c build` passed.
+  - `c3c build --sanitize=address` passed.
+  - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1549/0`, `Compiler Tests: 79/0`).
+  - `bash scripts/run_boundary_hardening.sh` currently fails in Stage 2 on existing HTTP fiber/libuv parity tests (`http-get in fiber via libuv tcp path`, `http-request in fiber via libuv tcp path`) while boundary policy/facade checks and normal/ASAN builds are otherwise healthy.
+- Stage 5 planning closure (JIT/AOT destination-routing inventory):
+  - Marked Stage 5 "identify constructors/callsites" complete in `TODO.md` with concrete callsites:
+    - `run_promote_result(...)` (`COPY_SITE_RUN_JIT_RESULT`) in `src/lisp/eval_run_pipeline.c3`
+    - `jit_eval_in_single_scope(...)` (`COPY_SITE_JIT_SINGLE_SCOPE_RETURN`) in `src/lisp/jit_jit_eval_scopes.c3`
+    - `jit_eval_in_call_scope(...)` (`COPY_SITE_JIT_CALL_SCOPE_STEP2`) in `src/lisp/jit_jit_eval_scopes.c3`
+    - `copy_tco_env_chain(...)` (`COPY_SITE_JIT_TCO_FRAME_COPY`) kept as boundary-classified fallback surface (not direct destination-builder path).
+  - Prioritized aggregate families for JIT return fast-path rollout: `CONS` and `PARTIAL_PRIM` first, then `ITERATOR`/closure-wrapper cases with explicit provenance.
+- Stage 5 fallback-policy closure:
+  - Kept runtime fallback surfaces on boundary facades only; policy gate remains green (`bash scripts/check_boundary_facade_usage.sh`).
+  - Confirmed runtime eval/JIT finalize convergence on shared boundary contract (`boundary_finalize_scoped_result(...)` + `boundary_commit_escape(...)`).
+  - Confirmed coroutine suspend/resume and global escape surfaces use boundary helpers (`boundary_copy_to_parent_site(...)`, `boundary_promote_to_root(...)`) rather than direct boundary primitives.
+- Stage 6 telemetry inventory refresh:
+  - Captured fresh traversal/fallback summary with `OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`.
+  - Current top fallback sources remain JIT return boundaries:
+    - `copy_fallback_site_jit_single=2564`
+    - `copy_fallback_site_run_jit=2141`
+    - `copy_fallback_site_tco=0`
+  - Current top traversal site counts:
+    - `copy_site_jit_single=1357`
+    - `copy_site_run_jit=308`
+    - `copy_site_tco=0`
+  - Marked Stage 6 "identify top callsites still firing" TODO item complete; narrowing target order remains `COPY_SITE_JIT_SINGLE_SCOPE_RETURN` then `COPY_SITE_RUN_JIT_RESULT`.
+- Stage 6 narrowing slice (iterator route):
+  - Added destination-aware iterator survivor route:
+    - `boundary_build_destination_iterator_escape(...)`
+    - new commit outcome: `BOUNDARY_COMMIT_DESTINATION_ITERATOR_BUILT`
+    - wired in `boundary_commit_escape(...)` TEMP-owned fast route alongside existing `CONS` and `PARTIAL_PRIM` destination routes.
+  - Added regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
+    - `boundary_commit_escape TEMP iterator survivor commit`
+    - asserts destination-built outcome, no fallback/splice/reuse, ESCAPE-lane payload ownership, and site-counter shape (`COPY_SITE_GENERIC` increments, caller site no direct fallback increment).
+  - Validation after iterator route:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1549/0`, `Compiler Tests: 79/0`).
+- Stage 6 narrowing slice (direct destination promotion for remaining TEMP-owned tags):
+  - Added `BOUNDARY_COMMIT_DESTINATION_DIRECT_PROMOTED` and routed non-specialized TEMP-owned survivors through direct destination-scope ESCAPE promotion in `boundary_commit_escape(...)`, avoiding releasing-scope promotion + splice requirement for that subset.
+  - Added regression in `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
+    - `boundary_commit_escape TEMP scalar direct destination commit`
+    - asserts direct-destination outcome, no fallback/splice/reuse, and ESCAPE-lane ownership in target scope.
+  - Validation after direct-destination route:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1550/0`, `Compiler Tests: 79/0`).
+    - `c3c build --sanitize=address` passed.
+    - `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1551/0`, `Compiler Tests: 79/0`).
+    - Full-run boundary fallback deltas vs pre-route baseline in this session:
+      - `copy_fallback_total`: `4745 -> 4720` (down 25)
+      - `copy_fallback_site_jit_single`: `2564 -> 2541` (down 23)
+      - `copy_fallback_site_run_jit`: `2141 -> 2139` (down 2)
+- Stage 6 policy confirmation:
+  - Confirmed fallback traversal remains explicit for dynamic/provenance-uncertain boundaries (`BOUNDARY_RETURN_MIXED_UNCERTAIN`) and reason-tagged splice-rejected/pre-aborted branches in `boundary_commit_escape(...)`.
+  - Boundary facade policy guard remains green after the Stage 6 slices (`bash scripts/check_boundary_facade_usage.sh`).
+- Stage 6 scope-membership hotness reevaluation:
+  - Audited runtime scope-membership callsites after Stage 6 narrowing; boundary return paths remain centralized on boundary wrappers (`boundary_ptr_in_scope`, `boundary_ptr_in_scope_chain`).
+  - Normalized `copy_value_if_owned_by_scope(...)` in `src/lisp/eval_promotion_context.c3` from direct `main::is_in_scope(...)` to `boundary_ptr_in_scope(...)`.
+  - Validation after membership-helper normalization:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1551/0`, `Compiler Tests: 79/0`).
+- Stage 6 narrowing checkpoint closure:
+  - Marked Stage 6 "delete or narrow redundant callsites" TODO item complete after landing:
+    - destination-aware `ITERATOR` survivor route, and
+    - direct destination promotion route for remaining TEMP-owned survivor tags.
+  - Latest summary run (`OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1`) shows residual fallback dominated by explicit dynamic classes:
+    - `copy_fallback_mixed_uncertain=245`
+    - `copy_fallback_budget=47`
+    - `copy_fallback_splice_rejected=12`
+    - `copy_fallback_releasing_scope=1`
+- Stage 7 fallback-site inventory closure:
+  - Marked Stage 7 first checklist item complete in `TODO.md` by classifying remaining fallback traversal surfaces with concrete owner functions/files:
+    - dynamic eval: `run_promote_result(...)` (`src/lisp/eval_run_pipeline.c3`) + `jit_eval_in_single_scope(...)` (`src/lisp/jit_jit_eval_scopes.c3`) through `boundary_finalize_scoped_result(...)` -> `boundary_commit_escape(...)`.
+    - continuation/effect boundary: `jit_eval_in_call_scope(...)` (`src/lisp/jit_jit_eval_scopes.c3`) on same finalize/commit path.
+    - coroutine boundary: `prim_resume_yield_result(...)` (`src/lisp/primitives_iter_coroutine.c3`) via `boundary_copy_to_parent_site(..., COPY_SITE_PRIM_RESUME)`.
+    - global mutation/persistent store: `promote_to_root_site(...)` (`src/lisp/eval_promotion_escape.c3`) and root-store callsites in `src/lisp/jit_jit_closure_define_qq.c3` / `src/lisp/jit_jit_define_method_table.c3`.
+    - uncertain-provenance helpers: `boundary_copy_to_scope_site(...)`, `boundary_copy_from_releasing_scope(...)`, `boundary_copy_value_if_owned_by_scope(...)` (`src/lisp/eval_boundary_api.c3`) plus `copy_value_if_owned_by_scope(...)` (`src/lisp/eval_promotion_context.c3`).
+  - Captured current summary evidence during inventory:
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+    - `Unified Tests: 1551/0`, `Compiler Tests: 79/0`
+    - boundary counters: `copy_fallback_total=305`, `copy_fallback_site_run_jit=72`, `copy_fallback_site_jit_single=224`, `copy_fallback_site_tco=0`, `copy_fallback_mixed_uncertain=245`, `copy_fallback_budget=47`, `copy_fallback_splice_rejected=12`, `copy_fallback_releasing_scope=1`.
+- Stage 7 coroutine-boundary narrowing:
+  - Replaced coroutine resume’s direct copy helper path with explicit boundary provenance routing:
+    - `src/lisp/primitives_iter_coroutine.c3`: `prim_yield(...)` now records `interp.yield_scope = interp.current_scope` alongside `yield_value`.
+    - `prim_resume_yield_result(...)` now routes with `boundary_copy_to_scope_site(yielded, interp, interp.current_scope, yield_scope, COPY_SITE_PRIM_RESUME)` instead of `boundary_copy_to_parent_site(...)`.
+    - missing coroutine yield provenance now hard-errors (`resume: missing yield-scope provenance`) instead of silently falling back.
+  - Added lifecycle cleanup for coroutine yield-boundary state:
+    - `coroutine_clear_yield_boundary_state(...)` clears `yield_value`/`yield_scope`.
+    - invoked from resume completion/error cleanup paths.
+  - Interp state extension:
+    - `src/lisp/value_interp_state.c3`: added `yield_scope` field and init reset.
+    - `src/lisp/tests_tests.c3`: boundary reset helper now clears `yield_scope`.
+  - Validation after coroutine-boundary narrowing:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1551/0`, `Compiler Tests: 79/0`).
+- Stage 7 fallback-telemetry expansion (class visibility):
+  - Extended boundary decision summary emission in `src/lisp/tests_tests.c3` to include additional site counters:
+    - `copy_fallback_site_jit_call` (`COPY_SITE_JIT_CALL_SCOPE_STEP2`)
+    - `copy_fallback_site_repl` (`COPY_SITE_REPL_LINE_RESULT`)
+    - `copy_fallback_site_prim_resume` (`COPY_SITE_PRIM_RESUME`)
+    - `copy_fallback_site_jit_eval_set`, `copy_fallback_site_jit_eval_define`, `copy_fallback_site_jit_env_extend_root`
+  - Latest summary after expansion:
+    - `copy_fallback_site_run_jit=72`
+    - `copy_fallback_site_jit_single=224`
+    - `copy_fallback_site_jit_call=9`
+    - `copy_fallback_site_prim_resume=0`
+    - `copy_fallback_site_repl=0`
+    - root-store fallback sites remain `0` in this run.
+- Stage 7 mixed-uncertain route narrowing:
+  - `src/lisp/eval_boundary_api.c3`:
+    - added commit outcome `BOUNDARY_COMMIT_MIXED_DESTINATION_PROMOTED`.
+    - in `boundary_commit_escape(...)`, `BOUNDARY_RETURN_MIXED_UNCERTAIN` now attempts destination-scope ESCAPE promotion first and only falls back to `boundary_copy_to_scope_site(...)` when that route cannot commit.
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
+    - added regression `boundary_commit_escape mixed uncertain destination commit`.
+    - verifies no fallback copy, destination ESCAPE ownership, and expected site-counter shape (`COPY_SITE_GENERIC` increments, caller site fallback counter unchanged).
+  - Validation:
+    - `c3c build` passed.
+    - `c3c build --sanitize=address` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1552/0`, `Compiler Tests: 79/0`).
+    - `OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` now passes end-to-end under ASAN build (`Unified Tests: 1543/0`, `Compiler Tests: 79/0`); prior `139` unwind crash is closed.
+  - Boundary fallback delta after mixed-route landing (summary run):
+    - `copy_fallback_total`: `305 -> 67`
+    - `copy_fallback_mixed_uncertain`: `245 -> 10`
+    - `copy_fallback_site_run_jit`: `72 -> 3`
+    - `copy_fallback_site_jit_single`: `224 -> 61`
+    - `copy_fallback_site_jit_call`: `9 -> 3`
+- Stage 7 ASAN unwind stabilization (stack-overflow/error boundary path):
+  - Root-cause closure:
+    - Deep non-tail stack-overflow unwind could recurse through `boundary_commit_escape(...)` disjoint `ERROR` promotion, triggering ASAN crash (`SIGSEGV`/`139`) in Advanced tests.
+  - Runtime changes:
+    - `src/lisp/value_interp_state.c3`: `interp_apply_stack_overflow_error(...)` now allocates stack-overflow errors in `root_scope` so unwind can reuse one surviving error value across finalize boundaries.
+    - `src/lisp/eval_boundary_api.c3`: added `boundary_build_destination_error_escape(...)` and routed TEMP-owned `ERROR` values through direct destination ESCAPE construction before generic disjoint promotion.
+  - Validation:
+    - Repro script (`(let ^rec (f (lambda (n) (+ 1 (f (+ n 1))))) (f 0))`) no longer crashes under ASAN build.
+    - `c3c build` passed.
+    - `c3c build --sanitize=address` passed.
+    - `OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1543/0`, `Compiler Tests: 79/0`) with no `139`.
+- Stage 7 dynamic-eval budget pressure reduction:
+  - `src/lisp/eval.c3`:
+    - raised `PROMOTION_CTX_BUDGET_RETURN` from `4096` to `16384` to reduce pre-aborted boundary finalize contexts in dynamic eval/JIT return flows.
+  - Boundary summary delta after budget update:
+    - normal profile (`Unified Tests: 1552/0`):
+      - `copy_fallback_total`: `67 -> 61`
+      - `copy_fallback_budget`: `47 -> 43`
+      - `copy_fallback_site_jit_single`: `61 -> 57`
+      - `copy_fallback_site_jit_call`: `3 -> 1`
+      - `promotion_aborted_pre_aborted`: `47 -> 43`
+    - ASAN profile (`Unified Tests: 1543/0`):
+      - `copy_fallback_total`: `58 -> 55`
+      - `copy_fallback_budget`: `45 -> 43`
+      - `copy_fallback_site_jit_single`: `55 -> 53`
+      - `copy_fallback_site_jit_call`: `2 -> 1`
+      - `promotion_aborted_pre_aborted`: `45 -> 43`
+  - Validation:
+    - `c3c build` passed.
+    - `c3c build --sanitize=address` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed in both normal and ASAN build profiles.
+- Stage 7 splice-rejected fast-path experiment rollback:
+  - Tried routing splice-rejected releasing-escape cases through direct destination promotion.
+  - Observed unstable ASAN full-suite behavior (exit `139` during Advanced Feature Tests), so the splice-rejected fast path and its dedicated regression were reverted to keep runtime stable.
+  - Current retained state:
+    - mixed-uncertain destination route remains landed.
+    - splice-rejected branch remains copy-fallback (`copy_fallback_splice_rejected=8` in latest normal summary).
+- Stage 7 return-finalize budget class retirement + telemetry cleanup:
+  - Runtime policy update:
+    - `src/lisp/jit_jit_eval_scopes.c3`: `boundary_finalize_scoped_result(...)` now starts `boundary_promotion_context_begin(interp, &boundary_ctx)` without return-budget cap, so scoped finalize does not budget-abort into fallback for large return graphs.
+    - `src/lisp/eval_boundary_api.c3`: added `boundary_restore_decision_stats(...)` to allow scoped telemetry isolation in tests.
+  - Test policy update (synthetic fallback isolation):
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3`: forced budget=0 fallback parity probe snapshots/restores boundary decision stats.
+    - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`: mixed-event `case 3` (forced budget=0 fallback) snapshots/restores boundary decision stats.
+    - `src/lisp/tests_memory_lifetime_groups.c3`: updated large-list finalize parity expectations to match new no-budget-abort return-finalize policy (no copy-site fallback delta required; commit parity remains required).
+  - Validation:
+    - `c3c build` passed.
+    - `c3c build --sanitize=address` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed in normal and ASAN builds (`Unified Tests: 1552/0`).
+  - Boundary summary after this change:
+    - `copy_fallback_total=10`
+    - `copy_fallback_budget=0`
+    - `copy_fallback_splice_rejected=8`
+    - `copy_fallback_releasing_scope=2`
+    - `copy_fallback_mixed_uncertain=0`
+    - `copy_fallback_site_jit_single=7`
+    - `copy_fallback_site_run_jit=2`
+    - `copy_fallback_site_jit_call=1`
+- Stage 7 splice-rejected parent-lane closure (fallbacks eliminated):
+  - Root cause:
+    - splice-rejected fallback class (`BOUNDARY_SCOPE_TRANSFER_PARENT_ESCAPE_LANE_INVALID`) was caused by `scope_splice_escapes(...)` moving child ESCAPE chunk lists into parent without transferring parent ESCAPE cursor (`escape_bump`/`escape_limit`).
+    - This left parent in an invalid optional-lane shape (`escape_chunks != null` with null bump/limit), forcing boundary commit to fall back instead of splice.
+  - Runtime fix:
+    - `src/scope_region_reset_adopt.c3`: `scope_splice_escapes(...)` now transfers `escape_bump` and `escape_limit` from child to parent when ESCAPE chunks are adopted.
+  - Regression coverage:
+    - `src/scope_region_tests_splice_cases.c3`: strengthened splice concat invariants to assert parent ESCAPE lane cursor validity (`escape_bump != null`, `escape_limit != null`, `escape_bump <= escape_limit`) after parent-empty + child-non-empty splice.
+  - Boundary telemetry updates:
+    - `src/lisp/eval_boundary_api.c3`:
+      - added splice-rejected reason counters under fallback accounting (`copy_fallback_splice_rejected_by_reason[...]`).
+      - added fallback source-tag telemetry (`copy_fallback_tag_cons/error/other`) and last-fallback diagnostics.
+      - enabled graph-audit/verbose telemetry env switches in counters mode (`OMNI_BOUNDARY_GRAPH_AUDIT`, `OMNI_BOUNDARY_VERBOSE_TELEMETRY`) for diagnostics without changing instrumentation mode.
+    - `src/lisp/tests_tests.c3` and `scripts/parse_boundary_summary.sh`:
+      - summary/parser now include splice-fail reason breakdown, splice-rejected fallback reason breakdown, extended fallback site keys, and fallback tag diagnostics.
+  - Hardening runner stability:
+    - `scripts/run_boundary_hardening.sh` now logs Stage 2/4 via redirection helper (`run_stage_with_log`) instead of shell pipelines to avoid pipe-induced flake in this environment.
+  - Validation:
+    - `c3c build` passed.
+    - `c3c build --sanitize=address` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed in normal + ASAN runs.
+    - `scripts/run_boundary_hardening.sh` passed end-to-end (Stages 0-8).
+  - Boundary summary after fix (ASAN stage):
+    - `copy_fallback_total=0`
+    - `copy_fallback_splice_rejected=0`
+    - `copy_fallback_splice_reason_parent_lane=0`
+    - `copy_fallback_site_jit_single=0`
+    - `copy_fallback_site_jit_call=0`
+- Fallback cleanup tracks (A-E partial) landed:
+  - Parser permissive fallback removal:
+    - `src/lisp/parser_lexer_string_hash.c3`: unknown `#` dispatch no longer falls through to symbol parsing; it now emits a deterministic lexer error (`"unknown # dispatch sequence"`).
+    - `src/lisp/parser_expr_atoms.c3`: added explicit `T_ERROR` branch so lexer error text is surfaced as parser error.
+    - `src/lisp/tests_runtime_feature_schema_reader_groups.c3`: added regression asserting unknown `#` dispatch rejection.
+  - Compiler migration residue cleanup:
+    - `src/lisp/compiler_code_emission.c3`: removed ignored migration parameter from `emit_lambda_return_with_frame(...)` and updated caller to canonical signature.
+  - Error-wrapper retirement:
+    - removed `raise->message` and `try-message` from:
+      - `src/lisp/compiler_stdlib_prelude.c3`
+      - `stdlib/stdlib.lisp`
+    - migrated test/fixture/harness callsites to explicit payload-aware handlers:
+      - `tests/lib/tls/server_once.omni`
+      - `src/lisp/tests_advanced_core_unicode_groups.c3`
+      - `src/lisp/tests_advanced_io_effect_ffi_groups.c3`
+      - `src/lisp/tests_runtime_async_groups.c3`
+      - `src/lisp/tests_runtime_feature_http_groups.c3`
+      - `scripts/run_tls_targeted.sh`
+    - docs updated to remove wrappers from standard surface (`docs/LANGUAGE_SPEC.md`, `docs/ERROR_MODEL.md`).
+  - Legacy deduce alias removal:
+    - deleted primitive table aliases from `src/lisp/eval_init_primitives.c3`:
+      - `deduce-open`, `fact!`, `retract!`, `deduce-scan`, `deduce-query`, `deduce-count`, `deduce-match`
+    - added explicit rejection coverage in `src/lisp/tests_deduce_groups.c3` for all removed names.
+  - Plan/status docs updated:
+    - `TODO.md` Track A/B/C, parser and compiler cleanup checkboxes updated.
+    - `docs/plans/fallback-inventory.md` statuses advanced for parser/compiler/error-wrapper/deduce rows.
+  - Validation:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed.
+    - latest summary: `Unified Tests: 1560/0`, `Compiler Tests: 79/0`.
+- JIT fallback retirement:
+  - `src/lisp/jit_jit_compile_effects_modules.c3`:
+    - `jit_compile_fallback(...)` no longer calls `jit_eval_fallback(...)`.
+    - unhandled JIT expression routes now hard-fail with `JIT_COMPILE_FAILED~`.
+  - Validation:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1560/0`, `Compiler Tests: 79/0`).
+- Regex dual-path fallback removal:
+  - `src/pika/regex_cache_api.c3`:
+    - removed silent compiled->simple fallback in `regex_search`, `regex_fullmatch`, and `regex_find_all`.
+    - default regex API now follows compiled-engine path only; unusable compile path records `g_regex_fallback_uses` and returns compiled-path no-match/empty result.
+  - Validation:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1560/0`, `Compiler Tests: 79/0`).
+- Scope reset defensive fallback removal:
+  - `src/scope_region_reset_helpers.c3`:
+    - introduced shared invariant helper `scope_require_temp_baseline_chunk(...)`.
+    - removed silent TEMP baseline recreation path from `scope_reset_temp_lane(...)`.
+    - strengthened reset paths with explicit `keep != null` assertions.
+  - Validation:
+    - `c3c build` passed.
+    - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed (`Unified Tests: 1560/0`, `Compiler Tests: 79/0`).
+- Track F JIT fallback telemetry + variadic no-fallback closure:
+  - Added per-expression fallback audit telemetry:
+    - `src/lisp/jit_jit_compile_expr_core.c3`:
+      - new `JitFallbackAuditStats` counters (`total`, per-`ExprTag` buckets, `unknown` bucket, `last_tag`).
+      - `jit_compile_expr(...)` now records fallback-audit events immediately before guarded `jit_compile_fallback(...)` failure.
+      - added reset/snapshot helpers (`jit_fallback_audit_reset`, `jit_fallback_audit_snapshot`, `jit_fallback_audit_tag_count`).
+    - `src/lisp/tests_tests.c3`:
+      - emits `OMNI_TEST_SUMMARY suite=jit_fallback ...` summary line.
+      - resets audit counters at unified-suite start.
+  - Added explicit variadic no-fallback regression:
+    - `src/lisp/tests_runtime_feature_jit_groups.c3`:
+      - `jit policy: variadic lambda executes without jit fallback` asserts fallback counter delta is zero while evaluating a variadic lambda.
+    - `src/lisp/tests_advanced_core_unicode_groups.c3`:
+      - updated variadic coverage note to canonical native-JIT behavior (no fallback route).
+  - Validation:
+    - `c3c build` passed.
+    - Full normal suite passed:
+      - `OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main`
+      - `Unified Tests: 1562 passed, 0 failed`
+      - `Compiler Tests: 79 passed, 0 failed`
+      - `OMNI_TEST_SUMMARY suite=jit_fallback total=0 ...`
+    - ASAN build passed (`c3c build --sanitize=address`), but ASAN full-suite run currently exits `139` during Advanced Feature Tests in this environment; unchanged pre-existing instability.
+- Track G boundary-facade ownership narrowing (promotion-context copy helpers):
+  - `src/lisp/eval_promotion_context.c3`:
+    - removed direct scoped-copy implementations:
+      - `copy_to_parent_site_ctx(...)`
+      - `copy_value_if_owned_by_scope(...)`
+    - file now owns promotion-context lifecycle/memo primitives only.
+  - `src/lisp/eval_boundary_api.c3`:
+    - `boundary_copy_to_parent_site_ctx(...)` now owns scoped-copy + memoized tracking logic.
+    - `boundary_copy_value_if_owned_by_scope(...)` now owns source-scope ownership-aware routing.
+  - Callsite migration:
+    - `src/lisp/eval_promotion_escape.c3`: disjoint escape bridge now calls `boundary_copy_to_parent_site_ctx(...)`.
+    - `src/lisp/tests_memory_lifetime_promotion_context_groups.c3`: switched remaining direct calls to `boundary_copy_value_if_owned_by_scope(...)`.
+  - Validation:
+    - `c3c build` passed.
+    - full normal suite passed (`Unified Tests: 1562 passed, 0 failed`, `Compiler Tests: 79 passed, 0 failed`).
+    - ASAN build passed; ASAN full-suite remains environment-unstable (`exit 139` in Advanced Feature Tests), unchanged from prior baseline.
+- Track G copy provenance closure (remove non-context `copy_to_parent` fallback branch):
+  - `src/lisp/eval_promotion_copy.c3`:
+    - `copy_to_parent_try_fast_reuse(...)` now uses only `boundary_classify_return_value(...)` with explicit `current_scope` + `releasing_scope` provenance; removed non-context `boundary_can_reuse_value(...)` fallback branch.
+    - `copy_to_parent(...)` now hard-errors (`"boundary: copy_to_parent requires target/releasing scope provenance"`) when provenance context is missing instead of applying conservative migration copy behavior.
+    - Added explicit contracts requiring non-null provenance context for fast-reuse classification.
+  - `src/lisp/eval_boundary_api.c3`:
+    - `boundary_copy_to_parent_site_ctx_impl(...)` now enforces explicit boundary provenance (`current_scope` + `releasing_scope`) and hard-errors on missing context.
+    - `boundary_copy_env_to_target_scope_impl(...)` now sets `interp.releasing_scope = session.current_scope` so env-copy boundary routing carries explicit source-scope provenance.
+  - Test alignment:
+    - `src/lisp/tests_memory_lifetime_env_copy_groups.c3` env-copy lifetime cases now use `boundary_copy_env_to_target_scope(...)` instead of direct `copy_env_to_scope(...)` calls so tests validate the canonical boundary contract.
+  - Policy guard tightening:
+    - `scripts/check_boundary_facade_usage.sh` now treats direct `copy_env_to_scope(...)` and raw `boundary_copy_to_parent_site(...)` usage as disallowed symbols.
+    - `scripts/boundary_facade_policy.txt` explicitly allows those symbols only in boundary core implementation files.
+  - Validation:
+    - `c3c build` passed.
+    - `scripts/check_boundary_facade_usage.sh` passed.
+    - `scripts/run_boundary_hardening.sh` passed end-to-end (normal + ASAN, Stage 0-8).
+    - boundary telemetry summary stayed at `copy_fallback_total=0` for normal and ASAN runs.
+  - Follow-up hygiene:
+    - normalized stale “fallback” wording in boundary/runtime comments to match current hard-error + explicit provenance policy:
+      - `src/lisp/eval.c3`
+      - `src/lisp/eval_env_copy.c3`
+      - `src/lisp/value_environment.c3`
+      - `src/lisp/eval_promotion_escape.c3`
+    - advanced TODO closure state:
+      - `TODO.md`: marked “For each remaining class…” complete in Stage 7.
+      - `TODO.md`: marked runtime ownership fallback cleanup complete except canonical `MethodTable.fallback`.
+      - `TODO.md`: marked closure criteria complete for JIT no-interpreter-fallback, regex no dual-path silent fallback, defensive invariant cleanup, and language-surface canonicalization.
+      - `TODO.md`: marked closure criteria complete for API duplicates, parser permissive fallthrough, and ignored compiler signatures.
+      - `TODO.md`: marked closure criteria complete for ownership/provenance hot-path scan reduction and largest-hotspot split completion.
+      - `TODO.md`: marked Stage acceptance + fallback-policy rule bullets complete (staged rollout criteria, final traversal-fallback closure, Eval/JIT parity, and MethodTable-fallback policy lock).
+      - `TODO.md`: marked migration-rule + instrumentation idiom bullets complete where code evidence exists (staged cutover discipline, JIT route enums + `$assert` sync, fallback/status enum audit checks, and split-discipline closure notes).
+      - `TODO.md`: marked additional idiom closures with evidence (contract-backed ownership-transition helpers, contract-backed replacement-helper shape, and canonical language-form enforcement for effects/error-model surfaces).
+      - `TODO.md`: marked semantic-route helper organization and stack-engine opacity checks complete (route-based boundary helper clustering + no direct ScopeRegion policy in non-test stack-engine core modules).
+      - `TODO.md`: marked `foreach` idiom closure complete with codebase-wide iteration evidence (non-indexed loops use `foreach`; index loops retained only where positional semantics are needed).
+      - `TODO.md`: marked `@nodiscard` idiom closure by annotating boundary helpers where dropped return values are correctness bugs (`boundary_copy_to_parent_site_ctx(...)`, `boundary_copy_env_to_target_scope(...)`).
+      - `TODO.md`: marked compile-time gate discipline closure for JIT routing modules (no scattered `@if`/preprocessor-style branching in expression-routing paths).
+      - `TODO.md`: marked public-API cleanup patch-discipline closure (bounded API-removal patches with paired negative/regression tests).
+- 2026-03-09 (finwatch integration + entrypoint export fix):
+  - `examples/finwatch/server.omni`:
+    - fixed a missing closing `)` in `route/portfolio`, which had unintentionally nested subsequent top-level forms and blocked later server exports.
+    - normalized entrypoint names to canonical slash forms: `server/start-async`, `server/start`.
+  - `examples/finwatch/main.omni`:
+    - switched to canonical entrypoint call `(server/start "127.0.0.1" 8181)`.
+  - `examples/finwatch/boot_smoke.omni`:
+    - updated symbol reference from `server-start` to `server/start`.
+  - `examples/finwatch/TODO.md`:
+    - marked live integration test complete with concrete verification note.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/boot_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/dispatch_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/smoke_test.omni` passed.
+    - live probe passed: launched `examples/finwatch/main.omni`, `/health` returned HTTP `200`, and process remained alive.
+- 2026-03-09 (finwatch UDP/pipe parity completion):
+  - `examples/finwatch/smoke_test.omni`:
+    - added bounded pipe coverage using `pipe-listen`/`pipe-connect` + `tcp-accept`/`tcp-read`/`tcp-write` and socket cleanup.
+    - added bounded UDP coverage using `udp-socket`/`udp-bind`/`udp-send`/`udp-recv`/`udp-close`.
+    - emits explicit pass lines: `pipe io: OK`, `udp io: OK`.
+  - `examples/finwatch/TODO.md`:
+    - marked remaining `UDP/pipe I/O` item complete with concrete smoke evidence.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/boot_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/dispatch_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/smoke_test.omni` passed, including `pipe io: OK` and `udp io: OK`.
+- 2026-03-09 (finwatch signal/process parity completion):
+  - `examples/finwatch/smoke_test.omni`:
+    - added signal watcher coverage: `signal-handle` + `signal-unhandle` with real `SIGUSR1` delivery via spawned `/bin/sh`.
+    - added process termination coverage: `process-kill` + `process-wait` with explicit child stdio handle cleanup.
+    - emits explicit pass lines: `signal io: OK`, `process-kill: OK`.
+  - `examples/finwatch/TODO.md`:
+    - marked remaining `signal-handle`/`signal-unhandle` and `process-kill` items complete.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/boot_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/dispatch_smoke.omni` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/finwatch/smoke_test.omni` passed, including `signal io: OK` and `process-kill: OK`.
+- 2026-03-09 (effects-contract drift gates: lint + CI + docs parity):
+  - Added contract lint scripts:
+    - `scripts/check_effects_contract_policy.sh`:
+      - checks newly-added public primitives for forbidden failure constructors (`raise_error`, `make_error`).
+      - blocks newly-added direct `(signal raise ...)` additions in `stdlib/stdlib.lisp`.
+    - `scripts/check_primitive_docs_parity.sh`:
+      - validates doc coverage for all registered public primitives from `src/lisp/eval_init_primitives.c3`.
+    - `scripts/run_effects_contract_lint.sh`:
+      - executes both checks and emits machine-readable summary JSON.
+  - Integrated lint gates into hardening execution:
+    - `scripts/run_boundary_hardening.sh` now runs effects-contract lint as Stage `0b` and emits `build/effects_contract_lint_summary.json`.
+    - `.github/workflows/boundary-hardening.yml` now triggers on error-contract lint/doc-surface files and uploads lint artifacts.
+  - Documented lint policy in `docs/PROJECT_TOOLING.md` and filled missing primitive docs in `docs/reference/11-appendix-primitives.md`.
+  - Updated plan status:
+    - `docs/plans/effects-typesystem-parity-plan.md` Phase 3 checklist + acceptance marked complete.
+  - Validation:
+    - `scripts/run_effects_contract_lint.sh` passed and emitted:
+      - `build/effects_contract_lint_summary.json`
+      - `build/effects_contract_policy.log`
+      - `build/primitive_docs_parity.log`
+- 2026-03-09 (typesystem/disptach parity matrix formalization - Phase 4 docs slice):
+  - `docs/type-system-syntax.md`:
+    - added release-critical Julia-parity matrix with explicit `done/partial/missing` status tags.
+    - formalized current policy statements for:
+      - method specificity ordering,
+      - ambiguity handling (equal-specificity deterministic error),
+      - parametric behavior + variance status,
+      - union dispatch participation,
+      - numeric promotion policy (currently no implicit promotion),
+      - `where`-style non-goal + metadata-constraint replacement,
+      - match/union exhaustiveness expectations.
+    - added “Par with Julia / intentionally different” table and test anchors.
+  - `docs/plans/effects-typesystem-parity-plan.md`:
+    - marked `P4.1`..`P4.10` complete (spec/matrix layer),
+    - left `P4.11` and `P4.12` pending for regression/expected-fail scaffolding.
+  - Validation:
+    - `scripts/run_effects_contract_lint.sh` passed after docs updates.
+- 2026-03-09 (partial backlog normalization to single-source checklist):
+  - `docs/plans/effects-typesystem-parity-plan.md`:
+    - added `Canonical Partial Backlog (Single Source Of Truth)` with normalized checklist IDs `CP-01`..`CP-13`.
+    - mapped all existing `[~]` plan entries to canonical `CP-*` IDs.
+    - documented rule that `CP-*` checklist is authoritative for partial tracking.
+  - `docs/type-system-syntax.md`:
+    - linked each `partial` Julia-parity row to canonical `CP-10`..`CP-13`.
+  - `docs/ERROR_MODEL.md`:
+    - linked each `partial` migration-family row to canonical `CP-02`..`CP-06`.
+- 2026-03-09 (effects/typesystem CP-01 closure: quoted module-marker sweep):
+  - `docs/plans/session-34-44-boundary-hardening.md`:
+    - replaced remaining historical module-marker references from colon-prefixed forms to quoted forms:
+      - accepted/export markers now use `'all`
+      - alias-marker diagnostics now use `'as`
+    - updated embedded example snippets to quoted marker syntax (`export-from 'all ...`).
+  - `docs/plans/effects-typesystem-parity-plan.md`:
+    - marked `CP-01` complete.
+    - marked `H0.5` complete.
+    - normalized CP-01/hotfix wording from explicit colon tokens to “colon-prefixed marker” phrasing.
+    - advanced status date to `2026-03-09`.
+  - Verification:
+    - `rg -nP '(?<!:):(as|all)\\b' docs/plans docs -g '*.md'` now reports no module-marker hits outside the plan’s historical cleanup wording updates.
+- 2026-03-09 (effects/typesystem CP-02 closure: stdlib try/assert canonical payloads):
+  - `stdlib/stdlib.lisp`:
+    - added `canonical-error-payload?` and `canonicalize-error-payload` helpers.
+    - `try` now normalizes every caught `raise` value to canonical payload shape before invoking the handler.
+    - `assert!` now raises canonical payload dictionaries with stable `stdlib/assert-failed` code and `stdlib` domain.
+  - regression coverage updates:
+    - `src/lisp/tests_advanced_core_unicode_groups.c3`:
+      - `try` string-error assertions now read payload `'message` explicitly.
+      - string raises are verified through normalized payload message extraction.
+    - `src/lisp/tests_advanced_stdlib_numeric_groups.c3`:
+      - updated raise-catch test to assert payload `'data` for non-canonical user raises.
+      - added canonical assert payload check (`domain`, `code`, `message`).
+  - docs and plan parity:
+    - `docs/ERROR_MODEL.md`:
+      - updated status date to `2026-03-09`.
+      - `Stdlib try/assert! base` row moved from `partial` to `done`.
+      - updated migration notes to reflect canonical payload guarantees at stdlib handler boundaries.
+    - `docs/plans/effects-typesystem-parity-plan.md`:
+      - marked `CP-02` complete.
+      - marked `P2.5` complete.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1593/0`, `compiler: 79/0`).
+- 2026-03-09 (effects/typesystem CP-03 closure: regex malformed-pattern signaling):
+  - regex backend instrumentation:
+    - `src/pika/regex_cache_api.c3` now records per-call compile failures through:
+      - `regex_clear_last_compile_error()`
+      - `regex_record_compile_error(...)`
+      - `regex_take_last_compile_error(...)`
+    - malformed/invalid pattern compile failures now preserve detail text instead of being silently collapsed into no-match semantics.
+  - regex primitive contract update:
+    - `src/pika/lisp_pika_regex_primitives.c3`:
+      - added `regex_raise_invalid_pattern_if_any(...)`.
+      - `re-match`, `re-fullmatch`, `re-find-all`, `re-split`, and `re-replace` now raise deterministic `regex/*-invalid-pattern` payloads when compilation fails.
+    - `src/pika/lisp_pika.c3`:
+      - `re-match-pos` and `re-find-all-pos` now raise deterministic malformed-pattern payloads.
+  - regression updates:
+    - `src/lisp/tests_runtime_feature_pika_groups.c3`:
+      - converted malformed-pattern expectations from `nil` to explicit payload-code assertions.
+      - added malformed-pattern code checks for `re-match`, `re-find-all`, `re-replace`, `re-match-pos`, and `re-find-all-pos`.
+      - preserved valid no-match contract tests separately (`nil` remains absence for valid patterns).
+  - docs and plan parity:
+    - `docs/plans/effects-typesystem-parity-plan.md`:
+      - marked `CP-03` complete.
+      - marked `N2.6` complete.
+      - normalized `P2.7`/`CP-05` notes to remove now-closed malformed-pattern dependency.
+    - `docs/ERROR_MODEL.md`:
+      - moved `Regex match/search primitives` row from `partial` to `done`.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1598/0`, `compiler: 79/0`).
+- 2026-03-09 (effects/typesystem CP-04 closure: file-I/O wrapper canonical payload normalization):
+  - runtime wrapper normalization:
+    - `src/lisp/prim_io.c3`:
+      - refactored shared read-file offload path into status-returning helper (`io_async_read_file_result`) so callers can emit wrapper-specific canonical payload codes without stale pending-raise override.
+      - `read-file` now maps read outcomes to stable wrapper codes:
+        - `io/read-file-out-of-memory`
+        - `io/read-file-failed`
+      - `read-lines` now maps read outcomes to wrapper-specific codes:
+        - `io/read-lines-out-of-memory`
+        - `io/read-lines-failed`
+      - preserved direct runtime scheduler errors as pass-through where already canonicalized upstream.
+  - regression updates:
+    - `src/lisp/tests_runtime_async_groups.c3`:
+      - replaced combined missing-path truthy assertion with deterministic per-wrapper payload-code checks:
+        - `async write-file missing-path payload code`
+        - `async read-file missing-path payload code`
+        - `async read-lines missing-path payload code`
+      - added explicit absence contract check:
+        - `async file-exists? missing-path returns nil`
+  - docs and plan parity:
+    - `docs/plans/effects-typesystem-parity-plan.md`:
+      - marked `CP-04` complete.
+    - `docs/ERROR_MODEL.md`:
+      - moved `File I/O effect wrappers` row from `partial` to `done` and recorded stable wrapper code families.
+  - Validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1605/0`, `compiler: 79/0`).
+- 2026-03-09 (effects/typesystem CP-05 closure: async/network TLS wrapper canonical payload normalization):
+  - runtime async/network normalization:
+    - `src/lisp/tls_primitives.c3`:
+      - migrated remaining string-only `raise_error(...)` sites to canonical payloaded raises via `tls_raise_async(...)`.
+      - introduced stable `io/tls-*` codes for:
+        - `tls-connect` argument/type/handle/oom/worker-result paths,

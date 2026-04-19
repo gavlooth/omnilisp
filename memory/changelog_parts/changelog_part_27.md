@@ -1,0 +1,624 @@
+# Memory Changelog Index Part 27
+
+Source: `memory/CHANGELOG.md`
+
+## 2026-03-09
+
+- Idiomatic libuv wrapper typing slice landed with dispatch-smoke coverage:
+  - `stdlib/stdlib.lisp`:
+    - converted remaining lambda alias wrappers to typed `define` methods with explicit untyped fallbacks for canonical payload handling:
+      - `tcp-listen`, `offload`, `thread-spawn`, `task-spawn`, `tls-connect`, `http-request`.
+    - added thin composition-only convenience helpers (no runtime substrate duplication):
+      - `job-spawn`, `job-join`, `job-join-timeout`, `job-cancel`, `request`.
+    - helper implementation note:
+      - typed variadic `define` dispatch remains runtime-limited; variadic helpers route through wrapper composition (`apply`) while keeping canonical `io/*` wrappers as execution entrypoints.
+  - focused typed-wrapper dispatch smoke tests added:
+    - `src/lisp/tests_runtime_feature_http_groups.c3`:
+      - `explain 'dispatch` smoke for typed/fallback wrapper routing (`tcp-connect`, `http-request`).
+      - helper smoke coverage for `request` single-url and method/url/body/headers routes.
+    - `src/lisp/tests_scheduler_io_task_groups.c3`:
+      - `explain 'dispatch` smoke for `task-spawn` / `thread-spawn` wrapper routing.
+      - helper smoke coverage for `job-spawn` + `job-join` task/thread routes.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1719/0`, `compiler: 85/0`).
+
+- Boundary mixed-mode stress coverage expanded for nested and mixed interpreter/JIT transitions:
+  - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`:
+    - added `run_memory_lifetime_boundary_mixed_jit_interp_stress_test(...)` to alternate interpreter and JIT evaluation across stress iterations while asserting boundary state restoration and promotion-context cleanup.
+    - wired the new stress case into `run_memory_lifetime_boundary_negative_stress_tests(...)`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1709/0`, `compiler: 85/0`).
+
+- Boundary transition regression pack landed for return/env/splice deterministic behavior:
+  - `src/lisp/tests_memory_lifetime_boundary_groups.c3`:
+    - added `run_memory_lifetime_boundary_transition_regression_tests(...)` with explicit assertions for:
+      - return transition: budget-0 commit path hard-fails with `BOUNDARY_COMMIT_FAULT_PROMOTION_ABORTED`,
+      - env transition: depth-limit copy path reports `BOUNDARY_ENV_COPY_FAULT_DEPTH_LIMIT`,
+      - splice transition: non-unique child refcount is rejected with `BOUNDARY_SCOPE_TRANSFER_CHILD_REFCOUNT_NOT_ONE`.
+  - `src/lisp/tests_memory_lifetime_groups.c3`:
+    - wired transition regression pack into the memory lifetime suite.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1708/0`, `compiler: 85/0`).
+
+- Boundary invariant hooks were centralized for ownership-transition assertions:
+  - `src/lisp/eval_boundary_diagnostics.c3`:
+    - added shared invariant hook surface:
+      - `boundary_invariant_fail(domain, msg)`,
+      - `boundary_invariant_require(cond, domain, msg)` macro.
+    - migrated boundary state assertion helpers (`boundary_assert_interp_scope_chain`, `boundary_assert_saved_state`, `boundary_assert_session_state`, `boundary_assert_scope_swap_state`) onto the shared hook surface.
+  - `src/lisp/eval_env_copy.c3`:
+    - `copy_env_invariant_fail(...)` now delegates to shared `boundary_invariant_fail(...)` instead of maintaining a local invariant reporter.
+  - invariant policy enablement + regression coverage:
+    - `boundary_invariant_checks_enabled()` now makes checks default-on, with explicit override only via `OMNI_DISABLE_BOUNDARY_INVARIANTS=1`.
+    - added regression `run_memory_lifetime_boundary_invariant_policy_tests(...)` to verify default-on behavior in test runs and env override parity.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1706/0`, `compiler: 85/0`).
+    - `c3c build --sanitize=address` passed.
+    - ASAN runtime run currently reproduces existing stack-switch runtime abort (`AddressSanitizer: CHECK failed ... asan_thread.cpp:369`) in advanced effect/JIT path; not marking Session 39 test/ASAN-enforcement item complete in this slice.
+
+- Boundary commit fallback diagnostics are now typed and explicit:
+  - `src/lisp/eval_boundary_api.c3`:
+    - added `BoundaryCommitFault` and `boundary_commit_fault_name(...)`.
+    - `BoundaryCommitEscapeResult` now carries `fault_code` alongside `outcome`.
+  - `src/lisp/eval_boundary_commit_flow.c3`:
+    - `boundary_commit_escape(...)` now classifies disallowed fallback exits with deterministic fault codes (destination-build failure class, promotion-aborted, splice-rejected, mixed-destination promotion failure, generic disallowed).
+    - fallback error payload now includes the typed fault label in the message: `boundary: traversal fallback disallowed for commit path (<fault>)`.
+  - tests updated to assert fault-classified disallowed paths:
+    - `src/lisp/tests_memory_lifetime_boundary_commit_groups.c3`
+    - `src/lisp/tests_memory_lifetime_boundary_stress_groups.c3`
+    - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3`
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1706/0`, `compiler: 85/0`).
+    - `c3c build --sanitize=address` passed.
+    - `ASAN_OPTIONS=detect_leaks=0,halt_on_error=1,abort_on_error=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main` passed.
+
+- Boundary error-model cleanup slice landed for copy-to-parent boundary paths:
+  - introduced typed boundary copy fault surface in `src/lisp/eval_boundary_api.c3`:
+    - `BoundaryCopyFault` enum + `BoundaryCopyResult`,
+    - `boundary_copy_to_parent_site_ctx_checked(...)`,
+    - `boundary_copy_fault_name(...)` / `boundary_copy_fault_message(...)`.
+  - `boundary_copy_to_parent_site_ctx(...)` now routes through checked classification and returns explicit error values for boundary-copy faults (instead of untyped null/error ambiguity).
+  - migrated silent boundary copy callsites to checked results:
+    - `src/lisp/eval_env_copy.c3`: env-copy binding relocation now uses typed copy results and fails deterministically on boundary-copy fault.
+    - `src/lisp/eval_type_evaluators.c3`: instance field relocation now fails fast with fault-classified diagnostics instead of silently leaving NIL/default field payloads.
+    - `src/lisp/primitives_iter_coroutine.c3`: resume/yield boundary copy now surfaces typed boundary-copy diagnostics.
+    - `src/lisp/eval_repl.c3`: REPL result boundary copy now returns `eval_error(...)` on typed boundary-copy fault.
+  - regression coverage:
+    - `src/lisp/tests_memory_lifetime_boundary_groups.c3`: added `run_memory_lifetime_boundary_copy_fault_tests(...)` for typed-fault classification and wrapper parity.
+
+- Types/dispatch area closeout evidence synchronized (non-L4.3 e2e baseline documented):
+  - validation run:
+    - `scripts/run_e2e.sh` still exits non-zero with the known baseline diff set.
+    - `build/e2e_diff.txt` is unchanged versus prior baseline snapshot (`build/e2e_diff_notests.txt`).
+  - baseline mismatch inventory (line-mapped, non-L4.3 rows):
+    - continuation/effect rows: `reset passthrough`, `shift k resumes`, `handle perform resume`, `shift resume mul`, `shift resume add`, `multi-shot k`, `handle get`, `handle no trigger`, `nested handle`, `shift double resume`, `let-rec factorial 8`.
+    - truthiness/predicate rows: `and false true`, `and true false`, `closure? yes`.
+    - dict rows: `dict create ref`, `dict ref 2`, `dict has? yes`, `dict keys`.
+    - introspection row: `type-of closure`.
+  - parity gate confirmation:
+    - L4 backend parity rows in `E2E_TESTS_EXTENDED` remain aligned (`type struct ctor`, `type union ctor`, dispatch exact/subtype/widen/value-literal, ambiguity explain reason).
+  - docs/status sync:
+    - updated `docs/areas/types-dispatch.md` to reflect that area-level closeout evidence is now recorded and status wording is no longer stale.
+
+- Effects/error-model conversion+compression canonicalization landed:
+  - `src/lisp/prim_string_convert.c3`:
+    - migrated conversion primitive failure paths from string-only `raise_error(...)` to canonical payloaded raises.
+    - argument/type validation now emits `type/arg-mismatch` payload code.
+    - `read-string` parse/eval failure now emits runtime payload code `runtime/read-string-failed`.
+  - `src/lisp/compress.c3`:
+    - migrated compression/checksum primitive failure paths from string-only `raise_error(...)` to canonical payloaded raises.
+    - validation failures now emit `type/arity` / `type/arg-mismatch`.
+    - operational failures now emit stable runtime codes:
+      - `runtime/gzip-compress-failed`
+      - `runtime/gunzip-failed`
+      - `runtime/deflate-compress-failed`
+      - `runtime/inflate-failed`
+      - `runtime/zlib-compress-failed`
+      - `runtime/zlib-decompress-failed`
+      - plus size-limit codes for decompression growth guard paths.
+  - regression coverage:
+    - `src/lisp/tests_runtime_data_unicode_groups.c3`: added payload domain/code assertions for invalid gzip args and corrupt decompress paths.
+    - `src/lisp/tests_advanced_stdlib_numeric_groups.c3`: added payload domain/code assertions for conversion/read-string invalid paths.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AL landed (`parser_control_effects.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_effect_forms.c3` for effect-form parse helpers:
+      - `parse_reset(...)`,
+      - `parse_shift(...)`,
+      - `parse_perform(...)`,
+      - `parse_resolve(...)`,
+      - `parse_with_continuation(...)`.
+    - reduced `src/lisp/parser_control_effects.c3` to quote/control parse helpers:
+      - `parse_quote(...)`,
+      - `parse_and(...)`,
+      - `parse_or(...)`,
+      - `parse_begin(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_application.c3` (`178`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AL ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_application.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AK landed (`parser_define_attrs.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_define_relation_attr.c3` for relation-attribute define helpers:
+      - `parse_relation_attr_options(...)`,
+      - `build_define_relation_call(...)`,
+      - `parse_define_relation_attr(...)`.
+    - reduced `src/lisp/parser_define_attrs.c3` to macro/schema/special define dispatch:
+      - `parse_define_macro_attr(...)`,
+      - `parse_define_schema_attr(...)`,
+      - `parse_define_special(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_control_effects.c3` (`182`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AK ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_control_effects.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AJ landed (`compiler_call_flat.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_call_arg_list_helpers.c3` for call arg/list construction helpers:
+      - `compile_call_arg_temps(...)`,
+      - `build_arg_list_from_temps(...)`,
+      - `compile_list_or_dict_call_flat(...)`,
+      - `tail_call_requires_non_tail_path(...)`,
+      - `compile_zero_arg_tail_call(...)`.
+    - reduced `src/lisp/compiler_call_flat.c3` to call/app entrypoint lowering:
+      - `call_head_is(...)`,
+      - `call_is_explain_thunked(...)`,
+      - `compile_call_flat(...)`,
+      - `compile_call_tail_flat(...)`,
+      - `compile_app_flat(...)`,
+      - `compile_app_tail_flat(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_define_attrs.c3` (`184`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AJ ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_define_attrs.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AI landed (`compiler_native_match_compilation_flat_style.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_native_match_bindings_flat_style.c3` for pattern-binding emit helpers:
+      - `emit_pattern_var_decl(...)`,
+      - `emit_pattern_var_assign(...)`,
+      - `emit_pattern_seq_elem_access(...)`,
+      - `emit_pattern_seq_elem_binding(...)`,
+      - `compile_pattern_bindings(...)`.
+    - reduced `src/lisp/compiler_native_match_compilation_flat_style.c3` to match entrypoint and pattern-check lowering:
+      - `compile_match_flat(...)`,
+      - `compile_pattern_check(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_call_flat.c3` (`185`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AI ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_call_flat.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AH landed (`compiler_primitive_variable_hash_table.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_primitive_variable_hash_table_domains.c3` for primitive-domain population helpers:
+      - `init_prim_hash_arithmetic_and_comparison(...)`,
+      - `init_prim_hash_core_and_strings(...)`,
+      - `init_prim_hash_files_and_misc(...)`,
+      - `init_prim_hash_collections_math_bitwise(...)`.
+    - reduced `src/lisp/compiler_primitive_variable_hash_table.c3` to hash storage/probe/init orchestration:
+      - `prim_hash_insert(...)`,
+      - `prim_hash_lookup(...)`,
+      - `init_prim_hash(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_native_match_compilation_flat_style.c3` (`194`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AH ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_native_match_compilation_flat_style.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AG landed (`compiler_quasiquote_flat.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_quasiquote_call_flat.c3` for quasiquote call/splice lowering helpers:
+      - `qq_call_has_splice(...)`,
+      - `qq_emit_cons_pair(...)`,
+      - `qq_emit_append_pair(...)`,
+      - `qq_emit_nil_result(...)`,
+      - `compile_qq_call_no_splice(...)`,
+      - `compile_qq_call_with_splice(...)`,
+      - `compile_qq_call_flat(...)`.
+    - reduced `src/lisp/compiler_quasiquote_flat.c3` to non-call quasiquote lowering:
+      - `compile_qq_marker_pair(...)`,
+      - `compile_qq_var_symbol(...)`,
+      - `compile_qq_app_list(...)`,
+      - `compile_qq_flat(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_primitive_variable_hash_table.c3` (`194`) (tie with `src/lisp/compiler_native_match_compilation_flat_style.c3` (`194`)).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AG ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_primitive_variable_hash_table.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AF landed (`compiler_temp_core.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_temp_misc_forms.c3` for resolve/index/define bridge helpers:
+      - `compile_resolve_flat(...)`,
+      - `compile_index_flat(...)`,
+      - `compile_eval_serialized_expr_flat(...)`,
+      - `is_typed_lambda_define(...)`,
+      - `compile_define_rhs_with_typed_bridge(...)`,
+      - `compile_define_flat(...)`.
+    - reduced `src/lisp/compiler_temp_core.c3` to temp lifecycle + temp dispatch entrypoints:
+      - `next_result(...)`,
+      - `emit_temp_decl(...)`,
+      - `emit_temp_ref(...)`,
+      - `emit_nil_temp(...)`,
+      - `compile_leaf_expr_to_temp(...)`,
+      - `compile_to_temp_non_null(...)`,
+      - `compile_to_temp(...)`,
+      - `compile_to_temp_tail(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_quasiquote_flat.c3` (`198`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AF ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_quasiquote_flat.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AE landed (`parser_import_export.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_import_helpers.c3` for import helper parsing routines:
+      - `parser_token_is_legacy_marker(...)`,
+      - `Parser.init_import_expr(...)`,
+      - `Parser.import_ensure_capacity(...)`,
+      - `Parser.parse_import_target(...)`,
+      - `Parser.parse_import_symbol_spec(...)`,
+      - `Parser.parse_import_paren_spec(...)`,
+      - `Parser.parse_import_selective_list(...)`.
+    - reduced `src/lisp/parser_import_export.c3` to import entrypoint parsing:
+      - `Parser.parse_import(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_temp_core.c3` (`198`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AE ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_temp_core.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AD landed (`compiler_expr_serialize_definition_forms.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_expr_serialize_macro_module_forms.c3` for macro/module/import/export serializers:
+      - `serialize_defmacro_to_buf(...)`,
+      - `serialize_module_to_buf(...)`,
+      - `serialize_import_to_buf(...)`,
+      - `serialize_export_from_to_buf(...)`.
+    - reduced `src/lisp/compiler_expr_serialize_definition_forms.c3` to type/effect definition serializers:
+      - `serialize_deftype_to_buf(...)`,
+      - `serialize_defabstract_to_buf(...)`,
+      - `serialize_defunion_to_buf(...)`,
+      - `serialize_defalias_to_buf(...)`,
+      - `serialize_defeffect_to_buf(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_import_export.c3` (`198`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AD ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_import_export.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AC landed (`compiler_expr_serialize_exprs.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_expr_serialize_special_forms.c3` for specialized expression-form helpers and specialized dispatch:
+      - `serialize_unary_expr_form(...)`,
+      - `serialize_binary_expr_form(...)`,
+      - `serialize_named_expr_form(...)`,
+      - `serialize_symbol_and_arg_form(...)`,
+      - `serialize_begin_expr_to_buf(...)`,
+      - `serialize_index_expr_to_buf(...)`,
+      - `serialize_path_expr_to_buf(...)`,
+      - `serialize_expr_specialized_core(...)`,
+      - `serialize_expr_specialized_reader(...)`,
+      - `serialize_expr_specialized(...)`.
+    - reduced `src/lisp/compiler_expr_serialize_exprs.c3` to entrypoint dispatch:
+      - `serialize_expr_to_buf(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_expr_serialize_definition_forms.c3` (`201`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AC ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_expr_serialize_definition_forms.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AB landed (`compiler_lambda_scan.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_lambda_scan_lambda_defs.c3` for lambda-def/capture assembly helpers and lambda-case scan:
+      - `collect_lambda_own_bound(...)`,
+      - `collect_lambda_nested_bound(...)`,
+      - `init_lambda_def_from_expr(...)`,
+      - `lambda_def_push_capture(...)`,
+      - `scan_lambdas_lambda(...)`.
+    - reduced `src/lisp/compiler_lambda_scan.c3` to traversal/dispatch helpers:
+      - `scan_lambdas(...)`,
+      - `scan_lambdas_let(...)`,
+      - `scan_lambdas_call(...)`,
+      - `scan_lambdas_binary_expr(...)`,
+      - `scan_lambdas_if_expr(...)`,
+      - `scan_lambdas_match_expr(...)`,
+      - `scan_lambdas_begin_expr(...)`,
+      - `scan_lambdas_module_expr(...)`,
+      - `scan_lambdas_with_scope(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_expr_serialize_exprs.c3` (`204`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AB ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_expr_serialize_exprs.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation AA landed (`compiler_let_set_flat.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_let_compilation_flat_style.c3` for let-lowering helpers and entrypoints:
+      - `emit_let_forward_decl(...)`,
+      - `emit_let_assignment(...)`,
+      - `emit_recursive_closure_self_patch(...)`,
+      - `compile_mutable_captured_let(...)`,
+      - `compile_let_flat_common(...)`,
+      - `compile_let_flat(...)`,
+      - `compile_let_flat_tail(...)`.
+    - reduced `src/lisp/compiler_let_set_flat.c3` to control/set/primitive-check helpers:
+      - `compile_if_flat(...)`,
+      - `compile_and_flat(...)`,
+      - `compile_or_flat(...)`,
+      - `compile_begin_flat(...)`,
+      - `compile_mutable_captured_set_flat(...)`,
+      - `compile_local_set_flat(...)`,
+      - `compile_set_flat(...)`,
+      - `is_builtin_primitive(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_lambda_scan.c3` (`207`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice AA ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_lambda_scan.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation Z landed (`compiler_expr_serialize_values.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_expr_serialize_type_annotations.c3` for type-annotation serialization helpers:
+      - `serialize_quoted_text_to_buf(...)`,
+      - `serialize_type_val_literal_to_buf(...)`,
+      - `serialize_type_annotation_to_buf(...)`.
+    - reduced `src/lisp/compiler_expr_serialize_values.c3` to value-domain serialization helpers:
+      - `serialize_value_to_buf(...)`,
+      - `serialize_int_value_to_buf(...)`,
+      - `serialize_double_value_to_buf(...)`,
+      - `serialize_string_value_to_buf(...)`,
+      - `serialize_cons_value_to_buf(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_let_set_flat.c3` (`207`) (tie with `src/lisp/compiler_lambda_scan.c3` (`207`)).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice Z ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_let_set_flat.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation Y landed (`compiler_native_call_compilation_flat_style.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_native_literal_compilation_flat_style.c3` for literal/quote lowering:
+      - `compile_literal(...)`,
+      - `compile_quote(...)`.
+    - reduced `src/lisp/compiler_native_call_compilation_flat_style.c3` to lambda/var/path lowering:
+      - `compile_lambda_flat(...)`,
+      - `compile_var(...)`,
+      - `compile_path(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_expr_serialize_values.c3` (`208`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice Y ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_expr_serialize_values.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation X landed (`compiler_free_vars_scope_forms.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_free_vars_effect_forms.c3` for effect/control walkers:
+      - `find_free_vars_shift(...)`,
+      - `find_free_vars_resolve(...)`,
+      - `find_free_vars_handle(...)`.
+    - reduced `src/lisp/compiler_free_vars_scope_forms.c3` to scope/mutation walkers:
+      - `find_free_vars_var(...)`,
+      - `find_free_vars_lambda(...)`,
+      - `find_free_vars_let(...)`,
+      - `find_free_vars_match(...)`,
+      - `find_free_vars_call(...)`,
+      - `find_free_vars_path(...)`,
+      - `find_free_vars_set(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_native_call_compilation_flat_style.c3` (`209`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice X ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_native_call_compilation_flat_style.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation W landed (`parser_type_annotations.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_type_annotation_helpers.c3` for type-annotation helpers:
+      - `parser_empty_type_annotation(...)`,
+      - `parser_is_value_literal_ctor(...)`,
+      - `parser_is_bool_symbol(...)`,
+      - `parse_value_literal_annotation(...)`,
+      - `type_annotation_copy_params(...)`,
+      - `type_annotation_copy_meta(...)`.
+    - reduced `src/lisp/parser_type_annotations.c3` to core parse flow:
+      - `parse_compound_type_annotation(...)`,
+      - `parse_dict_type_annotation(...)`,
+      - `parse_type_annotation(...)`.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_free_vars_scope_forms.c3` (`211`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice W ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_free_vars_scope_forms.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation V landed (`compiler_code_emission.c3` extraction):
+  - extraction:
+    - added `src/lisp/compiler_code_emission_lambda_closures.c3` for closure-construction/lambda-return helpers:
+      - `is_variadic_lambda(...)`,
+      - `needs_arg_list(...)`,
+      - `emit_make_closure_call(...)`,
+      - `find_lambda_def_by_expr(...)`,
+      - `emit_closure_capture_data(...)`,
+      - `emit_closure_expr(...)`,
+      - `emit_lambda_return_common(...)`,
+      - `emit_lambda_return(...)`.
+    - reduced `src/lisp/compiler_code_emission.c3` to prelude and lambda-definition emission.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_type_annotations.c3` (`216`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice V ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_type_annotations.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation U landed (`parser_lambda.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_callable_helpers.c3` for shared callable/body helpers:
+      - `parse_implicit_begin(...)`,
+      - `wrap_body_with_destructuring(...)`,
+      - `finalize_lambda_expr(...)`,
+      - `collect_callable_params(...)`,
+      - `parse_rest_param(...)`,
+      - `finalize_lambda_no_fixed_params(...)`,
+      - `finalize_lambda_with_params(...)`.
+    - reduced `src/lisp/parser_lambda.c3` to lambda/if entry parsing (`parse_lambda(...)`, `parse_if(...)`).
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/compiler_code_emission.c3` (`220`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice U ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `compiler_code_emission.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation T landed (`parser_lexer.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_lexer_core_api.c3` for lexer lifecycle/token API helpers:
+      - `ensure_text_capacity(...)`,
+      - `push_current_text_char(...)`,
+      - `set_error_text(...)`,
+      - `init(...)`,
+      - `destroy(...)`,
+      - `peek(...)`,
+      - `next_char(...)`,
+      - `set_error_token(...)`,
+      - `at_end(...)`,
+      - `match(...)`,
+      - `expect(...)`.
+    - reduced `src/lisp/parser_lexer.c3` to literal/symbol scan + token-advance flow (`is_number_start(...)`, `scan_literal_or_symbol(...)`, `advance(...)`).
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_lambda.c3` (`220`) (tie with `src/lisp/compiler_code_emission.c3` (`220`)).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice T ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_lambda.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation S landed (`parser_patterns.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_patterns_paren.c3` for paren-pattern parsing:
+      - `parse_as_pattern_marker(...)`,
+      - `parse_paren_pattern(...)`.
+    - reduced `src/lisp/parser_patterns.c3` to non-paren pattern parsing and token dispatch.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_lexer.c3` (`226`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice S ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_lexer.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation R landed (`parser_expr_atoms.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_expr_reader_forms.c3` for reader-shorthand and reader-dispatch atom helpers:
+      - `parse_backtick_shorthand(...)`,
+      - `parse_unquote_shorthand(...)`,
+      - `parse_unquote_splicing_shorthand(...)`,
+      - `parse_form_comment_expr(...)`,
+      - `parse_set_literal_expr(...)`,
+      - `parse_regex_literal_expr(...)`,
+      - `parse_quote_shorthand(...)`.
+    - reduced `src/lisp/parser_expr_atoms.c3` to core atom parsing and `parse_expr(...)` dispatch.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_patterns.c3` (`231`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice R ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_patterns.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation Q landed (`parser_define_core.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_define_annotations.c3` for bracket-annotation define dispatch:
+      - `parse_define_attrs(...)`,
+      - `parse_define_with_annotation(...)`,
+      - `parse_define_type(...)`,
+      - `parse_define_ffi(...)`.
+    - reduced `src/lisp/parser_define_core.c3` to shorthand/normal define parsing flow.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_expr_atoms.c3` (`235`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice Q ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_expr_atoms.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).
+
+- Compiler/parser refactor `R5` continuation P landed (`parser_control_effects.c3` extraction):
+  - extraction:
+    - added `src/lisp/parser_explain.c3` for explain-form parsing:
+      - `parse_explain_selector_symbol(...)`,
+      - `make_explain_target_thunk(...)`,
+      - `parse_explain(...)`.
+    - reduced `src/lisp/parser_control_effects.c3` to other control/effect parse forms.
+  - queue refresh:
+    - after re-inventory, next largest target selected is `src/lisp/parser_define_core.c3` (`238`).
+  - plan/area sync:
+    - `docs/plans/compiler-parser-refactor-plan.md`: recorded continuation slice P ownership map + refreshed largest-file queue.
+    - `docs/areas/compiler-parser-refactor.md`: updated area status and next-step target to `parser_define_core.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_SKIP_TLS_INTEGRATION=1 ./build/main` passed (`unified: 1697/0`, `compiler: 85/0`).

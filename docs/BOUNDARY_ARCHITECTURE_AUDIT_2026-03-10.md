@@ -1,6 +1,6 @@
 # Boundary Architecture Audit (2026-03-10)
 
-Status: Session 44 docs closure  
+Status: Session 44 docs closure
 Scope: boundary ownership/lifetime architecture, invariants contract, and residual risks
 
 ## 1) Boundary Architecture Summary

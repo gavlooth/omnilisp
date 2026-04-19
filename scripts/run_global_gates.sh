@@ -166,6 +166,10 @@ fi
 echo "lisp slices: ${OMNI_GLOBAL_GATES_LISP_SLICES} include_lifetime_soak=${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK} include_allocator_bench=${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH}"
 echo ""
 
+echo "=== Stage 0: file size gate ==="
+scripts/check_file_size_gate.sh
+
+echo ""
 echo "=== Stage 1: normal build ==="
 omni_c3 build
 

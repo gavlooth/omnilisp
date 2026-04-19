@@ -2,172 +2,14 @@ local repl = require("omni.repl")
 local lsp = require("omni.lsp")
 local treesitter = require("omni.treesitter")
 local formatter = require("omni.formatter")
+local commands = require("omni.commands")
 
 local M = {}
 
-local defaults = {
-  repo_root = nil,
-  cmd = { "omni", "--repl", "--json" },
-  repl = {
-    mode = "json",
-    discovery = {
-      enabled = true,
-      host = "127.0.0.1",
-      port_file = ".omni-repl-port",
-    },
-  },
-  eval = {
-    mode = "json",
-    cmd = { "omni", "--eval", "--json" },
-    fallback_to_repl = true,
-    annotations = {
-      enabled = false,
-      max_length = 160,
-      labels = {
-        form = true,
-        root = true,
-        call = true,
-        block = true,
-        declaration = true,
-        line = true,
-      },
-      hl = {
-        ok = "DiagnosticOk",
-        error = "DiagnosticError",
-      },
-    },
-  },
-  output = {
-    name = "Omni REPL",
-    split = "botright 12split",
-    auto_scroll = true,
-    pretty_values = true,
-    pretty_width = 72,
-    pretty_indent = 2,
-  },
-  auto_start = true,
-  lsp = {
-    auto_setup = false,
-    enable = true,
-    cmd = nil,
-    server_path = nil,
-    repo_root = nil,
-    root_markers = { "omni.toml", "project.json", ".git" },
-    highlights = {
-      auto_refresh = false,
-      refresh_events = { "CursorHold", "CursorHoldI" },
-      clear_events = { "CursorMoved", "InsertEnter", "BufLeave" },
-    },
-    codelens = {
-      auto_refresh = false,
-      events = { "BufEnter", "InsertLeave" },
-    },
-    pull_diagnostics = {
-      auto_refresh = false,
-      events = { "BufEnter", "InsertLeave" },
-      auto_open = false,
-      auto_notify_empty = false,
-      workspace_auto_refresh = false,
-      workspace_events = { "BufWritePost" },
-      workspace_auto_open = false,
-      workspace_auto_notify_empty = false,
-      all_auto_refresh = false,
-      all_events = { "BufEnter", "BufWritePost" },
-      all_auto_open = false,
-      all_auto_notify_empty = false,
-    },
-    mappings = true,
-    keys = {
-      hover = "K",
-      definition = "gd",
-      definition_list = "<localleader>lg",
-      declaration = "gD",
-      declaration_list = "<localleader>lG",
-      implementation = "gi",
-      implementation_list = "<localleader>lI",
-      type_definition = "<localleader>lt",
-      type_definition_list = "<localleader>lT",
-      incoming_calls = "<localleader>lC",
-      outgoing_calls = "<localleader>lc",
-      references = "grr",
-      references_list = "<localleader>lR",
-      rename = "<localleader>lr",
-      code_action = "<localleader>la",
-      format = "<localleader>lf",
-      signature_help = "<localleader>ls",
-      document_symbols = "<localleader>lq",
-      workspace_symbols = "<localleader>lQ",
-      open_link = "<localleader>lo",
-      document_links = "<localleader>lO",
-      next_link = "]o",
-      prev_link = "[o",
-      highlight = "<localleader>lh",
-      clear_highlights = "<localleader>lH",
-      diagnostics = "<localleader>ld",
-      document_diagnostics = "<localleader>lp",
-      workspace_diagnostics = "<localleader>lP",
-      all_diagnostics = "<localleader>lA",
-      diagnostic_next = "]d",
-      diagnostic_prev = "[d",
-      code_lens_refresh = "<localleader>ll",
-      code_lens_run = "<localleader>lL",
-      inlay_hints = "<localleader>li",
-      folds = "<localleader>lz",
-      expand_selection = "<localleader>lv",
-    },
-  },
-  formatter = {
-    name = "omni_fmt",
-    cmd = { "omni", "--fmt", "--write", "$FILENAME" },
-    cwd = nil,
-  },
-  treesitter = {
-    register = true,
-    append_runtimepath = true,
-    grammar_dir = nil,
-    repo_root = nil,
-  },
-  textobjects = {
-    enabled = true,
-    keys = {
-      form_outer = "af",
-      form_inner = "if",
-      root_outer = "ar",
-      root_inner = "ir",
-      declaration_outer = "ad",
-      declaration_inner = "id",
-      call_outer = "ac",
-      call_inner = "ic",
-      block_outer = "aB",
-      block_inner = "iB",
-    },
-  },
-  mappings = true,
-  keys = {
-    start = "<localleader>rs",
-    restart = "<localleader>rr",
-    open = "<localleader>ro",
-    clear = "<localleader>rc",
-    select_decl = "<localleader>sd",
-    select_call = "<localleader>sc",
-    select_block = "<localleader>sb",
-    select_form = "<localleader>sf",
-    select_root = "<localleader>sr",
-    eval_decl = "<localleader>ed",
-    eval_call = "<localleader>ec",
-    eval_block = "<localleader>ep",
-    eval_operator = "<localleader>eo",
-    eval_form = "<localleader>ef",
-    eval_root = "<localleader>er",
-    eval_line = "<localleader>el",
-    eval_selection = "<localleader>es",
-    eval_buffer = "<localleader>eb",
-  },
-}
+local defaults = require("omni.defaults")
 
 local config = vim.deepcopy(defaults)
 local bootstrap_done = false
-local commands_created = false
 local operatorfunc_installed = false
 local codelens_augroup = nil
 local highlight_augroup = nil
@@ -630,287 +472,34 @@ local function ensure_pull_diagnostics_cache_autocmds(bufnr)
   })
 end
 
-local function create_commands()
-  if commands_created then
-    return
-  end
-  commands_created = true
-
-  vim.api.nvim_create_user_command("OmniReplStart", function()
-    repl.start(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniReplStop", function()
-    repl.stop()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniReplRestart", function()
-    repl.restart(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniReplOpen", function()
-    repl.open_output(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniReplClear", function()
-    repl.clear_output()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniTreesitterRegister", function()
-    if treesitter.register(config) then
-      notify("registered Omni Tree-sitter parser config", vim.log.levels.INFO)
-    else
-      notify("nvim-treesitter not available or Omni grammar path missing", vim.log.levels.WARN)
-    end
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspSetup", function()
-    local ok, backend = lsp.setup(config)
-    if ok then
-      notify("registered Omni LSP via " .. backend, vim.log.levels.INFO)
-    else
-      notify(backend, vim.log.levels.WARN)
-    end
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniConformSetupSpec", function()
-    print(vim.inspect(formatter.conform_setup_spec(config)))
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspHover", function()
-    call_lsp("hover")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDefinition", function()
-    call_lsp("definition")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDefinitionsList", function()
-    lsp.definitions()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDeclaration", function()
-    call_lsp("declaration")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDeclarationsList", function()
-    lsp.declarations()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspImplementation", function()
-    call_lsp("implementation")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspImplementationsList", function()
-    lsp.implementations()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspTypeDefinition", function()
-    call_lsp("type_definition")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspTypeDefinitionsList", function()
-    lsp.type_definitions()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspIncomingCallsList", function()
-    lsp.incoming_calls()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspOutgoingCallsList", function()
-    lsp.outgoing_calls()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspReferences", function()
-    call_lsp("references")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspReferencesList", function()
-    lsp.references(true)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspRename", function()
-    call_lsp("rename")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspCodeAction", function(opts)
-    code_action(command_lsp_range(opts))
-  end, { range = true })
-
-  vim.api.nvim_create_user_command("OmniLspFormat", function(opts)
-    format_buffer(command_lsp_range(opts))
-  end, { range = true })
-
-  vim.api.nvim_create_user_command("OmniLspSignatureHelp", function()
-    call_lsp("signature_help")
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDocumentSymbols", function()
-    lsp.document_symbols()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspWorkspaceSymbols", function(opts)
-    lsp.workspace_symbols(opts.args)
-  end, { nargs = "?" })
-
-  vim.api.nvim_create_user_command("OmniLspOpenLink", function()
-    lsp.open_link()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDocumentLinks", function()
-    lsp.document_links()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspNextLink", function()
-    lsp.next_link()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspPrevLink", function()
-    lsp.prev_link()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDocumentHighlight", function()
-    refresh_document_highlight()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspClearReferences", function()
-    clear_document_highlight()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDiagnostics", function()
-    open_diagnostics()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDocumentDiagnostics", function()
-    lsp.document_diagnostics()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspWorkspaceDiagnostics", function()
-    lsp.workspace_diagnostics()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspAllDiagnostics", function()
-    lsp.all_diagnostics()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspAllDiagnosticsReset", function()
-    lsp.reset_all_diagnostics()
-    notify("reset Omni pull diagnostics caches for current buffer and workspace", vim.log.levels.INFO)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspDocumentDiagnosticsReset", function()
-    lsp.reset_document_diagnostics()
-    notify("reset Omni pull diagnostics cache for current buffer", vim.log.levels.INFO)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspWorkspaceDiagnosticsReset", function()
-    lsp.reset_workspace_diagnostics()
-    notify("reset Omni workspace pull diagnostics cache", vim.log.levels.INFO)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspNextDiagnostic", function()
-    goto_next_diagnostic()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspPrevDiagnostic", function()
-    goto_prev_diagnostic()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspCodeLensRefresh", function()
-    refresh_code_lens()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspCodeLensRun", function()
-    run_code_lens()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspInlayHintsEnable", function()
-    set_inlay_hints_enabled(true)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspInlayHintsDisable", function()
-    set_inlay_hints_enabled(false)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspInlayHintsToggle", function()
-    toggle_inlay_hints()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspRefreshFolds", function()
-    lsp.apply_folds()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniLspExpandSelection", function()
-    lsp.expand_selection()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalForm", function()
-    repl.send_current_form(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniSelectForm", function()
-    repl.select_current_form()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniSelectRootForm", function()
-    repl.select_root_form()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniSelectDecl", function()
-    repl.select_current_declaration()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniSelectCall", function()
-    repl.select_current_call()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniSelectBlock", function()
-    repl.select_current_block()
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalDecl", function()
-    repl.send_current_declaration(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalCall", function()
-    repl.send_current_call(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalBlock", function()
-    repl.send_current_block(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalRootForm", function()
-    repl.send_root_form(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalLine", function()
-    repl.send_current_line(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalSelection", function()
-    repl.send_selection(config)
-  end, { range = true })
-
-  vim.api.nvim_create_user_command("OmniEvalBuffer", function()
-    repl.send_buffer(config)
-  end, {})
-
-  vim.api.nvim_create_user_command("OmniEvalOperator", function()
-    notify("Omni eval operator active: enter a motion", vim.log.levels.INFO)
-    install_operatorfunc()
-    vim.go.operatorfunc = "v:lua.__omni_nvim_eval_operator"
-    vim.api.nvim_feedkeys("g@", "n", false)
-  end, {})
-end
-
 local function bootstrap()
   if bootstrap_done then
     return
   end
   bootstrap_done = true
   install_operatorfunc()
-  create_commands()
+  commands.create({
+    config = config,
+    repl = repl,
+    lsp = lsp,
+    treesitter = treesitter,
+    formatter = formatter,
+    notify = notify,
+    call_lsp = call_lsp,
+    command_lsp_range = command_lsp_range,
+    code_action = code_action,
+    format_buffer = format_buffer,
+    refresh_document_highlight = refresh_document_highlight,
+    clear_document_highlight = clear_document_highlight,
+    open_diagnostics = open_diagnostics,
+    goto_next_diagnostic = goto_next_diagnostic,
+    goto_prev_diagnostic = goto_prev_diagnostic,
+    refresh_code_lens = refresh_code_lens,
+    run_code_lens = run_code_lens,
+    set_inlay_hints_enabled = set_inlay_hints_enabled,
+    toggle_inlay_hints = toggle_inlay_hints,
+    install_operatorfunc = install_operatorfunc,
+  })
   repl.set_notifier(notify)
   lsp.set_notifier(notify)
   lsp.register_commands()

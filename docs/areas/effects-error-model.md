@@ -1,6 +1,6 @@
 # Effects and Error Model
 
-Status: `green` (contract + migration baseline implemented and validated)  
+Status: `green` (contract + migration baseline implemented and validated)
 As of: 2026-03-09
 
 ## Canonical Sources

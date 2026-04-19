@@ -1,6 +1,6 @@
 # Server Example Plan
 
-Status: `active`  
+Status: `active`
 As of: 2026-03-07
 
 Canonical server example is the financial-service implementation in:

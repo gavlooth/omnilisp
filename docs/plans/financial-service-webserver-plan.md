@@ -1,6 +1,6 @@
 # Financial-Service Webserver Plan
 
-Status: `active`  
+Status: `active`
 As of: 2026-03-09
 
 ## Goal

@@ -132,6 +132,12 @@ Follow `docs/C3_STYLE.md`. Especially:
 - Do not silently defer known work; record it in `docs/plans/` with concrete next steps
 - Any deferred or blocked work must also add/update a concrete item in `TODO.md` so the next agent TODO scan can pick it up immediately
 - If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
+- When committing, include all non-artifact changes from current and previous
+  agent work that are still present in the workspace: source, tests, docs,
+  plans, session reports, build manifests, and checked-in configuration. Do not
+  leave earlier agent changes behind just because they came from a prior work
+  slice. Exclude generated build outputs, binaries, caches, temporary logs, and
+  other artifacts unless the owner explicitly asks to commit them.
 
 ## Hard Anti-Conservatism Rule (Required)
 
@@ -289,7 +295,7 @@ If asked to audit:
 - Focus on correctness, regressions, memory/lifetime risks, and missing tests
 - Keep summary short; findings come first
 
-## Refactoring 
+## Refactoring
 
 - File slitting
   - Always split files top-down.

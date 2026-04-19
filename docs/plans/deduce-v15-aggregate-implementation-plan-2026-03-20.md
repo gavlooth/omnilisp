@@ -1,7 +1,7 @@
 # Deduce v1.5 Aggregate Implementation Plan (2026-03-20)
 
-Status: `completed`  
-Owner: Codex workflow  
+Status: `completed`
+Owner: Codex workflow
 Scope: promote the first v1.5 analytics lane from roadmap prose into concrete
 implementation slices on the checked-in Deduce runtime
 

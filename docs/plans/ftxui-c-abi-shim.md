@@ -1,7 +1,7 @@
 # FTXUI C ABI Shim Plan (Omni)
 
-Status: `active`  
-Owner: Codex workflow  
+Status: `active`
+Owner: Codex workflow
 Date: 2026-03-27
 
 ## Purpose

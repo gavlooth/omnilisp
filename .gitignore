@@ -7,6 +7,7 @@ build/
 main
 main_test
 test
+test_aot
 test_all
 test_build
 test_runner
@@ -31,12 +32,19 @@ tmp_tests/
 
 # Python scripts (not part of codebase)
 *.py
+*.pyc
+__pycache__/
+*/__pycache__/
 !scripts/__init__.py
 !scripts/generate_language_reference_payload.py
 !scripts/dialectic_mcp/
 !scripts/dialectic_mcp/*.py
 !scripts/tests/
 !scripts/tests/*.py
+!tooling/omni-lsp/
+!tooling/omni-lsp/*.py
+!tooling/omni-lsp/tests/
+!tooling/omni-lsp/tests/*.py
 
 # Editor/tool files
 syntax.md

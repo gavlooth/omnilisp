@@ -1,0 +1,404 @@
+# Memory Changelog Index Part 26
+
+Source: `memory/CHANGELOG.md`
+
+## 2026-03-13
+
+- AOT direct-lowering parity slice for type/dispatch/explain:
+  - compiler lowering no longer routes core type/effect definition forms through `aot::eval_serialized_expr(...)`:
+    - `deftype`,
+    - `defabstract`,
+    - `defunion`,
+    - `defalias`,
+    - `defeffect`.
+  - typed lambda `define` lowering now installs method-table entries through an explicit structured helper (`aot::define_typed_method(...)`) instead of delegated source re-evaluation.
+  - compiled `explain` lowering now uses direct helper paths for:
+    - `explain 'dispatch` call targets,
+    - `explain 'effect` signal/perform targets,
+    - `explain 'effect` resolve targets.
+  - AOT runtime now builds structured type annotations and method signatures directly from compiler-emitted specs, so compiled registration paths reuse the existing evaluator/dispatch machinery without reparsing source forms.
+  - dispatch table helpers were generalized so typed callable registration is no longer closure-tag-specific (`jit_eval_define_typed_callable(...)`).
+  - compiler regression expectations were updated to assert direct helper lowering and the absence of delegated eval on these paths.
+  - current remaining parity gaps are narrower and explicitly tracked in `TODO.md`:
+    - AOT closure representation still differs from runtime `CLOSURE`,
+    - compiled module/import/export semantics still need an explicit parity/design decision,
+    - the AOT eval bridge remains outside normal compiler lowering and should not reappear there.
+  - validation:
+    - `c3c build` passed.
+    - `OMNI_IN_VALIDATION_CONTAINER=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed (`Compiler Tests: 91 passed, 0 failed`).
+
+## 2026-03-12
+
+- Void promotion from annotation-only to runtime singleton:
+  - `Void` is now a real builtin singleton type/value instead of an FFI-only annotation exception.
+  - runtime values can now inhabit `Void`, `type-of` can now return `Void`, and the type registry now includes `Void` under `Any`.
+  - `(Void)` is now the canonical zero-argument constructor for the singleton runtime value.
+  - FFI `^Void` returns now map to the runtime `Void` value instead of collapsing to `nil`.
+  - intent:
+    - remove the remaining public type-symbol exception from the hierarchical type surface,
+    - keep FFI and normal type/value vocabulary aligned,
+    - preserve the truthiness rule (`Void` is truthy; only `nil` and `false` are falsy),
+    - leave ordinary nil-returning no-result primitives as a migration migration follow-up rather than silently changing them all at once.
+
+- Set promotion + syntax simplification:
+  - sets now have a distinct runtime `SET` tag and builtin `Set` type symbol instead of masquerading as `Dictionary`.
+  - `Set` is now the canonical constructor surface for sets; lowercase `set` is no longer the creation entrypoint.
+  - reader sugar `#{...}` has been removed so set construction is spelled only as `(Set ...)`.
+  - `type-of` on set values now returns `Set`.
+  - set printing is now constructor-shaped (`(Set ...)`) instead of dict-shaped (`{k true ...}`).
+
+- Constructor/type-symbol surface unification slice:
+  - type symbols in value position now gain a first concrete builtin-constructor pass for:
+    - `Integer` as the canonical integer coercion constructor,
+    - `Int` as an integer shorthand alias,
+    - `Double` as a coercion constructor,
+    - `String` as a coercion constructor,
+    - `Symbol` as a coercion constructor,
+    - `Boolean` as the canonical truthiness coercion constructor,
+    - `Bool` as a boolean shorthand alias,
+    - `Nil` as a nil/false identity constructor,
+    - `Closure` as a closure identity constructor,
+    - `Coroutine` as the canonical coroutine constructor surface,
+    - `List` as the canonical list constructor/conversion surface,
+    - `Iterator` as the canonical iterator constructor/conversion surface,
+    - `Array` as the canonical array constructor/conversion surface,
+    - `Dictionary` as the canonical dictionary constructor surface,
+    - `TimePoint` as the canonical time-point constructor surface.
+  - runtime registration now binds callable builtin constructor names into the normal value-level environment instead of keeping iterator creation behind `make-*` naming only.
+  - iterator stdlib surface is normalized so `Iterator` is the canonical constructor.
+  - collection/time constructors now follow the same public naming rule:
+    - `Integer`, `Boolean`, `List`, `Array`, `Dictionary`, `Iterator`, and `TimePoint` are canonical,
+  - intent:
+    - align builtin/runtime object construction more closely with existing user-defined type constructors (`Point`, `Box`, `Some`, ...),
+    - reduce public `make-*` surface drift,
+    - prefer clarity over terseness for canonical language-facing names,
+    - support existing iterator code while shifting docs/tests/examples toward the type-symbol constructor form.
+
+- Dispatch numeric widening removal:
+  - removed implicit dispatch-time numeric widening from method applicability and typed lambda call-boundary checks.
+  - `Integer` arguments no longer satisfy `^Double` parameters automatically.
+  - dispatch now uses exact type + subtype + untyped fallback scoring only.
+  - explicit constructor conversion is now required for cross-numeric calls (for example `(Double 7)`).
+  - updated dispatch and typed-lambda regression coverage to assert:
+    - no implicit `Integer -> Double` matching,
+    - explicit conversion behavior is preserved,
+    - e2e dispatch fixture uses explicit conversion.
+
+- Descriptive low-level alias surface:
+  - added explicit descriptive aliases for low-level wrappers while preserving existing shorthand names:
+    - filesystem wrappers: `filesystem-open` / `filesystem-read` / `filesystem-write` / `filesystem-close` / `filesystem-stat` / `filesystem-read-directory` / `filesystem-rename` / `filesystem-unlink`,
+    - TCP wrappers: `transmission-control-connect` / `transmission-control-listen` / `transmission-control-accept` / `transmission-control-read` / `transmission-control-write` / `transmission-control-close`,
+    - UDP wrappers: `user-datagram-socket` / `user-datagram-bind` / `user-datagram-send` / `user-datagram-receive` / `user-datagram-close`,
+    - DNS wrapper: `domain-name-resolve`,
+    - TLS wrappers: `transport-layer-security-connect` / `transport-layer-security-server-wrap` / `transport-layer-security-read` / `transport-layer-security-write` / `transport-layer-security-close`.
+  - the canonical shorthand names are `fs-*`, `tcp-*`, `udp-*`, `dns-resolve`, and `tls-*`.
+  - added advanced regression coverage for the descriptive alias wrappers (filesystem roundtrip, directory-read alias, TCP/DNS/TLS alias delegation, and UDP alias close path).
+
+- FFI pointer annotation descriptive alias:
+  - promoted `Pointer` as the canonical FFI pointer annotation spelling (`^Pointer`).
+  - runtime FFI annotation mapping uses the canonical pointer ABI type for `^Pointer`.
+  - advanced FFI regression validates the canonical pointer spelling on `free`-style void-return bindings.
+  - bindgen pointer mapping now emits `^Pointer` for non-string pointer parameters/returns.
+  - bindgen integer mappings now emit canonical `^Integer`.
+  - compiler regression coverage now exercises bindgen output generation and asserts canonical `^Integer`/`^Pointer`/`^Void` annotation emission.
+  - docs/spec/tooling references now describe `^Pointer` as canonical.
+
+- Command-style `Void` migration follow-up:
+  - `write-file` now returns `Void` on successful completion instead of `true`.
+  - `unsafe-free!` now returns `Void` for both successful frees and no-op targets (such as `int`/`nil`), keeping it as a command-style surface.
+  - `run-fibers` now returns `Void` on successful scheduler drain completion instead of overloading `nil`.
+  - module/import command forms now return `Void` on successful completion instead of overloading `nil`:
+    - `module`,
+    - `import`,
+    - `export-from`.
+  - re-export runtime eval path now also returns `Void` on success:
+    - `jit_eval_export_from_impl` in `jit_jit_compile_effects_modules.c3`.
+  - AOT flat compiler module/import/export-from codegen now emits `aot::make_void()` for parity with interpreter/JIT command semantics.
+  - scheduler cancellation commands now return `Void` on success instead of `true`/`nil` status booleans:
+    - `task-cancel`,
+    - `thread-cancel`.
+  - `fiber-cancel` now returns `Void` when cancellation is performed; it still
+    returns `nil` when the target fiber is already done/running.
+  - `set!` now follows command-style `Void` semantics on successful mutation:
+    - variable mutation (`set! name value`) returns `Void` instead of the assigned payload,
+    - dot-path mutation (`set! obj.field value`, including cons paths) returns `Void`,
+    - JIT mutable-local/env/path helpers and immutable-local codegen are aligned,
+    - AOT flat compiler `set!` lowering now emits `aot::make_void()` results.
+  - `set!` now also has a generic collection-update call surface:
+    - `(set! collection key value)` dispatches to collection mutation (currently `Array`/`Dictionary`),
+    - parser preserves old 2-arg mutation semantics for binding/path updates while routing 3+ arg forms through normal call dispatch,
+    - compiler primitive maps and free-var primitive recognition now include callable `set!`,
+    - `array-set!` and `dict-set!` are removed from the live surface.
+  - deduce command surfaces now return `Void` on success instead of overloading `nil`:
+    - transaction control: `commit`, `abort`,
+    - relation mutation/maintenance: `fact!`, `retract!`, `clear!`, `drop!`.
+  - updated regression coverage:
+    - async I/O tests assert `write-file` success returns `VOID`,
+    - advanced memory tests assert `unsafe-free!` no-op paths return `VOID`,
+    - scheduler tests assert `run-fibers` success returns `VOID`,
+    - scheduler cancel tests assert `fiber-cancel` success returns `VOID`,
+    - core/module regression tests assert `set!` success returns `VOID` (including cons-path mutation),
+    - advanced/compile regression tests assert generic `(set! collection key value)` updates for array/dict paths,
+    - advanced module tests assert `module`, `import`, and `export-from` command forms return `VOID`,
+    - scheduler offload/thread tests assert `task-cancel` and `thread-cancel` return `VOID`,
+    - deduce tests assert command/txn surfaces above return `VOID`.
+
+- AOT delegated-eval parity hardening (compiler bridge injection):
+  - compiler delegated-bridge lowering now injects referenced compiled bindings into the AOT interpreter env before calling `aot::eval_serialized_expr(...)`.
+  - injection is emitted as `aot::define_var("name", name)` for free variables that have generated C3 bindings (declared/local or tracked globals), while still skipping builtin primitives.
+  - this closes a concrete parity gap where typed-define bridge paths could miss referenced compiled globals in delegated eval (for example `(define y 10)` followed by typed define bodies referencing `y`).
+  - added compiler regression coverage:
+    - `Compiler: typed define bridge injects referenced globals` in `src/lisp/tests_compiler_core_groups.c3`.
+  - validation:
+    - `c3c build` passed.
+    - `OMNI_IN_VALIDATION_CONTAINER=1 OMNI_LISP_TEST_SLICE=compiler LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passed (`Compiler Tests: 91 passed, 0 failed`).
+
+## 2026-03-10
+
+- Macro surface hard-fail migration closure:
+  - parser removed clause-style macro definitions (`(define [macro] name ([...] ...))` and multi-clause variants).
+  - macro definitions now require the canonical single-transformer surface:
+    `(define [macro] name (syntax-match (... (template ...)) ...))`.
+  - parser emits deterministic migration diagnostics for removed forms:
+    - `macro clause syntax was removed; use (define [macro] name (syntax-match ([...] (template ...)) ...))`
+  - compiler macro serializer now emits canonical `syntax-match` + `template` shape instead of clause syntax.
+  - migrated in-repo macro definitions in tests/bench/examples to canonical surface, including:
+    - advanced macro hygiene suites,
+    - compiler macro smoke paths,
+    - AST arena macro benchmark sources,
+    - `examples/finwatch/rules.omni`.
+  - added explicit regression coverage for removed forms:
+    - single-clause and multi-clause syntax now have negative tests asserting deterministic failure.
+  - synchronized docs/spec references to canonical macro surface:
+    - `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, `docs/reference/05-macros-modules.md`, `docs/FEATURES.md`, and `docs/syntax-decision.md`.
+
+- Syntax-surface canonicalization pass:
+  - Removed `Val` constructor support from type/value-literal annotations; `Value` is now the only accepted constructor.
+    - parser now emits deterministic diagnostic for removed usage: `Val constructor was removed; use Value`.
+    - updated dispatch/type tests and docs to canonical `^(Value ...)` forms.
+  - Canonicalized effect-composition messaging around `handle`:
+    - removed stdlib `with-handlers` helper export/definition.
+    - updated docs/examples (`EFFECTS_GUIDE`, finwatch alerts/smoke/TODO, stdlib appendix) to explicit handle-wrapper composition.
+  - Removed stale `lambda/fn` syntax mention from root README (language surface now documented as `lambda`).
+  - Parser now emits deterministic form diagnostics:
+    - `fn syntax was removed; use lambda`
+    - `do syntax was removed; use block`
+    - added regression coverage in advanced lambda/block syntax tests.
+  - Sequencing keyword canonicalization:
+    - `block` is now the only sequencing form accepted by the parser.
+    - sequencing spellings no longer have a special-form parser branch.
+    - serializer output and stdlib/examples/tests were normalized to `(block ...)`.
+  - Handle-clause canonicalization:
+    - removed nested handle-clause form `((tag k arg) body)` from parser syntax.
+    - `handle` clauses now require the canonical shape `(tag arg body)` with explicit `with-continuation` for multi-shot usage.
+    - parser emits deterministic rejection message: `handle clause syntax was removed; use (tag arg body) and with-continuation when needed`.
+    - parser tests updated with a canonical `with-continuation` multi-shot case and explicit rejection coverage.
+  - Let/match canonicalization:
+    - removed grouped Scheme-style `let` binding forms in favor of canonical flat-pair `let`.
+    - removed grouped named `let` binding forms in favor of canonical flat-pair named `let`.
+    - removed `letrec` parser syntax; parser now hard-fails with migration guidance to `let ^rec`.
+    - flat-pair `let` bindings are now documented and regression-covered as sequential left-to-right bindings.
+    - named `let` initializer lists now lower through an outer sequential `let` before entering the inner `let ^rec` loop binding, so later initializers can reference earlier ones.
+    - `match` clauses now require explicit `(pattern result)` pairs and emit deterministic diagnostics for missing-result and extra-form cases.
+    - `with-continuation` is now valid only inside `handle` clauses; parser rejects out-of-context usage explicitly.
+    - normalized shipped examples toward canonical flat-pair `let` syntax and documented the migration surface in `docs/syntax-decision.md`.
+  - Parser deprecation matrix:
+    - added dedicated `Value`/`Val` alias rejection matrix coverage in advanced parser/type tests:
+      - canonical `^(Value ...)` dispatch annotations are accepted for int, symbol, string, and bool literals.
+      - `^(Val ...)` annotations are rejected with `Val constructor was removed; use Value`.
+  - Deduce transaction command canonicalization:
+    - replaced the transaction-start command with `(deduce 'block db ['read|'write])`.
+    - updated runtime dispatch, durability tests, and docs to the `block` command.
+    - transaction-start failure diagnostics were normalized to `txn open failed`.
+  - Handler-composition helper canonicalization:
+    - replaced fold-based guide helper with explicit recursive `handle/chain` in `docs/EFFECTS_GUIDE.md` (left-to-right list order, first handler outermost, thunk executed exactly once at base case).
+    - aligned finwatch helper naming from `alerts/apply-handlers` to `alerts/handle-chain` with unchanged wrapper semantics.
+
+- Lisp advanced-slice workstation-safety hardening:
+  - `src/lisp/tests_tests.c3` now runs `advanced` as isolated subgroups (fresh interpreter per subgroup) to prevent cumulative definition retention across the entire advanced umbrella run.
+  - `src/lisp/tests_advanced_macro_hygiene_groups.c3` now gates the intentionally unbounded stack-overflow probe behind `OMNI_LISP_STACK_OVERFLOW_PROBE=1`; default `advanced` no longer executes that probe.
+  - `run_lisp_tests` now enforces container-only execution for high-memory selections.
+    - `all`, `memory-lifetime-soak`, and `memory-stress` require `OMNI_IN_VALIDATION_CONTAINER=1` by default.
+
+- Docker-only gate enforcement + 30% host-resource cap policy:
+  - `scripts/c3c_limits.sh`:
+    - default hard-cap method switched to Docker (`OMNI_HARD_MEM_CAP_METHOD=docker`) for capped command execution.
+    - default cap percent switched to `30` (`OMNI_HARD_MEM_CAP_PERCENT=30`) with shared percent resolver.
+    - hard memory cap now enforces a strict upper bound at the configured percent (manual MB override is clamped, never above cap).
+    - Docker CPU quota is now computed from host CPU count at the same cap percent and clamped to that maximum.
+  - gate runners now default to Docker mode with explicit outside-container guardrails:
+    - `scripts/run_global_gates.sh`
+    - `scripts/run_boundary_hardening.sh`
+    - `scripts/run_e2e.sh`
+  - validation container wiring:
+    - `scripts/container_exec.sh` now exports `OMNI_IN_VALIDATION_CONTAINER=1` so gate scripts can distinguish single-container execution from host execution.
+    - `scripts/run_validation_container.sh` now defaults/clamps CPU quota to the same 30%-cap policy.
+
+- Validation containment upgrade: real Docker cap mode for gate execution.
+  - `scripts/c3c_limits.sh`:
+    - added `OMNI_HARD_MEM_CAP_METHOD=docker` execution path (`omni_run_with_docker_cap(...)`).
+    - Docker mode now enforces hard limits via `docker run` (`--memory`, `--memory-swap`, `--cpus`, `--pids-limit`, `--network`) while binding the repo workspace and optional host toolchain root.
+    - added per-run resource telemetry sampling (`docker stats`) to `build/docker_resource_stats.log` (configurable via `OMNI_DOCKER_MONITOR_LOG`).
+    - added optional wall-time kill guard with `OMNI_DOCKER_TIMEOUT_SEC`.
+  - gate wiring:
+    - `scripts/run_global_gates.sh`: docker cap mode now applies across normal and ASAN runs/slices; auto-enables `OMNI_C3_HARD_CAP_ENABLED=1` in docker mode.
+    - `scripts/run_boundary_hardening.sh`: stage runner now executes through the shared cap wrapper (and enables c3 hard-cap mode under docker).
+    - `scripts/run_e2e.sh`: generation/run stages now execute through shared cap wrapper (and enables c3 hard-cap mode under docker).
+  - single-container runner:
+    - added `scripts/run_validation_container.sh` for full validation sessions inside one constrained Docker container.
+    - added `scripts/container_exec.sh` container entrypoint helper to set mounted toolchain paths and disable recursive inner container mode by default.
+  - docs:
+    - `docs/PROJECT_TOOLING.md` now documents container-capped validation usage and docker tuning knobs.
+  - pinned container toolchain:
+    - added `docker/validation.Dockerfile` with pinned C3 toolchain (`v0.7.10` tarball + sha256), GNU lightning (`2.2.2`), and replxx (`release-0.0.4`) so validation can run without host toolchain mounts.
+    - added `scripts/build_validation_image.sh` to build the pinned image reproducibly.
+    - docker validation defaults now target local `omni-validation:2026-03-10` image and require local image presence by default (`OMNI_DOCKER_REQUIRE_LOCAL_IMAGE=1`, `OMNI_VALIDATION_REQUIRE_LOCAL_IMAGE=1`) to avoid implicit pull fallback ambiguity.
+    - `scripts/run_validation_container.sh` no longer mount-binds `/usr/local` by default; host toolchain mount is opt-in via `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
+
+- Syntax surface governance reference:
+  - added `docs/syntax-decision.md` to capture canonical naming decisions:
+    - `lambda` vs removed `fn`,
+    - `block` vs removed `do`/`begin` surface usage,
+    - `handle`/`resolve`/`perform`/`with-continuation`,
+    - `Value` constructor usage and `Val`,
+    - `deduce 'block ...` transaction command contract.
+  - added `docs/syntax-decision.md` entry to documentation map in `docs/README.md`.
+
+- Memory-lifetime benchmark modularization:
+  - split AST arena benchmark support out of `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3` into:
+    - `src/lisp/tests_memory_lifetime_boundary_ast_bench_groups.c3`
+  - retained boundary decision/splice benchmark coverage in:
+    - `src/lisp/tests_memory_lifetime_boundary_graph_txn_bench_groups.c3`
+  - intent: keep the benchmark-heavy memory-lifetime surfaces behavior-preserving while reducing file size and benchmark-domain coupling.
+
+- Memory-lifetime suite ownership split:
+  - split the mixed suite orchestration in `src/lisp/tests_memory_lifetime_groups.c3` into dedicated module owners:
+    - `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3`
+    - `src/lisp/tests_memory_lifetime_stress_suite_groups.c3`
+    - `src/lisp/tests_memory_lifetime_benchmark_suite_groups.c3`
+  - preserved behavior while separating smoke, soak/stress, and benchmark domain entrypoints.
+
+- Post-complete backlog hygiene:
+  - added `scripts/check_post_complete_backlog_freshness.sh`:
+    - checks unchecked backlog entries in `docs/plans/post-complete-backlog.md` against recent release dates from `memory/CHANGELOG.md`.
+    - fails when entries are stale beyond the configured release-cycle threshold.
+    - supports optional tuning via `OMNI_POST_COMPLETE_BACKLOG_RELEASE_CYCLES` and `OMNI_POST_COMPLETE_BACKLOG_FALLBACK_DAYS`.
+  - added CI coverage with `.github/workflows/post-complete-backlog-freshness.yml`.
+  - updated `docs/PROJECT_TOOLING.md` with check command and governance notes.
+
+- Additional host-safety hardening for Lisp slice execution:
+  - `src/lisp/tests_tests.c3` now rejects explicit host-side sliced Lisp runs outside validation containers for any `OMNI_LISP_TEST_SLICE` other than `basic`.
+  - existing container-only enforcement remains for high-memory selections (`all`, `memory-lifetime-soak`, `memory-stress`).
+  - intent: prevent accidental workstation-wide memory spikes from manually selected slices while preserving default host-safe `basic` behavior.
+  - `docs/PROJECT_TOOLING.md` now documents the stricter slice-execution rule.
+- Lisp slice alias hardening:
+  - `src/lisp/tests_tests.c3` now fails fast for removed aliases (`memory-soak`, `syntax`) with a deterministic migration message.
+  - the failure path now points maintainers at explicit ownership-safe slices (`memory-lifetime-smoke`, `memory-lifetime-policy`, `memory-lifetime-bench`, `memory-stress`, `allocator-validation`, `allocator-bench`) instead of implicit migration behavior.
+  - this closes the deferred alias migration gap while keeping `memory-lifetime` as a scoped alias only.
+
+- Data-format semantic drift closure before API expansion:
+  - `src/lisp/primitives_data_formats.c3`:
+    - TOML boolean conversion now preserves Omni `false` symbol identity instead of coercing TOML `false` to `nil`.
+  - `src/lisp/primitives_data_formats_csv_parse.c3`:
+    - strict/default CSV parse now enforces RFC-4180 row separators (`\r\n`) and reports deterministic strict-line-ending errors for lone `\n` / bare `\r`.
+  - `src/lisp/primitives_data_formats_csv_emit.c3`:
+    - strict/default CSV emit now uses `\r\n` as the default row separator.
+  - regression updates:
+    - `src/lisp/tests_runtime_data_unicode_groups.c3` updated to assert strict/default CRLF behavior and preserved strict=false leniency paths.
+  - docs/checklist sync:
+    - `docs/reference/11-appendix-primitives.md` now documents strict/default RFC-4180 CRLF behavior.
+    - `docs/plans/idiomatic-libuv-surface-plan.md` and `TODO.md` step/checklist rows marked complete for this semantic-fix slice.
+
+- Libuv surface guardrail closure for typed-wrapper + docs parity drift:
+  - added `scripts/check_libuv_surface_policy.sh`:
+    - validates newly-added `io/*` surfaces keep raw/effect/wrapper mapping (`__raw-*` <-> `io/*` <-> stdlib wrapper).
+    - rejects newly-added `io/*` wrapper lambda aliases; requires function-style `define` wrappers.
+  - extended `scripts/check_primitive_docs_parity.sh`:
+    - keeps existing public primitive docs parity check.
+    - additionally validates newly-added `__raw-*` io primitives/wrappers are documented and mapped.
+  - updated `scripts/run_effects_contract_lint.sh` to run and report the new libuv surface policy log (`build/libuv_surface_policy.log`) in lint summary output.
+  - updated tooling/CI docs and boundary-hardening artifact upload list to include the new policy log.
+
+- Compiler/parser plan-governance TODO closure:
+  - `docs/plans/compiler-parser-refactor-plan.md` exit-criteria governance checkboxes are now closed (`single active plan`, `no overlapping active checklists`, `area+changelog sync`).
+  - `TODO.md` source rows for `docs/plans/compiler-parser-refactor-plan.md` governance items are now marked complete.
+  - `docs/areas/compiler-parser-refactor.md` was refreshed (`As of: 2026-03-10`) with explicit single-active-plan governance notes.
+
+- Global gate runner received workstation-safe lisp sharding controls:
+  - `scripts/run_global_gates.sh` now defaults hard-cap execution to `OMNI_HARD_MEM_CAP_METHOD=auto` (systemd `MemoryMax` when available, with existing cap fallback behavior intact).
+  - Added lisp slice fan-out in global gates via `OMNI_GLOBAL_GATES_LISP_SLICES` + per-slice `OMNI_LISP_TEST_SLICE` dispatch.
+  - Default slice set is now group-granular (`basic`, `memory-lifetime`, `memory-stress`, `list-closure`, `arithmetic-comparison`, `string-type`, `diagnostics`, `jit-policy`, `advanced`, `escape-scope`, `limit-busting`, `tco-recycling`, `closure-lifecycle`, `pika`, `unicode`, `compression`, `data-format`, `json`, `async`, `reader-dispatch`, `schema`, `deduce`, `scheduler`, `http`, `atomic`, `compiler`) to avoid single giant lisp process peaks.
+- Lisp test runner now supports explicit slice selection:
+    - `src/lisp/tests_tests.c3` validates `OMNI_LISP_TEST_SLICE` values and runs only the requested group (or `all` when explicitly opted in via `OMNI_ALLOW_ALL_LISP_SLICE=1`), while preserving existing summary emitters and compiler-suite invocation semantics.
+    - Unset `OMNI_LISP_TEST_SLICE` now defaults to the lightweight `basic` slice on host runs.
+    - Unknown slice values fail fast with deterministic assertion (`unknown OMNI_LISP_TEST_SLICE`) to keep CI/profile misconfiguration obvious.
+- Lisp slice selection now emits explicit high-memory flags in summary mode:
+    - `src/lisp/tests_tests.c3` emits `OMNI_TEST_SUMMARY suite=lisp_slice ... high_memory=<0|1>` for the active slice.
+    - `all`, `memory-lifetime-soak`, and `memory-stress` are flagged as high-memory selections with warning output to make workstation-risk slices obvious before heavy allocation phases.
+- Memory-lifetime slice split for workstation-safe local execution:
+  - `memory-lifetime` now maps to smoke coverage (`run_memory_lifetime_smoke_tests(...)`), and `memory-lifetime-smoke` is an explicit alias.
+  - `memory-lifetime-soak` preserves the previous full heavy path (stress + hot-budget + promotion-context + optional bench hooks).
+  - `scripts/run_global_gates.sh` now defaults to `memory-lifetime-smoke` and supports opt-in soak execution via `OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK=1`.
+- Session 44 docs closure:
+  - published boundary architecture audit + invariants contract:
+    - `docs/BOUNDARY_ARCHITECTURE_AUDIT_2026-03-10.md`
+  - synchronized Session 44 checklist closure in:
+    - `TODO.md`
+    - `docs/plans/session-34-44-boundary-hardening.md`
+  - updated area hub source map:
+    - `docs/areas/memory-runtime.md`
+- Session 41 ownership-domain split inventory captured (module ownership map):
+  - Boundary API/types + migration facade: `src/lisp/eval_boundary_api.c3`.
+  - Runtime policy/config toggles: `src/lisp/eval_boundary_policy.c3`.
+  - Provenance/classification + transition routing helpers: `src/lisp/eval_boundary_provenance.c3`.
+  - Session/transaction lifecycle guards and scope-swap discipline: `src/lisp/eval_boundary_session_txn.c3`.
+  - Diagnostics/invariants/graph-audit assertions: `src/lisp/eval_boundary_diagnostics.c3`.
+  - Telemetry counters/snapshots/reporting: `src/lisp/eval_boundary_telemetry.c3`.
+  - Commit/escape policy outcomes and fallback routing: `src/lisp/eval_boundary_commit_flow.c3`.
+- Session 41 dead-path cleanup and surface tightening:
+  - Removed unused boundary wrappers from `src/lisp/eval_boundary_api.c3`:
+    - `boundary_env_usize_or_default(...)` (no runtime/test callsites),
+    - `boundary_copy_env_to_scope(...)` (convenience wrapper; no runtime/test callsites).
+  - `c3c build` passed after removal.
+- Session 42 CI/policy enforcement rules captured (existing guardrails validated):
+  - Direct boundary call guard script present and passing:
+    - `scripts/check_boundary_facade_usage.sh`,
+    - policy map `scripts/boundary_facade_policy.txt`.
+  - Boundary-change policy gate present:
+    - `scripts/check_boundary_change_policy.sh` requires summary evidence from normal + ASAN boundary-hardening runs for boundary-sensitive file changes.
+  - Workflow wiring present:
+    - `.github/workflows/boundary-hardening.yml` runs `scripts/run_boundary_hardening.sh` (facade guard + ASAN/normal evidence + policy check stage).
+  - Local validation:
+    - `bash -n scripts/check_boundary_facade_usage.sh` passed.
+    - `bash -n scripts/check_boundary_change_policy.sh` passed.
+    - `scripts/check_boundary_facade_usage.sh` passed (no disallowed callsites).
+- Session 43 hot-path cleanup (redundant promotion work reduction):
+  - `src/lisp/eval_boundary_commit_flow.c3`:
+    - added `boundary_destination_promote_routed_escape(...)` fast-path helper for destination ESCAPE routing.
+    - destination cons/partial/iterator builders now skip redundant `boundary_promote_to_escape(...)` calls when:
+      - routed value is already in target ESCAPE lane (`scope_gen == target_scope.escape_generation`), or
+      - promotion context is already aborted (no additional promotion work attempted before fallback branch).
+  - Goal: reduce avoidable promotion calls in boundary commit hot paths without changing fallback/error semantics.
+  - Local validation:
+    - `c3c build` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` passed.
+    - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope` passed.
+- Session 44 Commit A closure (boundary entrypoint sweep):
+  - removed fully replaced env-copy entrypoints from `src/lisp/eval_env_copy.c3`:
+    - `copy_env_to_scope_inner(...)`
+    - `copy_env_to_scope(...)`
+  - updated boundary-facade policy/audit surfaces to track only live symbols:
+    - `scripts/boundary_facade_policy.txt` now gates `copy_env_to_scope_checked(...)` allow-list ownership.
+    - `scripts/check_boundary_facade_usage.sh` symbol list now tracks `copy_env_to_scope_checked(...)` and drops retired symbols.
+    - `scripts/audit_boundary_surface.sh` symbol inventory now tracks `copy_env_to_scope_checked(...)`.
+  - regenerated `docs/BOUNDARY_SURFACE_AUDIT.md` after symbol inventory refresh.
+  - local validation:
+    - `scripts/check_boundary_facade_usage.sh` passed (`violations=0`).
+- Validation (local, cap-safe):
+  - `c3c build` passed.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite stack` passed (`stack_engine: 21/0`).
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite scope` passed (`scope_region: 58/0`).
+  - `bash -n scripts/run_global_gates.sh` passed.
+  - `OMNI_LISP_TEST_SLICE=does-not-exist ./build/main --test-suite lisp` failed fast as expected with `unknown OMNI_LISP_TEST_SLICE`.
+- Remaining closure note:
+  - Session `run global gates` rows are now explicitly marked as local N/A/deferred in `TODO.md`; full normal+ASAN gate execution is expected on CI/large-host runners.

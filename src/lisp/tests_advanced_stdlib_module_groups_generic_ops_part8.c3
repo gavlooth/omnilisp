@@ -1,0 +1,283 @@
+module lisp;
+
+import std::io;
+
+import main;
+
+fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
+    test_truthy(interp, "matrix eigenvalues vulkan n>64 result stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (device (matrix/eigenvalues (to-device (matrix/identity 65) 'vulkan))) 'vulkan) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors vulkan n>64 computes when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (ev (matrix/eigenvectors (to-device (matrix/identity 65) 'vulkan))) (let (vals (to-device (ref ev 'values) 'cpu) vecs (to-device (ref ev 'vectors) 'cpu)) (if (= (length vals) 65) (if (< (abs (- (ref vals [64]) 1.0)) 0.000000001) (if (< (abs (- (ref vecs [0 0]) 1.0)) 0.000000001) (< (abs (- (ref vecs [64 64]) 1.0)) 0.000000001) nil) nil) nil))) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors vulkan n>64 outputs stay on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (ev (matrix/eigenvectors (to-device (matrix/identity 65) 'vulkan))) (if (= (device (ref ev 'values)) 'vulkan) (= (device (ref ev 'vectors)) 'vulkan) nil)) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvalues lazy vulkan n>64 computes when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (vals (to-device (matrix/eigenvalues (map + (to-device (matrix/identity 65) 'vulkan) 0.0)) 'cpu)) (if (= (length vals) 65) (< (abs (- (ref vals [0]) 1.0)) 0.000000001) nil)) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors lazy vulkan n>64 computes when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (vals (to-device (ref (matrix/eigenvectors (map + (to-device (matrix/identity 65) 'vulkan) 0.0)) 'values) 'cpu)) (if (= (length vals) 65) (< (abs (- (ref vals [64]) 1.0)) 0.000000001) nil)) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvalues nonsymmetric vulkan n>64 reports not symmetric when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (a (Array (Tensor Float64 [65 65] 0.0))) (block (set! a 1 2.0) (= (handle (matrix/eigenvalues (to-device (Tensor Float64 [65 65] a) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/not-symmetric))) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors nonsymmetric vulkan n>64 reports not symmetric when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (a (Array (Tensor Float64 [65 65] 0.0))) (block (set! a 1 2.0) (= (handle (matrix/eigenvectors (to-device (Tensor Float64 [65 65] a) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/not-symmetric))) true) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
+        long lapack_calls_before = omni_tensor_backend_lapack_dsyev_call_count();
+        test_truthy(interp, "matrix symmetric eigen vulkan path does not call LAPACK when available",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (if (< (abs (- (ref (to-device (matrix/eigenvalues (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) 'cpu) [0]) 3.0)) 0.000000001) (if (< (abs (- (ref (to-device (ref (matrix/eigenvectors (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) 'values) 'cpu) [1]) 2.0)) 0.000000001) (let (vals (to-device (matrix/eigenvalues (to-device (matrix/identity 65) 'vulkan)) 'cpu)) (< (abs (- (ref vals [64]) 1.0)) 0.000000001)) nil) nil) true) true))", pass, fail);
+        bool no_lapack_path_ok = !vulkan_available || omni_tensor_backend_lapack_dsyev_call_count() == lapack_calls_before;
+        if (no_lapack_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan symmetric eigen path does not call LAPACK"
+                : "[PASS] tensor Vulkan symmetric eigen unavailable; no-LAPACK path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan symmetric eigen path does not call LAPACK");
+            *fail += 1;
+        }
+    }
+    test_eq(interp, "matrix eigenpairs empty values shape",
+        "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [0 0] 0.0)) 'values)) 0)",
+        0, pass, fail);
+    test_eq(interp, "matrix eigenpairs empty vectors shape",
+        "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [0 0] 0.0)) 'vectors)) 1)",
+        0, pass, fail);
+    setup(interp,
+        "(define (matrix-eigenpairs-residual3-row a i v0 v1 v2) (+ (+ (* (BigComplex (ref a [i 0]) 0) v0) (* (BigComplex (ref a [i 1]) 0) v1)) (* (BigComplex (ref a [i 2]) 0) v2)))");
+    setup(interp,
+        "(define (matrix-eigenpairs-residual3-ok a k tol) (let (ep (matrix/eigenpairs a) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (< (+ (+ (abs (- (matrix-eigenpairs-residual3-row a 0 v0 v1 v2) (* lambda v0))) (abs (- (matrix-eigenpairs-residual3-row a 1 v0 v1 v2) (* lambda v1)))) (abs (- (matrix-eigenpairs-residual3-row a 2 v0 v1 v2) (* lambda v2)))) tol)))");
+    setup(interp,
+        "(define (matrix-eigenpairs-residual3-all-ok a tol) (if (matrix-eigenpairs-residual3-ok a 0 tol) (if (matrix-eigenpairs-residual3-ok a 1 tol) (matrix-eigenpairs-residual3-ok a 2 tol) nil) nil))");
+    {
+        bool lapack_available = omni_tensor_backend_lapack_dgeev_available() != 0;
+        if (lapack_available) {
+            test_truthy(interp, "matrix eigenpairs complex value positive imaginary",
+                "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values) [0])) (BigFloat \"1\"))) (BigFloat \"1e-10\"))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs complex value negative imaginary",
+                "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values) [1])) (BigFloat \"-1\"))) (BigFloat \"1e-10\"))",
+                pass, fail);
+            test_str_val(interp, "matrix eigenpairs values dtype",
+                "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values)))",
+                "BigComplex", pass, fail);
+            test_str_val(interp, "matrix eigenpairs vectors dtype",
+                "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)))",
+                "BigComplex", pass, fail);
+            test_eq(interp, "matrix eigenpairs vector shape columns",
+                "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)) 1)",
+                2, pass, fail);
+            test_truthy(interp, "matrix eigenpairs real diagonal first",
+                "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) 'values) [0])) (BigFloat \"3\"))) (BigFloat \"1e-10\"))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs real diagonal vector aligned",
+                "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) 'vectors) [0 0])) (BigFloat \"1\"))) (BigFloat \"1e-10\"))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs LAPACK real residual",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (BigComplex 3 0) v0) (* lambda v0))) (abs (- (* (BigComplex 2 0) v1) (* lambda v1)))) (BigFloat \"1e-8\")))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs LAPACK complex residual",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (BigComplex -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) (BigFloat \"1e-8\")))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs LAPACK nonnormal residual",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (BigComplex 5 0) v0) (* (BigComplex 7 0) v1)) (* lambda v0))) (abs (- (+ (* (BigComplex 3 0) v1) (* (BigComplex 2 0) v2)) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs LAPACK residual harness 3x3 columns",
+                "(let (tol (BigFloat \"1e-6\") a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
+                pass, fail);
+            test_truthy(interp, "matrix eigenpairs realizes lazy input",
+                "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (map + (Tensor Float64 [2 2] [3 0 0 2]) 0.0)) 'values) [1])) (BigFloat \"2\"))) (BigFloat \"1e-10\"))",
+                pass, fail);
+            {
+                long lapack_calls_before = omni_tensor_backend_lapack_dgeev_call_count();
+                test_truthy(interp, "matrix eigenpairs LAPACK candidate",
+                    "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) 'values) [0])) (BigFloat \"3\"))) (BigFloat \"1e-10\"))",
+                    pass, fail);
+                bool lapack_path_ok = omni_tensor_backend_lapack_dgeev_call_count() > lapack_calls_before;
+                if (lapack_path_ok) {
+                    emit_pass_literal("[PASS] tensor LAPACK backend dgeev matrix eigenpairs path");
+                    (*pass)++;
+                } else {
+                    io::printn("[FAIL] tensor LAPACK backend dgeev matrix eigenpairs path");
+                    (*fail)++;
+                }
+            }
+        } else {
+            emit_pass_literal("[PASS] tensor LAPACK backend dgeev unavailable; matrix eigenpairs fallback retained");
+            (*pass)++;
+        }
+    }
+    {
+        int fail_before = *fail;
+        omni_tensor_backend_lapack_dgeev_disable_for_tests(1);
+        test_truthy(interp, "matrix eigenpairs pure fallback complex positive imaginary",
+            "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values) [0])) (BigFloat \"1\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback real diagonal first",
+            "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) 'values) [0])) (BigFloat \"3\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_str_val(interp, "matrix eigenpairs pure fallback vectors dtype",
+            "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)))",
+            "BigComplex", pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback 3x3 diagonal first",
+            "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [5 0 0 0 3 0 0 0 1])) 'values) [0])) (BigFloat \"5\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback 3x3 upper triangular middle",
+            "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) 'values) [1])) (BigFloat \"3\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback 3x3 complex block keeps real first",
+            "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) 'values) [0])) (BigFloat \"2\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback 3x3 complex block positive imag second",
+            "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) 'values) [1])) (BigFloat \"1\"))) (BigFloat \"1e-8\"))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback diagonal residual",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 0 0 0 3 0 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0]) v2 (ref vecs [2 0])) (< (+ (+ (abs (- (* (BigComplex 5 0) v0) (* lambda v0))) (abs (- (* (BigComplex 3 0) v1) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback complex residual",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (* (BigComplex -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) (abs (- (* (BigComplex 2 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback nonnormal residual",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (BigComplex 5 0) v0) (* (BigComplex 7 0) v1)) (* lambda v0))) (abs (- (+ (* (BigComplex 3 0) v1) (* (BigComplex 2 0) v2)) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            pass, fail);
+        test_truthy(interp, "matrix eigenpairs pure fallback residual harness 3x3 columns",
+            "(let (tol (BigFloat \"1e-6\") a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
+            pass, fail);
+        bool fallback_path_ok = *fail == fail_before && omni_tensor_backend_lapack_dgeev_available() == 0;
+        omni_tensor_backend_lapack_dgeev_disable_for_tests(0);
+        if (fallback_path_ok) {
+            emit_pass_literal("[PASS] tensor LAPACK backend dgeev disabled; matrix eigenpairs pure fallback path");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor LAPACK backend dgeev disabled; matrix eigenpairs pure fallback path");
+            (*fail)++;
+        }
+    }
+    test_error_contains(interp, "matrix eigenpairs rejects vector input",
+        "(matrix/eigenpairs (Tensor Float64 [2] [1 2]))",
+        "matrix/eigenpairs: expected a square rank-2 Float64 Tensor", pass, fail);
+    test_error_contains(interp, "matrix eigenpairs rejects complex dtype",
+        "(matrix/eigenpairs (Tensor BigComplex [2 2] [1 0 0 1]))",
+        "matrix/eigenpairs: expected a square rank-2 Float64 Tensor", pass, fail);
+    test_truthy(interp, "matrix eigenpairs vulkan fails closed when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs lazy vulkan fails closed when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs vulkan wrong shape fails backend before shape when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2] [1 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs lazy vulkan wrong shape fails backend before shape when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2] [1 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
+        long lapack_calls_before = omni_tensor_backend_lapack_dgeev_call_count();
+        test_truthy(interp, "matrix eigenpairs vulkan fail-closed path does not call LAPACK when available",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (if (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) nil) true) true))", pass, fail);
+        bool no_lapack_path_ok = !vulkan_available || omni_tensor_backend_lapack_dgeev_call_count() == lapack_calls_before;
+        if (no_lapack_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan matrix eigenpairs fail-closed path does not call LAPACK"
+                : "[PASS] tensor Vulkan matrix eigenpairs unavailable; no-LAPACK fail-closed path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan matrix eigenpairs fail-closed path does not call LAPACK");
+            *fail += 1;
+        }
+    }
+    test_eq_double(interp, "contract multi-axis",
+        "(ref (contract (Tensor Float64 [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Float64 [2 3 2] 1.0) [1 2] [0 2]) [1 2])",
+        26.0, pass, fail);
+    test_eq_double(interp, "contract multi-axis pair shorthand",
+        "(ref (contract (Tensor Float64 [2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Float64 [2 3 2] 1.0) [[1 0] [2 2]]) [1 2])",
+        26.0, pass, fail);
+    test_eq_double(interp, "realize contracted tensor into destination",
+        "(let (src (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [5 6 7 8]) [1] [0]) dst (Tensor Float64 [2 2] 0.0)) (block (realize src dst) (ref dst [0 1])))",
+        22.0, pass, fail);
+    test_eq_double(interp, "realize contracted expression directly into destination",
+        "(let (dst (Tensor Float64 [2 2] 0.0)) (block (realize (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [5 6 7 8]) [1] [0]) dst) (ref dst [0 1])))",
+        22.0, pass, fail);
+    test_eq_double(interp, "failed realize contracted expression leaves destination unchanged",
+        "(let (dst (Tensor Float64 [] 99.0)) (block (handle (realize (contract (map (lambda (x) (if (= x 2) 'bad x)) (Tensor Float64 [2] [1 2])) (Tensor Float64 [2] [10 20]) [0] [0]) dst) (raise msg nil)) (ref dst [])))",
+        99.0, pass, fail);
+    test_eq_double(interp, "lazy contract tensor survives function return boundary",
+        "(block (define (mk-contract) (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20]) [0] [0])) (ref (mk-contract) []))",
+        50.0, pass, fail);
+    test_eq_double(interp, "lazy contract tensor survives closure capture",
+        "(let (src (contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [10 20]) [0] [0])) (let (f (lambda () (ref src []))) (f)))",
+        50.0, pass, fail);
+    test_error_contains(interp, "realize contracted expression rejects aliased destination",
+        "(let (dst (Tensor Float64 [2 2] [1 2 3 4])) (realize (contract dst dst [1] [0]) dst))",
+        "contract: destination aliases source tensor", pass, fail);
+    test_error_contains(interp, "realize nested contracted expression rejects aliased destination",
+        "(let (dst (Tensor Float64 [2 2] [1 2 3 4])) (let (src (map + dst 0)) (realize (contract src dst [1] [0]) dst)))",
+        "contract: destination aliases source tensor", pass, fail);
+    test_eq(interp, "realize zero-size contracted expression into zero-size destination",
+        "(let (dst (Tensor Float64 [0] 0.0)) (let (src (contract (Tensor Float64 [0 1] 0.0) (Tensor Float64 [1] [10]) [1] [0])) (block (realize src dst) (length dst))))",
+        0, pass, fail);
+    test_error_contains(interp, "contract axis length mismatch",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0] [])",
+        "contract: axis list length mismatch", pass, fail);
+    test_error_contains(interp, "contract left axis out of range",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [1] [0])",
+        "contract: left axis out of range", pass, fail);
+    test_error_contains(interp, "contract right axis out of range",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0] [1])",
+        "contract: right axis out of range", pass, fail);
+    test_error_contains(interp, "contract duplicate axis",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2 2] 1.0) [0 0] [0 1])",
+        "contract: duplicate contracted axis", pass, fail);
+    test_error_contains(interp, "contract duplicate axis with negative index normalization",
+        "(contract (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 3] [7 8 9 10 11 12]) [1 -1] [0 1])",
+        "contract: duplicate contracted axis", pass, fail);
+    test_error_contains(interp, "contract dimension mismatch",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [3] [1 2 3]) [0] [0])",
+        "contract: contracted dimensions must match", pass, fail);
+    test_error_contains(interp, "contract rejects non-tensor operand",
+        "(contract [1 2] (Tensor Float64 [2] [1 2]) [0] [0])",
+        "contract: expected Tensor operands", pass, fail);
+    test_error_contains(interp, "contract rejects scalar axes",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) 0 [0])",
+        "contract: axes must be arrays or proper lists of integers", pass, fail);
+    test_error_contains(interp, "contract rejects malformed axis pair shorthand",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) [0])",
+        "contract: axis pairs must contain two-integer arrays or proper lists", pass, fail);
+    test_error_contains(interp, "contract rejects non-integer axes",
+        "(contract (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [1 2]) ['bad] [0])",
+        "contract: axes must be integers", pass, fail);
+    // ref on lists (walks cons chain, not just pair 0/1)
+    test_eq(interp, "ref list 0", "(ref '(10 20 30) 0)", 10, pass, fail);
+    test_eq(interp, "ref list 2", "(ref '(10 20 30) 2)", 30, pass, fail);
+    test_eq(interp, "ref list -1", "(ref '(10 20 30) -1)", 30, pass, fail);
+    test_error(interp, "ref list oob", "(ref '(10 20 30) 5)", pass, fail);
+    test_eq(interp, ".[-1] array", "(let (a [10 20 30]) a.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-1] list", "(let (l '(10 20 30)) l.[-1])", 30, pass, fail);
+    test_eq(interp, ".[-2] list", "(let (l '(10 20 30)) l.[-2])", 20, pass, fail);
+    test_error(interp, ".[-4] list oob", "(let (l '(10 20 30)) l.[-4])", pass, fail);
+    test_str(interp, "char-at -1", "(char-at \"abc\" -1)", pass, fail);
+    setup(interp, "(define neg-arr [1 2 3])");
+    test_tag_interp(interp, "set! array returns void", "(set! neg-arr -1 99)", VOID, pass, fail);
+    test_eq(interp, "set! array -1", "(ref neg-arr 2)", 99, pass, fail);
+    // length - generic
+    test_eq(interp, "length array", "(length [1 2 3])", 3, pass, fail);
+    test_eq(interp, "length dict", "(length {'a 1 'b 2})", 2, pass, fail);
+    test_eq(interp, "length string", "(length \"hello\")", 5, pass, fail);
+    test_eq(interp, "length utf8 string", "(length \"caf\xc3\xa9\")", 4, pass, fail);
+    test_str_val(interp, "ref utf8 string", "(ref \"caf\xc3\xa9\" 3)", "\xc3\xa9", pass, fail);
+    test_str_val(interp, ".[ ] utf8 string", "(let (s \"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\") s.[1])", "\xe6\x9c\xac", pass, fail);
+    test_eq(interp, "length list", "(length '(1 2 3 4))", 4, pass, fail);
+    test_eq(interp, "length dotted cons", "(length (cons 1 2))", 2, pass, fail);
+    test_eq(interp, "length dotted cons chain", "(length (cons 1 (cons 2 3)))", 3, pass, fail);
+    test_error_contains(interp, "length rejects trailing arg", "(length [1 2] 99)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "ref rejects trailing arg", "(ref [10 20] 0 99)", "arity mismatch", pass, fail);
+    // push!
+    setup(interp, "(define ga [1 2])");
+    test_tag_interp(interp, "push! returns void", "(push! ga 3)", VOID, pass, fail);
+    test_eq(interp, "push! generic", "(length ga)", 3, pass, fail);
+    test_eq(interp, "push! val", "(ref ga 2)", 3, pass, fail);
+    // keys / values / has? / remove!
+    setup(interp, "(define gd {'x 10 'y 20})");
+    test_eq(interp, "keys len", "(length (keys gd))", 2, pass, fail);
+    test_eq(interp, "values len", "(length (values gd))", 2, pass, fail);
+    test_truthy(interp, "has? yes", "(has? gd 'x)", pass, fail);
+    test_nil(interp, "has? no", "(has? gd 'z)", pass, fail);
+    test_tag_interp(interp, "remove! returns void", "(remove! gd 'x)", VOID, pass, fail);
+    test_nil(interp, "remove! gone", "(has? gd 'x)", pass, fail);
+    test_eq(interp, "remove! count", "(length gd)", 1, pass, fail);
+}

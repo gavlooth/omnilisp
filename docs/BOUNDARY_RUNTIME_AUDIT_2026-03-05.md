@@ -1,6 +1,6 @@
 # Boundary Runtime Audit (2026-03-05)
 
-Status: hardening track closed (2026-03-05)  
+Status: hardening track closed (2026-03-05)
 Scope: boundary ownership/lifetime transitions, stack defer substrate, scheduler wakeup/thread-task interleavings
 
 ## 1) What Is Enforced Now

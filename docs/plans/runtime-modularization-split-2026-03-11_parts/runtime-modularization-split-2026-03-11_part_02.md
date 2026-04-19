@@ -1,0 +1,298 @@
+# runtime-modularization-split-2026-03-11 Part 02
+
+Source: `docs/plans/runtime-modularization-split-2026-03-11.md`
+
+- extracted the runtime-control and block-syntax contract matrix tests into:
+  - `src/lisp/tests_advanced_core_unicode_groups_runtime.c3`
+- post-step-75 line counts:
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`: `466` lines
+  - `src/lisp/tests_advanced_core_unicode_groups_runtime.c3`: `75` lines
+- next largest target after this split:
+  - `src/lisp/tests_compiler_codegen_groups.c3` (`532` lines)
+
+76. `tests_compiler_codegen_groups.c3` (top-down continuation split)
+- retained the compiler codegen phases 1-4 and the `qq_macro_primitive` wrapper in:
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+- extracted the mutable-capture, integration, iterative-stdlib, and bindgen helper tail into:
+  - `src/lisp/tests_compiler_codegen_groups_tail.c3`
+- post-step-76 line counts:
+  - `src/lisp/tests_compiler_codegen_groups.c3`: `302` lines
+  - `src/lisp/tests_compiler_codegen_groups_tail.c3`: `235` lines
+- next largest target after this split:
+  - `src/lisp/tests_scheduler_boundary_worker.c3` (`531` lines)
+
+77. `tests_scheduler_boundary_worker.c3` (top-down continuation split)
+- retained the offload-worker retry, wakeup barrier, and worker-cancel interleave tests in:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`
+- extracted the nonexecuted-payload release and prestart-cancel shared-release tests into:
+  - `src/lisp/tests_scheduler_boundary_worker_tail.c3`
+- post-step-77 line counts:
+  - `src/lisp/tests_scheduler_boundary_worker.c3`: `281` lines
+  - `src/lisp/tests_scheduler_boundary_worker_tail.c3`: `253` lines
+- next largest target after this split:
+  - `src/lisp/eval_dispatch_match.c3` (`528` lines)
+
+## Size Snapshot
+
+Before:
+- `src/lisp/schema.c3`: `1127` lines
+- `src/lisp/eval_dispatch_types.c3`: `696` lines
+- `src/lisp/scheduler_offload_worker.c3`: `564` lines
+- `src/lisp/tests_memory_lifetime_groups.c3`: `1256` lines
+- `src/lisp/eval_boundary_diagnostics.c3`: `998` lines
+- `src/lisp/tests_advanced_type_effect_ffi_groups.c3`: `838` lines
+- `src/lisp/tests_scheduler_io_task_groups.c3`: `825` lines
+- `src/lisp/eval_boundary_graph_audit.c3`: `842` lines
+- `src/lisp/eval_promotion_escape.c3`: `729` lines
+- `src/lisp/tests_memory_lifetime_groups.c3` (post-step-5 baseline): `724` lines
+- `src/lisp/tests_memory_lifetime_boundary_ast_bench_groups.c3`: `707` lines
+- `src/lisp/eval_boundary_api.c3`: `628` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_groups.c3`: `616` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `597` lines
+- `src/lisp/eval_type_evaluators.c3`: `593` lines
+- `src/lisp/jit_jit_closure_define_qq.c3`: `586` lines
+- `src/lisp/tests_deduce_query_groups.c3`: `571` lines
+- `src/lisp/tests_advanced_core_unicode_groups.c3`: `570` lines
+- `src/lisp/json.c3`: `558` lines
+- `src/lisp/jit_jit_compile_expr_core.c3`: `556` lines
+- `src/lisp/scheduler_primitives.c3`: `555` lines
+- `src/lisp/tests_tests.c3`: `553` lines
+- `src/lisp/async_tcp_transport_core.c3`: `546` lines
+- `src/lisp/primitives_meta_types.c3`: `541` lines
+- `src/lisp/tests_scheduler_offload_thread_groups.c3`: `541` lines
+- `src/lisp/deduce.c3`: `537` lines
+- `src/lisp/tests_memory_lifetime_finalize_groups.c3`: `537` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`: `534` lines
+- `src/lisp/tests_runtime_async_groups.c3`: `532` lines
+- `src/lisp/eval_boundary_commit_flow.c3`: `531` lines
+- `src/lisp/scheduler_wakeup_dispatch.c3`: `520` lines
+- `src/lisp/value_constructors.c3`: `509` lines
+- `src/lisp/tests_memory_lifetime_boundary_groups.c3`: `506` lines
+- `src/lisp/eval_type_evaluators.c3` (post-step-35 baseline): `498` lines
+- `src/lisp/scheduler_primitives_threads.c3` (post-step-36 baseline): `492` lines
+- `src/lisp/tests_memory_lifetime_root_boundary_groups.c3` (post-step-37 baseline): `492` lines
+- `src/lisp/unicode.c3` (post-step-38 baseline): `487` lines
+- `src/lisp/json.c3` (post-step-39 baseline): `485` lines
+- `src/lisp/tests_compiler_core_groups.c3`: `476` lines
+- `src/lisp/value_core_types.c3` (post-step-40 baseline): `476` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `476` lines
+- `src/lisp/deduce_relation_scan_helpers.c3`: `477` lines
+- `src/lisp/deduce_rule_eval.c3` (post-step-42 baseline): `1875` lines
+
+After:
+- `src/lisp/schema.c3`: `450` lines
+- `src/lisp/schema_validation.c3`: `253` lines
+- `src/lisp/schema_explain_effect.c3`: `428` lines
+- `src/lisp/eval_dispatch_types.c3`: `243` lines
+- `src/lisp/eval_dispatch_match.c3`: `456` lines
+- `src/lisp/scheduler_offload_worker.c3`: `190` lines
+- `src/lisp/scheduler_offload_ops.c3`: `375` lines
+- `src/lisp/tests_memory_lifetime_groups.c3`: `236` lines
+- `src/lisp/tests_memory_lifetime_root_boundary_groups.c3`: `302` lines
+- `src/lisp/tests_memory_lifetime_root_boundary_promotion_groups.c3`: `194` lines
+- `src/lisp/tests_memory_lifetime_finalize_groups.c3`: `537` lines
+- `src/lisp/tests_memory_lifetime_boundary_ast_bench_groups.c3`: `357` lines
+- `src/lisp/tests_memory_lifetime_ast_arena_bench_suites.c3`: `351` lines
+- `src/lisp/eval_boundary_api.c3`: `300` lines
+- `src/lisp/eval_boundary_api_meta.c3`: `331` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_groups.c3`: `86` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`: `534` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups.c3`: `476` lines
+- `src/lisp/tests_memory_lifetime_env_copy_closure_groups.c3`: `191` lines
+- `src/lisp/eval_boundary_diagnostics.c3`: `160` lines
+- `src/lisp/eval_boundary_graph_audit.c3`: `473` lines
+- `src/lisp/eval_boundary_graph_audit_meta.c3`: `373` lines
+- `src/lisp/tests_advanced_type_effect_ffi_groups.c3`: `129` lines
+- `src/lisp/tests_advanced_type_dispatch_groups.c3`: `294` lines
+- `src/lisp/tests_advanced_type_parametric_groups.c3`: `420` lines
+- `src/lisp/tests_scheduler_io_task_groups.c3`: `289` lines
+- `src/lisp/tests_scheduler_offload_thread_groups.c3`: `541` lines
+- `src/lisp/eval_promotion_escape.c3`: `374` lines
+- `src/lisp/eval_promotion_root_store.c3`: `356` lines
+- `src/lisp/eval_type_evaluators.c3`: `325` lines
+- `src/lisp/eval_type_declarations.c3`: `181` lines
+- `src/lisp/eval_type_instance_builder.c3`: `99` lines
+- `src/lisp/jit_jit_closure_define_qq.c3`: `282` lines
+- `src/lisp/jit_jit_closure_support.c3`: `309` lines
+- `src/lisp/tests_deduce_query_groups.c3`: `409` lines
+- `src/lisp/tests_deduce_query_scan_groups.c3`: `165` lines
+- `src/lisp/tests_advanced_core_unicode_groups.c3`: `433` lines
+- `src/lisp/tests_advanced_core_semantics_groups.c3`: `139` lines
+- `src/lisp/json.c3`: `118` lines
+- `src/lisp/json_pointer_options.c3`: `368` lines
+- `src/lisp/value_core_types.c3`: `208` lines
+- `src/lisp/value_runtime_types.c3`: `269` lines
+- `src/lisp/json_yyjson_ffi.c3`: `74` lines
+- `src/lisp/jit_jit_compile_expr_core.c3`: `320` lines
+- `src/lisp/jit_jit_compile_expr_dispatch.c3`: `237` lines
+- `src/lisp/scheduler_primitives.c3`: `405` lines
+- `src/lisp/scheduler_primitives_offload.c3`: `152` lines
+- `src/lisp/tests_tests.c3`: `406` lines
+- `src/lisp/tests_slice_policy.c3`: `151` lines
+- `src/lisp/async_tcp_transport_core.c3`: `411` lines
+- `src/lisp/async_tcp_transport_helpers.c3`: `137` lines
+- `src/lisp/primitives_meta_types.c3`: `429` lines
+- `src/lisp/primitives_meta_predicates.c3`: `113` lines
+- `src/lisp/tests_scheduler_offload_thread_groups.c3`: `383` lines
+- `src/lisp/tests_scheduler_offload_bench_groups.c3`: `162` lines
+- `src/lisp/deduce.c3`: `363` lines
+- `src/lisp/deduce_db_handles.c3`: `175` lines
+- `src/lisp/tests_memory_lifetime_finalize_groups.c3`: `209` lines
+- `src/lisp/tests_memory_lifetime_finalize_parity_groups.c3`: `332` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_escape_groups.c3`: `213` lines
+- `src/lisp/tests_memory_lifetime_boundary_commit_escape_primary_groups.c3`: `329` lines
+- `src/lisp/tests_runtime_async_groups.c3`: `156` lines
+- `src/lisp/tests_runtime_async_io_tls_groups.c3`: `383` lines
+- `src/lisp/eval_boundary_commit_flow.c3`: `285` lines
+- `src/lisp/eval_boundary_commit_escape_builders.c3`: `250` lines
+- `src/lisp/scheduler_wakeup_dispatch.c3`: `316` lines
+- `src/lisp/scheduler_wakeup_queue.c3`: `207` lines
+- `src/lisp/scheduler_primitives_threads.c3`: `136` lines
+- `src/lisp/scheduler_primitives_thread_helpers.c3`: `357` lines
+- `src/lisp/value_constructors.c3`: `249` lines
+- `src/lisp/value_constructors_core.c3`: `264` lines
+- `src/lisp/tests_memory_lifetime_boundary_groups.c3`: `291` lines
+- `src/lisp/jit_jit_handle_signal_handle.c3`: `225` lines
+- `src/lisp/deduce_rule_ops_explain.c3`: `219` lines
+- `src/lisp/tests_memory_lifetime_boundary_state_groups.c3`: `219` lines
+- `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `214` lines
+- `src/lisp/unicode.c3`: `212` lines
+- `src/lisp/unicode_case_mapping.c3`: `276` lines
+- `src/lisp/deduce_rule_eval.c3`: `442` lines
+- `src/lisp/deduce_rule_eval_exec.c3`: `368` lines
+- `src/lisp/deduce_rule_eval_exec_seminaive.c3`: `275` lines
+- `src/lisp/deduce_rule_eval_fixpoint.c3`: `260` lines
+- `src/lisp/deduce_rule_eval_prims.c3`: `380` lines
+- `src/lisp/tests_scheduler_groups.c3`: `424` lines
+- `src/lisp/tests_scheduler_groups_more.c3`: `218` lines
+- `src/lisp/tests_deduce_query_bench_groups.c3`: `410` lines
+- `src/lisp/tests_deduce_query_bench_groups_more.c3`: `24` lines
+- `src/lisp/tests_compiler_core_groups_more.c3`: `245` lines
+- `src/lisp/tests_memory_lifetime_env_copy_groups_more.c3`: `245` lines
+- `src/lisp/deduce_relation_scan_helpers_more.c3`: `217` lines
+- `src/lisp/aot.c3`: `467` lines
+- `src/lisp/aot_runtime_bridge.c3`: `433` lines
+- `src/lisp/tests_runtime_feature_jit_groups.c3`: `345` lines
+- `src/lisp/tests_runtime_feature_jit_groups_more.c3`: `392` lines
+- `src/lisp/tests_runtime_feature_jit_groups_tail.c3`: `314` lines
+- `src/lisp/jit_jit_compiler.c3`: `418` lines
+- `src/lisp/jit_jit_compiler_lifecycle.c3`: `225` lines
+- `src/lisp/deduce_db_handles_mutation.c3`: `602` lines
+- `src/lisp/jit_jit_eval_scopes.c3`: `557` lines
+- `src/lisp/jit_jit_handle_signal.c3`: `551` lines
+- `src/lisp/deduce_rule_ops.c3`: `548` lines
+- `src/lisp/deduce_db_handles.c3`: `544` lines
+- `src/lisp/tests_advanced_core_unicode_groups.c3`: `540` lines
+- `src/lisp/tests_advanced_core_unicode_groups_more.c3`: `101` lines
+- `src/lisp/deduce_rule_eval_exec_naive.c3`: `171` lines
+
+## Validation
+
+- `c3c build` (post-step-64 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp` (post-step-64 check; 89 passed, 0 failed)
+- `c3c build` (post-step-63 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-63 check; 72 passed, 0 failed)
+- `c3c build` (post-step-62 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-62 check; 24 passed, 0 failed)
+- `c3c build` (post-step-61 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-61 check; 24 passed, 0 failed)
+- `c3c build` (post-step-60 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-60 check; 24 passed, 0 failed)
+- `c3c build`
+- `c3c build` (post-step-59 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-59 check; 72 passed, 0 failed)
+- `c3c build` (post-step-58 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (post-step-58 check; 122 passed, 0 failed)
+- `c3c build` (post-step-57 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (post-step-57 check; 122 passed, 0 failed)
+- `c3c build` (post-step-56 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (post-step-56 check; 24 passed, 0 failed)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (`72 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler ./build/main --test-suite lisp` (`89 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=jit-policy ./build/main --test-suite lisp` (`24 passed, 0 failed`)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main --test-suite lisp` (current advanced slice still trips the pre-existing unaligned-access panic in `value_environment.c3` via `jit_lookup_var`)
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=schema ./build/main`
+- `c3c build` (post-step-42 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-42 check; 72 passed, 0 failed)
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main`
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main`
+- `LD_LIBRARY_PATH=/usr/local/lib:/usr/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main`
+- `LD_LIBRARY_PATH=/usr/local/lib:/usr/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-10 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-10 check)
+- `c3c build` (post-step-11 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-11 check)
+- `c3c build` (post-step-12 check)
+- `LD_LIBRARY_PATH=/usr/local/lib:/usr/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main` (post-step-12 check; still 3 known failures)
+- `c3c build` (post-step-13 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-13 check)
+- `c3c build` (post-step-14 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-14 check)
+- `c3c build` (post-step-15 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-15 check)
+- `c3c build` (post-step-16 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-16 check)
+- `c3c build` (post-step-17 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-17 check)
+- `c3c build` (post-step-18 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-18 check)
+- `c3c build` (post-step-19 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main` (post-step-19 check)
+- `c3c build` (post-step-20 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main` (post-step-20 check; 4 known failures)
+- `c3c build` (post-step-21 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-21 check)
+- `c3c build` (post-step-22 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-22 check)
+- `c3c build` (post-step-23 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main` (post-step-23 check)
+- `c3c build` (post-step-24 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-24 check)
+- `c3c build` (post-step-25 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=async ./build/main` (post-step-25 check; 2 dns-resolve failures)
+- `c3c build` (post-step-26 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-26 check)
+- `c3c build` (post-step-27 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main` (post-step-27 check)
+- `c3c build` (post-step-28 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main` (post-step-28 check)
+- `c3c build` (post-step-29 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-29 check)
+- `c3c build` (post-step-30 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-30 check)
+- `c3c build` (post-step-31 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=async ./build/main` (post-step-31 check; 2 known dns-resolve failures)
+- `c3c build` (post-step-32 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-32 check)
+- `c3c build` (post-step-33 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main` (post-step-33 check)
+- `c3c build` (post-step-34 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-34 check)
+- `c3c build` (post-step-35 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-35 check)
+- `c3c build` (post-step-36 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main` (post-step-36 check; 4 known failures)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-36 check)
+- `c3c build` (post-step-37 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=scheduler OMNI_SCHEDULER_BENCH=1 ./build/main` (post-step-37 check)
+- `c3c build` (post-step-38 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main` (post-step-38 check)
+- `c3c build` (post-step-39 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=advanced ./build/main` (post-step-39 check; 4 known failures)
+- `c3c build` (post-step-40 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-40 check)
+- `c3c build` (post-step-41 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=basic ./build/main` (post-step-41 check)
+- `c3c build` (post-step-42 check)
+- `OMNI_VALIDATION_EXTRA_ARGS='--mount type=bind,src=/usr/lib/libreplxx.so.0,dst=/usr/lib/libreplxx.so.0,readonly' scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_QUIET=1 OMNI_SKIP_TLS_INTEGRATION=1 OMNI_LISP_TEST_SLICE=deduce ./build/main --test-suite lisp` (post-step-42 check; 72 passed, 0 failed)
+
+Outcome:
+- Behavior unchanged in targeted slices.
+- Hot-path code remains intact, with diagnostics/explainability and operation
+  surfaces split into dedicated files for follow-up work.
+- Current workspace note: `advanced` slice reports 4 existing failures
+  (`non-tail recursion exceeds former 1024 eval cap`, `parser matrix accepts Value bool constructor`, `match Some`, `match nested Some`);
+- Current workspace note: `async` slice reports 2 dns failures
+  (`dns-resolve localhost (fiber)`, `dns-resolve returns string (fiber)`).
+  `basic`, `scheduler`, `deduce`, and `memory-lifetime-smoke` validation slices pass.

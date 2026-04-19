@@ -1,6 +1,6 @@
 # Fiber Temp + Teardown Proposals (Revision Summary)
 
-Date: 2026-03-05  
+Date: 2026-03-05
 Status: Draft with active execution checkpoint
 
 ## 1) Goal and Scope

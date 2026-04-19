@@ -517,9 +517,9 @@ Status tags:
 - [x] Type arg inference: `(type-args (Box 42))` → `'(Integer)` — inferred from field values
 - [x] Constrained dispatch: `^{'T Number}` enforced at dispatch — arg type must be subtype of bound
 - [x] Parent vs type-param disambiguation at eval time (first symbol = registered type → parent)
-- [x] Constructor type-application checking (`(^(Ctor ...) value)`) with canonical mismatch/arity diagnostics and deterministic payload fields (`ctor`, `expected-args`, `actual-args`, `arg-index`, `arg-path`)  
+- [x] Constructor type-application checking (`(^(Ctor ...) value)`) with canonical mismatch/arity diagnostics and deterministic payload fields (`ctor`, `expected-args`, `actual-args`, `arg-index`, `arg-path`)
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_parametric_ctor_annotation_tests`)
-- [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior  
+- [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
 - [x] `Tensor` builtin type descriptor participates in type identity and
   dispatch; `(Tensor data)`, `(Tensor dtype shape data-or-scalar)`, and
