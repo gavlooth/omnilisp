@@ -400,13 +400,15 @@ Backend entries report `stats-normal-float64` and `stats-normal-float32`
 separately from the broader `scientific-map-*` keys; these keys cover
 `stats/normal-cdf` and `stats/normal-quantile` without claiming every
 scientific unary map operation exists for the dtype.
-Every backend entry also exposes the backend-neutral ML suite capability keys
-`ml-linear`, `ml-convolution`, `ml-neural-map`, `ml-normalization`,
-`ml-attention`, `ml-autograd`, `ml-optimizer`, and `ml-graph-execution`.
+Every backend entry also exposes backend-neutral ML suite capability keys:
+`ml-linear`, `ml-linear-direct-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and `ml-graph-execution`.
 `ml-linear` is true for complete CPU dense `Float64`/`Float32` `ml/linear`;
-Vulkan keeps the broad key false while direct concrete `Float32`
-input/weights, with optional concrete bias, can execute through Tensor
-`contract` plus broadcast `map`. Other keys stay false.
+Vulkan keeps the broad key false while the narrow
+`ml-linear-direct-float32` partial capability is true for CPU and for Vulkan
+when `Float32` placement is available; the Vulkan route covers only concrete
+input/weights, with optional concrete bias, through Tensor `contract` plus
+broadcast `map`. Other keys stay false.
 CUDA-placed dense row-major `Float64` or `Float32` tensors support binary
 elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

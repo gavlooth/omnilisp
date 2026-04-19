@@ -289,3 +289,40 @@ Source: `.agents/SESSION_REPORT.md`
   - Vulkan `Float64` `ml/linear`, batched reductions, and view-backed broader
     expression lowering remain incomplete or fail-closed.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 01:05 CEST - Vulkan ML Direct Capability Audit
+
+- Objective attempted:
+  - Continue the strict Vulkan ML audit, close the `ML-VK-010-004` public
+    surface decision, and implement the next TODO slice with subagents.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added `ml-linear-direct-float32` to `tensor-backends` so CPU reports true
+    and Vulkan reports the narrow bit only when Vulkan `Float32` is available.
+  - Kept broad Vulkan `ml-linear` false until the full family ships.
+  - Froze `ml/linear/batched-reduce` as the public batched-reduction surface.
+  - Added Vulkan `ml/linear` regressions for bias shape mismatch and mapped
+    bias expression preservation.
+- Commands run:
+  - Subagent audits for `ML-VK-010-004`, backend feasibility, and test gaps.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1622 fail=0`.
+  - File-size gate reports no tracked text files above 700 LOC.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-010-004-001`: implement Vulkan `Float32`
+    `ml/linear/batched-reduce` coverage without hidden CPU fallback.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `Float64` `ml/linear`, reducer kernels, and broader view-backed
+    expression lowering remain incomplete or fail-closed.
+- Signature: Codex GPT-5.4

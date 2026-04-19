@@ -240,3 +240,27 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-010-004` by defining the public batched-reduction
     operation surface and backend capability boundary before adding kernels.
+
+## Active Vulkan ML Direct Capability Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - broad Vulkan `ml-linear` must stay false, but the already-shipped direct
+    concrete `Float32` route needed a truthful narrow capability bit.
+  - `ML-VK-010-004` was a naming/surface decision, not implementation work.
+- Implemented checkpoint:
+  - added `ml-linear-direct-float32` to `tensor-backends`;
+  - kept broad Vulkan `ml-linear` false while reporting the narrow Vulkan bit
+    from the existing Vulkan `Float32` placement capability;
+  - froze `ml/linear/batched-reduce` as the public batched-reduction surface.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1622 fail=0`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Next checkpoint:
+  - implement `ML-VK-010-004-001`: Vulkan `Float32`
+    `ml/linear/batched-reduce` coverage with no-hidden-CPU-fallback
+    regressions.

@@ -286,6 +286,12 @@ Source: `TODO.md`
     - [x] `AUDIT-VK-SCIENTIFIC-F64-CAPABILITY` split or document partial
       Vulkan Float64 scientific coverage so `stats/normal-*` support is not
       hidden behind the coarse `scientific-map-float64` key.
+   - [x] `AUDIT-ML-LINEAR-DIRECT-FLOAT32` keep broad Vulkan `ml-linear` false
+      while documenting the narrow `ml-linear-direct-float32` partial
+      capability for already-materialized concrete Vulkan `Float32` `ml/linear`
+      only.
+   - [x] `AUDIT-ML-VK-010-004-SURFACE` split `ML-VK-010-004` into a public
+      batched-reduction surface decision before reducer coverage.
   - scope:
     - define public ML operation names without backend-flavored APIs;
     - add `tensor-backends` capability keys for ML operation families;
@@ -311,8 +317,12 @@ Source: `TODO.md`
       shape diagnostics, and no-hidden-CPU-fallback regressions.
     - [x] `ML-VK-010-003` add Vulkan `Float32` batched bias-add coverage with
       no-CPU-fallback regressions.
-    - [ ] `ML-VK-010-004` add Vulkan `Float32` batched-reduction coverage with
-      no-CPU-fallback regressions.
+    - [x] `ML-VK-010-004` freeze `ml/linear/batched-reduce` as the public
+      batched-reduction surface for Vulkan `Float32` ml/linear before reducer
+      coverage lands.
+    - [ ] `ML-VK-010-004-001` implement Vulkan `Float32` batched-reduction
+      coverage for `ml/linear/batched-reduce` with no-CPU-fallback
+      regressions.
     - [ ] `ML-VK-010-005` decide and implement expression-backed Vulkan
       `ml/linear` lowering beyond already-materialized direct map results, or
       keep the concrete/view boundary explicit with permanent fail-closed tests

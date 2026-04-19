@@ -239,3 +239,18 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1620 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 01:05 CEST: Vulkan ML direct capability checkpoint:
+  - Added `ml-linear-direct-float32` to `tensor-backends` so CPU reports true
+    and Vulkan reports the narrow direct concrete `Float32` `ml/linear`
+    capability only when Vulkan `Float32` placement is available.
+  - Kept broad Vulkan `ml-linear` false; the narrow bit does not imply
+    full-family ML linear support, expression/view-backed lowering, mixed
+    devices, or broader dtype coverage.
+  - Froze `ml/linear/batched-reduce` as the public surface for the next
+    Vulkan `Float32` batched-reduction lane under `ML-VK-010-004-001`.
+  - Added regressions for Vulkan bias shape mismatch and mapped bias
+    expression preservation.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1622 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.

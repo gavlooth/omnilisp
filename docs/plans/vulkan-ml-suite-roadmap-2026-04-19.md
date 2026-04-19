@@ -72,8 +72,16 @@ Initial public operation names and capability inventory:
   It remains false for Vulkan, CUDA, and cuBLAS until backend kernels land.
   Other ML capability keys are explicit `false` until the named operation
   family has real backend kernels and fail-closed tests.
+- `ml-linear-direct-float32` is a narrow partial capability for direct concrete
+  `Float32` `ml/linear`. It is true for CPU and for Vulkan when `Float32`
+  placement is available. The Vulkan route covers already-materialized concrete
+  input and weight tensors, plus optional concrete bias, through Tensor
+  `contract` plus broadcast `map`. It does not change the broad Vulkan
+  `ml-linear` backend bit, and it does not imply expression/view-backed
+  operands, mixed devices, or broader dtype coverage.
 - Non-CPU `ml/linear` operands fail closed with Tensor backend diagnostics
-  before any implicit CPU materialization.
+  before any implicit CPU materialization, except for the narrow
+  `ml-linear-direct-float32` direct-concrete path above.
 
 ### `ML-VK-010` Batched Linear Algebra Foundation
 
@@ -92,8 +100,11 @@ First executable split:
   no-hidden-CPU-fallback regressions.
 - `ML-VK-010-003`: add Vulkan `Float32` batched bias-add coverage with
   no-CPU-fallback regressions.
-- `ML-VK-010-004`: add Vulkan `Float32` batched-reduction coverage with
-  no-CPU-fallback regressions.
+- `ML-VK-010-004`: freeze `ml/linear/batched-reduce` as the public
+  batched-reduction surface for Vulkan `Float32` ml/linear before reducer
+  coverage lands.
+- `ML-VK-010-004-001`: implement Vulkan `Float32` batched-reduction coverage
+  for `ml/linear/batched-reduce` with no-CPU-fallback regressions.
 - `ML-VK-010-005`: decide and implement expression-backed Vulkan `ml/linear`
   lowering beyond already-materialized direct map results, or keep the
   concrete/view boundary explicit with permanent fail-closed tests for

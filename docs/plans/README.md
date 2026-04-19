@@ -65,6 +65,9 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   model/layer serialization, graph capture/fusion/memory planning, and ML
   validation/benchmarks. The roadmap keeps public APIs backend-neutral and
   rejects hidden CPU fallback for Vulkan operands.
+- `vulkan-ml-linear-direct-float32-batched-reduction-surface-2026-04-20.md`:
+  accepted decision for the narrow `ml-linear-direct-float32` capability and
+  public `ml/linear/batched-reduce` surface under `ML-VK-010-004`.
 - `cuda-cublas-backend-decision-2026-04-16.md`: CUDA/cuBLAS stays behind the
   backend-neutral Tensor surface. Current support includes explicit
   `to-device` CPU/CUDA copies, cuBLAS rank-2/rank-1 contract fast paths,
