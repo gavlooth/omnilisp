@@ -490,3 +490,48 @@ Source: `.agents/SESSION_REPORT.md`
   - `sigmoid`, `tanh`, `gelu`, axis reductions, stable softmax, and losses
     remain open under `ML-VK-020-004` through `ML-VK-020-007`.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 01:53 CEST - Vulkan ML Float32 Activations
+
+- Objective attempted:
+  - Continue `ML-VK-020-004` after the ReLU slice, resolve the `ml/*` vs bare
+    math naming question, and implement the remaining Float32 activation
+    surfaces with fast subagent review.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_activation.c3`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu` runtime
+    primitives and AOT lookup entries.
+  - Kept these as canonical `ml/*` activation surfaces, not aliases for bare
+    scientific math primitives.
+  - Implemented the Float32 slice through existing Tensor `map` composition:
+    sigmoid as `1 / (1 + exp(-x))`, tanh as mapped `tanh`, and GELU as the
+    standard tanh approximation.
+  - Added narrow backend capability bits for sigmoid/tanh/GELU Float64 and
+    Float32. Float64 transcendental ML activation bits remain false pending
+    `ML-VK-020-005`.
+  - Closed `ML-VK-020-004` in TODO and kept reductions/softmax/loss blocked on
+    a real axis reduction substrate.
+- Commands run:
+  - Fast subagent audits for naming/surface, implementation feasibility, and
+    activation test coverage.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1665 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-020-005` if the next target is Float64 activation
+    policy, or `ML-VK-020-006` if the next target is softmax/loss readiness.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Exact GELU is not implemented; Vulkan would need an `erf` lowering or a
+    documented fail-closed exact-GELU surface.
+  - Axis reductions, stable softmax, and losses remain open.
+- Signature: Codex GPT-5.4

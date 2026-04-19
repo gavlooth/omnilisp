@@ -373,3 +373,35 @@ Date: 2026-04-20
   - continue `ML-VK-020-004`: remaining Float32 activation surfaces with
     explicit no-hidden-CPU-fallback tests, then do `ML-VK-020-006` before
     softmax/loss work.
+
+## Active Vulkan ML Float32 Activations Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ML-VK-020-004` was still vague about whether `tanh` should be a bare math
+    alias or a canonical ML activation. The surface decision is now explicit:
+    `ml/sigmoid`, `ml/tanh`, and `ml/gelu` are canonical `ml/*` activation
+    names, not compatibility aliases for bare scientific primitives.
+  - Exact GELU would need an `erf` Vulkan lowering that does not exist in the
+    current map allowlist; tanh-approx GELU is the honest portable backend
+    slice.
+- Implemented checkpoint:
+  - added runtime and AOT primitives for `ml/sigmoid`, `ml/tanh`, and
+    tanh-approximation `ml/gelu`;
+  - implemented the Float32 activation slice through composed Tensor `map`
+    kernels, preserving CPU/CUDA/Vulkan placement and failing closed on
+    unsupported dtypes;
+  - added narrow activation capability bits for sigmoid/tanh/GELU Float64 and
+    Float32, with Float64 transcendental ML activation bits left false;
+  - closed `ML-VK-020-004`; `ML-VK-020-005` remains the Float64
+    transcendental policy item.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1665 fail=0`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Next checkpoint:
+  - continue `ML-VK-020-005` for Float64 transcendental activation policy or
+    jump to `ML-VK-020-006` for real axis reductions before softmax/loss.

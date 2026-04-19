@@ -383,8 +383,15 @@ Source: `TODO.md`
       CPU/CUDA/Vulkan placement rules.
     - [x] `ML-VK-020-003` add CPU oracle, Vulkan placement/dtype, and
       unsupported-dtype regressions for `ml/relu`.
-    - [ ] `ML-VK-020-004` add the remaining Float32 activation surfaces:
-      `sigmoid`, `tanh`, and `gelu`, with no-hidden-CPU-fallback Vulkan tests.
+    - [x] `ML-VK-020-004` add the remaining Float32 activation surfaces:
+      `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu`, with
+      no-hidden-CPU-fallback Vulkan tests.
+      - [x] Freeze these as canonical `ml/*` activation surfaces, not aliases
+        for bare scientific math primitives.
+      - [x] Preserve `Float32` dtype and CPU/CUDA/Vulkan placement through
+        composed Tensor `map` kernels.
+      - [x] Keep `Float64` transcendental activation policy open under
+        `ML-VK-020-005` until validated or fail-closed explicitly.
     - [ ] `ML-VK-020-005` define the Float64 transcendental activation path
       with validated approximations or explicit fail-closed behavior.
     - [ ] `ML-VK-020-006` add axis `sum`, `mean`, and `variance` as a real

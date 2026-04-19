@@ -33,7 +33,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 25: [.agents/session_report_parts/session_report_part_25.md](session_report_parts/session_report_part_25.md) (357 lines)
 - Part 26: [.agents/session_report_parts/session_report_part_26.md](session_report_parts/session_report_part_26.md) (356 lines)
 - Part 27: [.agents/session_report_parts/session_report_part_27.md](session_report_parts/session_report_part_27.md) (370 lines)
-- Part 28: [.agents/session_report_parts/session_report_part_28.md](session_report_parts/session_report_part_28.md) (492 lines)
+- Part 28: [.agents/session_report_parts/session_report_part_28.md](session_report_parts/session_report_part_28.md) (537 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 

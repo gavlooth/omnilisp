@@ -312,3 +312,17 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1658 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 01:53 CEST: Vulkan ML Float32 activation checkpoint:
+  - Added canonical `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu`
+    activation primitives plus AOT lookup entries.
+  - These are ML activation surfaces, not aliases for bare `tanh` or other
+    scientific math primitives. The shipped slice supports `Float32` Tensor
+    inputs and preserves CPU/CUDA/Vulkan placement by composing existing
+    Tensor `map` kernels.
+  - Added narrow sigmoid/tanh/GELU backend capability bits. Float64
+    transcendental ML activation bits remain false until `ML-VK-020-005`
+    validates the numerical policy or freezes fail-closed behavior.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1665 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.

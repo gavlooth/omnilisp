@@ -100,7 +100,13 @@ fn Value* tensor_backend_set_ml_capability_fields(
     bool linear_direct_float64_available,
     bool linear_direct_float32_available,
     bool neural_relu_float64_available,
-    bool neural_relu_float32_available
+    bool neural_relu_float32_available,
+    bool neural_sigmoid_float64_available,
+    bool neural_sigmoid_float32_available,
+    bool neural_tanh_float64_available,
+    bool neural_tanh_float32_available,
+    bool neural_gelu_float64_available,
+    bool neural_gelu_float32_available
 ) {
     Value* err = tensor_backend_set_bool_field(interp, entry, "ml-linear", linear_available);
     if (err != null) return err;
@@ -111,6 +117,18 @@ fn Value* tensor_backend_set_ml_capability_fields(
     err = tensor_backend_set_bool_field(interp, entry, "ml-neural-relu-float64", neural_relu_float64_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-neural-relu-float32", neural_relu_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-sigmoid-float64", neural_sigmoid_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-sigmoid-float32", neural_sigmoid_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-tanh-float64", neural_tanh_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-tanh-float32", neural_tanh_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-gelu-float64", neural_gelu_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-neural-gelu-float32", neural_gelu_float32_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-convolution", false);
     if (err != null) return err;
@@ -196,7 +214,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "rounding-big-integer", vulkan_rounding_i64_available);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available);
+    err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available);
     if (err != null) return err;
     Value* result = make_cons_or_error(interp, vulkan_entry, make_nil(interp), "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -217,7 +235,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "stats-normal-float32", false);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cublas_entry, false, false, false, false, false);
+    err = tensor_backend_set_ml_capability_fields(interp, cublas_entry, false, false, false, false, false, false, false, false, false, false, false);
     if (err != null) return err;
     result = make_cons_or_error(interp, cublas_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -268,7 +286,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "rounding-big-integer", cuda_rounding_i64_available);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cuda_entry, false, false, false, cuda_map_available, cuda_map_available);
+    err = tensor_backend_set_ml_capability_fields(interp, cuda_entry, false, false, false, cuda_map_available, cuda_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available);
     if (err != null) return err;
     result = make_cons_or_error(interp, cuda_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -307,7 +325,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cpu_entry, "stats-normal-float32", true);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true);
+    err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true, false, true, false, true, false, true);
     if (err != null) return err;
     result = make_cons_or_error(interp, cpu_entry, result, "tensor-backends: failed to allocate result list");
     return result;

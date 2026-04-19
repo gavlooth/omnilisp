@@ -332,7 +332,10 @@ discoverable without implying every scientific unary map is present. CPU, CUDA,
 cuBLAS, and Vulkan entries also expose the backend-neutral
 ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-linear-direct-float32`, `ml-neural-relu-float64`,
-`ml-neural-relu-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-neural-relu-float32`, `ml-neural-sigmoid-float64`,
+`ml-neural-sigmoid-float32`, `ml-neural-tanh-float64`,
+`ml-neural-tanh-float32`, `ml-neural-gelu-float64`,
+`ml-neural-gelu-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -349,7 +352,13 @@ stay explicit `false` until a backend ships the named operation family.
 preserving dtype and Tensor placement; CPU, CUDA, and Vulkan expose the narrow
 `ml-neural-relu-float64`/`ml-neural-relu-float32` bits when that route is
 available while broad `ml-neural-map` remains false until the activation family
-ships.
+ships. `ml/sigmoid`, `ml/tanh`, and `ml/gelu` are canonical `ml/*`
+activation surfaces, not aliases for bare scientific math names; the current
+validated ML activation route supports `Float32` Tensor inputs and preserves
+Tensor placement through composed `Tensor` map kernels. `ml/gelu` uses the
+standard tanh approximation; the `Float64` transcendental ML activation bits
+remain false until their numerical policy is validated or explicitly
+fail-closed.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

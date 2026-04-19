@@ -138,8 +138,11 @@ reduction operations:
   elementwise surface. It uses existing Tensor `map max x 0`, reports narrow
   `ml-neural-relu-float64`/`ml-neural-relu-float32` capability bits, preserves
   dtype/device placement, and keeps broad `ml-neural-map` false.
-- `ML-VK-020-004`: add the remaining Float32 activation surfaces with
-  no-hidden-CPU-fallback Vulkan tests.
+- `ML-VK-020-004`: shipped the remaining Float32 activation surfaces:
+  canonical `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu`.
+  These are `ml/*` activation surfaces, not aliases for bare scientific math
+  primitives; they compose existing Tensor `map` kernels and preserve
+  CPU/CUDA/Vulkan placement with no hidden CPU fallback.
 - `ML-VK-020-005`: define Float64 transcendental activation behavior through
   validated approximations or explicit fail-closed diagnostics.
 - `ML-VK-020-006`: add axis `sum`, `mean`, and `variance` as a real reduction
