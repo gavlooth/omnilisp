@@ -250,3 +250,42 @@ Source: `.agents/SESSION_REPORT.md`
   - Vulkan `Float64` `ml/linear`, Vulkan bias, and view-backed/expression-backed
     `ml/linear` remain incomplete or explicitly fail-closed.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 00:32 CEST - Vulkan ML Linear Bias Add
+
+- Objective attempted:
+  - Continue the strict ML-VK audit by splitting bias-add from reductions and
+    implementing the next concrete `ml/linear` Vulkan item.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_linear.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added optional concrete Vulkan `Float32` bias support for `ml/linear` by
+    applying existing Vulkan broadcast `map +` to the existing contract result.
+  - Added tests for vector and rank-3 bias projection, device/dtype
+    preservation, mixed CPU/Vulkan bias rejection, and existing view rejection.
+  - Split the reduction work into open `ML-VK-010-004` and moved broader
+    expression/view handling to `ML-VK-010-005`.
+- Commands run:
+  - Subagent audits for bias route, TODO wording, and test placement.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+- Key results:
+  - Initial focused run failed only because the two new Lisp test expressions
+    had malformed parentheses.
+  - Final focused advanced collections suite passed with `pass=1620 fail=0`.
+  - File-size gate, whitespace diff check, and primitive docs parity passed.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-010-004`: define the public batched-reduction surface
+    and capability boundary before adding kernels.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `Float64` `ml/linear`, batched reductions, and view-backed broader
+    expression lowering remain incomplete or fail-closed.
+- Signature: Codex GPT-5.4

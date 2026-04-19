@@ -225,3 +225,17 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1618 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 00:32 CEST: Vulkan Float32 `ml/linear` bias checkpoint:
+  - Added optional concrete Vulkan `Float32` bias support for `ml/linear` by
+    running the existing no-bias Tensor `contract` route first, then applying
+    the existing Vulkan broadcast `map +` path to add `bias[out_features]`.
+  - The intermediate contract result is cleaned after the bias map result is
+    produced. Mixed CPU/Vulkan bias and view-backed operands remain
+    fail-closed.
+  - Split `ML-VK-010-003` into completed bias-add coverage and open
+    `ML-VK-010-004` batched-reduction coverage. The broader expression/view
+    lowering item moved to `ML-VK-010-005`.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1620 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.

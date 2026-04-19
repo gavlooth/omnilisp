@@ -214,3 +214,29 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-010-003` for Vulkan bias-add/reduction coverage, or decide
     `ML-VK-010-004` for expression-backed/view-backed `ml/linear` lowering.
+
+## Active Vulkan ML Linear Bias Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ML-VK-010-003` conflated bias-add and batched reductions; the shipped
+    boundary is bias-add only, while reductions need their own semantic item.
+  - Existing Vulkan `map` already provides the needed trailing-axis broadcast
+    for `ml/linear` bias vectors.
+- Implemented checkpoint:
+  - direct concrete Vulkan `Float32` `ml/linear` now supports optional
+    concrete Vulkan `Float32` bias through `contract` followed by broadcast
+    `map +`;
+  - mixed CPU/Vulkan bias and view-backed operands still fail closed;
+  - `ML-VK-010-004` now tracks batched reductions separately and
+    `ML-VK-010-005` tracks broader expression/view lowering.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1620 fail=0`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+- Next checkpoint:
+  - continue `ML-VK-010-004` by defining the public batched-reduction
+    operation surface and backend capability boundary before adding kernels.

@@ -339,8 +339,9 @@ backend ships the named operation family. `ml/linear` computes an affine dense p
 `input[..., in_features]` by `weights[out_features, in_features]`, with an
 optional `bias[out_features]`, producing `input[..., out_features]`. Non-CPU
 Tensor operands fail closed with `tensor/backend-unsupported` except for direct
-concrete no-bias Vulkan `Float32` input and weights, which lower through the
-existing Tensor `contract` route. CUDA-placed dense row-major
+concrete Vulkan `Float32` input and weights, with optional concrete Vulkan
+`Float32` bias, which lower through Tensor `contract` plus broadcast `map`.
+CUDA-placed dense row-major
 `Float64` and `Float32` tensors support
 binary elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

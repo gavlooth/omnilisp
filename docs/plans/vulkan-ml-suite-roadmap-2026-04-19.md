@@ -86,13 +86,15 @@ First executable split:
 - `ML-VK-010-001`: implement the first direct concrete Vulkan `Float32`
   no-bias lowering path for `ml/linear` through the existing contract route.
   It must preserve Vulkan Tensor placement, keep `tensor-backends` truthful,
-  and fail closed on mixed-device, bias, or unsupported-layout operands.
+  and fail closed on mixed-device or unsupported-layout operands.
 - `ML-VK-010-002`: add Vulkan `Float32` no-bias batched matmul CPU-oracle
   coverage, dtype/device preservation checks, shape diagnostics, and
   no-hidden-CPU-fallback regressions.
-- `ML-VK-010-003`: add Vulkan `Float32` batched bias-add and batched-reduction
-  coverage with no-CPU-fallback regressions.
-- `ML-VK-010-004`: decide and implement expression-backed Vulkan `ml/linear`
+- `ML-VK-010-003`: add Vulkan `Float32` batched bias-add coverage with
+  no-CPU-fallback regressions.
+- `ML-VK-010-004`: add Vulkan `Float32` batched-reduction coverage with
+  no-CPU-fallback regressions.
+- `ML-VK-010-005`: decide and implement expression-backed Vulkan `ml/linear`
   lowering beyond already-materialized direct map results, or keep the
   concrete/view boundary explicit with permanent fail-closed tests for
   view-backed operands.
