@@ -314,3 +314,31 @@ Date: 2026-04-20
   - implement `ML-VK-010-006`: Vulkan `Float64` `ml/linear` and
     `ml/linear/batched-reduce`, or record a concrete blocker with fail-closed
     tests.
+
+## Active Vulkan ML Float64 Linear Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ML-VK-010-006` was feasible; the blocker was local sloppiness, not a
+    missing kernel. The Vulkan `ml/linear` path hard-gated Float32 even though
+    existing Vulkan `contract` and broadcast `map +` support Float64.
+  - `tensor-backends` only exposed `ml-linear-direct-float32`, leaving Float64
+    discoverability underspecified.
+- Implemented checkpoint:
+  - widened the narrow Vulkan `ml/linear`/`ml/linear/batched-reduce` path to
+    same-dtype `Float64` and `Float32`;
+  - changed optional bias add to pass the actual result dtype into Vulkan map;
+  - added `ml-linear-direct-float64` while keeping broad Vulkan `ml-linear`
+    false;
+  - closed `ML-VK-010` and `ML-VK-010-006` with positive Float64 direct,
+    bias, mapped-bias, mapped-source, transpose-view, and batched-reduce tests.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1652 fail=0`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Next checkpoint:
+  - continue strict audit from `ML-VK-020`: Vulkan neural elementwise,
+    reductions, softmax, and loss kernels.

@@ -283,3 +283,18 @@ Source: `memory/CHANGELOG.md`
     linear/batched-reduce lane.
   - Validation passed: `c3c build` and focused advanced collections suite
     `pass=1637 fail=0`.
+
+- 2026-04-20 02:52 CEST: Vulkan `Float64` `ml/linear` checkpoint:
+  - Widened the narrow Vulkan `ml/linear` and `ml/linear/batched-reduce`
+    path from Float32-only to same-dtype `Float64` or `Float32`.
+  - Optional Vulkan bias add now passes the actual input/result dtype into the
+    existing broadcast `map +` route instead of hard-coding Float32.
+  - Added `ml-linear-direct-float64` to `tensor-backends`; broad Vulkan
+    `ml-linear` remains false until the full operation family ships.
+  - Added positive Vulkan Float64 coverage for direct, rank-3, bias, mapped
+    bias, mapped source, transpose-view source/weights, and batched-reduce
+    paths while preserving mixed CPU/Vulkan fail-closed diagnostics.
+  - `ML-VK-010` and `ML-VK-010-006` are closed.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1652 fail=0`, file-size gate, `git diff --check`, and primitive
+    docs parity.

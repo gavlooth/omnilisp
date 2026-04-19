@@ -330,16 +330,18 @@ available. Backend entries report `stats-normal-float64` and
 partial `stats/normal-cdf` and `stats/normal-quantile` support is
 discoverable without implying every scientific unary map is present. CPU, CUDA,
 cuBLAS, and Vulkan entries also expose the backend-neutral
-ML suite capability keys `ml-linear`, `ml-linear-direct-float32`, `ml-convolution`, `ml-neural-map`,
+ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
+`ml-linear-direct-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
-operation family ships. The narrow `ml-linear-direct-float32` partial
-capability is true for CPU and for Vulkan when `Float32` placement is
-available; the Vulkan route covers concrete `Float32` `ml/linear` input,
-weights, and optional bias through `Tensor` `contract` plus broadcast `map`.
+operation family ships. The narrow `ml-linear-direct-float64` and
+`ml-linear-direct-float32` partial capabilities are true for CPU and for
+Vulkan when the corresponding placement dtype is available; the Vulkan route
+covers concrete matching `Float64` or `Float32` `ml/linear` input, weights,
+and optional bias through `Tensor` `contract` plus broadcast `map`.
 Vulkan-only expressions may participate only when existing Tensor realization
-lowers them to concrete dense Vulkan `Float32` storage without CPU fallback;
+lowers them to concrete dense Vulkan storage of the same dtype without CPU fallback;
 `ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
 stay explicit `false` until a backend ships the named operation family.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface

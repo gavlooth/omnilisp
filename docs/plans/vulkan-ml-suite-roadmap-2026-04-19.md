@@ -72,18 +72,18 @@ Initial public operation names and capability inventory:
   It remains false for Vulkan, CUDA, and cuBLAS until backend kernels land.
   Other ML capability keys are explicit `false` until the named operation
   family has real backend kernels and fail-closed tests.
-- `ml-linear-direct-float32` is a narrow partial capability for direct concrete
-  `Float32` `ml/linear`. It is true for CPU and for Vulkan when `Float32`
-  placement is available. The Vulkan route covers already-materialized concrete
-  input and weight tensors, plus optional concrete bias, through Tensor
-  `contract` plus broadcast `map`; Vulkan-only expressions may participate
-  only when existing Tensor realization lowers them to concrete dense Vulkan
-  `Float32` storage without CPU fallback. It does not change the broad Vulkan
-  `ml-linear` backend bit, and it does not imply arbitrary view support, mixed
-  devices, or broader dtype coverage.
+- `ml-linear-direct-float64` and `ml-linear-direct-float32` are narrow partial
+  capabilities for same-dtype direct `ml/linear` execution. They are true for
+  CPU and for Vulkan when matching dtype placement is available. The Vulkan
+  route covers already-materialized concrete input and weight tensors, plus
+  optional concrete bias, through Tensor `contract` plus broadcast `map`;
+  Vulkan-only expressions may participate only when existing Tensor realization
+  lowers them to concrete dense Vulkan storage without CPU fallback. These keys
+  do not change the broad Vulkan `ml-linear` backend bit, and they do not imply
+  arbitrary view support or mixed-device coverage.
 - Non-CPU `ml/linear` operands fail closed with Tensor backend diagnostics
   before any implicit CPU materialization, except for the narrow
-  `ml-linear-direct-float32` direct-concrete path above.
+  `ml-linear-direct-float64`/`ml-linear-direct-float32` direct path above.
 
 ### `ML-VK-010` Batched Linear Algebra Foundation
 
@@ -117,9 +117,9 @@ First executable split:
   lowering beyond already-materialized direct map results, or keep the
   concrete/view boundary explicit with permanent fail-closed tests for
   view-backed operands.
-- `ML-VK-010-006`: add Vulkan `Float64` `ml/linear` and
+- `ML-VK-010-006`: shipped Vulkan `Float64` `ml/linear` and
   `ml/linear/batched-reduce` coverage through existing `contract` plus bias
-  `map` paths, or record a concrete blocker with fail-closed tests.
+  `map` paths with fail-closed mixed-device tests.
 
 Acceptance:
 

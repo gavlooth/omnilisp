@@ -305,7 +305,7 @@ Source: `TODO.md`
     - unsupported Vulkan ML operations raise Tensor backend diagnostics before
       any hidden transfer or CPU fallback.
 
-- [ ] `ML-VK-010` add Vulkan batched linear algebra foundations for ML workloads
+- [x] `ML-VK-010` add Vulkan batched linear algebra foundations for ML workloads
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
   - audit split:
     - [x] `ML-VK-010-001` implement the first direct concrete Vulkan `Float32`
@@ -348,9 +348,20 @@ Source: `TODO.md`
         false and keep `ml-linear-direct-float32` as the partial Float32 lane.
       - [x] `ML-VK-010-005-SPEC-LOCK` document the narrow expression/view
         boundary in the public language/reference docs.
-    - [ ] `ML-VK-010-006` add Vulkan `Float64` `ml/linear` and
+    - [x] `ML-VK-010-006` add Vulkan `Float64` `ml/linear` and
       `ml/linear/batched-reduce` coverage through existing `contract` plus
       bias `map` paths, or record a concrete blocker with fail-closed tests.
+      - [x] `ML-VK-010-006-RUNTIME` remove the stale Float32-only Vulkan
+        `ml/linear` gate and route both `Float64` and `Float32` through the
+        existing `contract` plus optional bias `map` path.
+      - [x] `ML-VK-010-006-CAPABILITY` add explicit
+        `ml-linear-direct-float64` backend capability reporting without
+        widening broad Vulkan `ml-linear`.
+      - [x] `ML-VK-010-006-COVERAGE` cover Vulkan `Float64` direct, rank-3,
+        bias, mapped bias, mapped source, transpose-view source,
+        transpose-view weights, and `ml/linear/batched-reduce` parity.
+      - [x] `ML-VK-010-006-DIAGNOSTICS` keep mixed CPU/Vulkan operands and
+        unsupported layouts fail-closed with Tensor backend diagnostics.
   - scope:
     - batched matmul;
     - bias add;

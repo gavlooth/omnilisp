@@ -407,3 +407,43 @@ Source: `.agents/SESSION_REPORT.md`
   - Broad Vulkan `ml-linear` remains false; arbitrary recursive expression/view
     lowering is still not supported.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 02:52 CEST - Vulkan ML Float64 Linear
+
+- Objective attempted:
+  - Continue the strict `ML-VK-010-006` audit, add concrete TODO checkboxes,
+    and implement the Vulkan `Float64` `ml/linear`/`ml/linear/batched-reduce`
+    lane with subagent review.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_linear.c3`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Widened the narrow Vulkan `ml/linear` path from Float32-only to same-dtype
+    `Float64` or `Float32`.
+  - Changed Vulkan bias add to pass the actual input/result dtype into
+    `tensor_map_try_vulkan_direct`.
+  - Added `ml-linear-direct-float64` capability reporting while keeping broad
+    Vulkan `ml-linear` false.
+  - Added positive Vulkan Float64 tests for direct, rank-3, bias, mapped bias,
+    mapped source, transpose-view source/weights, and batched-reduce parity.
+  - Closed `ML-VK-010` and `ML-VK-010-006` in TODO with audit subchecks.
+- Commands run:
+  - Fast subagent audits for feasibility, tests, and docs/TODO gaps.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1652 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue strict audit from `ML-VK-020`: Vulkan neural elementwise,
+    reductions, softmax, and loss kernels.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Broad Vulkan `ml-linear` remains false until the complete backend family
+    ships; arbitrary mixed-device execution remains fail-closed.
+- Signature: Codex GPT-5.4

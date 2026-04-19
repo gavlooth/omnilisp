@@ -91,7 +91,7 @@ fn void ml_linear_eval_f32(TensorVal* input, TensorVal* weights, TensorVal* bias
     }
 }
 
-fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Value* bias_value, bool has_bias, bool batched_reduce, Interp* interp) {
+fn Value* ml_linear_try_vulkan(Value* input_value, Value* weights_value, Value* bias_value, bool has_bias, bool batched_reduce, Interp* interp) {
     bool touches_vulkan = tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) ||
         tensor_expr_has_device(weights_value, TENSOR_DEVICE_VULKAN) ||
         (has_bias && tensor_expr_has_device(bias_value, TENSOR_DEVICE_VULKAN));
@@ -135,8 +135,8 @@ fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Val
     if (input == null || weights == null || (has_bias && bias == null)) {
         return tensor_runtime_raise(interp, batched_reduce ? "ml/linear/batched-reduce: tensor metadata is missing" : "ml/linear: tensor metadata is missing");
     }
-    if (input.dtype != TENSOR_DTYPE_FLOAT32 || weights.dtype != TENSOR_DTYPE_FLOAT32 || (has_bias && bias.dtype != TENSOR_DTYPE_FLOAT32)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan currently supports Float32 tensors" : "ml/linear: Vulkan currently supports Float32 tensors", null);
+    if (!ml_linear_supported_dtype(input.dtype) || !ml_linear_supported_dtype(weights.dtype) || (has_bias && !ml_linear_supported_dtype(bias.dtype))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan currently supports Float64 and Float32 tensors" : "ml/linear: Vulkan currently supports Float64 and Float32 tensors", null);
     }
     if (input.device != TENSOR_DEVICE_VULKAN || weights.device != TENSOR_DEVICE_VULKAN || (has_bias && bias.device != TENSOR_DEVICE_VULKAN)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", batched_reduce ? "ml/linear/batched-reduce: Vulkan operands must realize to Vulkan storage" : "ml/linear: Vulkan operands must realize to Vulkan storage", null);
@@ -200,7 +200,7 @@ fn Value* ml_linear_try_vulkan_f32(Value* input_value, Value* weights_value, Val
         resolved_bias_value,
         bias,
         true,
-        TENSOR_DTYPE_FLOAT32,
+        input.dtype,
         result_shape[0:input.rank],
         interp
     );
@@ -216,7 +216,7 @@ fn Value* ml_linear_apply(Value*[] args, bool batched_reduce, Interp* interp) {
         return tensor_type_raise(interp, batched_reduce ? "ml/linear/batched-reduce: expected Tensor input, Tensor weights, and optional Tensor bias" : "ml/linear: expected Tensor input, Tensor weights, and optional Tensor bias");
     }
 
-    Value* vulkan_result = ml_linear_try_vulkan_f32(args[0], args[1], args.len == 3 ? args[2] : null, args.len == 3, batched_reduce, interp);
+    Value* vulkan_result = ml_linear_try_vulkan(args[0], args[1], args.len == 3 ? args[2] : null, args.len == 3, batched_reduce, interp);
     if (vulkan_result != null) return vulkan_result;
 
     TensorVal* input = null;
