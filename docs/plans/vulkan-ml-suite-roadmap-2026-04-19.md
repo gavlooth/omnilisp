@@ -105,6 +105,12 @@ First executable split:
   coverage lands.
 - `ML-VK-010-004-001`: implement Vulkan `Float32` batched-reduction coverage
   for `ml/linear/batched-reduce` with no-CPU-fallback regressions.
+  - audit checks:
+    - public docs updated for `ml/linear/batched-reduce` contract surface;
+    - capability truth for `ml-linear-direct-float32`/`ml-linear` preserved during partial
+      Vulkan rollout;
+    - backend-unsupported diagnostics cover mixed-device, unsupported layout,
+      and view-backed cases before any fallback path.
 - `ML-VK-010-005`: decide and implement expression-backed Vulkan `ml/linear`
   lowering beyond already-materialized direct map results, or keep the
   concrete/view boundary explicit with permanent fail-closed tests for

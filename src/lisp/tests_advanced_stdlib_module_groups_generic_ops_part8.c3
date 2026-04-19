@@ -21,6 +21,20 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         32.0, pass, fail);
     test_truthy(interp, "ml/linear Float32 preserves dtype and values",
         "(let (out (ml/linear (Tensor Float32 [2] [1.5 2.0]) (Tensor Float32 [1 2] [2.0 3.0]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 9.0))))", pass, fail);
+    test_eq_double(interp, "ml/linear/batched-reduce Float64 rank-3 projection",
+        "(ref (ml/linear/batched-reduce (Tensor Float64 [2 2 3] [1 2 3 4 5 6 7 8 9 10 11 12]) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1 1 1])",
+        167.0, pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce Float32 bias preserves dtype",
+        "(let (out (ml/linear/batched-reduce (Tensor Float32 [2 3] [1 2 3 4 5 6]) (Tensor Float32 [2 3] [1 2 3 4 5 6]) (Tensor Float32 [2] [10 100]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [1 1]) (Float32 177.0))))", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce rejects vector input",
+        "(= (handle (ml/linear/batched-reduce (Tensor Float32 [3] [1 2 3]) (Tensor Float32 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch)", pass, fail);
+    test_eq_double(interp, "ml/linear/batched-reduce realizes lazy CPU input",
+        "(ref (ml/linear/batched-reduce (map + (Tensor Float64 [2 3] [1 2 3 4 5 6]) 0.0) (Tensor Float64 [1 3] [1 1 1])) [1 0])",
+        15.0, pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce dtype mismatch returns tensor/dtype-mismatch",
+        "(= (handle (ml/linear/batched-reduce (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float32 [1 3] [1 2 3])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch)", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce bias shape mismatch returns tensor/shape-mismatch",
+        "(= (handle (ml/linear/batched-reduce (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [1 3] [1 1 1]) (Tensor Float64 [2] [10 20])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch)", pass, fail);
     test_truthy(interp, "ml/linear Vulkan Float32 no-bias stays on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref (to-device out 'cpu) [1 1]) (Float32 77.0)))) true))", pass, fail);
     test_truthy(interp, "ml/linear Vulkan Float32 rank-3 batch projection",
@@ -43,6 +57,14 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (matrix/transpose-view (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan)) (to-device (Tensor Float32 [1 2] [1 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_truthy(interp, "ml/linear Vulkan Float32 shape mismatch preserves oracle diagnostic",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear (to-device (Tensor Float32 [2] [1 2]) 'vulkan) (to-device (Tensor Float32 [3 3] [1 2 3 4 5 6 7 8 9]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) true))", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce Vulkan Float32 rank-3 stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear/batched-reduce (to-device (Tensor Float32 [2 2 3] [1 2 3 4 5 6 7 8 9 10 11 12]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref (to-device out 'cpu) [1 1 1]) (Float32 167.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce Vulkan Float32 bias stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/linear/batched-reduce (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [2] [10 100]) 'vulkan))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref (to-device out 'cpu) [1 1]) (Float32 177.0)))) true))", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce rejects mixed CPU Vulkan Float32 operands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear/batched-reduce (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) (Tensor Float32 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear/batched-reduce rejects Vulkan Float32 view source",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/linear/batched-reduce (matrix/transpose-view (to-device (Tensor Float32 [3 2] [1 2 3 4 5 6]) 'vulkan)) (to-device (Tensor Float32 [1 3] [1 2 3]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_error_contains(interp, "ml/linear rejects dtype mismatch",
         "(ml/linear (Tensor Float64 [2] [1 2]) (Tensor Float32 [1 2] [1 2]))",
         "ml/linear: tensor dtype mismatch", pass, fail);

@@ -254,3 +254,17 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1622 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 01:35 CEST: Vulkan `ml/linear/batched-reduce` checkpoint:
+  - Registered `ml/linear/batched-reduce` in runtime and AOT primitive lookup.
+  - The new public surface shares `ml/linear` CPU dense `Float64`/`Float32`
+    evaluation and the narrow direct concrete Vulkan `Float32` route through
+    Tensor `contract` plus optional bias `map`.
+  - `ml/linear/batched-reduce` requires input rank >= 2. Rank-1 vectors raise
+    `tensor/shape-mismatch`; mixed devices, unsupported layouts, and
+    view-backed Vulkan operands remain fail-closed with backend diagnostics
+    before any CPU fallback.
+  - `ML-VK-010-004-001` is closed; `ML-VK-010-005` remains open for the
+    expression/view-backed lowering decision.
+  - Validation passed: `c3c build` and focused advanced collections suite
+    `pass=1632 fail=0`.

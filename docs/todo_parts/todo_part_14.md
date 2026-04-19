@@ -320,9 +320,18 @@ Source: `TODO.md`
     - [x] `ML-VK-010-004` freeze `ml/linear/batched-reduce` as the public
       batched-reduction surface for Vulkan `Float32` ml/linear before reducer
       coverage lands.
-    - [ ] `ML-VK-010-004-001` implement Vulkan `Float32` batched-reduction
+    - [x] `ML-VK-010-004-001` implement Vulkan `Float32` batched-reduction
       coverage for `ml/linear/batched-reduce` with no-CPU-fallback
       regressions.
+      - [x] `AUDIT-ML-VK-010-004-001-PUBLIC-DOCS` document
+        `ml/linear/batched-reduce` in public language/reference docs with
+        explicit contract and argument shape expectations.
+      - [x] `AUDIT-ML-VK-010-004-001-CAPABILITY-TRUTH` confirm the new
+        operation remains on the `ml-linear-direct-float32` narrow path and does
+        not imply broad `ml-linear` Vulkan readiness.
+      - [x] `AUDIT-ML-VK-010-004-001-DIAGNOSTICS` verify tensor backend
+        diagnostics are emitted for unsupported layouts, mixed devices, and
+        view-backed/cross-backend operands before any CPU fallback path.
     - [ ] `ML-VK-010-005` decide and implement expression-backed Vulkan
       `ml/linear` lowering beyond already-materialized direct map results, or
       keep the concrete/view boundary explicit with permanent fail-closed tests

@@ -264,3 +264,27 @@ Date: 2026-04-20
   - implement `ML-VK-010-004-001`: Vulkan `Float32`
     `ml/linear/batched-reduce` coverage with no-hidden-CPU-fallback
     regressions.
+
+## Active Vulkan ML Batched Reduce Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ml/linear/batched-reduce` was frozen in planning but not registered as a
+    runtime or AOT primitive.
+  - Public docs and TODO acceptance did not spell out rank, capability, and
+    no-fallback diagnostics for the new surface.
+- Implemented checkpoint:
+  - added `ml/linear/batched-reduce` as a callable primitive and AOT lookup;
+  - shared the existing CPU dense `Float64`/`Float32` implementation and narrow
+    direct concrete Vulkan `Float32` `contract` plus bias `map` path;
+  - required input rank >= 2 for the batched surface while leaving `ml/linear`
+    vector support unchanged;
+  - closed `ML-VK-010-004-001` with public docs and diagnostics coverage.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1632 fail=0`
+- Next checkpoint:
+  - continue `ML-VK-010-005`: decide whether expression/view-backed Vulkan
+    `ml/linear` lowering should expand beyond direct materialized map results
+    or remain permanently fail-closed.

@@ -326,3 +326,42 @@ Source: `.agents/SESSION_REPORT.md`
   - Vulkan `Float64` `ml/linear`, reducer kernels, and broader view-backed
     expression lowering remain incomplete or fail-closed.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 01:35 CEST - Vulkan ML Batched Reduce Surface
+
+- Objective attempted:
+  - Continue the strict Vulkan ML audit, add TODO findings, and implement
+    `ML-VK-010-004-001` with subagent audit/support.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_linear.c3`
+  - `src/lisp/eval_init_primitive_tables.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Registered `ml/linear/batched-reduce` in runtime and AOT primitive lookup.
+  - Routed the new surface through shared CPU dense `Float64`/`Float32`
+    evaluation and the narrow direct concrete Vulkan `Float32` contract/bias
+    path.
+  - Required rank >= 2 for `ml/linear/batched-reduce`; `ml/linear` keeps rank-1
+    vector projection support.
+  - Added CPU and Vulkan regressions for dtype, bias, shape, lazy CPU input,
+    mixed-device rejection, and view-backed Vulkan rejection.
+  - Updated TODO, language/reference docs, and the Vulkan ML roadmap.
+- Commands run:
+  - Fast subagent audits for implementation, tests, and docs/TODO gaps.
+  - Docs/TODO worker update for public-docs/capability/diagnostics checkboxes.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1632 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-010-005`: expression/view-backed Vulkan `ml/linear`
+    lowering decision and implementation, or explicit permanent fail-closed
+    contract.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Broad Vulkan `ml-linear` remains false; broader dtype and view-backed
+    expression support remain incomplete or fail-closed.
+- Signature: Codex GPT-5.4

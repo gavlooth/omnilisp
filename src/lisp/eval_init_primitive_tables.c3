@@ -86,6 +86,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "Tensor", &prim_tensor, -1 },
         { "__tensor-map", &prim_tensor_map, -1 },
         { "ml/linear", &prim_ml_linear, -1 },
+        { "ml/linear/batched-reduce", &prim_ml_linear_batched_reduce, -1 },
         { "contract", &prim_contract, -1 },
         { "matrix/transpose", &prim_matrix_transpose, 1 },
         { "matrix/transpose-view", &prim_matrix_transpose_view, 1 },
