@@ -63,12 +63,40 @@ fn void run_deduce_capacity_growth_overflow_guard_test(Interp* interp, int* pass
                          source_dir_interp.source_dirs == null &&
                          source_dir_interp.source_dir_capacity == 0;
 
+    DeduceRuleSignature signature_overflow = {};
+    signature_overflow.body_count = (usz.max / SymbolId.sizeof) + 1;
+    usz signature_record_size = 123;
+    bool signature_record_ok =
+        !deduce_rule_signature_record_size(&signature_overflow, 0, 0, &signature_record_size) &&
+        signature_record_size == 123;
+
+    char[4] tiny_record = {};
+    usz wrapped_cursor = usz.max - (usz)1;
+    char[] slice = {};
+    bool cursor_slice_ok =
+        !deduce_record_slice(tiny_record[..], &wrapped_cursor, 2, &slice) &&
+        wrapped_cursor == usz.max - (usz)1;
+
+    wrapped_cursor = usz.max - (usz)1;
+    bool cursor_copy_ok =
+        !deduce_copy_bytes_into_record(tiny_record[..], &wrapped_cursor, &tiny_record[0], 2) &&
+        wrapped_cursor == usz.max - (usz)1;
+
+    wrapped_cursor = 0;
+    bool array_slice_ok =
+        !deduce_record_array_slice(tiny_record[..], &wrapped_cursor, usz.max, 2, &slice) &&
+        wrapped_cursor == 0;
+
     bool ok = relation_ok &&
               db_ok &&
               aggregate_ok &&
               delta_ok &&
               state_ok &&
-              source_dir_ok;
+              source_dir_ok &&
+              signature_record_ok &&
+              cursor_slice_ok &&
+              cursor_copy_ok &&
+              array_slice_ok;
 
     deduce_aggregate_groups_release(&aggregate_groups);
     deduce_delta_set_release(&delta_set);

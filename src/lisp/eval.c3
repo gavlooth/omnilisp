@@ -49,15 +49,6 @@ struct CopyToParentStats {
 
 CopyToParentStats g_copy_to_parent_stats;
 
-fn bool promotion_stats_quiet_requested() @inline {
-    ZString quiet = main::getenv("OMNI_TEST_QUIET");
-    if (quiet != null && quiet[0] != 0) return true;
-    ZString summary = main::getenv("OMNI_TEST_SUMMARY");
-    if (summary == null || summary[0] == 0) return false;
-    ZString verbose = main::getenv("OMNI_TEST_VERBOSE");
-    return verbose == null || verbose[0] == 0;
-}
-
 fn void copy_to_parent_note_tag(ValueTag tag) @inline {
     switch (tag) {
         case NIL:
@@ -65,6 +56,8 @@ fn void copy_to_parent_note_tag(ValueTag tag) @inline {
         case INT:
             g_copy_to_parent_stats.int_calls++;
         case DOUBLE:
+            g_copy_to_parent_stats.double_calls++;
+        case FLOAT32:
             g_copy_to_parent_stats.double_calls++;
         case STRING:
             g_copy_to_parent_stats.string_calls++;
@@ -100,7 +93,7 @@ fn void copy_to_parent_note_cons_spine(Value* v) @inline {
 }
 
 fn void print_memory_promotion_stats() {
-    if (promotion_stats_quiet_requested()) return;
+    if (test_quiet_requested()) return;
     io::printn("=== copy_to_parent Stats ===");
     io::printfn("copy_to_parent calls: %d", (long)g_copy_to_parent_stats.total_calls);
     io::printfn("copy_to_parent fast reuse hits: %d", (long)g_copy_to_parent_stats.fast_reuse_hits);

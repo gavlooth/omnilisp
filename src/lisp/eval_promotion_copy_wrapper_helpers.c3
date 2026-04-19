@@ -96,11 +96,14 @@ fn bool copy_parent_should_reuse_closure(Value* v, Interp* interp) @inline {
 fn bool copy_parent_closure_env_needs_detach(Value* src, Interp* interp) @inline {
     if (src == null || interp == null || src.tag != CLOSURE || src.closure_val == null) return false;
     if (src.closure_val.env == null) return false;
+    if (interp.releasing_scope != null &&
+        env_chain_has_frame_in_scope(src.closure_val.env, interp.releasing_scope, interp.global_env)) {
+        return true;
+    }
     if (src.closure_val.env_scope != null) {
         return !boundary_ptr_in_scope((void*)src.closure_val.env, src.closure_val.env_scope);
     }
-    if (interp.releasing_scope == null) return false;
-    return env_chain_has_frame_in_scope(src.closure_val.env, interp.releasing_scope, interp.global_env);
+    return false;
 }
 
 fn bool copy_parent_clone_closure_payload(
@@ -124,6 +127,10 @@ fn bool copy_parent_clone_closure_payload(
     result.closure_val.scope_gen = interp.current_scope.generation;
 
     if (src.closure_val.param_count > 0) {
+        if (src.closure_val.param_count > usz.max / SymbolId.sizeof) {
+            if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
+            return false;
+        }
         result.closure_val.params = (SymbolId*)interp.current_scope.alloc(SymbolId.sizeof * src.closure_val.param_count);
         if (result.closure_val.params == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
@@ -145,13 +152,9 @@ fn bool copy_parent_clone_closure_payload(
         }
     }
 
-    PromotionContext* active_ctx = interp.active_promotion_ctx;
-    if (active_ctx != null) promotion_context_remember(active_ctx, src, result, interp);
-
     if (copy_parent_closure_env_needs_detach(src, interp)) {
         main::ScopeRegion* env_scope = main::scope_create(null);
         if (env_scope == null) {
-            if (active_ctx != null) promotion_context_invalidate(active_ctx, PROMOTION_ABORT_BUDGET_EXHAUSTED);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             return false;
         }
@@ -162,7 +165,6 @@ fn bool copy_parent_clone_closure_payload(
 
         BoundaryEnvCopyResult copied = boundary_copy_env_to_scope_checked(src.closure_val.env, interp);
         if (!boundary_env_copy_result_ok(copied) || copied.env == null) {
-            if (active_ctx != null) promotion_context_invalidate(active_ctx, PROMOTION_ABORT_BUDGET_EXHAUSTED);
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
             main::scope_release(env_scope);
             return false;
@@ -278,6 +280,30 @@ fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inl
             return true;
         }
     }
+    if (v.tag == TENSOR && v.tensor_val != null) {
+        TensorVal* tensor = v.tensor_val;
+        if (boundary_ptr_in_scope((void*)tensor, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.shape, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.strides, releasing_scope) ||
+            boundary_ptr_in_scope(tensor.data, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_left_axes, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_right_axes, releasing_scope)) {
+            return true;
+        }
+        switch (tensor.kind) {
+            case TENSOR_PAYLOAD_CONCRETE:
+                return false;
+            case TENSOR_PAYLOAD_MAP:
+                return boundary_value_in_releasing_scope(tensor.map_func, interp) ||
+                    boundary_value_in_releasing_scope(tensor.map_left, interp) ||
+                    boundary_value_in_releasing_scope(tensor.map_right, interp);
+            case TENSOR_PAYLOAD_CONTRACT:
+                return boundary_value_in_releasing_scope(tensor.contract_left, interp) ||
+                    boundary_value_in_releasing_scope(tensor.contract_right, interp);
+            case TENSOR_PAYLOAD_VIEW:
+                return boundary_value_in_releasing_scope(tensor.view_source, interp);
+        }
+    }
     return false;
 }
 
@@ -295,8 +321,12 @@ fn bool copy_to_parent_try_fast_reuse(Value* v, Interp* interp, Value** out) {
     // Chunk-transfer/moved wrappers can carry stale scope_gen stamps.
     // Fast-reuse must fail closed whenever wrapper or payload still resides in
     // releasing scope, independent of generation metadata.
-    if (boundary_ptr_in_scope((void*)v, interp.releasing_scope) ||
-        copy_to_parent_payload_in_releasing_scope(v, interp)) {
+    bool wrapper_in_releasing_scope = boundary_ptr_in_scope((void*)v, interp.releasing_scope);
+    bool payload_in_releasing_scope = false;
+    if (!wrapper_in_releasing_scope) {
+        payload_in_releasing_scope = copy_to_parent_payload_in_releasing_scope(v, interp);
+    }
+    if (wrapper_in_releasing_scope || payload_in_releasing_scope) {
         g_copy_to_parent_stats.defensive_copies++;
         return false;
     }

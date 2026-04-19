@@ -26,6 +26,14 @@ fn Value* prim_iterator_from_dict(Value*[] args, Env* env, Interp* interp) {
     return iterator_from_dict_value(args[0], interp);
 }
 
+fn Value* prim_iterator_from_tensor(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-from-tensor: expected 1 argument");
+    if (!is_tensor(args[0])) {
+        return iterator_ctor_raise(interp, "type/arg-mismatch", "__iterator-from-tensor: expected Tensor");
+    }
+    return iterator_from_tensor_value(args[0], interp);
+}
+
 fn Value* prim_iterator_range_from(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return iterator_ctor_raise(interp, "type/arity", "__iterator-range-from: expected 1 argument");
     if (args[0] == null || !is_int(args[0])) {

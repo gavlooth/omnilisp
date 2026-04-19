@@ -26,6 +26,15 @@ fn void deduce_relation_schema_refresh_lifecycle(
         materialized_view ? materialized_last_stale_reason : DEDUCE_MATERIALIZED_STALE_NONE;
 }
 
+fn void deduce_db_rollback_relation_schemas_to(DeduceDb* db, usz schema_start) {
+    if (db == null) return;
+    while (db.relation_schema_count > schema_start) {
+        db.relation_schema_count--;
+        deduce_relation_schema_release_storage(&db.relation_schemas[db.relation_schema_count]);
+        db.relation_schemas[db.relation_schema_count] = {};
+    }
+}
+
 fn DeduceSchemaRegisterStatus deduce_db_register_relation_schema_internal(
     DeduceDb* db,
     SymbolId name,
@@ -91,6 +100,7 @@ fn DeduceSchemaRegisterStatus deduce_db_register_relation_schema_internal(
         );
     }
 
+    if (db.relation_schema_count == usz.max) return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
     usz needed = db.relation_schema_count + 1;
     if (!deduce_db_ensure_relation_schema_capacity(db, needed)) {
         return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;

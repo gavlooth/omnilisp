@@ -111,13 +111,15 @@
 ;; =========================================================================
 (define (integer? x) (is? x 'Integer))
 (define (int? x) (integer? x))
-(define (double? x) (is? x 'Double))
+(define (float32? x) (is? x 'Float32))
+(define (float64? x) (is? x 'Float64))
+(define (complex64? x) (is? x 'Complex64))
+(define (complex128? x) (is? x 'Complex128))
 (define (number? x) (is? x 'Number))
 (define (string? x) (is? x 'String))
 (define (symbol? x) (is? x 'Symbol))
 (define (boolean? x) (or (= x true) (= x false)))
 (define (bool? x) (boolean? x))
-(define (list? x) (or (null? x) (pair? x)))
 (define (closure? x) (is? x 'Closure))
 (define (array? x) (is? x 'Array))
 (define (dict? x) (is? x 'Dictionary))
@@ -136,19 +138,26 @@
 ;; Higher-Order Functions (multi-arg, dispatched on collection type)
 ;; =========================================================================
 
+;; private list-walker guard: public list walkers are proper-list-only.
+(define (__proper-list? xs) (let loop (cur xs) (if (null? cur) true (if (pair? cur) (loop (cdr cur)) nil))))
+(define (__require-proper-list xs name) (if (__proper-list? xs) nil (error (string-append name ": expected a proper list"))))
+
 ;; reverse: (reverse lst) — must be defined before map/filter (they depend on it)
 (define (reverse (^List lst)) (__reverse-list lst))
 (define (reverse (^Array arr)) (let (len (length arr) result []) (let loop (i len) (if (= i 0) result (let (j (- i 1)) (block (push! result (ref arr j)) (loop j)))))))
 
 ;; map: (map f coll) — apply f to each element, return same collection type
 (define (map f (^List lst))
-  (let loop (xs lst acc nil)
-    (if (null? xs)
-        (reverse acc)
-        (let (mapped (f (car xs)))
-          (if (error? mapped)
-              mapped
-              (loop (cdr xs) (cons mapped acc)))))))
+  (let (bad (__require-proper-list lst "map"))
+    (if (error? bad)
+        bad
+        (let loop (xs lst acc nil)
+          (if (null? xs)
+              (reverse acc)
+              (let (mapped (f (car xs)))
+                (if (error? mapped)
+                    mapped
+                    (loop (cdr xs) (cons mapped acc)))))))))
 (define (map f (^Array arr))
   (let (len (length arr) result [])
     (let loop (i 0)
@@ -160,23 +169,27 @@
                 (block
                   (push! result mapped)
                   (loop (+ i 1)))))))))
+(define (map f (^Tensor t)) (__tensor-map f t))
+(define (map f (^Tensor a) b) (__tensor-map f a b))
+(define (map f a (^Tensor b)) (__tensor-map f a b))
+(define (map f (^Tensor a) (^Tensor b)) (__tensor-map f a b))
 (define (map (^Closure f)) (lambda (coll) (map f coll)))
 
 ;; filter: (filter pred coll) — keep elements where (pred x) is truthy
-(define (filter pred (^List lst)) (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))
+(define (filter pred (^List lst)) (let (bad (__require-proper-list lst "filter")) (if (error? bad) bad (let loop (xs lst acc nil) (if (null? xs) (reverse acc) (if (pred (car xs)) (loop (cdr xs) (cons (car xs) acc)) (loop (cdr xs) acc)))))))
 (define (filter pred (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (= i len) result (if (pred (ref arr i)) (block (push! result (ref arr i)) (loop (+ i 1))) (loop (+ i 1)))))))
 (define (filter (^Closure pred)) (lambda (coll) (filter pred coll)))
 
 ;; foldl: (foldl f acc coll) — left fold, f takes 2 args: (f acc x)
-(define (foldl f acc (^List lst)) (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))
+(define (foldl f acc (^List lst)) (let (bad (__require-proper-list lst "foldl")) (if (error? bad) bad (let loop (a acc xs lst) (if (null? xs) a (loop (f a (car xs)) (cdr xs)))))))
 (define (foldl f acc (^Array arr)) (let (len (length arr)) (let loop (a acc i 0) (if (= i len) a (loop (f a (ref arr i)) (+ i 1))))))
 
 ;; foldr: (foldr f init coll) — right fold, f takes 2 args: (f x acc)
-(define (foldr f init (^List lst)) (foldl (lambda (acc x) (f x acc)) init (reverse lst)))
+(define (foldr f init (^List lst)) (let (bad (__require-proper-list lst "foldr")) (if (error? bad) bad (foldl (lambda (acc x) (f x acc)) init (reverse lst)))))
 (define (foldr f init (^Array arr)) (let (len (length arr)) (let loop (a init i len) (if (= i 0) a (let (j (- i 1)) (loop (f (ref arr j) a) j))))))
 
 ;; append: (append a b) — concatenate two lists
-(define (append a b) (let loop (xs (reverse a) acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))
+(define (append a b) (let (bad-b (__require-proper-list b "append")) (if (error? bad-b) bad-b (let (xs (reverse a)) (if (error? xs) xs (let loop (xs xs acc b) (if (null? xs) acc (loop (cdr xs) (cons (car xs) acc)))))))))
 
 ;; compose: (compose f g) — function composition, returns (lambda (x) (f (g x)))
 (define (compose f g) (lambda (x) (f (g x))))
@@ -188,33 +201,33 @@
 (define (id x) x)
 
 ;; nth: (nth n lst) — get nth element (0-indexed)
-(define (nth n lst) (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))
+(define (nth n lst) (let (bad (__require-proper-list lst "nth")) (if (error? bad) bad (let loop (i n xs lst) (if (= i 0) (car xs) (loop (- i 1) (cdr xs)))))))
 
 ;; take: (take n coll) — first n elements (shape-preserving)
-(define (take n (^List lst)) (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))
+(define (take n (^List lst)) (let (bad (__require-proper-list lst "take")) (if (error? bad) bad (let loop (i n xs lst acc nil) (if (= i 0) (reverse acc) (if (null? xs) (reverse acc) (loop (- i 1) (cdr xs) (cons (car xs) acc))))))))
 (define (take n (^Array arr)) (let (len (length arr) result []) (let loop (i 0) (if (or (= i n) (= i len)) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; drop: (drop n coll) — skip first n elements (shape-preserving)
-(define (drop n (^List lst)) (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))
+(define (drop n (^List lst)) (let (bad (__require-proper-list lst "drop")) (if (error? bad) bad (let loop (i n xs lst) (if (= i 0) xs (if (null? xs) nil (loop (- i 1) (cdr xs))))))))
 (define (drop n (^Array arr)) (let (len (length arr) result []) (let loop (i n) (if (>= i len) result (block (push! result (ref arr i)) (loop (+ i 1)))))))
 
 ;; zip: (zip a b) — zip two collections
-(define (zip (^List a) (^List b)) (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))
+(define (zip (^List a) (^List b)) (let (bad-a (__require-proper-list a "zip")) (if (error? bad-a) bad-a (let (bad-b (__require-proper-list b "zip")) (if (error? bad-b) bad-b (let loop (xs a ys b acc nil) (if (or (null? xs) (null? ys)) (reverse acc) (loop (cdr xs) (cdr ys) (cons (cons (car xs) (car ys)) acc)))))))))
 (define (zip (^Array a) (^Array b)) (let (la (length a) lb (length b) result []) (let loop (i 0) (if (or (= i la) (= i lb)) result (block (push! result (cons (ref a i) (ref b i))) (loop (+ i 1)))))))
 
 ;; range: (range n) — list from 0 to n-1 (iterative, builds in reverse)
 (define (range n) (let loop (i (- n 1) acc nil) (if (< i 0) acc (loop (- i 1) (cons i acc)))))
 
 ;; for-each: (for-each f lst) — apply f to each element for side effects, return nil
-(define (for-each f (^List lst)) (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))
+(define (for-each f (^List lst)) (let (bad (__require-proper-list lst "for-each")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) nil (block (f (car xs)) (loop (cdr xs))))))))
 (define (for-each (^Closure f)) (lambda (lst) (for-each f lst)))
 
 ;; any?: (any? pred lst) — true if pred is truthy for any element
-(define (any? pred (^List lst)) (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))
+(define (any? pred (^List lst)) (let (bad (__require-proper-list lst "any?")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) nil (if (pred (car xs)) true (loop (cdr xs))))))))
 (define (any? (^Closure pred)) (lambda (lst) (any? pred lst)))
 
 ;; every?: (every? pred lst) — true if pred is truthy for all elements
-(define (every? pred (^List lst)) (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))
+(define (every? pred (^List lst)) (let (bad (__require-proper-list lst "every?")) (if (error? bad) bad (let loop (xs lst) (if (null? xs) true (if (pred (car xs)) (loop (cdr xs)) nil))))))
 (define (every? (^Closure pred)) (lambda (lst) (every? pred lst)))
 
 ;; =========================================================================
@@ -270,16 +283,16 @@
 ;; =========================================================================
 
 ;; flatten: flatten nested lists into a flat list
-(define (flatten lst) (let loop (l lst acc nil) (if (null? l) (reverse acc) (if (pair? (car l)) (loop (cdr l) (let loop2 (inner (car l) a acc) (if (null? inner) a (loop2 (cdr inner) (cons (car inner) a))))) (loop (cdr l) (cons (car l) acc))))))
+(define (flatten lst) (let (bad (__require-proper-list lst "flatten")) (if (error? bad) bad (let loop (l lst acc nil) (if (null? l) (reverse acc) (if (pair? (car l)) (let (inner-bad (__require-proper-list (car l) "flatten")) (if (error? inner-bad) inner-bad (loop (cdr l) (let loop2 (inner (car l) a acc) (if (null? inner) a (loop2 (cdr inner) (cons (car inner) a))))))) (loop (cdr l) (cons (car l) acc))))))))
 
 ;; partition: split list by predicate, returns (kept . rejected)
-(define (partition pred lst) (let loop (l lst yes nil no nil) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))
+(define (partition pred lst) (let (bad (__require-proper-list lst "partition")) (if (error? bad) bad (let loop (l lst yes nil no nil) (if (null? l) (cons (reverse yes) (reverse no)) (if (pred (car l)) (loop (cdr l) (cons (car l) yes) no) (loop (cdr l) yes (cons (car l) no))))))))
 
 ;; remove: remove elements matching predicate (uses filter)
 (define (remove pred lst) (filter (lambda (x) (not (pred x))) lst))
 
 ;; find: first element matching predicate, or nil
-(define (find pred lst) (let loop (l lst) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))
+(define (find pred lst) (let (bad (__require-proper-list lst "find")) (if (error? bad) bad (let loop (l lst) (if (null? l) nil (if (pred (car l)) (car l) (loop (cdr l))))))))
 
 ;; =========================================================================
 ;; Generators & Lazy Streams (using existing effects)
@@ -311,6 +324,7 @@
 (define (Iterator (^List lst)) (__iterator-from-list lst))
 (define (Iterator (^Array arr)) (__iterator-from-array arr))
 (define (Iterator (^Dictionary d)) (__iterator-from-dict d))
+(define (Iterator (^Tensor tensor)) (__iterator-from-tensor tensor))
 (define (Iterator (^Iterator it)) it)
 
 ;; Iterator-dispatched map/filter (lazy)
@@ -340,8 +354,7 @@
 (define write-file (lambda (path content) (signal io/write-file (cons path content))))
 (define file-exists? (lambda (path) (signal io/file-exists? path)))
 (define read-lines (lambda (path) (signal io/read-lines path)))
-;; Canonical descriptive filesystem names remain exported (`filesystem-*`).
-;; `fs-*` spellings are retained.
+;; Canonical filesystem wrapper family is `fs-*`.
 (define fs-open (lambda (path flags .. rest) (signal io/fs-open (cons path (cons flags rest)))))
 (define fs-read (lambda (handle n) (signal io/fs-read (cons handle n))))
 (define fs-write (lambda (handle data) (signal io/fs-write (cons handle data))))
@@ -350,14 +363,6 @@
 (define fs-readdir (lambda (path) (signal io/fs-readdir path)))
 (define fs-rename (lambda (src dst) (signal io/fs-rename (cons src dst))))
 (define fs-unlink (lambda (path) (signal io/fs-unlink path)))
-(define filesystem-open fs-open)
-(define filesystem-read fs-read)
-(define filesystem-write fs-write)
-(define filesystem-close fs-close)
-(define filesystem-stat fs-stat)
-(define filesystem-read-directory fs-readdir)
-(define filesystem-rename fs-rename)
-(define filesystem-unlink fs-unlink)
 (define (tcp-connect (^String host) (^Integer port)) (signal io/tcp-connect (cons host port)))
 ;; Keep untyped fallback so invalid args still flow through io/tcp-connect canonical payload errors.
 (define (tcp-connect host port) (signal io/tcp-connect (cons host port)))
@@ -376,8 +381,12 @@
 (define (pipe-connect (^String path)) (signal io/pipe-connect path))
 (define (pipe-listen (^String path)) (signal io/pipe-listen path))
 (define (process-spawn (^String cmd) args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
+;; Keep untyped fallback so invalid process payloads still flow through io/process-spawn canonical payload errors.
+(define (process-spawn cmd args env) (signal io/process-spawn (cons cmd (cons args (cons env nil)))))
 (define (process-wait handle) (signal io/process-wait handle))
 (define (process-kill handle (^Integer sig)) (signal io/process-kill (cons handle (cons sig nil))))
+;; Keep untyped fallback so invalid signal payloads still flow through io/process-kill canonical payload errors.
+(define (process-kill handle sig) (signal io/process-kill (cons handle (cons sig nil))))
 (define (signal-handle (^Integer sig) callback) (signal io/signal-handle (cons sig (cons callback nil))))
 (define (signal-unhandle handle) (signal io/signal-unhandle handle))
 (define (dns-resolve (^String host)) (signal io/dns-resolve host))

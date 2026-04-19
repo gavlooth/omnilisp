@@ -1,6 +1,6 @@
 # Omni Lisp Syntax Specification
 
-**Updated:** 2026-04-09
+**Updated:** 2026-04-14
 
 ---
 
@@ -22,14 +22,22 @@
 | T_BACKQUOTE | `` ` `` | Quasiquote shorthand |
 | T_COMMA | `,` | Unquote shorthand |
 | T_COMMA_AT | `,@` | Unquote-splicing shorthand |
-| T_INT | `-?[0-9]+` | Integer literals |
+| T_INT | `-?[0-9]+` | Fixed-width signed integer literals in `long.min..long.max` |
 | T_FLOAT | `-?[0-9]+\.[0-9]+` | Floating-point literals |
 | T_STRING | `"..."` | String literals with escapes: `\n`, `\t`, `\\`, `\"` |
+| T_REGEX | `#r"..."` | Regex literal payload, represented as a string value |
+| T_READER_TAG | `#tag` | Reader tag prefix; `#tag form` parses as `(tag form)` |
 | T_SYMBOL | `[a-zA-Z0-9_\-+*/=<>!?:@#$%&\|^~]+` | Identifiers |
 | T_PATH | `segment.segment[.segment]*` | Dot-separated paths |
 | T_UNDERSCORE | `_` | Wildcard (not a symbol) |
 | T_DOTDOT | `..` | Rest/spread in patterns and variadic params |
 | T_ERROR | Any unrecognized | Invalid token |
+
+Slash (`/`) is an ordinary symbol character. A name such as `math/lgamma` is a
+single symbol, like `math-lgamma`; it is not module dereference syntax. Use
+`module.value` path access or explicit `import` forms for real module access.
+Slash-prefixed package names are only a naming convention unless a module exports
+and binds that symbol explicitly.
 
 ### 1.2 Whitespace and Comments
 
@@ -63,7 +71,7 @@
 | E_SHIFT | `(capture k body)` | Capture continuation |
 | E_PERFORM | `(signal tag arg)` | Signal algebraic effect (internal tag is E_PERFORM, keyword is `signal`) |
 | E_HANDLE | `(handle body clauses...)` | Handle algebraic effects |
-| E_DEFMACRO | `(define [macro] ...)` | Pattern macro definition |
+| E_DEFMACRO | `(define [macro] ...)`, `(define [reader tag] ...)` | Pattern macro definition |
 | E_MODULE | `(module name ...)` | Module definition |
 | E_IMPORT | `(import name)` | Module import |
 | E_DEFTYPE | `(define [type] ...)` / `(define [struct] ...)` | Struct type definition |
@@ -167,6 +175,11 @@ Three branches required (no two-branch form).
     (pattern2 (template ...))
     ...))
 ;; clause-style macro forms are removed and parse as hard errors
+(define [reader tag] name
+  (syntax-match
+    ([x] (template ...))))
+;; #name form parses as (name form), so reader tag macros still use the normal
+;; single-transformer macro contract
 (define [type] Name (^Type field1) (^Type field2))
 (define [struct] Name (^Type field1) (^Type field2))  ;; alias of [type]
 (define [type] (Child Parent) (^Type field))
@@ -296,6 +309,7 @@ Omni has no dedicated keyword type; `'as` and `'all` are quoted symbols in modul
 ^Integer          ;; simple type
 ^(List Integer)   ;; compound type
 ^(Value 42)       ;; canonical value-level type (dispatch on literal)
+^(Value nil)      ;; nil literal dispatch
 ^{'T Number}      ;; metadata dictionary
 ```
 
@@ -339,7 +353,7 @@ Postfix index syntax:
 ```lisp
 arr.[0]           ;; list/array index
 dict.['key]       ;; dict key lookup
-matrix.[i].[j]    ;; chained indexing
+tensor.[i].[j]    ;; chained indexing
 ```
 
 Path syntax:

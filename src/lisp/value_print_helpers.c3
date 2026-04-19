@@ -20,11 +20,23 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
     if (prim.func == &prim_type_constructor) return (ZString)name;
 
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
+    if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
+    if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
+    if (zstr_eq(name, "BigComplex")) return (ZString)"BigComplex";
+    if (zstr_eq(name, "Complex128")) return (ZString)"Complex128";
+    if (zstr_eq(name, "Complex64")) return (ZString)"Complex64";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
-        zstr_eq(name, "Double") ||
+        zstr_eq(name, "BigInteger") ||
+        zstr_eq(name, "BigFloat") ||
+        zstr_eq(name, "BigComplex") ||
+        zstr_eq(name, "Complex128") ||
+        zstr_eq(name, "Complex64") ||
+        zstr_eq(name, "Float32") ||
+        zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
         zstr_eq(name, "Boolean") ||
@@ -33,6 +45,7 @@ fn ZString primitive_type_descriptor_name(Primitive* prim) {
         zstr_eq(name, "Closure") ||
         zstr_eq(name, "List") ||
         zstr_eq(name, "Array") ||
+        zstr_eq(name, "Tensor") ||
         zstr_eq(name, "Dictionary") ||
         zstr_eq(name, "Set") ||
         zstr_eq(name, "Iterator") ||
@@ -47,11 +60,23 @@ fn ZString symbol_type_descriptor_name(char* name) {
     if (name == null) return null;
 
     if (zstr_eq(name, "Integer")) return (ZString)"Integer";
+    if (zstr_eq(name, "BigInteger")) return (ZString)"BigInteger";
+    if (zstr_eq(name, "BigFloat")) return (ZString)"BigFloat";
+    if (zstr_eq(name, "BigComplex")) return (ZString)"BigComplex";
+    if (zstr_eq(name, "Complex128")) return (ZString)"Complex128";
+    if (zstr_eq(name, "Complex64")) return (ZString)"Complex64";
     if (zstr_eq(name, "Boolean")) return (ZString)"Boolean";
     if (zstr_eq(name, "Dictionary")) return (ZString)"Dictionary";
+    if (zstr_eq(name, "Dict")) return (ZString)"Dictionary";
 
     if (zstr_eq(name, "Integer") ||
-        zstr_eq(name, "Double") ||
+        zstr_eq(name, "BigInteger") ||
+        zstr_eq(name, "BigFloat") ||
+        zstr_eq(name, "BigComplex") ||
+        zstr_eq(name, "Complex128") ||
+        zstr_eq(name, "Complex64") ||
+        zstr_eq(name, "Float32") ||
+        zstr_eq(name, "Float64") ||
         zstr_eq(name, "String") ||
         zstr_eq(name, "Symbol") ||
         zstr_eq(name, "Boolean") ||
@@ -60,6 +85,7 @@ fn ZString symbol_type_descriptor_name(char* name) {
         zstr_eq(name, "Closure") ||
         zstr_eq(name, "List") ||
         zstr_eq(name, "Array") ||
+        zstr_eq(name, "Tensor") ||
         zstr_eq(name, "Dictionary") ||
         zstr_eq(name, "Set") ||
         zstr_eq(name, "Iterator") ||
@@ -125,6 +151,10 @@ fn void print_closure_value(Value* v, SymbolTable* syms) {
 
 fn void print_hashmap_value(Value* v, SymbolTable* syms) {
     io::print("{");
+    if (v.hashmap_val == null) {
+        io::print("}");
+        return;
+    }
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -140,6 +170,10 @@ fn void print_hashmap_value(Value* v, SymbolTable* syms) {
 
 fn void print_set_value(Value* v, SymbolTable* syms) {
     io::print("(Set");
+    if (v.hashmap_val == null) {
+        io::print(")");
+        return;
+    }
     uint printed = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -164,6 +198,24 @@ fn void print_array_value(Value* v, SymbolTable* syms) {
         }
     }
     io::print("]");
+}
+
+fn void print_tensor_value(Value* v, SymbolTable* syms) {
+    (void)syms;
+    TensorVal* tensor = v.tensor_val;
+    if (tensor == null) {
+        io::print("#<tensor:null>");
+        return;
+    }
+    io::printf(
+        tensor.kind == TENSOR_PAYLOAD_CONCRETE ? "#<tensor %s shape [" : "#<tensor-expr %s shape [",
+        (ZString)tensor_dtype_name(tensor.dtype)
+    );
+    for (usz i = 0; i < tensor.rank; i++) {
+        if (i > 0) io::print(" ");
+        io::printf("%d", (long)tensor.shape[i]);
+    }
+    io::print("]>");
 }
 
 fn void print_instance_value(Value* v, SymbolTable* syms) {

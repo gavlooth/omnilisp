@@ -58,7 +58,7 @@ fn Value* prim_tcp_read(Value*[] args, Env* env, Interp* interp) {
 
     usz max_bytes = 0;
     long timeout_ms = -1;
-    parse_tcp_read_options(args, &max_bytes, &timeout_ms);
+    if (Value* opt_err = parse_tcp_read_options(args, &max_bytes, &timeout_ms, interp)) return opt_err;
 
     // Async bridge: register a non-blocking read with libuv and suspend this
     // fiber until data is ready.

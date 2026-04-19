@@ -66,8 +66,20 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             return make_void(interp);
         case INT:
             return make_int(interp, v.int_val);
+        case BIG_INTEGER:
+            return copy_big_integer_to_parent(v, interp);
+        case BIG_FLOAT:
+            return copy_big_float_to_parent(v, interp);
+        case BIG_COMPLEX:
+            return copy_big_complex_to_parent(v, interp);
         case DOUBLE:
             return make_double(interp, v.double_val);
+        case FLOAT32:
+            return make_float32(interp, v.float32_val);
+        case COMPLEX128:
+            return make_complex128(interp, v.complex128_val.real, v.complex128_val.imag);
+        case COMPLEX64:
+            return make_complex64(interp, v.complex64_val.real, v.complex64_val.imag);
         case SYMBOL:
             return make_symbol(interp, v.sym_val);
         case STRING:
@@ -81,6 +93,7 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
         case HASHMAP:
         case SET:
         case ARRAY:
+        case TENSOR:
         case METHOD_TABLE: {
             BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
             if (!boundary_copy_result_ok(copied)) return null;

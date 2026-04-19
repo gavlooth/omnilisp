@@ -96,7 +96,9 @@ fn BoundaryPolicyParseStatus boundary_policy_parse_usize_token(char* raw, usz* o
     for (usz i = 0; i < len; i++) {
         char ch = start[i];
         if (ch < '0' || ch > '9') return BOUNDARY_POLICY_PARSE_INVALID;
-        result = result * 10 + (usz)(ch - '0');
+        usz digit = (usz)(ch - '0');
+        if (result > (usz.max - digit) / (usz)10) return BOUNDARY_POLICY_PARSE_INVALID;
+        result = result * 10 + digit;
     }
     if (out_value != null) *out_value = result;
     return BOUNDARY_POLICY_PARSE_OK;

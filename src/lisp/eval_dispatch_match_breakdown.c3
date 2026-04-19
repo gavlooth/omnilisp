@@ -63,6 +63,10 @@ fn bool method_constraints_satisfied(MethodEntry* entry, TypeId[] arg_types, Int
             bound_syms = bound_syms_inline[:entry.sig.param_count];
             bound_types = bound_types_inline[:entry.sig.param_count];
         } else {
+            if (entry.sig.param_count > usz.max / SymbolId.sizeof ||
+                entry.sig.param_count > usz.max / TypeId.sizeof) {
+                return false;
+            }
             bound_syms_storage = (SymbolId*)mem::malloc(SymbolId.sizeof * entry.sig.param_count);
             bound_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * entry.sig.param_count);
             if (bound_syms_storage == null || bound_types_storage == null) {

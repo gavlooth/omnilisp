@@ -6,7 +6,7 @@
 ;;   type-of          — runtime type tag inspection
 ;;   is?              — type predicate (checks type hierarchy)
 ;;   instance?        — check if value is a struct instance
-;;   string->number / number->string / symbol->string — conversion functions
+;;   parse-number / String — conversion functions
 ;;   import (sym 'as alias) — selective import with renaming
 
 (module types
@@ -26,7 +26,7 @@
 ;; PriceEvent: a price tick for a symbol at a given timestamp.
 (define [type] (PriceEvent Event)
   (^String symbol)
-  (^Double price)
+  (^Float64 price)
   (^Integer    ts))
 
 ;; AlertEvent: a triggered alert with severity and message.
@@ -45,7 +45,7 @@
 
 ;; Semantic aliases — makes signatures self-documenting.
 (define [alias] Timestamp Integer)
-(define [alias] Price Double)
+(define [alias] Price Float64)
 
 ;; ── Event dispatch ──────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@
               (format "[EVENT] %s" (type-of e))))))
 
 ;; event-tag: extract the event kind as a string via type-of.
-(define (event-tag e) (symbol->string (type-of e)))
+(define (event-tag e) (String (type-of e)))
 
 ;; event-ts: extract timestamp from any event via dot access on the ts field.
 ;; All three event types have ts as their last field.

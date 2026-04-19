@@ -34,7 +34,7 @@ fn bool map_c_type(LibclangHandle* h, CXType ty, bool is_return, char* ffi_out, 
     }
     if (kind == CXTYPE_FLOAT || kind == CXTYPE_DOUBLE) {
         copy_str("'double", ffi_out, buf_size);
-        copy_str("Double", omni_out, buf_size);
+        copy_str("Float64", omni_out, buf_size);
         return true;
     }
     if (kind == CXTYPE_POINTER) {
@@ -44,21 +44,21 @@ fn bool map_c_type(LibclangHandle* h, CXType ty, bool is_return, char* ffi_out, 
         bool is_const_char_ptr = false;
         if (cstr != null) {
             is_char_ptr = bindgen_type_is_char_pointer(cstr);
-            is_const_char_ptr = bindgen_type_is_const_qualified(cstr);
+            is_const_char_ptr = bindgen_type_is_pointee_const_qualified(cstr);
         }
         h.dispose_string(spelling);
 
         if (is_char_ptr) {
             if (!is_return && !is_const_char_ptr) {
                 copy_str("'ptr", ffi_out, buf_size);
-                copy_str("Pointer", omni_out, buf_size);
+                copy_str("ForeignHandle", omni_out, buf_size);
             } else {
                 copy_str("'string", ffi_out, buf_size);
                 copy_str("String", omni_out, buf_size);
             }
         } else {
             copy_str("'ptr", ffi_out, buf_size);
-            copy_str("Pointer", omni_out, buf_size);
+            copy_str("ForeignHandle", omni_out, buf_size);
         }
         return true;
     }

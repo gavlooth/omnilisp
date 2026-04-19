@@ -11,7 +11,7 @@ module lisp;
 //   '(and s1 s2), '(or s1 s2), '(not s), '(maybe s)
 //   '(> n), '(< n), '(>= n), '(<= n), '(= v)
 //   '(re pattern)
-//   '(map (name schema) ...), '(vector-of schema), '(tuple s1 s2 ...)
+//   '(map (name schema) ...), '(array-of schema), '(tuple s1 s2 ...)
 //   '(enum v1 v2 ...)
 // ============================================================
 

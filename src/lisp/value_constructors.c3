@@ -93,12 +93,32 @@ fn Value* make_primitive(Interp* interp, char[] name, PrimitiveFn func, int arit
 
 fn Value* make_ffi_handle(Interp* interp, void* handle, char[] name) {
     // Compatibility helper for global library handles:
-    // root lifetime, no finalizer, don't free dlopen handle.
-    return make_ffi_handle_ex(interp, handle, name, null, false, true);
+    // Root lifetime, no finalizer, never free dlopen handle automatically.
+    return make_ffi_handle_ex_with_descriptor(
+        interp,
+        handle,
+        name,
+        null,
+        false,
+        FOREIGN_RUNTIME_C_ABI,
+        FOREIGN_HANDLE_LIBRARY,
+        FOREIGN_CAP_LOAD | FOREIGN_CAP_RESOLVE | FOREIGN_CAP_REFLECT,
+        true);
 }
 
 fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finalizer,
-    bool free_lib_handle) {
+    bool free_lib_handle,
+    ForeignRuntimeKind runtime_kind = FOREIGN_RUNTIME_NATIVE,
+    ForeignHandleKind handle_kind = FOREIGN_HANDLE_OPAQUE,
+    uint capabilities = 0,
+    FfiHandleOwnership ownership = FFI_HANDLE_BORROWED) {
+    if (finalizer != null && free_lib_handle) {
+        // Single release authority: finalizer path owns release policy.
+        // Retain `free_lib_handle` only for plain resource pointers without
+        // a finalizer callback.
+        free_lib_handle = false;
+    }
+
     FfiHandle* box = make_ffi_box_should_force_alloc_fail()
         ? null
         : (FfiHandle*)mem::malloc(FfiHandle.sizeof);
@@ -107,6 +127,10 @@ fn FfiHandle* make_ffi_box(void* handle, char[] name, FfiHandleFinalizer finaliz
     box.refcount = 1;
     box.finalizer = finalizer;
     box.free_lib_handle = free_lib_handle;
+    box.runtime_kind = runtime_kind;
+    box.handle_kind = handle_kind;
+    box.capabilities = capabilities;
+    box.ownership = ownership;
 
     usz len = name.len;
     if (len > 255) {
@@ -126,6 +150,42 @@ fn void ffi_handle_retain(FfiHandle* box) {
     box.refcount++;
 }
 
+fn bool ffi_handle_can_release_payload(FfiHandle* box) @inline {
+    if (box == null) return false;
+    if (box.handle_kind == FOREIGN_HANDLE_LIBRARY) return false;
+    return box.finalizer != null || box.free_lib_handle;
+}
+
+fn void ffi_handle_release_raw_payload(void* payload, FfiHandleFinalizer finalizer,
+    bool free_lib_handle, ForeignHandleKind handle_kind) {
+    if (payload == null) return;
+    if (handle_kind == FOREIGN_HANDLE_LIBRARY) return;
+    if (finalizer != null) {
+        finalizer(payload);
+        return;
+    }
+    if (free_lib_handle) {
+        mem::free(payload);
+    }
+}
+
+fn bool ffi_handle_release_payload(FfiHandle* box) {
+    if (box == null) return false;
+    if (box.lib_handle == null) return true;
+    bool can_release = ffi_handle_can_release_payload(box);
+    if (!can_release) return false;
+
+    void* payload = box.lib_handle;
+    if (box.finalizer != null) {
+        box.finalizer(payload);
+    } else if (box.free_lib_handle) {
+        mem::free(payload);
+    }
+    box.lib_handle = null;
+    box.capabilities = box.capabilities & ~FOREIGN_CAP_RELEASE;
+    return true;
+}
+
 fn void ffi_handle_release(FfiHandle* box) {
     if (box == null) return;
     if (box.refcount > 1) {
@@ -133,13 +193,7 @@ fn void ffi_handle_release(FfiHandle* box) {
         return;
     }
 
-    if (box.finalizer != null && box.lib_handle != null) {
-        box.finalizer(box.lib_handle);
-    }
-    if (box.free_lib_handle && box.lib_handle != null) {
-        mem::free(box.lib_handle);
-        box.lib_handle = null;
-    }
+    (void)ffi_handle_release_payload(box);
     mem::free(box);
 }
 
@@ -155,22 +209,44 @@ fn void instance_release(Instance* inst) @inline {
 }
 
 fn Value* make_ffi_handle_ex(Interp* interp, void* handle, char[] name,
-    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false,
-    bool* constructor_owns_handle = null) {
-    main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
-    if (constructor_owns_handle != null) *constructor_owns_handle = false;
+    FfiHandleFinalizer finalizer, bool free_lib_handle, bool root_lifetime = false) {
+    FfiHandleOwnership ownership = FFI_HANDLE_BORROWED;
+    if (finalizer != null) ownership = FFI_HANDLE_OWNED;
+    if (free_lib_handle) ownership = FFI_HANDLE_OWNED;
+    return make_ffi_handle_ex_with_descriptor(
+        interp,
+        handle,
+        name,
+        finalizer,
+        free_lib_handle,
+        FOREIGN_RUNTIME_NATIVE,
+        FOREIGN_HANDLE_OPAQUE,
+        (finalizer != null || free_lib_handle) ? FOREIGN_CAP_RELEASE : 0,
+        root_lifetime,
+        ownership);
+}
 
-    FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle);
+fn Value* make_ffi_handle_ex_with_descriptor(
+    Interp* interp,
+    void* handle,
+    char[] name,
+    FfiHandleFinalizer finalizer,
+    bool free_lib_handle,
+    ForeignRuntimeKind runtime_kind,
+    ForeignHandleKind handle_kind,
+    uint capabilities,
+    bool root_lifetime = false,
+    FfiHandleOwnership ownership = FFI_HANDLE_BORROWED
+) {
+    main::ScopeRegion* target_scope = root_lifetime ? interp.root_scope : interp.current_scope;
+    FfiHandle* box = make_ffi_box(handle, name, finalizer, free_lib_handle,
+        runtime_kind, handle_kind, capabilities, ownership);
     if (box == null) {
+        ffi_handle_release_raw_payload(handle, finalizer, free_lib_handle, handle_kind);
         return null;
     }
-    if (constructor_owns_handle != null) *constructor_owns_handle = true;
-
     Value* v = boundary_alloc_value_in_scope(interp, target_scope, true);
     if (v == null) {
-        // The constructor consumed the raw handle once the box was created;
-        // release it here and keep the ownership flag set so callers do not
-        // run duplicate cleanup on null return.
         ffi_handle_release(box);
         return null;
     }
@@ -252,19 +328,28 @@ fn Value* make_raise_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = boundary_alloc_value_in_root(interp, true);
-    if (payload == null) return null;
-    payload.tag = HASHMAP;
-    payload.hashmap_val = hashmap_new_checked(8, interp);
-    if (payload.hashmap_val == null) {
-        payload.tag = NIL;
-        return null;
+    if (interp == null || domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) return null;
+    Value* payload = make_hashmap_no_raise(interp, 8);
+    if (payload == null || payload.tag != HASHMAP || payload.hashmap_val == null) return null;
+    bool keep_payload = false;
+    HashMapSetRollback[4] payload_rollbacks = {};
+    defer if (!keep_payload && payload != null && payload.hashmap_val != null) {
+        for (usz i = 0; i < payload_rollbacks.len; i++) {
+            hashmap_cleanup_rollback_record(&payload_rollbacks[i], interp);
+        }
+        boundary_cleanup_materialized_value(null, payload, interp.root_scope);
     }
 
     SymbolId key_code = interp.symbols.intern("code");
     SymbolId key_message = interp.symbols.intern("message");
     SymbolId key_domain = interp.symbols.intern("domain");
     SymbolId key_data = interp.symbols.intern("data");
+    if (key_code == INVALID_SYMBOL_ID ||
+        key_message == INVALID_SYMBOL_ID ||
+        key_domain == INVALID_SYMBOL_ID ||
+        key_data == INVALID_SYMBOL_ID) {
+        return null;
+    }
 
     Value* code_key = make_symbol(interp, key_code);
     Value* message_key = make_symbol(interp, key_message);
@@ -280,12 +365,50 @@ fn Value* make_raise_payload(
         return null;
     }
 
-    if (!hashmap_set_checked(payload.hashmap_val, code_key, code_val, interp)) return null;
-    if (!hashmap_set_checked(payload.hashmap_val, message_key, message_val, interp)) return null;
-    if (!hashmap_set_checked(payload.hashmap_val, domain_key, domain_val, interp)) return null;
-    if (!hashmap_set_checked(payload.hashmap_val, data_key, data_val, interp)) return null;
+    if (!hashmap_set_checked_rollback_record(
+        payload.hashmap_val,
+        code_key,
+        code_val,
+        interp,
+        &payload_rollbacks[0]
+    )) return null;
+    if (!hashmap_set_checked_rollback_record(
+        payload.hashmap_val,
+        message_key,
+        message_val,
+        interp,
+        &payload_rollbacks[1]
+    )) return null;
+    if (!hashmap_set_checked_rollback_record(
+        payload.hashmap_val,
+        domain_key,
+        domain_val,
+        interp,
+        &payload_rollbacks[2]
+    )) return null;
+    if (!hashmap_set_checked_rollback_record(
+        payload.hashmap_val,
+        data_key,
+        data_val,
+        interp,
+        &payload_rollbacks[3]
+    )) return null;
 
+    keep_payload = true;
     return payload;
+}
+
+fn Value* make_raise_payload_rooted_no_data(
+    Interp* interp,
+    SymbolId domain_sym,
+    SymbolId code_sym,
+    char[] message
+) {
+    if (interp == null || interp.root_scope == null) return null;
+    main::ScopeRegion* saved_scope = interp.current_scope;
+    interp.current_scope = interp.root_scope;
+    defer interp.current_scope = saved_scope;
+    return make_raise_payload(interp, domain_sym, code_sym, message, null);
 }
 
 fn Value* make_raise_payload_names(
@@ -297,10 +420,25 @@ fn Value* make_raise_payload_names(
 ) @inline {
     SymbolId domain_sym = interp.symbols.intern(domain_name);
     SymbolId code_sym = interp.symbols.intern(code_name);
+    if (domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) return null;
     return make_raise_payload(interp, domain_sym, code_sym, message, data);
 }
 
-fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null, bool payload_failed = false) {
+fn bool raise_error_can_consume_payload(Interp* interp) @inline {
+    if (interp == null || interp.handler_count == 0 || interp.flags.raise_pending) return false;
+    SymbolId raise_sym = interp.sym_raise;
+    for (isz i = (isz)interp.handler_count - 1; i >= 0; i--) {
+        EffectHandler* h = &interp.handler_stack[(usz)i];
+        for (usz j = 0; j < h.clause_count; j++) {
+            SymbolId ctag = h.tags != null ? h.tags[j] : h.clauses[j].effect_tag;
+            if (ctag == raise_sym) return true;
+        }
+        if (h.strict_mode) break;
+    }
+    return false;
+}
+
+fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = null, bool payload_failed = false, bool payload_already_rooted = false) {
     // Fast path: no handlers at all → just return error
     if (interp.handler_count == 0) {
         return make_error(interp, msg);
@@ -328,11 +466,15 @@ fn Value* raise_error_pending_impl(Interp* interp, char[] msg, Value* payload = 
                 }
                 Value* promoted_payload = null;
                 if (payload != null) {
-                    promoted_payload = boundary_promote_to_root(payload, interp);
-                    if (promoted_payload == null) {
-                        return make_error(interp, "raise: failed to promote payload");
+                    if (payload_already_rooted) {
+                        promoted_payload = payload;
+                    } else {
+                        promoted_payload = boundary_promote_to_root(payload, interp);
+                        if (promoted_payload == null) {
+                            return make_error(interp, "raise: failed to promote payload");
+                        }
+                        if (promoted_payload.tag == ERROR) return promoted_payload;
                     }
-                    if (promoted_payload.tag == ERROR) return promoted_payload;
                 }
                 interp.flags.raise_pending = true;
                 interp.raise_payload = promoted_payload;
@@ -355,8 +497,14 @@ fn Value* raise_error_with_payload(
     char[] message,
     Value* data = null
 ) {
-    Value* payload = make_raise_payload(interp, domain_sym, code_sym, message, data);
-    return raise_error_pending_impl(interp, message, payload, payload == null);
+    if (!raise_error_can_consume_payload(interp)) {
+        return raise_error_pending_impl(interp, message, null, false);
+    }
+    bool payload_already_rooted = data == null;
+    Value* payload = payload_already_rooted
+        ? make_raise_payload_rooted_no_data(interp, domain_sym, code_sym, message)
+        : make_raise_payload(interp, domain_sym, code_sym, message, data);
+    return raise_error_pending_impl(interp, message, payload, payload == null, payload_already_rooted);
 }
 
 fn Value* raise_error_with_payload_names(
@@ -368,6 +516,9 @@ fn Value* raise_error_with_payload_names(
 ) @inline {
     SymbolId domain_sym = interp.symbols.intern(domain_name);
     SymbolId code_sym = interp.symbols.intern(code_name);
+    if (domain_sym == INVALID_SYMBOL_ID || code_sym == INVALID_SYMBOL_ID) {
+        return raise_error_pending_impl(interp, message, null, true);
+    }
     return raise_error_with_payload(interp, domain_sym, code_sym, message, data);
 }
 

@@ -3,7 +3,8 @@ module lisp;
 fn Value* Parser.parse_datum_collection_template(Parser* self, bool is_dict) {
     Lexer* lex = self.lexer;
     TokenType close_tok = is_dict ? T_RBRACE : T_RBRACKET;
-    SymbolId ctor_sym = self.interp.symbols.intern(is_dict ? "Dictionary" : "Array");
+    SymbolId ctor_sym = self.intern_or_error(is_dict ? "Dictionary" : "Array", "failed to intern template collection constructor");
+    if (ctor_sym == INVALID_SYMBOL_ID) return null;
 
     // Consume opening token.
     lex.advance();

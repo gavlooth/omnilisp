@@ -3,6 +3,7 @@ module lisp;
 import main;
 
 fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
+    if (self == null || name == INVALID_SYMBOL_ID) return false;
     // Fast path: use hash table if available
     if (self.hash_table != null) {
         usz idx = self.hash_lookup(name);
@@ -21,13 +22,9 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     }
     // Grow if needed
     if (self.binding_count >= self.capacity) {
-        if (self.capacity > usz.max / 2) {
-            return false;
-        }
-        usz new_cap = self.capacity * 2;
-        if (new_cap > usz.max / Binding.sizeof) {
-            return false;
-        }
+        if (self.capacity > 0 && self.capacity > usz.max / 2) return false;
+        usz new_cap = self.capacity > 0 ? self.capacity * 2 : ENV_INITIAL_CAPACITY;
+        if (new_cap > usz.max / Binding.sizeof) return false;
         Binding* new_bindings = g_env_force_bindings_alloc_oom
             ? null
             : (Binding*)mem::malloc(Binding.sizeof * new_cap);
@@ -51,14 +48,12 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
     if (self.hash_table == null && self.binding_count > ENV_HASH_THRESHOLD) {
         (void)self.build_hash_table();
     } else if (self.hash_table != null) {
-        // Check load factor: rebuild if > 70%. If the rebuild fails, keep
-        // the binding visible by falling back to linear lookup.
-        if (self.binding_count > (self.hash_capacity / 10) * 7) {
-            if (!self.build_hash_table()) {
-                mem::free(self.hash_table);
-                self.hash_table = null;
-                self.hash_capacity = 0;
-            }
+        // Check load factor: rebuild if > 70%
+        bool rebuild_hash = self.binding_count > usz.max / (usz)10
+            || self.hash_capacity > usz.max / (usz)7
+            || self.binding_count * (usz)10 > self.hash_capacity * (usz)7;
+        if (rebuild_hash) {
+            (void)self.build_hash_table();
         } else {
             self.hash_insert(name, new_idx);
         }
@@ -67,6 +62,7 @@ fn bool Env.define(Env* self, SymbolId name, Value* value) @nodiscard {
 }
 
 fn Value* Env.lookup(Env* self, SymbolId name) {
+    if (self == null || name == INVALID_SYMBOL_ID) return null;
     // Fast path: use hash table if available
     if (self.hash_table != null) {
         usz idx = self.hash_lookup(name);
@@ -89,6 +85,7 @@ fn Value* Env.lookup(Env* self, SymbolId name) {
 }
 
 fn void? Env.set(Env* self, SymbolId name, Value* value) {
+    if (self == null || name == INVALID_SYMBOL_ID) return UNBOUND_VARIABLE~;
     if (self.hash_table != null) {
         usz idx = self.hash_lookup(name);
         if (idx != ~(usz)0) {

@@ -25,7 +25,10 @@ fn int io_console_fd(Interp* interp) @inline {
 fn bool io_console_capture_append(Interp* interp, char[] text) {
     if (text.len == 0) return true;
 
-    usz needed = interp.console_capture_len + text.len + 1;
+    if (interp.console_capture_len > usz.max - text.len) return false;
+    usz needed = interp.console_capture_len + text.len;
+    if (needed == usz.max) return false;
+    needed += 1;
     if (needed > interp.console_capture_cap) {
         usz next_cap = interp.console_capture_cap > 0 ? interp.console_capture_cap : IO_CONSOLE_RENDER_INITIAL_CAP;
         while (next_cap < needed) {
@@ -64,6 +67,7 @@ fn bool io_console_write_text(Interp* interp, char[] text) {
 }
 
 fn bool io_console_copy_slice(char[] src, char** out_buf, usz* out_len) {
+    if (src.len == usz.max) return false;
     char* copy = (char*)mem::malloc(src.len + 1);
     if (copy == null) return false;
     for (usz i = 0; i < src.len; i++) copy[i] = src[i];
@@ -118,15 +122,20 @@ fn Value* io_console_emit(Value* value, bool display_mode, bool append_newline, 
     if (value != null) {
         char* rendered = null;
         usz rendered_len = 0;
-        if (io_console_render_value(value, &interp.symbols, display_mode, &rendered, &rendered_len)) {
-            defer mem::free(rendered);
-            (void)io_console_write_text(interp, rendered[:rendered_len]);
+        if (!io_console_render_value(value, &interp.symbols, display_mode, &rendered, &rendered_len)) {
+            return io_raise(interp, "io/console-render-out-of-memory", "console: out of memory");
+        }
+        defer mem::free(rendered);
+        if (!io_console_write_text(interp, rendered[:rendered_len])) {
+            return io_raise(interp, "io/console-write-failed", "console: write failed");
         }
     }
     if (append_newline) {
         char[1] nl;
         nl[0] = '\n';
-        (void)io_console_write_text(interp, nl[..]);
+        if (!io_console_write_text(interp, nl[..])) {
+            return io_raise(interp, "io/console-write-failed", "console: write failed");
+        }
     }
     return make_void(interp);
 }

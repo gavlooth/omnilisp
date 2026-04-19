@@ -1,0 +1,452 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const float OMNI_SVD_EPS = 0.000001;
+const float OMNI_SVD_NORM_EPS = 0.000000000001;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    float input_values[];
+};
+
+layout(std430, binding = 1) buffer UBuffer {
+    float u_values[];
+};
+
+layout(std430, binding = 2) buffer SBuffer {
+    float s_values[];
+};
+
+layout(std430, binding = 3) buffer VBuffer {
+    float v_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint k;
+    uint u_count;
+    uint s_count;
+    uint v_count;
+} pc;
+
+float abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+bool is_finite_f32(float value) {
+    return value == value && (value - value) == 0.0;
+}
+
+uint gram_index(uint row, uint col, uint n) {
+    return pc.u_count + row * n + col;
+}
+
+void zero_outputs() {
+    for (uint index = 0u; index < pc.u_count; index++) {
+        u_values[index] = 0.0;
+    }
+    for (uint index = 0u; index < pc.s_count; index++) {
+        s_values[index] = 0.0;
+    }
+    for (uint index = 0u; index < pc.v_count; index++) {
+        v_values[index] = 0.0;
+    }
+}
+
+float u_column_dot(uint rows, uint cols, uint left_col, uint right_col) {
+    float sum = 0.0;
+    for (uint row = 0u; row < rows; row++) {
+        sum += u_values[row * cols + left_col] * u_values[row * cols + right_col];
+    }
+    return sum;
+}
+
+void u_orthogonalize_column(uint rows, uint cols, uint col) {
+    for (uint prev_col = 0u; prev_col < col; prev_col++) {
+        float dot = u_column_dot(rows, cols, prev_col, col);
+        for (uint row = 0u; row < rows; row++) {
+            u_values[row * cols + col] -= dot * u_values[row * cols + prev_col];
+        }
+    }
+}
+
+bool u_normalize_column(uint rows, uint cols, uint col) {
+    float norm_squared = u_column_dot(rows, cols, col, col);
+    if (!(norm_squared > OMNI_SVD_NORM_EPS) || !is_finite_f32(norm_squared)) {
+        return false;
+    }
+    float inv_norm = 1.0 / sqrt(norm_squared);
+    if (!is_finite_f32(inv_norm)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        u_values[row * cols + col] *= inv_norm;
+    }
+    return true;
+}
+
+bool u_fill_orthonormal_completion_column(uint rows, uint cols, uint col) {
+    if (col >= rows) {
+        return false;
+    }
+    for (uint candidate = 0u; candidate < rows; candidate++) {
+        for (uint row = 0u; row < rows; row++) {
+            u_values[row * cols + col] = row == candidate ? 1.0 : 0.0;
+        }
+        u_orthogonalize_column(rows, cols, col);
+        if (u_normalize_column(rows, cols, col)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+float v_column_dot(uint rows, uint cols, uint left_col, uint right_col) {
+    float sum = 0.0;
+    for (uint row = 0u; row < rows; row++) {
+        sum += v_values[row * cols + left_col] * v_values[row * cols + right_col];
+    }
+    return sum;
+}
+
+void v_orthogonalize_column(uint rows, uint cols, uint col) {
+    for (uint prev_col = 0u; prev_col < col; prev_col++) {
+        float dot = v_column_dot(rows, cols, prev_col, col);
+        for (uint row = 0u; row < rows; row++) {
+            v_values[row * cols + col] -= dot * v_values[row * cols + prev_col];
+        }
+    }
+}
+
+bool v_normalize_column(uint rows, uint cols, uint col) {
+    float norm_squared = v_column_dot(rows, cols, col, col);
+    if (!(norm_squared > OMNI_SVD_NORM_EPS) || !is_finite_f32(norm_squared)) {
+        return false;
+    }
+    float inv_norm = 1.0 / sqrt(norm_squared);
+    if (!is_finite_f32(inv_norm)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        v_values[row * cols + col] *= inv_norm;
+    }
+    return true;
+}
+
+bool v_fill_orthonormal_completion_column(uint rows, uint cols, uint col) {
+    if (col >= rows) {
+        return false;
+    }
+    for (uint candidate = 0u; candidate < rows; candidate++) {
+        for (uint row = 0u; row < rows; row++) {
+            v_values[row * cols + col] = row == candidate ? 1.0 : 0.0;
+        }
+        v_orthogonalize_column(rows, cols, col);
+        if (v_normalize_column(rows, cols, col)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    if (pc.s_count < pc.k + 1u ||
+        pc.u_count < pc.rows * pc.k ||
+        pc.v_count < pc.cols * pc.k) {
+        return;
+    }
+
+    zero_outputs();
+    uint status_index = pc.k;
+    float status = 0.0;
+    s_values[status_index] = 1.0;
+
+    if (pc.k == 0u) {
+        s_values[status_index] = status;
+        return;
+    }
+
+    bool tall_or_square = pc.rows >= pc.cols;
+    uint n = pc.k;
+    bool failed = false;
+
+    for (uint row = 0u; row < n; row++) {
+        for (uint col = 0u; col < n; col++) {
+            if (tall_or_square) {
+                v_values[row * pc.k + col] = row == col ? 1.0 : 0.0;
+            } else {
+                u_values[row * pc.k + col] = row == col ? 1.0 : 0.0;
+            }
+            float sum = 0.0;
+            if (tall_or_square) {
+                for (uint source_row = 0u; source_row < pc.rows; source_row++) {
+                    sum += input_values[source_row * pc.cols + row] * input_values[source_row * pc.cols + col];
+                }
+            } else {
+                for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                    sum += input_values[row * pc.cols + source_col] * input_values[col * pc.cols + source_col];
+                }
+            }
+            if (!is_finite_f32(sum)) {
+                status = 1.0;
+                failed = true;
+                sum = 0.0;
+            }
+            u_values[gram_index(row, col, n)] = sum;
+            if (failed) {
+                break;
+            }
+        }
+        if (failed) {
+            break;
+        }
+    }
+
+    uint max_iterations = 64u * n * n;
+    bool converged = false;
+    if (!failed) {
+        for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+            uint p = 0u;
+            uint q = 0u;
+            float max_offdiag = 0.0;
+            bool local_failed = false;
+            for (uint row = 0u; row < n; row++) {
+                for (uint col = row + 1u; col < n; col++) {
+                    float value = abs_f32(u_values[gram_index(row, col, n)]);
+                    if (!is_finite_f32(value)) {
+                        status = 1.0;
+                        local_failed = true;
+                        break;
+                    }
+                    if (value > max_offdiag) {
+                        max_offdiag = value;
+                        p = row;
+                        q = col;
+                    }
+                }
+                if (local_failed) break;
+            }
+            if (local_failed || !is_finite_f32(max_offdiag)) {
+                status = 1.0;
+                failed = true;
+                break;
+            }
+            if (!(max_offdiag > OMNI_SVD_EPS)) {
+                converged = true;
+                break;
+            }
+
+            float app = u_values[gram_index(p, p, n)];
+            float aqq = u_values[gram_index(q, q, n)];
+            float apq = u_values[gram_index(p, q, n)];
+            if (!is_finite_f32(app) || !is_finite_f32(aqq) || !is_finite_f32(apq)) {
+                status = 1.0;
+                failed = true;
+                break;
+            }
+            if (!(abs_f32(apq) > 0.0)) {
+                continue;
+            }
+
+            float tau = (aqq - app) / (2.0 * apq);
+            float sign_tau = tau < 0.0 ? -1.0 : 1.0;
+            float t = sign_tau / (abs_f32(tau) + sqrt(1.0 + tau * tau));
+            float c = 1.0 / sqrt(1.0 + t * t);
+            float s = t * c;
+            if (!is_finite_f32(c) || !is_finite_f32(s)) {
+                status = 1.0;
+                failed = true;
+                break;
+            }
+
+            for (uint r = 0u; r < n; r++) {
+                if (r != p && r != q) {
+                    float arp = u_values[gram_index(r, p, n)];
+                    float arq = u_values[gram_index(r, q, n)];
+                    float new_rp = c * arp - s * arq;
+                    float new_rq = s * arp + c * arq;
+                    if (!is_finite_f32(new_rp) || !is_finite_f32(new_rq)) {
+                        status = 1.0;
+                        failed = true;
+                        break;
+                    }
+                    u_values[gram_index(r, p, n)] = new_rp;
+                    u_values[gram_index(p, r, n)] = new_rp;
+                    u_values[gram_index(r, q, n)] = new_rq;
+                    u_values[gram_index(q, r, n)] = new_rq;
+                }
+
+                float vip = tall_or_square ? v_values[r * pc.k + p] : u_values[r * pc.k + p];
+                float viq = tall_or_square ? v_values[r * pc.k + q] : u_values[r * pc.k + q];
+                float new_vip = c * vip - s * viq;
+                float new_viq = s * vip + c * viq;
+                if (!is_finite_f32(new_vip) || !is_finite_f32(new_viq)) {
+                    status = 1.0;
+                    failed = true;
+                    break;
+                }
+                if (tall_or_square) {
+                    v_values[r * pc.k + p] = new_vip;
+                    v_values[r * pc.k + q] = new_viq;
+                } else {
+                    u_values[r * pc.k + p] = new_vip;
+                    u_values[r * pc.k + q] = new_viq;
+                }
+            }
+            if (failed) {
+                break;
+            }
+
+            float new_app = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+            float new_aqq = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+            if (!is_finite_f32(new_app) || !is_finite_f32(new_aqq)) {
+                status = 1.0;
+                failed = true;
+                break;
+            }
+            u_values[gram_index(p, p, n)] = new_app;
+            u_values[gram_index(q, q, n)] = new_aqq;
+            u_values[gram_index(p, q, n)] = 0.0;
+            u_values[gram_index(q, p, n)] = 0.0;
+        }
+    }
+    if (!failed && !converged && status == 0.0) {
+        status = 2.0;
+    }
+
+    float eigen_tolerance = OMNI_SVD_EPS;
+    for (uint i = 0u; i < n; i++) {
+        float scale_value = abs_f32(u_values[gram_index(i, i, n)]);
+        if (is_finite_f32(scale_value) && scale_value * 0.00001 > eigen_tolerance) {
+            eigen_tolerance = scale_value * 0.00001;
+        }
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        float eigenvalue = u_values[gram_index(i, i, n)];
+        if (!is_finite_f32(eigenvalue)) {
+            status = 1.0;
+            eigenvalue = 0.0;
+        } else if (eigenvalue < -eigen_tolerance) {
+            if (status == 0.0) {
+                status = 1.0;
+            }
+            eigenvalue = 0.0;
+        } else if (eigenvalue < 0.0) {
+            eigenvalue = 0.0;
+        }
+        s_values[i] = eigenvalue;
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        uint best = i;
+        float best_value = s_values[i];
+        for (uint j = i + 1u; j < n; j++) {
+            if (s_values[j] > best_value) {
+                best = j;
+                best_value = s_values[j];
+            }
+        }
+        if (best != i) {
+            float tmp = s_values[i];
+            s_values[i] = s_values[best];
+            s_values[best] = tmp;
+            for (uint row = 0u; row < n; row++) {
+                if (tall_or_square) {
+                    float vec_tmp = v_values[row * pc.k + i];
+                    v_values[row * pc.k + i] = v_values[row * pc.k + best];
+                    v_values[row * pc.k + best] = vec_tmp;
+                } else {
+                    float vec_tmp = u_values[row * pc.k + i];
+                    u_values[row * pc.k + i] = u_values[row * pc.k + best];
+                    u_values[row * pc.k + best] = vec_tmp;
+                }
+            }
+        }
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        float singular_value = sqrt(s_values[i]);
+        if (!is_finite_f32(singular_value)) {
+            status = 1.0;
+            singular_value = 0.0;
+        }
+        s_values[i] = singular_value;
+    }
+
+    if (!failed) {
+        if (tall_or_square) {
+            for (uint col = 0u; col < pc.k; col++) {
+                v_orthogonalize_column(pc.cols, pc.k, col);
+                if (!v_normalize_column(pc.cols, pc.k, col) &&
+                    (s_values[col] > OMNI_SVD_EPS ||
+                     !v_fill_orthonormal_completion_column(pc.cols, pc.k, col))) {
+                    status = 1.0;
+                    failed = true;
+                    break;
+                }
+                if (s_values[col] > OMNI_SVD_EPS) {
+                    for (uint row = 0u; row < pc.rows; row++) {
+                        float sum = 0.0;
+                        for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                            sum += input_values[row * pc.cols + source_col] * v_values[source_col * pc.k + col];
+                        }
+                        u_values[row * pc.k + col] = sum / s_values[col];
+                    }
+                    u_orthogonalize_column(pc.rows, pc.k, col);
+                    if (!u_normalize_column(pc.rows, pc.k, col) &&
+                        !u_fill_orthonormal_completion_column(pc.rows, pc.k, col)) {
+                        status = 1.0;
+                        failed = true;
+                        break;
+                    }
+                } else if (!u_fill_orthonormal_completion_column(pc.rows, pc.k, col)) {
+                    status = 1.0;
+                    failed = true;
+                    break;
+                }
+            }
+        } else {
+            for (uint col = 0u; col < pc.k; col++) {
+                u_orthogonalize_column(pc.rows, pc.k, col);
+                if (!u_normalize_column(pc.rows, pc.k, col) &&
+                    (s_values[col] > OMNI_SVD_EPS ||
+                     !u_fill_orthonormal_completion_column(pc.rows, pc.k, col))) {
+                    status = 1.0;
+                    failed = true;
+                    break;
+                }
+                if (s_values[col] > OMNI_SVD_EPS) {
+                    for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                        float sum = 0.0;
+                        for (uint row = 0u; row < pc.rows; row++) {
+                            sum += input_values[row * pc.cols + source_col] * u_values[row * pc.k + col];
+                        }
+                        v_values[source_col * pc.k + col] = sum / s_values[col];
+                    }
+                    v_orthogonalize_column(pc.cols, pc.k, col);
+                    if (!v_normalize_column(pc.cols, pc.k, col) &&
+                        !v_fill_orthonormal_completion_column(pc.cols, pc.k, col)) {
+                        status = 1.0;
+                        failed = true;
+                        break;
+                    }
+                } else if (!v_fill_orthonormal_completion_column(pc.cols, pc.k, col)) {
+                    status = 1.0;
+                    failed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (failed && status == 0.0) {
+        status = 1.0;
+    }
+    s_values[status_index] = status;
+}

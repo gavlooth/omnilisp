@@ -81,7 +81,7 @@ Validates dicts, arrays, and values against structural schemas.
 **What's kept from Malli:**
 - Schemas are data, not macros — composable, introspectable, serializable
 - Combinators: `and`, `or`, `not`, `maybe` (optional)
-- Collection schemas: `map` (required/optional keys), `vector`, `tuple`
+- Collection schemas: `map` (required/optional keys), `array`, `tuple`
 - Coercion and explain (error reporting)
 
 **What's changed for Omni:**
@@ -112,7 +112,7 @@ Validates dicts, arrays, and values against structural schemas.
 (define [schema] team
   (map
     (name string)
-    (members (vector-of person))))
+    (members (array-of person))))
 ```
 
 **Schema types (dispatch targets):**
@@ -132,7 +132,7 @@ Validates dicts, arrays, and values against structural schemas.
 | `(> n)` `(< n)` | Comparison | `'(> 0)` |
 | `(re pat)` | Regex match (Pika) | `'(re "[a-z]+")` |
 | `(map ...)` | Dictionary with keys | `'(map (name string))` |
-| `(vector-of s)` | Array of schema | `'(vector-of int)` |
+| `(array-of s)` | Array of schema | `'(array-of int)` |
 | `(tuple s1 s2)` | Fixed-size array | `'(tuple string int)` |
 | `(enum v1 v2)` | One of values | `'(enum "a" "b" "c")` |
 

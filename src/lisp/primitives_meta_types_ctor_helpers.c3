@@ -111,12 +111,17 @@ fn Value* ctor_mismatch_data(
     usz arg_index,
     CtorArgMismatchPath* path
 ) {
-    Value* data = make_hashmap_checked(interp, 8, "^: out of memory");
+    Value* data = make_hashmap_no_raise(interp, 8);
     if (data == null || data.tag != HASHMAP) return null;
 
     SymbolId key_ctor = interp.symbols.intern("ctor");
     SymbolId key_expected = interp.symbols.intern("expected-args");
     SymbolId key_actual = interp.symbols.intern("actual-args");
+    if (key_ctor == INVALID_SYMBOL_ID ||
+        key_expected == INVALID_SYMBOL_ID ||
+        key_actual == INVALID_SYMBOL_ID) {
+        return null;
+    }
     if (!hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_ctor), make_symbol(interp, ctor_sym), interp) ||
         !hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_expected), expected_args, interp) ||
         !hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_actual), actual_args, interp)) {
@@ -126,6 +131,7 @@ fn Value* ctor_mismatch_data(
     if (include_index) {
         SymbolId key_arg_index = interp.symbols.intern("arg-index");
         SymbolId key_arg_path = interp.symbols.intern("arg-path");
+        if (key_arg_index == INVALID_SYMBOL_ID || key_arg_path == INVALID_SYMBOL_ID) return null;
         if (!hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_arg_index), make_int(interp, (long)arg_index), interp) ||
             !hashmap_set_checked(data.hashmap_val, make_symbol(interp, key_arg_path), ctor_arg_path_to_list(path, interp), interp)) {
             return null;

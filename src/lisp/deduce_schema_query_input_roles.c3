@@ -39,9 +39,9 @@ fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args
         bool has_index_role = false;
         bool has_ref_role = false;
         bool has_check_role = false;
-        SymbolId ref_target_relation = 0;
-        SymbolId ref_target_column = 0;
-        SymbolId check_predicate = 0;
+        SymbolId ref_target_relation = (SymbolId)0;
+        SymbolId ref_target_column = (SymbolId)0;
+        SymbolId check_predicate = (SymbolId)0;
         while (i < args.len) {
             Value* marker = args[i];
             if (marker == null || marker.tag != SYMBOL) break;
@@ -91,6 +91,9 @@ fn Value* deduce_relation_collect_columns_from_args(Relation* rel, Value*[] args
         Value* col = args[i];
         if (col == null || col.tag != SYMBOL) {
             return deduce_raise(interp, "deduce/define-relation-column-not-symbol", "__define-relation: column arguments must be symbols");
+        }
+        if (rel.col_count == usz.max) {
+            return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
         }
         if (!deduce_relation_ensure_column_capacity(rel, rel.col_count + 1)) {
             return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");

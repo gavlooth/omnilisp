@@ -7,6 +7,8 @@ todo_file="TODO.md"
 changelog_file="memory/CHANGELOG.md"
 memory_runtime_doc="docs/areas/memory-runtime.md"
 types_dispatch_doc="docs/areas/types-dispatch.md"
+ffi_foreign_runtime_doc="docs/areas/ffi-foreign-runtime.md"
+validation_status_doc="docs/areas/validation-status.md"
 fail() {
   echo "FAIL: $1"
   exit 1
@@ -57,6 +59,8 @@ require_file "$todo_file"
 require_file "$changelog_file"
 require_file "$memory_runtime_doc"
 require_file "$types_dispatch_doc"
+require_file "$ffi_foreign_runtime_doc"
+require_file "$validation_status_doc"
 
 todo_count="$(extract_todo_count)"
 [[ -n "$todo_count" ]] || fail "could not parse Current actionable count from $todo_file"
@@ -70,7 +74,7 @@ fi
 latest_changelog_date="$(extract_latest_changelog_date)"
 [[ -n "$latest_changelog_date" ]] || fail "could not parse latest changelog date from $changelog_file"
 
-for doc in "$memory_runtime_doc" "$types_dispatch_doc"; do
+for doc in "$memory_runtime_doc" "$types_dispatch_doc" "$ffi_foreign_runtime_doc" "$validation_status_doc"; do
   as_of="$(extract_as_of "$doc")"
   [[ -n "$as_of" ]] || fail "could not parse As of date from $doc"
   compare_dates "$as_of" ge "$latest_changelog_date" || fail "$doc is stale: As of $as_of lags latest changelog date $latest_changelog_date"
@@ -78,12 +82,18 @@ done
 
 memory_status="$(extract_status "$memory_runtime_doc")"
 types_status="$(extract_status "$types_dispatch_doc")"
+ffi_status="$(extract_status "$ffi_foreign_runtime_doc")"
+validation_status="$(extract_status "$validation_status_doc")"
 
 [[ "$memory_status" == "green" ]] || fail "$memory_runtime_doc must be green on the current fully validated runtime baseline (got $memory_status)"
 [[ "$types_status" == "green" ]] || fail "$types_dispatch_doc must be green once the e2e baseline cleanup is closed (got $types_status)"
+[[ "$ffi_status" == "yellow" ]] || fail "$ffi_foreign_runtime_doc must remain yellow until the non-C adapter/backend lanes are implemented (got $ffi_status)"
+[[ "$validation_status" == "green" ]] || fail "$validation_status_doc must be green while no validation residual lane is open (got $validation_status)"
 
 echo "OK: status consistency checks passed."
 echo "  latest changelog date: $latest_changelog_date"
 echo "  TODO actionable count: $todo_count"
 echo "  memory runtime status: $memory_status"
 echo "  types dispatch status: $types_status"
+echo "  ffi foreign runtime status: $ffi_status"
+echo "  validation status: $validation_status"

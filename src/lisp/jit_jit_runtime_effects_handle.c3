@@ -6,6 +6,7 @@ fn void jit_handle_warm_closures(Interp* interp, Value** closures, usz count, Va
     if (body_closure != null && body_closure.tag == CLOSURE) {
         jit_warm_expr_cache(body_closure.closure_val.body, interp);
     }
+    if (count > 0 && closures == null) return;
     for (usz i = 0; i < count; i++) {
         if (closures[i] != null && closures[i].tag == CLOSURE) {
             jit_warm_expr_cache(closures[i].closure_val.body, interp);
@@ -20,11 +21,16 @@ fn Value* jit_handle_init_clauses(Interp* interp, EffectHandler* h, Value** tags
         h.clauses = null;
         return null;
     }
-
-    if (count > usz.max / SymbolId.sizeof || count > usz.max / Value*.sizeof) {
-        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
+    if (tags == null || closures == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-handle-clause-arrays", "handle: invalid clause arrays");
     }
 
+    if (count > usz.max / SymbolId.sizeof) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
+    }
+    if (count > usz.max / Value*.sizeof) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to allocate clauses");
+    }
     h.tags = (SymbolId*)mem::malloc(SymbolId.sizeof * count);
     h.closures = (Value**)mem::malloc(Value*.sizeof * count);
     if (h.tags == null || h.closures == null) {
@@ -72,14 +78,10 @@ fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectSt
         if (handler_closure == null) {
             return runtime_effects_raise(interp, "runtime/invalid-raise-handler", "handle: raise handler closure missing");
         }
-        interp.flags.raise_pending = false;
         Value* msg_val = interp.raise_payload;
         if (msg_val == null) {
             msg_val = make_string(interp, interp.raise_msg[:interp.raise_msg_len]);
         }
-        interp.raise_payload = null;
-        interp.raise_msg_len = 0;
-        interp.raise_msg[0] = 0;
         if (msg_val == null) {
             return make_error(interp, "handle: failed to materialize raise payload");
         }
@@ -87,6 +89,10 @@ fn Value* jit_handle_dispatch_pending_raise_value(Interp* interp, HandleEffectSt
         Value* k_val = make_nil(interp);
         Value* pair = make_list2_or_error(interp, k_val, msg_val, "handle: failed to construct raise handler args");
         if (pair.tag == ERROR) return pair;
+        interp.flags.raise_pending = false;
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
+        interp.raise_msg[0] = 0;
         return jit_apply_value(handler_closure, pair, interp);
     }
     return null;
@@ -142,6 +148,9 @@ fn void jit_handle_fill_handler(EffectHandler* h, usz count, HandleEffectState* 
 }
 
 fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz count, Value* body_closure, bool strict_mode) {
+    if (count > 0 && (tags == null || closures == null)) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-handle-clause-arrays", "handle: invalid clause arrays");
+    }
     jit_handle_warm_closures(interp, closures, count, body_closure);
 
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
@@ -169,7 +178,7 @@ fn Value* jit_handle_value(Interp* interp, Value** tags, Value** closures, usz c
 
     main::stack_ctx_init(ctx, &handle_effect_entry, state);
 
-    if (!interp.ensure_handler_capacity(interp.handler_count + 1)) {
+    if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "handle: failed to grow handler stack");
     }
     usz my_idx = interp.handler_count;

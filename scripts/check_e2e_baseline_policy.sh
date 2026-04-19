@@ -9,6 +9,7 @@ metadata="scripts/baselines/e2e_expected_diff.tsv"
 entry_backend="src/entry_build_backend_compile.c3"
 expected_stage3_sources=(
   'src/main*.c3'
+  'src/entry_*.c3'
   'src/scope_region*.c3'
   'src/stack_engine*.c3'
   'src/ffi_bindings.c3'
@@ -46,6 +47,8 @@ check_stage3_source_parity() {
 
   grep -q -F 'append_matching_sources(&sources, "src", "main", ".c3")' "$entry_backend" \
     || fail "${entry_backend} no longer contributes main sources to AOT compile parity"
+  grep -q -F 'append_matching_sources(&sources, "src", "entry_", ".c3")' "$entry_backend" \
+    || fail "${entry_backend} no longer contributes entry helper sources to AOT compile parity"
   grep -q -F 'append_matching_sources(&sources, "src", "scope_region", ".c3")' "$entry_backend" \
     || fail "${entry_backend} no longer contributes scope_region sources to AOT compile parity"
   grep -q -F 'append_matching_sources(&sources, "src", "stack_engine", ".c3")' "$entry_backend" \

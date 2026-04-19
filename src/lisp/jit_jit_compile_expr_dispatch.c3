@@ -115,7 +115,7 @@ fn void? jit_compile_expr_group_core(void* s, Expr* expr, Interp* interp,
     *handled = true;
     switch (expr.tag) {
         case E_LIT:
-            jit_compile_lit(s, expr, interp)!;
+            jit_compile_lit(s, expr, interp, locals)!;
         case E_VAR:
             jit_compile_var(s, expr, interp, locals)!;
         case E_IF:
@@ -164,7 +164,7 @@ fn void? jit_compile_expr_group_effects(void* s, Expr* expr, Interp* interp,
         case E_RESOLVE:
             jit_compile_resolve(s, expr, interp, locals)!;
         case E_QUOTE:
-            jit_compile_quote(s, expr, interp)!;
+            jit_compile_quote(s, expr, interp, locals)!;
         case E_INDEX:
             jit_compile_index(s, expr, interp, locals)!;
         case E_PATH:
@@ -215,7 +215,7 @@ fn void? jit_compile_expr_group_types_ffi(void* s, Expr* expr, Interp* interp,
 fn void? jit_compile_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail = false) {
     if (expr == null) {
         // null expr -> nil
-        emit_call_1(s, (void*)&jit_make_nil);  // R0 = make_nil(V0=interp)
+        emit_call_1(s, locals, (void*)&jit_make_nil);  // R0 = make_nil(V0=interp)
         return;
     }
 

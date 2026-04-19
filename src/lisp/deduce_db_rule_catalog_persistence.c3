@@ -12,7 +12,12 @@ fn Value* deduce_db_restore_persisted_rule_catalog(DeduceDb* db, Interp* interp)
     defer mdb_txn_abort(txn);
 
     MdbDbi rule_catalog_dbi = 0;
-    if (!deduce_open_rule_catalog_dbi(db, txn, false, &rule_catalog_dbi)) return null;
+    int dbi_rc = deduce_open_rule_catalog_dbi_rc(db, txn, false, &rule_catalog_dbi);
+    if (dbi_rc == MDB_NOTFOUND) return null;
+    if (dbi_rc != MDB_SUCCESS) {
+        return deduce_raise(interp, "deduce/rule-catalog-restore-dbi-open-failed",
+            "deduce/open: persisted rule catalog dbi open failed");
+    }
 
     MdbCursor* cursor = null;
     rc = mdb_cursor_open(txn, rule_catalog_dbi, &cursor);
@@ -36,8 +41,9 @@ fn Value* deduce_db_restore_persisted_rule_catalog(DeduceDb* db, Interp* interp)
                 "deduce/open: persisted rule catalog read failed");
         }
 
+        char[] record = ((char*)data.mv_data)[:data.mv_size];
         DeducePersistedRuleCatalogRecordV1 header = {};
-        mem::copy(&header, data.mv_data, DeducePersistedRuleCatalogRecordV1.sizeof);
+        mem::copy(&header, record.ptr, DeducePersistedRuleCatalogRecordV1.sizeof);
         if (header.version != DEDUCE_PERSISTED_RULE_CATALOG_VERSION) {
             deduce_db_clear_persisted_rule_catalog(db);
             return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-version",
@@ -45,15 +51,27 @@ fn Value* deduce_db_restore_persisted_rule_catalog(DeduceDb* db, Interp* interp)
         }
 
         usz cursor_offset = DeducePersistedRuleCatalogRecordV1.sizeof;
-        if (cursor_offset + header.head_name_len > data.mv_size) {
+        char[] head_name = {};
+        if (!deduce_record_slice(record, &cursor_offset, header.head_name_len, &head_name)) {
             deduce_db_clear_persisted_rule_catalog(db);
             return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-record",
                 "deduce/open: persisted rule catalog record is truncated");
         }
 
-        char[] head_name = ((char*)data.mv_data + cursor_offset)[:header.head_name_len];
         SymbolId head_predicate = interp.symbols.intern(head_name);
-        cursor_offset += header.head_name_len;
+        if (head_predicate == INVALID_SYMBOL_ID) {
+            deduce_db_clear_persisted_rule_catalog(db);
+            return deduce_raise(interp, "deduce/rule-catalog-restore-out-of-memory",
+                "deduce/open: persisted rule catalog restore out of memory");
+        }
+
+        usz body_atom_min_bytes = 0;
+        if (!deduce_checked_mul_usz(DeducePersistedRuleCatalogBodyAtomV1.sizeof, header.body_count, &body_atom_min_bytes) ||
+            !deduce_cursor_has(cursor_offset, body_atom_min_bytes, record.len)) {
+            deduce_db_clear_persisted_rule_catalog(db);
+            return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-record",
+                "deduce/open: persisted rule catalog record is truncated");
+        }
 
         SymbolId[] body_predicates = {};
         bool[] body_negated = {};
@@ -74,29 +92,29 @@ fn Value* deduce_db_restore_persisted_rule_catalog(DeduceDb* db, Interp* interp)
         }
 
         for (usz i = 0; i < header.body_count; i++) {
-            if (cursor_offset + DeducePersistedRuleCatalogBodyAtomV1.sizeof > data.mv_size) {
+            char[] atom_bytes = {};
+            if (!deduce_record_slice(record, &cursor_offset, DeducePersistedRuleCatalogBodyAtomV1.sizeof, &atom_bytes)) {
                 deduce_db_clear_persisted_rule_catalog(db);
                 return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-record",
                     "deduce/open: persisted rule catalog record is truncated");
             }
             DeducePersistedRuleCatalogBodyAtomV1 atom = {};
-            mem::copy(
-                &atom,
-                (char*)data.mv_data + cursor_offset,
-                DeducePersistedRuleCatalogBodyAtomV1.sizeof
-            );
-            cursor_offset += DeducePersistedRuleCatalogBodyAtomV1.sizeof;
-            if (cursor_offset + atom.name_len > data.mv_size) {
+            mem::copy(&atom, atom_bytes.ptr, DeducePersistedRuleCatalogBodyAtomV1.sizeof);
+            char[] body_name = {};
+            if (!deduce_record_slice(record, &cursor_offset, atom.name_len, &body_name)) {
                 deduce_db_clear_persisted_rule_catalog(db);
                 return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-record",
                     "deduce/open: persisted rule catalog record is truncated");
             }
-            char[] body_name = ((char*)data.mv_data + cursor_offset)[:atom.name_len];
             body_predicates[i] = interp.symbols.intern(body_name);
+            if (body_predicates[i] == INVALID_SYMBOL_ID) {
+                deduce_db_clear_persisted_rule_catalog(db);
+                return deduce_raise(interp, "deduce/rule-catalog-restore-out-of-memory",
+                    "deduce/open: persisted rule catalog restore out of memory");
+            }
             body_negated[i] = atom.negated != 0;
-            cursor_offset += atom.name_len;
         }
-        if (cursor_offset != data.mv_size) {
+        if (cursor_offset != record.len) {
             deduce_db_clear_persisted_rule_catalog(db);
             return deduce_raise(interp, "deduce/rule-catalog-restore-invalid-record",
                 "deduce/open: persisted rule catalog record has trailing data");
@@ -142,8 +160,8 @@ fn Value* deduce_db_persist_rule_catalog(DeduceDb* db, Interp* interp) {
 
     for (usz i = 0; i < db.rule_signature_count; i++) {
         DeduceRuleSignature* sig = &db.rule_signatures[i];
-        usz record_size = deduce_rule_catalog_record_size(sig, interp);
-        if (record_size == 0) {
+        usz record_size = 0;
+        if (!deduce_rule_catalog_record_size(sig, interp, &record_size) || record_size == 0) {
             mdb_txn_abort(txn);
             return deduce_raise(interp, "deduce/rule-catalog-encode-failed",
                 "deduce: persisted rule catalog encode failed");

@@ -50,20 +50,10 @@ fn bool equality_ensure_pair_capacity(EqualPair** pairs_ptr, usz* cap_ptr, usz c
     if (needed <= *cap_ptr) return true;
 
     usz new_cap = *cap_ptr;
-    if (new_cap == 0) new_cap = 1;
-    while (new_cap < needed) {
-        if (new_cap > usz.max / 2) {
-            new_cap = needed;
-            break;
-        }
-        new_cap *= 2;
-    }
-
-    if (new_cap > usz.max / EqualPair.sizeof) return false;
-    usz needed_bytes = EqualPair.sizeof * new_cap;
+    while (new_cap < needed) new_cap *= 2;
 
     EqualPair* old_pairs = *pairs_ptr;
-    EqualPair* new_pairs = (EqualPair*)mem::malloc(needed_bytes);
+    EqualPair* new_pairs = (EqualPair*)mem::malloc(EqualPair.sizeof * new_cap);
     if (new_pairs == null) return false;
 
     for (usz i = 0; i < count; i++) new_pairs[i] = old_pairs[i];
@@ -75,13 +65,11 @@ fn bool equality_ensure_pair_capacity(EqualPair** pairs_ptr, usz* cap_ptr, usz c
 
     if (workspace_stats != null) {
         if (seen_pairs) {
-            if (workspace_stats.seen_heap_bytes > usz.max - needed_bytes) return false;
             workspace_stats.seen_heap_growths++;
-            workspace_stats.seen_heap_bytes += needed_bytes;
+            workspace_stats.seen_heap_bytes += EqualPair.sizeof * new_cap;
         } else {
-            if (workspace_stats.stack_heap_bytes > usz.max - needed_bytes) return false;
             workspace_stats.stack_heap_growths++;
-            workspace_stats.stack_heap_bytes += needed_bytes;
+            workspace_stats.stack_heap_bytes += EqualPair.sizeof * new_cap;
         }
     }
     return true;
@@ -92,13 +80,10 @@ fn bool equality_push_cons_pair(EqualPair** stack_ptr, usz* stack_cap_ptr, usz* 
     bool* seen_heap_ptr, Value* left, Value* right, EqualityWorkspaceStats* workspace_stats) {
     if (equality_pair_seen(*seen_ptr, *seen_count_ptr, left, right)) return true;
 
-    if (*seen_count_ptr == usz.max) return false;
     if (!equality_ensure_pair_capacity(seen_ptr, seen_cap_ptr, *seen_count_ptr, *seen_count_ptr + 1,
         seen_heap_ptr, workspace_stats, true)) return false;
     (*seen_ptr)[(*seen_count_ptr)++] = { .left = left, .right = right };
 
-    if (*stack_count_ptr == usz.max) return false;
-    if (*stack_count_ptr + 1 == usz.max) return false;
     if (!equality_ensure_pair_capacity(stack_ptr, stack_cap_ptr, *stack_count_ptr, *stack_count_ptr + 2,
         stack_heap_ptr, workspace_stats, false)) return false;
 
@@ -113,13 +98,11 @@ fn bool equality_push_array_pairs(EqualPair** stack_ptr, usz* stack_cap_ptr, usz
     if (left.array_val.length != right.array_val.length) return false;
     if (equality_pair_seen(*seen_ptr, *seen_count_ptr, left, right)) return true;
 
-    if (*seen_count_ptr == usz.max) return false;
     if (!equality_ensure_pair_capacity(seen_ptr, seen_cap_ptr, *seen_count_ptr, *seen_count_ptr + 1,
         seen_heap_ptr, workspace_stats, true)) return false;
     (*seen_ptr)[(*seen_count_ptr)++] = { .left = left, .right = right };
 
     usz len = left.array_val.length;
-    if (len > usz.max - *stack_count_ptr) return false;
     if (!equality_ensure_pair_capacity(stack_ptr, stack_cap_ptr, *stack_count_ptr, *stack_count_ptr + len,
         stack_heap_ptr, workspace_stats, false)) return false;
 

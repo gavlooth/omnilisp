@@ -65,7 +65,7 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `[union]` + `match`               — FetchResult sum type (models.omni)
 - [x] typed dispatch                     — to-json per type (models.omni)
 - [x] `[abstract]`                       — abstract Event base type (types.omni)
-- [x] `[alias]`                          — Timestamp=Integer, Price=Double (types.omni)
+- [x] `[alias]`                          — Timestamp=Integer, Price=Float64 (types.omni)
 - [x] `type-of`                          — runtime type tag inspection (types.omni)
 - [x] `is?`                              — type hierarchy checks (types.omni)
 - [x] `instance?`                        — struct vs primitive check (types.omni)
@@ -95,9 +95,9 @@ Fetches live FX rates, crypto prices, and news; serves a JSON API.
 - [x] `repeat`                          — infinite repetition iterator (smoke_test.omni)
 
 ### Conversion functions
-- [x] `string->number`                  — parse number from string (smoke_test.omni)
-- [x] `number->string`                  — format number as string (smoke_test.omni)
-- [x] `symbol->string`                  — convert symbol to string (types.omni)
+- [x] `parse-number`                  — parse number from string (smoke_test.omni)
+- [x] `String`                  — format number as string (smoke_test.omni)
+- [x] `String`                  — convert symbol to string (types.omni)
 
 ### I/O + effects
 - [x] `handle` / `raise`                — per-connection error boundary (server.omni)

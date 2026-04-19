@@ -54,7 +54,6 @@ Use this before adding aliases or reviving old syntax.
 
 - Active plans: `docs/plans/README.md`
 - Area status hub: `docs/areas/README.md`
-- Deduce runtime status: `docs/areas/deduce-runtime.md`
 - Session checkpoints: `docs/SESSION_REPORT.md`
 
 ## Redundancy Policy

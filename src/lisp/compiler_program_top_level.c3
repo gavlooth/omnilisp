@@ -3,11 +3,28 @@ module lisp;
 import std::collections::list;
 import main;
 
+fn bool compiler_expr_is_define_like(Expr* expr) {
+    if (expr == null) return false;
+    switch (expr.tag) {
+        case E_DEFINE:
+        case E_FFI_LIB:
+        case E_FFI_FN:
+            return true;
+        case E_BLOCK:
+            if (expr.block == null) return false;
+            for (usz i = 0; i < expr.block.expr_count; i++) {
+                if (!compiler_expr_is_define_like(expr.block.exprs[i])) return false;
+            }
+            return true;
+        default:
+            return false;
+    }
+}
+
 fn isz find_last_non_define(List{Expr*}* exprs) {
     isz last_non_define = -1;
     for (usz i = 0; i < exprs.len(); i++) {
-        ExprTag tag = (*exprs)[i].tag;
-        if (tag != E_DEFINE && tag != E_FFI_LIB && tag != E_FFI_FN) {
+        if (!compiler_expr_is_define_like((*exprs)[i])) {
             last_non_define = (isz)i;
         }
     }

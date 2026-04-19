@@ -42,6 +42,10 @@ fn Value* prim_deduce_materialize(Value*[] args, Env* env, Interp* interp) {
     }
 
     SymbolId manual_policy = interp.symbols.intern("manual");
+    if (manual_policy == INVALID_SYMBOL_ID) {
+        return deduce_raise(interp, "deduce/materialize-out-of-memory",
+            "deduce/materialize!: failed to intern materialized refresh policy");
+    }
     SymbolId materialized_policy =
         schema.materialized_view && schema.materialized_refresh_policy != (SymbolId)0
             ? schema.materialized_refresh_policy

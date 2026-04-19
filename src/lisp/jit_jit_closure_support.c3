@@ -19,16 +19,13 @@ fn void method_signature_init_empty(MethodSignature* sig) {
 
 fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::ScopeRegion* scope, usz param_count, usz constraint_count) {
     method_signature_init_empty(sig);
-    if (param_count > 0 && (param_count > usz.max / TypeId.sizeof
-            || param_count > usz.max / SymbolId.sizeof
-            || param_count > usz.max / ValueLiteralKey.sizeof
-            || param_count > usz.max / bool.sizeof)) {
-        return false;
-    }
-    if (constraint_count > 0 && constraint_count > usz.max / MethodConstraint.sizeof) return false;
-    sig.param_count = param_count;
-    sig.constraint_count = constraint_count;
     if (param_count > 0) {
+        if (param_count > usz.max / TypeId.sizeof ||
+            param_count > usz.max / SymbolId.sizeof ||
+            param_count > usz.max / ValueLiteralKey.sizeof ||
+            param_count > usz.max / bool.sizeof) {
+            return false;
+        }
         sig.param_types = (TypeId*)scope.alloc(TypeId.sizeof * param_count);
         sig.param_type_vars = (SymbolId*)scope.alloc(SymbolId.sizeof * param_count);
         sig.val_literals = (ValueLiteralKey*)scope.alloc(ValueLiteralKey.sizeof * param_count);
@@ -39,14 +36,17 @@ fn bool method_signature_alloc_arrays_in_scope(MethodSignature* sig, main::Scope
             sig.param_type_vars[i] = (SymbolId)0;
             sig.val_literals[i].tag = NIL;
             sig.val_literals[i].int_value = 0;
-            sig.val_literals[i].sym_value = 0;
+            sig.val_literals[i].sym_value = (SymbolId)0;
             sig.has_val_literal[i] = false;
         }
     }
     if (constraint_count > 0) {
+        if (constraint_count > usz.max / MethodConstraint.sizeof) return false;
         sig.constraints = (MethodConstraint*)scope.alloc(MethodConstraint.sizeof * constraint_count);
         if (sig.constraints == null) return false;
     }
+    sig.param_count = param_count;
+    sig.constraint_count = constraint_count;
     return true;
 }
 
@@ -86,16 +86,13 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
         return false;
     }
     method_signature_init_empty(dst);
-    if (src.param_count > 0 && (src.param_count > usz.max / TypeId.sizeof
-            || src.param_count > usz.max / SymbolId.sizeof
-            || src.param_count > usz.max / ValueLiteralKey.sizeof
-            || src.param_count > usz.max / bool.sizeof)) {
-        return false;
-    }
-    if (src.constraint_count > 0 && src.constraint_count > usz.max / MethodConstraint.sizeof) return false;
-    dst.param_count = src.param_count;
-    dst.constraint_count = src.constraint_count;
     if (src.param_count > 0) {
+        if (src.param_count > usz.max / TypeId.sizeof ||
+            src.param_count > usz.max / SymbolId.sizeof ||
+            src.param_count > usz.max / ValueLiteralKey.sizeof ||
+            src.param_count > usz.max / bool.sizeof) {
+            return false;
+        }
         dst.param_types = (TypeId*)mem::malloc(TypeId.sizeof * src.param_count);
         dst.param_type_vars = (SymbolId*)mem::malloc(SymbolId.sizeof * src.param_count);
         dst.val_literals = (ValueLiteralKey*)mem::malloc(ValueLiteralKey.sizeof * src.param_count);
@@ -112,6 +109,10 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
         }
     }
     if (src.constraint_count > 0) {
+        if (src.constraint_count > usz.max / MethodConstraint.sizeof) {
+            method_signature_destroy_heap(dst);
+            return false;
+        }
         dst.constraints = (MethodConstraint*)mem::malloc(MethodConstraint.sizeof * src.constraint_count);
         if (dst.constraints == null) {
             method_signature_destroy_heap(dst);
@@ -119,6 +120,8 @@ fn bool method_signature_copy_to_heap(MethodSignature* dst, MethodSignature* src
         }
         for (usz i = 0; i < src.constraint_count; i++) dst.constraints[i] = src.constraints[i];
     }
+    dst.param_count = src.param_count;
+    dst.constraint_count = src.constraint_count;
     return true;
 }
 
@@ -132,7 +135,9 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
         TypeAnnotation* ann = &expr.lambda.param_annotations[i];
         if (ann.has_annotation && ann.is_dict) {
             for (usz m = 0; m < ann.meta_count; m++) {
-                if (!ann.meta[m].is_int) constraint_count++;
+                if (ann.meta[m].is_int) continue;
+                if (constraint_count == usz.max) return null;
+                constraint_count++;
             }
         }
     }
@@ -154,7 +159,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 sig.param_type_vars[i] = (SymbolId)0;
                 sig.val_literals[i].tag = NIL;
                 sig.val_literals[i].int_value = 0;
-                sig.val_literals[i].sym_value = 0;
+                sig.val_literals[i].sym_value = (SymbolId)0;
                 sig.has_val_literal[i] = false;
                 bool saw_type_var = false;
                 for (usz m = 0; m < ann.meta_count; m++) {
@@ -166,6 +171,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                             // Multi-key metadata does not have an unambiguous single type-var binding for this param.
                             sig.param_type_vars[i] = (SymbolId)0;
                         }
+                        if (sig.constraint_count >= constraint_count) return null;
                         sig.constraints[sig.constraint_count].param_sym = ann.meta[m].key;
                         sig.constraints[sig.constraint_count].bound_type =
                             interp.types.lookup(ann.meta[m].sym_value, &interp.symbols);
@@ -184,7 +190,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
                 }
                 sig.val_literals[i].tag = NIL;
                 sig.val_literals[i].int_value = 0;
-                sig.val_literals[i].sym_value = 0;
+                sig.val_literals[i].sym_value = (SymbolId)0;
                 sig.has_val_literal[i] = false;
             }
         } else {
@@ -192,7 +198,7 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
             sig.param_type_vars[i] = (SymbolId)0;
             sig.val_literals[i].tag = NIL;
             sig.val_literals[i].int_value = 0;
-            sig.val_literals[i].sym_value = 0;
+            sig.val_literals[i].sym_value = (SymbolId)0;
             sig.has_val_literal[i] = false;
         }
     }
@@ -204,8 +210,6 @@ fn MethodSignature* jit_build_lambda_type_sig(Interp* interp, Expr* expr) {
 // Phase 4b: Closures allocated in current_scope (not root_scope). Env copied to a
 // standalone env_scope (refcounted). Temporary closures freed when scope releases.
 fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     bool need_env_copy = (interp.current_scope != interp.root_scope);
     BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
 

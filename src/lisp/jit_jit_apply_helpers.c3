@@ -12,26 +12,18 @@ fn bool zeroarg_closure_trace_enabled() @inline {
 }
 
 fn Value* jit_make_int(Interp* interp, long n) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     return make_int(interp, n);
 }
 
 fn Value* jit_make_nil(Interp* interp) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     return make_nil(interp);
 }
 
 fn Value* jit_make_void(Interp* interp) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     return make_void(interp);
 }
 
 fn Value* jit_lookup_global(Interp* interp, uint sym_id) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     SymbolId name = (SymbolId)sym_id;
     Value* v = interp.global_env.lookup(name);
     if (v != null) return v;

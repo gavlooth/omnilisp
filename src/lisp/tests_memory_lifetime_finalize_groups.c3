@@ -935,7 +935,7 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
 
         Env* e = make_env(interp, null);
         bool setup_ok = e != null;
-        SymbolId missing_sid = 0;
+        SymbolId missing_sid = (SymbolId)0;
         for (usz i = 0; i < 4 && setup_ok; i++) {
             char[48] name_buf;
             if (try char[] name = io::bprintf(&name_buf, "__barrier_growth_seed_%d", (int)i)) {
@@ -1022,7 +1022,7 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
         }
 
         char[48] trigger_buf;
-        SymbolId trigger_sid = 0;
+        SymbolId trigger_sid = (SymbolId)0;
         if (try char[] trigger_name = io::bprintf(&trigger_buf, "__hash_rebuild_trigger_%d", (int)ENV_HASH_THRESHOLD)) {
             trigger_sid = interp.symbols.intern(trigger_name);
         } else {
@@ -1079,8 +1079,8 @@ fn void run_memory_lifetime_env_lane_barrier_tests(Interp* interp, int* pass, in
         bool boot_ok = setup_ok && bootstrap_runtime_interp(tmp);
         g_env_force_bindings_alloc_oom = false;
 
-        SymbolId plus_sid = setup_ok ? tmp.symbols.intern("+") : 0;
-        SymbolId map_sid = setup_ok ? tmp.symbols.intern("map") : 0;
+        SymbolId plus_sid = setup_ok ? tmp.symbols.intern("+") : (SymbolId)0;
+        SymbolId map_sid = setup_ok ? tmp.symbols.intern("map") : (SymbolId)0;
         Value* plus_v = setup_ok ? tmp.global_env.lookup(plus_sid) : null;
         Value* map_v = setup_ok ? tmp.global_env.lookup(map_sid) : null;
         bool ok = setup_ok &&

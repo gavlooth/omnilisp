@@ -11,6 +11,12 @@ enum CopyParentRoute : char {
     CP_ROUTE_VOID,
     CP_ROUTE_INT,
     CP_ROUTE_DOUBLE,
+    CP_ROUTE_FLOAT32,
+    CP_ROUTE_COMPLEX128,
+    CP_ROUTE_COMPLEX64,
+    CP_ROUTE_BIG_INTEGER,
+    CP_ROUTE_BIG_FLOAT,
+    CP_ROUTE_BIG_COMPLEX,
     CP_ROUTE_STRING,
     CP_ROUTE_SYMBOL,
     CP_ROUTE_CONS,
@@ -27,6 +33,7 @@ enum CopyParentRoute : char {
     CP_ROUTE_MODULE,
     CP_ROUTE_ERROR,
     CP_ROUTE_TIME_POINT,
+    CP_ROUTE_TENSOR,
 }
 
 fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
@@ -39,6 +46,18 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
             return CP_ROUTE_INT;
         case DOUBLE:
             return CP_ROUTE_DOUBLE;
+        case FLOAT32:
+            return CP_ROUTE_FLOAT32;
+        case COMPLEX128:
+            return CP_ROUTE_COMPLEX128;
+        case COMPLEX64:
+            return CP_ROUTE_COMPLEX64;
+        case BIG_INTEGER:
+            return CP_ROUTE_BIG_INTEGER;
+        case BIG_FLOAT:
+            return CP_ROUTE_BIG_FLOAT;
+        case BIG_COMPLEX:
+            return CP_ROUTE_BIG_COMPLEX;
         case STRING:
             return CP_ROUTE_STRING;
         case SYMBOL:
@@ -58,6 +77,8 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
         case ARRAY:
         case METHOD_TABLE:
             return CP_ROUTE_SHARED_WRAPPER;
+        case TENSOR:
+            return CP_ROUTE_TENSOR;
         case INSTANCE:
             return CP_ROUTE_INSTANCE;
         case FFI_HANDLE:
@@ -77,6 +98,48 @@ fn CopyParentRoute copy_parent_route_for_tag(ValueTag tag) {
     }
 }
 
+fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
+    switch (route) {
+        case CP_ROUTE_NIL:
+        case CP_ROUTE_VOID:
+        case CP_ROUTE_INT:
+        case CP_ROUTE_DOUBLE:
+        case CP_ROUTE_FLOAT32:
+        case CP_ROUTE_COMPLEX128:
+        case CP_ROUTE_COMPLEX64:
+        case CP_ROUTE_BIG_INTEGER:
+        case CP_ROUTE_BIG_FLOAT:
+        case CP_ROUTE_BIG_COMPLEX:
+        case CP_ROUTE_STRING:
+        case CP_ROUTE_SYMBOL:
+        case CP_ROUTE_TYPE_INFO:
+        case CP_ROUTE_MODULE:
+        case CP_ROUTE_ERROR:
+        case CP_ROUTE_TIME_POINT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool copy_parent_tag_is_data_container(ValueTag tag) @inline {
+    switch (tag) {
+        case CONS:
+        case HASHMAP:
+        case SET:
+        case ARRAY:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn bool copy_parent_should_skip_reuse_for_stackctx_headroom(CopyParentRoute route, ValueTag tag) @inline {
+    if (main::g_current_stack_ctx == null) return false;
+    if (!copy_parent_route_is_leaf(route) && !copy_parent_tag_is_data_container(tag)) return false;
+    return !main::stack_has_apply_headroom(BOUNDARY_ALIAS_STACK_MIN_HEADROOM);
+}
+
 fn Value* copy_to_parent_by_route(
     Value* v,
     Interp* interp,
@@ -92,6 +155,18 @@ fn Value* copy_to_parent_by_route(
             return make_int(interp, v.int_val);
         case CP_ROUTE_DOUBLE:
             return make_double(interp, v.double_val);
+        case CP_ROUTE_FLOAT32:
+            return make_float32(interp, v.float32_val);
+        case CP_ROUTE_COMPLEX128:
+            return make_complex128(interp, v.complex128_val.real, v.complex128_val.imag);
+        case CP_ROUTE_COMPLEX64:
+            return make_complex64(interp, v.complex64_val.real, v.complex64_val.imag);
+        case CP_ROUTE_BIG_INTEGER:
+            return copy_big_integer_to_parent(v, interp, fault_out);
+        case CP_ROUTE_BIG_FLOAT:
+            return copy_big_float_to_parent(v, interp, fault_out);
+        case CP_ROUTE_BIG_COMPLEX:
+            return copy_big_complex_to_parent(v, interp, fault_out);
         case CP_ROUTE_STRING:
             return make_string(interp, v.str_chars[:v.str_len]);
         case CP_ROUTE_SYMBOL:
@@ -133,6 +208,8 @@ fn Value* copy_to_parent_by_route(
             return make_error(interp, v.str_chars[:v.str_len]);
         case CP_ROUTE_TIME_POINT:
             return copy_time_point_to_parent(v, interp);
+        case CP_ROUTE_TENSOR:
+            return copy_tensor_to_parent(v, interp, fault_out);
     }
 }
 
@@ -157,10 +234,10 @@ fn Value* copy_to_parent_with_fault(
         return copy_to_parent_missing_scope_provenance_error(interp);
     }
 
-    PromotionContext* active_ctx = interp.active_promotion_ctx;
-    if (active_ctx != null) {
-        Value* cached = promotion_context_lookup(active_ctx, v);
-        if (cached != null) return cached;
+    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
+    if (copy_parent_should_skip_reuse_for_stackctx_headroom(route, v.tag)) {
+        g_copy_to_parent_stats.defensive_copies++;
+        return copy_to_parent_by_route(v, interp, route, copy_fault_out);
     }
 
     // Scope-aware optimization: if value is NOT in the scope being released,
@@ -168,13 +245,10 @@ fn Value* copy_to_parent_with_fault(
     // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
     // chunk-transfer paths (scope_splice_escapes) move allocations without
     // rewriting per-value scope_gen stamps.
-    if (active_ctx == null) {
-        Value* fast_reuse = null;
-        if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
-    }
+    Value* fast_reuse = null;
+    if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
     copy_to_parent_note_cons_spine(v);
 
-    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
     return copy_to_parent_by_route(v, interp, route, copy_fault_out);
 }
 

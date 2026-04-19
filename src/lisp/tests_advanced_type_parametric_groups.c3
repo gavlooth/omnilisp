@@ -7,7 +7,7 @@ fn void run_advanced_type_parametric_core_hierarchy_tests(Interp* interp, int* p
 
     // type-of primitive
     test_truthy(interp, "type-of int", "(= (type-of 42) 'Integer)", pass, fail);
-    test_truthy(interp, "type-of double", "(= (type-of 3.14) 'Double)", pass, fail);
+    test_truthy(interp, "type-of double", "(= (type-of 3.14) 'Float64)", pass, fail);
     test_truthy(interp, "type-of string", "(= (type-of \"hello\") 'String)", pass, fail);
     test_truthy(interp, "type-of symbol", "(= (type-of 'foo) 'Symbol)", pass, fail);
     test_truthy(interp, "type-of nil", "(= (type-of nil) 'Nil)", pass, fail);
@@ -153,12 +153,12 @@ fn void run_advanced_type_parametric_ctor_annotation_tests(Interp* interp, int* 
 
     test_str_val(interp, "ctor annotation mismatch payload code",
         "(try (lambda (x) (^(Box String) (Box 42))) "
-        "     (lambda (payload) (symbol->string (ref payload 'code))))",
+        "     (lambda (payload) (String (ref payload 'code))))",
         "type/ctor-type-arg-mismatch", pass, fail);
 
     test_str_val(interp, "ctor annotation arity payload code",
         "(try (lambda (x) (^(Pair Integer) (Pair 1 \"two\"))) "
-        "     (lambda (payload) (symbol->string (ref payload 'code))))",
+        "     (lambda (payload) (String (ref payload 'code))))",
         "type/ctor-arity-mismatch", pass, fail);
 
     test_eq_interp(interp, "ctor annotation mismatch arg-index",
@@ -202,7 +202,7 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
 
     test_str_val(interp, "typed lambda call boundary mismatch payload code",
         "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
-        "     (lambda (payload) (symbol->string (ref payload 'code))))",
+        "     (lambda (payload) (String (ref payload 'code))))",
         "type/arg-mismatch", pass, fail);
 
     test_eq_interp(interp, "typed lambda call boundary mismatch param-index",
@@ -211,15 +211,15 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
         0, pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch failure kind",
         "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
-        "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'failure))))",
+        "     (lambda (payload) (String (ref (ref payload 'data) 'failure))))",
         "type", pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch expected type",
         "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
-        "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'expected))))",
+        "     (lambda (payload) (String (ref (ref payload 'data) 'expected))))",
         "Integer", pass, fail);
     test_str_val(interp, "typed lambda call boundary mismatch actual type",
         "(try (lambda (x) ((lambda ((^Integer n)) n) \"nope\")) "
-        "     (lambda (payload) (symbol->string (ref (ref payload 'data) 'actual))))",
+        "     (lambda (payload) (String (ref (ref payload 'data) 'actual))))",
         "String", pass, fail);
 
     test_eq_interp(interp, "typed variadic lambda fixed-prefix mismatch param-index",
@@ -229,7 +229,7 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
 
     test_str_val(interp, "Lambda annotation gates closure-valued args",
         "(try (lambda (x) ((lambda ((^(Lambda Integer Integer) f)) 1) 42)) "
-        "     (lambda (payload) (symbol->string (ref payload 'code))))",
+        "     (lambda (payload) (String (ref payload 'code))))",
         "type/arg-mismatch", pass, fail);
 
     test_eq_interp(interp, "Lambda annotation accepts closure args",
@@ -245,10 +245,10 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
         pass, fail);
 
     // Cross-test: typed lambda boundaries follow exact-or-subtype semantics (no implicit widening).
-    test_error(interp, "typed lambda numeric no implicit Integer->Double widening",
-        "((lambda ((^Double x)) x) 7)", pass, fail);
+    test_error(interp, "typed lambda numeric no implicit Integer->Float64 widening",
+        "((lambda ((^Float64 x)) x) 7)", pass, fail);
     test_truthy_interp(interp, "typed lambda numeric explicit constructor conversion",
-        "(= ((lambda ((^Double x)) x) (Double 7)) 7.0)", pass, fail);
+        "(= ((lambda ((^Float64 x)) x) (Float64 7)) 7.0)", pass, fail);
 
     // Cross-test: typed lambda boundary checks compose with dispatch-selected methods.
     setup(interp, "(define (l3-dispatch-lam (^Integer x)) ((lambda ((^Integer y)) (+ y 5)) x))");
@@ -262,7 +262,7 @@ fn void run_advanced_type_lambda_call_boundary_tests(Interp* interp, int* pass, 
         "((lambda ((^L3Opt v)) 1) (L3Some 9))", 1, pass, fail);
     test_str_val(interp, "typed lambda union mismatch payload code",
         "(try (lambda (x) ((lambda ((^L3Opt v)) 1) 42)) "
-        "     (lambda (payload) (symbol->string (ref payload 'code))))",
+        "     (lambda (payload) (String (ref payload 'code))))",
         "type/arg-mismatch", pass, fail);
 }
 
@@ -385,6 +385,13 @@ fn void run_advanced_type_value_alias_deprecation_matrix_tests(Interp* interp, i
         "parser matrix accepts Value bool constructor",
         "((lambda ((^(Value true) ok)) 99) true)",
         99,
+        pass,
+        fail);
+
+    test_eq_interp(interp,
+        "parser matrix accepts Value nil constructor",
+        "((lambda ((^(Value nil) x)) 77) nil)",
+        77,
         pass,
         fail);
 

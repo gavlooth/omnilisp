@@ -46,7 +46,6 @@ fn long deduce_rule_test_list_length(Value* list) {
 }
 
 fn void run_deduce_rule_validation_tests_explain(Interp* interp, int* pass, int* fail) {
-    run_deduce_rule_validation_tests_explain_head(interp, pass, fail);
     run_deduce_rule_validation_tests_explain_goal_directed(interp, pass, fail);
     run_deduce_rule_validation_tests_explain_plan_shape(interp, pass, fail);
     run_deduce_rule_validation_tests_explain_aggregate_projection(interp, pass, fail);

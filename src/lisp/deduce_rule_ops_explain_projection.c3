@@ -4,9 +4,7 @@ fn Value* deduce_explain_reverse_list(Value* list, Interp* interp) {
     Value* out = make_nil(interp);
     Value* cur = list;
     while (is_cons(cur)) {
-        Value* next = make_cons(interp, cur.cons_val.car, out);
-        if (next != null && next.tag == ERROR) return next;
-        out = next;
+        out = make_cons(interp, cur.cons_val.car, out);
         cur = cur.cons_val.cdr;
     }
     return out;

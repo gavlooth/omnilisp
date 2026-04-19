@@ -1,0 +1,68 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    float tolerance;
+    uint rows;
+    uint cols;
+    uint padding;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+float abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    uint count = params.rows * params.cols;
+    for (uint i = 0; i < count; i++) {
+        output_data[1u + i] = input_data[i];
+    }
+
+    uint rank = 0u;
+    for (uint col = 0u; col < params.cols && rank < params.rows; col++) {
+        uint pivot_row = rank;
+        float pivot_abs = abs_f32(output_data[1u + pivot_row * params.cols + col]);
+        for (uint row = rank + 1u; row < params.rows; row++) {
+            float candidate_abs = abs_f32(output_data[1u + row * params.cols + col]);
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+
+        if (!(pivot_abs > params.tolerance)) continue;
+        if (pivot_row != rank) {
+            for (uint c = 0u; c < params.cols; c++) {
+                uint rank_index = 1u + rank * params.cols + c;
+                uint pivot_index = 1u + pivot_row * params.cols + c;
+                float tmp = output_data[rank_index];
+                output_data[rank_index] = output_data[pivot_index];
+                output_data[pivot_index] = tmp;
+            }
+        }
+
+        float pivot = output_data[1u + rank * params.cols + col];
+        if (!(abs_f32(pivot) > params.tolerance)) continue;
+        for (uint row = rank + 1u; row < params.rows; row++) {
+            float factor = output_data[1u + row * params.cols + col] / pivot;
+            output_data[1u + row * params.cols + col] = 0.0;
+            for (uint c = col + 1u; c < params.cols; c++) {
+                uint row_index = 1u + row * params.cols + c;
+                uint rank_index = 1u + rank * params.cols + c;
+                output_data[row_index] -= factor * output_data[rank_index];
+            }
+        }
+        rank += 1u;
+    }
+
+    output_data[0] = float(rank);
+}

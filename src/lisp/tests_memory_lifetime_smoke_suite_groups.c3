@@ -13,6 +13,10 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_copy_fault_tests(interp, pass, fail);
     run_memory_lifetime_boundary_invariant_policy_tests(interp, pass, fail);
     run_memory_lifetime_boundary_scope_interleaving_test(interp, pass, fail);
+    run_memory_lifetime_boundary_nested_effect_payload_test(interp, pass, fail);
+    run_memory_lifetime_boundary_wide_scalar_payload_test(interp, pass, fail);
+    run_memory_lifetime_boundary_shared_composite_cycle_payload_test(interp, pass, fail);
+    run_memory_lifetime_boundary_instance_payload_alias_test(interp, pass, fail);
     run_memory_lifetime_boundary_transition_regression_tests(interp, pass, fail);
     run_memory_lifetime_boundary_return_classification_tests(interp, pass, fail);
     run_memory_lifetime_boundary_commit_escape_tests(interp, pass, fail);
@@ -20,6 +24,9 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_txn_protocol_tests(interp, pass, fail);
     run_memory_lifetime_run_program_boundary_state_test(interp, pass, fail);
     run_memory_lifetime_run_program_error_boundary_state_test(interp, pass, fail);
+    run_memory_lifetime_tco_string_argument_list_promotion_test(interp, pass, fail);
+    run_memory_lifetime_tco_env_copy_failure_fail_closed_test(interp, pass, fail);
+    run_memory_lifetime_tco_recycle_env_copy_failure_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_nested_temp_graph_recycle_guard_test(interp, pass, fail);
     run_memory_lifetime_tco_closure_payload_temp_recycle_guard_test(interp, pass, fail);
     run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test(interp, pass, fail);

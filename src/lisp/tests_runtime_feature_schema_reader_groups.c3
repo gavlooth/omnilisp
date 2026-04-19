@@ -83,7 +83,7 @@ fn void run_schema_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "explain effect decision stable shape",
         "(let (d (ref (explain 'effect (resolve 42)) 'decision)) (and (has? d 'reason) (and (has? d 'outcome) (and (has? d 'handler-index) (and (has? d 'search-order) (and (has? d 'clause-index) (and (has? d 'match-tag) (and (has? d 'strict-handler-index) (and (has? d 'fast-path-index) (and (has? d 'fast-path-primitive) (and (has? d 'arg-name) (and (has? d 'continuation-name) (has? d 'debug_message)))))))))))))", pass, fail);
     setup(interp, "(define (explain-score (^Integer x) (^Integer y)) (+ x y))");
-    setup(interp, "(define (explain-score (^Double x) (^Double y)) (+ x y))");
+    setup(interp, "(define (explain-score (^Float64 x) (^Float64 y)) (+ x y))");
     test_truthy(interp, "explain dispatch status method-match",
         "(= (ref (ref (explain 'dispatch (explain-score 1 2)) 'decision) 'reason) 'method-match)", pass, fail);
     test_eq(interp, "explain dispatch candidate count",
@@ -147,9 +147,21 @@ fn void run_reader_dispatch_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "ellipsis token fails closed",
         "...", "unexpected '...'", pass, fail);
 
-    // Unknown hash dispatch should be rejected deterministically.
-    test_error_contains(interp, "unknown # dispatch rejected",
-        "(+ 1 #x 2)", "unknown # dispatch sequence", pass, fail);
+    // Reader tags rewrite to one-argument calls. Function handlers are ordinary
+    // definitions; [reader tag] is the canonical macro-tag declaration surface.
+    test_eq(interp, "reader tag function call shorthand",
+        "(block (define (reader-inc x) (+ x 1)) #reader-inc 41)", 42, pass, fail);
+    test_eq(interp, "reader tag supports slash names",
+        "(block (define (debug/spy x) x) #debug/spy 7)", 7, pass, fail);
+    test_eq(interp, "reader tag macro declaration",
+        "(block (define [reader tag] reader-double (syntax-match ([x] (template (+ (insert x) (insert x)))))) #reader-double 21)",
+        42, pass, fail);
+    test_error_contains(interp, "reader tag malformed define rejected",
+        "(define [reader tag] bad 1)", "macro definition requires", pass, fail);
+
+    // Non-symbol hash dispatch should still fail closed.
+    test_error_contains(interp, "numeric # dispatch rejected",
+        "(+ 1 #1x 2)", "unknown # dispatch sequence", pass, fail);
     test_error_contains(interp, "bare # dispatch rejected",
         "(+ 1 # 2)", "unknown # dispatch sequence", pass, fail);
 

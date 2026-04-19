@@ -1,89 +1,117 @@
 module lisp;
 
-fn void interp_init_core_symbols(Interp* self) {
-    self.sym_lambda = self.symbols.intern("lambda");
-    self.sym_if = self.symbols.intern("if");
-    self.sym_let = self.symbols.intern("let");
-    self.sym_define = self.symbols.intern("define");
-    self.sym_quote = self.symbols.intern("quote");
-    self.sym_checkpoint = self.symbols.intern("checkpoint");
-    self.sym_capture = self.symbols.intern("capture");
-    self.sym_perform = self.symbols.intern("perform");
-    self.sym_signal = self.symbols.intern("signal");
-    self.sym_handle = self.symbols.intern("handle");
-    self.sym_resolve = self.symbols.intern("resolve");
-    self.sym_with_continuation = self.symbols.intern("with-continuation");
-    self.sym__k = self.symbols.intern("__k");
-    self.sym_match = self.symbols.intern("match");
-    self.sym_and = self.symbols.intern("and");
-    self.sym_or = self.symbols.intern("or");
-    self.sym_true = self.symbols.intern("true");
-    self.sym_false = self.symbols.intern("false");
-    self.sym_block = self.symbols.intern("block");
-    self.sym_set = self.symbols.intern("set!");
-    self.sym_quasiquote = self.symbols.intern("quasiquote");
-    self.sym_unquote = self.symbols.intern("unquote");
-    self.sym_unquote_splicing = self.symbols.intern("unquote-splicing");
-    self.sym_defmacro = self.symbols.intern("defmacro");
-    self.sym_dotdot = self.symbols.intern("..");
-    self.sym_macro = self.symbols.intern("macro");
+fn bool interp_init_checked_mul_usz(usz a, usz b, usz* out) @inline {
+    if (b != 0 && a > usz.max / b) return false;
+    *out = a * b;
+    return true;
 }
 
-fn void interp_init_type_symbols(Interp* self) {
-    self.sym_type = self.symbols.intern("type");
-    self.sym_struct = self.symbols.intern("struct");
-    self.sym_abstract = self.symbols.intern("abstract");
-    self.sym_union = self.symbols.intern("union");
-    self.sym_alias = self.symbols.intern("alias");
-    self.sym_effect = self.symbols.intern("effect");
-
-    self.sym_ffi = self.symbols.intern("ffi");
-    self.sym_lib = self.symbols.intern("lib");
-    self.sym_Pointer = self.symbols.intern("Pointer");
-    self.sym_Void = self.symbols.intern("Void");
-
-    self.sym_Integer = self.symbols.intern("Integer");
-    self.sym_Double = self.symbols.intern("Double");
-    self.sym_String = self.symbols.intern("String");
-    self.sym_Symbol = self.symbols.intern("Symbol");
-    self.sym_List = self.symbols.intern("List");
-    self.sym_Boolean = self.symbols.intern("Boolean");
-    self.sym_Nil = self.symbols.intern("Nil");
-    self.sym_Closure = self.symbols.intern("Closure");
-    self.sym_Array = self.symbols.intern("Array");
-    self.sym_Dictionary = self.symbols.intern("Dictionary");
-    self.sym_Set = self.symbols.intern("Set");
-    self.sym_Any = self.symbols.intern("Any");
-    self.sym_Value = self.symbols.intern("Value");
-    self.sym_Number = self.symbols.intern("Number");
-    self.sym_Collection = self.symbols.intern("Collection");
-    self.sym_Iterator = self.symbols.intern("Iterator");
-    self.sym_TimePoint = self.symbols.intern("TimePoint");
-    self.sym_Coroutine = self.symbols.intern("Coroutine");
+fn bool interp_init_symbol(Interp* self, SymbolId* out, char[] name) @inline {
+    if (self == null || out == null) return false;
+    SymbolId sid = self.symbols.intern(name);
+    if (sid == INVALID_SYMBOL_ID) return false;
+    *out = sid;
+    return true;
 }
 
-fn void interp_init_misc_symbols(Interp* self) {
-    self.sym_raise = self.symbols.intern("raise");
-    self.sym_car = self.symbols.intern("car");
-    self.sym_cdr = self.symbols.intern("cdr");
-    self.sym_placeholder = self.symbols.intern("__placeholder");
-    self.sym_pipe = self.symbols.intern("|>");
-    self.sym_question = self.symbols.intern("?");
+fn bool interp_init_core_symbols(Interp* self) {
+    return interp_init_symbol(self, &self.sym_lambda, "lambda") &&
+        interp_init_symbol(self, &self.sym_if, "if") &&
+        interp_init_symbol(self, &self.sym_let, "let") &&
+        interp_init_symbol(self, &self.sym_define, "define") &&
+        interp_init_symbol(self, &self.sym_quote, "quote") &&
+        interp_init_symbol(self, &self.sym_checkpoint, "checkpoint") &&
+        interp_init_symbol(self, &self.sym_capture, "capture") &&
+        interp_init_symbol(self, &self.sym_perform, "perform") &&
+        interp_init_symbol(self, &self.sym_signal, "signal") &&
+        interp_init_symbol(self, &self.sym_handle, "handle") &&
+        interp_init_symbol(self, &self.sym_resolve, "resolve") &&
+        interp_init_symbol(self, &self.sym_with_continuation, "with-continuation") &&
+        interp_init_symbol(self, &self.sym__k, "__k") &&
+        interp_init_symbol(self, &self.sym_match, "match") &&
+        interp_init_symbol(self, &self.sym_and, "and") &&
+        interp_init_symbol(self, &self.sym_or, "or") &&
+        interp_init_symbol(self, &self.sym_true, "true") &&
+        interp_init_symbol(self, &self.sym_false, "false") &&
+        interp_init_symbol(self, &self.sym_block, "block") &&
+        interp_init_symbol(self, &self.sym_set, "set!") &&
+        interp_init_symbol(self, &self.sym_quasiquote, "quasiquote") &&
+        interp_init_symbol(self, &self.sym_unquote, "unquote") &&
+        interp_init_symbol(self, &self.sym_unquote_splicing, "unquote-splicing") &&
+        interp_init_symbol(self, &self.sym_defmacro, "defmacro") &&
+        interp_init_symbol(self, &self.sym_dotdot, "..") &&
+        interp_init_symbol(self, &self.sym_macro, "macro");
+}
+
+fn bool interp_init_type_symbols(Interp* self) {
+    return interp_init_symbol(self, &self.sym_type, "type") &&
+        interp_init_symbol(self, &self.sym_struct, "struct") &&
+        interp_init_symbol(self, &self.sym_abstract, "abstract") &&
+        interp_init_symbol(self, &self.sym_union, "union") &&
+        interp_init_symbol(self, &self.sym_alias, "alias") &&
+        interp_init_symbol(self, &self.sym_effect, "effect") &&
+        interp_init_symbol(self, &self.sym_ffi, "ffi") &&
+        interp_init_symbol(self, &self.sym_lib, "lib") &&
+        interp_init_symbol(self, &self.sym_ForeignHandle, "ForeignHandle") &&
+        interp_init_symbol(self, &self.sym_Void, "Void") &&
+        interp_init_symbol(self, &self.sym_Integer, "Integer") &&
+        interp_init_symbol(self, &self.sym_BigInteger, "BigInteger") &&
+        interp_init_symbol(self, &self.sym_BigFloat, "BigFloat") &&
+        interp_init_symbol(self, &self.sym_BigComplex, "BigComplex") &&
+        interp_init_symbol(self, &self.sym_Complex128, "Complex128") &&
+        interp_init_symbol(self, &self.sym_Complex64, "Complex64") &&
+        interp_init_symbol(self, &self.sym_Float, "Float") &&
+        interp_init_symbol(self, &self.sym_Float32, "Float32") &&
+        interp_init_symbol(self, &self.sym_Double, "Float64") &&
+        interp_init_symbol(self, &self.sym_String, "String") &&
+        interp_init_symbol(self, &self.sym_Symbol, "Symbol") &&
+        interp_init_symbol(self, &self.sym_List, "List") &&
+        interp_init_symbol(self, &self.sym_Boolean, "Boolean") &&
+        interp_init_symbol(self, &self.sym_Nil, "Nil") &&
+        interp_init_symbol(self, &self.sym_Closure, "Closure") &&
+        interp_init_symbol(self, &self.sym_Array, "Array") &&
+        interp_init_symbol(self, &self.sym_Dictionary, "Dictionary") &&
+        interp_init_symbol(self, &self.sym_Set, "Set") &&
+        interp_init_symbol(self, &self.sym_Any, "Any") &&
+        interp_init_symbol(self, &self.sym_Value, "Value") &&
+        interp_init_symbol(self, &self.sym_Number, "Number") &&
+        interp_init_symbol(self, &self.sym_Collection, "Collection") &&
+        interp_init_symbol(self, &self.sym_Iterator, "Iterator") &&
+        interp_init_symbol(self, &self.sym_TimePoint, "TimePoint") &&
+        interp_init_symbol(self, &self.sym_Coroutine, "Coroutine") &&
+        interp_init_symbol(self, &self.sym_Tensor, "Tensor");
+}
+
+fn bool interp_init_misc_symbols(Interp* self) {
+    return interp_init_symbol(self, &self.sym_raise, "raise") &&
+        interp_init_symbol(self, &self.sym_car, "car") &&
+        interp_init_symbol(self, &self.sym_cdr, "cdr") &&
+        interp_init_symbol(self, &self.sym_placeholder, "__placeholder") &&
+        interp_init_symbol(self, &self.sym_pipe, "|>") &&
+        interp_init_symbol(self, &self.sym_question, "?");
 }
 
 fn void interp_init_module_state(Interp* self) {
-    self.sym_module = self.symbols.intern("module");
-    self.sym_import = self.symbols.intern("import");
-    self.sym_export = self.symbols.intern("export");
-    self.sym_as = self.symbols.intern("as");
-    self.sym_all = self.symbols.intern("all");
-    self.sym_export_from = self.symbols.intern("export-from");
+    assert(interp_init_symbol(self, &self.sym_module, "module"), "interp module symbol intern failed");
+    assert(interp_init_symbol(self, &self.sym_import, "import"), "interp module symbol intern failed");
+    assert(interp_init_symbol(self, &self.sym_export, "export"), "interp module symbol intern failed");
+    assert(interp_init_symbol(self, &self.sym_as, "as"), "interp module symbol intern failed");
+    assert(interp_init_symbol(self, &self.sym_all, "all"), "interp module symbol intern failed");
+    assert(interp_init_symbol(self, &self.sym_export_from, "export-from"), "interp module symbol intern failed");
     self.module_count = 0;
-    self.module_capacity = 0;
-    self.modules = null;
-    self.module_hash_capacity = 0;
-    self.module_hash_index = null;
-    self.ensure_module_capacity(MODULE_INITIAL_CAPACITY);
+    self.module_capacity = MODULE_INITIAL_CAPACITY;
+    usz module_bytes = 0;
+    assert(interp_init_checked_mul_usz(Module.sizeof, self.module_capacity, &module_bytes), "interp module table size overflow");
+    self.modules = (Module*)mem::malloc(module_bytes);
+    assert(self.modules != null, "interp module table alloc failed");
+    usz module_hash_capacity = 0;
+    assert(interp_init_checked_mul_usz(self.module_capacity, (usz)2, &module_hash_capacity), "interp module hash capacity overflow");
+    self.module_hash_capacity = module_hash_capacity;
+    usz module_hash_bytes = 0;
+    assert(interp_init_checked_mul_usz(usz.sizeof, self.module_hash_capacity, &module_hash_bytes), "interp module hash size overflow");
+    self.module_hash_index = (usz*)mem::malloc(module_hash_bytes);
+    assert(self.module_hash_index != null, "interp module hash alloc failed");
+    for (usz i = 0; i < self.module_hash_capacity; i++) self.module_hash_index[i] = usz.max;
 }
 
 fn void interp_init_runtime_flags(Interp* self) {
@@ -114,10 +142,18 @@ fn void interp_init_runtime_flags(Interp* self) {
 
 fn void interp_init_macro_state(Interp* self) {
     self.macro_count = 0;
-    self.macro_capacity = 0;
-    self.macro_table = null;
+    self.macro_capacity = MACRO_INITIAL_CAPACITY;
+    usz macro_bytes = 0;
+    assert(interp_init_checked_mul_usz(MacroDef.sizeof, self.macro_capacity, &macro_bytes), "interp macro table size overflow");
+    self.macro_table = (MacroDef*)mem::malloc(macro_bytes);
+    assert(self.macro_table != null, "interp macro table alloc failed");
     self.gensym_counter = 0;
-    self.macro_hash_capacity = 0;
-    self.macro_hash_index = null;
-    self.ensure_macro_capacity(MACRO_INITIAL_CAPACITY);
+    usz macro_hash_capacity = 0;
+    assert(interp_init_checked_mul_usz(self.macro_capacity, (usz)2, &macro_hash_capacity), "interp macro hash capacity overflow");
+    self.macro_hash_capacity = macro_hash_capacity;
+    usz macro_hash_bytes = 0;
+    assert(interp_init_checked_mul_usz(usz.sizeof, self.macro_hash_capacity, &macro_hash_bytes), "interp macro hash size overflow");
+    self.macro_hash_index = (usz*)mem::malloc(macro_hash_bytes);
+    assert(self.macro_hash_index != null, "interp macro hash alloc failed");
+    for (usz i = 0; i < self.macro_hash_capacity; i++) self.macro_hash_index[i] = usz.max;
 }

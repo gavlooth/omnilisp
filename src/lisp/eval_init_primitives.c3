@@ -91,9 +91,12 @@ fn bool register_primitives(Interp* interp) {
 }
 
 fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_name) {
-    Value* prim = interp.global_env.lookup(interp.symbols.intern(raw_prim_name));
+    SymbolId prim_sym = interp.symbols.intern(raw_prim_name);
+    SymbolId effect_sym = interp.symbols.intern(effect_name);
+    if (prim_sym == INVALID_SYMBOL_ID || effect_sym == INVALID_SYMBOL_ID) return;
+    Value* prim = interp.global_env.lookup(prim_sym);
     if (prim != null && interp.fast_path_count < interp.fast_path_table.len) {
-        interp.fast_path_table[interp.fast_path_count].tag = interp.symbols.intern(effect_name);
+        interp.fast_path_table[interp.fast_path_count].tag = effect_sym;
         interp.fast_path_table[interp.fast_path_count].prim = prim;
         interp.fast_path_count++;
     }
@@ -101,6 +104,7 @@ fn void register_fast_path(Interp* interp, char[] effect_name, char[] raw_prim_n
 
 fn bool register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     SymbolId sym = interp.symbols.intern(name);
+    if (sym == INVALID_SYMBOL_ID) return false;
     Value* prim = make_primitive(interp, name, func, arity);
     if (prim == null) return false;
     return env_define_with_barrier_checked(interp.global_env, sym, prim, interp);
@@ -108,6 +112,7 @@ fn bool register_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) 
 
 fn bool register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, int arity) {
     SymbolId sym = interp.symbols.intern(name);
+    if (sym == INVALID_SYMBOL_ID) return false;
     Value* prim = make_primitive(interp, name, func, arity);
     if (prim == null) return false;
 
@@ -116,9 +121,17 @@ fn bool register_dispatched_prim(Interp* interp, char[] name, PrimitiveFn func, 
     if (mt == null) return false;
 
     Value* mt_val = boundary_alloc_value_in_root(interp, true);
-    if (mt_val == null) return false;
+    if (mt_val == null) {
+        free_empty_method_table_bootstrap(mt);
+        return false;
+    }
     mt_val.tag = METHOD_TABLE;
     mt_val.method_table_val = mt;
 
-    return env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp);
+    if (!env_define_with_barrier_checked(interp.global_env, sym, mt_val, interp)) {
+        free_empty_method_table_bootstrap(mt);
+        mt_val.method_table_val = null;
+        return false;
+    }
+    return true;
 }

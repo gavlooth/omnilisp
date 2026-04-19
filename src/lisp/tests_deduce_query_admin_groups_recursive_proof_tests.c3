@@ -3,7 +3,10 @@ module lisp;
 import std::io;
 
 fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass, int* fail) {
-    {
+    bool targeted_admin_multi_rule =
+        deduce_query_filter_matches(test_c_getenv("OMNI_DEDUCE_QUERY_FILTER"), "why-result-admin-multi-rule");
+
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-rec (deduce 'open 'memory)) "
@@ -73,7 +76,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-proof-gd (deduce 'open 'memory)) "
@@ -125,7 +128,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-proof-gd-facts (deduce 'open 'memory)) "
@@ -185,7 +188,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-proof-gd-mixed (deduce 'open 'memory)) "
@@ -239,7 +242,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-noop-query (deduce 'open 'memory)) "
@@ -275,7 +278,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-noop-match (deduce 'open 'memory)) "
@@ -311,7 +314,7 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
         }
     }
 
-    {
+    if (!targeted_admin_multi_rule) {
         EvalResult r = run(
             "(block "
             "  (define db-why-result-sel-shapes-query (deduce 'open 'memory)) "
@@ -457,18 +460,6 @@ fn void run_deduce_admin_surface_recursive_proof_tests(Interp* interp, int* pass
             "  (define mixed-derived-path (car (ref mixed-derived 'paths))) "
             "  (define mixed-derived-support (ref mixed-derived-path 'support)) "
             "  (define mixed-derived-step (car (reverse mixed-derived-support))) "
-            "  (printn (list "
-            "    (ref seed 'status) (ref seed 'path-count) (ref seed 'max-depth) (ref seed 'truncated) "
-            "    (ref derived 'status) (ref derived 'path-count) (ref derived 'max-depth) (ref derived 'truncated) "
-            "    (ref projected-derived 'status) (ref projected-derived 'path-count) "
-            "    (ref multi-derived 'status) (ref multi-derived 'path-count) (length multi-derived-support) "
-            "    (ref search-derived 'status) (ref search-derived 'path-count) (ref search-derived 'truncated) (length (ref search-derived-path 'support)) "
-            "    (ref search-derived-partial 'status) (ref search-derived-partial 'path-count) (ref search-derived-partial 'truncated) (length (ref search-derived-partial-path 'support)) "
-            "    (ref mixed-derived 'status) (ref mixed-derived 'path-count) (ref mixed-derived 'truncated) (length mixed-derived-support) "
-            "    (ref multi-rule-direct 'status) (ref multi-rule-direct 'path-count) (ref multi-rule-direct 'max-depth) (ref multi-rule-direct 'truncated) (ref (car (ref multi-rule-direct 'paths)) 'rule-index) "
-            "    (length (ref (car (ref multi-rule-direct 'paths)) 'support)) "
-            "    (ref multi-rule-derived 'status) (ref multi-rule-derived 'path-count) (ref multi-rule-derived 'max-depth) (ref multi-rule-derived 'truncated) (ref (car (ref multi-rule-derived 'paths)) 'rule-index) "
-            "    (length (ref (car (ref multi-rule-derived 'paths)) 'support)))) "
             "  (and "
             "    (= (ref seed 'kind) 'why-result) "
             "    (= (ref seed 'status) 'ok) "

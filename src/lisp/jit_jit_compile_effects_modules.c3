@@ -22,8 +22,6 @@ fn bool jit_resolve_is_effect_continuation(Value* k_val) @inline {
 }
 
 fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     // Evaluate the value to resolve with
     Value* val = jit_eval(expr.resolve.value, env, interp);
     if (val != null && val.tag == ERROR) return val;
@@ -43,17 +41,17 @@ fn Value* jit_exec_resolve(Interp* interp, Expr* expr, Env* env) {
 
 fn void? jit_compile_resolve(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    emit_call_3i(s, (void*)&jit_exec_resolve, JIT_V0, (long)expr, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
+    emit_call_3i(s, locals, (void*)&jit_exec_resolve, JIT_V0, (long)expr, JIT_V2);
 }
 
 // --- Native compilation for previously-fallback expression types ---
 
-fn void? jit_compile_quote(void* s, Expr* expr, Interp* interp) {
+fn void? jit_compile_quote(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Quote returns the literal datum directly — no eval needed
     Value* datum = expr.quote.datum;
     if (datum == null) {
-        emit_call_1(s, (void*)&jit_make_nil);
+        emit_call_1(s, locals, (void*)&jit_make_nil);
     } else {
         _jit_new_node_ww(s, CODE_MOVI, JIT_R0, (long)datum);
     }
@@ -75,7 +73,7 @@ fn void? jit_compile_index(void* s, Expr* expr, Interp* interp, JitLocals* local
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)collection_slot);
 
     // Call jit_do_index(interp=V0, collection=V1, index=V2)
-    emit_call_3(s, (void*)&jit_do_index, JIT_V0, JIT_V1, JIT_V2);
+    emit_call_3(s, locals, (void*)&jit_do_index, JIT_V0, JIT_V1, JIT_V2);
 }
 
 fn void? jit_compile_path(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -85,8 +83,8 @@ fn void? jit_compile_path(void* s, Expr* expr, Interp* interp, JitLocals* locals
 // Emit a standard 3-arg call pattern: helper(interp, expr, env)
 fn void? jit_compile_3arg_helper(void* s, Expr* expr, Interp* interp, JitLocals* locals, void* helper_fn) {
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    emit_call_3i(s, helper_fn, JIT_V0, (long)expr, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
+    emit_call_3i(s, locals, helper_fn, JIT_V0, (long)expr, JIT_V2);
 }
 
 fn void? jit_compile_module(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -98,8 +96,6 @@ fn void? jit_compile_import(void* s, Expr* expr, Interp* interp, JitLocals* loca
 }
 
 fn Value* jit_do_export_from(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     EvalResult r = jit_eval_export_from_impl(expr, env, interp);
     if (r.error.has_error) return raise_error_with_payload_names(interp, "runtime", "runtime/export-from-failed", r.error.message[:256]);
     return r.value;
@@ -120,26 +116,7 @@ fn Module* jit_find_current_module(Interp* interp, Env* env) {
 }
 
 fn bool jit_append_module_export(Module* mod, SymbolId sym) {
-    if (mod.export_count >= mod.export_capacity) {
-        if (mod.export_count >= usz.max) return false;
-        usz needed_cap = mod.export_count + 1;
-        if (mod.export_capacity > usz.max / 2) return false;
-        usz new_cap = mod.export_capacity > 0 ? mod.export_capacity * 2 : 16;
-        if (new_cap < needed_cap) new_cap = needed_cap;
-        if (new_cap > usz.max / SymbolId.sizeof) return false;
-        SymbolId* new_exports = (SymbolId*)mem::malloc(SymbolId.sizeof * new_cap);
-        if (new_exports == null) return false;
-        for (usz j = 0; j < mod.export_count; j++) {
-            new_exports[j] = mod.exports[j];
-        }
-        mem::free(mod.exports);
-        mod.exports = new_exports;
-        mod.export_capacity = new_cap;
-    }
-    if (mod.exports == null) return false;
-    mod.exports[mod.export_count] = sym;
-    mod.export_count++;
-    return true;
+    return module_append_export(mod, sym);
 }
 
 fn bool jit_is_exported_symbol(Module* source_mod, SymbolId sym) {
@@ -154,8 +131,7 @@ fn bool jit_is_exported_symbol(Module* source_mod, SymbolId sym) {
 fn bool jit_bind_and_reexport(Env* env, Interp* interp, Module* current_mod, SymbolId sym, Value* val) {
     if (val == null) return true;
     if (env_define_with_barrier_result(env, sym, val, interp) != null) return false;
-    if (!jit_append_module_export(current_mod, sym)) return false;
-    return true;
+    return jit_append_module_export(current_mod, sym);
 }
 
 fn bool jit_reexport_all_symbols(Module* source_mod, Module* current_mod, Env* env, Interp* interp) {

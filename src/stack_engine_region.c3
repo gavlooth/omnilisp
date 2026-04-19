@@ -11,9 +11,10 @@ struct StackRegion {
     void* stack_top;   // Top of usable stack (highest address, initial RSP)
 }
 
-// Higher-order stdlib work inside handle/reset stack contexts now regularly exceeds
-// 64KB even on small lists, so normal runtime stacks need more headroom than the
-// original coroutine-only budget.
+// Higher-order stdlib and lazy Tensor materialization inside handle/reset stack
+// contexts exceed the original coroutine-only budget. Keep normal runtime
+// stacks large enough for handled lazy map realization without tripping the
+// guard before recoverable errors can unwind.
 const usz DEFAULT_STACK_SIZE = 262144; // 256KB usable stack (normal builds)
 // Sanitizer-instrumented recursive eval paths burn substantially more stack per
 // frame than normal builds. Keep the ASAN coroutine/checkpoint stack budget

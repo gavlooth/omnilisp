@@ -66,7 +66,7 @@
 
 ;; (alerts/price-alerts quote upper lower) — return tutorial price alerts.
 ;; Emits at most one alert for a given quote, so the smoke test stays small.
-(define (alerts/price-alerts (^Quote quote) (^Double upper) (^Double lower))
+(define (alerts/price-alerts (^Quote quote) (^Float64 upper) (^Float64 lower))
   (let (ts (time))
     (if (> quote.price upper)
         (list (AlertEvent "HIGH"
@@ -82,7 +82,7 @@
 
 ;; (alerts/analytics-alerts pnl gain-threshold) — return analytics alerts.
 ;; Uses a simple gain/loss rule so the tutorial can show a second dispatch path.
-(define (alerts/analytics-alerts (^PnL pnl) (^Double gain-threshold))
+(define (alerts/analytics-alerts (^PnL pnl) (^Float64 gain-threshold))
   (let (ts (time))
     (if (> pnl.gain gain-threshold)
         (list (AlertEvent "GAIN"

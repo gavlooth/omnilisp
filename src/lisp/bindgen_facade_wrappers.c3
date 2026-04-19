@@ -1,15 +1,23 @@
 module lisp;
 
-fn usz bindgen_append_facade_wrappers(char[] buf, usz pos, ParsedFunc* funcs, usz func_count, bool* ok) {
+fn usz bindgen_append_facade_wrappers(
+    char[] buf,
+    usz pos,
+    ParsedFunc* funcs,
+    usz func_count,
+    char[64]* strip_prefixes,
+    usz strip_prefix_count,
+    bool* ok
+) {
     pos = bindgen_append_facade_helper_stubs(buf, pos, funcs, func_count, ok);
     usz wrapper_count = 0;
     for (usz i = 0; i < func_count; i++) {
         ParsedFunc* f = &funcs[i];
-        if (f.is_variadic) continue;
+        if (f.filtered_out || f.is_variadic) continue;
         if (bindgen_function_needs_facade_scaffold(f)) {
-            pos = bindgen_append_facade_wrapper_scaffold(buf, pos, f, ok);
+            pos = bindgen_append_facade_wrapper_scaffold(buf, pos, f, strip_prefixes, strip_prefix_count, ok);
         } else {
-            pos = bindgen_append_facade_alias_wrapper(buf, pos, f, ok);
+            pos = bindgen_append_facade_alias_wrapper(buf, pos, f, strip_prefixes, strip_prefix_count, ok);
         }
         wrapper_count++;
     }
@@ -17,11 +25,18 @@ fn usz bindgen_append_facade_wrappers(char[] buf, usz pos, ParsedFunc* funcs, us
     return pos;
 }
 
-fn usz bindgen_append_facade_alias_wrapper(char[] buf, usz pos, ParsedFunc* f, bool* ok) {
+fn usz bindgen_append_facade_alias_wrapper(
+    char[] buf,
+    usz pos,
+    ParsedFunc* f,
+    char[64]* strip_prefixes,
+    usz strip_prefix_count,
+    bool* ok
+) {
     pos = buf_append(buf, pos, "  (define ", ok);
-    pos = buf_append_kebab(buf, pos, &f.name, ok);
+    pos = bindgen_append_function_name(buf, pos, &f.name, strip_prefixes, strip_prefix_count, ok);
     pos = buf_append(buf, pos, " raw-", ok);
-    pos = buf_append_kebab(buf, pos, &f.name, ok);
+    pos = bindgen_append_function_name(buf, pos, &f.name, strip_prefixes, strip_prefix_count, ok);
     pos = buf_append(buf, pos, ")\n", ok);
     return pos;
 }
@@ -29,6 +44,14 @@ fn usz bindgen_append_facade_alias_wrapper(char[] buf, usz pos, ParsedFunc* f, b
 fn usz bindgen_append_facade_param_list(char[] buf, usz pos, ParsedFunc* f, bool* ok) {
     for (usz i = 0; i < f.param_count; i++) {
         ParsedParam* p = &f.params[i];
+        if (!bindgen_metadata_text_is_safe(&p.name[0]) || !bindgen_emitted_name_is_safe_for_codegen(&p.name[0])) {
+            *ok = false;
+            return pos;
+        }
+        if (!bindgen_metadata_text_is_safe(&p.omni_type)) {
+            *ok = false;
+            return pos;
+        }
         pos = buf_append(buf, pos, " (^", ok);
         pos = buf_append_cstr(buf, pos, &p.omni_type, ok);
         pos = buf_append_char(buf, pos, ' ', ok);
@@ -38,10 +61,18 @@ fn usz bindgen_append_facade_param_list(char[] buf, usz pos, ParsedFunc* f, bool
     return pos;
 }
 
-fn usz bindgen_append_facade_raw_call(char[] buf, usz pos, char[] indent, ParsedFunc* f, bool* ok) {
+fn usz bindgen_append_facade_raw_call(
+    char[] buf,
+    usz pos,
+    char[] indent,
+    ParsedFunc* f,
+    char[64]* strip_prefixes,
+    usz strip_prefix_count,
+    bool* ok
+) {
     pos = buf_append(buf, pos, indent, ok);
     pos = buf_append(buf, pos, "(raw-", ok);
-    pos = buf_append_kebab(buf, pos, &f.name, ok);
+    pos = bindgen_append_function_name(buf, pos, &f.name, strip_prefixes, strip_prefix_count, ok);
     for (usz i = 0; i < f.param_count; i++) {
         pos = buf_append_char(buf, pos, ' ', ok);
         pos = bindgen_append_facade_arg_name(buf, pos, &f.params[i], ok);
@@ -51,6 +82,11 @@ fn usz bindgen_append_facade_raw_call(char[] buf, usz pos, char[] indent, Parsed
 }
 
 fn usz bindgen_append_facade_arg_name(char[] buf, usz pos, ParsedParam* p, bool* ok) {
+    if (!bindgen_metadata_text_is_safe(&p.name[0]) || !bindgen_emitted_name_is_safe_for_codegen(&p.name[0])) {
+        *ok = false;
+        return pos;
+    }
+
     switch (p.role) {
         case BINDGEN_ROLE_STRING_BUFFER:
             pos = buf_append_cstr(buf, pos, &p.name, ok);
@@ -142,10 +178,17 @@ fn usz bindgen_append_facade_callback_cleanup(char[] buf, usz pos, char[] indent
     return pos;
 }
 
-fn usz bindgen_append_facade_wrapper_scaffold(char[] buf, usz pos, ParsedFunc* f, bool* ok) {
+fn usz bindgen_append_facade_wrapper_scaffold(
+    char[] buf,
+    usz pos,
+    ParsedFunc* f,
+    char[64]* strip_prefixes,
+    usz strip_prefix_count,
+    bool* ok
+) {
     pos = bindgen_append_facade_review_note(buf, pos, f, ok);
     pos = buf_append(buf, pos, "  (define (", ok);
-    pos = buf_append_kebab(buf, pos, &f.name, ok);
+    pos = bindgen_append_function_name(buf, pos, &f.name, strip_prefixes, strip_prefix_count, ok);
     pos = bindgen_append_facade_param_list(buf, pos, f, ok);
     pos = buf_append(buf, pos, ")\n", ok);
     if (bindgen_function_has_meaningful_return(f)) {
@@ -176,7 +219,7 @@ fn usz bindgen_append_facade_wrapper_scaffold(char[] buf, usz pos, ParsedFunc* f
         }
         pos = buf_append(buf, pos, "result ", ok);
         pos = buf_append(buf, pos, "(raw-", ok);
-        pos = buf_append_kebab(buf, pos, &f.name, ok);
+        pos = bindgen_append_function_name(buf, pos, &f.name, strip_prefixes, strip_prefix_count, ok);
         for (usz i = 0; i < f.param_count; i++) {
             pos = buf_append_char(buf, pos, ' ', ok);
             pos = bindgen_append_facade_arg_name(buf, pos, &f.params[i], ok);
@@ -200,12 +243,12 @@ fn usz bindgen_append_facade_wrapper_scaffold(char[] buf, usz pos, ParsedFunc* f
             pos = bindgen_append_facade_param_bindings(buf, pos, f, ok);
             pos = buf_append(buf, pos, ")\n", ok);
             pos = bindgen_append_facade_wrapper_body_notes(buf, pos, "      ", f, ok);
-            pos = bindgen_append_facade_raw_call(buf, pos, "      ", f, ok);
+            pos = bindgen_append_facade_raw_call(buf, pos, "      ", f, strip_prefixes, strip_prefix_count, ok);
             pos = bindgen_append_facade_callback_cleanup(buf, pos, "      ", f, ok);
             pos = buf_append(buf, pos, "    )\n", ok);
         } else {
             pos = bindgen_append_facade_wrapper_body_notes(buf, pos, "    ", f, ok);
-            pos = bindgen_append_facade_raw_call(buf, pos, "    ", f, ok);
+            pos = bindgen_append_facade_raw_call(buf, pos, "    ", f, strip_prefixes, strip_prefix_count, ok);
         }
     }
     pos = buf_append(buf, pos, "  )\n", ok);

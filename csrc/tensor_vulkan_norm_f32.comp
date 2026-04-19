@@ -1,0 +1,74 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint rows;
+    uint cols;
+    uint mode;
+    uint padding;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+float abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    float result = 0.0;
+
+    if (params.mode == 0u) {
+        uint count = params.rows * params.cols;
+        float scale = 0.0;
+        float sum_squares = 1.0;
+        bool saw_nonzero = false;
+        for (uint i = 0; i < count; i++) {
+            float abs_value = abs_f32(input_data[i]);
+            if (!(abs_value > 0.0)) continue;
+            saw_nonzero = true;
+            if (scale < abs_value) {
+                float ratio = scale / abs_value;
+                sum_squares = 1.0 + sum_squares * ratio * ratio;
+                scale = abs_value;
+            } else {
+                float ratio = abs_value / scale;
+                sum_squares += ratio * ratio;
+            }
+        }
+        output_data[0] = saw_nonzero ? scale : 0.0;
+        output_data[1] = saw_nonzero ? sum_squares : 0.0;
+        return;
+    } else if (params.mode == 1u) {
+        for (uint col = 0; col < params.cols; col++) {
+            float col_sum = 0.0;
+            for (uint row = 0; row < params.rows; row++) {
+                col_sum += abs_f32(input_data[row * params.cols + col]);
+            }
+            if (col_sum > result) result = col_sum;
+        }
+    } else if (params.mode == 2u) {
+        for (uint row = 0; row < params.rows; row++) {
+            float row_sum = 0.0;
+            for (uint col = 0; col < params.cols; col++) {
+                row_sum += abs_f32(input_data[row * params.cols + col]);
+            }
+            if (row_sum > result) result = row_sum;
+        }
+    } else if (params.mode == 3u) {
+        uint count = params.rows * params.cols;
+        for (uint i = 0; i < count; i++) {
+            float value = abs_f32(input_data[i]);
+            if (value > result) result = value;
+        }
+    }
+
+    output_data[0] = result;
+    output_data[1] = 0.0;
+}

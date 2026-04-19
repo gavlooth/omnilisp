@@ -19,6 +19,25 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
         case DOUBLE:
             self.serialize_double_value_to_buf(v.double_val, buf);
 
+        case FLOAT32:
+            self.buf_append(buf, "(Float32 ");
+            self.serialize_double_value_to_buf((double)v.float32_val, buf);
+            self.buf_append(buf, ")");
+
+        case COMPLEX128:
+            self.buf_append(buf, "(Complex128 ");
+            self.serialize_double_value_to_buf(v.complex128_val.real, buf);
+            self.buf_append(buf, " ");
+            self.serialize_double_value_to_buf(v.complex128_val.imag, buf);
+            self.buf_append(buf, ")");
+
+        case COMPLEX64:
+            self.buf_append(buf, "(Complex64 ");
+            self.serialize_double_value_to_buf((double)v.complex64_val.real, buf);
+            self.buf_append(buf, " ");
+            self.serialize_double_value_to_buf((double)v.complex64_val.imag, buf);
+            self.buf_append(buf, ")");
+
         case STRING:
             self.serialize_string_value_to_buf(v, buf);
 

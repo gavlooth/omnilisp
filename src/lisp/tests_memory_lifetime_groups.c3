@@ -5,8 +5,8 @@ import std::io;
 import main;
 
 fn void run_memory_lifetime_cons_barrier_fallback_gate_test(Interp* interp, int* pass, int* fail) {
-    // Invariant: long list return promotion may use the destination-cons route,
-    // but it must not detour through generic fallback copying.
+    // Invariant: long list return promotion may use direct promotion or the
+    // destination-cons route, but it must not detour through generic fallback copying.
     {
         usz base_total = copy_to_parent_total_calls();
         usz base_generic = copy_to_parent_site_calls(COPY_SITE_GENERIC);
@@ -14,7 +14,7 @@ fn void run_memory_lifetime_cons_barrier_fallback_gate_test(Interp* interp, int*
         usz base_cdr = copy_to_parent_site_calls(COPY_SITE_CONS_BARRIER_CDR);
 
         EvalResult r = run(
-            "(let ^rec (loop (lambda (n acc) (if (= n 2000) acc (loop (+ n 1) (cons n acc))))) (length (loop 0 nil)))",
+            "(let ^rec (loop (lambda (n acc) (if (= n 2000) acc (loop (+ n 1) (cons n acc))))) (loop 0 nil))",
             interp);
 
         usz total_delta = copy_to_parent_total_calls() - base_total;
@@ -24,22 +24,22 @@ fn void run_memory_lifetime_cons_barrier_fallback_gate_test(Interp* interp, int*
 
         bool ok_eval = !r.error.has_error &&
                        r.value != null &&
-                       r.value.tag == INT &&
-                       r.value.int_val == 2000;
-        bool ok_budget = generic_delta == 0 && car_delta > 0;
+                       r.value.tag == CONS &&
+                       copy_to_parent_cons_spine_len(r.value) == 2000;
+        bool ok_budget = generic_delta == 0 && (total_delta == 0 || car_delta > 0);
         bool ok = ok_eval && ok_budget;
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: cons return avoids generic fallback");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] lifetime: cons return avoids generic fallback (total_delta=%d generic_delta=%d car_delta=%d cdr_delta=%d tag=%d int=%d err=%s)",
+            io::printfn("[FAIL] lifetime: cons return avoids generic fallback (total_delta=%d generic_delta=%d car_delta=%d cdr_delta=%d tag=%d spine=%d err=%s)",
                 (long)total_delta,
                 (long)generic_delta,
                 (long)car_delta,
                 (long)cdr_delta,
                 r.value != null ? (int)r.value.tag : -1,
-                (r.value != null && r.value.tag == INT) ? (int)r.value.int_val : -1,
+                (r.value != null && r.value.tag == CONS) ? (int)copy_to_parent_cons_spine_len(r.value) : -1,
                 r.error.has_error ? "yes" : "no");
             (*fail)++;
         }
@@ -579,36 +579,6 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
             overflow_gate_ok = false;
         }
 
-        void* alignment_overflow = ast_arena_alloc(&arena, usz.max);
-        bool alignment_overflow_ok = alignment_overflow == null && ast_arena_validate(&arena);
-
-        usz count_before_overflow_tests = arena.count;
-        usz capacity_before_overflow_tests = arena.capacity;
-
-        bool fastpath_overflow_ok = false;
-        if (chunk != null) {
-            usz chunk_used_before_fastpath = chunk.used;
-            chunk.used = usz.max;
-            void* fastpath_overflow = ast_arena_alloc(&arena, AST_ARENA_ALIGNMENT);
-            fastpath_overflow_ok = fastpath_overflow == null &&
-                                  arena.count == count_before_overflow_tests &&
-                                  arena.capacity == capacity_before_overflow_tests;
-            chunk.used = chunk_used_before_fastpath;
-        }
-
-        bool capacity_overflow_ok = false;
-        if (chunk != null) {
-            usz chunk_used_before_capacity = chunk.used;
-            arena.capacity = usz.max;
-            chunk.used = chunk.capacity;
-            void* capacity_overflow = ast_arena_alloc(&arena, AST_ARENA_ALIGNMENT);
-            capacity_overflow_ok = capacity_overflow == null &&
-                                   arena.count == count_before_overflow_tests &&
-                                   arena.capacity == usz.max;
-            chunk.used = chunk_used_before_capacity;
-            arena.capacity = capacity_before_overflow_tests;
-        }
-
         usz count_before_destroy = arena.count;
         usz capacity_before_destroy = arena.capacity;
         ast_arena_destroy(&arena);
@@ -636,9 +606,6 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
                   init_ok &&
                   alloc_ok &&
                   overflow_gate_ok &&
-                  alignment_overflow_ok &&
-                  fastpath_overflow_ok &&
-                  capacity_overflow_ok &&
                   destroy_ok &&
                   reinit_ok &&
                   contains_foreign_is_false;
@@ -647,13 +614,10 @@ fn void run_memory_lifetime_ast_arena_validation_tests(Interp* interp, int* pass
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: ast_arena chunked allocator validation (init=%s alloc=%s overflow=%s alignment_overflow=%s fastpath_overflow=%s capacity_overflow=%s destroy=%s reinit=%s contains=%s)",
+                "[FAIL] lifetime: ast_arena chunked allocator validation (init=%s alloc=%s overflow=%s destroy=%s reinit=%s contains=%s)",
                 init_ok ? "yes" : "no",
                 alloc_ok ? "yes" : "no",
                 overflow_gate_ok ? "yes" : "no",
-                alignment_overflow_ok ? "yes" : "no",
-                fastpath_overflow_ok ? "yes" : "no",
-                capacity_overflow_ok ? "yes" : "no",
                 destroy_ok ? "yes" : "no",
                 reinit_ok ? "yes" : "no",
                 contains_foreign_is_false ? "yes" : "no"

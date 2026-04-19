@@ -59,15 +59,18 @@ fn Value* deduce_aggregate_group_note_binding_with_polarity(
                 }
                 break;
             case DEDUCE_AGGREGATE_SUM:
-                if (!is_number(input)) {
+                if (!is_number(input) || is_fixed_complex(input) || input.tag == BIG_COMPLEX) {
                     return deduce_raise(interp, "deduce/aggregate-type-mismatch",
                         "deduce/analyze: sum aggregate expects numeric input");
                 }
                 if (delta > 0 && !state.initialized) {
                     state.initialized = true;
-                    state.sum_is_double = is_double(input);
+                    state.sum_is_double = !is_int(input);
                     state.sum_int_value = is_int(input) ? input.int_val : 0;
-                    state.sum_double_value = to_double(input);
+                    if (!try_numeric_to_double(input, &state.sum_double_value)) {
+                        return deduce_raise(interp, "deduce/aggregate-type-mismatch",
+                            "deduce/analyze: sum aggregate expects real numeric input");
+                    }
                     break;
                 }
                 if (!state.initialized) {
@@ -81,7 +84,12 @@ fn Value* deduce_aggregate_group_note_binding_with_polarity(
                         state.sum_double_value = (double)state.sum_int_value;
                         state.sum_is_double = true;
                     }
-                    state.sum_double_value += (double)delta * to_double(input);
+                    double input_double = 0.0;
+                    if (!try_numeric_to_double(input, &input_double)) {
+                        return deduce_raise(interp, "deduce/aggregate-type-mismatch",
+                            "deduce/analyze: sum aggregate expects real numeric input");
+                    }
+                    state.sum_double_value += (double)delta * input_double;
                 }
                 if (group.support_count == 0) {
                     state.initialized = false;

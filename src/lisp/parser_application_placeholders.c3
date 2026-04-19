@@ -49,7 +49,11 @@ fn SymbolId Parser.make_placeholder_param_sym(Parser* self) {
     for (usz j = 0; j < num_str.len && pos < 31; j++) {
         name_buf[pos++] = num_str[j];
     }
-    return self.interp.symbols.intern(name_buf[:pos]);
+    SymbolId sym = self.interp.symbols.intern(name_buf[:pos]);
+    if (sym == INVALID_SYMBOL_ID) {
+        self.set_error("parser: failed to intern placeholder symbol");
+    }
+    return sym;
 }
 
 fn void Parser.replace_placeholders(Parser* self, Expr* call, List{SymbolId}* param_syms) {
@@ -57,6 +61,7 @@ fn void Parser.replace_placeholders(Parser* self, Expr* call, List{SymbolId}* pa
         Expr* arg = call.call.args[i];
         if (!self.is_placeholder_arg(arg)) continue;
         SymbolId psym = self.make_placeholder_param_sym();
+        if (psym == INVALID_SYMBOL_ID) return;
         param_syms.push(psym);
         arg.var_expr.name = psym;
     }
@@ -85,14 +90,14 @@ fn Expr* Parser.wrap_with_placeholder_lambdas(Parser* self, Expr* body, SymbolId
     lam.loc_column = col;
     lam.lambda.param = param_syms[0];
     lam.lambda.param_count = param_count;
-    lam.lambda.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while allocating placeholder lambda parameters");
+    lam.lambda.params = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, param_count, "out of memory while allocating placeholder lambda parameters");
     if (lam.lambda.params == null && param_count > 0) return null;
     for (usz i = 0; i < param_count; i++) {
         lam.lambda.params[i] = param_syms[i];
     }
     lam.lambda.param_annotations = null;
     lam.lambda.has_rest = false;
-    lam.lambda.rest_param = 0;
+    lam.lambda.rest_param = (SymbolId)0;
     lam.lambda.has_typed_params = false;
     lam.lambda.body = body;
     return lam;

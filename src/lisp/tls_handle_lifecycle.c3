@@ -19,10 +19,8 @@ struct TlsHandle {
 }
 
 fn Value* make_tls_handle_val(Interp* interp, TlsHandle* th, char[] oom_code, char[] oom_message) {
-    bool ctor_took_ownership = false;
-    Value* v = make_ffi_handle_ex(interp, (void*)th, "tls-handle", &tls_handle_finalizer, true, false, &ctor_took_ownership);
+    Value* v = make_ffi_handle_ex(interp, (void*)th, "tls-handle", &tls_handle_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) tls_destroy_handle(th);
         return tls_raise_async(interp, oom_code, oom_message);
     }
     return v;
@@ -58,7 +56,7 @@ fn void tls_handle_finalizer(void* handle) {
         br_sslio_close(th.sslio_ctx);
         th.connected = false;
     }
-    tls_handle_free(th);
+    tls_destroy_handle(th);
 }
 
 fn bool tls_try_mark_in_flight(TlsHandle* th) @inline {

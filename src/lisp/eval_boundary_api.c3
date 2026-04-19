@@ -40,12 +40,6 @@ fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
         if (cached != null) return boundary_copy_ok(cached);
     }
     bool can_track = promotion_context_consume(ctx, 1);
-    PromotionContext* saved_active_ctx = interp.active_promotion_ctx;
-    bool installed_ctx = ctx != null && interp.active_promotion_ctx != ctx;
-    if (installed_ctx) interp.active_promotion_ctx = ctx;
-    defer {
-        if (installed_ctx) interp.active_promotion_ctx = saved_active_ctx;
-    }
     BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
     Value* copied = copy_to_parent_site_checked(v, interp, site, &copy_fault);
     if (copied == null) {

@@ -1,0 +1,41 @@
+#version 450
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer Coefficients {
+    float coeffs[];
+};
+
+layout(std430, binding = 1) readonly buffer RightHandSide {
+    float rhs[];
+};
+
+layout(std430, binding = 2) buffer Output {
+    float out_data[];
+};
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint padding;
+} pc;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    uint coeff_count = pc.n * pc.n;
+    uint coeff_offset = pc.result_count;
+
+    if (index == 0u) {
+        status_code[0] = 2u;
+    }
+    if (index < coeff_count) {
+        out_data[coeff_offset + index] = coeffs[index];
+    }
+    if (index < pc.result_count) {
+        out_data[index] = rhs[index];
+    }
+}

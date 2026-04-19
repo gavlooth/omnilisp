@@ -20,6 +20,7 @@ fn Value* ui_ftxui_collect_children(
     } else if (is_cons(seq)) {
         Value* cur = seq;
         while (is_cons(cur)) {
+            if (count == usz.max) return raise_error(interp, "ui-ftxui: children list too large");
             count++;
             cur = cdr(cur);
         }
@@ -29,6 +30,9 @@ fn Value* ui_ftxui_collect_children(
     }
 
     if (count == 0) return null;
+    if (count > usz.max / OmniFtxuiComponent*.sizeof) {
+        return raise_error(interp, "ui-ftxui: child component array too large");
+    }
 
     OmniFtxuiComponent** children =
         (OmniFtxuiComponent**)mem::malloc(OmniFtxuiComponent*.sizeof * count);

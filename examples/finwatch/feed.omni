@@ -23,8 +23,8 @@
 (define (feed/safe fetch-fn)
   (try fetch-fn (lambda (msg) (Err msg))))
 
-;; Ensure a JSON number is a Double (json-parse returns Integer for whole numbers).
-(define (feed/->double x)
+;; Ensure a JSON number is a Float64 (json-parse returns Integer for whole numbers).
+(define (feed/->float64 x)
   (* 1.0 x))
 
 ;; Fetch JSON from an HTTP endpoint and normalize to FetchResult.
@@ -54,7 +54,7 @@
        (let (rates (ref data "rates")
              ts    (time))
          (Ok (map (lambda (sym)
-                    (Quote sym (feed/->double (ref rates sym)) ts))
+                    (Quote sym (feed/->float64 (ref rates sym)) ts))
                   '("EUR" "GBP" "JPY")))))
       ((Err msg) (Err msg))))))
 
@@ -70,8 +70,8 @@
       ((Ok data)
        (let (ts (time))
          (Ok (list
-               (Quote "BTC" (feed/->double (ref (ref data "bitcoin")  "usd")) ts)
-               (Quote "ETH" (feed/->double (ref (ref data "ethereum") "usd")) ts)))))
+               (Quote "BTC" (feed/->float64 (ref (ref data "bitcoin")  "usd")) ts)
+               (Quote "ETH" (feed/->float64 (ref (ref data "ethereum") "usd")) ts)))))
       ((Err msg) (Err msg))))))
 
 ;; ── News — hacker-news.firebaseio.com ──────────────────────────────────────

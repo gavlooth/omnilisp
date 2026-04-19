@@ -72,8 +72,6 @@ fn Value* jit_prepare_tco_recycle(
 }
 
 fn Value* jit_eval(Expr* expr, Env* env, Interp* interp) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     return runtime_eval_expr(expr, env, interp);
 }
 

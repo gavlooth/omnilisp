@@ -25,18 +25,32 @@ fn Value* prim_is_procedure(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_zero(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "zero?: expected number");
-    return to_double(args[0]) == 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "zero?: expected number");
+    if (is_big_complex(args[0])) return big_complex_value_is_zero(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (is_complex128(args[0])) return complex128_is_zero(args[0].complex128_val) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (is_complex64(args[0])) return complex64_is_zero(args[0].complex64_val) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "zero?: numeric comparison failed");
+    return cmp == 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_positive(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "positive?: expected number");
-    return to_double(args[0]) > 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "positive?: expected number");
+    if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return raise_error(interp, "positive?: complex numbers are not ordered");
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "positive?: numeric comparison failed");
+    return cmp > 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_negative(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_number(args[0])) return raise_error(interp, "negative?: expected number");
-    return to_double(args[0]) < 0.0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (args.len < 1 || !is_numeric_value(args[0])) return raise_error(interp, "negative?: expected number");
+    if (is_big_complex(args[0]) || is_fixed_complex(args[0])) return raise_error(interp, "negative?: complex numbers are not ordered");
+    int cmp = 0;
+    Value* zero = make_int(interp, 0);
+    if (!numeric_values_compare(args[0], zero, &cmp)) return raise_error(interp, "negative?: numeric comparison failed");
+    return cmp < 0 ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_is_even(Value*[] args, Env* env, Interp* interp) {
@@ -63,6 +77,9 @@ fn Value* prim_macroexpand(Value*[] args, Env* env, Interp* interp) {
     if (!is_cons(form)) return form; // not a macro call, return as-is
     Expr* call_expr = value_to_expr(form, interp);
     if (call_expr == null) return form;
+    if (call_expr.tag == E_LIT && call_expr.lit.value != null && call_expr.lit.value.tag == ERROR) {
+        return raise_error(interp, call_expr.lit.value.str_chars[:call_expr.lit.value.str_len]);
+    }
 
     EvalResult r;
     if (!try_expand_macro_call_expr(call_expr, interp, &r)) return form;
@@ -76,7 +93,7 @@ fn Value* prim_eval(Value*[] args, Env* env, Interp* interp) {
     Expr* expr = value_to_expr(args[0], interp);
     if (expr == null) return raise_error(interp, "eval: could not convert to expression");
     Value* result = runtime_eval_expr(expr, interp.global_env, interp);
-    if (result != null && result.tag == ERROR) return raise_error(interp, "eval: error during evaluation");
+    if (result != null && result.tag == ERROR) return raise_error(interp, result.str_chars[:result.str_len]);
     return result;
 }
 
@@ -84,12 +101,18 @@ fn Value* prim_apply(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return raise_error(interp, "apply: expected function and argument list");
     Value* func = args[0];
     Value* arg_list = args[1];
+    if (!is_cons(arg_list) && !is_nil(arg_list)) {
+        return raise_error(interp, "apply: expected argument list");
+    }
     // Count args
     usz arg_count = 0;
     Value* cur = arg_list;
     while (is_cons(cur)) {
         arg_count++;
         cur = cur.cons_val.cdr;
+    }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "apply: expected a proper argument list");
     }
     // Use multi-arg apply (handles multi-param closures, variadics, etc.)
     return jit_apply_multi_args(interp, func, arg_list, arg_count);

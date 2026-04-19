@@ -34,6 +34,39 @@ const String[4] AOT_C3C_CANDIDATES = {
     "/opt/homebrew/bin/c3c"
 };
 
+fn bool string_has_prefix(String text, String prefix) @inline {
+    if (prefix.len > text.len) return false;
+    for (usz i = 0; i < prefix.len; i++) {
+        if (text[i] != prefix[i]) return false;
+    }
+    return true;
+}
+
+fn bool string_has_suffix(String text, String suffix) @inline {
+    if (suffix.len > text.len) return false;
+    usz start = text.len - suffix.len;
+    for (usz i = 0; i < suffix.len; i++) {
+        if (text[start + i] != suffix[i]) return false;
+    }
+    return true;
+}
+
+fn bool string_contains(String text, String needle) @inline {
+    if (needle.len == 0) return true;
+    if (needle.len > text.len) return false;
+    for (usz start = 0; start + needle.len <= text.len; start++) {
+        bool matches = true;
+        for (usz i = 0; i < needle.len; i++) {
+            if (text[start + i] != needle[i]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
+}
+
 fn bool string_contains_char(String text, char needle) @inline {
     for (usz i = 0; i < text.len; i++) {
         if (text[i] == needle) return true;
@@ -41,29 +74,68 @@ fn bool string_contains_char(String text, char needle) @inline {
     return false;
 }
 
-fn bool append_manifest_sources(List { String }* out_sources, String[] manifest, String label) {
-    if (manifest.len == 0) {
-        io::eprintfn("Error: empty AOT runtime source manifest '%s'", (ZString)label.zstr_tcopy());
+fn bool should_skip_aot_source(String directory, String relative_name) @inline {
+    (void)directory;
+    (void)relative_name;
+    return false;
+}
+
+fn bool append_matching_sources(
+    List { String }* out_sources,
+    String directory,
+    String prefix,
+    String suffix
+) {
+    Path dir_path;
+    if (try dir = path::temp(directory)) {
+        dir_path = dir;
+    } else {
+        io::eprintfn("Error: invalid source directory path '%s'", (ZString)directory.zstr_tcopy());
         return false;
     }
-    foreach (source : manifest) {
-        if (!ensure_required_file(source, label)) return false;
-        out_sources.push(source);
+    PathList entries;
+    if (try listed = path::ls(tmem, dir_path, true, true)) {
+        entries = listed;
+    } else {
+        io::eprintfn("Error: failed to list source directory '%s'", (ZString)directory.zstr_tcopy());
+        return false;
+    }
+
+    usz before_count = out_sources.size;
+    foreach (entry : entries) {
+        String name = entry.str_view();
+        if (!string_has_prefix(name, prefix) || !string_has_suffix(name, suffix)) continue;
+        if (should_skip_aot_source(directory, name)) continue;
+        if (try full_path = dir_path.append(tmem, name)) {
+            out_sources.push(full_path.str_view().copy(tmem));
+        } else {
+            io::eprintfn(
+                "Error: failed to compose source path '%s/%s'",
+                (ZString)directory.zstr_tcopy(),
+                (ZString)name.zstr_tcopy()
+            );
+            return false;
+        }
+    }
+
+    if (out_sources.size == before_count) {
+        io::eprintfn(
+            "Error: no source files matched directory='%s' prefix='%s' suffix='%s'",
+            (ZString)directory.zstr_tcopy(),
+            (ZString)prefix.zstr_tcopy(),
+            (ZString)suffix.zstr_tcopy()
+        );
+        return false;
     }
     return true;
 }
 
-fn bool append_aot_runtime_sources(List { String }* out_sources) {
-    return append_manifest_sources(out_sources, AOT_RUNTIME_ROOT_SOURCES[..], "AOT runtime root source") &&
-        append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES[..], "AOT runtime lisp source") &&
-        append_manifest_sources(out_sources, AOT_RUNTIME_PIKA_SOURCES[..], "AOT runtime pika source");
-}
-
 fn int run_spawned_command(String[] command_line, bool search_user_path = false) {
-    process::SpawnOptions options = process::SpawnOptions.INHERIT_STDIO | process::SpawnOptions.INHERIT_ENV;
-    if (!search_user_path) options |= process::SpawnOptions.NO_PATH_SEARCH;
+    process::SpawnOptions opts = INHERIT_STDIO | INHERIT_ENV;
+    if (!search_user_path) opts |= NO_PATH_SEARCH;
 
-    if (try proc = process::spawn(command_line, options)) {
+    if (try proc = process::spawn(command_line, opts)) {
+        defer (void)proc.destroy();
         if (try status = proc.join()) return status;
         io::eprintfn("Error: failed waiting for command '%s'", (ZString)command_line[0].zstr_tcopy());
         return 2;
@@ -124,7 +196,14 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
     List { String } sources;
     sources.tinit(128);
 
-    if (!append_aot_runtime_sources(&sources)) return 2;
+    if (!append_matching_sources(&sources, "src", "main", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src", "entry_", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src", "scope_region", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src", "stack_engine", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src/lisp", "", ".c3")) return 2;
+    if (!append_matching_sources(&sources, "src/pika", "", ".c3")) return 2;
+
+    sources.push("src/ffi_bindings.c3");
     sources.push(((ZString)temp_c3_path).str_view());
 
     List { String } command;

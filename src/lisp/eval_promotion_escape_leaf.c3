@@ -9,6 +9,9 @@ bool g_boundary_force_escape_coroutine_wrapper_alloc_fail = false;
 fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionContext* ctx) {
     if (!promote_escape_can_mutate(v, ctx)) return v;
     usz len = v.str_len;
+    if (len == usz.max) {
+        return raise_error(interp, "boundary: string/error escape copy is too large");
+    }
     usz cap = len + 1;
     if (cap < 32) cap = 32;
     char* chars = g_boundary_force_escape_string_or_error_promotion_alloc_fail
@@ -126,6 +129,8 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
             return promote_escape_hashmap_backed_shared_wrapper(v, interp, ctx);
         case ARRAY:
             return promote_escape_array_shared_wrapper(v, interp, ctx);
+        case TENSOR:
+            return promote_escape_tensor_shared_wrapper(v, interp, ctx);
         case METHOD_TABLE:
             return promote_escape_method_table_shared_wrapper(v, interp, ctx);
         default:
@@ -184,6 +189,15 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
         case DOUBLE:
             result.tag = DOUBLE;
             result.double_val = v.double_val;
+        case FLOAT32:
+            result.tag = FLOAT32;
+            result.float32_val = v.float32_val;
+        case COMPLEX128:
+            result.tag = COMPLEX128;
+            result.complex128_val = v.complex128_val;
+        case COMPLEX64:
+            result.tag = COMPLEX64;
+            result.complex64_val = v.complex64_val;
         case SYMBOL:
             result.tag = SYMBOL;
             result.sym_val = v.sym_val;
@@ -230,6 +244,12 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
     }
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
+        boundary_cleanup_materialized_value(
+            v.iterator_val,
+            promoted_thunk,
+            interp.current_scope,
+            true
+        );
         return raise_error(interp, "boundary: failed to allocate iterator escape copy");
     }
     result.tag = ITERATOR;

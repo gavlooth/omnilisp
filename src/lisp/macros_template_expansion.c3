@@ -22,7 +22,7 @@ fn SymbolId lookup_or_create_gensym(SymbolId original, GensymTable* table, Inter
     if (counter == 0) {
         buf[len++] = '0';
     } else {
-        char[16] digits;
+        char[20] digits;
         usz dcount = 0;
         usz tmp = counter;
         while (tmp > 0) {
@@ -65,6 +65,9 @@ fn Value* expand_template(Value* tmpl, MatchResult* bindings, Interp* interp, Ge
             char[] sym_name = interp.symbols.get_name(tmpl.sym_val);
             if (sym_name.len > 0 && sym_name[sym_name.len - 1] == '#') {
                 SymbolId gsym = lookup_or_create_gensym(tmpl.sym_val, gensyms, interp);
+                if (gsym == INVALID_SYMBOL_ID) {
+                    return make_error(interp, "macro expansion failed to allocate gensym");
+                }
                 return make_symbol(interp, gsym);
             }
 
@@ -131,7 +134,7 @@ fn Value* append_values(Value* a, Value* b, Interp* interp, usz depth = 0) {
     if (a != null && a.tag == ERROR) return a;
     if (b != null && b.tag == ERROR) return b;
     if (is_nil(a)) return b;
-    if (!is_cons(a)) return b;
-    if (depth >= 10000) return make_nil(interp);
+    if (!is_cons(a)) return make_error(interp, "macro template splice target must be a proper list");
+    if (depth >= 10000) return make_error(interp, "macro template splice exceeded recursion limit");
     return make_cons(interp, a.cons_val.car, append_values(a.cons_val.cdr, b, interp, depth + 1));
 }

@@ -26,13 +26,16 @@ fn Value* explain_bool_value(Interp* interp, bool value) @inline {
 fn Value* explain_dict_set(Value* dict, Interp* interp, char[] key, Value* value) @inline {
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return explain_oom(interp);
     if (value != null && value.tag == ERROR) return value;
-    if (!hashmap_set_symbol_checked(dict.hashmap_val, interp.symbols.intern(key), value, interp)) {
+    SymbolId key_sym = interp.symbols.intern(key);
+    if (key_sym == INVALID_SYMBOL_ID) return explain_oom(interp);
+    if (!hashmap_set_symbol_checked(dict.hashmap_val, key_sym, value, interp)) {
         return explain_oom(interp);
     }
     return null;
 }
 
 fn Value* explain_dict_set_symbol(Value* dict, Interp* interp, char[] key, SymbolId value) @inline {
+    if (value == INVALID_SYMBOL_ID) return explain_oom(interp);
     return explain_dict_set(dict, interp, key, make_symbol(interp, value));
 }
 

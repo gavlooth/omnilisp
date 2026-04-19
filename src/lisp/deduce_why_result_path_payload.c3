@@ -75,7 +75,9 @@ fn Value* deduce_why_result_dict_get(
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null || interp == null) {
         return null;
     }
-    Value* key_val = make_symbol(interp, interp.symbols.intern(key));
+    SymbolId key_sym = interp.symbols.intern(key);
+    if (key_sym == INVALID_SYMBOL_ID) return null;
+    Value* key_val = make_symbol(interp, key_sym);
     if (key_val == null) return null;
     return hashmap_get(dict.hashmap_val, key_val);
 }

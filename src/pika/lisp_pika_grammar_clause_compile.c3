@@ -20,6 +20,10 @@ fn int compile_clause(GrammarCompiler* gc, lisp::Value* clause) {
 
     // List -> combinator (seq, first, many, some, etc.)
     if (lisp::is_cons(clause)) {
+        if (!lisp::is_list(clause)) {
+            gc_set_error(gc, "parser/grammar-malformed-clause", "pika/grammar: grammar clause must be a proper list");
+            return gc.rb.add("_err", mk_fail());
+        }
         lisp::Value* head = clause.cons_val.car;
         lisp::Value* rest = clause.cons_val.cdr;
 

@@ -14,24 +14,25 @@ fn void tcp_handle_finalizer(void* handle) {
         th.connected = false;
         th.fd = -1;
     }
+    mem::free(th);
 }
 
 fn Value* make_tcp_stream_handle(Interp* interp, int fd, TcpTransport transport = TCP_TRANSPORT_INET) {
     TcpHandle* th = (TcpHandle*)mem::malloc(TcpHandle.sizeof);
-    if (th == null) return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
+    if (th == null) {
+        if (fd >= 0) {
+            c_close_fd(fd);
+        }
+        return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
+    }
     th.fd = fd;
     th.connected = true;
     th.mode = TCP_STREAM;
     th.transport = transport;
     th.uv_listener_handle = null;
-    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)th, "tcp-handle",
-        &tcp_handle_finalizer, true, false, &ctor_took_ownership);
+        &tcp_handle_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) {
-            if (th.fd >= 0) c_close_fd(th.fd);
-            mem::free(th);
-        }
         return io_raise(interp, "io/tcp-connect-out-of-memory", "tcp-connect: out of memory");
     }
     return v;
@@ -50,6 +51,7 @@ fn void udp_handle_finalizer(void* handle) {
         uh.open = false;
         uh.fd = -1;
     }
+    mem::free(uh);
 }
 
 fn Value* make_udp_handle(Interp* interp, int fd) {
@@ -60,14 +62,9 @@ fn Value* make_udp_handle(Interp* interp, int fd) {
     }
     uh.fd = fd;
     uh.open = true;
-    bool ctor_took_ownership = false;
     Value* v = make_ffi_handle_ex(interp, (void*)uh, "udp-handle",
-        &udp_handle_finalizer, true, false, &ctor_took_ownership);
+        &udp_handle_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) {
-            mem::free(uh);
-            c_close_fd(fd);
-        }
         return io_raise(interp, "io/udp-socket-out-of-memory", "udp-socket: out of memory");
     }
     return v;

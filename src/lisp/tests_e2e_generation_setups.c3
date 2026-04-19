@@ -45,7 +45,7 @@ const char[][] E2E_SETUPS = {
     `(define (who (^User u)) "user")`,
     `(define (who (^Admin a)) "admin")`,
     `(define (who-parent (^User u)) "parent")`,
-    `(define (who (^Double n)) "double")`,
+    `(define (who (^Float64 n)) "double")`,
     `(define (ping (^(Value ping) x)) "pong")`,
     `(define (ping (^Symbol x)) "sym")`,
     `(define (alias-check (^UserAlias u)) "alias-ok")`,

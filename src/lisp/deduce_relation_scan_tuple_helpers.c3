@@ -18,6 +18,25 @@ fn int deduce_compare_value(Value* left, Value* right) {
         if (left.double_val > right.double_val) return 1;
         return 0;
     }
+    if (left.tag == FLOAT32 && right.tag == FLOAT32) {
+        if (left.float32_val < right.float32_val) return -1;
+        if (left.float32_val > right.float32_val) return 1;
+        return 0;
+    }
+    if (left.tag == COMPLEX128 && right.tag == COMPLEX128) {
+        if (left.complex128_val.real < right.complex128_val.real) return -1;
+        if (left.complex128_val.real > right.complex128_val.real) return 1;
+        if (left.complex128_val.imag < right.complex128_val.imag) return -1;
+        if (left.complex128_val.imag > right.complex128_val.imag) return 1;
+        return 0;
+    }
+    if (left.tag == COMPLEX64 && right.tag == COMPLEX64) {
+        if (left.complex64_val.real < right.complex64_val.real) return -1;
+        if (left.complex64_val.real > right.complex64_val.real) return 1;
+        if (left.complex64_val.imag < right.complex64_val.imag) return -1;
+        if (left.complex64_val.imag > right.complex64_val.imag) return 1;
+        return 0;
+    }
     if (left.tag == STRING && right.tag == STRING) {
         usz min_len = left.str_len < right.str_len ? left.str_len : right.str_len;
         for (usz i = 0; i < min_len; i++) {

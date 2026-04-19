@@ -55,7 +55,8 @@ fn void print_json_hex_byte(char c) {
     io::printf("%c%c", hex[(usz)((byte >> 4) & 0xF)], hex[(usz)(byte & 0xF)]);
 }
 
-fn void print_json_escaped_bytes(char[] value) {
+fn void print_json_escaped_string(char[] value) {
+    io::print("\"");
     foreach (c : value) {
         switch (c) {
             case '"':
@@ -78,11 +79,6 @@ fn void print_json_escaped_bytes(char[] value) {
                 }
         }
     }
-}
-
-fn void print_json_escaped_string(char[] value) {
-    io::print("\"");
-    print_json_escaped_bytes(value);
     io::print("\"");
 }
 
@@ -152,12 +148,10 @@ fn void print_check_read_error_json(char[] path, EntryFileReadKind kind) {
     print_json_escaped_string(code);
     io::print(",\"severity\":");
     print_json_escaped_string(JSON_ERROR_SEVERITY);
-    io::print(",\"message\":\"");
-    print_json_escaped_bytes("cannot read input file '");
-    print_json_escaped_bytes(path);
-    print_json_escaped_bytes("': ");
-    print_json_escaped_bytes(reason);
-    io::print("\"");
+    io::print(",\"message\":");
+    char[320] msg_buf;
+    char[] msg = io::bprintf(&msg_buf, "cannot read input file '%s': %s", (ZString)path, (ZString)reason)!!;
+    print_json_escaped_string(msg);
     io::print(",\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":1}}}]}\n");
 }
 

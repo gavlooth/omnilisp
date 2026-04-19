@@ -18,6 +18,10 @@ fn bool scheduler_offload_compress(bool gzip_mode, SharedHandle* input, OffloadC
     usz bound = gzip_mode
         ? libdeflate_gzip_compress_bound(compressor, input_len)
         : libdeflate_deflate_compress_bound(compressor, input_len);
+    if (bound == usz.max) {
+        scheduler_set_offload_error(completion, "offload: out of memory");
+        return false;
+    }
     char* out = (char*)mem::malloc(bound + 1);
     if (out == null) {
         scheduler_set_offload_error(completion, "offload: out of memory");
@@ -44,6 +48,10 @@ fn bool scheduler_offload_compress(bool gzip_mode, SharedHandle* input, OffloadC
 
 fn bool scheduler_offload_accept_fd(long raw_fd, OffloadCompletion* completion) {
     if (raw_fd < 0) {
+        scheduler_set_offload_error(completion, "offload accept-fd: invalid listener fd");
+        return false;
+    }
+    if (raw_fd > (long)int.max) {
         scheduler_set_offload_error(completion, "offload accept-fd: invalid listener fd");
         return false;
     }
@@ -132,6 +140,7 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
         void* iobuf      = mem::malloc(BEARSSL_IOBUF_SIZE);
         int*  fd_ptr     = (int*)mem::malloc(int.sizeof);
         void* trust_store = omni_tls_trust_store_load_default();
+        bool sslio_inited = false;
 
         if (client_ctx != null && x509_ctx != null && sslio_ctx != null &&
                 iobuf != null && fd_ptr != null && trust_store != null) {
@@ -146,6 +155,7 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
                     br_sslio_init(sslio_ctx, client_ctx,
                         (BrSslioCallback)&omni_tls_sock_read, fd_ptr,
                         (BrSslioCallback)&omni_tls_sock_write, fd_ptr);
+                    sslio_inited = true;
 
                     if (br_sslio_write_all(sslio_ctx, &req_buf, req_len) >= 0 &&
                             br_sslio_flush(sslio_ctx) >= 0) {
@@ -181,7 +191,7 @@ fn bool scheduler_offload_http_get(SharedHandle* url_blob, OffloadCompletion* co
                     }
                 }
             }
-            br_sslio_close(sslio_ctx);
+            if (sslio_inited) br_sslio_close(sslio_ctx);
         }
 
         if (client_ctx != null) mem::free(client_ctx);

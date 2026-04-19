@@ -1,0 +1,260 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const double OMNI_SYMMETRIC_EIGEN_EPS = 0.000000000001lf;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    double input_values[];
+};
+
+layout(std430, binding = 1) buffer ValuesBuffer {
+    double eigen_values[];
+};
+
+layout(std430, binding = 2) buffer VectorsBuffer {
+    double eigen_vectors[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint value_count;
+    uint vector_count;
+    uint reserved;
+} pc;
+
+double abs_f64(double value) {
+    return value < 0.0lf ? -value : value;
+}
+
+bool is_finite_f64(double value) {
+    return value == value && (value - value) == 0.0lf;
+}
+
+uint matrix_index(uint row, uint col, uint n) {
+    return pc.vector_count + row * n + col;
+}
+
+void zero_outputs() {
+    for (uint index = 0u; index < pc.value_count; index++) {
+        eigen_values[index] = 0.0lf;
+    }
+    for (uint index = 0u; index < pc.vector_count; index++) {
+        eigen_vectors[index] = 0.0lf;
+    }
+}
+
+void normalize_vector_signs(uint n) {
+    for (uint col = 0u; col < n; col++) {
+        uint pivot_row = 0u;
+        double pivot_abs = 0.0lf;
+        for (uint row = 0u; row < n; row++) {
+            double candidate_abs = abs_f64(eigen_vectors[row * n + col]);
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+        if (pivot_abs > 0.0lf && eigen_vectors[pivot_row * n + col] < 0.0lf) {
+            for (uint row = 0u; row < n; row++) {
+                eigen_vectors[row * n + col] = -eigen_vectors[row * n + col];
+            }
+        }
+    }
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    if (pc.value_count < pc.n + 1u || pc.vector_count < pc.n * pc.n) {
+        return;
+    }
+
+    zero_outputs();
+    uint status_index = pc.n;
+    double status = 0.0lf;
+    eigen_values[status_index] = 1.0lf;
+
+    if (pc.n == 0u) {
+        eigen_values[status_index] = status;
+        return;
+    }
+
+    bool failed = false;
+
+    for (uint row = 0u; row < pc.n; row++) {
+        for (uint col = 0u; col < pc.n; col++) {
+            double value = input_values[row * pc.n + col];
+            if (!is_finite_f64(value)) {
+                status = 1.0lf;
+                failed = true;
+                value = 0.0lf;
+            }
+            eigen_vectors[matrix_index(row, col, pc.n)] = value;
+            eigen_vectors[row * pc.n + col] = row == col ? 1.0lf : 0.0lf;
+        }
+    }
+
+    if (!failed) {
+        for (uint row = 0u; row < pc.n; row++) {
+            for (uint col = row + 1u; col < pc.n; col++) {
+                if (eigen_vectors[matrix_index(row, col, pc.n)] != eigen_vectors[matrix_index(col, row, pc.n)]) {
+                    status = 3.0lf;
+                    failed = true;
+                    break;
+                }
+            }
+            if (failed) break;
+        }
+    }
+
+    uint max_iterations = 64u * pc.n * pc.n;
+    bool converged = false;
+    if (!failed) {
+        for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+            uint p = 0u;
+            uint q = pc.n > 1u ? 1u : 0u;
+            double max_offdiag = 0.0lf;
+            bool local_failed = false;
+            for (uint row = 0u; row < pc.n; row++) {
+                for (uint col = row + 1u; col < pc.n; col++) {
+                    double value = abs_f64(eigen_vectors[matrix_index(row, col, pc.n)]);
+                    if (!is_finite_f64(value)) {
+                        status = 1.0lf;
+                        local_failed = true;
+                        break;
+                    }
+                    if (value > max_offdiag) {
+                        max_offdiag = value;
+                        p = row;
+                        q = col;
+                    }
+                }
+                if (local_failed) break;
+            }
+            if (local_failed || !is_finite_f64(max_offdiag)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            if (!(max_offdiag > OMNI_SYMMETRIC_EIGEN_EPS)) {
+                converged = true;
+                break;
+            }
+
+            double app = eigen_vectors[matrix_index(p, p, pc.n)];
+            double aqq = eigen_vectors[matrix_index(q, q, pc.n)];
+            double apq = eigen_vectors[matrix_index(p, q, pc.n)];
+            if (!is_finite_f64(app) || !is_finite_f64(aqq) || !is_finite_f64(apq)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            if (!(abs_f64(apq) > 0.0lf)) {
+                continue;
+            }
+
+            double tau = (aqq - app) / (2.0lf * apq);
+            double sign_tau = tau < 0.0lf ? -1.0lf : 1.0lf;
+            double t = sign_tau / (abs_f64(tau) + sqrt(1.0lf + tau * tau));
+            double c = 1.0lf / sqrt(1.0lf + t * t);
+            double s = t * c;
+            if (!is_finite_f64(c) || !is_finite_f64(s)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+
+            for (uint r = 0u; r < pc.n; r++) {
+                if (r != p && r != q) {
+                    double arp = eigen_vectors[matrix_index(r, p, pc.n)];
+                    double arq = eigen_vectors[matrix_index(r, q, pc.n)];
+                    double new_rp = c * arp - s * arq;
+                    double new_rq = s * arp + c * arq;
+                    if (!is_finite_f64(new_rp) || !is_finite_f64(new_rq)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                    eigen_vectors[matrix_index(r, p, pc.n)] = new_rp;
+                    eigen_vectors[matrix_index(p, r, pc.n)] = new_rp;
+                    eigen_vectors[matrix_index(r, q, pc.n)] = new_rq;
+                    eigen_vectors[matrix_index(q, r, pc.n)] = new_rq;
+                }
+
+                double vip = eigen_vectors[r * pc.n + p];
+                double viq = eigen_vectors[r * pc.n + q];
+                double new_vip = c * vip - s * viq;
+                double new_viq = s * vip + c * viq;
+                if (!is_finite_f64(new_vip) || !is_finite_f64(new_viq)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+                eigen_vectors[r * pc.n + p] = new_vip;
+                eigen_vectors[r * pc.n + q] = new_viq;
+            }
+            if (failed) {
+                break;
+            }
+
+            double new_app = c * c * app - 2.0lf * s * c * apq + s * s * aqq;
+            double new_aqq = s * s * app + 2.0lf * s * c * apq + c * c * aqq;
+            if (!is_finite_f64(new_app) || !is_finite_f64(new_aqq)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            eigen_vectors[matrix_index(p, p, pc.n)] = new_app;
+            eigen_vectors[matrix_index(q, q, pc.n)] = new_aqq;
+            eigen_vectors[matrix_index(p, q, pc.n)] = 0.0lf;
+            eigen_vectors[matrix_index(q, p, pc.n)] = 0.0lf;
+        }
+    }
+
+    if (!failed && !converged && status == 0.0lf) {
+        status = 2.0lf;
+    }
+
+    for (uint i = 0u; i < pc.n; i++) {
+        double value = eigen_vectors[matrix_index(i, i, pc.n)];
+        if (!is_finite_f64(value)) {
+            status = 1.0lf;
+            value = 0.0lf;
+        } else if (abs_f64(value) < OMNI_SYMMETRIC_EIGEN_EPS) {
+            value = 0.0lf;
+        }
+        eigen_values[i] = value;
+    }
+
+    for (uint i = 0u; i < pc.n; i++) {
+        uint best = i;
+        double best_value = eigen_values[i];
+        for (uint j = i + 1u; j < pc.n; j++) {
+            if (eigen_values[j] > best_value) {
+                best = j;
+                best_value = eigen_values[j];
+            }
+        }
+        if (best != i) {
+            double tmp = eigen_values[i];
+            eigen_values[i] = eigen_values[best];
+            eigen_values[best] = tmp;
+            for (uint row = 0u; row < pc.n; row++) {
+                double vec_tmp = eigen_vectors[row * pc.n + i];
+                eigen_vectors[row * pc.n + i] = eigen_vectors[row * pc.n + best];
+                eigen_vectors[row * pc.n + best] = vec_tmp;
+            }
+        }
+    }
+
+    normalize_vector_signs(pc.n);
+
+    if (failed && status == 0.0lf) {
+        status = 1.0lf;
+    }
+    eigen_values[status_index] = status;
+}

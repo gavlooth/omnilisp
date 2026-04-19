@@ -38,16 +38,16 @@ fn bool eval_type_info_alloc_constraints(TypeInfo* info, usz count) {
     return info.constraints != null;
 }
 
-fn bool eval_deftype_constraint_capacity(ExprDefType* dt, usz* out_capacity) {
+fn bool eval_deftype_constraint_capacity(ExprDefType* dt, usz* out) {
+    if (out == null) return false;
+    *out = 0;
     usz count = 0;
     for (usz i = 0; i < dt.field_count; i++) {
-        for (usz m = 0; m < dt.fields[i].type_ann.meta_count; m++) {
-            if (dt.fields[i].type_ann.meta[m].is_int) continue;
-            if (count == usz.max) return false;
-            count++;
-        }
+        usz meta_count = dt.fields[i].type_ann.meta_count;
+        if (meta_count > usz.max - count) return false;
+        count += meta_count;
     }
-    *out_capacity = count;
+    *out = count;
     return true;
 }
 
@@ -105,13 +105,12 @@ fn bool eval_deftype_resolve_parent_and_params(TypeInfo* info, ExprDefType* dt, 
     return eval_type_info_copy_symbol_array(&info.type_params, dt.type_params, info.type_param_count);
 }
 
-fn bool eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, usz constraint_capacity, Interp* interp) {
+fn void eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, TypeFieldInfo* out_field, Interp* interp) {
     // Dictionary annotation like ^{'T Number} — extract constraints.
     out_field.field_type = INVALID_TYPE_ID;
-    out_field.annotation_sym = 0;
+    out_field.annotation_sym = (SymbolId)0;
     for (usz m = 0; m < field.type_ann.meta_count; m++) {
         if (field.type_ann.meta[m].is_int) continue;
-        if (info.constraint_count >= constraint_capacity) return false;
         info.constraints[info.constraint_count].param_sym = field.type_ann.meta[m].key;
         info.constraints[info.constraint_count].bound_type =
             interp.types.lookup(field.type_ann.meta[m].sym_value, &interp.symbols);
@@ -119,10 +118,9 @@ fn bool eval_deftype_apply_dict_annotation(TypeInfo* info, TypeField* field, Typ
         out_field.annotation_sym = field.type_ann.meta[m].key;
         info.constraint_count++;
     }
-    return true;
 }
 
-fn bool eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, usz constraint_capacity, Interp* interp) {
+fn void eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, Interp* interp) {
     for (usz i = 0; i < dt.field_count; i++) {
         TypeField* src_field = &dt.fields[i];
         TypeFieldInfo* dst_field = &info.fields[i];
@@ -130,19 +128,18 @@ fn bool eval_deftype_copy_fields(TypeInfo* info, ExprDefType* dt, usz constraint
 
         if (!src_field.type_ann.has_annotation) {
             dst_field.field_type = INVALID_TYPE_ID;  // Any
-            dst_field.annotation_sym = 0;
+            dst_field.annotation_sym = (SymbolId)0;
             continue;
         }
 
         if (src_field.type_ann.is_dict) {
-            if (!eval_deftype_apply_dict_annotation(info, src_field, dst_field, constraint_capacity, interp)) return false;
+            eval_deftype_apply_dict_annotation(info, src_field, dst_field, interp);
             continue;
         }
 
         dst_field.field_type = interp.types.lookup(src_field.type_ann.base_type, &interp.symbols);
         dst_field.annotation_sym = src_field.type_ann.base_type;
     }
-    return true;
 }
 
 fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
@@ -163,7 +160,6 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
         if (info.type_params != null) mem::free(info.type_params);
         return eval_error("out of memory while registering type");
     }
-
     usz constraint_capacity = 0;
     if (!eval_deftype_constraint_capacity(dt, &constraint_capacity)) {
         if (info.fields != null) mem::free(info.fields);
@@ -177,39 +173,43 @@ fn EvalResult eval_deftype(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Copy fields and store original annotation symbol for type-param mapping
-    if (!eval_deftype_copy_fields(&info, dt, constraint_capacity, interp)) {
-        if (info.constraints != null) mem::free(info.constraints);
-        if (info.fields != null) mem::free(info.fields);
-        if (info.type_params != null) mem::free(info.type_params);
-        return eval_error("out of memory while registering type");
-    }
+    eval_deftype_copy_fields(&info, dt, interp);
 
     // Register in type registry
+    TypeId existing_type_id = interp.types.lookup(dt.name, &interp.symbols);
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
     if (type_id == INVALID_TYPE_ID) {
+        type_registry_destroy_type_info(&info);
         return eval_error("out of memory while registering type");
     }
 
     // Create constructor primitive in root_scope (lives permanently in global env)
     if (dt.field_count > (usz)int.max) {
-        return eval_error("type constructor arity exceeds supported range");
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("type constructor arity exceeds supported limit");
     }
     char[] name_str = interp.symbols.get_name(dt.name);
     Value* constructor = make_primitive(interp, name_str, &prim_type_constructor, (int)dt.field_count);
     if (constructor == null) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
         return eval_error("out of memory while registering type");
     }
     constructor.prim_val.tag = (int)type_id;
 
-    // Define constructor in global env
-    if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
-        return eval_error("out of memory while registering type");
-    }
-
     // Also make type info available as a value
     Value* type_val = interp.alloc_value();
+    if (type_val == null) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while registering type");
+    }
     type_val.tag = TYPE_INFO;
     type_val.type_info_val = &interp.types.types[(usz)type_id];
+
+    // Define constructor in global env
+    if (!env_define_with_barrier_checked(interp.global_env, dt.name, constructor, interp)) {
+        if (existing_type_id == INVALID_TYPE_ID) interp.types.rollback_recent_new_type(type_id, &interp.symbols);
+        return eval_error("out of memory while registering type");
+    }
 
     return eval_ok(constructor);
 }

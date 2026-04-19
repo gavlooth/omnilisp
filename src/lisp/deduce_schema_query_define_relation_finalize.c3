@@ -6,6 +6,7 @@ fn Value* deduce_define_relation_finalize_open_relation(
     Relation* rel,
     Interp* interp
 ) {
+    usz schema_start = db.relation_schema_count;
     DeduceSchemaRegisterStatus schema_status =
         deduce_db_register_relation_schema(
             db,
@@ -47,14 +48,14 @@ fn Value* deduce_define_relation_finalize_open_relation(
             interp
         );
         if (meta_err != null) {
+            deduce_db_rollback_relation_schemas_to(db, schema_start);
             return meta_err;
         }
     }
 
-    bool ctor_took_ownership = false;
-    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false, &ctor_took_ownership);
+    Value* v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) deduce_relation_free(rel);
+        deduce_db_rollback_relation_schemas_to(db, schema_start);
         return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
     }
     return v;

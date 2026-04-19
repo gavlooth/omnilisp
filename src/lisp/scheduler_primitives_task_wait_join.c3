@@ -2,6 +2,14 @@ module lisp;
 
 import std::core::mem;
 
+int g_scheduler_force_task_join_timeout_timer_start_fail_nth = 0;
+
+fn bool scheduler_force_task_join_timeout_timer_start_fail() {
+    if (g_scheduler_force_task_join_timeout_timer_start_fail_nth <= 0) return false;
+    g_scheduler_force_task_join_timeout_timer_start_fail_nth--;
+    return g_scheduler_force_task_join_timeout_timer_start_fail_nth == 0;
+}
+
 fn Value* scheduler_task_join_fiber_impl(
     usz task_id,
     uint generation,
@@ -138,8 +146,13 @@ fn Value* scheduler_task_join_impl(
                 "task-join: uv_timer_init failed"
             );
         }
-        if (uv_timer_start(timeout_timer, &scheduler_uv_join_timeout_noop_cb, (ulong)timeout_ms, 0) != 0) {
+        bool timer_start_failed = scheduler_force_task_join_timeout_timer_start_fail();
+        if (!timer_start_failed) {
+            timer_start_failed = uv_timer_start(timeout_timer, &scheduler_uv_join_timeout_noop_cb, (ulong)timeout_ms, 0) != 0;
+        }
+        if (timer_start_failed) {
             uv_close(timeout_timer, &scheduler_free_handle_cb);
+            timeout_timer = null;
             return scheduler_raise(
                 interp,
                 "scheduler/task-join-wait-failed",

@@ -29,7 +29,7 @@ fn Expr* Parser.parse_define_with_annotation(Parser* self, Expr* e, List{SymbolI
         return self.parse_define_type(e, annotation);
     }
 
-    // FFI defines: [ffi lib], [ffi λ]
+    // FFI defines: [ffi lib], [ffi λ], [ffi module]
     if (annotation == self.interp.sym_ffi) {
         return self.parse_define_ffi(e, attrs);
     }
@@ -60,13 +60,16 @@ fn Expr* Parser.parse_define_type(Parser* self, Expr* e, SymbolId annotation) {
 }
 
 /**
- * Handle FFI bracket defines: [ffi lib], [ffi λ]
- * Dispatches to parse_ffi_lib or parse_ffi_fn.
+ * Handle FFI bracket defines: [ffi lib], [ffi λ], [ffi module]
+ * Dispatches to parse_ffi_lib, parse_ffi_fn, or parse_ffi_module.
  */
 fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, List{SymbolId}* attrs) {
-    if (attrs.len() < 2) { self.set_error("expected 'lib' or 'λ'/'lambda' after [ffi"); return null; }
+    if (attrs.len() < 2) { self.set_error("expected 'lib', 'λ'/'lambda', or 'module' after [ffi"); return null; }
     if ((*attrs)[1] == self.interp.sym_lib) {
         return self.parse_ffi_lib(e);
+    }
+    if ((*attrs)[1] == self.interp.sym_module) {
+        return self.parse_ffi_module(e, attrs);
     }
     if ((*attrs)[1] == self.interp.sym_lambda) {
         return self.parse_ffi_fn(e, attrs);
@@ -76,6 +79,6 @@ fn Expr* Parser.parse_define_ffi(Parser* self, Expr* e, List{SymbolId}* attrs) {
     if (attr1_text.len == 2 && attr1_text[0] == (char)0xCE && attr1_text[1] == (char)0xBB) {
         return self.parse_ffi_fn(e, attrs);
     }
-    self.set_error("unknown [ffi ...] form: expected 'lib' or 'λ'");
+    self.set_error("unknown [ffi ...] form: expected 'lib', 'λ', or 'module'");
     return null;
 }

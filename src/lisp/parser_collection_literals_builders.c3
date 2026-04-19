@@ -16,7 +16,8 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
     Expr* func = self.alloc_expr();
     if (func == null) return null;
     func.tag = E_VAR;
-    func.var_expr.name = self.interp.symbols.intern("Dictionary");
+    func.var_expr.name = self.intern_or_error("Dictionary", "failed to intern Dictionary constructor");
+    if (func.var_expr.name == INVALID_SYMBOL_ID) return null;
 
     List{Expr*} args;
     while (lex.current.type != T_RBRACE && !self.has_error) {
@@ -32,17 +33,7 @@ fn Expr* Parser.parse_dict_literal(Parser* self) {
     e.call.arg_count = args.len();
     e.call.args = null;
     if (args.len() > 0) {
-        usz arg_bytes;
-        if (!self.alloc_ast_bytes_for_count(
-            Expr*.sizeof,
-            args.len(),
-            "out of memory while allocating dictionary literal arguments",
-            &arg_bytes
-        )) {
-            args.free();
-            return null;
-        }
-        e.call.args = (Expr**)self.alloc_ast_bytes(arg_bytes, "out of memory while allocating dictionary literal arguments");
+        e.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, args.len(), "out of memory while allocating dictionary literal arguments");
         if (e.call.args == null) { args.free(); return null; }
     }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }
@@ -70,7 +61,8 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     Expr* func = self.alloc_expr();
     if (func == null) return null;
     func.tag = E_VAR;
-    func.var_expr.name = self.interp.symbols.intern("Array");
+    func.var_expr.name = self.intern_or_error("Array", "failed to intern Array constructor");
+    if (func.var_expr.name == INVALID_SYMBOL_ID) return null;
 
     List{Expr*} args;
     while (lex.current.type != T_RBRACKET && !self.has_error) {
@@ -86,17 +78,7 @@ fn Expr* Parser.parse_array_literal(Parser* self) {
     e.call.arg_count = args.len();
     e.call.args = null;
     if (args.len() > 0) {
-        usz arg_bytes;
-        if (!self.alloc_ast_bytes_for_count(
-            Expr*.sizeof,
-            args.len(),
-            "out of memory while allocating array literal arguments",
-            &arg_bytes
-        )) {
-            args.free();
-            return null;
-        }
-        e.call.args = (Expr**)self.alloc_ast_bytes(arg_bytes, "out of memory while allocating array literal arguments");
+        e.call.args = (Expr**)self.alloc_ast_array_bytes(Expr*.sizeof, args.len(), "out of memory while allocating array literal arguments");
         if (e.call.args == null) { args.free(); return null; }
     }
     for (usz i = 0; i < args.len(); i++) { e.call.args[i] = args[i]; }

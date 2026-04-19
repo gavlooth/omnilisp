@@ -47,16 +47,8 @@ fn Expr* Parser.parse_match(Parser* self) {
     }
 
     e.match.clause_count = match_clauses.len();
-    usz clause_count = e.match.clause_count;
-    if (clause_count > 0) {
-        if (clause_count > usz.max / MatchClause.sizeof) {
-            self.set_error("match clauses is too large");
-            match_clauses.free();
-            return null;
-        }
-        e.match.clauses = (MatchClause*)self.alloc_ast_bytes(MatchClause.sizeof * clause_count, "out of memory while allocating match clauses");
-    }
-    if (e.match.clauses == null && clause_count > 0) { match_clauses.free(); return null; }
+    e.match.clauses = (MatchClause*)self.alloc_ast_array_bytes(MatchClause.sizeof, match_clauses.len(), "out of memory while allocating match clauses");
+    if (e.match.clauses == null && match_clauses.len() > 0) { match_clauses.free(); return null; }
     for (usz i = 0; i < match_clauses.len(); i++) { e.match.clauses[i] = match_clauses[i]; }
     match_clauses.free();
 

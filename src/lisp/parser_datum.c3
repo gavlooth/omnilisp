@@ -51,7 +51,7 @@ fn Value* Parser.parse_datum_impl(Parser* self, bool template_mode) {
         case T_DOTDOT:
             return self.parse_datum_template_only(template_mode, self.interp.sym_dotdot);
         case T_UNDERSCORE:
-            return self.parse_datum_template_only(template_mode, self.interp.symbols.intern("_"));
+            return self.parse_datum_template_only(template_mode, self.intern_or_error("_", "parser: failed to intern template underscore symbol"));
         case T_INT: {
             long val = lex.current.int_value;
             lex.advance();

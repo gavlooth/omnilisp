@@ -27,7 +27,7 @@ fn void bindgen_collect_facade_helper_flags(ParsedFunc* funcs, usz func_count,
 
     for (usz i = 0; i < func_count; i++) {
         ParsedFunc* f = &funcs[i];
-        if (f.is_variadic || !bindgen_function_needs_facade_scaffold(f)) continue;
+        if (f.filtered_out || f.is_variadic || !bindgen_function_needs_facade_scaffold(f)) continue;
 
         if (f.return_role == BINDGEN_ROLE_STRING_RETURN) *need_string_return_helper = true;
         if (f.return_role == BINDGEN_ROLE_OPAQUE_POINTER) *need_opaque_return_helper = true;
@@ -143,18 +143,24 @@ fn usz bindgen_append_facade_helper_stubs_impl(char[] buf, usz pos, ParsedFunc* 
         pos = buf_append(buf, pos, "        nil\n", ok);
         pos = buf_append(buf, pos, "        (raise \"bindgen/string-buffer-ownership-mismatch\"))\n", ok);
         pos = buf_append(buf, pos, "    ;; REVIEW(bindgen): manual-review teardown still requires explicit allocation/writeback policy edits.\n", ok);
-        pos = buf_append(buf, pos, "    buffer\n", ok);
+        pos = buf_append(buf, pos, "    (raise \"bindgen/string-buffer-manual-review\")\n", ok);
         pos = buf_append(buf, pos, "  )\n\n", ok);
     }
     if (need_buffer_none_helper) {
         pos = buf_append(buf, pos, "  (define (bindgen-prepare-string-buffer-none buffer buffer-size role ownership nullability teardown direction)\n", ok);
         pos = buf_append(buf, pos, "    ;; none teardown keeps pointer ownership with the caller after size/direction validation.\n", ok);
+        pos = buf_append(buf, pos, "    (if (== role \"string-buffer\")\n", ok);
+        pos = buf_append(buf, pos, "        nil\n", ok);
+        pos = buf_append(buf, pos, "        (raise \"bindgen/string-buffer-role-mismatch\"))\n", ok);
+        pos = buf_append(buf, pos, "    (if (== ownership \"borrowed\")\n", ok);
+        pos = buf_append(buf, pos, "        nil\n", ok);
+        pos = buf_append(buf, pos, "        (raise \"bindgen/string-buffer-ownership-mismatch\"))\n", ok);
         pos = buf_append(buf, pos, "    buffer\n", ok);
         pos = buf_append(buf, pos, "  )\n\n", ok);
     }
     if (need_callback_helper) {
         pos = buf_append(buf, pos, "  (define (bindgen-register-callback callback role ownership nullability teardown)\n", ok);
-        pos = buf_append(buf, pos, "    ;; Fail closed when callback metadata does not match the shipped shim-only handle contract.\n", ok);
+        pos = buf_append(buf, pos, "    ;; Fail closed until this facade is edited for a concrete callback handle shim.\n", ok);
         pos = buf_append(buf, pos, "    (if (nil? callback)\n", ok);
         pos = buf_append(buf, pos, "        (raise \"bindgen/callback-nil\")\n", ok);
         pos = buf_append(buf, pos, "        nil)\n", ok);
@@ -165,7 +171,7 @@ fn usz bindgen_append_facade_helper_stubs_impl(char[] buf, usz pos, ParsedFunc* 
         pos = buf_append(buf, pos, "        nil\n", ok);
         pos = buf_append(buf, pos, "        (raise \"bindgen/callback-ownership-mismatch\"))\n", ok);
         pos = buf_append(buf, pos, "    (if (== teardown \"callback-unregister\")\n", ok);
-        pos = buf_append(buf, pos, "        (__raw-uv-timer-callback-handle callback)\n", ok);
+        pos = buf_append(buf, pos, "        (raise \"bindgen/callback-registration-requires-subsystem-shim\")\n", ok);
         pos = buf_append(buf, pos, "        (raise \"bindgen/callback-unsupported-teardown\"))\n", ok);
         pos = buf_append(buf, pos, "  )\n\n", ok);
     }
@@ -175,15 +181,12 @@ fn usz bindgen_append_facade_helper_stubs_impl(char[] buf, usz pos, ParsedFunc* 
         pos = buf_append(buf, pos, "    (if (nil? callback-handle)\n", ok);
         pos = buf_append(buf, pos, "        nil\n", ok);
         pos = buf_append(buf, pos, "        (if (== role \"callback\")\n", ok);
-        pos = buf_append(buf, pos, "            nil\n", ok);
+        pos = buf_append(buf, pos, "            (if (== ownership \"borrowed\")\n", ok);
+        pos = buf_append(buf, pos, "                (if (== teardown \"callback-unregister\")\n", ok);
+        pos = buf_append(buf, pos, "                    (raise \"bindgen/callback-unregister-requires-subsystem-shim\")\n", ok);
+        pos = buf_append(buf, pos, "                    (raise \"bindgen/callback-unsupported-teardown\"))\n", ok);
+        pos = buf_append(buf, pos, "                (raise \"bindgen/callback-ownership-mismatch\"))\n", ok);
         pos = buf_append(buf, pos, "            (raise \"bindgen/callback-role-mismatch\")))\n", ok);
-        pos = buf_append(buf, pos, "    (if (== ownership \"borrowed\")\n", ok);
-        pos = buf_append(buf, pos, "        nil\n", ok);
-        pos = buf_append(buf, pos, "        (raise \"bindgen/callback-ownership-mismatch\"))\n", ok);
-        pos = buf_append(buf, pos, "    (if (== teardown \"callback-unregister\")\n", ok);
-        pos = buf_append(buf, pos, "        (__raw-uv-timer-callback-unhandle callback-handle)\n", ok);
-        pos = buf_append(buf, pos, "        (raise \"bindgen/callback-unsupported-teardown\"))\n", ok);
-        pos = buf_append(buf, pos, "    nil\n", ok);
         pos = buf_append(buf, pos, "  )\n\n", ok);
     }
     if (need_opaque_arg_helper) {

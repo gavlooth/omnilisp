@@ -52,21 +52,36 @@ fn void Lexer.scan_number(Lexer* self) {
         self.next_char();
     }
     long val = 0;
+    double float_int_part = 0.0;
+    bool is_long_min_literal = false;
+    long max_prefix = long.max / 10;
+    long max_final_digit = negative ? 8 : 7;
     while (self.pos < self.len &&
            self.source[self.pos] >= '0' && self.source[self.pos] <= '9') {
         long digit = (long)(self.source[self.pos] - '0');
-        if (val > (long.max - digit) / 10) {
+        if (is_long_min_literal ||
+            val > max_prefix ||
+            (val == max_prefix && digit > max_final_digit)) {
             self.set_error_text("integer literal overflow");
             return;
         }
-        val = val * 10 + digit;
+        float_int_part = float_int_part * 10.0 + (double)digit;
+        if (negative && val == max_prefix && digit == 8) {
+            is_long_min_literal = true;
+        } else {
+            val = val * 10 + digit;
+        }
         self.next_char();
     }
 
     // Check for decimal point → float literal
-    if (self.scan_number_float(start, val, negative)) return;
+    if (self.scan_number_float(start, float_int_part, negative)) return;
 
-    if (negative) val = -val;
+    if (is_long_min_literal) {
+        val = long.min;
+    } else if (negative) {
+        val = -val;
+    }
 
     self.current.type = T_INT;
     self.current.int_value = val;

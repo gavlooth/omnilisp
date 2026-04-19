@@ -1,0 +1,441 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const double OMNI_SVD_EPS = 0.000000000001lf;
+const double OMNI_SVD_NORM_EPS = 0.000000000000000000000001lf;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    double input_values[];
+};
+
+layout(std430, binding = 1) buffer UBuffer {
+    double u_values[];
+};
+
+layout(std430, binding = 2) buffer SBuffer {
+    double s_values[];
+};
+
+layout(std430, binding = 3) buffer VBuffer {
+    double v_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint k;
+    uint u_count;
+    uint s_count;
+    uint v_count;
+} pc;
+
+double abs_f64(double value) {
+    return value < 0.0lf ? -value : value;
+}
+
+bool is_finite_f64(double value) {
+    return value == value && (value - value) == 0.0lf;
+}
+
+uint gram_index(uint row, uint col, uint n) {
+    return pc.u_count + row * n + col;
+}
+
+void zero_outputs() {
+    for (uint index = 0u; index < pc.u_count; index++) {
+        u_values[index] = 0.0lf;
+    }
+    for (uint index = 0u; index < pc.s_count; index++) {
+        s_values[index] = 0.0lf;
+    }
+    for (uint index = 0u; index < pc.v_count; index++) {
+        v_values[index] = 0.0lf;
+    }
+}
+
+double u_column_dot(uint rows, uint cols, uint left_col, uint right_col) {
+    double sum = 0.0lf;
+    for (uint row = 0u; row < rows; row++) {
+        sum += u_values[row * cols + left_col] * u_values[row * cols + right_col];
+    }
+    return sum;
+}
+
+void u_orthogonalize_column(uint rows, uint cols, uint col) {
+    for (uint prev_col = 0u; prev_col < col; prev_col++) {
+        double dot = u_column_dot(rows, cols, prev_col, col);
+        for (uint row = 0u; row < rows; row++) {
+            u_values[row * cols + col] -= dot * u_values[row * cols + prev_col];
+        }
+    }
+}
+
+bool u_normalize_column(uint rows, uint cols, uint col) {
+    double norm_squared = u_column_dot(rows, cols, col, col);
+    if (!(norm_squared > OMNI_SVD_NORM_EPS) || !is_finite_f64(norm_squared)) {
+        return false;
+    }
+    double inv_norm = 1.0lf / sqrt(norm_squared);
+    if (!is_finite_f64(inv_norm)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        u_values[row * cols + col] *= inv_norm;
+    }
+    return true;
+}
+
+bool u_fill_orthonormal_completion_column(uint rows, uint cols, uint col) {
+    if (col >= rows) {
+        return false;
+    }
+    for (uint candidate = 0u; candidate < rows; candidate++) {
+        for (uint row = 0u; row < rows; row++) {
+            u_values[row * cols + col] = row == candidate ? 1.0lf : 0.0lf;
+        }
+        u_orthogonalize_column(rows, cols, col);
+        if (u_normalize_column(rows, cols, col)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+double v_column_dot(uint rows, uint cols, uint left_col, uint right_col) {
+    double sum = 0.0lf;
+    for (uint row = 0u; row < rows; row++) {
+        sum += v_values[row * cols + left_col] * v_values[row * cols + right_col];
+    }
+    return sum;
+}
+
+void v_orthogonalize_column(uint rows, uint cols, uint col) {
+    for (uint prev_col = 0u; prev_col < col; prev_col++) {
+        double dot = v_column_dot(rows, cols, prev_col, col);
+        for (uint row = 0u; row < rows; row++) {
+            v_values[row * cols + col] -= dot * v_values[row * cols + prev_col];
+        }
+    }
+}
+
+bool v_normalize_column(uint rows, uint cols, uint col) {
+    double norm_squared = v_column_dot(rows, cols, col, col);
+    if (!(norm_squared > OMNI_SVD_NORM_EPS) || !is_finite_f64(norm_squared)) {
+        return false;
+    }
+    double inv_norm = 1.0lf / sqrt(norm_squared);
+    if (!is_finite_f64(inv_norm)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        v_values[row * cols + col] *= inv_norm;
+    }
+    return true;
+}
+
+bool v_fill_orthonormal_completion_column(uint rows, uint cols, uint col) {
+    if (col >= rows) {
+        return false;
+    }
+    for (uint candidate = 0u; candidate < rows; candidate++) {
+        for (uint row = 0u; row < rows; row++) {
+            v_values[row * cols + col] = row == candidate ? 1.0lf : 0.0lf;
+        }
+        v_orthogonalize_column(rows, cols, col);
+        if (v_normalize_column(rows, cols, col)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    if (pc.s_count < pc.k + 1u ||
+        pc.u_count < pc.rows * pc.k ||
+        pc.v_count < pc.cols * pc.k) {
+        return;
+    }
+
+    zero_outputs();
+    uint status_index = pc.k;
+    double status = 0.0lf;
+    s_values[status_index] = 1.0lf;
+
+    if (pc.k == 0u) {
+        s_values[status_index] = status;
+        return;
+    }
+
+    bool tall_or_square = pc.rows >= pc.cols;
+    uint n = pc.k;
+    bool failed = false;
+
+    for (uint row = 0u; row < n; row++) {
+        for (uint col = 0u; col < n; col++) {
+            if (tall_or_square) {
+                v_values[row * pc.k + col] = row == col ? 1.0lf : 0.0lf;
+            } else {
+                u_values[row * pc.k + col] = row == col ? 1.0lf : 0.0lf;
+            }
+            double sum = 0.0lf;
+            if (tall_or_square) {
+                for (uint source_row = 0u; source_row < pc.rows; source_row++) {
+                    sum += input_values[source_row * pc.cols + row] * input_values[source_row * pc.cols + col];
+                }
+            } else {
+                for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                    sum += input_values[row * pc.cols + source_col] * input_values[col * pc.cols + source_col];
+                }
+            }
+            if (!is_finite_f64(sum)) {
+                status = 1.0lf;
+                failed = true;
+                sum = 0.0lf;
+            }
+            u_values[gram_index(row, col, n)] = sum;
+            if (failed) {
+                break;
+            }
+        }
+        if (failed) {
+            break;
+        }
+    }
+
+    uint max_iterations = 64u * n * n;
+    bool converged = false;
+    if (!failed) {
+        for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+            uint p = 0u;
+            uint q = 0u;
+            double max_offdiag = 0.0lf;
+            bool local_failed = false;
+            for (uint row = 0u; row < n; row++) {
+                for (uint col = row + 1u; col < n; col++) {
+                    double value = abs_f64(u_values[gram_index(row, col, n)]);
+                    if (!is_finite_f64(value)) {
+                        status = 1.0lf;
+                        local_failed = true;
+                        break;
+                    }
+                    if (value > max_offdiag) {
+                        max_offdiag = value;
+                        p = row;
+                        q = col;
+                    }
+                }
+                if (local_failed) break;
+            }
+            if (local_failed || !is_finite_f64(max_offdiag)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            if (!(max_offdiag > OMNI_SVD_EPS)) {
+                converged = true;
+                break;
+            }
+
+            double app = u_values[gram_index(p, p, n)];
+            double aqq = u_values[gram_index(q, q, n)];
+            double apq = u_values[gram_index(p, q, n)];
+            if (!is_finite_f64(app) || !is_finite_f64(aqq) || !is_finite_f64(apq)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            if (!(abs_f64(apq) > 0.0lf)) {
+                continue;
+            }
+
+            double tau = (aqq - app) / (2.0lf * apq);
+            double sign_tau = tau < 0.0lf ? -1.0lf : 1.0lf;
+            double t = sign_tau / (abs_f64(tau) + sqrt(1.0lf + tau * tau));
+            double c = 1.0lf / sqrt(1.0lf + t * t);
+            double s = t * c;
+            if (!is_finite_f64(c) || !is_finite_f64(s)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+
+            for (uint r = 0u; r < n; r++) {
+                if (r != p && r != q) {
+                    double arp = u_values[gram_index(r, p, n)];
+                    double arq = u_values[gram_index(r, q, n)];
+                    double new_rp = c * arp - s * arq;
+                    double new_rq = s * arp + c * arq;
+                    if (!is_finite_f64(new_rp) || !is_finite_f64(new_rq)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                    u_values[gram_index(r, p, n)] = new_rp;
+                    u_values[gram_index(p, r, n)] = new_rp;
+                    u_values[gram_index(r, q, n)] = new_rq;
+                    u_values[gram_index(q, r, n)] = new_rq;
+                }
+
+                double vip = tall_or_square ? v_values[r * pc.k + p] : u_values[r * pc.k + p];
+                double viq = tall_or_square ? v_values[r * pc.k + q] : u_values[r * pc.k + q];
+                double new_vip = c * vip - s * viq;
+                double new_viq = s * vip + c * viq;
+                if (!is_finite_f64(new_vip) || !is_finite_f64(new_viq)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+                if (tall_or_square) {
+                    v_values[r * pc.k + p] = new_vip;
+                    v_values[r * pc.k + q] = new_viq;
+                } else {
+                    u_values[r * pc.k + p] = new_vip;
+                    u_values[r * pc.k + q] = new_viq;
+                }
+            }
+            if (failed) {
+                break;
+            }
+
+            double new_app = c * c * app - 2.0lf * s * c * apq + s * s * aqq;
+            double new_aqq = s * s * app + 2.0lf * s * c * apq + c * c * aqq;
+            if (!is_finite_f64(new_app) || !is_finite_f64(new_aqq)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            u_values[gram_index(p, p, n)] = new_app;
+            u_values[gram_index(q, q, n)] = new_aqq;
+            u_values[gram_index(p, q, n)] = 0.0lf;
+            u_values[gram_index(q, p, n)] = 0.0lf;
+        }
+    }
+    if (!failed && !converged && status == 0.0lf) {
+        status = 2.0lf;
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        double eigenvalue = u_values[gram_index(i, i, n)];
+        if (!is_finite_f64(eigenvalue)) {
+            status = 1.0lf;
+            eigenvalue = 0.0lf;
+        } else if (eigenvalue < -OMNI_SVD_EPS) {
+            if (status == 0.0lf) {
+                status = 1.0lf;
+            }
+            eigenvalue = 0.0lf;
+        } else if (eigenvalue < 0.0lf) {
+            eigenvalue = 0.0lf;
+        }
+        s_values[i] = eigenvalue;
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        uint best = i;
+        double best_value = s_values[i];
+        for (uint j = i + 1u; j < n; j++) {
+            if (s_values[j] > best_value) {
+                best = j;
+                best_value = s_values[j];
+            }
+        }
+        if (best != i) {
+            double tmp = s_values[i];
+            s_values[i] = s_values[best];
+            s_values[best] = tmp;
+            for (uint row = 0u; row < n; row++) {
+                if (tall_or_square) {
+                    double vec_tmp = v_values[row * pc.k + i];
+                    v_values[row * pc.k + i] = v_values[row * pc.k + best];
+                    v_values[row * pc.k + best] = vec_tmp;
+                } else {
+                    double vec_tmp = u_values[row * pc.k + i];
+                    u_values[row * pc.k + i] = u_values[row * pc.k + best];
+                    u_values[row * pc.k + best] = vec_tmp;
+                }
+            }
+        }
+    }
+
+    for (uint i = 0u; i < n; i++) {
+        double singular_value = sqrt(s_values[i]);
+        if (!is_finite_f64(singular_value)) {
+            status = 1.0lf;
+            singular_value = 0.0lf;
+        }
+        s_values[i] = singular_value;
+    }
+
+    if (!failed) {
+        if (tall_or_square) {
+            for (uint col = 0u; col < pc.k; col++) {
+                v_orthogonalize_column(pc.cols, pc.k, col);
+                if (!v_normalize_column(pc.cols, pc.k, col)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+                if (s_values[col] > OMNI_SVD_EPS) {
+                    for (uint row = 0u; row < pc.rows; row++) {
+                        double sum = 0.0lf;
+                        for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                            sum += input_values[row * pc.cols + source_col] * v_values[source_col * pc.k + col];
+                        }
+                        u_values[row * pc.k + col] = sum / s_values[col];
+                    }
+                    u_orthogonalize_column(pc.rows, pc.k, col);
+                    if (!u_normalize_column(pc.rows, pc.k, col) &&
+                        !u_fill_orthonormal_completion_column(pc.rows, pc.k, col)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                } else if (!u_fill_orthonormal_completion_column(pc.rows, pc.k, col)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+            }
+        } else {
+            for (uint col = 0u; col < pc.k; col++) {
+                u_orthogonalize_column(pc.rows, pc.k, col);
+                if (!u_normalize_column(pc.rows, pc.k, col)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+                if (s_values[col] > OMNI_SVD_EPS) {
+                    for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                        double sum = 0.0lf;
+                        for (uint row = 0u; row < pc.rows; row++) {
+                            sum += input_values[row * pc.cols + source_col] * u_values[row * pc.k + col];
+                        }
+                        v_values[source_col * pc.k + col] = sum / s_values[col];
+                    }
+                    v_orthogonalize_column(pc.cols, pc.k, col);
+                    if (!v_normalize_column(pc.cols, pc.k, col) &&
+                        !v_fill_orthonormal_completion_column(pc.cols, pc.k, col)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                } else if (!v_fill_orthonormal_completion_column(pc.cols, pc.k, col)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (failed && status == 0.0lf) {
+        status = 1.0lf;
+    }
+    s_values[status_index] = status;
+}

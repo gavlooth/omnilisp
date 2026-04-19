@@ -62,7 +62,7 @@ fn usz Compiler.compile_lambda_flat(Compiler* self, Expr* expr) {
         self.emit(".captured_");
             self.emit_symbol_name(found_def.captures[i]);
             self.emit(" = ");
-            self.emit_symbol_name(found_def.captures[i]);
+            self.emit_symbol_value_reference(found_def.captures[i]);
             self.emit(";\n");
         }
 

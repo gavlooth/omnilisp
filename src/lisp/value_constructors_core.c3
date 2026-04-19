@@ -18,6 +18,16 @@ fn void* value_alloc_closure_payload(main::ScopeRegion* scope, usz size) @inline
 // SECTION 2: VALUE CONSTRUCTORS (Core Surface)
 // =============================================================================
 
+fn Value* make_string_alloc_error(Interp* interp) {
+    Value* fail = interp.alloc_value();
+    fail.tag = ERROR;
+    char[] msg = "out of memory while allocating string";
+    fail.str_chars = (char*)msg.ptr;
+    fail.str_len = msg.len;
+    fail.string_heap_owned = false;
+    return fail;
+}
+
 <* @ensure return != null *>
 fn Value* make_nil(Interp* interp) @inline {
     Value* v = interp.alloc_value();
@@ -49,21 +59,42 @@ fn Value* make_double(Interp* interp, double d) @inline {
 }
 
 <* @ensure return != null *>
+fn Value* make_float32(Interp* interp, float f) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = FLOAT32;
+    v.float32_val = f;
+    return v;
+}
+
+<* @ensure return != null *>
+fn Value* make_complex128(Interp* interp, double real, double imag) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = COMPLEX128;
+    v.complex128_val.real = real;
+    v.complex128_val.imag = imag;
+    return v;
+}
+
+<* @ensure return != null *>
+fn Value* make_complex64(Interp* interp, float real, float imag) @inline {
+    Value* v = interp.alloc_value();
+    v.tag = COMPLEX64;
+    v.complex64_val.real = real;
+    v.complex64_val.imag = imag;
+    return v;
+}
+
+<* @ensure return != null *>
 fn Value* make_string(Interp* interp, char[] str) {
     usz len = str.len;
+    if (len == usz.max) return make_string_alloc_error(interp);
     usz cap = len + 1;
     if (cap < 32) cap = 32;  // minimum allocation
     char* chars = g_value_force_make_string_alloc_fail
         ? null
         : (char*)mem::malloc(cap);
     if (chars == null) {
-        Value* fail = interp.alloc_value();
-        fail.tag = ERROR;
-        char[] msg = "out of memory while allocating string";
-        fail.str_chars = (char*)msg.ptr;
-        fail.str_len = msg.len;
-        fail.string_heap_owned = false;
-        return fail;
+        return make_string_alloc_error(interp);
     }
 
     Value* v = interp.alloc_value();
@@ -83,6 +114,10 @@ fn Value* make_string(Interp* interp, char[] str) {
 <* @ensure return != null *>
 fn Value* make_string_owned(Interp* interp, char* owned_chars, usz len) {
     if (owned_chars == null) return make_string(interp, "");
+    if (len == usz.max) {
+        mem::free(owned_chars);
+        return make_string_alloc_error(interp);
+    }
 
     Value* v = interp.alloc_value();
     v.tag = STRING;
@@ -103,6 +138,22 @@ fn Value* make_symbol(Interp* interp, SymbolId sym) @inline {
     return v;
 }
 
+fn bool make_cons_escape_identity_promotion_ok(Interp* interp, Value* original, Value* promoted) @inline {
+    if (original == null || promoted == null || original != promoted) return true;
+    if (original.scope_gen == interp.current_scope.escape_generation) return true;
+    if (original.scope_gen != interp.current_scope.generation) {
+        return boundary_ptr_in_target_scope_chain_with_hint((void*)original, interp, original.scope_gen);
+    }
+    return false;
+}
+
+fn bool make_cons_promoted_error_value_ok(Interp* interp, Value* original, Value* promoted) @inline {
+    if (interp == null || original == null || promoted == null) return false;
+    if (original.tag != ERROR || promoted.tag != ERROR) return false;
+    if (promoted.scope_gen == interp.current_scope.escape_generation) return true;
+    return promoted == original && make_cons_escape_identity_promotion_ok(interp, original, promoted);
+}
+
 <* @ensure return != null *>
 fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
     // Dual-lane path: if cdr is already in current scope's ESCAPE lane,
@@ -120,10 +171,8 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
             if (promoted_car == null) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
-            if (promoted_car.tag == ERROR) return promoted_car;
-            bool string_like_car = car.tag == STRING || car.tag == ERROR;
-            bool current_scope_temp_car = car.scope_gen == interp.current_scope.generation;
-            if (string_like_car && current_scope_temp_car && promoted_car == car) {
+            if (promoted_car.tag == ERROR && !make_cons_promoted_error_value_ok(interp, car, promoted_car)) return promoted_car;
+            if (!make_cons_escape_identity_promotion_ok(interp, car, promoted_car)) {
                 return raise_error(interp, "cons: failed to promote car to escape");
             }
         }
@@ -142,7 +191,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 );
                 return raise_error(interp, "cons: failed to promote cdr to escape");
             }
-            if (promoted_cdr.tag == ERROR) {
+            if (promoted_cdr.tag == ERROR && !make_cons_promoted_error_value_ok(interp, cdr, promoted_cdr)) {
                 boundary_cleanup_materialized_value(
                     car,
                     promoted_car,
@@ -151,9 +200,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 );
                 return promoted_cdr;
             }
-            bool string_like_cdr = cdr.tag == STRING || cdr.tag == ERROR;
-            bool current_scope_temp_cdr = cdr.scope_gen == interp.current_scope.generation;
-            if (string_like_cdr && current_scope_temp_cdr && promoted_cdr == cdr) {
+            if (!make_cons_escape_identity_promotion_ok(interp, cdr, promoted_cdr)) {
                 boundary_cleanup_materialized_value(
                     car,
                     promoted_car,
@@ -217,7 +264,7 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     v.closure_val.params = params;
     v.closure_val.param_count = 1;
     v.closure_val.has_rest = false;
-    v.closure_val.rest_param = 0;
+    v.closure_val.rest_param = (SymbolId)0;
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = true;
@@ -238,11 +285,11 @@ fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     v.closure_val = closure;
     v.closure_val.scope_gen = interp.current_scope.generation;
     v.closure_val.env_scope = null;
-    v.closure_val.param = 0;
+    v.closure_val.param = (SymbolId)0;
     v.closure_val.params = null;
     v.closure_val.param_count = 0;
     v.closure_val.has_rest = false;
-    v.closure_val.rest_param = 0;
+    v.closure_val.rest_param = (SymbolId)0;
     v.closure_val.body = body;
     v.closure_val.env = env;
     v.closure_val.has_param = false;

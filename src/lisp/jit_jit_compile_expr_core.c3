@@ -32,12 +32,6 @@ fn void* jit_get_direct_prim(SymbolId name, Interp* interp) {
     return null;
 }
 
-fn bool jit_is_global_primitive(SymbolId name, Interp* interp, JitLocals* locals) @inline {
-    if (jit_locals_shadow_symbol(locals, name)) return false;
-    Value* val = interp.global_env.lookup(name);
-    return val != null && val.tag == PRIMITIVE;
-}
-
 fn bool jit_locals_shadow_symbol(JitLocals* locals, SymbolId name) @inline {
     if (locals == null) return false;
     for (usz i = locals.locals.len(); i > 0; i--) {
@@ -68,39 +62,28 @@ fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals
         // Continuation-sensitive calls may suspend/resume during argument
         // evaluation. Route through a runtime helper that stages evaluated
         // arguments outside JIT spill slots before apply.
-        jit_emit_call_name_for_expr(s, expr, interp);
+        jit_emit_call_name_for_expr(s, expr, interp, locals);
         bool has_env = emit_build_locals_env(s, interp, locals);
-        if (!has_env) emit_load_env(s, JIT_V2);
+        if (!has_env) emit_load_env(s, locals, JIT_V2);
         void* helper = is_tail ? (void*)&jit_eval_call_cont_safe_tail : (void*)&jit_eval_call_cont_safe;
-        emit_call_3i(s, helper, JIT_V0, (long)expr, JIT_V2);
+        emit_call_3i(s, locals, helper, JIT_V0, (long)expr, JIT_V2);
         return;
     }
 
-    // Direct primitive lowering stays enabled because it is simple and stable.
+    // Check if this is a known binary primitive: (+ a b), (- a b), etc.
+    // Disable the direct fast path for continuation-sensitive calls.
     if (expr.call.arg_count == 2 && expr.call.func.tag == E_VAR) {
         SymbolId fn_name = expr.call.func.var_expr.name;
-        void* direct_fn = jit_get_direct_prim(fn_name, interp);
-        if (direct_fn != null && jit_is_global_primitive(fn_name, interp, locals)) {
-            jit_emit_call_name_for_expr(s, expr, interp);
-            jit_compile_inline_binop(s, expr, interp, locals, direct_fn)!;
-            return;
+        if (!jit_locals_shadow_symbol(locals, fn_name)) {
+            void* direct_fn = jit_get_direct_prim(fn_name, interp);
+            if (direct_fn != null) {
+                jit_compile_inline_binop(s, expr, interp, locals, direct_fn)!;
+                return;
+            }
         }
     }
 
-    if (expr.call.arg_count > 1) {
-        // The old JIT-side multi-arg spill/cons builder can corrupt the head
-        // argument across helper calls on larger top-level blocks. Stage the
-        // evaluated call through the runtime helper path until a new direct
-        // lowering is proven sound.
-        jit_emit_call_name_for_expr(s, expr, interp);
-        bool has_env = emit_build_locals_env(s, interp, locals);
-        if (!has_env) emit_load_env(s, JIT_V2);
-        void* helper = is_tail ? (void*)&jit_eval_call_staged_tail : (void*)&jit_eval_call_staged;
-        emit_call_3i(s, helper, JIT_V0, (long)expr, JIT_V2);
-        return;
-    }
-
-    // General case: compile function and args, dispatch through apply.
+    // General case: compile function and args, dispatch through apply
     jit_compile_multi_arg(s, expr, interp, locals, is_tail)!;
 }
 
@@ -143,17 +126,17 @@ fn void? jit_compile_inline_binop(void* s, Expr* expr, Interp* interp, JitLocals
     }
 
     // Call direct_fn(interp=V0, a=V1, b=V2) -> R0
-    emit_call_3(s, direct_fn, JIT_V0, JIT_V1, JIT_V2);
+    emit_call_3(s, locals, direct_fn, JIT_V0, JIT_V1, JIT_V2);
 }
 
 // General multi-arg call: handles 0, 1, 2+ arguments.
 // Compiles function and args, spills to stack slots, builds cons arg list
 // right-to-left, dispatches through jit_apply_multi_args / jit_apply_value.
-fn void jit_emit_call_name_for_expr(void* s, Expr* expr, Interp* interp) {
+fn void jit_emit_call_name_for_expr(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     if (expr.call.func.tag == E_VAR) {
-        emit_call_2i(s, (void*)&jit_set_call_name, JIT_V0, (long)expr.call.func.var_expr.name);
+        emit_call_2i(s, locals, (void*)&jit_set_call_name, JIT_V0, (long)expr.call.func.var_expr.name);
     } else {
-        emit_call_1(s, (void*)&jit_clear_call_name);
+        emit_call_1(s, locals, (void*)&jit_clear_call_name);
     }
 }
 
@@ -163,12 +146,12 @@ fn void? jit_compile_multi_arg_zero(void* s, Expr* expr, Interp* interp, JitLoca
     jit_compile_expr(s, expr.call.func, interp, locals)!;
     _jit_new_node_www(s, CODE_STXI_L, (long)spill_fn, (long)JIT_FP, (long)JIT_R0);
 
-    emit_call_1(s, (void*)&jit_make_nil);
+    emit_call_1(s, locals, (void*)&jit_make_nil);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)spill_fn);
 
     void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
-    emit_call_4_rrri(s, apply_fn, JIT_V0, JIT_V1, JIT_V2, 0);
+    emit_call_4_rrri(s, locals, apply_fn, JIT_V0, JIT_V1, JIT_V2, 0);
 }
 
 fn void? jit_compile_multi_arg_one(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
@@ -182,12 +165,46 @@ fn void? jit_compile_multi_arg_one(void* s, Expr* expr, Interp* interp, JitLocal
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)spill_fn);
 
     void* apply_fn = is_tail ? (void*)&jit_apply_value_tail : (void*)&jit_apply_value;
-    emit_call_3(s, apply_fn, JIT_V1, JIT_V2, JIT_V0);
+    emit_call_3(s, locals, apply_fn, JIT_V1, JIT_V2, JIT_V0);
+}
+
+fn void? jit_compile_multi_arg_many(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+    usz argc = expr.call.arg_count;
+    int* arg_slots = argc > 0
+        ? (int*)mem::malloc(int.sizeof * argc)
+        : null;
+    defer if (arg_slots != null) mem::free(arg_slots);
+    for (usz i = 0; i < argc; i++) {
+        arg_slots[i] = _jit_allocai(s, 8);
+    }
+
+    for (usz i = 0; i < argc; i++) {
+        jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
+    }
+
+    int func_slot = _jit_allocai(s, 8);
+    jit_compile_expr(s, expr.call.func, interp, locals)!;
+    _jit_new_node_www(s, CODE_STXI_L, (long)func_slot, (long)JIT_FP, (long)JIT_R0);
+
+    emit_call_1(s, locals, (void*)&jit_make_nil);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+
+    for (usz i = argc; i > 0; i--) {
+        _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)arg_slots[i - 1]);
+        emit_call_3(s, locals, (void*)&jit_cons, JIT_V0, JIT_V1, JIT_V2);
+        _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+    }
+
+    _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)func_slot);
+
+    void* apply_fn = is_tail ? (void*)&jit_apply_multi_args_tail : (void*)&jit_apply_multi_args;
+    emit_call_4_rrri(s, locals, apply_fn, JIT_V0, JIT_V1, JIT_V2, (long)argc);
 }
 
 fn void? jit_compile_multi_arg(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     usz argc = expr.call.arg_count;
-    jit_emit_call_name_for_expr(s, expr, interp);
+    jit_emit_call_name_for_expr(s, expr, interp, locals);
 
     if (argc == 0) {
         jit_compile_multi_arg_zero(s, expr, interp, locals, is_tail)!;
@@ -197,12 +214,5 @@ fn void? jit_compile_multi_arg(void* s, Expr* expr, Interp* interp, JitLocals* l
         jit_compile_multi_arg_one(s, expr, interp, locals, is_tail)!;
         return;
     }
-
-    // The old spill/cons builder for 2+ args was removed after it proved
-    // unsound under larger top-level blocks. Keep the shared fallback path
-    // explicitly aligned with the staged helper lowering used by jit_compile_call.
-    bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    void* helper = is_tail ? (void*)&jit_eval_call_staged_tail : (void*)&jit_eval_call_staged;
-    emit_call_3i(s, helper, JIT_V0, (long)expr, JIT_V2);
+    jit_compile_multi_arg_many(s, expr, interp, locals, is_tail)!;
 }

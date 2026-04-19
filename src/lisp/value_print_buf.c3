@@ -13,18 +13,21 @@ struct PrintBuf {
 }
 
 fn void PrintBuf.append_str(PrintBuf* self, char[] s) {
+    if (self == null || self.buf == null || self.capacity == 0) return;
     for (usz i = 0; i < s.len && self.pos < self.capacity - 1; i++) {
         self.buf[self.pos++] = s[i];
     }
 }
 
 fn void PrintBuf.append_char(PrintBuf* self, char c) {
+    if (self == null || self.buf == null || self.capacity == 0) return;
     if (self.pos < self.capacity - 1) {
         self.buf[self.pos++] = c;
     }
 }
 
 fn void PrintBuf.append_zstr(PrintBuf* self, ZString zs) {
+    if (self == null || self.buf == null || self.capacity == 0 || zs == null) return;
     char* p = (char*)zs;
     while (*p != 0 && self.pos < self.capacity - 1) {
         self.buf[self.pos++] = *p;
@@ -69,6 +72,10 @@ fn void print_closure_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 
 fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_char('{');
+    if (v.hashmap_val == null) {
+        pb.append_char('}');
+        return;
+    }
     uint hprinted = 0;
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
@@ -84,6 +91,10 @@ fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 
 fn void print_set_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     pb.append_str("(Set");
+    if (v.hashmap_val == null) {
+        pb.append_char(')');
+        return;
+    }
     for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
         if (v.hashmap_val.entries[hi].key != null) {
             pb.append_char(' ');
@@ -102,6 +113,28 @@ fn void print_array_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         }
     }
     pb.append_char(']');
+}
+
+fn void print_tensor_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
+    (void)syms;
+    TensorVal* tensor = v.tensor_val;
+    if (tensor == null) {
+        pb.append_str("#<tensor:null>");
+        return;
+    }
+    pb.append_str(tensor.kind == TENSOR_PAYLOAD_CONCRETE ? "#<tensor " : "#<tensor-expr ");
+    pb.append_str(tensor_dtype_name(tensor.dtype));
+    pb.append_str(" shape [");
+    for (usz i = 0; i < tensor.rank; i++) {
+        if (i > 0) pb.append_char(' ');
+        char[48] dim_buf;
+        if (try rendered_dim = io::bprintf(&dim_buf, "%d", (long)tensor.shape[i])) {
+            pb.append_str(rendered_dim);
+        } else {
+            pb.append_str("0");
+        }
+    }
+    pb.append_str("]>");
 }
 
 fn void print_instance_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
@@ -192,6 +225,20 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             char[64] dbuf2;
             char[] dstr2 = double_to_string(v.double_val, &dbuf2);
             pb.append_str(dstr2);
+        case FLOAT32:
+            char[64] fbuf2;
+            char[] fstr2 = double_to_string((double)v.float32_val, &fbuf2);
+            pb.append_str(fstr2);
+        case BIG_INTEGER:
+            print_big_integer_value_buf(v, pb);
+        case BIG_FLOAT:
+            print_big_float_value_buf(v, pb);
+        case BIG_COMPLEX:
+            print_big_complex_value_buf(v, pb);
+        case COMPLEX128:
+            fixed_complex_append_f64(v.complex128_val.real, v.complex128_val.imag, pb);
+        case COMPLEX64:
+            fixed_complex_append_f64((double)v.complex64_val.real, (double)v.complex64_val.imag, pb);
         case STRING:
             pb.append_char('"');
             pb.append_zstr((ZString)v.str_chars);
@@ -231,6 +278,8 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
             pb.append_char('>');
         case ARRAY:
             print_array_value_buf(v, syms, pb);
+        case TENSOR:
+            print_tensor_value_buf(v, syms, pb);
         case TYPE_INFO:
             pb.append_str("#<type ");
             pb.append_str(syms.get_name(v.type_info_val.name));
@@ -258,6 +307,7 @@ fn void print_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
 }
 
 fn usz print_value_to_buf(Value* v, SymbolTable* syms, char* buf, usz buf_size) {
+    if (buf == null || buf_size == 0) return 0;
     PrintBuf pb;
     pb.buf = buf;
     pb.pos = 0;

@@ -28,14 +28,15 @@ fn bool register_language_constants(Interp* interp) {
     if (!env_define_with_barrier_checked(interp.global_env, interp.sym_true, true_val, interp)) return false;
     if (!env_define_with_barrier_checked(interp.global_env, interp.sym_false, false_val, interp)) return false;
     SymbolId sym_nil = interp.symbols.intern("nil");
+    if (sym_nil == INVALID_SYMBOL_ID) return false;
     return env_define_with_barrier_checked(interp.global_env, sym_nil, nil_val, interp);
 }
 
 fn bool register_dispatched_primitives(Interp* interp) {
-    const DISPATCHED_PRIM_COUNT = 43;
+    const DISPATCHED_PRIM_COUNT = 56;
     PrimReg[DISPATCHED_PRIM_COUNT] dispatched_prims = {
         // Arithmetic
-        { "+", &prim_add, 2 }, { "-", &prim_sub, 2 }, { "*", &prim_mul, 2 },
+        { "+", &prim_add, -1 }, { "-", &prim_sub, -1 }, { "*", &prim_mul, 2 },
         { "/", &prim_div, 2 }, { "%", &prim_mod, 2 },
         // Comparison
         { "=", &prim_eq, 2 }, { "<", &prim_lt, 2 }, { ">", &prim_gt, 2 },
@@ -59,10 +60,22 @@ fn bool register_dispatched_primitives(Interp* interp) {
         { "abs", &prim_abs, 1 }, { "floor", &prim_floor, 1 },
         { "ceiling", &prim_ceiling, 1 }, { "round", &prim_round, 1 },
         { "truncate", &prim_truncate, 1 }, { "sqrt", &prim_sqrt, 1 },
+        { "sinh", &prim_sinh, 1 }, { "cosh", &prim_cosh, 1 },
+        { "tanh", &prim_tanh, 1 },
+        { "real-part", &prim_real_part, 1 },
+        { "imag-part", &prim_imag_part, 1 },
+        { "conjugate", &prim_conjugate, 1 },
         { "min", &prim_min, 2 }, { "max", &prim_max, 2 },
         // Callable type symbols / constructors
         { "Integer", &prim_ctor_int, 1 },
-        { "Double", &prim_ctor_double, 1 },
+        { "BigInteger", &prim_ctor_big_integer, 1 },
+        { "BigFloat", &prim_ctor_big_float, 1 },
+        { "BigComplex", &prim_ctor_big_complex, -1 },
+        { "Complex128", &prim_ctor_complex128, -1 },
+        { "Complex64", &prim_ctor_complex64, -1 },
+        { "Float", &prim_ctor_float, -1 },
+        { "Float32", &prim_ctor_float32, 1 },
+        { "Float64", &prim_ctor_double, 1 },
         { "String", &prim_ctor_string, 1 }, { "Symbol", &prim_ctor_symbol, 1 },
         { "Boolean", &prim_ctor_bool, 1 },
         { "Nil", &prim_ctor_nil, 1 }, { "Void", &prim_ctor_void, -1 },

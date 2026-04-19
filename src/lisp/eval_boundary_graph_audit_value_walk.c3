@@ -9,11 +9,14 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
     Env** env_stack,
     usz* env_stack_len,
     main::ScopeRegion* target_scope,
+    main::ScopeRegion* forbidden_scope,
+    Env* global_env,
     bool emit,
     usz root_tag,
     usz root_scope_gen
 ) {
-    if (boundary_value_points_into_temp(cur, target_scope)) {
+    (void)global_env;
+    if (boundary_value_points_into_temp(cur, target_scope, forbidden_scope)) {
         return boundary_graph_audit_result(
             emit,
             BOUNDARY_GRAPH_AUDIT_REACHABLE_TEMP_VALUE,
@@ -209,6 +212,63 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
                 }
             }
             break;
+        case TENSOR:
+            assert(edge_class == BOUNDARY_GRAPH_EDGE_VALUE, "boundary graph audit: TENSOR edge class mismatch");
+            if (cur.tensor_val != null) {
+                TensorVal* tensor = cur.tensor_val;
+                switch (tensor.kind) {
+                    case TENSOR_PAYLOAD_CONCRETE:
+                        break;
+                    case TENSOR_PAYLOAD_MAP:
+                        // Builtin dispatch method tables are shared callable descriptors;
+                        // Tensor expression ownership is about captured function objects
+                        // and tensor operands, not cloning global dispatch registries.
+                        if (!(tensor.map_func == null ||
+                                tensor.map_func.tag == METHOD_TABLE ||
+                                boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.map_func)) ||
+                            !boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.map_left) ||
+                            !boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.map_right)) {
+                            return boundary_graph_audit_result(
+                                emit,
+                                BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
+                                target_scope,
+                                root_tag,
+                                BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+                                root_scope_gen,
+                                0
+                            );
+                        }
+                        break;
+                    case TENSOR_PAYLOAD_CONTRACT:
+                        if (!boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.contract_left) ||
+                            !boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.contract_right)) {
+                            return boundary_graph_audit_result(
+                                emit,
+                                BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
+                                target_scope,
+                                root_tag,
+                                BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+                                root_scope_gen,
+                                0
+                            );
+                        }
+                        break;
+                    case TENSOR_PAYLOAD_VIEW:
+                        if (!boundary_graph_audit_push_value(value_stack, value_stack_len, tensor.view_source)) {
+                            return boundary_graph_audit_result(
+                                emit,
+                                BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
+                                target_scope,
+                                root_tag,
+                                BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE,
+                                root_scope_gen,
+                                0
+                            );
+                        }
+                        break;
+                }
+            }
+            break;
         case NIL:
         case INT:
         case STRING:
@@ -217,6 +277,12 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
         case PRIMITIVE:
         case ERROR:
         case DOUBLE:
+        case FLOAT32:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
         case FFI_HANDLE:
         case TYPE_INFO:
         case COROUTINE:

@@ -1,9 +1,25 @@
 module lisp;
 
-import std::math;
-
 const usz AST_ARENA_ALIGNMENT = 8;
 const usz AST_ARENA_INITIAL_CHUNK_BYTES = 4096;
+
+fn bool lisp_checked_add_usz(usz left, usz right, usz* out) @inline {
+    if (out == null) return false;
+    if (right > usz.max - left) return false;
+    *out = left + right;
+    return true;
+}
+
+fn bool lisp_checked_mul_usz(usz left, usz right, usz* out) @inline {
+    if (out == null) return false;
+    if (left == 0 || right == 0) {
+        *out = 0;
+        return true;
+    }
+    if (left > usz.max / right) return false;
+    *out = left * right;
+    return true;
+}
 
 // AstArena is the interpreter-owned, chunked bump arena for AST nodes only.
 // It owns Expr/Pattern storage for the full interp lifetime and only supports
@@ -20,12 +36,11 @@ struct AstArena {
     usz capacity;
 }
 
-fn bool ast_arena_aligned_size(usz size, usz* out) {
+fn usz ast_arena_aligned_size(usz size) {
     usz mask = AST_ARENA_ALIGNMENT - 1;
     usz aligned = 0;
-    if (math::overflow_add(size, mask, &aligned)) return false;
-    *out = aligned & ~mask;
-    return true;
+    if (!lisp_checked_add_usz(size, mask, &aligned)) return 0;
+    return aligned & ~mask;
 }
 
 fn usz ast_arena_next_chunk_capacity(AstArena* arena, usz required) {
@@ -50,7 +65,7 @@ fn AstArenaChunk* ast_arena_chunk_alloc(usz capacity) {
     if (capacity == 0) return null;
 
     usz total = 0;
-    if (math::overflow_add(AstArenaChunk.sizeof, capacity, &total)) return null;
+    if (!lisp_checked_add_usz(AstArenaChunk.sizeof, capacity, &total)) return null;
     AstArenaChunk* chunk = (AstArenaChunk*)mem::malloc(total);
     if (chunk == null) return null;
 
@@ -139,14 +154,13 @@ fn void ast_arena_zero(void* ptr, usz size) @inline {
 fn void* ast_arena_alloc(AstArena* arena, usz size) {
     if (arena == null || size == 0) return null;
 
-    usz aligned = 0;
-    if (!ast_arena_aligned_size(size, &aligned)) return null;
+    usz aligned = ast_arena_aligned_size(size);
+    if (aligned == 0) return null;
 
     AstArenaChunk* current = arena.chunks;
     if (current != null) {
         usz next_used = 0;
-        if (math::overflow_add(current.used, aligned, &next_used)) return null;
-        if (next_used <= current.capacity) {
+        if (lisp_checked_add_usz(current.used, aligned, &next_used) && next_used <= current.capacity) {
             char* data = ast_arena_chunk_data(current);
             void* result = data + current.used;
             current.used = next_used;
@@ -156,15 +170,22 @@ fn void* ast_arena_alloc(AstArena* arena, usz size) {
     }
 
     usz chunk_capacity = ast_arena_next_chunk_capacity(arena, aligned);
-    usz updated_capacity = 0;
-    if (math::overflow_add(arena.capacity, chunk_capacity, &updated_capacity)) return null;
-
     AstArenaChunk* chunk = ast_arena_chunk_alloc(chunk_capacity);
     if (chunk == null) return null;
 
     chunk.used = aligned;
-    arena.capacity = updated_capacity;
-    arena.count++;
+    usz next_capacity = 0;
+    if (!lisp_checked_add_usz(arena.capacity, chunk_capacity, &next_capacity)) {
+        mem::free(chunk);
+        return null;
+    }
+    usz next_count = 0;
+    if (!lisp_checked_add_usz(arena.count, 1, &next_count)) {
+        mem::free(chunk);
+        return null;
+    }
+    arena.capacity = next_capacity;
+    arena.count = next_count;
     chunk.next = arena.chunks;
     arena.chunks = chunk;
 

@@ -1,0 +1,141 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint padding0;
+    uint padding1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    double input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    double output_data[];
+};
+
+double poly7(double t, double c0, double c1, double c2, double c3, double c4, double c5, double c6, double c7) {
+    return (((((((c7 * t + c6) * t + c5) * t + c4) * t + c3) * t + c2) * t + c1) * t + c0);
+}
+
+double normal_cdf_piece(double x, double start, double end, double c0, double c1, double c2, double c3, double c4, double c5, double c6, double c7) {
+    double midpoint = 0.5 * (start + end);
+    double half_width = 0.5 * (end - start);
+    double t = (x - midpoint) / half_width;
+    return poly7(t, c0, c1, c2, c3, c4, c5, c6, c7);
+}
+
+double normal_cdf_approx(double value) {
+    if (value != value) return value;
+
+    double x = value < 0.0 ? -value : value;
+    double cdf = 1.0;
+
+    if (x < 0.75) {
+        cdf = normal_cdf_piece(
+            x, 0.0, 0.75,
+            0.64616976601180021,
+            0.13944566000656783,
+            -0.0098047492628794176,
+            -0.0028086560834583714,
+            0.00032841107023174091,
+            0.000049993864457173969,
+            -0.0000071062011216750048,
+            -0.00000067404647152853304
+        );
+    } else if (x < 1.5) {
+        cdf = normal_cdf_piece(
+            x, 0.75, 1.5,
+            0.86970548281075644,
+            0.079453742484857065,
+            -0.016759771870024798,
+            0.00049464143727112814,
+            0.00034062736196733884,
+            -0.000039157087882858432,
+            -0.0000036153045396038303,
+            0.00000084883517038695612
+        );
+    } else if (x < 2.5) {
+        cdf = normal_cdf_piece(
+            x, 1.5, 2.5,
+            0.97724987051259493,
+            0.026995481448951426,
+            -0.013497829864738702,
+            0.0033744618852875235,
+            -0.00028071929865126823,
+            -0.000070404113497968984,
+            0.000020253548387051024,
+            -0.00000077189801128467968
+        );
+    } else if (x < 4.0) {
+        cdf = normal_cdf_piece(
+            x, 2.5, 4.0,
+            0.99942296028102429,
+            0.001521800643681997,
+            -0.0018541510698107098,
+            0.0013640429322795877,
+            -0.00066034412898240699,
+            0.0002062478890727491,
+            -0.000029182432398640669,
+            -0.0000030892421534544619
+        );
+    } else if (x < 6.0) {
+        cdf = normal_cdf_piece(
+            x, 4.0, 6.0,
+            0.99999971924978248,
+            0.0000014784378699365918,
+            -0.000003926569037690398,
+            0.0000060675842413210721,
+            -0.0000056812173978263232,
+            0.0000054548672484898153,
+            -0.0000059272744368006774,
+            0.0000028312123557989017
+        );
+    } else if (x < 8.0) {
+        cdf = normal_cdf_piece(
+            x, 6.0, 8.0,
+            1.0000000000000269,
+            0.0000000000055521287814992588,
+            -0.000000000076986321413158828,
+            0.0000000001236874310620702,
+            0.00000000010843568558817518,
+            -0.000000000025291304497043835,
+            -0.00000000051969732951747522,
+            0.000000000387862015168198
+        );
+    }
+
+    return value < 0.0 ? 1.0 - cdf : cdf;
+}
+
+double apply_unary(double value) {
+    if (params.op == 0) {
+        return value < 0.0 ? -value : value;
+    }
+    if (params.op == 1) {
+        return -value;
+    }
+    if (params.op == 2) {
+        return sqrt(value);
+    }
+    if (params.op == 3) {
+        return value;
+    }
+    if (params.op == 4) {
+        return 0.0;
+    }
+    if (params.op == 19) {
+        return normal_cdf_approx(value);
+    }
+    return value;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= params.count) return;
+    output_data[index] = apply_unary(input_data[index]);
+}

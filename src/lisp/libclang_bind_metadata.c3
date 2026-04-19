@@ -4,12 +4,76 @@ fn bool bindgen_type_is_callback(char* c_type) {
     return cstr_contains(c_type, "(*");
 }
 
-fn bool bindgen_type_is_const_qualified(char* c_type) {
-    return cstr_contains(c_type, "const");
+fn bool bindgen_type_token_is_ident_char(char ch) @inline {
+    return (ch >= 'a' && ch <= 'z') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') ||
+        ch == '_';
+}
+
+fn bool bindgen_type_has_token(char* text, char[] token) {
+    if (text == null || token.len == 0) return false;
+    usz i = 0;
+    while (text[i] != 0) {
+        bool match = true;
+        for (usz j = 0; j < token.len; j++) {
+            if (text[i + j] == 0 || text[i + j] != token[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            bool before_ok = i == 0 || !bindgen_type_token_is_ident_char(text[i - 1]);
+            bool after_ok = !bindgen_type_token_is_ident_char(text[i + token.len]);
+            if (before_ok && after_ok) return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+fn bool bindgen_type_has_token_before_char(char* text, char[] token, char delimiter) {
+    if (text == null || token.len == 0) return false;
+    usz i = 0;
+    while (text[i] != 0 && text[i] != delimiter) {
+        bool match = true;
+        for (usz j = 0; j < token.len; j++) {
+            if (text[i + j] == 0 || text[i + j] == delimiter || text[i + j] != token[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            bool before_ok = i == 0 || !bindgen_type_token_is_ident_char(text[i - 1]);
+            bool after_ok = !bindgen_type_token_is_ident_char(text[i + token.len]);
+            if (before_ok && after_ok) return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+fn bool bindgen_type_is_pointee_const_qualified(char* c_type) {
+    return bindgen_type_has_token_before_char(c_type, "const", '*');
+}
+
+fn usz bindgen_type_pointer_depth(char* c_type) {
+    if (c_type == null) return 0;
+    usz depth = 0;
+    usz i = 0;
+    while (c_type[i] != 0) {
+        if (c_type[i] == '*') depth++;
+        i++;
+    }
+    return depth;
 }
 
 fn bool bindgen_type_is_char_pointer(char* c_type) {
-    return cstr_contains(c_type, "char");
+    return bindgen_type_pointer_depth(c_type) == 1 &&
+        !bindgen_type_is_callback(c_type) &&
+        bindgen_type_has_token(c_type, "char") &&
+        !bindgen_type_has_token(c_type, "signed") &&
+        !bindgen_type_has_token(c_type, "unsigned");
 }
 
 fn void bindgen_set_scalar_metadata(BindgenOwnershipTag* ownership, BindgenNullabilityTag* nullability,
@@ -25,7 +89,7 @@ fn void bindgen_infer_metadata_for_type(char* c_type, char* omni_type, bool is_r
     BindgenRoleTag* role, BindgenTeardownTag* teardown) {
     bindgen_set_scalar_metadata(ownership, nullability, role, teardown);
 
-    if (!is_return && bindgen_type_is_char_pointer(c_type) && !bindgen_type_is_const_qualified(c_type)) {
+    if (!is_return && bindgen_type_is_char_pointer(c_type) && !bindgen_type_is_pointee_const_qualified(c_type)) {
         *ownership = BINDGEN_OWNERSHIP_BORROWED;
         *nullability = BINDGEN_NULLABILITY_UNKNOWN;
         *role = BINDGEN_ROLE_STRING_BUFFER;
@@ -33,7 +97,7 @@ fn void bindgen_infer_metadata_for_type(char* c_type, char* omni_type, bool is_r
         return;
     }
 
-    if (cstr_eq(omni_type, "Pointer")) {
+    if (cstr_eq(omni_type, "ForeignHandle")) {
         *ownership = is_return ? BINDGEN_OWNERSHIP_UNKNOWN : BINDGEN_OWNERSHIP_BORROWED;
         *nullability = BINDGEN_NULLABILITY_UNKNOWN;
         *role = bindgen_type_is_callback(c_type) ? BINDGEN_ROLE_CALLBACK : BINDGEN_ROLE_OPAQUE_POINTER;
@@ -46,14 +110,14 @@ fn void bindgen_infer_metadata_for_type(char* c_type, char* omni_type, bool is_r
     if (cstr_eq(omni_type, "String")) {
         *nullability = BINDGEN_NULLABILITY_UNKNOWN;
         if (is_return) {
-            *ownership = bindgen_type_is_const_qualified(c_type) ? BINDGEN_OWNERSHIP_BORROWED : BINDGEN_OWNERSHIP_UNKNOWN;
+            *ownership = bindgen_type_is_pointee_const_qualified(c_type) ? BINDGEN_OWNERSHIP_BORROWED : BINDGEN_OWNERSHIP_UNKNOWN;
             *role = BINDGEN_ROLE_STRING_RETURN;
             *teardown = BINDGEN_TEARDOWN_MANUAL_REVIEW;
             return;
         }
 
         *ownership = BINDGEN_OWNERSHIP_BORROWED;
-        *role = bindgen_type_is_const_qualified(c_type) ? BINDGEN_ROLE_STRING_INPUT : BINDGEN_ROLE_STRING_BUFFER;
+        *role = bindgen_type_is_pointee_const_qualified(c_type) ? BINDGEN_ROLE_STRING_INPUT : BINDGEN_ROLE_STRING_BUFFER;
         *teardown = *role == BINDGEN_ROLE_STRING_BUFFER ? BINDGEN_TEARDOWN_MANUAL_REVIEW : BINDGEN_TEARDOWN_NONE;
     }
 }
@@ -96,11 +160,11 @@ fn bool bindgen_param_name_has_size_hint(char* name) {
 }
 
 fn BindgenBufferDirectionTag bindgen_infer_string_buffer_direction(char* name) {
-    if (cstr_contains(name, "out") || cstr_contains(name, "output") || cstr_contains(name, "dst")) {
-        return BINDGEN_BUFFER_DIRECTION_OUT;
-    }
     if (cstr_contains(name, "inout")) {
         return BINDGEN_BUFFER_DIRECTION_INOUT;
+    }
+    if (cstr_contains(name, "out") || cstr_contains(name, "output") || cstr_contains(name, "dst")) {
+        return BINDGEN_BUFFER_DIRECTION_OUT;
     }
     if (cstr_contains(name, "input") || cstr_contains(name, "src")) {
         return BINDGEN_BUFFER_DIRECTION_IN;

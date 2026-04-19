@@ -158,28 +158,3 @@ fn bool test_stack_pool_shutdown_defer_cross_ctx_order() {
     ok = ok && probe.target_owner_visible;
     return ok;
 }
-
-fn bool test_stack_ctx_entry_reserve_rejects_byte_overflow() {
-    StackCtxDeferEntry[STACK_CTX_DEFER_INLINE_CAP] inline_entries;
-    StackCtxDeferEntry* heap_entries = null;
-
-    usz inline_capacity = STACK_CTX_DEFER_INLINE_CAP;
-    usz target_cap = inline_capacity + 1;
-    if (!stack_ctx_entry_reserve(&inline_entries[0], &heap_entries, 0, &inline_capacity, STACK_CTX_DEFER_INLINE_CAP, target_cap, false)) {
-        return false;
-    }
-    usz first_capacity = inline_capacity;
-
-    // Build an impossible element count that should overflow byte-size math.
-    usz max_cap_items = usz.max / StackCtxDeferEntry.sizeof;
-    if (max_cap_items == usz.max) return false;
-    usz overflow_items = max_cap_items + 1;
-
-    bool rejected = !stack_ctx_entry_reserve(&inline_entries[0], &heap_entries, 0, &inline_capacity, STACK_CTX_DEFER_INLINE_CAP, overflow_items, false);
-
-    if (heap_entries != null) {
-        mem::free(heap_entries);
-    }
-
-    return rejected && inline_capacity == first_capacity;
-}

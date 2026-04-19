@@ -15,7 +15,7 @@ fn void Parser.init_deftype_expr(Parser* self, Expr* e) {
     e.deftype.field_count = 0;
     e.deftype.type_params = null;
     e.deftype.type_param_count = 0;
-    e.deftype.parent = 0;
+    e.deftype.parent = (SymbolId)0;
 }
 
 fn bool Parser.parse_deftype_name_compound(Parser* self, Expr* e) {

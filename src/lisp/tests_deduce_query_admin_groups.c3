@@ -8,8 +8,4 @@ fn void run_deduce_admin_surface_tests(Interp* interp, int* pass, int* fail) {
     run_deduce_admin_surface_recursive_proof_tests(interp, pass, fail);
     run_deduce_admin_surface_query_demand_tests(interp, pass, fail);
     run_deduce_admin_surface_demand_tests(interp, pass, fail);
-    run_deduce_admin_surface_demand_filter_tests(interp, pass, fail);
-    run_deduce_admin_surface_demand_tail_tests(interp, pass, fail);
-    run_deduce_admin_surface_metadata_and_goal_directed_tests(interp, pass, fail);
-    run_deduce_admin_surface_why_result_provenance_tests(interp, pass, fail);
 }

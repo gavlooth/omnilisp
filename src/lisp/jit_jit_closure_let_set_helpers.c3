@@ -3,8 +3,6 @@ module lisp;
 import main;
 
 fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     Value* init_val = jit_eval(expr.let_expr.init, env, interp);
     if (init_val != null && init_val.tag == ERROR) return init_val;
 
@@ -103,8 +101,6 @@ fn bool jit_letrec_body_has_shift(Value* actual_value, Expr* init_expr) {
 }
 
 fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     Value* placeholder = make_nil(interp);
     Env* rec_env = jit_env_extend(interp, env, expr.let_expr.name, placeholder);
     if (rec_env == null) return raise_error(interp, "let: out of memory while binding recursive name");
@@ -123,8 +119,6 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
 }
 
 fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     bool found = false;
     Value* write_err = env_set_with_barrier_result(env, name, value, interp, &found);
     if (write_err != null) return write_err;
@@ -176,6 +170,7 @@ fn Value* jit_set_path_step(Value* current, SymbolId seg, Interp* interp) {
 
 fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
     Value* stored = boundary_promote_to_root(value, interp);
+    if (stored == null) return raise_error(interp, "set!: cons field promotion failed");
     if (stored != null && stored.tag == ERROR) return stored;
     if ((uint)last_seg == (uint)interp.sym_car) {
         current.cons_val.car = stored;
@@ -193,14 +188,14 @@ fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* val
 @require target_scope != null : "jit_copy_value_into_scope_site: null target_scope"
 @require releasing_scope != null : "jit_copy_value_into_scope_site: null releasing_scope"
 *>
-fn Value* jit_copy_value_into_scope_site(
+fn BoundaryCopyResult jit_copy_value_into_scope_site_checked(
     Value* value,
     Interp* interp,
     main::ScopeRegion* target_scope,
     main::ScopeRegion* releasing_scope,
     uint site
 ) {
-    if (value == null || target_scope == null) return value;
+    if (value == null || target_scope == null) return boundary_copy_fail(BOUNDARY_COPY_FAULT_NULL_RESULT);
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
     interp.current_scope = target_scope;
@@ -208,7 +203,7 @@ fn Value* jit_copy_value_into_scope_site(
     PromotionContext copy_ctx = {};
     boundary_promotion_context_begin(interp, &copy_ctx);
     defer boundary_promotion_context_end(interp, &copy_ctx);
-    return boundary_copy_to_parent_site_ctx(value, interp, site, &copy_ctx);
+    return boundary_copy_to_parent_site_ctx_checked(value, interp, site, &copy_ctx);
 }
 
 fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
@@ -218,15 +213,19 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
             if (ti.fields[fi].name == last_seg && fi < current.instance_val.field_count) {
                 main::ScopeRegion* target = current.instance_val.owner_scope;
                 if (target == null) target = interp.root_scope;
-                Value* stored = jit_copy_value_into_scope_site(
+                BoundaryCopyResult copied = jit_copy_value_into_scope_site_checked(
                     value,
                     interp,
                     target,
                     interp.current_scope,
                     COPY_SITE_ENV_PROMOTE_FOR_TARGET
                 );
-                if (stored != null && stored.tag == ERROR) return stored;
-                if (stored != null) current.instance_val.fields[fi] = *stored;
+                if (!boundary_copy_result_ok(copied)) {
+                    return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+                }
+                if (copied.value != null && copied.value.tag == ERROR) return copied.value;
+                if (copied.value == null) return raise_error(interp, "set!: field value copy failed");
+                current.instance_val.fields[fi] = *copied.value;
                 return make_void(interp);
             }
         }
@@ -235,8 +234,6 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
 }
 
 fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     Value* current = jit_resolve_set_path_root(interp, expr, env);
     if (current != null && current.tag == ERROR) return current;
 

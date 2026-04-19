@@ -6,7 +6,7 @@ module lisp;
 fn Expr* Parser.parse_defabstract(Parser* self, Expr* e) {
     e.tag = E_DEFABSTRACT;
     e.defabstract.has_parent = false;
-    e.defabstract.parent = 0;
+    e.defabstract.parent = (SymbolId)0;
 
     if (self.lexer.current.type == T_LPAREN) {
         self.lexer.advance();
@@ -52,7 +52,7 @@ fn Expr* Parser.parse_defalias(Parser* self, Expr* e) {
         e.defalias.target.meta_count = 0;
         e.defalias.target.val_literal.tag = NIL;
         e.defalias.target.val_literal.int_value = 0;
-        e.defalias.target.val_literal.sym_value = 0;
+        e.defalias.target.val_literal.sym_value = (SymbolId)0;
         e.defalias.target.has_val_literal = false;
         self.lexer.advance();
     } else {

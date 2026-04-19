@@ -43,6 +43,7 @@ fn SharedHandle* shared_handle_blob_new_owned(char* owned_bytes, usz len) {
 }
 
 fn SharedHandle* shared_handle_blob_new_copy(char[] bytes) {
+    if (bytes.len == usz.max) return null;
     usz cap = bytes.len + 1;
     if (cap < 32) cap = 32;
     char* copy = (char*)mem::malloc(cap);
@@ -108,6 +109,7 @@ fn bool scheduler_take_shared_bytes_owned(SharedHandle* handle, char** out_bytes
     if (payload == null || payload.bytes == null || out_bytes == null) return false;
 
     usz len = payload.len;
+    if (len == usz.max) return false;
     char* owned = (char*)mem::malloc(len + 1);
     if (owned == null) return false;
     for (usz i = 0; i < len; i++) owned[i] = payload.bytes[i];

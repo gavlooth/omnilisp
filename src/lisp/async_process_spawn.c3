@@ -5,7 +5,43 @@ import std::io;
 import main;
 
 // (process-spawn cmd args env) -> dict {'handle process-handle 'pid n 'stdin fs-handle 'stdout fs-handle 'stderr fs-handle}
-fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
+const int PROCESS_SPAWN_TRACE_STAGE_NONE = 0;
+const int PROCESS_SPAWN_TRACE_STAGE_PROCESS_HANDLE = 1;
+const int PROCESS_SPAWN_TRACE_STAGE_STDIN = 2;
+const int PROCESS_SPAWN_TRACE_STAGE_STDOUT = 3;
+const int PROCESS_SPAWN_TRACE_STAGE_STDERR = 4;
+
+struct ProcessSpawnCleanupTrace {
+    bool spawn_succeeded;
+    bool process_handle_created;
+    int failed_stage;
+    bool stdin_wrapper_created;
+    bool stdout_wrapper_created;
+    bool stderr_wrapper_created;
+    bool stdin_cleanup_called;
+    bool stdout_cleanup_called;
+    bool stderr_cleanup_called;
+    bool process_closed;
+}
+
+fn void process_spawn_close_fd(int fd, bool* trace_flag) {
+    if (fd < 0) return;
+    c_close_fd(fd);
+    if (trace_flag != null) *trace_flag = true;
+}
+
+fn void process_spawn_close_process(ProcessHandle* ph, ProcessSpawnCleanupTrace* trace) {
+    if (ph == null) return;
+    close_process_handle(ph);
+    if (trace != null) {
+        trace.process_closed = !ph.open && ph.uv_process == null;
+    }
+}
+
+fn Value* process_spawn_impl(Value*[] args, Env* env, Interp* interp, ProcessSpawnCleanupTrace* trace = null) {
+    if (trace != null) {
+        *trace = {};
+    }
     Value* cmd_v = null;
     Value* argv_v = make_nil(interp);
     Value* env_v = make_nil(interp);
@@ -73,7 +109,14 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
     }
     defer free_heap_c_string_items(env_items, env_item_count);
 
-    char** argv_ptrs = (char**)mem::malloc(char*.sizeof * (argv_item_count + 2));
+    if (argv_item_count > usz.max - (usz)2) {
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
+    usz argv_ptr_count = argv_item_count + (usz)2;
+    if (argv_ptr_count > usz.max / char*.sizeof) {
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
+    char** argv_ptrs = (char**)mem::malloc(char*.sizeof * argv_ptr_count);
     if (argv_ptrs == null) {
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
@@ -86,7 +129,14 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
 
     char** env_ptrs = null;
     if (has_env_override) {
-        env_ptrs = (char**)mem::malloc(char*.sizeof * (env_item_count + 1));
+        if (env_item_count == usz.max) {
+            return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        }
+        usz env_ptr_count = env_item_count + (usz)1;
+        if (env_ptr_count > usz.max / char*.sizeof) {
+            return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+        }
+        env_ptrs = (char**)mem::malloc(char*.sizeof * env_ptr_count);
         if (env_ptrs == null) {
             return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
         }
@@ -111,9 +161,9 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
         &stderr_fd
     );
     if (spawn_status < 0 || uv_process == null) {
-        if (stdin_fd >= 0) c_close_fd(stdin_fd);
-        if (stdout_fd >= 0) c_close_fd(stdout_fd);
-        if (stderr_fd >= 0) c_close_fd(stderr_fd);
+        process_spawn_close_fd(stdin_fd, trace != null ? &trace.stdin_cleanup_called : null);
+        process_spawn_close_fd(stdout_fd, trace != null ? &trace.stdout_cleanup_called : null);
+        process_spawn_close_fd(stderr_fd, trace != null ? &trace.stderr_cleanup_called : null);
         char[96] err_buf;
         char[] err_msg;
         if (try char[] formatted = io::bprintf(&err_buf, "process-spawn: spawn failed (%d)", spawn_status)) {
@@ -123,38 +173,68 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
         }
         return io_raise(interp, "io/process-spawn-failed", err_msg);
     }
+    if (trace != null) {
+        trace.spawn_succeeded = true;
+    }
 
     Value* proc_handle_v = make_process_handle(interp, uv_process);
     if (proc_handle_v == null || is_error(proc_handle_v)) {
-        if (stdin_fd >= 0) c_close_fd(stdin_fd);
-        if (stdout_fd >= 0) c_close_fd(stdout_fd);
-        if (stderr_fd >= 0) c_close_fd(stderr_fd);
+        process_spawn_close_fd(stdin_fd, trace != null ? &trace.stdin_cleanup_called : null);
+        process_spawn_close_fd(stdout_fd, trace != null ? &trace.stdout_cleanup_called : null);
+        process_spawn_close_fd(stderr_fd, trace != null ? &trace.stderr_cleanup_called : null);
+        if (trace != null) {
+            trace.failed_stage = PROCESS_SPAWN_TRACE_STAGE_PROCESS_HANDLE;
+        }
         return proc_handle_v != null ? proc_handle_v : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
+    if (trace != null) {
+        trace.process_handle_created = true;
+    }
 
-    Value* stdin_h = make_fs_handle(interp, stdin_fd);
+    Value* stdin_h = make_fs_handle(interp, stdin_fd, trace != null ? &trace.stdin_cleanup_called : null);
     if (stdin_h == null || is_error(stdin_h)) {
         ProcessHandle* ph = get_process_handle(proc_handle_v);
-        close_process_handle(ph);
-        if (stdout_fd >= 0) c_close_fd(stdout_fd);
-        if (stderr_fd >= 0) c_close_fd(stderr_fd);
+        process_spawn_close_process(ph, trace);
+        process_spawn_close_fd(stdout_fd, trace != null ? &trace.stdout_cleanup_called : null);
+        process_spawn_close_fd(stderr_fd, trace != null ? &trace.stderr_cleanup_called : null);
+        if (trace != null) {
+            trace.failed_stage = PROCESS_SPAWN_TRACE_STAGE_STDIN;
+        }
         return stdin_h != null ? stdin_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
-    Value* stdout_h = make_fs_handle(interp, stdout_fd);
+    if (trace != null) {
+        trace.stdin_wrapper_created = true;
+    }
+    Value* stdout_h = make_fs_handle(interp, stdout_fd, trace != null ? &trace.stdout_cleanup_called : null);
     if (stdout_h == null || is_error(stdout_h)) {
         close_fs_like_handle(stdin_h, interp);
         ProcessHandle* ph = get_process_handle(proc_handle_v);
-        close_process_handle(ph);
-        if (stderr_fd >= 0) c_close_fd(stderr_fd);
+        process_spawn_close_process(ph, trace);
+        process_spawn_close_fd(stderr_fd, trace != null ? &trace.stderr_cleanup_called : null);
+        if (trace != null) {
+            trace.failed_stage = PROCESS_SPAWN_TRACE_STAGE_STDOUT;
+            trace.stdin_cleanup_called = true;
+        }
         return stdout_h != null ? stdout_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
-    Value* stderr_h = make_fs_handle(interp, stderr_fd);
+    if (trace != null) {
+        trace.stdout_wrapper_created = true;
+    }
+    Value* stderr_h = make_fs_handle(interp, stderr_fd, trace != null ? &trace.stderr_cleanup_called : null);
     if (stderr_h == null || is_error(stderr_h)) {
         close_fs_like_handle(stdin_h, interp);
         close_fs_like_handle(stdout_h, interp);
         ProcessHandle* ph = get_process_handle(proc_handle_v);
-        close_process_handle(ph);
+        process_spawn_close_process(ph, trace);
+        if (trace != null) {
+            trace.failed_stage = PROCESS_SPAWN_TRACE_STAGE_STDERR;
+            trace.stdin_cleanup_called = true;
+            trace.stdout_cleanup_called = true;
+        }
         return stderr_h != null ? stderr_h : io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
+    }
+    if (trace != null) {
+        trace.stderr_wrapper_created = true;
     }
 
     ProcessHandle* ph = get_process_handle(proc_handle_v);
@@ -168,11 +248,27 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
         if (ph != null) close_process_handle(ph);
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
-    Value* handle_key = make_symbol(interp, interp.symbols.intern("handle"));
-    Value* pid_key = make_symbol(interp, interp.symbols.intern("pid"));
-    Value* stdin_key = make_symbol(interp, interp.symbols.intern("stdin"));
-    Value* stdout_key = make_symbol(interp, interp.symbols.intern("stdout"));
-    Value* stderr_key = make_symbol(interp, interp.symbols.intern("stderr"));
+    SymbolId handle_sym = interp.symbols.intern("handle");
+    SymbolId pid_sym = interp.symbols.intern("pid");
+    SymbolId stdin_sym = interp.symbols.intern("stdin");
+    SymbolId stdout_sym = interp.symbols.intern("stdout");
+    SymbolId stderr_sym = interp.symbols.intern("stderr");
+    if (handle_sym == INVALID_SYMBOL_ID ||
+        pid_sym == INVALID_SYMBOL_ID ||
+        stdin_sym == INVALID_SYMBOL_ID ||
+        stdout_sym == INVALID_SYMBOL_ID ||
+        stderr_sym == INVALID_SYMBOL_ID) {
+        close_fs_like_handle(stdin_h, interp);
+        close_fs_like_handle(stdout_h, interp);
+        close_fs_like_handle(stderr_h, interp);
+        if (ph != null) close_process_handle(ph);
+        return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: failed to intern result keys");
+    }
+    Value* handle_key = make_symbol(interp, handle_sym);
+    Value* pid_key = make_symbol(interp, pid_sym);
+    Value* stdin_key = make_symbol(interp, stdin_sym);
+    Value* stdout_key = make_symbol(interp, stdout_sym);
+    Value* stderr_key = make_symbol(interp, stderr_sym);
     if (!hashmap_set_checked(out.hashmap_val, handle_key, proc_handle_v, interp) ||
         !hashmap_set_checked(out.hashmap_val, pid_key, make_int(interp, pid), interp) ||
         !hashmap_set_checked(out.hashmap_val, stdin_key, stdin_h, interp) ||
@@ -185,4 +281,8 @@ fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/process-spawn-out-of-memory", "process-spawn: out of memory");
     }
     return out;
+}
+
+fn Value* prim_process_spawn(Value*[] args, Env* env, Interp* interp) {
+    return process_spawn_impl(args, env, interp);
 }

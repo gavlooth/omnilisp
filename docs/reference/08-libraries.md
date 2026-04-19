@@ -62,21 +62,22 @@ structural transformations — anything beyond what regex can do.
 ### Define a Grammar
 
 ```lisp
-(define json-grammar
-  (pika/grammar
-    "value"  "object | array | string | number | 'true' | 'false' | 'null'"
-    "object" "'{' (pair (',' pair)*)? '}'"
-    "pair"   "string ':' value"
-    "array"  "'[' (value (',' value)*)? ']'"
-    "string" "'\"' [^\"]* '\"'"
-    "number" "[0-9]+"))
+(define expr-grammar
+  (pika/grammar 'expr
+    '(rule expr (seq number op number))
+    '(rule number (scan "[0-9]+"))
+    '(rule op (first "+" "-" "*" "/"))))
 ```
+
+Grammar definitions use a grammar name followed by quoted `(rule name clause)`
+forms. The first declared rule is the grammar start rule; later rules may be
+referenced before they are declared.
 
 ### Parse
 
 ```lisp
-(pika/parse json-grammar "[1, 2, 3]")
-;; => parse tree
+(pika/parse expr-grammar "1+2")
+;; => parse tree rooted at expr
 ```
 
 ### Fold (Transform)

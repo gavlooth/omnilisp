@@ -44,6 +44,9 @@ fn bool deduce_val_eq(Value* a, Value* b) {
     switch (a.tag) {
         case INT: return a.int_val == b.int_val;
         case DOUBLE: return a.double_val == b.double_val;
+        case FLOAT32: return a.float32_val == b.float32_val;
+        case COMPLEX128: return a.complex128_val.real == b.complex128_val.real && a.complex128_val.imag == b.complex128_val.imag;
+        case COMPLEX64: return a.complex64_val.real == b.complex64_val.real && a.complex64_val.imag == b.complex64_val.imag;
         case STRING: {
             if (a.str_len != b.str_len) return false;
             for (usz i = 0; i < a.str_len; i++) {

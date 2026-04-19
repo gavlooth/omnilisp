@@ -113,7 +113,9 @@ fn Value* json_pointer_lookup(Value* value, char[] token, Interp* interp) {
         Value* by_string = hashmap_get(map, key_v);
         if (by_string != null) return by_string;
 
-        Value* by_symbol = make_symbol(interp, interp.symbols.intern(token));
+        SymbolId token_sym = interp.symbols.intern(token);
+        if (token_sym == INVALID_SYMBOL_ID) return make_nil(interp);
+        Value* by_symbol = make_symbol(interp, token_sym);
         return hashmap_get(map, by_symbol);
     }
 

@@ -19,8 +19,6 @@ fn int jit_tail_multi_env_depth(Env* env, Env* stop_at) {
 }
 
 fn Value* jit_set_tco_bounce(Interp* interp, Expr* expr, Env* env) @inline {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     interp.jit_tco_expr = expr;
     interp.jit_tco_env = env;
     interp.flags.jit_tco_bounce = true;
@@ -125,16 +123,11 @@ fn Value* jit_apply_multi_args_tail_method_table(Interp* interp, Value* func, Va
 }
 
 fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     Value* frame_error = interp_apply_frame_enter(interp);
     if (frame_error != null) return frame_error;
     defer interp_apply_frame_leave(interp);
 
     if (func == null) return jit_null_callable_error(interp);
-    if (!jit_pointer_looks_canonical((void*)func)) {
-        return raise_error(interp, "jit: invalid multi-arg tail callable pointer");
-    }
     if (func.tag == ERROR) return func;
     if (arg_count == 0 && func.tag == CLOSURE && !func.closure_val.has_param && !func.closure_val.has_rest) {
         return jit_set_tco_bounce(interp, func.closure_val.body, func.closure_val.env);
@@ -154,74 +147,56 @@ fn Value* jit_apply_multi_args_tail(Interp* interp, Value* func, Value* arg_list
     return jit_apply_multi_args(interp, func, arg_list, arg_count);
 }
 
-fn Value* jit_env_lookup_local(Env* env, uint sym_id) {
+fn Value* jit_env_lookup_local(Interp* interp, uint sym_id, Env* env) {
+    if (env == null) return raise_error(interp, "jit: missing mutable local binding");
     SymbolId name = (SymbolId)sym_id;
     Value* v = env.lookup(name);
     if (v != null) return v;
-    return null;
+    return raise_error(interp, "jit: missing mutable local binding");
 }
 
-fn void jit_env_reparent(Env* env, Env* new_parent) {
+fn Env* jit_env_reparent(Env* env, Env* new_parent) {
+    if (env == null) return new_parent;
     env.parent = new_parent;
+    return env;
 }
 
 fn Value* jit_prim_add(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) + to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val + b.int_val);
-    }
+    if (a != null && b != null) return numeric_add2(interp, a, b);
     return raise_error(interp, "+: expected numbers");
 }
 
 fn Value* jit_prim_sub(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) - to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val - b.int_val);
-    }
+    if (a != null && b != null) return numeric_sub2(interp, a, b);
     return raise_error(interp, "-: expected numbers");
 }
 
 fn Value* jit_prim_mul(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
-    if (a != null && b != null) {
-        if (is_double(a) || is_double(b)) {
-            if (is_number(a) && is_number(b)) return make_double(interp, to_double(a) * to_double(b));
-        }
-        if (a.tag == INT && b.tag == INT) return make_int(interp, a.int_val * b.int_val);
-    }
+    if (a != null && b != null) return numeric_mul2(interp, a, b);
     return raise_error(interp, "*: expected numbers");
 }
 
 fn Value* jit_prim_lt(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
-    if (a != null && b != null && is_number(a) && is_number(b)) {
-        return to_double(a) < to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
+        int cmp = 0;
+        if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, "<: complex numbers are not ordered");
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, "<: BigInteger value is out of Float64 range");
+        return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_LT);
     }
     return raise_error(interp, "<: expected numbers");
 }
 
 fn Value* jit_prim_gt(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
-    if (a != null && b != null && is_number(a) && is_number(b)) {
-        return to_double(a) > to_double(b) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
+    if (a != null && b != null && is_numeric_value(a) && is_numeric_value(b)) {
+        int cmp = 0;
+        if (is_big_complex(a) || is_big_complex(b)) return raise_error(interp, ">: complex numbers are not ordered");
+        if (!numeric_values_compare(a, b, &cmp)) return raise_error(interp, ">: BigInteger value is out of Float64 range");
+        return numeric_compare_bool_result(interp, cmp, NUMERIC_COMPARE_GT);
     }
     return raise_error(interp, ">: expected numbers");
 }
 
 fn Value* jit_prim_eq(Interp* interp, Value* a, Value* b) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     if (a != null && b != null) {
         bool eq = values_equal(a, b);
         return eq ? make_symbol(interp, interp.sym_true) : make_nil(interp);

@@ -254,6 +254,7 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
             aot_interp.prim_user_data = saved_prim_user_data;
 
             Value* ffi_optional_lib = aot::ffi_declare_lib("libc", "libc.so.6");
+            Value* ffi_optional_lib_redeclare = aot::ffi_declare_lib("libc", "libm.so.6");
 
             Value* ffi_optional_fn = aot::ffi_declare_fn(
                 "libc",
@@ -319,6 +320,8 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
 
             bool ffi_optional_path_ok =
                 ffi_optional_lib != null && ffi_optional_lib.tag == ValueTag.FFI_HANDLE
+                && ffi_optional_lib_redeclare != null && ffi_optional_lib_redeclare.tag == ValueTag.ERROR
+                && str_contains(ffi_optional_lib_redeclare.str_chars[:ffi_optional_lib_redeclare.str_len], "different soname")
                 && ffi_optional_fn != null && ffi_optional_fn.tag == ValueTag.PRIMITIVE
                 && ffi_optional_call != null && ffi_optional_call.tag == ValueTag.ERROR
                 && str_contains(ffi_optional_call.str_chars[:ffi_optional_call.str_len], "unavailable");
@@ -400,6 +403,38 @@ fn void run_compiler_group_allocation_failure_seam_tests(Interp* interp, usz* pa
         bool ok = code.len == 0 && str_contains(err, "out of memory while parsing string literal");
         if (ok) { (*pass)++; compiler_print_pass("Compiler: parser string literal builder allocation failure fails closed"); }
         else    { (*fail)++; io::printn("[FAIL] Compiler: parser string literal builder allocation failure fails closed"); }
+    }
+
+    {
+        char[SYMBOL_MAX_NAME_LEN + 1] too_long_symbol;
+        for (usz i = 0; i < too_long_symbol.len; i++) too_long_symbol[i] = 'a';
+        char[] err = "";
+        char[] code = compile_to_c3(too_long_symbol[..], interp, &err);
+        bool ok = code.len == 0 && str_contains(err, "failed to intern symbol");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: parser symbol interning fails closed on overlong symbol"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: parser symbol interning fails closed on overlong symbol"); }
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+        compiler.emit_int(long.min);
+        char[] code = compiler.get_output();
+        bool ok = code.len > 0 && str_contains(code, "-9223372036854775808");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: emit_int preserves long.min without overflow"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: emit_int preserves long.min without overflow"); }
+    }
+
+    {
+        Compiler compiler;
+        compiler.init(interp);
+        defer compiler.free();
+        compiler.emit_usz(usz.max);
+        char[] code = compiler.get_output();
+        bool ok = code.len > 0 && str_contains(code, "18446744073709551615");
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: emit_usz preserves max-width usz values"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: emit_usz preserves max-width usz values"); }
     }
 
     {

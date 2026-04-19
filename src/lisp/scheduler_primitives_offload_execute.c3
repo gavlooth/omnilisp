@@ -114,24 +114,35 @@ fn Value* scheduler_execute_offload_job_batch(Value* jobs, bool allow_internal_i
     for (usz i = 0; i < job_count; i++) {
         works[i] = {};
         Value* parse_err = scheduler_build_offload_work(car(cur), &works[i], interp, allow_internal_io_ops);
-        if (parse_err != null) return parse_err;
+        if (parse_err != null) {
+            for (usz j = 0; j <= i; j++) {
+                scheduler_release_shared(works[j].shared);
+            }
+            return parse_err;
+        }
         cur = cdr(cur);
     }
 
+    Value*[] results = mem::new_array(Value*, job_count);
+    if (results.ptr == null) {
+        for (usz i = 0; i < job_count; i++) {
+            scheduler_release_shared(works[i].shared);
+        }
+        return scheduler_raise(interp, "scheduler/offload-out-of-memory", "offload: out of memory");
+    }
+    defer mem::free(results.ptr);
+
     SchedulerTaskHandle[] handles = mem::new_array(SchedulerTaskHandle, job_count);
     if (handles.ptr == null) {
+        for (usz i = 0; i < job_count; i++) {
+            scheduler_release_shared(works[i].shared);
+        }
         return scheduler_raise(interp, "scheduler/offload-task-table-full", "offload: task table full");
     }
     defer mem::free(handles.ptr);
 
     Value* begin_err = scheduler_begin_offload_work_jobs(works[..], &handles[0], interp);
     if (begin_err != null) return begin_err;
-
-    Value*[] results = mem::new_array(Value*, job_count);
-    if (results.ptr == null) {
-        return scheduler_raise(interp, "scheduler/offload-out-of-memory", "offload: out of memory");
-    }
-    defer mem::free(results.ptr);
 
     Value* join_err = scheduler_join_offload_task_handles(
         &handles[0],

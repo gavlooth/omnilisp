@@ -12,8 +12,8 @@ fn Relation* deduce_relation_alloc(DeduceDb* db, SymbolId rel_name) {
     rel.col_count = 0;
     rel.col_capacity = 0;
     rel.dbi = 0;
-    rel.key_col = 0;
-    rel.unique_col = 0;
+    rel.key_col = (SymbolId)0;
+    rel.unique_col = (SymbolId)0;
     rel.unique_cols = null;
     rel.unique_col_count = 0;
     rel.unique_col_capacity = 0;
@@ -23,7 +23,7 @@ fn Relation* deduce_relation_alloc(DeduceDb* db, SymbolId rel_name) {
     rel.check_constraints = null;
     rel.check_constraint_count = 0;
     rel.check_constraint_capacity = 0;
-    rel.index_col = 0;
+    rel.index_col = (SymbolId)0;
     rel.materialized_view = false;
     rel.materialized_refresh_policy = (SymbolId)0;
     rel.materialized_refresh_count = 0;

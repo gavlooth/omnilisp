@@ -10,7 +10,8 @@ fn bool Parser.collect_callable_params(Parser* self, List{SymbolId}* params, Lis
             Pattern* dp = self.parse_pattern();
             char[32] gensym_buf;
             if (try char[] gensym_text = io::bprintf(&gensym_buf, "__d%d", (int)(*destr_patterns).len())) {
-                SymbolId gensym = self.interp.symbols.intern(gensym_text);
+                SymbolId gensym = self.intern_or_error(gensym_text, "failed to intern destructuring parameter name");
+                if (gensym == INVALID_SYMBOL_ID) return false;
                 params.push(gensym);
                 TypeAnnotation empty_ann;
                 empty_ann.has_annotation = false;

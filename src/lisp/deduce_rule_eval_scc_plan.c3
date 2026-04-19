@@ -11,19 +11,23 @@ fn Value* deduce_build_scc_plan(
     Value* component_err = deduce_build_scc_plan_components(db, out, interp);
     if (component_err != null) return component_err;
 
+    usz component_square = 0;
+    if (out.component_count > 0) {
+        if (out.component_count > usz.max / out.component_count) {
+            deduce_scc_plan_free(out);
+            return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: SCC component matrix is too large");
+        }
+        component_square = out.component_count * out.component_count;
+    }
+
     out.component_order = mem::new_array(usz, out.component_count);
     if (out.component_order.ptr == null && out.component_count > 0) {
         deduce_scc_plan_free(out);
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }
 
-    if (out.component_count > 0 && out.component_count > usz.max / out.component_count) {
-        deduce_scc_plan_free(out);
-        return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
-    }
-    usz reversed_edge_count = out.component_count * out.component_count;
-    bool[] reversed_edges = mem::new_array(bool, reversed_edge_count);
-    if (reversed_edges.ptr == null && reversed_edge_count > 0) {
+    bool[] reversed_edges = mem::new_array(bool, component_square);
+    if (reversed_edges.ptr == null && out.component_count > 0) {
         deduce_scc_plan_free(out);
         return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
     }
@@ -99,8 +103,18 @@ fn Value* deduce_build_scc_plan(
     }
     for (usz i = 0; i < out.component_count; i++) out.component_strata[i] = 0;
 
-    usz relax_limit = out.component_count * (out.edges.len + 1);
-    if (relax_limit < out.component_count + 1) relax_limit = out.component_count + 1;
+    if (out.edges.len == usz.max || out.component_count == usz.max) {
+        deduce_scc_plan_free(out);
+        return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: stratum scheduling bound overflow");
+    }
+    usz edge_pass_count = out.edges.len + 1;
+    if (out.component_count != 0 && edge_pass_count > usz.max / out.component_count) {
+        deduce_scc_plan_free(out);
+        return deduce_raise(interp, "deduce/analyze-invalid-state", "deduce/analyze: stratum scheduling bound overflow");
+    }
+    usz relax_limit = out.component_count * edge_pass_count;
+    usz min_relax_limit = out.component_count + 1;
+    if (relax_limit < min_relax_limit) relax_limit = min_relax_limit;
     bool converged = out.component_count == 0;
     for (usz pass = 0; pass < relax_limit; pass++) {
         bool changed = false;

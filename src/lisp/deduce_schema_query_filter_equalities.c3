@@ -13,7 +13,7 @@ fn bool deduce_query_filter_expr_try_collect_equalities(
     if (expr == null || rel == null || interp == null || has_any_bound_out == null) return false;
 
     Expr* unwrapped_expr = null;
-    SymbolId unwrapped_row_param = 0;
+    SymbolId unwrapped_row_param = (SymbolId)0;
     Env* unwrapped_env = null;
     if (deduce_query_expr_try_unwrap_preserved_row_call_chain(
             expr,

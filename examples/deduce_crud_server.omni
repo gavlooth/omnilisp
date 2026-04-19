@@ -41,6 +41,12 @@
     ((Ok data) {'status "ok" 'data (to-json data)})
     ((Err msg) {'status "error" 'error msg})))
 
+(define (pipeline/body-after-header lines)
+  (match lines
+    (nil "")
+    (["" .. body-lines] (string-join "\n" body-lines))
+    ([_ .. rest] (pipeline/body-after-header rest))))
+
 (define (http/response status payload)
   (let (body (json-emit payload))
     (format "HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s"
@@ -48,10 +54,10 @@
 
 (define (pipeline/decode-request raw)
   (let (normalized (string-replace raw "\r\n" "\n")
-        [head .. body-parts] (string-split normalized "\n\n")
-        body-text (match body-parts ([b ..] b) (_ ""))
+        lines (string-split normalized "\n")
+        req-line (match lines ([line ..] line) (_ ""))
+        body-text (pipeline/body-after-header lines)
         body (match body-text ("" nil) (text (json-parse text)))
-        [req-line ..] (string-split head "\n")
         tokens (string-split req-line " "))
     (match tokens
       ([method path ..] {'method method 'path path 'body body})
@@ -141,7 +147,7 @@
       (["GET" p]
         (match (string-split p "/")
           (["" "items" id]
-            (match (string->number id)
+            (match (parse-number id)
               (nil (Err "route not found"))
               (item-id
                 (match (repo/get-by-id item-id)

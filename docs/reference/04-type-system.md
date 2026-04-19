@@ -66,7 +66,7 @@ None              ;; nullary variant
 
 ```lisp
 (Integer 3.9)        ;; => 3
-(Double 3)           ;; => 3.0
+(Float64 3)           ;; => 3.0
 (String 3)           ;; => "3"
 (Symbol "name")      ;; => 'name
 (Boolean 0)          ;; => true
@@ -90,6 +90,7 @@ and `Dictionary` are the primary spellings.
 
 Alias policy is input-tolerant but output-canonical:
 - aliases are accepted at constructor/type-annotation input sites,
+  including `^Dict` as an annotation spelling for `Dictionary`,
 - introspection/rendering surfaces normalize to canonical names (`type-of`,
   type-descriptor rendering),
 - constructor failure text uses canonical constructor names even when the call
@@ -98,7 +99,7 @@ Alias policy is input-tolerant but output-canonical:
 Collection/time constructor naming policy:
 - canonical constructor surfaces: `List`, `Array`, `Dictionary`, `Iterator`, `TimePoint`
 - allowed constructor shorthand: `Dict` for `Dictionary`
-- retained public helper: `list`
+- approved retained public helper: `list`
 
 Meta/abstract symbols `Any`, `Number`, and `Collection` remain annotation/dispatch
 surfaces and are also exposed as non-callable value-position type descriptors
@@ -108,6 +109,26 @@ still error).
 
 `Value` remains dedicated to value-literal annotation forms
 (`^(Value literal)`) and is not a callable constructor surface.
+
+`Tensor` is registered as a builtin type descriptor for annotation, dispatch,
+introspection, and construction. `(format "%s" Tensor)` prints
+`#<type Tensor>`, while `(Tensor data)` infers rectangular native `Float64`
+tensor storage, `(Tensor data BigFloat)` preserves BigFloat storage, and
+`(Tensor dtype shape data-or-scalar)` keeps the explicit shape/data
+construction path. Tensor-specific `map` methods dispatch through
+`^Tensor` annotations for unary, tensor-scalar, scalar-tensor, and exact-shape
+tensor-tensor elementwise operations. `contract` performs pure `Float64`
+summed-axis contraction as `(contract a b [left-axis right-axis])`,
+`(contract a b [[left-axis right-axis] ...])`, or the explicit
+`(contract a b left-axes right-axes)` form, with the result shape formed from
+non-contracted left axes followed by non-contracted right axes. Tensor `map`
+and `contract` may return lazy expression payloads
+under the existing `Tensor` value; no public `TensorExpr` type is introduced.
+`realize` is the concrete tensor storage boundary: `(realize tensor)`
+returns an already-concrete tensor or allocates concrete storage for a Tensor
+expression, while `(realize tensor out)` and `(realize scalar out)`
+stage into a temporary concrete tensor and copy into a mutable exact-shape/dtype
+destination tensor only after success.
 
 There is no builtin `Empty` type today. Use `Nil` for the language-level empty
 value. `Void` is a real builtin singleton type/value, constructed with
@@ -139,11 +160,13 @@ Collection constructors keep explicit behavior:
 
 Numeric conversion contract:
 
-- `Integer` and `inexact->exact` truncate toward zero.
+- `Integer` truncates finite doubles toward zero.
 - Narrowing must be finite and within `Integer` range; overflow/non-finite
   inputs raise `type/arg-mismatch`.
-- `string->number` returns `nil` for parse failure and integer
-  overflow/underflow.
+- `parse-number` returns `Integer`, `BigInteger`, `Float64`, or `BigFloat`;
+  syntactically valid decimal integer overflow/underflow promotes to
+  `BigInteger`, floating inputs that overflow `Float64` promote to `BigFloat`,
+  and invalid input returns `nil`.
 
 ### Type Introspection
 
@@ -210,14 +233,15 @@ Define multiple implementations with typed parameters. The best match wins:
 ```
 
 `Value` is the only supported constructor for value-literal dispatch.
-Supported literals in this position are integers, symbols, strings, and booleans (`true`/`false` symbols).
+Supported literals in this position are integers, symbols, strings, booleans
+(`true`/`false` symbols), and `nil`.
 Command-style facades should delegate to canonical `io/udp-*` operations. Module packaging for façade surfaces is deferred; core surface remains canonical `io/*`.
 
 ### Dispatch Scoring
 
 | Match | Score | Example |
 |-------|-------|---------|
-| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)` |
+| Value literal | 1000 | `^(Value 42)`, `^(Value open)`, `^(Value "open")`, `^(Value true)`, `^(Value nil)` |
 | Exact type | 100 | `^Integer` matches INT value |
 | Subtype | 10 | `^Shape` matches Circle |
 | Any (untyped) | 1 | Untyped param matches anything |

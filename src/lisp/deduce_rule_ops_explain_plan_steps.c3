@@ -10,7 +10,6 @@ fn Value* deduce_explain_build_join_order(
     Value* rev = make_nil(interp);
     for (usz i = 0; i < sig.body_count; i++) {
         rev = make_cons(interp, make_symbol(interp, sig.body_predicates[i]), rev);
-        if (rev != null && rev.tag == ERROR) return rev;
     }
     return deduce_explain_reverse_list(rev, interp);
 }
@@ -61,7 +60,6 @@ fn Value* deduce_explain_build_plan_steps(
         if (Value* err = explain_dict_set(step, interp, "operator", make_symbol(interp, deduce_explain_operator_symbol(interp, op_kind)))) return err;
         if (Value* err = explain_dict_set(step, interp, "counters", counters)) return err;
         rev = make_cons(interp, step, rev);
-        if (rev != null && rev.tag == ERROR) return rev;
     }
     return deduce_explain_reverse_list(rev, interp);
 }

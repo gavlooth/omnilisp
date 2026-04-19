@@ -51,6 +51,14 @@ fn void run_compiler_group_jit_language_tests(Interp* interp, usz* pass, usz* fa
         else    { (*fail)++; io::printn("[FAIL] JIT: multi-arg call"); }
     }
 
+    // Unary primitive arity via JIT primitive apply.
+    {
+        EvalResult r = run("(- 1)", interp);
+        bool ok = (!r.error.has_error && r.value != null && r.value.tag == ValueTag.INT && r.value.int_val == -1);
+        if (ok) { (*pass)++; compiler_print_pass("JIT: unary minus primitive"); }
+        else    { (*fail)++; io::printn("[FAIL] JIT: unary minus primitive"); }
+    }
+
     // 72. mutable capture via JIT (using block + define for set!)
     {
         EvalResult r = run("(block (define x 0) (set! x (+ x 1)) (set! x (+ x 1)) x)", interp);

@@ -13,21 +13,22 @@ Omni currently ships three interop lanes:
 Bindgen output itself is declarative FFI code. This means bindgen and
 declarative FFI execution-mode semantics must stay aligned.
 
-Compiler tests currently assert that declarative FFI forms are rejected in AOT
-mode:
+Current compiler tests assert that declarative FFI forms lower through the AOT
+runtime bridge for supported scalar and foreign-handle ABI tags:
 
-- `Compiler: declarative ffi lib is rejected in AOT mode`
-- `Compiler: declarative ffi function is rejected in AOT mode`
+- `Compiler: declarative ffi lib lowers through AOT runtime bridge`
+- `Compiler: declarative ffi function lowers through AOT runtime bridge`
+- `Compiler: declarative ffi lowers foreign-handle/bool/double ABI tags`
 
 Source anchor:
 - `src/lisp/tests_compiler_core_groups.c3`
 
 ## Options Considered
 
-1. Keep declarative FFI interpreter/JIT-only for now, document it explicitly,
-   and defer AOT support to a dedicated design/implementation lane.
-2. Claim near-term AOT support for declarative FFI without a concrete lowering,
-   runtime dispatch, and link/runtime-loading contract.
+1. Carry `ForeignHandle` metadata policy through the AOT bridge explicitly with
+   generated descriptors for parameter and return policy.
+2. Claim full AOT policy support for declarative FFI without carrying
+   `ForeignHandle` metadata through generated runtime declarations.
 3. Hide declarative FFI from user-facing docs until AOT parity exists.
 
 ## Decision
@@ -36,11 +37,14 @@ Adopt option 1.
 
 Current shipped contract:
 
-- Declarative FFI is interpreter/JIT-only.
-- AOT currently rejects declarative FFI forms.
+- Declarative FFI is interpreter/JIT policy-complete for the current scalar and
+  `ForeignHandle` metadata dictionary surface.
+- AOT lowering supports the scalar/foreign-handle ABI tag path and carries
+  `ForeignHandle` metadata through generated policy descriptors.
 - Bindgen remains useful for interpreter/JIT workflows and for producing
-  reviewable wrappers, but generated declarative bindings are not an AOT-safe
-  contract today.
+  reviewable wrappers; generated declarative FFI now preserves the current
+  `ForeignHandle` handle-family/nullability/ownership/finalizer policy through
+  the AOT bridge.
 - Complex libraries should continue to use explicit C ABI shims plus Omni
   facades.
 

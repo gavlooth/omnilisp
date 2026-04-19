@@ -127,6 +127,9 @@ fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "char-category: expected 1 argument");
     if (!is_int(args[0])) return raise_error(interp, "char-category: expected integer codepoint");
+    if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
+        return raise_error(interp, "char-category: codepoint out of range");
+    }
 
     int cp = (int)args[0].int_val;
     ZString cat = utf8proc_category_string(cp);
@@ -147,6 +150,9 @@ fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
 fn Value* prim_char_width(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "char-width: expected 1 argument");
     if (!is_int(args[0])) return raise_error(interp, "char-width: expected integer codepoint");
+    if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
+        return raise_error(interp, "char-width: codepoint out of range");
+    }
 
     int cp = (int)args[0].int_val;
     int width = utf8proc_charwidth(cp);
@@ -161,6 +167,9 @@ fn Value* prim_char_property(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 2) return raise_error(interp, "char-property: expected 2 arguments");
     if (!is_int(args[0])) return raise_error(interp, "char-property: first argument must be integer codepoint");
     if (args[1].tag != SYMBOL) return raise_error(interp, "char-property: second argument must be a symbol");
+    if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
+        return raise_error(interp, "char-property: codepoint out of range");
+    }
 
     int cp = (int)args[0].int_val;
     char[] prop = interp.symbols.get_name(args[1].sym_val);

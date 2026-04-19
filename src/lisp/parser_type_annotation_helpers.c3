@@ -8,14 +8,14 @@ fn TypeAnnotation parser_empty_type_annotation() @inline {
     ann.has_annotation = false;
     ann.is_compound = false;
     ann.is_dict = false;
-    ann.base_type = 0;
+    ann.base_type = (SymbolId)0;
     ann.params = null;
     ann.param_count = 0;
     ann.meta = null;
     ann.meta_count = 0;
     ann.val_literal.tag = NIL;
     ann.val_literal.int_value = 0;
-    ann.val_literal.sym_value = 0;
+    ann.val_literal.sym_value = (SymbolId)0;
     ann.has_val_literal = false;
     return ann;
 }
@@ -32,6 +32,18 @@ fn bool parser_is_removed_val_ctor(Parser* self, SymbolId sym) @inline {
            name[2] == 'l';
 }
 
+fn SymbolId parser_normalize_type_annotation_base(Parser* self, SymbolId sym) @inline {
+    char[] name = self.interp.symbols.get_name(sym);
+    if (name.len == 4 &&
+        name[0] == 'D' &&
+        name[1] == 'i' &&
+        name[2] == 'c' &&
+        name[3] == 't') {
+        return self.interp.sym_Dictionary;
+    }
+    return sym;
+}
+
 fn bool parser_is_bool_symbol(Parser* self, SymbolId sym) @inline {
     return (uint)sym == (uint)self.interp.sym_true || (uint)sym == (uint)self.interp.sym_false;
 }
@@ -40,7 +52,7 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
     if (self.lexer.current.type == T_INT) {
         ann.val_literal.tag = INT;
         ann.val_literal.int_value = self.lexer.current.int_value;
-        ann.val_literal.sym_value = 0;
+        ann.val_literal.sym_value = (SymbolId)0;
         ann.has_val_literal = true;
         self.lexer.advance();
         return true;
@@ -49,7 +61,8 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
     if (self.lexer.current.type == T_STRING) {
         ann.val_literal.tag = STRING;
         ann.val_literal.int_value = 0;
-        ann.val_literal.sym_value = self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+        ann.val_literal.sym_value = self.intern_or_error(self.lexer.current.text[:self.lexer.current.text_len], "failed to intern Value literal annotation");
+        if (ann.val_literal.sym_value == INVALID_SYMBOL_ID) return false;
         ann.has_val_literal = true;
         self.lexer.advance();
         return true;
@@ -57,6 +70,18 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
 
     if (self.lexer.current.type == T_SYMBOL) {
         SymbolId sym = self.get_current_symbol();
+        char[] sym_name = self.interp.symbols.get_name(sym);
+        if (sym_name.len == 3 &&
+            sym_name[0] == 'n' &&
+            sym_name[1] == 'i' &&
+            sym_name[2] == 'l') {
+            ann.val_literal.tag = NIL;
+            ann.val_literal.int_value = 0;
+            ann.val_literal.sym_value = (SymbolId)0;
+            ann.has_val_literal = true;
+            self.lexer.advance();
+            return true;
+        }
         if (parser_is_bool_symbol(self, sym)) {
             ann.val_literal.tag = SYMBOL;
             ann.val_literal.int_value = 0;
@@ -92,29 +117,19 @@ fn bool Parser.parse_value_literal_annotation(Parser* self, TypeAnnotation* ann)
 }
 
 fn bool Parser.type_annotation_copy_params(Parser* self, TypeAnnotation* ann, List{SymbolId}* params) {
-    usz param_count = params.len();
-    if (param_count == 0) return true;
-    if (param_count > usz.max / SymbolId.sizeof) {
-        self.set_error("type annotation has too many parameters");
-        return false;
-    }
-    ann.params = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * param_count, "out of memory while parsing type annotation");
+    if (params.len() == 0) return true;
+    ann.params = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, params.len(), "out of memory while parsing type annotation");
     if (ann.params == null) return false;
-    ann.param_count = param_count;
+    ann.param_count = params.len();
     for (usz i = 0; i < params.len(); i++) ann.params[i] = (*params)[i];
     return true;
 }
 
 fn bool Parser.type_annotation_copy_meta(Parser* self, TypeAnnotation* ann, List{MetaEntry}* meta) {
-    usz meta_count = meta.len();
-    if (meta_count == 0) return true;
-    if (meta_count > usz.max / MetaEntry.sizeof) {
-        self.set_error("type annotation metadata is too large");
-        return false;
-    }
-    ann.meta = (MetaEntry*)self.alloc_ast_bytes(MetaEntry.sizeof * meta_count, "out of memory while parsing metadata dict");
+    if (meta.len() == 0) return true;
+    ann.meta = (MetaEntry*)self.alloc_ast_array_bytes(MetaEntry.sizeof, meta.len(), "out of memory while parsing metadata dict");
     if (ann.meta == null) return false;
-    ann.meta_count = meta_count;
+    ann.meta_count = meta.len();
     for (usz i = 0; i < meta.len(); i++) ann.meta[i] = (*meta)[i];
     return true;
 }

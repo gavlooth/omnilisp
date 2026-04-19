@@ -8,6 +8,20 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
     if (a == null || b == null) return false;
 
     // Fast path for non-recursive values.
+    if ((a.tag == BIG_INTEGER && (b.tag == BIG_INTEGER || b.tag == INT)) ||
+        (a.tag == INT && b.tag == BIG_INTEGER)) {
+        return big_integer_values_equal(a, b);
+    }
+    if (a.tag == BIG_COMPLEX || b.tag == BIG_COMPLEX) {
+        if (is_fixed_complex(a) || is_fixed_complex(b)) return false;
+        return is_numeric_value(a) && is_numeric_value(b) && big_complex_values_equal(a, b);
+    }
+    if (is_fixed_complex(a) || is_fixed_complex(b)) {
+        return is_numeric_value(a) && is_numeric_value(b) && fixed_complex_values_equal(a, b);
+    }
+    if (a.tag == BIG_FLOAT || b.tag == BIG_FLOAT) {
+        return is_numeric_value(a) && is_numeric_value(b) && big_float_values_equal(a, b);
+    }
     if (is_number(a) && is_number(b)) {
         return to_double(a) == to_double(b);
     }
@@ -21,6 +35,8 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
             return a.int_val == b.int_val;
         case DOUBLE:
             return a.double_val == b.double_val;
+        case FLOAT32:
+            return a.float32_val == b.float32_val;
         case STRING:
             if (a.str_len != b.str_len) return false;
             for (usz i = 0; i < a.str_len; i++) {
@@ -69,6 +85,36 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
             break;
         }
 
+        if ((left.tag == BIG_INTEGER && (right.tag == BIG_INTEGER || right.tag == INT)) ||
+            (left.tag == INT && right.tag == BIG_INTEGER)) {
+            if (!big_integer_values_equal(left, right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
+        if (left.tag == BIG_COMPLEX || right.tag == BIG_COMPLEX) {
+            if (is_fixed_complex(left) || is_fixed_complex(right) ||
+                !is_numeric_value(left) || !is_numeric_value(right) || !big_complex_values_equal(left, right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
+        if (is_fixed_complex(left) || is_fixed_complex(right)) {
+            if (!is_numeric_value(left) || !is_numeric_value(right) || !fixed_complex_values_equal(left, right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
+        if (left.tag == BIG_FLOAT || right.tag == BIG_FLOAT) {
+            if (!is_numeric_value(left) || !is_numeric_value(right) || !big_float_values_equal(left, right)) {
+                ok = false;
+                break;
+            }
+            continue;
+        }
         if (is_number(left) && is_number(right)) {
             if (to_double(left) != to_double(right)) {
                 ok = false;
@@ -90,6 +136,24 @@ fn bool values_equal_with_workspace_stats(Value* a, Value* b, EqualityWorkspaceS
                 break;
             case DOUBLE:
                 if (left.double_val != right.double_val) ok = false;
+                break;
+            case FLOAT32:
+                if (left.float32_val != right.float32_val) ok = false;
+                break;
+            case COMPLEX128:
+                if (left.complex128_val.real != right.complex128_val.real || left.complex128_val.imag != right.complex128_val.imag) ok = false;
+                break;
+            case COMPLEX64:
+                if (left.complex64_val.real != right.complex64_val.real || left.complex64_val.imag != right.complex64_val.imag) ok = false;
+                break;
+            case BIG_INTEGER:
+                if (!big_integer_values_equal(left, right)) ok = false;
+                break;
+            case BIG_FLOAT:
+                if (!big_float_values_equal(left, right)) ok = false;
+                break;
+            case BIG_COMPLEX:
+                if (!big_complex_values_equal(left, right)) ok = false;
                 break;
             case STRING:
                 if (left.str_len != right.str_len) {

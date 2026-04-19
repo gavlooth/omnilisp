@@ -55,7 +55,9 @@ fn SymbolDescribeInfo describe_lookup_symbol(char* symbol_arg) {
     if (str_eq(symbol_arg, "Dict")) return { .found = true, .kind = "builtin", .documentation = "Allowed shorthand alias for the canonical Dictionary constructor/type." };
     if (str_eq(symbol_arg, "List")) return { .found = true, .kind = "builtin", .documentation = "List constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "Integer")) return { .found = true, .kind = "builtin", .documentation = "Integer constructor and descriptive type symbol." };
-    if (str_eq(symbol_arg, "Double")) return { .found = true, .kind = "builtin", .documentation = "Double constructor and descriptive type symbol." };
+    if (str_eq(symbol_arg, "Float")) return { .found = true, .kind = "builtin", .documentation = "Float constructor; defaults to Float64 and accepts precision 32 or 64." };
+    if (str_eq(symbol_arg, "Float32")) return { .found = true, .kind = "builtin", .documentation = "Float32 constructor and descriptive type symbol for native 32-bit floating-point scalar values." };
+    if (str_eq(symbol_arg, "Float64")) return { .found = true, .kind = "builtin", .documentation = "Float64 constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "String")) return { .found = true, .kind = "builtin", .documentation = "String constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "Boolean")) return { .found = true, .kind = "builtin", .documentation = "Boolean constructor and descriptive type symbol." };
     if (str_eq(symbol_arg, "length")) return { .found = true, .kind = "builtin", .documentation = "Generic collection length operation." };

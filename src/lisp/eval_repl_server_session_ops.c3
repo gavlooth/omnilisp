@@ -57,7 +57,7 @@ fn bool repl_server_send_eval_result(ReplServerOutput* output, char[] id, char[]
 }
 
 fn bool repl_server_preload_project_session(ReplServerOutput* output, ReplServerSession* session, char[] id, char* project_dir) {
-    char[main::REPL_PROJECT_PATH_BUFFER_CAP] main_path_buf = {};
+    char[1280] main_path_buf = {};
     usz main_path_len = 0;
     if (!main::repl_shared_resolve_project_main_path(project_dir, main_path_buf[..], &main_path_len)) {
         return repl_server_send_event_error(

@@ -1,0 +1,91 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint padding0;
+    uint padding1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+float normal_cdf_approx(float value) {
+    float z = value * 0.70710678118654752440;
+    float sign = z < 0.0 ? -1.0 : 1.0;
+    float x = abs(z);
+    float t = 1.0 / (1.0 + 0.3275911 * x);
+    float erf_approx = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-(x * x));
+    return 0.5 * (1.0 + sign * erf_approx);
+}
+
+float apply_unary(float value) {
+    if (params.op == 0) {
+        return value < 0.0 ? -value : value;
+    }
+    if (params.op == 1) {
+        return -value;
+    }
+    if (params.op == 2) {
+        return sqrt(value);
+    }
+    if (params.op == 3) {
+        return value;
+    }
+    if (params.op == 4) {
+        return 0.0;
+    }
+    if (params.op == 5) {
+        return sin(value);
+    }
+    if (params.op == 6) {
+        return cos(value);
+    }
+    if (params.op == 7) {
+        return tan(value);
+    }
+    if (params.op == 8) {
+        return asin(value);
+    }
+    if (params.op == 9) {
+        return acos(value);
+    }
+    if (params.op == 10) {
+        return atan(value);
+    }
+    if (params.op == 11) {
+        return sinh(value);
+    }
+    if (params.op == 12) {
+        return cosh(value);
+    }
+    if (params.op == 13) {
+        return tanh(value);
+    }
+    if (params.op == 14) {
+        return exp(value);
+    }
+    if (params.op == 15) {
+        return log(value);
+    }
+    if (params.op == 16) {
+        return log(value) / log(10.0);
+    }
+    if (params.op == 19) {
+        return normal_cdf_approx(value);
+    }
+    return value;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= params.count) return;
+    output_data[index] = apply_unary(input_data[index]);
+}

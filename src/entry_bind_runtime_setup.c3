@@ -16,9 +16,6 @@ fn bool bind_init_clang_or_report(lisp::LibclangHandle* clang) {
 }
 
 fn lisp::ParsedFunc* alloc_bind_func_buffer(usz max_funcs) {
-    if (lisp::ParsedFunc.sizeof > 0 && max_funcs > usz.max / lisp::ParsedFunc.sizeof) {
-        return null;
-    }
     lisp::ParsedFunc* funcs = (lisp::ParsedFunc*)mem::malloc(lisp::ParsedFunc.sizeof * max_funcs);
     if (funcs == null) return null;
     for (usz i = 0; i < max_funcs; i++) {

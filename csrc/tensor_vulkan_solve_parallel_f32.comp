@@ -1,0 +1,183 @@
+#version 450
+
+const float OMNI_MATRIX_F32_EPS = 0.000001;
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer Coefficients {
+    float coeffs[];
+};
+
+layout(std430, binding = 1) readonly buffer RightHandSide {
+    float rhs[];
+};
+
+layout(std430, binding = 2) buffer Output {
+    float out_data[];
+};
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint padding;
+} pc;
+
+shared float pivot_abs_parts[64];
+shared uint pivot_row_parts[64];
+shared uint pivot_row_shared;
+shared float pivot_value_shared;
+shared uint singular_shared;
+
+float omni_abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint coeff_count = pc.n * pc.n;
+    uint coeff_offset = pc.result_count;
+
+    if (tid == 0u) {
+        singular_shared = 0u;
+    }
+    barrier();
+
+    if (pc.n == 0u || pc.rhs_cols == 0u) {
+        return;
+    }
+
+    for (uint pivot = 0u; pivot < pc.n; pivot++) {
+        float local_abs = 0.0;
+        uint local_row = pivot;
+        for (uint row = pivot + tid; row < pc.n; row += 64u) {
+            float candidate_abs = omni_abs_f32(out_data[coeff_offset + row * pc.n + pivot]);
+            if (candidate_abs > local_abs || (candidate_abs == local_abs && row < local_row)) {
+                local_abs = candidate_abs;
+                local_row = row;
+            }
+        }
+
+        pivot_abs_parts[tid] = local_abs;
+        pivot_row_parts[tid] = local_row;
+        barrier();
+
+        for (uint stride = 32u; stride > 0u; stride >>= 1u) {
+            if (tid < stride) {
+                float candidate_abs = pivot_abs_parts[tid + stride];
+                uint candidate_row = pivot_row_parts[tid + stride];
+                float current_abs = pivot_abs_parts[tid];
+                uint current_row = pivot_row_parts[tid];
+                if (candidate_abs > current_abs || (candidate_abs == current_abs && candidate_row < current_row)) {
+                    pivot_abs_parts[tid] = candidate_abs;
+                    pivot_row_parts[tid] = candidate_row;
+                }
+            }
+            barrier();
+        }
+
+        if (tid == 0u) {
+            if (!(pivot_abs_parts[0] > OMNI_MATRIX_F32_EPS)) {
+                singular_shared = 1u;
+            } else {
+                pivot_row_shared = pivot_row_parts[0];
+            }
+        }
+        barrier();
+        if (singular_shared != 0u) {
+            if (tid == 0u) {
+                status_code[0] = 1u;
+            }
+            return;
+        }
+
+        uint swap_row = pivot_row_shared;
+        if (swap_row != pivot) {
+            for (uint col = tid; col < pc.n; col += 64u) {
+                uint left_index = coeff_offset + pivot * pc.n + col;
+                uint right_index = coeff_offset + swap_row * pc.n + col;
+                float tmp = out_data[left_index];
+                out_data[left_index] = out_data[right_index];
+                out_data[right_index] = tmp;
+            }
+            for (uint rhs_col = tid; rhs_col < pc.rhs_cols; rhs_col += 64u) {
+                uint left_index = pivot * pc.rhs_cols + rhs_col;
+                uint right_index = swap_row * pc.rhs_cols + rhs_col;
+                float tmp = out_data[left_index];
+                out_data[left_index] = out_data[right_index];
+                out_data[right_index] = tmp;
+            }
+            memoryBarrierBuffer();
+            barrier();
+        }
+
+        if (tid == 0u) {
+            pivot_value_shared = out_data[coeff_offset + pivot * pc.n + pivot];
+            if (!(omni_abs_f32(pivot_value_shared) > OMNI_MATRIX_F32_EPS)) {
+                singular_shared = 1u;
+            }
+        }
+        barrier();
+        if (singular_shared != 0u) {
+            if (tid == 0u) {
+                status_code[0] = 1u;
+            }
+            return;
+        }
+
+        uint trailing = pc.n - pivot - 1u;
+        uint coeff_updates = trailing * trailing;
+        for (uint work = tid; work < coeff_updates; work += 64u) {
+            uint row = pivot + 1u + work / trailing;
+            uint col = pivot + 1u + work % trailing;
+            float factor = out_data[coeff_offset + row * pc.n + pivot] / pivot_value_shared;
+            out_data[coeff_offset + row * pc.n + col] -= factor * out_data[coeff_offset + pivot * pc.n + col];
+        }
+        uint rhs_updates = trailing * pc.rhs_cols;
+        for (uint work = tid; work < rhs_updates; work += 64u) {
+            uint row = pivot + 1u + work / pc.rhs_cols;
+            uint rhs_col = work % pc.rhs_cols;
+            float factor = out_data[coeff_offset + row * pc.n + pivot] / pivot_value_shared;
+            out_data[row * pc.rhs_cols + rhs_col] -= factor * out_data[pivot * pc.rhs_cols + rhs_col];
+        }
+        for (uint row = pivot + 1u + tid; row < pc.n; row += 64u) {
+            out_data[coeff_offset + row * pc.n + pivot] = 0.0;
+        }
+        memoryBarrierBuffer();
+        barrier();
+    }
+
+    for (uint i = pc.n; i > 0u; i--) {
+        uint row = i - 1u;
+        if (tid == 0u) {
+            pivot_value_shared = out_data[coeff_offset + row * pc.n + row];
+            if (!(omni_abs_f32(pivot_value_shared) > OMNI_MATRIX_F32_EPS)) {
+                singular_shared = 1u;
+            }
+        }
+        barrier();
+        if (singular_shared != 0u) {
+            if (tid == 0u) {
+                status_code[0] = 1u;
+            }
+            return;
+        }
+
+        for (uint rhs_col = tid; rhs_col < pc.rhs_cols; rhs_col += 64u) {
+            float sum = out_data[row * pc.rhs_cols + rhs_col];
+            for (uint col = row + 1u; col < pc.n; col++) {
+                sum -= out_data[coeff_offset + row * pc.n + col] * out_data[col * pc.rhs_cols + rhs_col];
+            }
+            out_data[row * pc.rhs_cols + rhs_col] = sum / pivot_value_shared;
+        }
+        memoryBarrierBuffer();
+        barrier();
+    }
+
+    if (tid == 0u) {
+        status_code[0] = 0u;
+    }
+}

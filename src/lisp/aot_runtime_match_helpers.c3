@@ -55,7 +55,8 @@ fn bool is_dict(lisp::Value* v) @inline {
 fn bool match_var_pattern(lisp::Value* v, char[] name) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return false;
-    lisp::SymbolId sid = interp.symbols.intern(name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, name, &sid)) return false;
     lisp::TypeId tid = interp.types.lookup(sid, &interp.symbols);
     if (tid == lisp::INVALID_TYPE_ID) return true;
 
@@ -72,7 +73,8 @@ fn bool match_constructor(lisp::Value* v, char[] ctor_name, long field_count) {
 
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return false;
-    lisp::SymbolId sid = interp.symbols.intern(ctor_name);
+    lisp::SymbolId sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, ctor_name, &sid)) return false;
     lisp::TypeId tid = interp.types.lookup(sid, &interp.symbols);
     if (tid == lisp::INVALID_TYPE_ID || v.instance_val.type_id != tid) return false;
     return v.instance_val.field_count == (usz)field_count;
@@ -92,7 +94,9 @@ fn lisp::Value* dict_get_symbol(lisp::Value* v, char[] key) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot dict-get-symbol: runtime interpreter unavailable");
     if (!is_dict(v)) return lisp::make_nil(interp);
-    lisp::Value* lookup_key = lisp::make_symbol(interp, interp.symbols.intern(key));
+    lisp::SymbolId key_sym = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, key, &key_sym)) return aot_make_error_best_effort(interp, "aot dict-get-symbol: invalid or uninternable key");
+    lisp::Value* lookup_key = lisp::make_symbol(interp, key_sym);
     lisp::Value* found = lisp::hashmap_get(v.hashmap_val, lookup_key);
     return found != null ? found : lisp::make_nil(interp);
 }
@@ -133,11 +137,15 @@ fn usz list_length(lisp::Value* v) {
 }
 
 fn lisp::Value* list_nth(lisp::Value* v, long n) {
+    lisp::Interp* interp = aot_bridge_interp();
+    if (interp == null) return aot_make_error_best_effort(null, "aot list-nth: runtime interpreter unavailable");
+    if (n < 0) return lisp::make_nil(interp);
     return lisp::get_list_nth(v, (usz)n);
 }
 
 fn lisp::Value* list_rest(lisp::Value* v, long n) {
     lisp::Interp* interp = aot_bridge_interp();
     if (interp == null) return aot_make_error_best_effort(null, "aot list-rest: runtime interpreter unavailable");
+    if (n < 0) return lisp::make_nil(interp);
     return lisp::get_list_rest(v, (usz)n, interp);
 }

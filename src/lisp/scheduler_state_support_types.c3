@@ -149,6 +149,9 @@ struct OffloadWork {
     void* custom_ctx;
 }
 
+// OffloadWork pointer payloads currently share the long scalar lane.
+$assert(long.sizeof >= uptr.sizeof);
+
 struct OffloadCompletion {
     OffloadResultKind kind;
     long int_result;

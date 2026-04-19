@@ -76,10 +76,25 @@ fn Value* deduce_seminaive_run_recursive_aggregate_component_in_txn(
             continue;
         }
 
+        if (batch_count == usz.max) {
+            for (usz batch_idx = 0; batch_idx < batch_count; batch_idx++) {
+                deduce_aggregate_groups_release(&batches[batch_idx].groups);
+            }
+            if (batches != null) mem::free(batches);
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
+        usz next_batch_count = batch_count + 1;
+        if (next_batch_count > usz.max / DeduceSemiNaiveAggregateBatch.sizeof) {
+            for (usz batch_idx = 0; batch_idx < batch_count; batch_idx++) {
+                deduce_aggregate_groups_release(&batches[batch_idx].groups);
+            }
+            if (batches != null) mem::free(batches);
+            return deduce_raise(interp, "deduce/analyze-out-of-memory", "deduce/analyze: out of memory");
+        }
         DeduceSemiNaiveAggregateBatch* next_batches =
             (DeduceSemiNaiveAggregateBatch*)mem::realloc(
                 batches,
-                DeduceSemiNaiveAggregateBatch.sizeof * (batch_count + 1)
+                DeduceSemiNaiveAggregateBatch.sizeof * next_batch_count
             );
         if (next_batches == null) {
             for (usz batch_idx = 0; batch_idx < batch_count; batch_idx++) {

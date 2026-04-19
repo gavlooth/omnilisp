@@ -4,7 +4,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
     PrimReg[] core_prims = {
         // List operations
         { "cons", &prim_cons, 2 }, { "car", &prim_car, 1 }, { "cdr", &prim_cdr, 1 },
-        { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 },
+        { "null?", &prim_null, 1 }, { "pair?", &prim_pair, 1 }, { "list?", &prim_is_list, 1 },
         { "List", &prim_list, -1 }, // Canonical constructor/conversion surface.
         { "list", &prim_list, -1 }, // Public Lisp-style helper.
         // Boolean
@@ -18,13 +18,12 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "string-join", &prim_string_join, 2 },
         { "substring", &prim_substring, 3 }, { "string-split", &prim_string_split, 2 },
         { "string-length", &prim_string_length, 1 }, { "string-byte-length", &prim_string_byte_length, 1 },
-        { "string->list", &prim_string_to_list, 1 },
-        { "list->string", &prim_list_to_string, 1 },
         { "string-trim", &prim_string_trim, 1 },
         { "continuation?", &prim_is_continuation, 1 },
         { "__iterator-from-list", &prim_iterator_from_list, 1 },
         { "__iterator-from-array", &prim_iterator_from_array, 1 },
         { "__iterator-from-dict", &prim_iterator_from_dict, 1 },
+        { "__iterator-from-tensor", &prim_iterator_from_tensor, 1 },
         { "__iterator-map", &prim_iterator_map, 2 },
         { "__iterator-filter", &prim_iterator_filter, 2 },
         { "__iterator-take", &prim_iterator_take, 2 },
@@ -47,8 +46,7 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "fs-rename", &prim_fs_rename, 2 }, { "fs-unlink", &prim_fs_unlink, 1 },
         { "load", &prim_load, 1 },
         // Conversion
-        { "string->number", &prim_string_to_number, 1 }, { "number->string", &prim_number_to_string, 1 },
-        { "exact->inexact", &prim_exact_to_inexact, 1 }, { "inexact->exact", &prim_inexact_to_exact, 1 },
+        { "parse-number", &prim_string_to_number, 1 },
         // Gensym
         { "gensym", &prim_gensym, 0 },
         // Dictionary
@@ -59,6 +57,10 @@ fn bool register_regular_primitives_core(Interp* interp) {
         { "asin", &prim_asin, 1 }, { "acos", &prim_acos, 1 }, { "atan", &prim_atan, 1 },
         { "atan2", &prim_atan2, 2 }, { "exp", &prim_exp, 1 }, { "log", &prim_log, 1 },
         { "log10", &prim_log10, 1 }, { "pow", &prim_pow, 2 },
+        { "math/lgamma", &prim_math_lgamma, 1 },
+        { "math/erf", &prim_math_erf, 1 }, { "math/erfc", &prim_math_erfc, 1 },
+        { "stats/normal-cdf", &prim_stats_normal_cdf, 1 },
+        { "stats/normal-quantile", &prim_stats_normal_quantile, 1 },
         { "gcd", &prim_gcd, 2 }, { "lcm", &prim_lcm, 2 },
         // Bitwise
         { "bitwise-and", &prim_bitwise_and, 2 }, { "bitwise-or", &prim_bitwise_or, 2 },
@@ -81,19 +83,50 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "error", &prim_error, 1 }, { "error?", &prim_is_error, 1 }, { "error-message", &prim_error_message, 1 },
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
+        { "Tensor", &prim_tensor, -1 },
+        { "__tensor-map", &prim_tensor_map, -1 },
+        { "contract", &prim_contract, -1 },
+        { "matrix/transpose", &prim_matrix_transpose, 1 },
+        { "matrix/transpose-view", &prim_matrix_transpose_view, 1 },
+        { "matrix/diagonal", &prim_matrix_diagonal, 1 },
+        { "matrix/diagonal-matrix", &prim_matrix_diagonal_matrix, 1 },
+        { "matrix/identity", &prim_matrix_identity, -1 },
+        { "matrix/trace", &prim_matrix_trace, 1 },
+        { "matrix/rank", &prim_matrix_rank, -1 },
+        { "matrix/norm", &prim_matrix_norm, -1 },
+        { "matrix/solve", &prim_matrix_solve, 2 },
+        { "matrix/lu", &prim_matrix_lu, 1 },
+        { "matrix/determinant", &prim_matrix_determinant, 1 },
+        { "matrix/inverse", &prim_matrix_inverse, 1 },
+        { "matrix/qr", &prim_matrix_qr, 1 },
+        { "matrix/cholesky", &prim_matrix_cholesky, 1 },
+        { "matrix/singular-values", &prim_matrix_singular_values, 1 },
+        { "matrix/svd", &prim_matrix_svd, 1 },
+        { "matrix/eigenvalues", &prim_matrix_eigenvalues, 1 },
+        { "matrix/eigenvectors", &prim_matrix_eigenvectors, 1 },
+        { "matrix/eigenpairs", &prim_matrix_eigenpairs, 1 },
+        { "realize", &prim_realize, -1 },
+        { "tensor?", &prim_tensor_p, 1 },
+        { "dtype", &prim_dtype, 1 },
+        { "device", &prim_device, 1 },
+        { "tensor-layout", &prim_tensor_layout, 1 },
+        { "tensor-backends", &prim_tensor_backends, 0 },
+        { "to-device", &prim_to_device, 2 },
+        { "shape", &prim_shape, 1 },
+        { "rank", &prim_rank, 1 },
         // Sets
         { "Set", &prim_set, -1 },
         { "set-add", &prim_set_add, 2 },
         { "set-remove", &prim_set_remove, 2 }, { "set-contains?", &prim_set_contains, 2 },
-        { "set-size", &prim_set_size, 1 }, { "set->list", &prim_set_to_list, 1 },
         // Additional I/O and convenience
-        { "read-string", &prim_read_string, 1 }, { "string->symbol", &prim_string_to_symbol, 1 },
-        { "symbol->string", &prim_symbol_to_string, 1 },
+        { "read-string", &prim_read_string, 1 },
         // Type system
         { "^", &prim_ctor_type_apply, 2 },
         { "type-of", &prim_type_of, 1 },
         { "is?", &prim_is_type, 2 },
         { "instance?", &prim_is_instance, 1 }, { "type-args", &prim_type_args, 1 },
+        { "foreign-describe", &prim_foreign_describe, 1 },
+        { "foreign-release", &prim_foreign_release, 1 },
         // Memory reclamation
         { "unsafe-free!", &prim_free_bang, 1 },
         // Iterators
@@ -137,7 +170,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "time-point?", &prim_time_point_p, 1 },
         { "TimePoint", &prim_time_point, -1 }, // Canonical constructor.
         // TOML / CSV
-        { "toml-parse", &prim_toml_parse, 1 },
+        { "toml-parse", &prim_toml_parse, -1 },
         { "csv-parse", &prim_csv_parse, -1 },
         { "csv-emit", &prim_csv_emit, -1 },
     };
@@ -222,7 +255,7 @@ fn bool register_regular_primitives_io_and_deduce(Interp* interp) {
         { "deduce/materialize!", &prim_deduce_ns_materialize, -1 },
         { "deduce/dematerialize!", &prim_deduce_ns_dematerialize, -1 },
         { "deduce/refresh!", &prim_deduce_ns_refresh, -1 },
-        { "__define-relation", &prim_define_relation, 1 },
+        { "__define-relation", &prim_define_relation, -1 },
         // Scheduler
         { "spawn", &prim_spawn, 1 },
         { "await", &prim_await, 1 },

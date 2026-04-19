@@ -53,6 +53,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
     );
 
     if (arity > 0) {
+        if (arity > usz.max / SymbolId.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         schema.columns = (SymbolId*)mem::malloc(SymbolId.sizeof * arity);
         if (schema.columns == null) {
             deduce_relation_schema_release_storage(schema);
@@ -62,6 +66,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
     }
 
     if (unique_col_count > 0) {
+        if (unique_col_count > usz.max / SymbolId.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         schema.unique_columns = (SymbolId*)mem::malloc(SymbolId.sizeof * unique_col_count);
         if (schema.unique_columns == null) {
             deduce_relation_schema_release_storage(schema);
@@ -72,6 +80,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
     }
 
     if (reference_constraint_count > 0) {
+        if (reference_constraint_count > usz.max / DeduceReferenceConstraint.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         schema.reference_constraints =
             (DeduceReferenceConstraint*)mem::malloc(DeduceReferenceConstraint.sizeof * reference_constraint_count);
         if (schema.reference_constraints == null) {
@@ -84,6 +96,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
     }
 
     if (check_constraint_count > 0) {
+        if (check_constraint_count > usz.max / DeduceCheckConstraint.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         schema.check_constraints =
             (DeduceCheckConstraint*)mem::malloc(DeduceCheckConstraint.sizeof * check_constraint_count);
         if (schema.check_constraints == null) {
@@ -95,8 +111,16 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
         }
     }
 
+    if (arity > usz.max - (usz)8) {
+        deduce_relation_schema_release_storage(schema);
+        return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+    }
     usz max_indexes = arity + 8;
     if (max_indexes > 0) {
+        if (max_indexes > usz.max / DeduceIndexDescriptor.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         schema.indexes = (DeduceIndexDescriptor*)mem::malloc(DeduceIndexDescriptor.sizeof * max_indexes);
         if (schema.indexes == null) {
             deduce_relation_schema_release_storage(schema);
@@ -110,6 +134,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
     }
 
     if (arity > 0) {
+        if (arity > usz.max / usz.sizeof) {
+            deduce_relation_schema_release_storage(schema);
+            return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+        }
         usz[] full_positions = mem::new_array(usz, arity);
         if (full_positions.ptr == null) {
             deduce_relation_schema_release_storage(schema);
@@ -143,6 +171,10 @@ fn DeduceSchemaRegisterStatus deduce_relation_schema_init(
         bool unique_equivalent_to_key =
             unique_col_count == 1 && key_col != (SymbolId)0 && unique_cols[0] == key_col;
         if (unique_col_count > 0 && !unique_equivalent_to_key) {
+            if (unique_col_count > usz.max / usz.sizeof) {
+                deduce_relation_schema_release_storage(schema);
+                return DEDUCE_SCHEMA_REGISTER_OUT_OF_MEMORY;
+            }
             usz[] unique_positions = mem::new_array(usz, unique_col_count);
             if (unique_positions.ptr == null) {
                 deduce_relation_schema_release_storage(schema);

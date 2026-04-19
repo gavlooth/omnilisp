@@ -10,12 +10,12 @@ fn bool pika_test_quiet_requested() @inline {
 
 fn void pika_emit_pass(char[] msg) @inline {
     if (pika_test_quiet_requested()) return;
-    io::printfn("%s", (ZString)msg);
+    io::printn(msg);
 }
 
 fn void pika_emit_banner(char[] msg) @inline {
     if (pika_test_quiet_requested()) return;
-    io::printfn("%s", (ZString)msg);
+    io::printn(msg);
 }
 
 fn void regex_test_literal() {

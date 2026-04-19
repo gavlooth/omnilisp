@@ -40,6 +40,9 @@ fn Value* parse_csv_parse_options(Value* options, CsvParseOptions* opts, Interp*
 
         cur = next;
     }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "csv-parse: options list must be a proper list");
+    }
 
     return null;
 }
@@ -78,6 +81,9 @@ fn Value* parse_csv_emit_options(Value* options, CsvEmitOptions* opts, Interp* i
         }
 
         cur = next;
+    }
+    if (!is_nil(cur)) {
+        return raise_error(interp, "csv-emit: options list must be a proper list");
     }
 
     return null;

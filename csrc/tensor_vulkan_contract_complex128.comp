@@ -1,0 +1,158 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint left_rank;
+    uint right_rank;
+    uint axis_count;
+    uint out_count;
+    uint out_rank;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer LeftBuffer {
+    dvec2 left_data[];
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer RightBuffer {
+    dvec2 right_data[];
+};
+
+layout(set = 0, binding = 2, std430) buffer OutputBuffer {
+    dvec2 output_data[];
+};
+
+layout(set = 0, binding = 3, std430) readonly buffer MetadataBuffer {
+    uint meta_data[];
+};
+
+uint out_shape_base() {
+    return 0;
+}
+
+uint out_stride_base() {
+    return params.out_rank;
+}
+
+uint left_shape_base() {
+    return params.out_rank * 2;
+}
+
+uint left_stride_base() {
+    return left_shape_base() + params.left_rank;
+}
+
+uint right_shape_base() {
+    return left_stride_base() + params.left_rank;
+}
+
+uint right_stride_base() {
+    return right_shape_base() + params.right_rank;
+}
+
+uint left_axes_base() {
+    return right_stride_base() + params.right_rank;
+}
+
+uint right_axes_base() {
+    return left_axes_base() + params.axis_count;
+}
+
+uint left_axis_at(uint axis_pos) {
+    return meta_data[left_axes_base() + axis_pos];
+}
+
+uint right_axis_at(uint axis_pos) {
+    return meta_data[right_axes_base() + axis_pos];
+}
+
+bool left_axis_is_contracted(uint axis) {
+    for (uint axis_pos = 0; axis_pos < params.axis_count; axis_pos++) {
+        if (left_axis_at(axis_pos) == axis) return true;
+    }
+    return false;
+}
+
+bool right_axis_is_contracted(uint axis) {
+    for (uint axis_pos = 0; axis_pos < params.axis_count; axis_pos++) {
+        if (right_axis_at(axis_pos) == axis) return true;
+    }
+    return false;
+}
+
+uint output_coord(uint out_index, uint out_axis) {
+    uint shape = meta_data[out_shape_base() + out_axis];
+    uint stride = meta_data[out_stride_base() + out_axis];
+    return (out_index / stride) % shape;
+}
+
+uint left_base_offset(uint out_index) {
+    uint offset = 0;
+    uint free_pos = 0;
+    for (uint axis = 0; axis < params.left_rank; axis++) {
+        if (left_axis_is_contracted(axis)) continue;
+        uint coord = output_coord(out_index, free_pos);
+        offset += coord * meta_data[left_stride_base() + axis];
+        free_pos++;
+    }
+    return offset;
+}
+
+uint right_base_offset(uint out_index) {
+    uint offset = 0;
+    uint free_pos = 0;
+    uint result_axis_base = params.left_rank - params.axis_count;
+    for (uint axis = 0; axis < params.right_rank; axis++) {
+        if (right_axis_is_contracted(axis)) continue;
+        uint coord = output_coord(out_index, result_axis_base + free_pos);
+        offset += coord * meta_data[right_stride_base() + axis];
+        free_pos++;
+    }
+    return offset;
+}
+
+uint contracted_count() {
+    uint count = 1;
+    for (uint axis_pos = 0; axis_pos < params.axis_count; axis_pos++) {
+        count *= meta_data[left_shape_base() + left_axis_at(axis_pos)];
+    }
+    return count;
+}
+
+dvec2 complex_mul(dvec2 left, dvec2 right) {
+    return dvec2(
+        left.x * right.x - left.y * right.y,
+        left.x * right.y + left.y * right.x
+    );
+}
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    if (out_index >= params.out_count) return;
+
+    uint left_offset = left_base_offset(out_index);
+    uint right_offset = right_base_offset(out_index);
+    uint contract_total = contracted_count();
+
+    dvec2 sum = dvec2(0.0, 0.0);
+    for (uint k = 0; k < contract_total; k++) {
+        uint remaining = k;
+        uint contracted_left_offset = 0;
+        uint contracted_right_offset = 0;
+        for (uint axis_pos = 0; axis_pos < params.axis_count; axis_pos++) {
+            uint left_axis = left_axis_at(axis_pos);
+            uint right_axis = right_axis_at(axis_pos);
+            uint dim = meta_data[left_shape_base() + left_axis];
+            uint coord = remaining % dim;
+            remaining /= dim;
+            contracted_left_offset += coord * meta_data[left_stride_base() + left_axis];
+            contracted_right_offset += coord * meta_data[right_stride_base() + right_axis];
+        }
+        sum += complex_mul(
+            left_data[left_offset + contracted_left_offset],
+            right_data[right_offset + contracted_right_offset]
+        );
+    }
+    output_data[out_index] = sum;
+}

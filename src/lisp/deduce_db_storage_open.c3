@@ -63,7 +63,9 @@ fn bool deduce_build_memory_path(char[256]* out, DeduceDb* db) {
 }
 
 fn char* deduce_copy_c_string(char[] src) {
-    char* out = (char*)mem::malloc(src.len + 1);
+    usz total_len = 0;
+    if (!deduce_checked_add_usz(src.len, 1, &total_len)) return null;
+    char* out = (char*)mem::malloc(total_len);
     if (out == null) return null;
     for (usz i = 0; i < src.len; i++) out[i] = src[i];
     out[src.len] = 0;
@@ -71,8 +73,11 @@ fn char* deduce_copy_c_string(char[] src) {
 }
 
 fn char* deduce_copy_extensional_dbi_name(char[] base_name) {
-    usz total_len = base_name.len + DEDUCE_EXTENSIONAL_DBI_SUFFIX.len;
-    char* out = (char*)mem::malloc(total_len + 1);
+    usz total_len = 0;
+    usz alloc_len = 0;
+    if (!deduce_checked_add_usz(base_name.len, DEDUCE_EXTENSIONAL_DBI_SUFFIX.len, &total_len)) return null;
+    if (!deduce_checked_add_usz(total_len, 1, &alloc_len)) return null;
+    char* out = (char*)mem::malloc(alloc_len);
     if (out == null) return null;
     for (usz i = 0; i < base_name.len; i++) out[i] = base_name[i];
     for (usz i = 0; i < DEDUCE_EXTENSIONAL_DBI_SUFFIX.len; i++) {
@@ -129,16 +134,25 @@ fn bool deduce_open_relation_meta_dbi(
     bool create,
     MdbDbi* dbi_out
 ) {
-    if (db == null || !db.open || txn == null || dbi_out == null) return false;
+    return deduce_open_relation_meta_dbi_rc(db, txn, create, dbi_out) == MDB_SUCCESS;
+}
+
+fn int deduce_open_relation_meta_dbi_rc(
+    DeduceDb* db,
+    MdbTxn* txn,
+    bool create,
+    MdbDbi* dbi_out
+) {
+    if (db == null || !db.open || txn == null || dbi_out == null) return -1;
     char* dbi_name = deduce_copy_c_string(DEDUCE_RELATION_META_DBI_NAME);
-    if (dbi_name == null) return false;
+    if (dbi_name == null) return -1;
     defer mem::free(dbi_name);
 
     MdbDbi dbi = 0;
     int rc = mdb_dbi_open(txn, dbi_name, create ? MDB_CREATE : 0, &dbi);
-    if (rc != MDB_SUCCESS) return false;
+    if (rc != MDB_SUCCESS) return rc;
     *dbi_out = dbi;
-    return true;
+    return MDB_SUCCESS;
 }
 
 fn bool deduce_open_rule_catalog_dbi(
@@ -147,16 +161,25 @@ fn bool deduce_open_rule_catalog_dbi(
     bool create,
     MdbDbi* dbi_out
 ) {
-    if (db == null || !db.open || txn == null || dbi_out == null) return false;
+    return deduce_open_rule_catalog_dbi_rc(db, txn, create, dbi_out) == MDB_SUCCESS;
+}
+
+fn int deduce_open_rule_catalog_dbi_rc(
+    DeduceDb* db,
+    MdbTxn* txn,
+    bool create,
+    MdbDbi* dbi_out
+) {
+    if (db == null || !db.open || txn == null || dbi_out == null) return -1;
     char* dbi_name = deduce_copy_c_string(DEDUCE_RULE_CATALOG_DBI_NAME);
-    if (dbi_name == null) return false;
+    if (dbi_name == null) return -1;
     defer mem::free(dbi_name);
 
     MdbDbi dbi = 0;
     int rc = mdb_dbi_open(txn, dbi_name, create ? MDB_CREATE : 0, &dbi);
-    if (rc != MDB_SUCCESS) return false;
+    if (rc != MDB_SUCCESS) return rc;
     *dbi_out = dbi;
-    return true;
+    return MDB_SUCCESS;
 }
 
 fn bool deduce_open_rule_signature_dbi(
@@ -165,14 +188,23 @@ fn bool deduce_open_rule_signature_dbi(
     bool create,
     MdbDbi* dbi_out
 ) {
-    if (db == null || !db.open || txn == null || dbi_out == null) return false;
+    return deduce_open_rule_signature_dbi_rc(db, txn, create, dbi_out) == MDB_SUCCESS;
+}
+
+fn int deduce_open_rule_signature_dbi_rc(
+    DeduceDb* db,
+    MdbTxn* txn,
+    bool create,
+    MdbDbi* dbi_out
+) {
+    if (db == null || !db.open || txn == null || dbi_out == null) return -1;
     char* dbi_name = deduce_copy_c_string(DEDUCE_RULE_SIGNATURE_DBI_NAME);
-    if (dbi_name == null) return false;
+    if (dbi_name == null) return -1;
     defer mem::free(dbi_name);
 
     MdbDbi dbi = 0;
     int rc = mdb_dbi_open(txn, dbi_name, create ? MDB_CREATE : 0, &dbi);
-    if (rc != MDB_SUCCESS) return false;
+    if (rc != MDB_SUCCESS) return rc;
     *dbi_out = dbi;
-    return true;
+    return MDB_SUCCESS;
 }

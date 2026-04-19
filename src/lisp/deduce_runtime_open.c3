@@ -62,41 +62,8 @@ fn void deduce_relation_free(Relation* rel) @inline {
 fn void deduce_relation_finalizer(void* handle) {
     if (handle == null) return;
     Relation* rel = (Relation*)handle;
-    if (rel.reference_constraints != null) {
-        mem::free(rel.reference_constraints);
-        rel.reference_constraints = null;
-    }
-    if (rel.check_constraints != null) {
-        mem::free(rel.check_constraints);
-        rel.check_constraints = null;
-    }
-    if (rel.unique_cols != null) {
-        mem::free(rel.unique_cols);
-        rel.unique_cols = null;
-    }
-    if (rel.column_key_values != null) {
-        mem::free(rel.column_key_values);
-        rel.column_key_values = null;
-    }
-    if (rel.columns != null) {
-        mem::free(rel.columns);
-        rel.columns = null;
-    }
-    rel.col_count = 0;
-    rel.col_capacity = 0;
-    rel.unique_col_count = 0;
-    rel.unique_col_capacity = 0;
-    rel.reference_constraint_count = 0;
-    rel.reference_constraint_capacity = 0;
-    rel.check_constraint_count = 0;
-    rel.check_constraint_capacity = 0;
-    rel.materialized_view = false;
-    rel.materialized_refresh_policy = (SymbolId)0;
-    rel.materialized_refresh_count = 0;
-    rel.materialized_last_refresh_mutation_epoch = 0;
-    rel.materialized_last_stale_mutation_epoch = 0;
-    rel.materialized_last_stale_reason = DEDUCE_MATERIALIZED_STALE_NONE;
     rel.dropped = true;
+    deduce_relation_free(rel);
 }
 
 // ============================================================
@@ -210,13 +177,8 @@ fn Value* prim_deduce_open(Value*[] args, Env* env, Interp* interp) {
         return rule_signature_err;
     }
 
-    bool ctor_took_ownership = false;
-    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db", &deduce_db_finalizer, true, false, &ctor_took_ownership);
+    Value* v = make_ffi_handle_ex(interp, (void*)db, "deduce-db", &deduce_db_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) {
-            mdb_env_close(db.env);
-            mem::free(db);
-        }
         return deduce_raise(interp, "deduce/open-out-of-memory", "deduce-open: out of memory");
     }
     return v;

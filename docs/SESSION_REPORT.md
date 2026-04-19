@@ -1,3 +1,6807 @@
+## 2026-04-19 10:52 CEST - Guard Container Toolchain Repair
+
+- Objective attempted:
+  - Continue broad audit/repair work without splitting files under 1000 LOC,
+    following up on failed bounded guard scripts.
+- Workspace/target:
+  - `/home/christos/Omni`, bounded validation wrappers
+    `scripts/check_jit_env_scope_guards.sh` and
+    `scripts/check_scheduler_state_guards.sh`.
+- Code or configuration changes made:
+  - Changed both guard scripts so, when `OMNI_VALIDATION_TOOLCHAIN_ROOT` is
+    unset, they derive the host toolchain root from `command -v c3c`, then fall
+    back to `$HOME/.local`, then to `/usr/local` only if
+    `/usr/local/bin/c3c` exists.
+- Key results:
+  - The scripts no longer select `/usr/local` merely because that directory
+    exists, which avoids falling through to the container's incompatible
+    `/usr/local/bin/c3c`.
+  - `env -u OMNI_VALIDATION_TOOLCHAIN_ROOT scripts/check_jit_env_scope_guards.sh`
+    now builds in the bounded container and completes the JIT env/scope guard
+    run.
+  - `env -u OMNI_VALIDATION_TOOLCHAIN_ROOT scripts/check_scheduler_state_guards.sh`
+    now builds in the bounded container and completes the scheduler state guard
+    run.
+- Commands run:
+  - `bash -n scripts/check_jit_env_scope_guards.sh scripts/check_scheduler_state_guards.sh`
+  - `env -u OMNI_VALIDATION_TOOLCHAIN_ROOT scripts/check_jit_env_scope_guards.sh`
+  - `env -u OMNI_VALIDATION_TOOLCHAIN_ROOT scripts/check_scheduler_state_guards.sh`
+  - `git diff --check`
+- Key validation results:
+  - Shell syntax check passed.
+  - Both bounded container builds linked `build/main`.
+  - JIT env/scope guard script completed with
+    `OK: JIT env/scope guards passed.`
+  - Scheduler state guard script completed with
+    `OK: scheduler state guards passed.`
+  - `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat `/usr/local` as a valid validation toolchain root just because
+    the directory exists; require a usable `bin/c3c` or derive the root from
+    the active host `c3c`.
+- Unresolved issues:
+  - Full all-slice/high-memory validation was not run in this checkpoint.
+- Signature: Codex GPT-5.4
+
+## 2026-04-19 09:17 CEST - Advanced Slice Arity Diagnostic Closure
+
+- Objective attempted:
+  - Continue broad audit/repair work without splitting files under 1000 LOC,
+    starting from the previously observed bounded `advanced` slice failures.
+- Workspace/target:
+  - `/home/christos/Omni`, primitive diagnostics and advanced/scheduler
+    validation.
+- Code or configuration changes made:
+  - Updated the shared primitive arity diagnostic helper so `type/arity`
+    errors include the canonical user-facing phrase `arity mismatch` while
+    preserving the `type/arity` payload code.
+  - Updated the exact `try catch arity error` assertion to the new canonical
+    primitive arity message.
+- Key results:
+  - The isolated scheduler join-timeout payload expression now returns
+    `"scheduler/thread-join-timeout"` on the current built binary; no scheduler
+    code change was needed because the generic no-data raise payload rooting
+    path already owns that contract in this working copy.
+  - The previously failing `advanced-stdlib-numeric` arity assertions now pass.
+  - The full bounded `advanced` slice now passes.
+- Commands run:
+  - `jj status`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval "(+ 1 2 3)"`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=scheduler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+- Key validation results:
+  - Direct `(+ 1 2 3)` now fails with
+    `+: arity mismatch: expected 1 or 2 arguments, got 3`.
+  - Focused bounded `advanced-stdlib-numeric`: `pass=411 fail=0`.
+  - Focused bounded `advanced-core-semantics`: `pass=71 fail=0`.
+  - Focused bounded `advanced-unicode-iterator`: `pass=180 fail=0`.
+  - Full bounded `advanced`: `pass=2922 fail=0`.
+  - Focused bounded `scheduler`: `pass=113 fail=0`.
+  - Basic Lisp default slice: `pass=144 fail=0`.
+  - `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not patch `thread-join-timeout` specifically for the prior payload-code
+    symptom unless it reproduces after rebuild; the current generic raise
+    payload path and focused scheduler validation already satisfy that contract.
+- Unresolved issues:
+  - Full all-slice/high-memory validation was not run in this checkpoint.
+  - The worktree still contains broad pre-existing Tensor/CUDA/Vulkan changes
+    outside this repair.
+- Signature: Codex GPT-5.4
+
+## 2026-04-19 00:57 CEST - Helper Rebuild And Entry Audit Repairs
+
+- Objective attempted:
+  - Continue broad audit/repair work without splitting files under 1000 LOC.
+- Workspace/target:
+  - `/home/christos/Omni`, helper archive rebuild path and tensor-focused
+    validation.
+- Code or configuration changes made:
+  - Updated `scripts/build_omni_chelpers.sh` so helper objects are rebuilt
+    incrementally instead of recompiling every C/C++/FTXUI source on every
+    invocation.
+  - Added compiler depfile generation for rebuilt objects and archive
+    timestamp checks before refreshing `build/libomni_chelpers.a` and
+    `build/libomni_ftxui.a`.
+  - Replaced deprecated entry-path `errno::...` constants with current
+    unqualified libc errno constants.
+  - Replaced deprecated `process::create` / `SubProcessOptions` AOT command
+    spawning with `process::spawn` / `Process`.
+  - Fixed standalone AOT `--build` source collection by keeping the Lisp test
+    sources required by the entry test/e2e surfaces compiled into the AOT
+    backend source set.
+  - Removed trailing blank lines from `discussion` after `git diff --check`
+    reported a whitespace error.
+- Key results:
+  - The pre-existing full helper rebuild was stopped after spending substantial
+    time serially recompiling unchanged third-party FTXUI objects.
+  - The patched helper rebuild completed quickly against the existing object
+    set.
+  - `c3c build --obj-out obj` passed and linked `build/main`.
+  - `./build/main --build tests/simple_test.omni -o /tmp/omni_simple_test_bin`
+    now links a standalone binary instead of failing on missing test symbols.
+  - The generated `/tmp/omni_simple_test_bin` runs successfully with
+    `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib`.
+  - Host focused `advanced-collections-module` passed `1598/0`.
+- Commands run:
+  - `jj status`
+  - `find src csrc ... | xargs wc -l`
+  - `git diff --check`
+  - `./scripts/build_omni_chelpers.sh`
+  - `bash -n scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `./build/main --check /tmp/omni_missing_input_hopefully_absent.omni`
+  - `./build/main --init /tmp/omni_init_smoke_project`
+  - `./build/main --build tests/simple_test.omni -o /tmp/omni_simple_test_bin`
+  - `LD_LIBRARY_PATH=/home/christos/.local/lib:/usr/local/lib /tmp/omni_simple_test_bin`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Unresolved issues:
+  - No bounded-container rerun was performed for this build-system-only repair.
+  - Implementation work remains open in the three `TENSOR-100H` lanes.
+- Signature: Codex GPT-5.4
+
+## 2026-04-19 08:26 CEST - Strict SymbolId Cleanup and Deduce Large-JIT Crash Repair
+
+- Objective attempted:
+  - Continue repository audit/repair without splitting files under the 1000 LOC
+    threshold, preserving the existing tensor/Vulkan worktree while clearing
+    strict-deprecation fallout and repairing the bounded Deduce slice crash.
+- Code or configuration changes made:
+  - Normalized remaining repo-owned raw `SymbolId` zero sentinels to explicit
+    `(SymbolId)0` casts across parser, eval/type, schema-query, JIT closure,
+    memory-lifetime, and Deduce helper/test paths.
+  - Removed the JIT helper-emission dependency on a thread-local
+    `g_jit_interp_stack_offset`; helper emitters now receive the active
+    `JitLocals*` and restore `JIT_V0` from that function's own
+    `interp_stack_offset`.
+  - Added staged JIT lowering for oversized block expressions and long
+    right-nested logical `and`/`or` chains. This avoids generating one huge
+    native branch/helper-call body for large assertion/proof expressions while
+    preserving short-circuit behavior.
+  - Added the targeted Deduce query filter
+    `OMNI_DEDUCE_QUERY_FILTER=why-result-admin-multi-rule` for the formerly
+    crashing admin-surface proof block.
+  - Removed a non-language debug `(printn ...)` probe from that proof test.
+  - Hardened `runtime_eval_expr` so the TCO recycle error path restores the
+    saved `jit_env` before returning an error.
+- Commands run and key results:
+  - `git diff --check`: passed.
+  - `c3c build --obj-out obj`: passed.
+  - `c3c build --obj-out build/strict-deprecation-obj --warn-deprecation=error`
+    linked successfully; the only remaining strict-deprecation diagnostic is
+    external C3 stdlib
+    `/home/christos/.local/lib/c3/std/net/os/linux.c3:11`.
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`:
+    basic slice passed, `pass=144 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=jit-policy OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`:
+    passed, `pass=51 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_QUERY_FILTER=why-result-admin-multi-rule OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`:
+    passed, `pass=1 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_DEDUCE_QUERY_FILTER=admin-surface OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`:
+    passed, `pass=129 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=deduce OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`:
+    passed, `pass=330 fail=0`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not resume the Deduce crash from raw `jit_env` save/restore around call
+    operand lowering, high-arity call staging through `jit_eval_call_cont_safe`,
+    lookup-time pointer guards, or a runtime active-interpreter global. Those
+    approaches either did not improve the Deduce repro or regressed bootstrap.
+  - The key crash trigger was large native JIT lowering of one big Deduce
+    proof/assertion expression; staging long blocks/logical chains changed the
+    regime and cleared the bounded Deduce slice.
+- Current best recommendation/checkpoint:
+  - Treat the bounded Deduce slice as green again at `330/0`. Continue audit
+    from remaining tensor/Vulkan/CUDA/LAPACK work or broader validation gates,
+    not from the old admin-surface crash.
+  - If future JIT crashes appear in very large expressions, first check whether
+    another expression family needs staged lowering before adding downstream
+    pointer guards.
+- Unresolved issues:
+  - Strict-deprecation still reports the external C3 stdlib `AIFamily`
+    diagnostic; no repo-owned strict diagnostics were observed.
+  - Full all-slice/high-memory validation was not run in this checkpoint.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 20:10 CEST - Fixed-Width Complex Closure Plan
+
+- Objective attempted:
+  - Split the remaining fixed-width complex tensor numerical work into
+    executable lanes and deploy multiple GPT-5.4 planning agents.
+- Workspace/target:
+  - `/home/christos/Omni`, fixed-width complex Tensor matrix backlog and
+    planning artifacts.
+- Changes made:
+  - Added `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md`.
+  - Split the previous broad TODO residual into
+    `TENSOR-100H-SVD-FACTORS`, `TENSOR-100H-CUDA-SVD-NORMS`, and
+    `TENSOR-100H-COMPLEX-EIGEN`.
+  - Updated supporting SVD/eigen/fixed-complex roadmap notes to point to the
+    new closure plan and current blockers.
+  - Created Ruflo task lanes:
+    `task-1776535656686-symqsu`,
+    `task-1776535656710-clzj23`, and
+    `task-1776535656878-ncxig9`.
+- Key decisions:
+  - Full complex `matrix/svd` closes in CPU-then-Vulkan order. Realification is
+    singular-value-only and must not be used for public complex `u`/`v`.
+  - CUDA complex SVD-family work should use runtime-loaded cuSOLVER DN
+    (`cusolverDnZgesvd` / `cusolverDnCgesvd`) with custom PTX limited to
+    layout adapters.
+  - Fixed-width complex eigen closure starts by freezing the public result
+    contract. Recommended direction is fixed-width complex eigenpair outputs
+    for fixed-width numeric inputs, not backend-hidden `BigComplex` results.
+- Commands run:
+  - `jj status`
+  - targeted `rg` / `sed` inspections
+  - targeted `git diff --check` over changed planning artifacts
+- Key results:
+  - Planning diff hygiene passed.
+  - No build or runtime tests were run because this was a planning-only change.
+- Current best recommendation:
+  - Start with `TENSOR-100H-SVD-FACTORS` CPU oracle, then Vulkan complex SVD.
+    Keep CUDA and eigen lanes independent.
+- Unresolved issues:
+  - Implementation remains open in all three lanes.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 17:21 CEST - Vulkan Complex QR And Cholesky Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by landing fixed-width complex `matrix/qr` and
+    `matrix/cholesky` for CPU oracle behavior and Vulkan execution, using
+    multiple GPT-5.4 agents for Vulkan implementation, test coverage, and
+    review.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan complex QR/Cholesky shaders/helper ABI, C3
+    Tensor matrix routing, advanced stdlib tests, docs/backlog/memory
+    artifacts.
+- Code or configuration changes made:
+  - Added Vulkan `Complex128`/`Complex64` QR and Cholesky compute shaders,
+    generated SPIR-V C sources, build script wiring, and `project.json`
+    archive inputs.
+  - Added helper exports and C3 extern routing for
+    `omni_tensor_backend_vulkan_qr_complex128`,
+    `omni_tensor_backend_vulkan_qr_complex64`,
+    `omni_tensor_backend_vulkan_cholesky_complex128`, and
+    `omni_tensor_backend_vulkan_cholesky_complex64`.
+  - Implemented CPU `Complex128`/`Complex64` QR with Hermitian projection and
+    Cholesky with Hermitian positive-definite checks.
+  - Aligned CPU tolerance thresholds with Vulkan for near-rank-deficient QR
+    and near-Hermitian Cholesky cases.
+  - Added guarded CPU/Vulkan tests for values, dtype/device/shape
+    preservation, Hermitian projection, no-LAPACK behavior, lazy inputs, and
+    rank-deficient/non-Hermitian/non-HPD diagnostics.
+  - Updated TODO, active plan, fixed-width complex/public docs, roadmap/index,
+    tensor area status, memory changelog, and session reports.
+- Commands run:
+  - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for the four
+    complex QR/Cholesky shaders.
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct CPU/Vulkan `--eval` smokes for Complex128 and Complex64
+    QR/Cholesky.
+  - Host focused `advanced-collections-module`:
+    `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - Bounded-container focused `advanced-collections-module`:
+    `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - Targeted `git diff --check`.
+- Key results:
+  - Direct CPU Complex128 QR smoke returned the non-real Hermitian projection
+    `0.0-1.41421356237309i`.
+  - Direct CPU Complex128 Cholesky smoke returned `1.0-1.0i` for the lower
+    off-diagonal and `2.0+0.0i` for both diagonals.
+  - Direct Vulkan Complex128 QR smoke preserved `vulkan` placement and
+    returned `0.0-1.41421356237309i`.
+  - Direct Vulkan Complex64 Cholesky smoke preserved `vulkan` placement and
+    returned `1.0-1.0i`.
+  - Host focused `advanced-collections-module`: `1570 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`: `1553 passed,
+    0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and targeted diff hygiene
+    passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The first review found public `matrix/cholesky` still rejected
+    fixed-width complex tensors even though helpers existed; the public dtype
+    gate now admits Complex128/Complex64 and routes to CPU/Vulkan helpers.
+  - CPU fixed-complex QR/Cholesky exact checks were not the correct baseline
+    after Vulkan introduced numerical thresholds; CPU now matches the shader
+    thresholds for parity.
+- Current best recommendation / checkpoint:
+  - Treat Vulkan fixed-width complex
+    LU/determinant/solve/inverse/rank/direct-norm/QR/Cholesky as the landed
+    numerical subset.
+- Unresolved issues / next actions:
+  - Complex `matrix/singular-values`, `matrix/svd`, spectral/nuclear complex
+    norm selectors, and complex eigen routines remain separate explicit
+    contracts.
+  - CUDA fixed-width complex numerical matrix variants remain open.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 16:55 CEST - Vulkan Complex Rank And Direct Norm Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by landing fixed-width complex `matrix/rank` and
+    direct `matrix/norm` reducers for CPU oracle behavior and Vulkan
+    execution, using multiple GPT-5.4 agents for implementation/review.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan complex rank/norm shaders/helper ABI, C3
+    Tensor matrix routing, advanced stdlib tests, docs/backlog/memory
+    artifacts.
+- Code or configuration changes made:
+  - Added Vulkan `Complex128`/`Complex64` norm and rank compute shaders,
+    generated SPIR-V C sources, build script wiring, and `project.json`
+    archive inputs.
+  - Added helper exports and C3 extern routing for
+    `omni_tensor_backend_vulkan_norm_complex128`,
+    `omni_tensor_backend_vulkan_norm_complex64`,
+    `omni_tensor_backend_vulkan_rank_complex128`, and
+    `omni_tensor_backend_vulkan_rank_complex64`.
+  - Implemented CPU `Complex128`/`Complex64` rank with magnitude pivoting and
+    tolerance, plus direct norm reducers for default/`'frobenius`, `'one`,
+    `'infinity`, and `'max` over complex magnitudes.
+  - Kept complex spectral/nuclear norm selectors fail-closed until complex
+    singular-value/SVD support lands.
+  - Added guarded CPU/Vulkan tests for rank full/deficient/tolerance cases,
+    direct norm selectors, no-LAPACK behavior, and fail-closed residual
+    complex spectral/nuclear behavior.
+  - Updated TODO, active plan, fixed-width complex/public docs, roadmap/index,
+    tensor area status, memory changelog, and session reports.
+- Commands run:
+  - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
+    `csrc/tensor_vulkan_norm_complex128.comp`,
+    `csrc/tensor_vulkan_norm_complex64.comp`,
+    `csrc/tensor_vulkan_rank_complex128.comp`, and
+    `csrc/tensor_vulkan_rank_complex64.comp`.
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct CPU/Vulkan `--eval` smokes for Complex128 and Complex64 rank/norm,
+    plus CPU spectral fail-closed behavior.
+  - Host focused `advanced-collections-module`:
+    `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - Bounded-container focused `advanced-collections-module`:
+    `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - Targeted `git diff --check`.
+- Key results:
+  - Direct CPU Complex128 rank smoke returned `(2 1)`.
+  - Direct CPU Complex128 norm/spectral smoke returned
+    `(5.0 7.0 tensor/backend-unsupported)`.
+  - Direct CPU Complex64 rank/norm smoke returned `(2 5.0 5.0)`.
+  - Direct Vulkan Complex128 and Complex64 smokes returned `(2 5.0)` for rank
+    plus default Frobenius norm on this host.
+  - Host focused `advanced-collections-module`: `1540 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`: `1523 passed,
+    0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and targeted diff hygiene
+    passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The initial CPU complex norm path was dead behind a stale Float64/Float32
+    dtype gate; the gate is fixed and covered by runtime tests.
+  - `matrix_singular_value_norm` must remain real-only until complex SVD
+    lands; complex spectral/nuclear norms fail closed at routing boundaries.
+- Current best recommendation / checkpoint:
+  - Treat Vulkan fixed-width complex LU/determinant/solve/inverse/rank and
+    direct norm reducers as the landed numerical subset.
+- Unresolved issues / next actions:
+  - Complex `matrix/norm` `'spectral`/`'nuclear`, QR/Cholesky, complex
+    singular-value/SVD, and complex eigen routines remain separate explicit
+    contracts.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 10:40 CEST - TENSOR-100F Read-Only Transpose View
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by landing the first explicit read-only Tensor view
+    contract through `matrix/transpose-view`, with multiple GPT-5.4 agents for
+    runtime review and documentation.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor runtime payload metadata, boundary
+    copy/promotion/audit traversal, matrix transpose primitives, advanced
+    stdlib tests, docs/reference/spec/planning artifacts.
+- Code or configuration changes made:
+  - Added `TENSOR_PAYLOAD_VIEW` and `TensorVal.view_source`.
+  - Added public `matrix/transpose-view` for CPU rank-2 Tensor sources. It
+    swaps shape/strides, borrows source storage, stores the source ownership
+    edge, is immutable, and reports `tensor-layout` payload `view`, owner
+    `view-source`, `owns-storage` false, and write-policy `read-only-view`.
+  - `ref`, `(Array view)`, `(List view)`, and CPU `realize` now observe logical
+    view indexing and materialize views into dense Tensor results when needed.
+  - Boundary copy, ESCAPE promotion, graph audit, provenance, and JIT temp-lane
+    walkers now traverse `view_source`.
+  - `matrix/transpose` remains materializing for concrete inputs but composes
+    structurally when its input is already a transpose view.
+  - CUDA/Vulkan placement and destination-realize paths now reject view payloads
+    before hidden materialization, including dense double-transpose views.
+  - Restricted this first public view contract to CPU storage; Vulkan/device
+    views remain deferred until a helper ABI explicitly accepts offset, stride,
+    backing extent, alias, and write-policy metadata.
+  - Updated language/reference/area docs, Vulkan roadmap, TODO, plan,
+    changelog, and session reports.
+- Commands run:
+  - `jj status`
+  - targeted `rg`/`sed` inspections of Tensor docs, TODO, plan, changelog, and
+    session reports
+  - `c3c build --obj-out obj`
+  - Direct `--eval` smokes for `tensor-layout`, CPU `ref`, `(Array view)`,
+    `(List view)`, CPU `realize`, double-transpose structural composition,
+    return/closure capture, and immutable destination rejection
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build ./build/main --test-suite lisp`
+- Key results:
+  - Direct smokes returned payload `view` metadata, `ref` result `6.0`, Array
+    and List order `[1.0 4.0 2.0 5.0 3.0 6.0]`, CPU realized metadata
+    `[6.0 concrete true]`, double-transpose metadata `[6.0 view true]`, and
+    immutable destination rejection `realize: destination Tensor is immutable`.
+  - Runtime review found fail-open backend copy paths; fixed by rejecting views
+    before CUDA/Vulkan copy realization and by requiring concrete zero-offset
+    dense row-major storage after realization.
+  - TODO/plan wording closes the CPU read-only view contract and keeps
+    view-aware GPU/copy-kernel support as a separate explicit residual item.
+- Validation:
+  - `c3c build --obj-out obj` passed.
+  - Host focused `advanced-collections-module`: `pass=1343 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=1326 fail=0`.
+  - Bounded-container `memory-lifetime-smoke`: `pass=229 fail=0`.
+- Unresolved issues / next actions:
+  - Future view-aware Vulkan/copy kernels require an explicit helper ABI for
+    offset, strides, backing extent, ownership, aliasing, and write policy.
+- Signature: Codex GPT-5
+
+## 2026-04-18 10:09 CEST - Tensor Layout Metadata
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing Tensor
+    layout metadata and the public `tensor-layout` introspection primitive
+    before any view-backed GPU kernel work.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor value metadata, runtime validation helpers,
+    primitive registration, advanced stdlib tests, Tensor docs, Vulkan
+    roadmap, TODO, `.agents/PLAN.md`, changelog, and session reports.
+- Code/configuration changes:
+  - Added `storage_offset`, `storage_element_count`, and `storage_byte_len` to
+    `TensorVal`.
+  - Initialized concrete Tensor storage metadata, reset lazy expression
+    payloads to zero storage extent, and kept concrete clones compact.
+  - Tightened concrete metadata/device-storage validation so concrete backing
+    bytes cover the declared backing extent and CUDA/Vulkan device paths reject
+    nonzero storage offsets.
+  - Required zero-offset dense row-major storage before raw contiguous
+    CPU/device copy paths.
+  - Added and registered public `tensor-layout` for interpreter and AOT lookup.
+  - Added focused advanced stdlib assertions for CPU dense, rank-0, zero-size,
+    lazy map, CUDA copied, and Vulkan copied metadata.
+  - Updated language/reference/area docs plus TODO, Vulkan roadmap,
+    `.agents/PLAN.md`, `memory/CHANGELOG.md`, and session reports.
+- Commands run:
+  - `jj status`
+  - targeted `rg`/`sed` inspections of Tensor source, tests, docs, TODO, plan,
+    changelog, and session reports
+  - `c3c build --obj-out obj`
+  - Direct REPL smokes for dense `tensor-layout`, rank-0 metadata, lazy map
+    metadata, and non-Tensor fail-closed behavior.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - targeted `git diff --check`
+- Key results:
+  - The documented metadata keys are `dtype`, `device`, `payload`, `layout`,
+    `dense-row-major`, `shape`, `strides`, `rank`, `element-count`,
+    `byte-length`, `storage-offset`, `storage-elements`, `storage-bytes`,
+    `is-view`, `owns-storage`, `owner`, and `write-policy`.
+  - Current symbol domains are payload `concrete`/`map`/`contract`, layout
+    `dense-row-major`/`strided`, owner `self`/`view-source`/`expression`, and
+    write-policy `mutable`/`immutable`/`mutable-view`/`read-only-view`.
+  - Lazy expression payloads report logical element/byte length but
+    `storage-elements = 0` and `storage-bytes = 0` until realized.
+  - Host focused advanced collections passed `pass=1332 fail=0`.
+  - Bounded-container focused advanced collections passed `pass=1315 fail=0`.
+  - Bounded-container memory-lifetime-smoke passed `pass=229 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and targeted diff hygiene
+    passed.
+- Invalidated assumptions / negative memory:
+  - Do not treat `tensor-layout` as view execution support. It is metadata-only
+    and does not ship a public view constructor or view-backed GPU kernels.
+  - Do not pass offset/stride metadata into Vulkan/CUDA helpers by only adding
+    helper parameters. View execution needs a public constructor/operation
+    contract, CPU oracle behavior, alias/bounds tests, and explicit
+    fail-closed write policy first.
+- Current best recommendation:
+  - Next implementation should define the narrow public read-only view
+    construction/operation contract and CPU oracle tests before passing offset
+    or stride metadata to Vulkan helpers.
+- Unresolved issues:
+  - Dense CUDA/Vulkan kernels still require zero-offset dense row-major storage.
+  - No public view constructor or view-backed CPU/GPU execution path is shipped.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 09:47 CEST - Vulkan Tensor BigInteger Rounding
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing Vulkan
+    dtype-changing Tensor rounding through the same public `Tensor BigInteger`
+    contract proven by CUDA, without adding same-dtype Vulkan rounding map
+    opcodes.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan helper/shader sources, Tensor rounding
+    runtime, advanced stdlib module tests, Tensor docs, Vulkan roadmap,
+    TODO/plan/changelog/session artifacts.
+- Code/configuration changes:
+  - Added `csrc/tensor_vulkan_round_i64_f64.comp`,
+    `csrc/tensor_vulkan_round_i64_f32.comp`, and generated checked-in SPIR-V C
+    sources.
+  - Extended `csrc/tensor_vulkan_helpers.c` so Vulkan probing records
+    `shaderInt64`, enables it during device creation when available, exposes a
+    dedicated `rounding-big-integer` capability, and launches status-bearing
+    integer-result rounding helpers.
+  - Added C3 externs in `src/lisp/tensor_vulkan_backend.c3` and routed direct
+    Tensor `floor`, `ceiling`, `round`, and `truncate` touching Vulkan through
+    CPU `Tensor BigInteger` materialization in `src/lisp/prim_tensor.c3`.
+  - Added advanced stdlib module coverage for Vulkan `Float64`/`Float32`
+    direct rounding when `rounding-big-integer` is true, while preserving
+    fail-closed expectations when it is false or absent.
+  - Updated language/reference/area docs plus TODO, `.agents/PLAN.md`, Vulkan
+    roadmap, `memory/CHANGELOG.md`, and session reports to record the landed
+    Vulkan contract.
+- Commands run:
+  - `jj status`
+  - targeted `rg`/`sed` inspections of Vulkan rounding tests, backend
+    capability reporting, docs, TODO, plan, changelog, and session reports
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_round_i64_f64.comp -o
+    /tmp/omni_tensor_vulkan_round_i64_f64.spv`
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_round_i64_f32.comp -o
+    /tmp/omni_tensor_vulkan_round_i64_f32.spv`
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_round_i64_f64.spv`
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_round_i64_f32.spv`
+  - `cc -O2 -Ideps/src/yyjson/src -Ideps/src/BearSSL/inc
+    -Ideps/src/libuv/include -c csrc/tensor_vulkan_helpers.c -o
+    /tmp/tensor_vulkan_helpers_rounding.o`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct Vulkan `--eval` smokes for `Float64` floor/ceiling,
+    `Float32` round/truncate, lazy map-then-floor, overflow, and unsupported
+    `map floor`.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `git diff --check -- csrc/tensor_vulkan_helpers.c csrc/tensor_vulkan_round_i64_f32.comp csrc/tensor_vulkan_round_i64_f64.comp csrc/tensor_vulkan_round_i64_f32_spv.c csrc/tensor_vulkan_round_i64_f64_spv.c src/lisp/tensor_vulkan_backend.c3 src/lisp/prim_tensor.c3 src/lisp/tests_advanced_stdlib_module_groups.c3 scripts/build_omni_chelpers.sh project.json docs/LANGUAGE_SPEC.md docs/reference/03-collections.md docs/areas/tensor-scientific.md docs/plans/vulkan-math-library-roadmap-2026-04-17.md TODO.md .agents/PLAN.md memory/CHANGELOG.md .agents/SESSION_REPORT.md docs/SESSION_REPORT.md`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results:
+  - The duplicate `omni_tensor_backend_vulkan_int64_available` definition from
+    the concurrent runtime lane was resolved before final validation.
+  - `tensor-backends` reports Vulkan `rounding-big-integer true` on this host.
+  - Direct Vulkan smokes returned CPU `Tensor BigInteger` values:
+    `Float64` floor `("BigInteger" "cpu" "3" "-4")`, `Float64` ceiling
+    `("BigInteger" "cpu" "4" "-3")`, `Float32` round
+    `("BigInteger" "cpu" "4" "-4")`, and `Float32` truncate
+    `("BigInteger" "cpu" "3" "-3")`.
+  - Lazy Vulkan map-then-floor returned CPU `Tensor BigInteger` values; direct
+    `map floor` remains fail-closed with
+    `map: Vulkan currently supports Float64 and Float32 arithmetic kernels`.
+  - Overflow/non-finite style status reports
+    `floor: tensor integer result out of supported range`.
+  - Host focused `advanced-collections-module`: passed, `pass=1326 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1309 fail=0`.
+  - Targeted `git diff --check` passed.
+  - Primitive docs parity passed.
+  - Stage 3 source parity passed.
+- Invalidated assumptions / negative memory:
+  - Generic Vulkan `available`/`float64`/`float32` capability is insufficient
+    for dtype-changing Tensor rounding. Use the dedicated
+    `rounding-big-integer` capability.
+  - Same-dtype Vulkan float rounding output remains an invalid contract for
+    Tensor `floor`/`ceiling`/`round`/`truncate`.
+- Current best recommendation:
+  - Continue `TENSOR-100F` from Tensor view/layout metadata before view-backed
+    GPU kernels, fixed-width complex Tensor storage, or measurement-led
+    large-SVD/eigen performance work. Do not revisit Vulkan rounding as a
+    same-dtype map/unary opcode.
+- Unresolved issues:
+  - Vulkan rounding is capability-gated by `shaderInt64`; devices without that
+    feature must keep `rounding-big-integer false` and fail closed.
+  - Vulkan `Float64` rounding also requires `shaderFloat64`; `Float32` requires
+    Vulkan availability plus `shaderInt64`.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 09:25 CEST - CUDA Tensor BigInteger Rounding
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing CUDA-first
+    dtype-changing Tensor rounding without exposing same-dtype GPU rounding
+    map opcodes.
+- Workspace/target:
+  - `/home/christos/Omni`, `csrc/tensor_cuda_helpers.c`,
+    `csrc/tensor_cuda_rounding_i64.cu`,
+    `csrc/tensor_cuda_rounding_i64_ptx.inc`,
+    `src/lisp/tensor_cuda_backend.c3`, `src/lisp/prim_tensor.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`, Tensor docs,
+    TODO/plan/changelog/session artifacts.
+- Code/configuration changes:
+  - Added a CUDA rounding kernel source and checked-in PTX include for dense
+    row-major `Float64`/`Float32` inputs.
+  - Added a status-bearing CUDA helper path that writes temporary device
+    `int64` results, copies them to host, and exposes Float64/Float32 C ABI
+    entrypoints.
+  - Routed direct Tensor `floor`, `ceiling`, `round`, and `truncate` touching
+    CUDA through the helper, then materialized native CPU `Tensor BigInteger`
+    output. Current BigInteger Tensor storage remains CPU pointer-owned.
+  - Added `tensor-backends` CUDA `rounding-big-integer` capability and focused
+    capability-gated tests for BigInteger dtype and explicit CPU copyback.
+- Commands run:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_rounding_i64.cu -o /tmp/omni_tensor_cuda_rounding_i64.ptx`
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/omni_tensor_cuda_rounding_i64.ptx -o /tmp/omni_tensor_cuda_rounding_i64.cubin`
+  - `cc -O2 ... -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers_rounding.o`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct CUDA `--eval` smokes for capability, values, dtype, and non-finite
+    status.
+  - `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local ./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - Targeted `git diff --check`.
+- Key results:
+  - CUDA direct smokes returned `BigInteger` dtype and expected values for
+    `floor`, `ceiling`, `round`, and `truncate` across Float64/Float32.
+  - CUDA non-finite rounding status returned
+    `floor: tensor integer result out of supported range`.
+  - `tensor-backends` reports `rounding-big-integer true` on the CUDA-capable
+    host.
+  - Host focused advanced collections passed `pass=1322 fail=0`.
+  - Bounded-container focused advanced collections passed `pass=1305 fail=0`.
+  - Helper rebuild, C3 build, docs parity, Stage 3 source parity, and targeted
+    diff hygiene passed.
+- Invalidated assumptions / negative memory:
+  - Do not gate CUDA rounding tests on generic CUDA availability; use
+    `rounding-big-integer`.
+  - Do not expose rounding as same-dtype CUDA unary `map`.
+- Current best recommendation:
+  - CUDA dtype-changing rounding is shipped. Next policy work is Vulkan Tensor
+    rounding support or explicit fail-closed policy based on the proven CUDA
+    integer result ABI.
+- Unresolved issues:
+  - Vulkan rounding remains open pending integer/status/copyback policy.
+- Signature: Codex GPT-5
+
+## 2026-04-18 08:56 CEST - Vulkan Float64 Stats Normal Quantile
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing Vulkan
+    `Float64` `stats/normal-quantile` behind the existing backend-neutral
+    Tensor surface.
+- Workspace/target:
+  - `/home/christos/Omni`, `csrc/tensor_vulkan_normal_quantile_f64.comp`,
+    `csrc/tensor_vulkan_normal_quantile_f64_spv.c`,
+    `csrc/tensor_vulkan_helpers.c`, `scripts/build_omni_chelpers.sh`,
+    `project.json`, `src/lisp/tensor_vulkan_backend.c3`,
+    `src/lisp/prim_tensor.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`, `TODO.md`,
+    `.agents/PLAN.md`, `memory/CHANGELOG.md`, Tensor/Vulkan docs, and session
+    reports.
+- Code/configuration changes:
+  - Added a dedicated Vulkan `Float64` inverse-normal shader/helper with
+    input/output buffers plus a `uint32` status buffer.
+  - Routed direct Tensor unary math and `map stats/normal-quantile` for dense
+    row-major Vulkan `Float64` tensors through the new helper, preserving
+    Vulkan placement and dtype without CPU fallback or Float32 downcast.
+  - The shader avoids unavailable Vulkan 1.0 double `log` by inverting the
+    landed Float64 normal-CDF approximation with bounded bisection.
+  - Added focused advanced stdlib module coverage for valid values, probability
+    domain failures, non-finite failures, and non-finite status priority.
+  - Updated TODO, plan, changelog, language/reference docs, and the Vulkan
+    roadmap so CUDA-first dtype-changing rounding is now the active next item.
+- Commands run:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_normal_quantile_f64.comp -o /tmp/omni_tensor_vulkan_normal_quantile_f64.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_normal_quantile_f64.spv`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct Vulkan `--eval` smokes for direct/map `Float64` quantile values,
+    probability-domain failure, and non-finite failure.
+  - `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- Key results:
+  - Direct and mapped Vulkan `Float64` quantile smokes returned `true` for
+    `0.025`, `0.5`, and `0.975` with `1e-5` tail tolerance.
+  - Invalid `0` probability returned
+    `stats/normal-quantile: probability must be between 0 and 1`.
+  - Vulkan-produced non-finite input returned
+    `stats/normal-quantile: expected finite numeric input`.
+  - Host focused `advanced-collections-module` passed `pass=1317 fail=0`.
+  - Bounded-container focused `advanced-collections-module` passed
+    `pass=1300 fail=0`.
+- Invalidated assumptions / negative memory:
+  - Do not keep treating Vulkan `Float64` quantile as fail-closed; it is now
+    shipped through a Float64 status-bearing helper.
+  - Do not use log-based inverse-CDF approximations in the Vulkan 1.0 Float64
+    shader path; local validation rejects `log(double)`.
+- Current best recommendation:
+  - Continue with CUDA-first dtype-changing Tensor rounding to
+    `Tensor BigInteger`; do not add same-dtype GPU rounding map opcodes.
+- Unresolved issues:
+  - The unsupported Vulkan `map floor` `handle` interaction remains open and
+    separate from Tensor routing.
+- Signature: Codex GPT-5
+
+## 2026-04-18 06:27 CEST - Vulkan Float32 Stats Normal Quantile
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing Vulkan
+    `Float32` `stats/normal-quantile` without using the statusless generic
+    Vulkan unary helper, and by keeping all remaining Float64/deferred work in
+    TODO.
+- Workspace/target:
+  - `/home/christos/Omni`, `csrc/tensor_vulkan_normal_quantile_f32.comp`,
+    `csrc/tensor_vulkan_normal_quantile_f32_spv.c`,
+    `csrc/tensor_vulkan_helpers.c`, `scripts/build_omni_chelpers.sh`,
+    `project.json`, `src/lisp/tensor_vulkan_backend.c3`,
+    `src/lisp/prim_tensor.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`, `TODO.md`,
+    `.agents/PLAN.md`, `memory/CHANGELOG.md`, Tensor/Vulkan docs, and session
+    reports.
+- Code/configuration changes:
+  - Added a dedicated Vulkan `Float32` inverse-normal shader with input/output
+    buffers plus a separate `uint32` status binding.
+  - Added `omni_tensor_backend_vulkan_map_normal_quantile_f32`, wired the
+    generated SPIR-V object into helper/project builds, and routed op `20` only
+    through the status-bearing helper for Vulkan `Float32`.
+  - Mapped Vulkan quantile status `1` to
+    `stats/normal-quantile: probability must be between 0 and 1` and status
+    `2` to `stats/normal-quantile: expected finite numeric input`; invalid
+    results destroy the output before surfacing an error.
+  - Added focused Vulkan tests for direct/map valid values, finite endpoint
+    domain errors, Vulkan-produced non-finite input, mixed invalid priority,
+    and explicit Vulkan `Float64` fail-closed behavior.
+  - Updated a stale Vulkan unsupported-callable test to assert the direct
+    fail-closed message with `test_error_contains`; recorded the separate
+    `handle` stack-overflow interaction as an open TODO instead of masking it
+    through Tensor routing.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_normal_quantile_f32.comp -o /tmp/omni_tensor_vulkan_normal_quantile_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_normal_quantile_f32.spv`
+  - Direct Vulkan `--eval` smokes for valid direct/map `Float32`, zero/one
+    probability errors, Vulkan-produced `NaN`, mixed `[0.0 NaN]` priority, and
+    direct/map `Float64` fail-closed behavior.
+  - `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- Key results:
+  - Direct Vulkan Float32 quantile smoke returned `true`; direct map smoke also
+    returned `true`.
+  - Finite endpoint probabilities returned
+    `stats/normal-quantile: probability must be between 0 and 1`.
+  - Vulkan-produced non-finite input and mixed domain/non-finite input returned
+    `stats/normal-quantile: expected finite numeric input`.
+  - Vulkan Float64 quantile remains fail-closed with
+    `stats/normal-quantile: Vulkan currently supports dense row-major Float32 tensors`.
+  - Host focused `advanced-collections-module` passed `pass=1311 fail=0`.
+  - Bounded-container focused `advanced-collections-module` passed
+    `pass=1298 fail=0`.
+- Invalidated assumptions / negative memory:
+  - Do not keep treating all Vulkan quantile as fail-closed: Vulkan Float32 is
+    shipped through the status-bearing helper.
+  - Do not infer Vulkan Float64 quantile from Float32 support, do not downcast,
+    and do not assign op `20` to the existing statusless unary helper.
+  - Do not widen Vulkan `floor` or Tensor map routing to hide the separate
+    `handle` stack-overflow interaction around unsupported lazy map errors.
+- Current best recommendation:
+  - Continue with Vulkan `Float64` `stats/normal-cdf` policy/implementation
+    first, then Vulkan `Float64` quantile policy/implementation, before moving
+    to CUDA-first dtype-changing rounding.
+- Unresolved issues:
+  - Vulkan `Float64` `stats/normal-cdf` and `stats/normal-quantile` remain
+    fail-closed and are tracked as explicit TODO items.
+  - The unsupported Vulkan `map floor` `handle` interaction is tracked as a
+    separate TODO; direct fail-closed behavior remains valid.
+- Signature: Codex GPT-5
+
+## 2026-04-18 05:52 CEST - CUDA Stats Normal Quantile Status ABI
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents by landing the
+    probability-status boundary for CUDA `stats/normal-quantile` and updating
+    the active TODO/design artifacts so deferred Vulkan work stays explicit.
+- Workspace/target:
+  - `/home/christos/Omni`, `csrc/tensor_cuda_scientific_unary.cu`,
+    `csrc/tensor_cuda_helpers.c`, `src/lisp/prim_tensor.c3`,
+    `src/lisp/tensor_cuda_backend.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`, `TODO.md`,
+    `.agents/PLAN.md`, `memory/CHANGELOG.md`, Tensor scientific docs, Vulkan
+    roadmap docs, and session reports.
+- Code/configuration changes:
+  - Added CUDA scientific unary op `20` for `stats/normal-quantile`, generated
+    from CUDA C/libdevice PTX using `normcdfinv` for dense row-major
+    `Float64`/`Float32` CUDA tensors.
+  - Added a CUDA probability-status word for op `20`: raw device status `0`
+    remains success, `1` reports probability outside `0 < p < 1`, and `2`
+    reports non-finite input. The kernel uses `atomicMax`, so non-finite input
+    deterministically takes priority over a domain endpoint in mixed invalid
+    tensors.
+  - Mapped CUDA status codes to scalar-compatible Tensor diagnostics before
+    exposing output: probability-domain failure and finite-input failure both
+    fail closed without CPU fallback.
+  - Added focused CUDA regressions for valid quantile values, endpoint domain
+    failures, non-finite failure, mixed invalid priority, direct Float32
+    placement/dtype preservation, destination realization, and Vulkan
+    fail-closed quantile diagnostics.
+  - Updated planning and docs to record CUDA quantile as shipped. At that
+    checkpoint, Vulkan quantile still needed a status-bearing helper; this is
+    superseded by the later `06:27 CEST` Vulkan checkpoint for Float32, while
+    Vulkan Float64 remains deferred.
+- Commands run:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_scientific_unary.cu -o /tmp/omni_tensor_cuda_scientific_unary.ptx`
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/omni_tensor_cuda_scientific_unary.ptx -o /tmp/omni_tensor_cuda_scientific_unary.cubin`
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct CUDA valid/domain/non-finite/mixed-invalid and Vulkan fail-closed
+    `--eval` smokes.
+  - `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results:
+  - Direct CUDA quantile valid smoke returned `true`.
+  - CUDA invalid probability returned
+    `stats/normal-quantile: probability must be between 0 and 1`.
+  - CUDA `NaN` input and mixed `[0.0 NaN]` input returned
+    `stats/normal-quantile: expected finite numeric input`.
+  - Direct Vulkan `Float32` quantile still returned `tensor/backend-unsupported`
+    at this CUDA checkpoint. Superseded by the later `06:27 CEST` Vulkan
+    Float32 quantile checkpoint.
+  - Host focused `advanced-collections-module` passed `pass=1307 fail=0`.
+  - Bounded-container focused `advanced-collections-module` passed
+    `pass=1294 fail=0`.
+  - Primitive docs parity and Stage 3 source parity passed.
+- Invalidated assumptions / negative memory:
+  - Do not describe CUDA quantile status as an external sentinel scheme. The
+    raw CUDA status word is now `0` on success; status priority is explicit and
+    tested.
+  - Do not assign quantile op `20` to the current Vulkan two-buffer unary
+    helper; it lacks the required status binding/copyback path.
+- Current best recommendation:
+  - Superseded for Vulkan Float32 by the later `06:27 CEST` checkpoint.
+    Continue with Vulkan Float64 distribution policy work.
+- Unresolved issues:
+  - Vulkan `Float64` `stats/normal-cdf` and `stats/normal-quantile`,
+    dtype-changing rounding, view/layout metadata, fixed-width complex, and
+    measurement-led SVD/eigen work remain tracked in TODO.
+- Signature: Codex GPT-5
+
+## 2026-04-18 05:21 CEST - Vulkan Map Preflight Hardening
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by closing the first non-Docker backend lane:
+    Vulkan `map` preflight ordering before additional callable broadening.
+- Workspace/target:
+  - `/home/christos/Omni`, `src/lisp/prim_tensor.c3`,
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`, `TODO.md`,
+    `.agents/PLAN.md`, `memory/CHANGELOG.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`,
+    `docs/areas/tensor-scientific.md`, and session reports.
+- Code/configuration changes:
+  - Added recursive `tensor_expr_has_non_vulkan_device` to mirror the CUDA
+    preflight guard.
+  - Reordered `tensor_map_try_vulkan_value` and
+    `tensor_map_try_vulkan_direct` so callable support, recursive
+    device-placement checks, dtype-family checks, and exact dtype checks run
+    before `tensor_expr_resolve_concrete_any_device`.
+  - Hardened direct Tensor `min` / `max` because it uses the same Vulkan map
+    helper family: mixed CPU/Vulkan lazy operands now fail before CPU lazy
+    materialization.
+  - Added focused regressions for mixed CPU/Vulkan lazy `map`, unsupported
+    binary Vulkan callable preflight, and mixed CPU/Vulkan lazy `min`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - Direct `--eval` Vulkan smokes for mixed CPU/Vulkan lazy `map`, unsupported
+    binary Vulkan callable preflight, unsupported unary callable preflight, and
+    mixed CPU/Vulkan lazy `min`.
+  - `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - Targeted `git diff --check`.
+- Key results:
+  - Mixed CPU/Vulkan lazy `map` now returns
+    `map: Vulkan operands must remain Vulkan-placed` instead of materializing
+    the CPU lazy operand and failing with `map: function result dtype mismatch`.
+  - Unsupported binary Vulkan callable preflight returns
+    `map: Vulkan currently supports Float64 and Float32 arithmetic kernels`
+    before materializing the CPU lazy operand.
+  - Direct `min` with a CPU lazy operand and Vulkan operand now returns
+    `minmax: Vulkan operands must remain Vulkan-placed`.
+  - Bounded-container focused `advanced-collections-module` passed
+    `pass=1287 fail=0`.
+- Invalidated assumptions / negative memory:
+  - Do not treat direct `min` / `max` as outside the Vulkan map preflight
+    boundary; it is map-backed and needs the same no-hidden-materialization
+    ordering.
+- Current best recommendation:
+  - Next non-Docker implementation lane is the shared GPU probability-domain
+    status ABI for `stats/normal-quantile`, before CUDA/Vulkan quantile opcodes.
+- Unresolved issues:
+  - No GPU quantile support was added in this checkpoint.
+  - The validation Docker image architecture bug remains a separate TODO.
+- Signature: Codex GPT-5
+
+## 2026-04-18 04:53 CEST - Non-Docker Tensor Backend Plan And TODO Reshape
+
+- Objective attempted:
+  - Turn the remaining non-Docker CUDA/Vulkan/Tensor issues into an explicit
+    implementation plan and concrete TODO entries.
+- Workspace/target:
+  - `/home/christos/Omni`, active Tensor backend planning artifacts:
+    `.agents/PLAN.md`, `TODO.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`.
+- Planning changes:
+  - Added an active non-Docker implementation order to `.agents/PLAN.md`.
+  - Populated `TODO.md` with independently pickable residual work for Vulkan
+    map preflight hardening, GPU quantile status handling, CUDA quantile,
+    Vulkan Float32 quantile, Vulkan Float64 normal-CDF policy, CUDA-first
+    dtype-changing rounding, Vulkan rounding policy, Tensor view metadata,
+    first view-backed Vulkan structural dispatch, fixed-width complex, direct
+    Vulkan general eigenpairs, and measurement-led SVD/eigen performance.
+  - Updated the Vulkan math-library roadmap next checkpoint so future work
+    starts from the same ordered plan instead of the older broad residual list.
+- Commands run:
+  - `sed`/`rg` inspections of `TODO.md`, `.agents/PLAN.md`, current session
+    reports, and Vulkan/Tensor planning docs.
+  - `date '+%Y-%m-%d %H:%M %Z'`.
+  - `jj diff --stat`.
+- Key results:
+  - Non-Docker execution order is now: Vulkan map preflight hardening; shared
+    GPU probability-domain status ABI; CUDA quantile; Vulkan Float32 quantile;
+    Vulkan Float64 normal-CDF policy; CUDA-first dtype-changing rounding;
+    Tensor view/layout metadata; first read-only view-backed Vulkan structural
+    kernel; fixed-width complex before Vulkan complex/eigenpairs; measurement
+    before large SVD/eigen rewrites.
+- Invalidated assumptions / negative memory:
+  - Do not treat GPU quantile as a single opcode task; it is blocked on
+    probability-domain status propagation and a documented inverse-CDF
+    approximation.
+  - Do not treat GPU rounding as ordinary same-dtype unary `map`; the public
+    Tensor result contract is `Tensor BigInteger`.
+  - Do not treat stride parameters alone as view support; Tensor values need
+    storage offset, backing extent, and alias/owner metadata first.
+- Current best recommendation:
+  - Start implementation with Vulkan map preflight ordering, then the shared
+    GPU quantile status ABI. Those reduce risk for later CUDA/Vulkan callable
+    broadening.
+- Unresolved issues:
+  - This checkpoint changed planning artifacts only. No runtime code was
+    changed and no runtime tests were run.
+  - The validation Docker image architecture fix remains deliberately outside
+    this non-Docker plan.
+- Signature: Codex GPT-5
+
+## 2026-04-18 04:24 CEST - Tensor Quantile And Vulkan Float32 Normal CDF
+
+- Objective attempted:
+  - Continue `TENSOR-100F` with multiple GPT-5.4 agents, prioritize the
+    remaining Tensor distribution lanes, and update the design docs/TODO so
+    deferred GPU work is explicit.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor unary math dispatch, Vulkan Float32 unary
+    shader/helper, advanced collection tests, Tensor scientific docs, TODO,
+    changelog, and active plan artifacts.
+- Code/configuration changes:
+  - `prim_stats_normal_quantile` now routes Tensor operands through
+    `tensor_unary_math_value`.
+  - Added checked CPU Tensor `stats/normal-quantile` evaluation using
+    `omni_boost_math_standard_normal_quantile`; invalid probabilities fail the
+    whole operation with the scalar-compatible domain diagnostic.
+  - Added Vulkan `Float32` `stats/normal-cdf` fixed op id `19` through the
+    dedicated unary helper. The shader uses a same-dtype Float32 approximation,
+    preserves Vulkan placement, and leaves Vulkan `Float64` fail-closed.
+  - Regenerated `csrc/tensor_vulkan_map_unary_f32_spv.c`.
+  - Added tests for CPU Tensor quantile, CUDA/Vulkan quantile fail-closed
+    behavior, and Vulkan Float32 normal-CDF direct/map execution.
+  - Converted CUDA construction-time map fail-closed assertions from Lisp
+    `handle` expressions to C harness `test_error_contains`, avoiding the
+    known stack-overflow handler path around immediate CUDA map errors.
+- Commands run:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_map_unary_f32.comp -o /tmp/omni_tensor_vulkan_map_unary_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_map_unary_f32.spv`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - Direct CPU/CUDA/Vulkan smokes for Tensor quantile, GPU quantile fail-closed
+    behavior, and Vulkan Float32 normal-CDF.
+  - `env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `env OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - Targeted `git diff --check` for touched files.
+- Key results:
+  - Direct Vulkan Float32 `stats/normal-cdf 1.0` returned
+    `0.841344714164734`.
+  - Direct CPU Tensor `stats/normal-quantile 0.5` returned `0.0`.
+  - CUDA/Vulkan Tensor `stats/normal-quantile` fail closed with
+    `tensor/backend-unsupported` on device tensors.
+  - Host focused `advanced-collections-module` passed `pass=1296 fail=0`.
+  - Bounded-container focused `advanced-collections-module` passed
+    `pass=1283 fail=0` with `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+- Invalidated assumptions / negative memory:
+  - Do not treat CPU Tensor quantile as unimplemented; it is shipped with a
+    whole-operation probability-domain failure contract.
+  - Do not add GPU quantile by only assigning an opcode. CUDA/Vulkan still need
+    per-element probability-domain status propagation and a documented
+    inverse-CDF approximation/tolerance.
+  - Do not infer Vulkan Float64 normal-CDF support from Vulkan Float32 or CUDA
+    opcode `19`; Float64 remains blocked on a double approximation policy.
+- Current best recommendation:
+  - Next feature work should pick either the GPU quantile status/algorithm
+    design, Vulkan Float64 normal-CDF approximation policy, dtype-changing GPU
+    rounding result path, or representation-first layout/view metadata. The
+    layout/view lane is blocked until Tensor storage offset, backing extent,
+    and owner/alias metadata are explicit.
+- Unresolved issues:
+  - The validation Docker image still needs the native C3 toolchain fix before
+    parent-level broad validation can run without `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
+- Signature: Codex GPT-5
+
+## 2026-04-18 04:25 CEST - Tensor stats/normal-cdf CUDA Scientific Opcode
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by extending
+    `stats/normal-cdf` from a scalar-only standard-normal helper to CPU Tensor
+    elementwise support and a CUDA fixed scientific unary opcode.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor unary math dispatch, CUDA generated PTX helper,
+    CUDA Driver API resolver, advanced collection tests, Tensor docs, TODO,
+    changelog, and active plan artifacts.
+- Code or configuration changes made:
+  - `prim_math_core.c3` now routes Tensor operands for `stats/normal-cdf`
+    through the shared Tensor unary math path.
+  - `prim_tensor.c3` now evaluates CPU Tensor `stats/normal-cdf` elementwise:
+    `Float64` and `Float32` preserve float dtype, `BigInteger` returns
+    `Float64`, `BigFloat` preserves dtype, lazy CPU Tensor sources realize, and
+    `BigComplex` fails closed because no complex distribution Tensor contract is
+    shipped.
+  - CUDA callable lowering recognizes `stats/normal-cdf` as CUDA-only fixed op
+    id `19`, without adding it to the shared Vulkan unary callable table.
+  - `csrc/tensor_cuda_scientific_unary.cu` and the embedded generated PTX in
+    `csrc/tensor_cuda_helpers.c` now cover scientific op ids `5..19`; the CUDA
+    scientific helper wrapper max-op range was widened to `19`.
+  - Restored `omni_tensor_cuda_driver_resolve` in `csrc/tensor_cuda_helpers.c`
+    so direct helper-object linking resolves CUDA Driver API calls used by
+    embedded PTX modules.
+  - Direct CUDA `map` now rejects unsupported CUDA callables and mixed CPU/CUDA
+    operands before returning lazy Tensor expressions, preserving the existing
+    payload diagnostics and no-hidden-materialization contract.
+  - Added tests for CPU Tensor `stats/normal-cdf`, CUDA `map stats/normal-cdf`,
+    direct Tensor CUDA `stats/normal-cdf`, Float32 dtype preservation, lazy CPU
+    source realization, CUDA destination realization, Vulkan fail-closed
+    behavior, and direct-map CUDA diagnostic eagerness.
+  - Updated `TODO.md`, `.agents/PLAN.md`, `memory/CHANGELOG.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/reference/11-appendix-primitives.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/README.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `docs/plans/cuda-cublas-backend-decision-2026-04-16.md`.
+- Commands run and key results:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_scientific_unary.cu -o /tmp/omni_tensor_cuda_scientific_unary.ptx`: passed.
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/omni_tensor_cuda_scientific_unary.ptx -o /tmp/omni_tensor_cuda_scientific_unary.cubin`: passed.
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct smokes: CPU Tensor `stats/normal-cdf` returned `0.5`; CPU Float32
+    Tensor preserved dtype; CUDA `map stats/normal-cdf` returned `0.5`; direct
+    CUDA Float32 `stats/normal-cdf` preserved `"Float32"`; CUDA destination
+    `realize` produced `(cuda 0.5)`; Vulkan `map stats/normal-cdf` returned
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: passed `pass=1282 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1269 fail=0` using `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat `stats/normal-cdf` support as arbitrary CUDA callable support;
+    it is a fixed opcode extension.
+  - Do not add `stats/normal-quantile` as a fixed CUDA opcode until the Tensor
+    probability-domain and GPU error/status contract exists.
+  - Do not infer Vulkan `stats/normal-cdf` support from CUDA opcode `19`; Vulkan
+    remains fail-closed for this callable.
+- Current best recommendation or checkpoint:
+  - Continue CUDA/Vulkan broadening from explicit residuals: unsupported
+    layouts/views, a defined mixed-device execution policy, Vulkan
+    distribution-function policy, dtype-changing GPU rounding, or
+    `stats/normal-quantile` after its domain/error contract is designed.
+- Unresolved issues:
+  - Unsupported CUDA layouts/views, arbitrary unsupported CUDA callables,
+    dtype-changing GPU rounding, Tensor `stats/normal-quantile`, Vulkan
+    `stats/normal-cdf`, fixed-width complex Tensor layout, broad parent-level
+    validation, and the validation-image C3 architecture bug remain TODO items.
+- Dependencies, blockers, or restart requirements:
+  - Existing long-running Omni processes must be rebuilt/restarted before they
+    see the new Tensor math and embedded PTX.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 03:35 CEST - Tensor math/erf and math/erfc CUDA Scientific Opcodes
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by extending Tensor
+    `math/erf` and `math/erfc` from scalar-only primitives to CPU Tensor
+    elementwise support and CUDA fixed scientific unary opcodes.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor unary math dispatch, CUDA generated PTX helper,
+    CUDA helper runtime resolver, advanced collection tests, Tensor docs, TODO,
+    changelog, and active plan artifacts.
+- Code or configuration changes made:
+  - `prim_math_core.c3` now routes Tensor operands for `math/erf` and
+    `math/erfc` through the shared Tensor unary math path.
+  - `prim_tensor.c3` now evaluates CPU Tensor `math/erf` / `math/erfc`
+    elementwise; `Float64` and `Float32` preserve float dtype, `BigInteger`
+    returns `Float64`, `BigFloat` preserves dtype, and `BigComplex` fails closed
+    because no complex error-function Tensor contract is shipped.
+  - CUDA callable lowering recognizes `math/erf` and `math/erfc` as CUDA-only
+    fixed op ids `17` and `18`, without adding them to the shared Vulkan unary
+    callable table.
+  - `csrc/tensor_cuda_scientific_unary.cu` and the embedded generated PTX in
+    `csrc/tensor_cuda_helpers.c` now cover op ids `5..18`; the CUDA scientific
+    helper wrapper max-op range was widened to `18`.
+  - Restored `omni_tensor_cuda_resolve` in `csrc/tensor_cuda_helpers.c` so direct
+    helper-object linking resolves CUDA runtime API calls instead of relying on a
+    stale archive.
+  - Added tests for CPU Tensor `math/erf` / `math/erfc`, CUDA `map math/erf`,
+    CUDA `map math/erfc`, direct Tensor CUDA `math/erf` / `math/erfc`, Float32
+    dtype preservation, CUDA destination realization, and Vulkan fail-closed
+    behavior for the new callables.
+  - Updated `TODO.md`, `.agents/PLAN.md`, `memory/CHANGELOG.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/reference/11-appendix-primitives.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/README.md`, `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`,
+    and `docs/plans/cuda-cublas-backend-decision-2026-04-16.md`.
+- Commands run and key results:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_scientific_unary.cu -o /tmp/omni_tensor_cuda_scientific_unary.ptx`: passed.
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/omni_tensor_cuda_scientific_unary.ptx -o /tmp/omni_tensor_cuda_scientific_unary.cubin`: passed.
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct smokes: CPU Tensor `math/erf` returned `0.842700792949715`; CUDA
+    `map math/erf` returned `0.842700792949715`; direct CUDA Float32
+    `math/erfc` preserved `"Float32"`; Vulkan `map math/erf` returned
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: passed `pass=1271 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1258 fail=0` using `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not add `floor`, `ceiling`, `round`, or `truncate` to CUDA unary map as
+    same-dtype opcodes. Tensor rounding returns `Tensor BigInteger`, so a GPU
+    implementation needs an explicit dtype-changing result path.
+  - Do not treat `math/erf` / `math/erfc` support as arbitrary CUDA callable
+    support; it is a fixed opcode extension.
+- Current best recommendation or checkpoint:
+  - Continue CUDA map broadening from real residuals: unsupported layouts/views,
+    explicit mixed-device execution if desired, fixed-width complex Tensor dtype,
+    or another fixed built-in same-dtype callable family with CPU Tensor semantics
+    first.
+- Unresolved issues:
+  - Unsupported CUDA layouts/views, arbitrary unsupported CUDA callables,
+    dtype-changing GPU rounding, fixed-width complex Tensor layout,
+    stride/view-backed Vulkan dispatch, broad parent-level validation, and the
+    validation-image C3 architecture bug remain TODO items.
+- Dependencies, blockers, or restart requirements:
+  - Existing long-running Omni processes must be rebuilt/restarted before they
+    see the new Tensor math and embedded PTX.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 03:19 CEST - CUDA Map Mixed Operand Diagnostics
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by hardening CUDA `map`
+    mixed-operand diagnostics and no-hidden-materialization behavior.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA/Vulkan Tensor map preflight, advanced collection
+    tests, TODO, changelog, and active operational plan.
+- Code or configuration changes made:
+  - Added recursive non-materializing Tensor expression device probes for CUDA map
+    preflight.
+  - CUDA `map` now raises the explicit `map: CUDA operands must remain
+    CUDA-placed` diagnostic for mixed CPU/CUDA operands, including a nested CPU
+    lazy operand that would raise if materialized.
+  - CUDA `map` now raises `tensor/dtype-mismatch` for mixed CUDA Tensor dtypes
+    from the CUDA helper path instead of a generic backend unsupported message.
+  - Vulkan and CUDA map probes now check whether an expression tree touches the
+    probed device before resolving concrete storage, preventing the Vulkan probe
+    from materializing CPU lazy operands in a CUDA-only failure path.
+  - Added focused regressions for mixed CPU/CUDA placement diagnostics,
+    fail-before-CPU-lazy-materialization, and mixed CUDA dtype diagnostics.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Host focused `advanced-collections-module`: passed `pass=1261 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1248 fail=0` using `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat symbol-only mixed-device rejection as sufficient for lazy Tensor
+    expressions. Backend probes must reject unsupported mixed-device expression
+    trees before they call concrete-storage realization helpers.
+- Current best recommendation or checkpoint:
+  - Remaining CUDA map work is now actual semantic broadening: unsupported
+    layouts/views, explicit mixed-device execution support if desired, or callable
+    extension beyond the fixed op-id table.
+- Unresolved issues:
+  - Unsupported CUDA layouts/views, unsupported CUDA callables, fixed-width complex
+    Tensor layout, stride/view-backed Vulkan dispatch, broad parent-level
+    validation, and the validation-image C3 architecture bug remain TODO items.
+- Dependencies, blockers, or restart requirements:
+  - Existing long-running Omni processes must be rebuilt/restarted before they
+    see the new map preflight diagnostics.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 03:07 CEST - Foreign CUDA Payload Clone Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by closing the foreign
+    CUDA concrete Tensor clone/copy ownership contract.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor payload cloning, memory-lifetime regressions,
+    CUDA ownership docs, TODO, changelog, and operational plan artifacts.
+- Code or configuration changes made:
+  - `tensor_clone_payload` now accepts valid CUDA concrete payload metadata from
+    foreign finalizer sources, allocates a fresh Omni-owned CUDA buffer, copies
+    source bytes device-to-device, and installs `tensor_cuda_device_finalizer` on
+    the clone.
+  - Fake, stale, malformed, or otherwise invalid CUDA handles remain fail-closed;
+    the fake CUDA handle regression still rejects clone and verifies source
+    finalizer destruction.
+  - Added a real CUDA memory-lifetime regression for a foreign-finalizer source
+    handle: copied values round-trip, clone handle is distinct, clone finalizer is
+    Omni CUDA, and the source foreign finalizer fires once.
+  - During review, corrected the Vulkan clone retain branch to keep
+    `tensor_vulkan_device_finalizer` rather than accidentally installing a CUDA
+    finalizer.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/cuda-cublas-backend-decision-2026-04-16.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local scripts/run_validation_container.sh bash -lc 'c3c build --obj-out obj && env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp'`: passed `pass=229 fail=0`.
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`: passed `pass=1258 fail=0`.
+  - A host-side `memory-lifetime-smoke` attempt was rejected by the repo policy
+    guard before execution; the valid run is the bounded-container run above.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating valid foreign CUDA concrete payload clone as
+    unimplemented or rejected. The supported ownership rule is now deep-copy into
+    fresh Omni-owned CUDA storage, with the normal CUDA finalizer on the clone.
+  - Do not infer that arbitrary pointer-shaped data is valid CUDA storage; invalid
+    handles still fail closed and must not be copied.
+- Current best recommendation or checkpoint:
+  - Continue CUDA map broadening from a remaining explicit residual: unsupported
+    layouts/views, mixed CPU/CUDA policy, mixed CUDA dtype/device policy, or
+    callable extension beyond the fixed op-id table.
+- Unresolved issues:
+  - Unsupported CUDA layouts/views, mixed CPU/CUDA operands, mixed CUDA
+    dtype/device operands, unsupported CUDA callables, fixed-width complex Tensor
+    layout, stride/view-backed Vulkan dispatch, broad parent-level validation,
+    and the validation-image C3 architecture bug remain TODO items.
+- Dependencies, blockers, or restart requirements:
+  - Existing long-running Omni processes must be rebuilt/restarted before they
+    see the corrected clone/finalizer code.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 02:56 CEST - CUDA Scientific Unary Map Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by landing CUDA
+    scientific unary `map` and direct Tensor unary math without hidden CPU
+    materialization or handwritten approximation PTX.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA helper PTX/module loading, C3 Tensor CUDA
+    dispatch, `tensor-backends` capability reporting, focused advanced tests,
+    TODO, changelog, plans, and Tensor docs.
+- Code or configuration changes made:
+  - Added `csrc/tensor_cuda_scientific_unary.cu` as the canonical CUDA C source
+    for scientific unary kernels and embedded generated CUDA 13 PTX in
+    `csrc/tensor_cuda_helpers.c` as a separate optional CUDA Driver API module.
+  - Added C ABI helpers and C3 externs for `scientific-map-float64` /
+    `scientific-map-float32` support and routed CUDA unary op ids `5..16`
+    (`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
+    `exp`, `log`, `log10`) through the generated-PTX helper.
+  - Updated public `map`, lazy CUDA map realization, CUDA destination
+    realization, and direct Tensor scientific primitives to preserve CUDA
+    placement for eligible dense row-major real CUDA tensors.
+  - Added availability-gated tests for CUDA scientific Float64/Float32 family
+    mapping, direct `sin`, direct Float32 `log10`, and destination realization.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/cuda-cublas-backend-decision-2026-04-16.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`.
+- Commands run and key results:
+  - `/usr/local/cuda-13.0/bin/nvcc --ptx -arch=compute_75 csrc/tensor_cuda_scientific_unary.cu -o /tmp/omni_tensor_cuda_scientific_unary.ptx`: passed.
+  - `/usr/local/cuda-13.0/bin/ptxas -arch=sm_75 /tmp/omni_tensor_cuda_scientific_unary.ptx -o /tmp/omni_tensor_cuda_scientific_unary.cubin`: passed.
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - CUDA runtime smokes for capability reporting, Float64 `map sin`, Float32
+    direct `log10`, direct `sin`, Float64 `acos`/`log10`, and lazy destination
+    `realize`: returned true.
+  - Host focused `advanced-collections-module`: passed `pass=1258 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1245 fail=0` using `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The prior scientific CUDA residual is now closed for dense row-major
+    `Float64`/`Float32` op ids `5..16`; do not leave docs/TODO phrased as if
+    scientific CUDA unary remains unimplemented.
+  - Do not use the validation Docker image's baked-in `/opt/c3/c3c` on this
+    arm64 host yet: rebuilding `omni-validation:2026-03-10` still downloads an
+    x86-64 `c3-linux.tar.gz` compiler into an arm64 image. Use
+    `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local` until the Dockerfile
+    selects/builds native C3.
+- Current best recommendation or checkpoint:
+  - Superseded by the 03:07 foreign CUDA payload clone checkpoint above. The
+    remaining CUDA map residuals should be split by explicit layout/view
+    metadata, mixed-device policy, mixed-dtype policy, or callable extension.
+- Unresolved issues:
+  - Unsupported CUDA layouts/views, mixed CPU/CUDA operands, mixed CUDA
+    dtype/device operands, unsupported CUDA callables, fixed-width complex Tensor
+    layout, stride/view-backed Vulkan dispatch, broad parent-level validation,
+    and the validation-image C3 architecture bug remain TODO items.
+- Dependencies, blockers, or restart requirements:
+  - Existing long-running Omni processes must be rebuilt/restarted before they
+    see the new helper symbols and embedded PTX.
+  - CUDA scientific support depends on driver support for the generated PTX
+    target used here (`compute_75`) and remains capability-gated at runtime.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 02:23 CEST - CUDA Arithmetic Unary Map Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by landing CUDA
+    arithmetic/component unary map support without hidden CPU fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, embedded CUDA map PTX, CUDA helper ABI, Tensor CUDA
+    routing, direct Tensor unary primitives, focused tests, TODO, changelog,
+    plans, and Tensor docs.
+- Code or configuration changes made:
+  - Added separate embedded PTX unary kernels and C ABI helpers for CUDA
+    `Float64` and `Float32` unary map op ids `0..4`: `abs`, unary `-`,
+    `sqrt`, identity, and zero-fill.
+  - Routed public direct `map`, lazy map realization, CUDA destination
+    realization, and direct Tensor `abs`, unary `-`, `sqrt`, `real-part`,
+    `imag-part`, and `conjugate` through the new CUDA unary helper for eligible
+    dense row-major real CUDA tensors.
+  - Preserved scientific CUDA unary op ids `5..16` as explicit
+    `tensor/backend-unsupported` cases until a deliberate libdevice/NVRTC/
+    fatbin or documented approximation strategy exists.
+  - Added CUDA-gated tests for unary arithmetic/component success, destination
+    realization, and scientific fail-closed behavior.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and CUDA/Vulkan plan notes.
+- Commands run and key results:
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - CUDA backend probe returned `[true true true nil]`.
+  - Direct CUDA smokes for unary `abs`, direct `sqrt`, Float32 `sqrt`,
+    `imag-part`, destination realization from lazy `map sqrt`, and
+    Float64/Float32 scientific fail-closed behavior all returned `true`.
+  - Host focused `advanced-collections-module`: passed `pass=1256 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1243 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The remaining CUDA map residual is no longer “unary/scientific” as a
+    single bucket. Arithmetic/component unary map is landed; scientific unary
+    CUDA math remains unresolved.
+  - Do not wire scientific CUDA ops through partial raw PTX approximations
+    without an explicit accuracy and implementation decision.
+- Current best recommendation or checkpoint:
+  - Continue CUDA map work from scientific unary math only after choosing the
+    CUDA math implementation strategy, or switch to another residual lane such
+    as foreign CUDA payload clone semantics, fixed-width complex, or
+    stride/view-backed Vulkan layouts.
+- Unresolved issues:
+  - Scientific CUDA unary map/direct math, unsupported CUDA layouts, arbitrary
+    foreign CUDA payload clone semantics, fixed-width complex Tensor layout,
+    stride/view-backed Vulkan dispatch, and broad parent-level validation
+    remain explicit TODO items.
+- Dependencies, blockers, or restart requirements:
+  - `ptxas` was unavailable, so no standalone PTX assembly check was run beyond
+    runtime CUDA execution. No long-running process was left active. A rebuild
+    or process restart is required for pre-existing external processes to see
+    the new helper code.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 02:05 CEST - CUDA Map Broadcast Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by broadening the
+    landed CUDA binary map path from exact Tensor/Tensor operands to
+    right-aligned singleton-axis Tensor/Tensor broadcasting without hidden CPU
+    tensor-data materialization.
+- Workspace/target:
+  - `/home/christos/Omni`, embedded CUDA map PTX, CUDA helper ABI, Tensor CUDA
+    map routing, focused advanced tests, TODO, changelog, plans, and Tensor
+    docs.
+- Code or configuration changes made:
+  - Widened `omni_tensor_backend_cuda_map_f64` and
+    `omni_tensor_backend_cuda_map_f32` to accept output and operand
+    rank/shape/stride metadata from C3.
+  - Updated the embedded PTX kernels to accept optional device offset maps for
+    Tensor operands, so exact-shape operands keep direct indexing and
+    broadcast operands index through shape-derived offset buffers.
+  - Added host-side offset-map construction in the CUDA helper. Only
+    shape-derived indices are staged; Tensor payload data remains on CUDA.
+  - Changed `tensor_cuda_map_binary_resolved` from exact-shape validation to
+    the same right-aligned `tensor_map_operand_matches_shape` rule used by
+    CPU/Vulkan while preserving dense row-major, matching dtype/device, and no
+    hidden CPU fallback requirements.
+  - Added CUDA Float64/Float32 broadcast map regressions plus CUDA destination
+    realization coverage and incompatible-broadcast fail-closed coverage.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and CUDA/Vulkan plan notes so
+    right-aligned CUDA Tensor/Tensor map broadcasting is no longer listed as
+    deferred.
+- Commands run and key results:
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CUDA-gated smokes for Float64 broadcast map, Float32 broadcast map,
+    CUDA destination realization from a broadcast map, and incompatible
+    broadcast rejection: all returned expected results.
+  - Host focused `advanced-collections-module`: passed `pass=1240 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1227 fail=0`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The earlier “CUDA map is exact-shape only” boundary is no longer current.
+    Dense row-major binary CUDA map supports scalar, exact-shape, and
+    right-aligned singleton-axis Tensor/Tensor broadcast operands.
+  - Do not treat the offset-map helper as arbitrary-layout or scientific
+    CUDA map support. Unsupported layouts, mixed devices/dtypes, unsupported
+    callables, scientific CUDA unary map, and arbitrary foreign CUDA payload
+    clone semantics still fail closed.
+- Current best recommendation or checkpoint:
+  - Superseded by the 02:23 checkpoint above: continue the CUDA map lane from
+    scientific CUDA unary map, or choose a separate remaining `TENSOR-100F`
+    lane such as fixed-width complex or stride/view-backed Vulkan.
+- Unresolved issues:
+  - Scientific CUDA unary map, unsupported CUDA layouts, arbitrary foreign CUDA
+    payload clone semantics, fixed-width complex Tensor layout,
+    stride/view-backed Vulkan dispatch, and broad parent-level validation
+    remain explicit TODO items.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. A rebuild/restart is required for
+    any external process that was started before this code change.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 01:53 CEST - CUDA Elementwise Binary Map Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by replacing the
+    stale CUDA `map` blocker with a real CUDA execution path while preserving
+    explicit fail-closed boundaries and no hidden CPU fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA helper ABI, Tensor CUDA routing, lazy map
+    realization, CUDA destination realization, tests, TODO, changelog, plans,
+    and Tensor docs.
+- Code or configuration changes made:
+  - Added runtime-loaded CUDA Driver API symbol resolution and embedded PTX map
+    kernels in `csrc/tensor_cuda_helpers.c` for dense row-major `Float64` and
+    `Float32` binary elementwise operations.
+  - Exposed CUDA map availability and dtype-specific map helpers through
+    `src/lisp/tensor_cuda_backend.c3`.
+  - Routed public `map`, lazy map realization, and CUDA destination-form
+    `realize` through the CUDA helper for Tensor/scalar, scalar/Tensor, and
+    exact-shape Tensor/Tensor operands over `+`, `-`, `*`, `/`, `min`, and
+    `max`.
+  - Added `tensor-backends` `elementwise-map-float64` and
+    `elementwise-map-float32` capability keys for CPU, Vulkan, and CUDA.
+  - Fixed the CUDA concrete clone boundary for Omni-owned CUDA payloads by
+    copying device storage through the existing CUDA device-to-device helper;
+    arbitrary foreign CUDA payload clone remains rejected.
+  - Added availability-gated regressions for direct CUDA maps, lazy CUDA map
+    destination realization, capability keys, and unsupported callable,
+    mixed-device, and broadcast fail-closed cases.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and CUDA/Vulkan plan notes so the
+    landed CUDA map subset and residual work are explicit.
+- Commands run and key results:
+  - `cc -O2 -fPIC -I/usr/local/include -I/usr/include -c csrc/tensor_cuda_helpers.c -o /tmp/tensor_cuda_helpers.o`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CUDA-gated smokes for capability reporting, direct `Float64` and
+    `Float32` scalar maps, binary `-`/`*`/`/`/`min`/`max`/`+` Tensor maps,
+    lazy map CUDA destination realization, unsupported callable rejection,
+    mixed CPU operand rejection, and broadcast rejection: all returned the
+    expected results.
+  - Host focused `advanced-collections-module`: passed `pass=1237 fail=0`.
+  - Bounded-container `memory-lifetime-smoke`: passed `pass=228 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed
+    `pass=1224 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `c3c build --sanitize=address --obj-out obj-asan`: not run to completion;
+    this `c3c` build reports address sanitizer as unavailable on the current
+    platform/toolchain.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The previous “CUDA map blocker” is no longer authoritative for dense
+    row-major binary `Float64`/`Float32` scalar and exact-shape operands; CUDA
+    map now has a real embedded-PTX helper path.
+  - Do not treat this as full CUDA map parity: right-aligned Tensor/Tensor
+    broadcasting, scientific CUDA unary map, unsupported layouts, mixed
+    CPU/CUDA operands, mixed CUDA dtypes/devices, unsupported callables, and
+    arbitrary foreign CUDA payload clone semantics still fail closed.
+- Current best recommendation or checkpoint:
+  - Superseded by later checkpoints above: continue the CUDA map lane from one
+    named residual family, now scientific CUDA unary map, using the
+    embedded-PTX Driver API helper as the baseline.
+- Unresolved issues:
+  - CUDA map broadcasting/unary extension, arbitrary foreign CUDA payload clone
+    semantics, fixed-width complex Tensor layout, stride/view-backed Vulkan
+    dispatch, and broad parent-level validation remain explicit TODO items.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. A rebuild/restart is required for
+    any external process that was started before this code change.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 01:13 CEST - CUDA Rank-1 Dot Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by landing the next
+    coherent CUDA contract execution slice and sharpening the remaining CUDA
+    `map` blocker.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA Tensor contract routing, destination
+    realization tests, TODO, changelog, plans, and Tensor docs.
+- Code or configuration changes made:
+  - Extended `tensor_contract_try_cuda_value` so CUDA-placed contiguous matching
+    `Float64` or matching `Float32` rank-1/rank-1 single-axis contractions
+    return CUDA-placed scalar Tensor outputs.
+  - Reused the existing cuBLAS GEMV helper by treating the left vector as a
+    one-row row-major matrix, avoiding a new C helper ABI while still executing
+    the nonzero dot through cuBLAS.
+  - Preserved zero-size rank-1 dot through the CUDA additive-identity fill path.
+  - Added availability-gated direct and destination-realize regressions for
+    `Float64` and `Float32` rank-1 dot, including scalar `Float32` extraction
+    and zero-size identity.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and CUDA/Vulkan plan notes so CUDA
+    rank-1/rank-1 dot is no longer listed as future work.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CUDA-gated smokes for `Float64` rank-1 dot, explicit-axis rank-1
+    dot, `Float32` rank-1 dot with scalar `Float32` extraction, zero-size
+    rank-1 dot identity, rank-0 CUDA destination realization for `Float64`
+    rank-1 dot, and rank-0 CUDA destination realization for `Float32` rank-1
+    dot: all returned `true`.
+  - `./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`: passed `pass=1217 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - CUDA rank-1/rank-1 dot does not require a new public primitive or helper
+    ABI in this codebase; existing row-major GEMV helper semantics cover the
+    nonzero dot while preserving CUDA placement.
+  - Superseded by the later CUDA elementwise binary map checkpoint above: the
+    helper-layer blocker no longer applies to dense row-major `Float64` and
+    `Float32` binary scalar/exact-shape CUDA map.
+- Current best recommendation or checkpoint:
+  - For CUDA `map`, continue from the residual families named in the later
+    CUDA elementwise binary map checkpoint above, or continue the fixed-width
+    complex / stride-view Vulkan TODO lanes.
+- Unresolved issues:
+  - CUDA `map` broadcasting/unary residuals, fixed-width complex Tensor
+    layout, stride/view-backed Vulkan dispatch, and broad parent-level
+    validation remain explicit TODO items.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. A rebuild/restart is required for
+    any external process that was started before this code change.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 01:00 CEST - CUDA Zero-Size Contract Identity
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by closing the
+    explicit CUDA zero-size contract identity/fill TODO without changing the
+    backend-neutral Tensor public surface or adding hidden CPU fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA Tensor contract routing, focused advanced
+    tests, TODO, changelog, plans, and Tensor docs.
+- Code or configuration changes made:
+  - Updated `tensor_contract_try_cuda_value` so supported dense row-major CUDA
+    `Float64` and `Float32` rank-2/rank-2, rank-2/rank-1, and rank-1/rank-2
+    single-axis contractions no longer reject zero free or zero contracted
+    dimensions before allocation.
+  - Zero free dimensions now return CUDA-placed zero-length Tensor outputs with
+    the computed result shape. Zero contracted dimensions with non-empty output
+    allocate CUDA result storage and fill additive identity through
+    `omni_tensor_backend_cuda_fill_f64` / `omni_tensor_backend_cuda_fill_f32`,
+    skipping cuBLAS.
+  - Added availability-gated regressions for `Float64` and `Float32`
+    zero-contracted rank-2 identity fill, zero-free rank-2 output preservation,
+    rank-2/rank-1 identity fill, rank-1/rank-2 identity fill, and the
+    cuBLAS-disabled zero-contracted path.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and relevant CUDA/Vulkan plan notes so
+    CUDA zero-size contract identity/fill is no longer listed as deferred.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CUDA-gated smokes for `Float64` zero-contracted rank-2, `Float32`
+    zero-contracted rank-2 with scalar `Float32` extraction, zero-free rank-2
+    output preservation, rank-2/rank-1 identity fill, and rank-1/rank-2
+    identity fill: all returned `true`.
+  - Host focused `advanced-collections-module` was attempted with
+    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module`;
+    it stayed mostly idle past ten minutes and was terminated, so it is not a
+    validation signal.
+  - `./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`: passed `pass=1210 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating zero-size CUDA contract dimensions as an unsupported
+    cuBLAS problem. The zero-output and additive-identity cases are owned by
+    CUDA allocation/fill semantics and must not call cuBLAS for correctness.
+- Current best recommendation or checkpoint:
+  - Continue `TENSOR-100F` from CUDA elementwise `map`, fixed-width complex
+    Tensor semantics, stride/view-backed Vulkan coverage, or broad Docker-bound
+    parent validation. CUDA rank-1/rank-1 dot is covered by the later
+    checkpoint above.
+- Unresolved issues:
+  - CUDA `map`, fixed-width complex Tensor layout, and stride/view-backed
+    Vulkan dispatch remain explicit TODO items. CUDA rank-1/rank-1 dot is
+    covered by the later checkpoint above.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. A rebuild/restart is required for
+    any external process that was started before this code change.
+- Signature: GPT-5 Codex
+
+## 2026-04-18 00:40 CEST - Scalar Float32 Runtime Value Checkpoint
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by replacing the
+    scalar `Float32` fail-closed boundary with a native runtime value connected
+    to dispatch, Tensor extraction, copy/promotion, numeric, compiler, and
+    persistence machinery.
+- Workspace/target:
+  - `/home/christos/Omni`, scalar value representation, conversion
+    constructors, numeric helpers, Tensor extraction, matrix scalar readback,
+    AOT/expression serialization, tests, TODO, changelog, plans, and Tensor
+    docs.
+- Code or configuration changes made:
+  - Added scalar `Float32` value tag/payload/constructor, `make_float32`,
+    type-id cache, `Number` parent wiring, `type-of` / `is?`, and stdlib
+    `float32?`.
+  - Wired `Float32`, `(Float x 32)`, and `(Float x "32")` through finite/range
+    checked construction, string/format/print conversion, numeric
+    comparison/equality/hash/order, arithmetic, schema validation, tuple
+    encoding, JSON/CSV emission, FFI `Double` widening, sleep/random numeric
+    consumers, expression serialization, and AOT literal lowering.
+  - Preserved region-centric lifetime semantics by treating scalar `Float32` as
+    a copy/promotion/env-copy leaf and adding boundary graph audit handling.
+  - Updated Tensor `Float32` `ref`, `Array`, `List`, `Iterator`, contract scalar
+    readback, CPU/copyback extraction, and structural matrix scalar readback so
+    element access returns scalar `Float32` instead of widening to `Float64`.
+    Matrix determinant and norm retain their documented `Float64` scalar return
+    contract.
+  - Updated current docs/plans/TODO/changelog so scalar `Float32` is no longer
+    listed as deferred. Deferred work remains in `TODO.md` for fixed-width
+    complex, stride/view-backed Vulkan coverage, CUDA `map`, and broad
+    Docker-bound parent validation; CUDA zero-size contract identity/fill is
+    covered by the later checkpoint above.
+  - Updated stale tests that still used `test_eq_double` for `Float32`
+    structural matrix element extraction and the advanced-core zero-arity `+`
+    message now that `+` is unary-or-binary.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct runtime smokes for constructor/type/predicate, arithmetic widening
+    policy, closure capture, Tensor extraction, structural matrix extraction,
+    contract extraction, and `matrix/trace`: all returned `true`.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics ./build/main --test-suite lisp`: passed `pass=71 fail=0`.
+  - `OMNI_LISP_TEST_SLICE=arithmetic-comparison ./build/main --test-suite lisp`: passed `pass=47 fail=0`.
+  - `./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_QUIET=1 OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`: passed `pass=1205 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `c3c build --sanitize=address`: attempted; local `c3c` rejected sanitizer
+    mode with `Address sanitizer is only supported on Linux, FreeBSD, NetBSD,
+    Darwin and Windows.`
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep assuming Tensor `Float32` extraction should widen to scalar
+    `Float64`. Scalar `Float32` exists now; element extraction should preserve
+    scalar `Float32` for `Float32` Tensor storage.
+  - Do not keep treating scalar `Float32` / `(Float x 32)` as fail-closed.
+    Constructor failures now apply to nonnumeric, nonfinite, or out-of-range
+    narrowing inputs.
+- Current best recommendation or checkpoint:
+  - Continue `TENSOR-100F` from CUDA elementwise `map`, fixed-width complex
+    Tensor semantics, stride/view-backed Vulkan coverage, or broad Docker-bound
+    parent validation.
+- Unresolved issues:
+  - Local ASAN compile remains unavailable through the current `c3c` invocation.
+  - No full heavy/global/container-only parent gate was run in this slice.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. Any already-running external
+    process needs a rebuild/restart to pick up the new scalar `Float32` runtime.
+- Signature: GPT-5 Codex
+
+## 2026-04-17 23:46 CEST - TENSOR-100F CUDA Float32 Placement And Contract
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents by landing CUDA
+    `Float32` placement/copyback, destination `realize`, and eligible cuBLAS
+    contract routing without adding backend-specific public APIs or implicit
+    CPU/GPU transfer.
+- Workspace/target:
+  - `/home/christos/Omni`, CUDA helper ABI, Tensor CUDA backend externs,
+    public Tensor placement/realize/contract routing, focused advanced tests,
+    TODO, changelog, plans, and Tensor docs.
+- Code or configuration changes made:
+  - Added runtime-loaded CUDA `Float32` fill support and cuBLAS `sgemm` /
+    `sgemv` wrappers while preserving existing `Float64` cuBLAS availability
+    as independent from optional `Sgemm` / `Sgemv` symbol resolution.
+  - Broadened CUDA `to-device`, CPU copyback, destination-form `realize`,
+    scalar destination fills, and supported lazy CUDA contract destination
+    writes to dense row-major `Float32` Tensor storage.
+  - Routed matching CUDA `Float32` rank-2/rank-2, rank-2/rank-1, and
+    rank-1/rank-2 single-axis contractions through the new cuBLAS `Float32`
+    helpers, preserving CUDA placement and `Float32` dtype.
+  - Added `tensor-backends` CUDA/cuBLAS `float64` / `float32` capability
+    fields, CUDA `Float32` placement/copyback/destination/contract tests, and
+    fail-closed coverage for mixed CUDA dtypes and lazy CUDA `Float32` map.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and the CUDA/cuBLAS decision note so
+    CUDA `Float32` placement/contract is no longer listed as current deferred
+    work.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `./scripts/check_primitive_docs_parity.sh`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check -- csrc/tensor_cuda_helpers.c src/lisp/tensor_cuda_backend.c3 src/lisp/prim_tensor.c3 src/lisp/tests_advanced_stdlib_module_groups.c3 docs/reference/03-collections.md docs/plans/cuda-cublas-backend-decision-2026-04-16.md docs/LANGUAGE_SPEC.md docs/areas/tensor-scientific.md TODO.md memory/CHANGELOG.md .agents/PLAN.md docs/SESSION_REPORT.md .agents/SESSION_REPORT.md`
+  - `./scripts/run_validation_container.sh env OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- Key results:
+  - Helper rebuild passed.
+  - `c3c build --obj-out obj` passed with existing deprecation warnings.
+  - Host focused `advanced-collections-module` passed `1218/0` and exercised
+    the CUDA/cuBLAS `Float32` paths on the local CUDA stack.
+  - Primitive docs parity, Stage 3 source parity, and targeted diff check
+    passed.
+  - Bounded-container focused `advanced-collections-module` passed `1205/0`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not make `omni_tensor_backend_cublas_available()` depend on
+    `cublasSgemm_v2` / `cublasSgemv_v2`; that would regress the older
+    `Float64` cuBLAS contract on installations where only double symbols are
+    available. Keep `Float32` cuBLAS availability as a separate probe.
+- Current best recommendation or checkpoint:
+  - CUDA `Float32` placement/copyback/destination/eligible cuBLAS contract is
+    landed behind the existing explicit-device Tensor surface.
+- Unresolved issues:
+  - CUDA elementwise `map`, fixed-width complex Tensor layout, stride/view
+    Vulkan dispatch, and broad/heavy parent-level container validation remain
+    explicit TODO items. Scalar `Float32` and CUDA zero-size contract
+    identity/fill are covered by later checkpoints.
+- Dependencies, blockers, or restart requirements:
+  - No long-running process was left active. A rebuild/restart is required for
+    any external process that was started before this code change.
+- Signature: GPT-5.4 Codex
+
+## 2026-04-17 23:25 CEST - TENSOR-100F Vulkan Float32 Scientific Unary
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and expand dense
+    row-major Vulkan `Float32` unary math beyond `sqrt` without hidden
+    downcasts or the invalidated generic unary map branch.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan unary shaders/helpers, public Tensor unary
+    dispatch, focused advanced tests, TODO, changelog, plans, and tensor docs.
+- Code or configuration changes made:
+  - Added dedicated Vulkan `Float32` unary opcodes for `sin`, `cos`, `tan`,
+    `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `exp`, `log`, and
+    `log10`, and regenerated the checked-in `Float32` SPIR-V C embed.
+  - Routed public `(map <scientific-unary> <vulkan-float32-tensor>)` and
+    direct Tensor unary math through the Vulkan `Float32` unary helper while
+    preserving Vulkan placement and `Float32` dtype.
+  - Kept Vulkan `Float64` scientific unary fail-closed after validation showed
+    the current Vulkan 1.0 GLSL path rejects double transcendental builtins.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, and the Vulkan plan docs so the landed
+    `Float32` unary family and remaining deferred boundaries are explicit.
+- Commands run and key results:
+  - `glslangValidator` and `spirv-val` passed for the `Float32` and reverted
+    `Float64` unary shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed after regenerating the
+    checked-in `Float32` SPIR-V C embed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes passed for `map` `sin`/`cos`/`exp`/`log`, direct
+    Tensor `log10`, and fail-closed Vulkan `Float64` `map sin`.
+  - Host focused `advanced-collections-module`: `pass=1198 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=1185 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - `./scripts/build_omni_chelpers.sh` does not regenerate SPIR-V C embeds;
+    shader changes must update the checked-in `_spv.c` file or runtime keeps
+    the old shader behavior.
+  - Do not implement Vulkan `Float64` scientific unary by downcasting to
+    `Float32`. The current GLSL double-transcendental path failed validation,
+    and silent precision loss would break the dtype contract.
+- Current best recommendation / checkpoint:
+  - Continue from scalar `Float32` runtime values or CUDA `Float32`
+    placement/contract support before broader fixed-width complex or
+    stride/view-backed Vulkan work.
+- Unresolved issues:
+  - Scalar `Float32` values, CUDA `Float32`, fixed-width complex,
+    strided/view-backed Vulkan layouts, and measured Vulkan SVD performance
+    remain open.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 23:08 CEST - TENSOR-100F CPU Float32 Matrix Factor/SVD Contract
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and close the CPU
+    `Float32` matrix factor/SVD public contract without hidden `Float64`
+    widening or LAPACK fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, CPU matrix primitives, focused advanced tests,
+    TODO, changelog, plans, and tensor area docs.
+- Code or configuration changes made:
+  - Added native CPU `Float32` matrix helpers/workspaces for LU, solve,
+    inverse, QR, Cholesky, and SVD/Jacobi singular-value paths.
+  - Routed public CPU `Tensor Float32` surfaces for `matrix/determinant`,
+    `matrix/lu`, `matrix/solve`, `matrix/inverse`, `matrix/cholesky`,
+    `matrix/qr`, `matrix/singular-values`, `matrix/svd`, and SVD-backed
+    `matrix/norm` selectors through native `Float32` implementations.
+  - Replaced CPU `Float32` fail-closed tests with positive value/dtype tests
+    and no-hidden-`d*` LAPACK counter guards.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`, plan docs,
+    and tensor area docs so CPU `Float32` matrix factor/SVD is no longer
+    listed as an open deferred boundary.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CPU `Float32` smokes passed for determinant, solve, inverse, LU,
+    QR, Cholesky, singular-values, SVD, and spectral/nuclear norm.
+  - Host focused `advanced-collections-module`: `pass=1195 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=1182 fail=0`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating CPU `Float32` matrix factor/SVD as deferred or
+    fail-closed. Do not route these paths through `matrix_copy_float64_workspace`
+    or the existing `dgesv`/`dgetrf`/`dgeqrf`/`dpotrf`/`dgesvd` helpers.
+- Current best recommendation / checkpoint:
+  - Continue from scalar `Float32` values, CUDA `Float32` placement/contract,
+    fixed-width complex, stride/view-backed Vulkan layouts, measured Vulkan
+    SVD performance, or additional Vulkan unary opcodes.
+- Unresolved issues:
+  - Scalar `Float32` values, CUDA `Float32`, fixed-width complex,
+    strided/view-backed Vulkan layouts, and measured Vulkan SVD performance
+    remain open.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 22:33 CEST - TENSOR-100F Vulkan Float32 Large-Dense SVD Robustness
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and close the
+    previously deferred robust large-dense Vulkan `Float32` SVD blocker.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan `Float32` singular-values/SVD shaders,
+    focused advanced tests, TODO, changelog, plans, and tensor area docs.
+- Code or configuration changes made:
+  - Updated `csrc/tensor_vulkan_singular_values_f32.comp` and
+    `csrc/tensor_vulkan_svd_f32.comp` to use scale-aware negative-eigenvalue
+    tolerance before singular-value extraction.
+  - Updated `csrc/tensor_vulkan_svd_f32.comp` to fill orthonormal completion
+    columns for zero-singular-value vector normalization in tall/square and
+    wide branches instead of failing the dispatch.
+  - Regenerated the corresponding SPIR-V C embeds.
+  - Added availability-gated tests for `65x65` zero, identity/diagonal, and
+    all-ones/rank-deficient Vulkan `Float32` singular-values/SVD paths,
+    SVD-backed norms, all-ones reconstruction, and unchanged LAPACK `dgesvd`
+    counters.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`, plan docs,
+    and tensor area docs so robust large-dense Vulkan `Float32` SVD is no
+    longer listed as an open correctness blocker.
+- Commands run and key results:
+  - `glslangValidator` and `spirv-val` passed for
+    `csrc/tensor_vulkan_singular_values_f32.comp` and
+    `csrc/tensor_vulkan_svd_f32.comp`.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` smokes returned `(65 64.9999694824219 0.0)`,
+    `(vulkan vulkan vulkan 64.9999694824219 0.0)`,
+    `(64.9999694824219 65.1197662353516)`, and `(65 1.0 1.0)`.
+  - Host focused `advanced-collections-module`: `pass=1177 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=1164 fail=0`.
+  - Primitive docs parity and Stage 3 source parity: passed.
+  - Targeted `git diff --check`: passed after mechanical whitespace cleanup
+    of regenerated SPIR-V C embeds.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Supersedes the earlier dense all-ones `65x65` Vulkan `Float32`
+    single-dispatch SVD failure note. That case is now fixed by scale-aware
+    eigenvalue tolerance plus orthonormal completion; do not resume staged or
+    tiled `Float32` SVD as a correctness blocker unless new validation
+    regresses it.
+- Current best recommendation / checkpoint:
+  - Continue from CPU `Float32` factor/SVD contracts, scalar/CUDA `Float32`,
+    fixed-width complex, or stride/view-backed Vulkan layout work.
+- Unresolved issues:
+  - Future tiled/multi-dispatch SVD remains a performance-oriented follow-up,
+    not the current correctness boundary.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 22:16 CEST - TENSOR-100F Vulkan Float32 Staged Parallel Solve Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and land native
+    staged parallel Vulkan `Float32` `matrix/solve` routing without hidden
+    `Float64` widening, LAPACK fallback, or Vulkan operand copy-to-CPU
+    fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, staged Vulkan solve shaders/helpers, public
+    matrix dispatch, focused advanced tests, TODO, and design/status artifacts.
+- Code or configuration changes made:
+  - Added dedicated `Float32` ports of the staged Vulkan solve shader family
+    (`solve_parallel_init`, legacy `solve_parallel`, pivot scan/reduce/commit,
+    row swap, factor, eliminate, and backsolve), generated SPIR-V C embeds,
+    and helper build/project wiring.
+  - Reworked the staged C helper into an explicitly dtype-aware dispatch ABI
+    and added `omni_tensor_backend_vulkan_solve_parallel_f32`.
+  - Added dtype-specific solve counters for `Float32` and `Float64` serial,
+    staged dispatch, pivot-reduce, and factor-stage paths.
+  - Updated public `matrix/solve` routing so Vulkan dense row-major `Float32`
+    systems below `65` stay serial and systems with `n >= 65` use the staged
+    helper. `Float32` staged shaders use a `1e-6` singularity tolerance and do
+    not route through the `Float64` staged helper.
+  - Added focused availability-gated tests for `2x2`/`9x9` serial routing,
+    `65x65` identity and dense staged routing, matrix RHS shape/rank, staged
+    singular status, mixed dtype rejection, unchanged `Float64` counters, and
+    unchanged LAPACK `dgesv` counters.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`, and
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md` so staged
+    `Float32` solve is no longer listed as deferred.
+- Commands run and key results:
+  - `glslangValidator` and `spirv-val` passed for the nine `Float32` staged
+    solve shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` staged smokes returned `(vulkan "Float32" 1.0)`,
+    dense `65x65` value `1.00000011920929`, and `tensor/singular-matrix`.
+  - Local threshold probes recorded under
+    `build/vulkan_solve_f32_threshold_20260417_*`: staged and forced-serial
+    `65x65` identity/dense timings were tied within measurement noise
+    (`0.92s/0.89s` staged vs `0.94s/0.89s` forced serial for the
+    higher-iteration probes), so `65` is a parity threshold, not a decisive
+    speedup claim.
+  - Host focused `advanced-collections-module`: passed, `pass=1166 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1153 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating staged Vulkan `Float32` solve as deferred. It now has
+    dedicated `_f32` staged shaders and dtype-specific route/counter coverage.
+  - Do not claim a decisive `Float32` staged solve speedup from the local
+    timing evidence; the measured result is parity at `65` on this stack.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100F` from robust large-dense Vulkan `Float32` SVD
+    execution or from separate CPU `Float32` factor/SVD, CUDA `Float32`,
+    scalar `Float32`, or fixed-width complex contracts.
+- Unresolved issues:
+  - Robust large-dense Vulkan `Float32` SVD remains deferred because dense
+    all-ones `65x65` single-dispatch SVD previously failed on this stack while
+    `65x65` zero matrices succeeded.
+  - CPU `Float32` factor/SVD routines, CUDA `Float32` placement, scalar
+    `Float32` values, and fixed-width complex Tensor storage remain
+    fail-closed/deferred.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 21:46 CEST - TENSOR-100F Vulkan Float32 Serial Factor/Solve Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and land native
+    Vulkan `Float32` serial factor/solve support for `matrix/determinant`,
+    `matrix/lu`, `matrix/solve`, `matrix/inverse`, `matrix/cholesky`, and
+    `matrix/qr` without hidden `Float64` widening, LAPACK fallback, or Vulkan
+    operand copy-to-CPU fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan Tensor factor/solve shaders/helpers, public
+    matrix dispatch, focused advanced tests, TODO, and design/status artifacts.
+- Code or configuration changes made:
+  - Added dedicated Vulkan `Float32` factor/solve shader/SPIR-V sources for
+    determinant, LU, solve, inverse, Cholesky, and QR, plus helper build and
+    `project.json` wiring.
+  - Added C helper exports and C3 externs for the new `_f32` paths, including
+    Float32 tail-status handling and three-buffer dispatch plumbing.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so eligible Vulkan-placed dense
+    row-major `Float32` operands route through native serial `_f32` helpers
+    for the six factor/solve surfaces. Tensor outputs preserve Vulkan
+    placement and `Float32` dtype; determinant and LU metadata keep existing
+    public scalar/host metadata contracts.
+  - Kept CPU `Float32` factor/solve routines fail-closed and kept staged
+    parallel solve routing `Float64`-only. Staged parallel `Float32`
+    solve/performance parity is now an explicit TODO follow-up, not an
+    implicit fallback through the Float64 staged helper.
+  - Added availability-gated tests for values, dtype/device preservation, lazy
+    operands, singular/rank-deficient/non-SPD diagnostics, CPU `Float32`
+    fail-closed behavior, and no-LAPACK counter preservation across the six
+    surfaces.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`, and
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md` so serial
+    factor/solve is no longer listed as wholly fail-closed.
+- Commands run and key results:
+  - Shader worker validation: `glslangValidator` and `spirv-val` passed for
+    all six new `Float32` factor/solve shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` smokes returned `-2.0`,
+    `0.199999988079071`, `"Float32"`, `0.5`, `2.0`, and `1.0`.
+  - Host focused `advanced-collections-module`: passed, `pass=1156 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1143 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed before this report entry.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating Vulkan `Float32` factor/solve as entirely
+    fail-closed. Eligible dense row-major Vulkan `Float32` operands now have
+    serial native helper paths for determinant, LU, solve, inverse, Cholesky,
+    and QR.
+  - Do not assume the existing staged parallel `Float64` solve threshold or
+    helper applies to `Float32`. `Float32` solve correctness is serial in this
+    checkpoint; staged parallel `Float32` solve is a performance-parity
+    follow-up requiring dtype-specific helper/status/threshold validation.
+- Current best recommendation / checkpoint:
+  - Continue from staged parallel Vulkan `Float32` solve/performance parity,
+    robust large-dense `Float32` SVD execution, CPU `Float32` factor/SVD
+    contract work, CUDA `Float32` placement, scalar `Float32` values, or the
+    fixed-width complex dtype lane.
+- Unresolved issues:
+  - Staged parallel Vulkan `Float32` solve/performance parity remains deferred.
+  - Robust large-dense Vulkan `Float32` SVD remains deferred because dense
+    all-ones `65x65` single-dispatch SVD previously failed on this stack while
+    `65x65` zero matrices succeeded.
+  - CPU `Float32` factor/SVD routines, CUDA `Float32` placement, and scalar
+    `Float32` values remain fail-closed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 21:17 CEST - TENSOR-100F Vulkan Float32 SVD-backed Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by landing native Vulkan `Float32` SVD-backed
+    support for `matrix/norm` `'spectral`/`'nuclear`,
+    `matrix/singular-values`, and direct `matrix/svd` without hidden
+    CPU/LAPACK fallback or hidden `Float64` widening.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan Float32 singular-value/SVD shaders, C helper
+    dispatch, public matrix routing, advanced collection tests, TODO, docs,
+    and planning artifacts.
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_singular_values_f32.comp`,
+    `csrc/tensor_vulkan_svd_f32.comp`, generated `_spv.c` sources, build
+    manifest entries, C helper exports, and C3 externs.
+  - Routed Vulkan-placed dense row-major `Float32` operands through dedicated
+    native `_f32` singular-value/SVD helpers. Tensor outputs preserve Vulkan
+    placement and `Float32` dtype; norm scalars keep the public `Float64`
+    return contract.
+  - Kept CPU `Float32` `matrix/singular-values`, CPU `Float32` `matrix/svd`,
+    and CPU `Float32` spectral/nuclear norm fail-closed before CPU
+    double/LAPACK workspaces are reached.
+  - Renamed shared multi-output Vulkan dispatch helpers from misleading `_f64`
+    names to dtype-neutral byte-sized names and added a Vulkan `Float32` SVD
+    over-previous-max-k/no-LAPACK regression.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md` so SVD-backed
+    Vulkan `Float32` support is no longer listed as deferred.
+- Commands run and key results:
+  - `glslangValidator` / `spirv-val` for
+    `csrc/tensor_vulkan_singular_values_f32.comp` and
+    `csrc/tensor_vulkan_svd_f32.comp`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` smokes returned `3.0` for spectral norm, `2.0`
+    for a copied-back singular value, and `"Float32"` for `matrix/svd` output
+    dtype.
+  - Host focused `advanced-collections-module`: passed, `pass=1121 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1108 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not continue from the direct-reducer checkpoint assumption that Vulkan
+    `Float32` SVD-backed selectors and outputs are fail-closed. Eligible dense
+    row-major Vulkan `Float32` inputs now have real shader/helper paths.
+  - A dense all-ones 65x65 Vulkan `Float32` single-dispatch SVD smoke returned
+    `tensor/backend-execution-failed` on this Vulkan stack while 65x65 zero
+    matrices succeed. Do not treat the current shader as the robust
+    large-dense performance/correctness baseline; prefer staged/tiled or
+    measured large-dense SVD work for that regime.
+- Current best recommendation/checkpoint:
+  - Continue from Vulkan `Float32` factor/solve kernels, robust large-dense
+    SVD execution, CPU `Float32` SVD contract work, CUDA `Float32` placement,
+    or scalar `Float32` values.
+- Unresolved issues:
+  - Vulkan `Float32` factor/solve kernels remain fail-closed.
+  - CPU `Float32` `matrix/singular-values`, `matrix/svd`, and SVD-backed
+    norm selectors remain fail-closed by design.
+  - CUDA `Float32` placement, scalar `Float32` values, fixed-width complex,
+    and stride/view-backed Vulkan layouts remain deferred.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 18:57 CEST - TENSOR-100F Vulkan Symmetric Eigen Large-n
+
+- Objective attempted:
+  - Continue `TENSOR-100F` by replacing the old `n <= 64` Vulkan
+    `matrix/eigenvalues` / `matrix/eigenvectors` private-array cap with a
+    storage-backed larger-size path while preserving backend-neutral public
+    surfaces and no hidden CPU/LAPACK fallback.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan symmetric eigen shader, helper
+    validation/allocation, advanced collection tests, docs, TODO, and memory
+    artifacts.
+- Code or configuration changes made:
+  - Reworked `csrc/tensor_vulkan_symmetric_eigen_f64.comp` to store Jacobi
+    matrix scratch behind the public eigenvector output payload instead of a
+    fixed private `double[4096]` array.
+  - Regenerated `csrc/tensor_vulkan_symmetric_eigen_f64_spv.c`.
+  - Updated `csrc/tensor_vulkan_helpers.c` validation/allocation so values
+    retain the visible `[n] + status` payload, vectors retain visible `[n n]`
+    metadata, and hidden vector backing storage carries `n*n` matrix scratch.
+    The helper now rejects resource sizes that exceed 32-bit shader/storage
+    guards or would wrap the shader's `64 * n * n` Jacobi iteration guard.
+  - Replaced the old `65x65` fail-closed regression with availability-gated
+    success tests for direct and lazy large Vulkan eigenvalues/eigenvectors,
+    Vulkan output placement, large nonsymmetric `tensor/not-symmetric`
+    diagnostics, and no `LAPACKE_dsyev` counter movement.
+  - Updated `TODO.md`, `.agents/PLAN.md`, `memory/CHANGELOG.md`, and relevant
+    Vulkan/Tensor docs. Deferred large-`n` performance work is now tracked as
+    measurement-driven tiling or staged execution, not as the semantic cap.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_symmetric_eigen_f64.comp -o /tmp/omni_symmetric_eigen.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_symmetric_eigen.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct smokes: `65x65` identity Vulkan eigenvalues copied back as
+    `(65 1.0 1.0)`; `65x65` eigenvectors returned
+    `(vulkan vulkan 65 1.0)`; `65x65` sparse nonsymmetric inputs returned
+    `tensor/not-symmetric`.
+  - Host focused `advanced-collections-module`: `pass=1006 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=993 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep assuming Vulkan symmetric eigen is capped at `n <= 64`.
+    Dense row-major square symmetric `Float64` inputs now support `n > 64`
+    within helper resource limits, 32-bit shader index guards, and the Jacobi
+    iteration guard.
+  - Do not build large sparse test fixtures with recursive `(range 4225)` list
+    data; that stack-overflowed in a `handle` body. Use an all-zero Tensor
+    converted to an Array plus `set!` for sparse large fixtures.
+- Current best recommendation / checkpoint:
+  - Treat semantic large-`n` Vulkan symmetric eigen support as landed for
+    dense row-major `Float64` symmetric inputs. Continue `TENSOR-100F` from
+    general `matrix/eigenpairs`, Vulkan `Float32`, fixed-width complex,
+    stride/view metadata, or measurement-driven performance work.
+- Unresolved issues:
+  - The large-`n` path remains correctness-first single-dispatch Jacobi using
+    storage-buffer scratch; tiled/staged performance work is deferred and
+    tracked in `TODO.md`.
+  - Full heavy/container-only gates were not run; focused bounded-container
+    validation passed.
+  - Live GPU execution coverage remains availability-gated by the local Vulkan
+    stack.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 20:42 CEST - TENSOR-100F Vulkan Float32 Direct Reducer Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and land Vulkan
+    `Float32` direct reducers without treating `Float32` as a fallback for
+    `Float64`, silently widening through LAPACK/SVD, or copying unsupported
+    Vulkan paths to CPU.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan Tensor reducer shaders/helpers, public
+    matrix rank/norm dispatch, focused tests, TODO, design/status docs, and
+    session handoff artifacts.
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_norm_f32.comp`,
+    `csrc/tensor_vulkan_rank_f32.comp`, and generated matching `_spv.c`
+    sources.
+  - Added `omni_tensor_backend_vulkan_norm_f32` and
+    `omni_tensor_backend_vulkan_rank_f32` in `csrc/tensor_vulkan_helpers.c`
+    using explicit `Float32` storage, a `Float32` rank push-constant layout,
+    and matching C3 extern/build-manifest wiring.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so public `matrix/rank` accepts
+    rank-2 `Float64` or `Float32` tensors. CPU `Float32` rank uses the pure
+    elimination path with values widened only inside the local workspace;
+    Vulkan `Float32` rank routes through the dedicated `_f32` helper.
+  - Updated `matrix/norm` so `Float32` supports direct selectors
+    default/`'frobenius`, `'one`, `'infinity`, and `'max` on CPU and Vulkan,
+    returning the existing public `Float64` scalar shape. `Float32`
+    `'spectral` and `'nuclear` fail closed with `tensor/backend-unsupported`
+    until native `Float32` singular-value kernels land.
+  - Added CPU and availability-gated Vulkan tests in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3` for eager/lazy
+    `Float32` rank and norm, zero-size shapes, tolerance behavior,
+    vector-shape rejection, no-LAPACK routing, and fail-closed Float32
+    spectral/nuclear selectors.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`, `.agents/PLAN.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md` so direct
+    reducers are no longer listed as deferred.
+- Commands run and key results:
+  - `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_norm_f32.comp` and
+    `csrc/tensor_vulkan_rank_f32.comp`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct CPU/Vulkan `Float32` smokes returned `2` for `matrix/rank`, `5.0`
+    for `matrix/norm`, and `tensor/backend-unsupported` for Float32
+    spectral/nuclear `matrix/norm`.
+  - Host focused `advanced-collections-module`: passed, `pass=1098 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1085 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating all Vulkan `Float32` reducers as fail-closed. Dense
+    row-major matching-`Float32` `matrix/rank` and direct `matrix/norm`
+    selectors now have real Vulkan shader/helper paths.
+  - Do not route `Float32` rank or direct norm through existing `Float64`
+    LAPACK/SVD helpers. SVD-backed `Float32` selectors remain separate and
+    fail-closed until native singular-value kernels exist.
+- Current best recommendation/checkpoint:
+  - Continue Vulkan `Float32` from SVD-backed reducers
+    (`matrix/norm` `'spectral`/`'nuclear`, `matrix/singular-values`,
+    `matrix/svd`) or factor/solve kernels with dedicated Float32
+    shader/helper ABI names and tolerance/oracle tests.
+- Unresolved issues:
+  - Vulkan `Float32` SVD-backed reducers, singular-value/SVD outputs, and
+    factor/solve kernels remain fail-closed.
+  - CUDA `Float32` placement and scalar `Float32` values remain fail-closed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 11:53 CEST - CPU Fixed-Width Complex Scalar And Tensor Support
+
+- Objective attempted:
+  - Land native CPU `Complex128`/`Complex64` scalar and Tensor semantics, then
+    update the backlog/docs so the remaining fixed-width complex work is
+    correctly framed as CUDA/Vulkan backend execution.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - scalar value/runtime/type integration
+  - CPU Tensor storage, map/contract/component helpers, and matrix structural
+    operations
+  - `TODO.md`, `memory/CHANGELOG.md`, language/reference docs, and Tensor/Vulkan
+    planning docs
+- Code or configuration changes made:
+  - Added `Complex128` and `Complex64` scalar value families with constructors,
+    stdlib predicates, dispatch/type integration, printing/String conversion,
+    equality/hash, AOT/literal serialization, and boundary copy/promotion
+    handling.
+  - Added CPU Tensor `Complex128`/`Complex64` dtype/storage support for
+    explicit and inferred construction, scalar fill, `ref`, `Array`/`List`
+    conversion, `realize`, mixed fixed-complex `map` promotion, `contract`,
+    `real-part`, `imag-part`, `abs`, `conjugate`, unary minus, and structural
+    matrix operations (`matrix/transpose`,
+    `matrix/diagonal`, `matrix/diagonal-matrix`, `matrix/identity`, and
+    `matrix/trace`).
+  - Kept CUDA/Vulkan fixed-width complex placement and backend execution
+    fail-closed. Future GPU complex support needs explicit backend capability
+    bits, device layout/copy semantics, status contracts, and kernels.
+  - Updated fixed-width complex docs/backlog/planning wording so CPU support is
+    no longer described as deferred.
+- Commands run and key results:
+  - `c3c build`: passed.
+  - Direct `--eval` smokes for scalar `String`, Tensor `ref`, component dtype,
+    and Complex128 `contract`: passed.
+  - Host focused scalar advanced tests:
+    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-unicode-iterator ./build/main --test-suite lisp`
+    passed (`180 passed, 0 failed`).
+  - Host focused Tensor advanced tests:
+    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+    passed (`1383 passed, 0 failed`).
+  - Bounded-container focused Tensor advanced tests:
+    `OMNI_VALIDATION_TIMEOUT_SEC=900 scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+    passed (`1366 passed, 0 failed`).
+  - Targeted `git diff --check`: passed.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating fixed-width complex as missing at the CPU
+    scalar/Tensor layer. The remaining fixed-width complex work is backend
+    placement/execution and direct Vulkan general `matrix/eigenpairs` contract
+    work.
+  - Do not infer complex GPU support from real `float64` or `float32`
+    `tensor-backends` capability bits.
+- Current best recommendation / checkpoint:
+  - Use the landed CPU `Complex128`/`Complex64` Tensor behavior as the oracle
+    for the next CUDA/Vulkan complex ABI. Start with explicit capability bits,
+    device layout/copy semantics, and a first operation family such as
+    `map`/`contract` before attempting general complex eigenpairs.
+- Unresolved issues:
+  - Fixed-width complex scientific/transcendental operations beyond arithmetic,
+    component helpers, `abs`, and `conjugate` remain fail-closed pending an
+    explicit approximation/precision contract.
+  - CUDA/Vulkan `Complex128`/`Complex64` placement, backend `map`, backend
+    `contract`, backend matrix kernels, and direct Vulkan general
+    `matrix/eigenpairs` remain unimplemented.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 11:12 CEST - TENSOR-100F Vulkan Map Handler Propagation
+
+- Objective attempted:
+  - Close the unsupported Vulkan `map` handler follow-up and preserve
+    structured Tensor backend errors through direct `map`, lazy-source `map`,
+    and `realize` paths.
+- Code or configuration changes made:
+  - Split Vulkan map unsupported-callable preflight into small wrapper paths
+    before the heavier direct/value map execution frames.
+  - Built no-`data` recoverable raise payloads directly in root scope before
+    setting `raise_pending`, avoiding boundary-promotion stack pressure inside
+    constrained handle bodies.
+  - Propagated evaluated `ERROR` arguments before compiled one-argument and
+    multi-argument primitive dispatch.
+  - Increased normal StackCtx usable stack from 128KB to 256KB so handled CPU
+    lazy Tensor map realization succeeds on small tensors.
+  - Added regressions in the advanced collections Tensor block for handled
+    unsupported Vulkan `map`, handled `realize`, CPU lazy-map `realize` inside
+    `handle`, and `realize` source-error propagation.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed, with existing deprecation warnings.
+  - Direct smokes covered handled Vulkan direct/lazy-source `map`, direct and
+    handled `realize`, handled CPU lazy-map `realize`, and destination-form
+    `realize` source-error propagation.
+  - Host focused `advanced-collections-module`: `pass=1352 fail=0`.
+  - Host `advanced-effect-continuation`: `pass=56 fail=0`.
+  - Host `advanced-effect-union-limit`: `pass=68 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=1335 fail=0`.
+  - Stack suite: `pass=23 fail=0`.
+  - Targeted `git diff --check`: passed.
+- Preserved constraints:
+  - Vulkan `floor`/rounding support was not widened through generic `map`.
+  - Unsupported Vulkan callables remain outside the kernel whitelist.
+  - No hidden CPU/GPU fallback was added.
+- Unresolved issues:
+  - The 256KB StackCtx budget is a pragmatic runtime fix. A future stack-light
+    rewrite of lazy Tensor map materialization may reduce this pressure, but
+    the validated small-tensor handler path is no longer blocked.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 15:39 CEST - Constructor-Driven Iterator Tensor Materialization
+- Objective attempted:
+  - Prioritize the owner design correction that iterators are already lazy
+    computations and constructors, not `delay`/`force` or general `realize`,
+    should be the public materialization boundary.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor constructor dispatch, iterator consumption,
+    and scientific Tensor design docs.
+- Code or configuration changes made:
+  - Updated `src/lisp/prim_tensor.c3` so `(Tensor iterator)`,
+    `(Tensor iterator dtype)`, and `(Tensor dtype shape iterator)` consume
+    finite numeric iterators through the Tensor constructor path.
+  - Added native `Iterator(^Tensor)` dispatch through a C iterator thunk/state:
+    Tensor iteration yields flat row-major elements, realizes lazy CPU Tensor
+    expressions once into Tensor storage, and fails closed on non-CPU device
+    tensors until explicitly copied with `to-device 'cpu`.
+  - Added focused advanced collection regressions for inferred iterator Tensor
+    construction, lazy iterator `map` into `Tensor`, explicit-shape iterator
+    data, BigInteger dtype preservation, non-numeric iterator failure,
+    Tensor-to-Iterator row-major iteration, lazy CPU Tensor iteration,
+    BigInteger Tensor iteration, empty Tensor iteration, and device fail-closed
+    behavior.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/reference/11-appendix-primitives.md`,
+    `docs/reference/12-appendix-stdlib.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`,
+    `docs/plans/README.md`, `.agents/PLAN.md`, `TODO.md`, and
+    `memory/CHANGELOG.md` to make constructor dispatch the canonical public
+    materialization model and demote `realize` to low-level Tensor
+    destination-storage use.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct runtime smokes returned `3.0`, `3.0`, `6.0`,
+    `"9223372036854775808"`, `3.0`, `3.0`, and
+    `"9223372036854775808"` for iterator-to-Tensor and Tensor-to-Iterator
+    constructor paths.
+  - Host focused `advanced-collections-module`: passed, `pass=969 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=956 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not describe `realize` as the canonical public lazy/materialization
+    boundary. Iterators already carry suspended computation, and constructors
+    are the public terminal consumers.
+  - Do not add a public Clojure-style `delay`/`force` surface for iterator or
+    Tensor laziness.
+- Current best recommendation / checkpoint:
+  - Continue from the single remaining live parent, `TENSOR-100F`. The
+    constructor-driven iterator/Tensor materialization lane is now closed as
+    `TENSOR-076B` plus `TENSOR-076C`.
+- Unresolved issues:
+  - Full heavy/container-only gates were not rerun for this source-level slice;
+    focused host and bounded-container advanced collection coverage passed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 15:09 CEST - CUDA Destination Realize Support
+- Objective attempted:
+  - Continue `TENSOR-100F` feature implementation with multiple GPT-5.4
+    agents by extending destination-form `realize` parity to CUDA.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor/CUDA destination realization.
+- Code or configuration changes made:
+  - Added existing-buffer CUDA host-to-device, device-to-device, and scalar
+    `Float64` fill helpers in `csrc/tensor_cuda_helpers.c`.
+  - Exposed the helpers through `src/lisp/tensor_cuda_backend.c3`.
+  - Split destination-form `realize` in `src/lisp/prim_tensor.c3` so existing
+    dense row-major CUDA `Float64` destinations accept matching CPU sources,
+    CUDA sources, lazy CPU expressions, supported lazy CUDA contract results,
+    and scalar fills.
+  - Preserved CPU destination fail-closed behavior for CUDA sources without
+    explicit `(to-device source 'cpu)`.
+  - Hardened unsupported device `map` construction so CUDA map operands fail
+    immediately with `tensor/backend-unsupported` instead of producing a lazy
+    expression that later fails at boundary copy time.
+  - Added availability-gated regressions for CUDA destination copies, lazy
+    cuBLAS contract into CUDA destination, CPU-destination fail-closed
+    behavior, unsupported CUDA map fail-closed behavior, and CUDA/Vulkan
+    cross-backend destination rejection.
+  - Updated Tensor docs, CUDA/Vulkan plans, TODO, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run and key results:
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct runtime smokes returned `2.0`, `3.0`, `4.0`, `1.0`, and `154.0`
+    for CPU source, CUDA source, lazy CPU source, scalar fill, and lazy cuBLAS
+    contract into CUDA destinations; CUDA source into CPU destination and
+    unsupported CUDA map both returned `tensor/backend-unsupported`.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=959 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`: passed, `pass=946 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Unsupported CUDA `map` operands should fail at map construction with
+    `tensor/backend-unsupported`; do not allow them to become lazy Tensor
+    expressions that reach boundary-copy or CPU fallback paths.
+  - CUDA destination realization does not authorize CUDA/Vulkan cross-backend
+    destination copies. Use explicit `to-device 'cpu` and then the desired
+    target when a transfer is intentional.
+- Current best recommendation / checkpoint:
+  - Destination-form `realize` is now implemented for dense row-major
+    `Float64` CPU, CUDA, and Vulkan destination classes under one
+    backend-neutral surface. Remaining `TENSOR-100F` lanes are stride/view
+    metadata, native `Float32`, fixed-width complex, additional unary helper
+    opcodes with correct semantics, rank-1 CUDA dot if desired, and broad
+    bounded-container validation before parent closure.
+- Unresolved issues:
+  - Full heavy/container-only gates were not rerun for this source-level slice;
+    focused host and bounded-container advanced collection coverage passed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 14:55 CEST - Vulkan Destination Realize Support
+- Objective attempted:
+  - Continue `TENSOR-100F` feature implementation with multiple GPT-5.4
+    agents by landing explicit Vulkan destination-form `realize` support.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor/Vulkan destination realization.
+- Code or configuration changes made:
+  - Added existing-buffer Vulkan host-to-device, device-to-device, and scalar
+    `Float64` fill helpers in `csrc/tensor_vulkan_helpers.c`.
+  - Exposed the helpers through `src/lisp/tensor_vulkan_backend.c3`.
+  - Split destination-form `realize` in `src/lisp/prim_tensor.c3` so existing
+    dense row-major Vulkan `Float64` destinations accept matching CPU sources,
+    Vulkan sources, lazy Vulkan results, and scalar fills.
+  - Preserved the existing CPU destination rule: device sources still require
+    explicit `(to-device source 'cpu)` before destination realization.
+  - Updated availability-gated advanced collection tests, Tensor docs,
+    Vulkan roadmap/status docs, TODO, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run and key results:
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct runtime smokes returned `2.0`, `3.0`, `4.0`, and `1.0` for CPU,
+    Vulkan, lazy Vulkan, and scalar sources into Vulkan destinations; Vulkan
+    source into CPU destination still returned `tensor/backend-unsupported`.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=949 fail=0`.
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`: passed, `pass=936 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The old audit checkpoint that treated every non-CPU destination as
+    intentionally fail-closed is superseded for Vulkan `Float64` destinations.
+    Keep CPU destinations fail-closed for device sources unless the caller
+    performs explicit `to-device 'cpu`.
+- Current best recommendation / checkpoint:
+  - Vulkan destination realization is implemented for dense row-major
+    `Float64` storage. Remaining `TENSOR-100F` work should continue from
+    explicit residual lanes: CUDA destination contracts, stride/view metadata,
+    native `Float32`, fixed-width complex, additional unary helper opcodes, or
+    broad bounded-container validation before parent closure.
+- Unresolved issues:
+  - Full heavy/container-only gates were not rerun for this source-level slice;
+    focused host and bounded-container advanced collection coverage passed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 14:27 CEST - Direct Vulkan Symmetric Eigenvalues And Eigenvectors
+- Objective attempted:
+  - Continue `TENSOR-100F` by landing the first direct Vulkan symmetric real
+    eigen slice behind existing `matrix/eigenvalues` and
+    `matrix/eigenvectors` surfaces.
+- Workspace/target:
+  - `/home/christos/Omni`, Tensor/Vulkan symmetric eigen route.
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_symmetric_eigen_f64.comp` and generated
+    `csrc/tensor_vulkan_symmetric_eigen_f64_spv.c`.
+  - Added `omni_tensor_backend_vulkan_symmetric_eigen_f64`, build/project
+    wiring, and Vulkan status mapping for `tensor/not-symmetric`.
+  - Routed public `matrix/eigenvalues` and `matrix/eigenvectors` so concrete
+    and lazy Vulkan dense row-major square `Float64` inputs execute on Vulkan
+    before CPU fallback and return Vulkan-placed Tensor outputs.
+  - Kept `matrix/eigenpairs` fail-closed on Vulkan because its public result
+    contract is still pointer-backed `BigComplex`.
+  - Added availability-gated regressions for values/vectors, device placement,
+    lazy Vulkan inputs, nonsymmetric diagnostics, `n > 64` fail-closed
+    behavior, and unchanged `LAPACKE_dsyev` counters.
+  - Updated Tensor/Vulkan docs, TODO, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_symmetric_eigen_f64.comp -o /tmp/omni_tensor_vulkan_symmetric_eigen_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_symmetric_eigen_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct runtime smokes returned `("vulkan" 3.0 2.0)`,
+    `("vulkan" "vulkan" 3.0 1.0)`, and `tensor/not-symmetric`.
+  - Host focused `advanced-collections-module`: passed, `pass=948 fail=0`.
+  - Bounded container focused `advanced-collections-module`: passed,
+    `pass=935 fail=0`.
+  - `python3 -m json.tool project.json`: passed.
+  - `bash -n scripts/build_omni_chelpers.sh`: passed.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Direct `matrix/eigenvalues` and `matrix/eigenvectors` are no longer
+    fail-closed on supported Vulkan operands. Keep only `matrix/eigenpairs`
+    fail-closed while its output contract remains `BigComplex`.
+  - Do not hide `n > 64` symmetric eigen by copying Vulkan input to CPU; the
+    current helper is intentionally bounded and returns
+    `tensor/backend-unsupported` beyond that boundary.
+- Current best recommendation / checkpoint:
+  - Direct symmetric Vulkan eigen is implemented for dense row-major
+    `Float64` square inputs with `n <= 64`. Continue `TENSOR-100F` from
+    residual lanes such as larger eigen/SVD algorithms, helper factoring,
+    native `Float32` storage/kernels, or fixed-width complex dtype work.
+- Unresolved issues:
+  - Full heavy/container-only gates were not rerun for this source-level
+    Tensor/Vulkan slice; focused host and bounded-container coverage passed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 11:13 CEST - Vulkan Destination Realize Audit Fix
+- Objective attempted:
+  - Continue the Tensor/Vulkan audit and fix pass with parallel GPT-5.4
+    auditors and implementation-scoped fallback workers after GPT-5.3 Spark
+    workers were quota-blocked.
+- Workspace/target:
+  - `/home/christos/Omni`.
+- Code or configuration changes made:
+  - Added `tensor_require_cpu_destination` and routed explicit destination
+    `realize` checks through it so valid non-CPU destination tensors fail with
+    `tensor/backend-unsupported` instead of the missing CPU backing-storage
+    runtime error.
+  - Added regressions for CPU source into Vulkan destination, Vulkan source
+    into Vulkan destination, and Vulkan `matrix/singular-values` into a CPU
+    destination.
+  - Updated `TODO.md`, `docs/areas/tensor-scientific.md`,
+    `docs/reference/03-collections.md`, `memory/CHANGELOG.md`, and
+    `.agents/PLAN.md` to remove stale validation/doc wording.
+- Commands run and key results:
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`:
+    passed, `pass=907 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The source-audit concern that Vulkan singular-values still over-dispatched
+    from `k + 2` payload size is stale for the current working tree; the helper
+    already allocates `k + 2` storage while dispatching exactly one work item.
+- Current best recommendation / checkpoint:
+  - Destination `realize` remains CPU-destination-only. Keep explicit
+    `to-device 'cpu` as the non-CPU source copy boundary and do not introduce
+    Vulkan destination-copy semantics without a separate contract.
+- Unresolved issues:
+  - Full heavy/container-only gates were not rerun for this narrow audit fix.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 09:22 CEST - TENSOR-100E Vulkan Zero-Axis Contract
+- Objective attempted:
+  - Enable public zero-axis Tensor `contract` on Vulkan without adding a
+    backend-specific surface or CPU fallback.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Relaxed `tensor_contract_try_vulkan_value` so `axis_count == 0` with null
+    axis arrays is accepted, while one-or-more-axis contractions still require
+    explicit axis metadata.
+  - Limited the rank-1 Vulkan dot fast path to the one-contracted-axis case so
+    rank-1/rank-1 `[] []` contractions use the generic outer-product shader.
+  - Relaxed `omni_tensor_backend_vulkan_contract_f64` to accept zero-axis
+    metadata and rank-0 scalar tensors.
+  - Added availability-gated tests for rank-1/rank-1 outer products,
+    rank-2/rank-1 outer products, rank-0 scalar products, Vulkan result
+    residency, and zero-free-dimension zero-length output.
+  - Updated `TODO.md`, `.agents/PLAN.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`,
+    `docs/areas/tensor-scientific.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public `(contract left right [] [])` now supports eligible Vulkan-placed
+    dense row-major `Float64` tensors, including rank-0 scalar products and
+    higher-rank outer products.
+  - Results remain Vulkan-placed; callers still copy back explicitly with
+    `to-device 'cpu` for CPU inspection.
+  - Unsupported dtypes, mixed CPU/Vulkan operands, and unsupported layouts
+    remain fail-closed with Tensor backend diagnostics.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_contract_f64.comp -o
+    /tmp/omni_tensor_vulkan_contract_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_contract_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `60.0`, `12.0`, `vulkan`, and `0`.
+  - Host focused `advanced-collections-module`: `851 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`:
+    `838 passed, 0 failed`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - None new. This slice confirms the existing generic Vulkan contract shader
+    and metadata writer were already compatible with zero-axis metadata; the
+    blocker was the fail-closed guards.
+- Current best recommendation / checkpoint:
+  - Continue Vulkan Tensor expansion with another backend-neutral `Float64`
+    kernel family or with explicit layout/aliasing metadata before
+    stride-aware views.
+- Signature: Codex GPT-5
+
+## 2026-04-17 08:31 CEST - TENSOR-100E/F Vulkan Min Max
+- Objective attempted:
+  - Add real Vulkan paths for public Tensor `min` / `max` and `map min` /
+    `map max` on dense row-major `Float64` tensors.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_vulkan_map_f64.comp` so opcode `4` is `min` and
+    opcode `5` is `max`, then regenerated
+    `csrc/tensor_vulkan_map_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_f64` opcode validation to accept
+    `0..5`.
+  - Routed `map min` / `map max` through the existing Vulkan binary map
+    selector.
+  - Changed Tensor `min` / `max` to resolve concrete Tensor operands on any
+    device before CPU-storage checks, then route eligible Vulkan `Float64`
+    tensor/scalar, scalar/Tensor, and Tensor/Tensor broadcast cases through
+    the binary Vulkan map helper.
+  - Added availability-gated Vulkan map/direct/lazy/broadcast/mixed-device
+    regressions plus CPU `map min` / `map max` parity tests.
+  - Updated `TODO.md`, `.agents/PLAN.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`,
+    `docs/areas/tensor-scientific.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public Tensor `min` / `max` and `map min` / `map max` now return
+    Vulkan-placed `Float64` Tensor results for eligible dense row-major Vulkan
+    operands.
+  - Mixed CPU/Vulkan operands still fail closed with
+    `tensor/backend-unsupported`; no CPU fallback or Big* lowering was added.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_f64.comp -o /tmp/omni_tensor_vulkan_map_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_map_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `-2.0`, `0.0`, `vulkan`, and
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `846 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`:
+    `833 passed, 0 failed`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - None new. Existing constraints still apply: do not add hidden CPU fallback
+    for Vulkan operands and do not broaden Vulkan dtypes beyond `Float64`.
+- Current best recommendation / checkpoint:
+  - Treat Vulkan `Float64` Tensor `min` / `max` as shipped on the binary map
+    helper. Remaining Vulkan math-library work should continue through
+    shader-validated fixed-width `Float64` kernels or explicit dtype/layout
+    design work.
+- Unresolved issues:
+  - NaN tie behavior is inherited from the current shader compare/select
+    expression and is not separately specified in this slice.
+- Signature: Codex GPT-5
+
+## 2026-04-17 08:18 CEST - TENSOR-100E/F Vulkan Component Ops
+- Objective attempted:
+  - Add real Vulkan paths for public real-valued Tensor component operations
+    through the existing dense row-major `Float64` unary helper.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_vulkan_map_unary_f64.comp` so opcode `3` is
+    identity and opcode `4` is zero-fill, then regenerated
+    `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_unary_f64` opcode validation to
+    accept `0..4`.
+  - Routed Vulkan `map real-part`, `map imag-part`, `map conjugate`, and
+    direct Tensor `real-part` / `imag-part` / `conjugate` through the separate
+    unary helper for dense row-major Vulkan `Float64` tensors.
+  - Changed the direct component Tensor paths to resolve concrete tensors on
+    any device before entering CPU-storage logic, avoiding hidden CPU fallback
+    and avoiding host-storage copy helpers for Vulkan buffers.
+  - Added availability-gated Vulkan direct/map/lazy regressions plus CPU
+    `map` parity tests for `real-part`, `imag-part`, and `conjugate`.
+  - Updated `TODO.md`, `.agents/PLAN.md`,
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`,
+    `docs/areas/tensor-scientific.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public `(map real-part <vulkan-tensor>)`,
+    `(map imag-part <vulkan-tensor>)`, `(map conjugate <vulkan-tensor>)`, and
+    direct Tensor component calls now return Vulkan-placed `Float64` Tensor
+    results for eligible real-valued Vulkan inputs.
+  - `real-part` and `conjugate` are identity over real tensors; `imag-part`
+    returns a zero tensor.
+  - Unsupported Vulkan unary callables such as `sin` still raise
+    `tensor/backend-unsupported`; the invalidated generic Vulkan unary
+    `map` mode-3 branch remains out of use.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f64.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `-2.5`, `0.0`, `vulkan`, and `0.0` for
+    direct `real-part`, direct `imag-part`, direct `conjugate` placement, and
+    `map imag-part`.
+  - Host focused `advanced-collections-module`: `836 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`:
+    `823 passed, 0 failed`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not attempt `exp(double)`, `log(double)`, or `log10` as simple new
+    GLSL builtins on this helper; fresh probes failed glslang compilation.
+    Keep that family behind a separate approximation/library decision.
+- Current best recommendation / checkpoint:
+  - Treat real-valued Vulkan component ops as shipped on the unary helper.
+    Continue Vulkan unary expansion only with shader-validated non-
+    transcendental ops or a separately designed approximation/library path.
+- Unresolved issues:
+  - This slice does not add fixed-width complex Vulkan Tensor storage; real
+    `Float64` component semantics are intentionally real-valued.
+- Signature: Codex GPT-5
+
+## 2026-04-17 08:04 CEST - TENSOR-100E/F Vulkan Unary Sqrt
+- Objective attempted:
+  - Add a real Vulkan path for public unary square root through the separate
+    dense row-major `Float64` unary helper.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_vulkan_map_unary_f64.comp` so opcode `2` is
+    `sqrt(value)` and regenerated `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Widened `omni_tensor_backend_vulkan_map_unary_f64` opcode validation to
+    accept `0..2`.
+  - Routed `map sqrt` and direct Tensor `sqrt` to opcode `2` for Vulkan dense
+    row-major `Float64` tensors.
+  - Changed direct Tensor unary math on Vulkan to fail closed for unsupported
+    operations instead of materializing hidden CPU results.
+  - Added Vulkan `map sqrt`, result placement, direct `sqrt`, lazy direct
+    `sqrt`, unsupported `map sin`, and CPU `map sqrt` parity regressions.
+- Key results:
+  - `(map sqrt <vulkan-tensor>)` and `(sqrt <vulkan-tensor>)` now return
+    Vulkan-placed Tensor results for positive finite `Float64` inputs.
+  - CPU inspection still requires explicit `(to-device ... 'cpu)`.
+  - Unsupported Vulkan unary callables such as `sin` still raise
+    `tensor/backend-unsupported`.
+  - The generic Vulkan unary `map` mode-3 branch remains invalidated and out
+    of use.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f64.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `3.0`, `vulkan`, `2.0`, `vulkan`, and
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `pass=824 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=811 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Negative-domain Float64 `sqrt` parity is not expanded in this slice; if
+    Omni wants stronger cross-driver NaN guarantees, add a focused decision and
+    test rather than inferring it from positive-input coverage.
+  - Continue broader Vulkan unary support only through explicitly validated
+    helper opcodes. The earlier `sin(double)` shader failure remains a
+    constraint for transcendental operations.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 07:54 CEST - TENSOR-100E/F Vulkan Unary Negation
+- Objective attempted:
+  - Make unary `-` coherent across the documented scalar surface, CPU Tensor
+    direct/map execution, and the Vulkan dense row-major `Float64` unary helper.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Changed the dispatched primitive registration for `-` so one-argument
+    calls reach `prim_sub`, and tightened `prim_sub` to reject anything outside
+    the `1..2` argument contract.
+  - Added Tensor handling to unary numeric negation and implemented
+    `tensor_neg_value` for CPU `Float64`, `BigInteger`, `BigFloat`, and
+    `BigComplex` tensors.
+  - Extended `csrc/tensor_vulkan_map_unary_f64.comp` so opcode `1` is
+    negation, regenerated `csrc/tensor_vulkan_map_unary_f64_spv.c`, and
+    widened the C helper opcode guard to accept `0..1`.
+  - Extended the C3 Vulkan unary selector so `map -` and direct Tensor
+    `(- tensor)` route to the separate unary helper for Vulkan dense row-major
+    `Float64` inputs.
+  - Added scalar, JIT, CPU Tensor, Big* Tensor, and Vulkan Tensor regressions.
+- Key results:
+  - `(- 1)` now works through the public primitive path, while `(- 1 2 3)`
+    still raises an arity error.
+  - `(- (Tensor ...))` and `(map - (Tensor ...))` now work on CPU tensors.
+  - `(map - <vulkan-tensor>)` and `(- <vulkan-tensor>)` now return
+    Vulkan-placed Tensor results and require explicit `(to-device ... 'cpu)`
+    for CPU inspection.
+  - Unsupported Vulkan unary callables such as `sqrt` still raise
+    `tensor/backend-unsupported`.
+  - The invalidated generic Vulkan unary `map` mode-3 branch remains out of
+    use.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f64.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct smokes returned `-1`, CPU Tensor `2.5`, Big* Tensor strings
+    `-9223372036854775808`, `-1e+309`, and `-3+4i`, Vulkan map value `2.0`,
+    Vulkan result device `vulkan`, direct Vulkan value `-1.5`, and
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `pass=819 fail=0`.
+  - Host `basic` slice: `pass=144 fail=0`.
+  - Host `compiler` slice: `pass=277 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=806 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Continue additional Vulkan unary arithmetic operations only through the
+    separate unary helper pattern or another explicitly debugged helper ABI.
+  - Do not resume the generic Vulkan unary `map` mode-3 branch.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 07:41 CEST - TENSOR-100E/F Vulkan Unary Abs Helper
+- Objective attempted:
+  - Add a real Vulkan path for public unary absolute value without reviving the
+    invalidated generic Vulkan `map` mode-3 branch.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_map_unary_f64.comp` and generated
+    `csrc/tensor_vulkan_map_unary_f64_spv.c`.
+  - Wired the generated shader into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_map_unary_f64`, a separate two-buffer
+    Vulkan helper with its own push constants.
+  - Added the C3 Vulkan extern and shared C3 construction path for dense
+    row-major Vulkan `Float64` unary helper results.
+  - Routed public `(map abs <vulkan-tensor>)` and direct Tensor
+    `(abs <vulkan-tensor>)` through the helper.
+  - Added availability-gated tests for `map abs` roundtrip, Vulkan result
+    placement, direct Tensor `abs`, lazy Vulkan `abs`, and unsupported
+    callable fail-closed behavior.
+- Key results:
+  - `map abs` and direct Tensor `abs` now return Vulkan-placed Tensor results
+    for Vulkan dense row-major `Float64` inputs.
+  - CPU inspection still requires explicit `(to-device ... 'cpu)`.
+  - Unsupported unary Vulkan callables such as `sqrt` still raise
+    `tensor/backend-unsupported`.
+  - The generic Vulkan unary `map` mode-3 branch remains invalidated and out
+    of use.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0
+    csrc/tensor_vulkan_map_unary_f64.comp -o
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0
+    /tmp/omni_tensor_vulkan_map_unary_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `1.5`, `vulkan`, `1.5`, `vulkan`, and
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `pass=810 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=797 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Additional unary Vulkan operations should use separate helper ABIs and
+    should not restart the generic map mode-3 branch.
+  - Full blocked trailing-update LU remains a future performance lane only if
+    later solve measurements justify it.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 07:39 CEST - TENSOR-100G Measured Solve Threshold
+- Objective attempted:
+  - Replace the fixed Vulkan `matrix/solve` bring-up threshold with measured
+    routing for the current serial and staged parallel `Float64` solve paths.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added private `OMNI_TENSOR_VULKAN_SOLVE_PARALLEL_MIN_N = 65` and routed
+    Vulkan dense row-major `Float64` solve systems with `n < 65` to the serial
+    helper and `n >= 65` to the staged parallel helper.
+  - Added `omni_tensor_backend_vulkan_solve_serial_call_count` plus the C3
+    extern so tests can prove below-threshold serial execution directly.
+  - Updated availability-gated solve tests for below-threshold serial routing,
+    65x65 parallel threshold entry, pivot/factor counter movement, no-LAPACK
+    behavior, and 65x65 parallel singular status.
+- Key results:
+  - Local in-process threshold logs under `build/vulkan_solve_threshold_20260417_*`
+    showed `3`, `9`, `16`, and `32` tied or serial-favorable, while `65` was
+    the first tested size where the staged parallel route won across identity
+    and dense fixtures.
+  - The serial helper still owns its private trailing `double` status sentinel;
+    the parallel helper still owns its private typed `uint` status buffer.
+  - Full blocked trailing-update LU remains a future performance lane only if
+    later measurements justify it; it is not required for the current
+    thresholded parallel solve contract.
+- Commands run and key results:
+  - Temporary high-threshold rebuilds were used only for measurement, then
+    replaced by the final `n >= 65` route.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `9.0`, `1.0`, `1.0`, and
+    `tensor/singular-matrix`.
+  - Host focused `advanced-collections-module`: `pass=806 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=793 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Continue broader Vulkan math-library work from the thresholded solve
+    baseline. Keep public Tensor surfaces backend-neutral and fail closed for
+    unsupported Vulkan dtype/layout cases.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 07:12 CEST - TENSOR-100G Tiled-LU Solve Staging
+- Objective attempted:
+  - Add scratch-buffered per-pivot panel-factor staging to the parallel Vulkan
+    `matrix/solve` path.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_solve_multi_factor_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_multi_factor_f64_spv.c`.
+  - Wired the generated factor shader through `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Expanded `csrc/tensor_vulkan_helpers.c` so the multi-dispatch solve helper
+    allocates a private factor scratch buffer, binds descriptor `5`, creates a
+    factor pipeline, and uses four-buffer barriers.
+  - Inserted a factor dispatch after row swap and before elimination. It
+    stores `L[row,pivot]` in factor scratch and in the lower-triangular
+    workspace; elimination now consumes staged factors.
+  - Added `omni_tensor_backend_vulkan_solve_factor_stage_call_count` plus the
+    matching C3 extern and focused counter assertion.
+  - Added a dense 65x65 `I + J` Vulkan solve regression that exercises
+    nonzero staged factors without LAPACK.
+- Key results:
+  - Public `matrix/solve` remains unchanged.
+  - The serial `n < 3` Vulkan helper still uses its trailing `double` status
+    sentinel; the parallel helper still uses private typed `uint` status.
+  - Tiled-LU staging is landed as a `tile_width = 1` panel-factor stage.
+    Remaining `TENSOR-100G` work is measurement-backed threshold routing and,
+    later, full blocked trailing-update LU if measurements justify it.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0` passed for all affected
+    solve-multi shaders.
+  - `spirv-val --target-env vulkan1.0` passed for all affected solve-multi
+    shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned dense 9x9 value `1.0`, 65x65 identity value
+    `1.0`, dense 65x65 `I + J` value `1.0`, and `tensor/singular-matrix`.
+  - Host focused `advanced-collections-module`: `pass=801 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=788 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Replace the fixed `n >= 3` bring-up threshold with measurement-backed
+    routing for serial and parallel staged Vulkan solve paths.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 06:55 CEST - TENSOR-100G Cross-Workgroup Vulkan Pivot Reduction
+- Objective attempted:
+  - Remove the remaining one-workgroup pivot-selection boundary from the
+    parallel Vulkan `matrix/solve` path.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Reworked `csrc/tensor_vulkan_solve_multi_pivot_f64.comp` into a pivot
+    scan stage that writes per-workgroup candidates into scratch.
+  - Added `csrc/tensor_vulkan_solve_multi_pivot_reduce_f64.comp`,
+    `csrc/tensor_vulkan_solve_multi_pivot_commit_f64.comp`, and
+    `csrc/tensor_vulkan_solve_multi_row_swap_f64.comp`, plus generated SPIR-V
+    C sources.
+  - Expanded the private multi-dispatch solve ABI in
+    `csrc/tensor_vulkan_helpers.c` to bind a fifth descriptor for pivot
+    magnitude scratch, allocate ping-pong scratch lanes, recursively reduce
+    pivot candidates, commit the selected row, and run row swaps as their own
+    dispatch before elimination.
+  - Added `omni_tensor_backend_vulkan_solve_pivot_reduce_call_count` and the
+    matching C3 extern.
+  - Added a 65x65 Vulkan solve regression that proves the cross-workgroup
+    pivot-reduction stage executes without LAPACK.
+- Key results:
+  - Public `matrix/solve` remains unchanged.
+  - The serial `n < 3` Vulkan helper still uses its trailing `double` status
+    sentinel; the parallel helper still uses private typed `uint` status.
+  - Pivot selection now spans multiple workgroups. Remaining `TENSOR-100G`
+    work is tiled LU staging plus measurement-backed thresholds.
+  - An attempted in-dispatch cleanup of `A[row,pivot]` was removed because it
+    raced elimination invocations that still read that column for row factors.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0` passed for all affected
+    solve-multi shaders.
+  - `spirv-val --target-env vulkan1.0` passed for all affected solve-multi
+    shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `0.2`, `3.0`, 65x65 value `1.0`, and
+    `tensor/singular-matrix`.
+  - First host focused `advanced-collections-module` run failed one dense 9x9
+    test after the in-dispatch zeroing attempt changed the result to `1.35`.
+    Removing that zeroing restored the suite.
+  - Host focused `advanced-collections-module`: `pass=800 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=787 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Add tiled LU scratch-buffer staging for larger systems.
+  - Replace the fixed `n >= 3` bring-up threshold with measured routing after
+    the tiled path exists.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 06:24 CEST - TENSOR-100G Multi-Dispatch Vulkan Solve
+- Objective attempted:
+  - Advance the parallel solver track from a staged two-dispatch helper to a
+    multi-dispatch Vulkan solve path where elimination and RHS backsolve can
+    span multiple workgroups.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_solve_multi_pivot_f64.comp`,
+    `csrc/tensor_vulkan_solve_multi_eliminate_f64.comp`, and
+    `csrc/tensor_vulkan_solve_multi_backsolve_f64.comp`, plus generated
+    SPIR-V C sources for all three shaders.
+  - Wired the generated SPIR-V sources into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Reworked the private Vulkan parallel solve helper in
+    `csrc/tensor_vulkan_helpers.c` to record init/copy, per-pivot
+    pivot/swap, per-pivot elimination, and descending per-row backsolve
+    dispatches in one command buffer with buffer-memory barriers between
+    stages.
+  - Added `omni_tensor_backend_vulkan_solve_multi_dispatch_call_count` and the
+    matching C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated advanced module tests so the 2x2 serial threshold keeps both
+    parallel counters unchanged, the Vulkan parallel path increments the
+    multi-dispatch counter without LAPACK, and a dense 9x9 `J + I` system
+    exercises the multi-workgroup elimination path.
+- Key results:
+  - The public `matrix/solve` surface and routing contract remain unchanged.
+  - The serial Vulkan `n < 3` helper still uses its private trailing `double`
+    status sentinel; the parallel helper still uses private typed `uint`
+    status storage.
+  - Elimination and RHS backsolve now scale across workgroups. Pivot
+    selection/swap is still a one-workgroup stage, so the next real solver
+    boundary is cross-workgroup pivot reduction plus scratch-buffered/tiled LU.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0` passed for pivot,
+    elimination, and backsolve shaders.
+  - `spirv-val --target-env vulkan1.0` passed for pivot, elimination, and
+    backsolve shaders.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned serial value `0.2`, pivoting value `3.0`,
+    9x9 multi-RHS identity value `18.0`, dense 9x9 `J + I` value `1.0`, and
+    `tensor/singular-matrix`.
+  - Host focused `advanced-collections-module`: `pass=799 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=786 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Add cross-workgroup pivot reduction. The likely next ABI needs pivot
+    magnitude and status scratch buffers instead of trying to dispatch the
+    current one-workgroup pivot shader wider.
+  - Add scratch-buffered/tiled LU and replace the fixed `n >= 3` bring-up
+    threshold with measurements after the tiled path exists.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 06:09 CEST - TENSOR-100G Staged Vulkan Parallel Solve
+- Objective attempted:
+  - Advance the parallel solver track from one monolithic compute shader to a
+    staged Vulkan helper with an explicit inter-dispatch memory dependency.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_solve_parallel_init_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_parallel_init_f64_spv.c`.
+  - Wired the new generated SPIR-V source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Updated the parallel solve helper in `csrc/tensor_vulkan_helpers.c` to
+    create two shader modules and two pipelines, record init/copy and
+    factor/solve dispatches into one command buffer, and issue a Vulkan 1.0
+    buffer-memory barrier between them.
+  - Kept the public C3 `matrix/solve` surface and routing unchanged: Vulkan
+    `Float64` systems with `n >= 3` use the parallel helper, while `n < 3`
+    remains on the serial Vulkan helper.
+  - Added staged-path tests in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3` for the 2x2 serial
+    threshold counter, pivoting, 9x9 multi-RHS copy beyond one workgroup, and
+    post-elimination singular diagnostics.
+- Key results:
+  - The staged helper now initializes the result/workspace and private `uint`
+    status buffer in a separate dispatch before factor/back-solve begins.
+  - The inter-dispatch barrier uses `COMPUTE_SHADER` pipeline-stage masks and
+    `SHADER_WRITE -> SHADER_READ|SHADER_WRITE` access masks on the output and
+    status buffers.
+  - The serial solver's trailing `double` status sentinel remains separate and
+    untouched.
+  - The remaining solver work is tiled or multi-workgroup LU-style solving plus
+    measurement-backed thresholds; the factor/back-solve stage is still a
+    single-workgroup algorithm.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_solve_parallel_init_f64.comp -o /tmp/omni_tensor_vulkan_solve_parallel_init_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_solve_parallel_init_f64.spv`: passed.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_solve_parallel_f64.comp -o /tmp/omni_tensor_vulkan_solve_parallel_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_solve_parallel_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned serial solve value `0.2`, staged solve value
+    `1.0`, staged 9x9 multi-RHS value `18.0`, and
+    `tensor/singular-matrix`.
+  - Host focused `advanced-collections-module`: `pass=798 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=785 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Design and validate a tiled or multi-workgroup solver path that no longer
+    depends on one workgroup's `shared` memory and `barrier()` semantics.
+  - Replace the fixed `n >= 3` bring-up threshold with a measurement-backed
+    threshold after the tiled path exists.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 05:58 CEST - TENSOR-100G Vulkan Parallel Matrix Solve
+- Objective attempted:
+  - Start the parallel solver track by adding a real Vulkan parallel
+    `matrix/solve` path behind the existing backend-neutral public surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_solve_parallel_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_parallel_f64_spv.c`.
+  - Wired the generated SPIR-V source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_solve_parallel_f64`, a parallel-helper
+    call counter, a private `uint` status reader, and a two-input/two-output
+    Vulkan dispatch helper in `csrc/tensor_vulkan_helpers.c`.
+  - Added C3 externs in `src/lisp/tensor_vulkan_backend.c3`.
+  - Routed public Vulkan `matrix/solve` in
+    `src/lisp/prim_tensor_matrix.c3`: `n >= 3` uses the new parallel helper,
+    while `n < 3` keeps the serial Vulkan helper.
+  - Added availability-gated parallel solve tests in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, `.agents/PLAN.md`, and Vulkan
+    roadmap/reference docs.
+- Key results:
+  - The first `TENSOR-100G` slice is a 64-invocation single-workgroup
+    partial-pivot Gaussian elimination shader with parallel pivot reduction,
+    row swaps, elimination updates, and RHS-column back-substitution.
+  - The parallel path preserves the existing public `matrix/solve` contract:
+    rank-1 RHS returns rank 1, rank-2 RHS returns rank 2 with matching shape,
+    results remain Vulkan-placed, singular systems raise
+    `tensor/singular-matrix`, and LAPACK is not called.
+  - The parallel helper uses a private typed `uint` status buffer instead of
+    extending the serial helper's trailing `double` status sentinel.
+  - While validating, a transient bug removed the serial solver's private
+    trailing status slot and broke existing 2x2 Vulkan solve tests with
+    `tensor/backend-invalid-state`; the slot was restored and the focused
+    suite returned to green.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_solve_parallel_f64.comp -o /tmp/omni_tensor_vulkan_solve_parallel_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_solve_parallel_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned serial solve value `0.2`, parallel solve
+    value `1.0`, vector RHS rank `1`, and `tensor/singular-matrix` for a
+    dependent 3x3 system.
+  - Host focused `advanced-collections-module`: `pass=793 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=780 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Extend `TENSOR-100G` from the current single-workgroup parallel solver to
+    a staged/tiled multi-kernel helper with explicit Vulkan memory barriers.
+  - Replace the fixed `n >= 3` bring-up threshold with a measurement-backed
+    threshold once the staged helper exists.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 05:29 CEST - TENSOR-100F1 Vulkan Matrix QR
+- Objective attempted:
+  - Continue the Vulkan math roadmap by landing dense row-major `Float64`
+    Vulkan QR through the existing backend-neutral `matrix/qr` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_qr_f64.comp` and generated
+    `csrc/tensor_vulkan_qr_f64_spv.c`.
+  - Wired the generated SPIR-V source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_qr_f64` and a one-input/two-output
+    dispatch helper in `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Routed public `matrix/qr` in `src/lisp/prim_tensor_matrix.c3` for
+    concrete or realized Vulkan `Float64` inputs before the CPU-only path.
+  - Added availability-gated Vulkan QR tests and CPU empty QR shape coverage
+    in `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, and Vulkan/Tensor docs.
+- Key results:
+  - Public `matrix/qr` now supports Vulkan-placed dense row-major rank-2
+    `Float64` inputs with rows greater than or equal to columns.
+  - The returned dictionary keeps `q` and `r` as Vulkan-placed Tensor values.
+  - Rank-deficient Vulkan inputs raise `tensor/singular-matrix`; wide inputs
+    keep the existing `tensor/shape-mismatch` contract.
+  - Vulkan QR does not call LAPACK and does not copy the input to CPU.
+  - This is a correctness-first serial QR kernel, not the future parallel
+    solver/factorization path.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_qr_f64.comp -o /tmp/omni_tensor_vulkan_qr_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_qr_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned representative QR values `1.0` and `1.0`,
+    output devices `vulkan` and `vulkan`, empty shape `0`, and
+    `tensor/singular-matrix` for the dependent-column case.
+  - Host focused `advanced-collections-module`: `pass=787 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=774 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Continue `TENSOR-100F` helper factoring with the next eligible dense
+    row-major `Float64` matrix kernel or move to `TENSOR-100G`.
+  - `TENSOR-100G` must remain a separate thresholded parallel solver helper;
+    do not present QR or the current serial solve/LU/inverse kernels as the
+    performance path.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 05:09 CEST - TENSOR-100F1 Vulkan Matrix Cholesky
+- Objective attempted:
+  - Continue the Vulkan math roadmap by landing the next dense row-major
+    `Float64` matrix kernel through the existing backend-neutral
+    `matrix/cholesky` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_cholesky_f64.comp` and generated
+    `csrc/tensor_vulkan_cholesky_f64_spv.c`.
+  - Wired the generated SPIR-V source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_cholesky_f64` and a shared
+    trailing-status copyback helper in `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Routed public `matrix/cholesky` in `src/lisp/prim_tensor_matrix.c3` for
+    concrete or realized Vulkan `Float64` inputs before the CPU-only path.
+  - Fixed the CPU pure Cholesky fallback so empty square tensors with null
+    zero-size data pointers succeed.
+  - Added availability-gated Vulkan Cholesky tests in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, and Vulkan/Tensor docs.
+- Key results:
+  - Public `matrix/cholesky` now supports Vulkan-placed dense row-major square
+    `Float64` inputs and returns a Vulkan-placed lower factor Tensor.
+  - Nonsymmetric or non-SPD Vulkan inputs raise
+    `tensor/not-positive-definite`; non-square inputs keep the existing
+    `tensor/shape-mismatch` contract.
+  - Vulkan Cholesky does not call LAPACK and does not copy the input to CPU.
+  - The broader helper/pipeline factoring and parallel solver remain open.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_cholesky_f64.comp -o /tmp/omni_tensor_vulkan_cholesky_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_cholesky_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned representative factor values `1.0`, `2.0`,
+    upper-zero `0.0`, result device `vulkan`, lazy-input device `vulkan`,
+    empty shape `0`, two `tensor/not-positive-definite` diagnostics, and
+    `tensor/shape-mismatch`.
+  - Direct CPU empty Cholesky shape smoke returned `0`.
+  - Host focused `advanced-collections-module`: `pass=775 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: `pass=762 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`
+    passed.
+- Unresolved issues / next actions:
+  - Continue `TENSOR-100F` helper factoring with the next eligible dense
+    row-major `Float64` matrix kernel.
+  - Start `TENSOR-100G` as a separate thresholded parallel solver helper; do
+    not mutate the current serial `matrix/solve` shader in place.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 04:47 CEST - Vulkan Math Library And Parallel Solver Plan
+- Objective attempted:
+  - Record a durable plan for continuing the Vulkan math backend beyond the
+    shipped correctness-first `TENSOR-100E` kernels, including real/complex
+    dtype policy, layout prerequisites, and a real parallel solver track.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `docs/plans/vulkan-math-library-roadmap-2026-04-17.md`.
+  - Updated `TODO.md` with `TENSOR-100F` / `TENSOR-100G` as the live roadmap
+    and parallel solver follow-up.
+  - Updated `docs/plans/README.md`,
+    `docs/plans/vulkan-backend-decision-2026-04-16.md`,
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`,
+    `docs/plans/matrix-solver-surface-decision-2026-04-16.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`,
+    `docs/areas/tensor-scientific.md`, and `.agents/PLAN.md`.
+- Key results:
+  - The plan keeps Vulkan behind backend-neutral `Tensor`, `map`, `contract`,
+    `matrix/*`, `to-device`, `device`, and `tensor-backends` surfaces.
+  - `Float64` dense row-major remains the first Vulkan library tier.
+    `Float32` and fixed-width complex are deferred until native Tensor storage
+    and public dtype semantics exist; `BigInteger`, `BigFloat`, and
+    `BigComplex` must not be lowered to Vulkan.
+  - The current serial Vulkan `matrix/solve`, `matrix/lu`, and
+    `matrix/inverse` shaders are now explicitly recorded as
+    correctness-preserving small-system/backend bring-up paths, not the
+    performance solver target.
+  - `TENSOR-100G` requires a separate thresholded parallel solver helper with a
+    typed buffer/status contract, staged helper shape, parallel pivot search,
+    row swaps, elimination, and RHS-column back-substitution.
+- Commands run and key results:
+  - Read-only inspection of current plan docs, TODO, Vulkan solve shader,
+    Vulkan helper, C3 matrix primitive, and session reports.
+  - Parallel read-only agents inspected planning placement and current solver
+    implementation constraints.
+- Unresolved issues / next actions:
+  - This was a planning pass; no new Vulkan solver code was implemented.
+  - Next implementation checkpoint is `TENSOR-100F1`: factor shared Vulkan
+    helper plumbing plus one additional dense row-major `Float64` matrix
+    kernel, then begin `TENSOR-100G` with a separate parallel solve helper.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 04:36 CEST - TENSOR-100E Vulkan Matrix Solve
+- Objective attempted:
+  - Continue `TENSOR-100E` by routing public `matrix/solve` to Vulkan for
+    eligible dense row-major square `Float64` coefficient tensors and matching
+    rank-1 or rank-2 `Float64` right-hand tensors without changing the
+    backend-neutral matrix surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_solve_f64.comp` and generated
+    `csrc/tensor_vulkan_solve_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_solve_f64` in
+    `csrc/tensor_vulkan_helpers.c`, including a shared three-buffer dispatch
+    helper and status-only host copyback for singular detection.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/solve` handles
+    concrete or realized Vulkan coefficient/RHS tensors before the CPU-only
+    storage check.
+  - Added availability-gated Vulkan solve regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, and Vulkan/Tensor docs.
+- Key results:
+  - Public `matrix/solve` now supports Vulkan-placed dense row-major square
+    `Float64` coefficient tensors with Vulkan-placed rank-1 or rank-2
+    `Float64` right-hand tensors.
+  - The returned solution remains a Vulkan-placed Tensor; CPU inspection still
+    requires explicit `to-device 'cpu`.
+  - Singular Vulkan systems raise `tensor/singular-matrix`; mixed CPU/Vulkan
+    operands fail closed with `tensor/backend-unsupported`.
+  - The input tensors are not copied to CPU and the Vulkan path does not call
+    LAPACK; the helper computes on Vulkan and reads back only status metadata.
+  - CPU Tensor `matrix/solve` behavior remains on the existing
+    dgesv-then-pure implementation.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_solve_f64.comp -o /tmp/omni_tensor_vulkan_solve_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_solve_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan solve smokes returned `0.2`, `0.6`, `vulkan`, `1.0`,
+    `0.2`, `0.6`, `tensor/singular-matrix`, `tensor/shape-mismatch`,
+    `tensor/backend-unsupported`, and `tensor/singular-matrix`.
+  - Host focused `advanced-collections-module`: `pass=763 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=750 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Vulkan solve currently uses a serial single-invocation Gaussian-elimination
+    shader. It is a real Vulkan execution path and preserves the public
+    contract, but it is not a high-performance parallel solver. Stride-aware
+    views, non-contiguous layouts, non-`Float64` Vulkan dtypes, and mixed-device
+    solve transfers remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 04:17 CEST - TENSOR-100E Vulkan Matrix Inverse
+- Objective attempted:
+  - Continue `TENSOR-100E` by routing public `matrix/inverse` to Vulkan for
+    eligible dense row-major square `Float64` inputs without changing the
+    backend-neutral matrix surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_inverse_f64.comp` and generated
+    `csrc/tensor_vulkan_inverse_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_inverse_f64` in
+    `csrc/tensor_vulkan_helpers.c`, including status-only host copyback for
+    singular detection.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/inverse` handles
+    concrete or realized Vulkan tensors before the CPU-only storage check.
+  - Added availability-gated Vulkan inverse regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated `TODO.md`, `memory/CHANGELOG.md`, and Vulkan/Tensor docs.
+- Key results:
+  - Public `matrix/inverse` now supports Vulkan-placed dense row-major square
+    `Float64` inputs.
+  - The returned inverse remains a Vulkan-placed Tensor; CPU inspection still
+    requires explicit `to-device 'cpu`.
+  - Singular Vulkan inputs raise `tensor/singular-matrix`.
+  - The input tensor is not copied to CPU and the Vulkan path does not call
+    LAPACK; the helper computes on Vulkan and reads back only status metadata.
+  - CPU Tensor `matrix/inverse` behavior remains on the existing
+    dgesv-then-pure implementation.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_inverse_f64.comp -o /tmp/omni_tensor_vulkan_inverse_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_inverse_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan inverse smokes returned `0.6`, `-0.7`, `vulkan`,
+    `tensor/singular-matrix`, `0.4`, `vulkan`, `tensor/shape-mismatch`, and
+    `1.0`.
+  - Host focused `advanced-collections-module`: `pass=751 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=738 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Vulkan inverse currently uses a serial single-invocation Gauss-Jordan
+    shader. It is a real Vulkan execution path and preserves the public
+    contract, but it is not a high-performance parallel inverse. Stride-aware
+    views, non-contiguous layouts, non-`Float64` Vulkan dtypes, and
+    solve-style Vulkan RHS APIs remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 04:04 CEST - TENSOR-100E Vulkan Matrix LU
+- Objective attempted:
+  - Continue `TENSOR-100E` by routing public `matrix/lu` to Vulkan for
+    eligible dense row-major square `Float64` inputs without changing the
+    public dictionary contract.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_lu_f64.comp` and generated
+    `csrc/tensor_vulkan_lu_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_lu_f64` in
+    `csrc/tensor_vulkan_helpers.c`, including metadata-only host copyback for
+    pivots and swap count.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/lu` handles concrete
+    Vulkan tensors before the CPU-only storage check.
+  - Added availability-gated Vulkan LU regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/lu` now supports Vulkan-placed dense row-major square
+    `Float64` inputs.
+  - The returned dictionary still contains `lu`, `pivots`, and `swap-count`.
+    For Vulkan input, `lu` remains Vulkan-placed while the small metadata
+    values are ordinary host values.
+  - The input tensor is not copied to CPU; the helper computes on Vulkan and
+    reads back only the dictionary metadata required by the public contract.
+  - CPU Tensor `matrix/lu` behavior remains on the existing LAPACK-then-pure
+    implementation.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_lu_f64.comp -o /tmp/omni_tensor_vulkan_lu_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_lu_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan LU smokes returned `0.5`, `-0.5`, `1`, `1`, `vulkan`,
+    `3.0`, `vulkan`, `0`, `tensor/singular-matrix`, and
+    `tensor/shape-mismatch`.
+  - Host focused `advanced-collections-module`: `pass=740 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=727 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Vulkan LU currently uses a serial single-invocation partial-pivot shader.
+    It is a real Vulkan execution path and preserves the public contract, but
+    it is not a high-performance parallel factorization. Stride-aware views,
+    non-contiguous layouts, non-`Float64` Vulkan dtypes, and broader
+    solve/inverse Vulkan algorithms remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 03:48 CEST - TENSOR-100E Vulkan Matrix Determinant
+- Objective attempted:
+  - Continue `TENSOR-100E` with a backend-neutral `Float64` scalar reducer by
+    routing public `matrix/determinant` to Vulkan for eligible dense row-major
+    square inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_determinant_f64.comp` and generated
+    `csrc/tensor_vulkan_determinant_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_determinant_f64` in
+    `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/determinant` handles
+    concrete Vulkan tensors before the CPU-only storage check.
+  - Added availability-gated Vulkan determinant regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/determinant` now supports Vulkan-placed dense row-major
+    square `Float64` inputs and returns the scalar `Float64` determinant.
+  - The input tensor is not copied to CPU; the helper computes on Vulkan and
+    reads back only the scalar determinant required by the public contract.
+  - CPU Tensor `matrix/determinant` behavior remains on the existing
+    LAPACK-then-pure implementation.
+  - Vulkan determinant tests include a no-LAPACK check to guard against hidden
+    CPU fallback.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_determinant_f64.comp -o /tmp/omni_tensor_vulkan_determinant_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_determinant_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan determinant smokes returned `-2.0`, `-2.0`, `0.0`,
+    `-2.0`, `1.0`, and `tensor/shape-mismatch`.
+  - Direct CPU determinant smoke returned `-2.0`.
+  - Direct Vulkan transpose regression smoke returned `6.0`.
+  - Host focused `advanced-collections-module`: `pass=730 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=717 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Vulkan determinant currently uses a serial single-invocation partial-pivot
+    LU shader. It is a real Vulkan execution path, but not a parallel
+    high-performance determinant algorithm. Stride-aware views, non-contiguous
+    layouts, non-`Float64` Vulkan dtypes, and larger decomposition-backed
+    Vulkan algorithms remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 03:27 CEST - TENSOR-100E Vulkan Matrix Rank
+- Objective attempted:
+  - Continue `TENSOR-100E` with a backend-neutral `Float64` scalar reducer by
+    routing public `matrix/rank` to Vulkan for eligible dense row-major rank-2
+    inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_rank_f64.comp` and generated
+    `csrc/tensor_vulkan_rank_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_rank_f64` in
+    `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/rank` handles
+    concrete Vulkan tensors before the CPU-only storage check.
+  - Added availability-gated Vulkan rank regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/rank` now supports Vulkan-placed dense row-major `Float64`
+    rank-2 inputs and returns the scalar `Integer` rank.
+  - The input tensor is not copied to CPU; the helper computes on Vulkan and
+    reads back only the scalar rank result required by the public contract.
+  - CPU Tensor `matrix/rank` behavior remains on the existing LAPACK-then-pure
+    implementation.
+  - Vulkan rank tests include a no-LAPACK check to guard against hidden CPU
+    fallback.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_rank_f64.comp -o /tmp/omni_tensor_vulkan_rank_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_rank_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan rank smokes returned `2`, `1`, `2`, `1`, `2`, `0`, `0`,
+    and `tensor/shape-mismatch`.
+  - Direct CPU rank smoke returned `2`.
+  - Host focused `advanced-collections-module`: `pass=722 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=709 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Vulkan rank currently mirrors the existing pure partial-pivot elimination
+    fallback, not LAPACK/SVD rank semantics. Stride-aware views,
+    non-contiguous layouts, non-`Float64` Vulkan dtypes, and larger
+    decomposition-backed Vulkan algorithms remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 03:06 CEST - TENSOR-100E Vulkan Matrix Norm
+- Objective attempted:
+  - Continue `TENSOR-100E` with backend-neutral `Float64` scalar reducers by
+    routing public `matrix/norm` to Vulkan for eligible dense row-major rank-2
+    inputs and direct norm selectors.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_norm_f64.comp` and generated
+    `csrc/tensor_vulkan_norm_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_norm_f64` in
+    `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/norm` handles
+    concrete Vulkan tensors before the CPU-only storage check.
+  - Added availability-gated Vulkan norm regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/norm` now supports Vulkan-placed dense row-major `Float64`
+    rank-2 inputs for default/`'frobenius`, `'one`, `'infinity`, and `'max`.
+  - The input tensor is not copied to CPU; the helper computes on Vulkan and
+    reads back only the scalar result required by the public return contract.
+  - At this checkpoint, SVD-backed `'spectral` and `'nuclear` failed closed on
+    Vulkan with `tensor/backend-unsupported`; this was superseded later on
+    2026-04-17 by the Vulkan singular-value helper slice.
+  - CPU Tensor `matrix/norm` behavior, including LAPACK/fallback coverage for
+    spectral/nuclear selectors, remains on the existing CPU implementation.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_norm_f64.comp -o /tmp/omni_tensor_vulkan_norm_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_norm_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan norm smokes returned `5.0`, `9.53939201416946`, `9.0`,
+    `15.0`, `6.0`, `5.0`, `0.0`, and `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `pass=712 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=699 fail=0`.
+- Unresolved issues / next actions:
+  - Stride-aware views, non-contiguous layouts, zero-axis Vulkan contractions,
+    non-`Float64` Vulkan dtypes, SVD-backed Vulkan norm selectors, and Vulkan
+    unary scientific `map` remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 02:53 CEST - TENSOR-100E Vulkan Matrix Trace
+- Objective attempted:
+  - Continue `TENSOR-100E` with a backend-neutral `Float64` reducer by routing
+    public `matrix/trace` to Vulkan for eligible dense row-major square inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_trace_f64.comp` and generated
+    `csrc/tensor_vulkan_trace_f64_spv.c`.
+  - Wired the new SPIR-V C source into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_trace_f64` in
+    `csrc/tensor_vulkan_helpers.c`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/trace` handles
+    concrete Vulkan tensors before the CPU-only storage check and returns the
+    scalar result after a one-scalar Vulkan result readback.
+  - Added availability-gated Vulkan trace regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/trace` now supports Vulkan-placed dense row-major square
+    `Float64` inputs.
+  - The input tensor is not copied to CPU; the helper computes on Vulkan and
+    reads back only the scalar result required by the public return contract.
+  - CPU Tensor and Big* Tensor trace behavior remains on the existing CPU
+    implementation.
+  - Unsupported GPU/device cases fail closed rather than silently copying to CPU.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_trace_f64.comp -o /tmp/omni_tensor_vulkan_trace_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_trace_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan trace smokes returned `5.0`, `5.0`, and `0.0`.
+  - Direct CPU trace smoke returned `5.0`.
+  - Direct non-rank-2 trace error smoke preserved the existing shape diagnostic.
+  - Host focused `advanced-collections-module`: `pass=705 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=692 fail=0`.
+- Unresolved issues / next actions:
+  - Stride-aware views, non-contiguous layouts, zero-axis Vulkan contractions,
+    non-`Float64` Vulkan dtypes, broader scalar reducers, and Vulkan unary
+    scientific `map` remain unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 02:42 CEST - TENSOR-100E Vulkan Matrix Diagonal Pair
+- Objective attempted:
+  - Continue `TENSOR-100E` with the next backend-neutral `Float64` structural
+    matrix family by routing public `matrix/diagonal` and
+    `matrix/diagonal-matrix` to Vulkan for eligible dense row-major inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_diagonal_f64.comp`,
+    `csrc/tensor_vulkan_diagonal_matrix_f64.comp`, and generated SPIR-V C
+    sources for both kernels.
+  - Wired the new SPIR-V C sources into `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_diagonal_f64` and
+    `omni_tensor_backend_vulkan_diagonal_matrix_f64` in
+    `csrc/tensor_vulkan_helpers.c`.
+  - Added C3 externs in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/diagonal` and
+    `matrix/diagonal-matrix` route Vulkan `Float64` dense row-major inputs
+    before the CPU-only storage check and return Vulkan-placed Tensor results.
+  - Added availability-gated Vulkan regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/diagonal` and `matrix/diagonal-matrix` now support
+    Vulkan-placed dense row-major `Float64` inputs.
+  - Results remain Vulkan-placed tensors; CPU inspection still requires
+    explicit `to-device 'cpu`.
+  - CPU Tensor and Big* Tensor behavior remains on the existing CPU
+    implementation.
+  - Unsupported GPU/device cases fail closed rather than silently copying to CPU.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0` for both new shaders: passed.
+  - `spirv-val --target-env vulkan1.0` for both generated SPIR-V files: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `matrix/diagonal` smokes returned `5.0`, `vulkan`,
+    `vulkan`, and zero-size length `0`.
+  - Direct Vulkan `matrix/diagonal-matrix` smokes returned `3.0`, `0.0`,
+    `vulkan`, `vulkan`, and zero-size length `0`.
+  - Direct CPU diagonal/diagonal-matrix smokes returned `5.0`, `3.0`, and
+    `0.0`; rank-error smokes preserved the existing shape diagnostics.
+  - Host focused `advanced-collections-module`: `pass=702 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=689 fail=0`.
+- Unresolved issues / next actions:
+  - Superseded by the later matrix trace entry for `matrix/trace`.
+    Stride-aware views, non-contiguous layouts, zero-axis Vulkan contractions,
+    non-`Float64` Vulkan dtypes, and Vulkan unary scientific `map` remain
+    unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 03:05 CEST - TENSOR-100E Vulkan Matrix Transpose
+- Objective attempted:
+  - Continue `TENSOR-100E` with the next backend-neutral `Float64` kernel family
+    by routing public `matrix/transpose` to Vulkan for eligible dense row-major
+    rank-2 tensors.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_transpose_f64.comp` and generated
+    `csrc/tensor_vulkan_transpose_f64_spv.c`.
+  - Added `omni_tensor_backend_vulkan_transpose_f64` in
+    `csrc/tensor_vulkan_helpers.c` and wired the SPIR-V source into
+    `project.json` plus `scripts/build_omni_chelpers.sh`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so `matrix/transpose` handles
+    concrete Vulkan tensors before the CPU-only storage check and returns a
+    Vulkan-placed result for dense row-major `Float64` rank-2 inputs.
+  - Added availability-gated Vulkan transpose regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `matrix/transpose` now supports Vulkan-placed dense row-major
+    `Float64` rank-2 tensors.
+  - Results remain Vulkan-placed tensors; CPU inspection still requires
+    explicit `to-device 'cpu`.
+  - CPU Tensor and Big* Tensor transpose behavior remains on the existing CPU
+    implementation.
+  - Unsupported GPU/device cases fail closed rather than silently copying to CPU.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_transpose_f64.comp -o /tmp/omni_tensor_vulkan_transpose_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_transpose_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan transpose smokes returned `6.0`, `vulkan`, `vulkan`, and
+    zero-size length `0`.
+  - Direct CPU transpose smoke returned `6.0`.
+  - Direct non-rank-2 transpose error smoke returned `tensor/shape-mismatch`.
+  - Host focused `advanced-collections-module`: `pass=693 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=680 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Unresolved issues / next actions:
+  - Stride-aware views, non-contiguous layouts, zero-axis Vulkan contractions,
+    non-`Float64` Vulkan dtypes, and Vulkan unary scientific `map` remain
+    unsupported.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 02:35 CEST - TENSOR-100E Vulkan Multi-Axis Contract
+- Objective attempted:
+  - Continue `TENSOR-100E` by extending the Vulkan dense row-major `Float64`
+    rank-N `contract` path from exactly one contracted axis pair to one or more
+    explicit contracted axis pairs through the existing backend-neutral public
+    `contract` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `csrc/tensor_vulkan_contract_f64.comp` so contracted axes are read
+    from metadata lists instead of single push-constant axes, and each output
+    invocation flattens the full contracted coordinate space.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c`.
+  - Updated `omni_tensor_backend_vulkan_contract_f64` in
+    `csrc/tensor_vulkan_helpers.c` to validate/pass axis-list metadata and keep
+    zero-contracted output zero-fill behavior.
+  - Updated `src/lisp/tensor_vulkan_backend.c3` and
+    `src/lisp/prim_tensor.c3` so public Vulkan `contract` accepts one or more
+    explicit axis pairs for dense row-major `Float64` operands.
+  - Added availability-gated scalar and rank-3 multi-axis Vulkan regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+- Key results:
+  - Public `contract` now supports Vulkan-placed dense row-major rank-N
+    `Float64` tensors with one or more contracted axis pairs.
+  - Output axes remain ordered as free left axes followed by free right axes.
+  - Results remain Vulkan-placed tensors; CPU inspection still requires
+    explicit `to-device 'cpu`.
+  - Zero-axis contractions, unsupported layouts/dtypes, and mixed CPU/Vulkan
+    operands still fail closed with Tensor backend diagnostics.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_contract_f64.comp -o /tmp/omni_tensor_vulkan_contract_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_contract_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `70.0` for scalar multi-axis contract,
+    `210.0` for rank-3 multi-axis contract, `460.0` for existing rank-N
+    single-axis contract, `8.0` for binary Vulkan `map +`, and
+    `tensor/backend-unsupported` for unsupported Vulkan `map sqrt`.
+  - Host focused `advanced-collections-module`: `pass=689 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=676 fail=0`.
+- Invalidated assumptions / failed approaches:
+  - The earlier generic mode-3 Vulkan unary `map` branch remains rolled back and
+    should not be resumed as the default baseline.
+- Unresolved issues / next actions:
+  - Stride-aware views, non-contiguous layouts, zero-axis Vulkan contractions,
+    and non-`Float64` Vulkan dtypes remain unsupported.
+  - The next `TENSOR-100E` slice should move to another backend-neutral
+    `Float64` kernel family, such as structural matrix transpose, or explicitly
+    design layout/aliasing metadata before enabling stride-aware dispatch.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 01:40 CEST - TENSOR-100E Vulkan Rank-N Contract
+- Objective attempted:
+  - Continue `TENSOR-100E` by extending the Vulkan `Float64` dense row-major
+    single-axis `contract` path from rank-1/rank-2 coverage to rank-N coverage
+    through the existing backend-neutral public `contract` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Replaced `csrc/tensor_vulkan_contract_f64.comp` with a
+    rank/shape/stride metadata-buffer shader for dense row-major single-axis
+    contractions.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c`.
+  - Extended `omni_tensor_backend_vulkan_contract_f64` in
+    `csrc/tensor_vulkan_helpers.c` to accept full operand/output rank, shape,
+    and stride metadata, added the metadata storage buffer, switched generic
+    dispatch to flat rank-N output indexing, and fixed the descriptor pool
+    size for the four-buffer layout.
+  - Updated `src/lisp/tensor_vulkan_backend.c3` and
+    `src/lisp/prim_tensor.c3` so public Vulkan `contract` accepts dense
+    row-major `Float64` tensors of arbitrary rank when exactly one axis pair
+    is contracted.
+  - Added availability-gated rank-3/rank-2, rank-2/rank-3, rank-3/rank-3,
+    residency, and zero-contracted rank-3 regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated TODO, plan, reference/spec, Vulkan decision/policy, Tensor area
+    status, and changelog documentation.
+- Key results:
+  - Public `contract` now supports Vulkan-placed dense row-major rank-N
+    `Float64` tensors with exactly one contracted axis.
+  - Output axes are ordered as free left axes followed by free right axes.
+  - Results remain Vulkan-placed tensors; CPU inspection still requires
+    explicit `to-device 'cpu`.
+  - Multi-axis contractions, unsupported layouts/dtypes, and mixed CPU/Vulkan
+    operands still fail closed with Tensor backend diagnostics.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_contract_f64.comp -o /tmp/omni_tensor_vulkan_contract_f64.spv`:
+    passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_contract_f64.spv`:
+    passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan rank-N contract smokes returned `460.0`, `139.0`,
+    `3340.0`, `vulkan`, and `0.0`.
+  - Host focused `advanced-collections-module`: `pass=688 fail=0`.
+  - Bounded-container focused `advanced-collections-module`:
+    `pass=675 fail=0`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Invalidated assumptions / failed approaches:
+  - A follow-up Vulkan unary `map` experiment was rolled back before completion.
+    GLSL `double` transcendental calls such as `sin(double)` failed shader
+    compilation, and an arithmetic-only generic mode-3 unary branch for
+    `abs`/negation compiled but failed at runtime with
+    `map: Vulkan Float64 kernel failed` while binary Vulkan `map` and rank-N
+    `contract` remained healthy.
+  - Do not resume that generic mode-3 branch as the baseline. If unary Vulkan
+    map is pursued, use a separately debugged unary shader/helper entrypoint or
+    first diagnose the current descriptor/dispatch failure. Do not use
+    `Float32` casts or a hidden CPU fallback.
+  - After rollback, direct sanity checks returned `8.0` for binary Vulkan
+    `map +`, `460.0` for rank-N Vulkan `contract`, and
+    `tensor/backend-unsupported` for unsupported Vulkan `map sqrt`.
+    `c3c build --obj-out obj`, host focused `advanced-collections-module`
+    (`pass=688 fail=0`), and bounded-container focused
+    `advanced-collections-module` (`pass=675 fail=0`) still passed.
+- Unresolved issues / next actions:
+  - Stride-aware views, non-contiguous layouts, and multi-axis Vulkan
+    contractions remain unsupported.
+  - The next `TENSOR-100E` slice should move to the next eligible dense
+    row-major `Float64` kernel family, or explicitly design layout/aliasing
+    metadata before enabling stride-aware dispatch. Unary Vulkan `map` remains
+    open, but should not continue through the rolled-back generic mode-3 branch.
+  - `jj status` shows the expected broad dirty worktree from the ongoing
+    Tensor/CUDA/LAPACK/Vulkan lane, including unrelated prior changes and the
+    untracked `out` file.
+
+Signature: Codex GPT-5
+
+## 2026-04-17 01:14 CEST - TENSOR-100E Vulkan Map Broadcasting
+- Objective attempted:
+  - Extend the Vulkan `Float64` dense row-major `map` kernel from exact-shape
+    Tensor/Tensor arithmetic to right-aligned singleton-axis Tensor/Tensor
+    broadcasting through the same public `map` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `csrc/tensor_vulkan_map_f64.comp` to compute broadcast operand
+    offsets from output shape/strides and operand shape/strides.
+  - Regenerated `csrc/tensor_vulkan_map_f64_spv.c`.
+  - Extended `omni_tensor_backend_vulkan_map_f64` in
+    `csrc/tensor_vulkan_helpers.c` with a fourth metadata storage buffer.
+  - Updated the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Relaxed `src/lisp/prim_tensor.c3` Vulkan `map` gates to use the CPU Tensor
+    right-aligned broadcast compatibility checks.
+  - Added focused availability-gated broadcast regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated TODO, Tensor docs/plans, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Key results:
+  - Vulkan `map` now supports `+`, `-`, `*`, and `/` for Tensor/scalar,
+    scalar/Tensor, exact-shape Tensor/Tensor, and right-aligned singleton-axis
+    Tensor/Tensor broadcasting.
+  - Results remain Vulkan-placed tensors; callers still copy back explicitly
+    with `to-device 'cpu`.
+  - Incompatible broadcast shapes, unsupported callables, unsupported dtypes,
+    and mixed CPU/Vulkan operands still fail closed.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0`: passed.
+  - `spirv-val --target-env vulkan1.0`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan broadcast smokes returned `36.0`, `32.0`, `11.0`, and
+    `vulkan`.
+  - Host focused `advanced-collections-module`: `683 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `670 passed, 0 failed`.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100E` by extending the metadata-buffer pattern to the next
+    eligible `Float64` kernel family or to stride-aware views only after layout
+    and aliasing metadata are explicit.
+- Signature: Codex GPT-5
+
+## 2026-04-17 01:01 CEST - TENSOR-100E Vulkan Map Arithmetic
+- Objective attempted:
+  - Broaden the policy-backed Vulkan `Float64` dense row-major `map` kernel
+    family beyond add-scalar while preserving the backend-neutral public
+    `map` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_map_f64.comp` as the checked-in GLSL source for
+    the Vulkan `Float64` elementwise map shader family.
+  - Added generated `csrc/tensor_vulkan_map_f64_spv.c` and wired it through
+    `project.json` and `scripts/build_omni_chelpers.sh`.
+  - Added `omni_tensor_backend_vulkan_map_f64` in the runtime-loaded Vulkan
+    helper and exposed it through `src/lisp/tensor_vulkan_backend.c3`.
+  - Routed public `map` in `src/lisp/prim_tensor.c3` for Vulkan-placed
+    dense row-major `Float64` Tensor/scalar, scalar/Tensor, and exact-shape
+    Tensor/Tensor arithmetic.
+  - Added focused availability-gated regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3`.
+  - Updated TODO, Tensor docs/plans, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Key results:
+  - Vulkan `map` now supports `+`, `-`, `*`, and `/` for Tensor/scalar,
+    scalar/Tensor, and exact-shape Tensor/Tensor operands.
+  - Results remain Vulkan-placed tensors; callers still copy back explicitly
+    with `to-device 'cpu` for CPU inspection.
+  - Unary callables, unsupported callables, unsupported dtypes, mixed
+    CPU/Vulkan operands, and broadcasting shapes fail closed with Tensor
+    backend diagnostics.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0`: passed.
+  - `spirv-val --target-env vulkan1.0`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan map smokes returned `8.0`, `12.0`, `26.0`, `80.0`,
+    `90.0`, `4.0`, `vulkan`, and `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `679 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `666 passed, 0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`:
+    passed.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100E` with Vulkan `Float64` map broadcasting or a rank-N
+    dense descriptor only after the required shape/stride metadata is explicit.
+- Signature: Codex GPT-5
+
+## 2026-04-17 00:49 CEST - TENSOR-100E Vulkan Dtype Layout Policy
+- Objective attempted:
+  - Close the Vulkan dtype/layout policy decision before adding more public
+    backend behavior.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`.
+  - Linked the policy from TODO, the plans index, Vulkan decision note, Tensor
+    area status, integrated Tensor plan, and `.agents/PLAN.md`.
+  - Corrected `docs/reference/11-appendix-primitives.md` so the Tensor row
+    lists the current four native Tensor dtypes.
+- Key results:
+  - Policy is now explicit: keep extending fixed-width `Float64` dense
+    row-major Vulkan kernels first; do not downcast to `Float32`; do not lower
+    pointer-backed `BigInteger`, `BigFloat`, or `BigComplex` tensors to Vulkan;
+    defer fixed-width complex and stride-aware layouts until those contracts
+    exist.
+  - The next Vulkan implementation boundary is a policy-backed `Float64`
+    dense row-major `map` kernel family for Tensor/scalar and Tensor/Tensor
+    elementwise arithmetic through public `map`.
+- Commands run and key results:
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`:
+    passed.
+- Current best recommendation / checkpoint:
+  - Implement the Float64 Vulkan `map` kernel family next, preserving
+    backend-neutral public surface and fail-closed diagnostics.
+- Signature: Codex GPT-5
+
+## 2026-04-17 00:44 CEST - TENSOR-100E Vulkan Contract Dispatch Hardening
+- Objective attempted:
+  - Harden the Vulkan generic `Float64` single-axis `contract` execution layout
+    without changing the public Tensor surface or supported dtype/layout gate.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_contract_f64.comp` as the checked-in GLSL source
+    for the generic Vulkan contract shader.
+  - Regenerated `csrc/tensor_vulkan_contract_f64_spv.c` from that GLSL source.
+  - Updated `omni_tensor_backend_vulkan_contract_f64` to use shape-aware 16x4
+    rank-2 output dispatch instead of flattening all non-scalar output through
+    one-dimensional workgroups.
+  - Updated TODO, Tensor area/planning docs, `.agents/PLAN.md`, session
+    reports, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public behavior remains unchanged: Vulkan `contract` still supports dense
+    row-major `Float64` rank-1/rank-2 single-axis layouts and still fails
+    closed for unsupported dtype/layout/device cases.
+  - The next open Vulkan Tensor item is now the broader dtype/layout policy
+    decision before any new public behavior is added.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0`: passed.
+  - `spirv-val --target-env vulkan1.0`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan contract smokes returned `154.0`, `60.0`, `167.0`, `69.0`,
+    `122.0`, `69.0`, `46.0`, `43.0`, `vulkan`,
+    `tensor/backend-unsupported`, and zero-free length `0`.
+  - Host focused `advanced-collections-module`: `674 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `661 passed, 0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`:
+    passed.
+- Current best recommendation / checkpoint:
+  - Decide the Vulkan dtype/layout policy as a separate slice. Preserve the
+    backend-neutral `Tensor`/`map`/`contract`/`to-device` surface, explicit
+    placement/copyback, and fail-closed diagnostics.
+- Signature: Codex GPT-5
+
+## 2026-04-17 00:20 CEST - TENSOR-100E Vulkan Zero-Size Contract
+- Objective attempted:
+  - Align Vulkan single-axis `contract` zero-size behavior with the CPU Tensor
+    oracle for the supported rank-1/rank-2 `Float64` layouts.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `omni_tensor_backend_vulkan_contract_f64` so zero-element results
+    succeed without a buffer handle and zero-contracted non-empty results
+    allocate and zero-fill Vulkan output storage.
+  - Relaxed Vulkan C3 dispatch validation so zero contracted axes and zero
+    free dimensions are accepted for supported rank/layout combinations.
+  - Added availability-gated Vulkan regressions for zero-size rank-1 dot,
+    rank-2/rank-2 identity output, zero-length rank-2 output, zero-length
+    Vulkan residency, rank-2/rank-1 identity output, and rank-1/rank-2
+    identity output.
+  - Updated TODO, Tensor docs/plans, area status, session reports, `.agents`
+    plan, and `memory/CHANGELOG.md`.
+- Key results:
+  - Zero-size contracted axes now produce additive-identity output in Vulkan
+    storage, matching CPU Tensor semantics.
+  - Zero free dimensions preserve zero-length result shapes and remain
+    Vulkan-placed.
+- Commands run and key results:
+  - Direct Vulkan zero-size smokes returned `0.0`, `0.0`, `0`, `vulkan`,
+    `0.0`, `0`, `0.0`, and `0`.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Host focused `advanced-collections-module`: `674 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `661 passed, 0 failed`.
+  - Bounded full `advanced`: `1978 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke`: `227 passed, 0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`:
+    passed.
+  - `c3c build --sanitize=address --obj-out obj`: still blocked by the local
+    C3 sanitizer platform guard.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100E` with Vulkan contract performance/tiling hardening
+    and broader dtype/layout policy.
+- Signature: Codex GPT-5
+
+## 2026-04-16 23:58 CEST - TENSOR-100E Vulkan Generic Contract
+- Objective attempted:
+  - Continue `TENSOR-100E` from rank-1 dot into generic dense row-major
+    Vulkan `Float64` single-axis `contract` support for ranks 1 and 2.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_contract_f64_spv.c`, an embedded SPIR-V generic
+    contract shader for dense row-major `Float64` Tensor layouts.
+  - Extended `csrc/tensor_vulkan_helpers.c` with
+    `omni_tensor_backend_vulkan_contract_f64`.
+  - Routed public `contract` on Vulkan-placed dense row-major `Float64`
+    rank-1/rank-2 operands through the generic Vulkan helper when exactly one
+    axis is contracted.
+  - Added availability-gated advanced tests for all supported rank-2/rank-2,
+    rank-2/rank-1, and rank-1/rank-2 axis orientations, Vulkan result
+    residency, and multi-axis fail-closed behavior.
+  - Updated TODO, Vulkan backend decision, Tensor area status, integrated
+    Tensor plan, language spec, collections reference, plans index,
+    session reports, `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public `contract` now supports Vulkan-placed dense row-major `Float64`
+    tensors of ranks 1 and 2 with one contracted axis.
+  - Supported layouts are rank-1/rank-1 dot (`[0 0]` or explicit `[0] [0]`),
+    rank-2/rank-2 `[1 0]`, `[0 0]`, `[1 1]`, and `[0 1]`,
+    rank-2/rank-1 `[1 0]` and `[0 0]`, and rank-1/rank-2 `[0 0]` and
+    `[0 1]`.
+  - Results remain Vulkan-placed tensors; callers use `to-device 'cpu` before
+    CPU inspection.
+  - Unsupported Vulkan contract cases, including multi-axis contractions,
+    unsupported ranks/layouts/dtypes, and mixed CPU/Vulkan operands, fail
+    closed with Tensor backend diagnostics. Zero-size contracted axes were
+    aligned with CPU semantics in the follow-up zero-size slice.
+- Commands run and key results:
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct smokes returned `154.0`, `60.0`, `167.0`, `69.0`, `122.0`,
+    `69.0`, `46.0`, `43.0`, `vulkan`, and `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `668 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `655 passed, 0 failed`.
+  - Bounded full `advanced`: `1972 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke`: `227 passed, 0 failed`.
+  - Primitive docs parity, Stage 3 source parity, and `git diff --check`:
+    passed.
+  - `c3c build --sanitize=address --obj-out obj`: still blocked by the local
+    C3 sanitizer platform guard.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100E` with performance/tiling hardening for the Vulkan
+    contract kernel and a broader dtype/layout policy decision before adding
+    more public behavior.
+- Signature: Codex GPT-5
+
+## 2026-04-16 23:44 CEST - TENSOR-100E Vulkan Rank-1 Dot
+- Objective attempted:
+  - Continue `TENSOR-100E` from Vulkan placement and add-scalar `map` into the
+    first Vulkan reduction kernel behind the public backend-neutral `contract`
+    surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_contract_dot_f64_spv.c`, an embedded SPIR-V
+    compute reduction shader for rank-1/rank-1 `Float64` dot.
+  - Extended `csrc/tensor_vulkan_helpers.c` with a shared Vulkan backend
+    context and `omni_tensor_backend_vulkan_contract_dot_f64`.
+  - Wired the new shader blob through `project.json` and
+    `scripts/build_omni_chelpers.sh`.
+  - Added the C3 extern in `src/lisp/tensor_vulkan_backend.c3`.
+  - Routed public `contract` on two Vulkan `Float64` rank-1 tensors through
+    the Vulkan dot helper for `[0 0]` and explicit `[0] [0]`.
+  - Added availability-gated advanced tests for roundtrip, explicit axes,
+    device residency, mixed-device rejection, and rank-2 fail-closed behavior.
+  - Updated TODO, Vulkan backend decision, Tensor area status, integrated
+    Tensor plan, language spec, collections reference, plans index,
+    session reports, `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Public `contract` now supports two Vulkan `Float64` rank-1 tensors with
+    one contracted axis (`[0 0]` or explicit `[0] [0]`), returning a Vulkan
+    scalar Tensor.
+  - The explicit transfer contract is preserved: callers use `to-device 'cpu`
+    before CPU inspection.
+  - Unsupported Vulkan contract shapes, rank-2 contractions, and mixed
+    CPU/Vulkan operands remain fail-closed with `tensor/backend-unsupported`.
+- Commands run and key results:
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed.
+  - Direct smokes returned `140.0`, `140.0`, `vulkan`, and
+    `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `659 passed, 0 failed`.
+  - Bounded focused `advanced-collections-module`: `646 passed, 0 failed`.
+  - Bounded full `advanced`: `1963 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke`: `227 passed, 0 failed`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+  - `c3c build --sanitize=address --obj-out obj`: attempted, but the local C3
+    toolchain reported address sanitizer unsupported on this platform.
+- Current best recommendation / checkpoint:
+  - Continue `TENSOR-100E` with rank-2 Vulkan `contract` kernels while
+    preserving backend-neutral surface names, explicit device movement, and
+    fail-closed backend diagnostics.
+- Signature: Codex GPT-5
+
+## 2026-04-16 21:20 CEST - TENSOR-100E Vulkan SPIR-V Map Kernel
+- Objective attempted:
+  - Continue `TENSOR-100E` from placement/copy into the first real Vulkan
+    compute kernel while preserving the backend-neutral `Tensor`/`map`/
+    `to-device` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_map_add_scalar_f64_spv.c`, an embedded SPIR-V
+    add-scalar compute shader generated locally with `glslangValidator`.
+  - Extended `csrc/tensor_vulkan_helpers.c` with dynamic Vulkan compute
+    symbols, descriptor/pipeline/command-buffer setup, synchronous queue
+    dispatch, and `omni_tensor_backend_vulkan_map_add_scalar_f64`.
+  - Refactored Vulkan buffers to use a shared context plus refcounted handles
+    so map output can safely share the input device and boundary copies can
+    retain real Vulkan handles without double-freeing buffers.
+  - Added C3 extern/status wiring for Vulkan unsupported/execution failures and
+    retained Vulkan handles.
+  - Routed public `map +` with one Vulkan `Float64` Tensor operand and one
+    Float64 scalar through the SPIR-V kernel, returning a Vulkan-placed Tensor.
+  - Fixed `to-device 'cpu` for lazy expressions that realize to a non-CPU
+    Tensor by realizing first and then copying the realized device value back to
+    CPU.
+  - Added focused availability-gated tests for Vulkan map scalar-right,
+    scalar-left, and unsupported-callable diagnostics.
+  - Updated TODO, Tensor docs, Vulkan plan, area status, integrated Tensor plan,
+    `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`, and `memory/CHANGELOG.md`.
+- Key results:
+  - Direct host smokes returned `8.0` for `(map + vulkan-tensor 5.0)` copied
+    back to CPU and `12.0` for `(map + 10.0 vulkan-tensor)` copied back to CPU.
+  - Public `map`, not only private `__tensor-map`, works for the first Vulkan
+    kernel path.
+  - Unsupported Vulkan map callables fail closed with
+    `tensor/backend-unsupported`.
+  - `contract` remains intentionally fail-closed until the Vulkan contraction
+    kernel slice lands.
+- Commands run and key results:
+  - `sudo apt-get update && sudo apt-get install -y glslang-tools`: installed
+    local shader tooling used to generate the checked-in SPIR-V C blob.
+  - `glslangValidator -V --target-env vulkan1.0`: generated the add-scalar
+    SPIR-V module.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing entry deprecation warnings.
+  - Direct host Vulkan map smokes: returned `8.0`, `vulkan`, and `12.0`.
+  - Direct unsupported-callable smoke: returned `tensor/backend-unsupported`.
+  - Host focused `advanced-collections-module`: `655 passed, 0 failed`.
+  - Bounded-container focused `advanced-collections-module`: `642 passed,
+    0 failed`.
+  - Bounded-container full `advanced`: `1959 passed, 0 failed`.
+  - Bounded-container `memory-lifetime-smoke`: `227 passed, 0 failed`.
+  - `scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - `git diff --check`: passed.
+- Invalidated assumptions / failed approaches:
+  - Do not implement Vulkan `map` by returning a lazy map expression that
+    captures a Vulkan Tensor operand; public `map` uses dispatched overloads
+    and the boundary can attempt an escape copy of the opaque device handle.
+    Supported Vulkan map cases should route eagerly, and real Vulkan buffer
+    handles need explicit retain ownership before boundary clones can keep
+    them.
+- Current best recommendation / checkpoint:
+  - Next Vulkan compute work should add reductions/rank-1 dot or rank-2
+    `contract` kernels, preserving explicit device movement and fail-closed
+    diagnostics.
+- Signature: Codex GPT-5
+
+## 2026-04-15 19:07 CEST - Tensor GCD/LCM Semantics
+- Objective attempted:
+  - Retry native Tensor `gcd` and `lcm` support after the prior raw-handle
+    attempt produced corrupted tensor-scalar results.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `gcd` and `lcm` through Tensor handling when either argument is a
+    Tensor.
+  - Added a shared exact-integer Tensor binary helper for tensor-scalar,
+    scalar-tensor, and broadcast tensor-tensor operation.
+  - Tensor operands must be native `BigInteger` tensors; inexact and complex
+    Tensor dtypes fail closed.
+  - Results are native `BigInteger` tensors.
+  - Lazy BigInteger Tensor operands are realized before evaluation.
+  - The final helper uses a raw BigInteger Tensor kernel: Tensor element
+    handles are borrowed from Tensor storage, `Integer` scalars route through
+    the existing `i64` BigInteger C ABI helpers, and `BigInteger` scalars use
+    their existing scoped handles.
+  - Added advanced collections/module regressions for exact tensor-scalar
+    results, dtype, broadcast tensor-tensor, lazy realization, and Double
+    Tensor rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (gcd (Tensor BigInteger [1] [(BigInteger \"6\")]) 6) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (lcm (Tensor BigInteger [1] [(BigInteger \"6\")]) 6) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (lcm (Tensor BigInteger [2 1] [(BigInteger \"3\") (BigInteger \"4\")]) (Tensor BigInteger [1 2] [(BigInteger \"5\") (BigInteger \"6\")])) [1 1]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(gcd (Tensor Double [1] [6.0]) 3)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"6"` for tensor-scalar `gcd`, `"6"` for
+    tensor-scalar `lcm`, and `"12"` for broadcast Tensor/Tensor `lcm`.
+  - Double Tensor input fails closed with
+    `gcd: tensor inputs must be exact integers`.
+  - Host targeted `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=392 fail=0`.
+  - Bounded container `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=392 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - ASAN build attempt failed immediately with the local C3 compiler's
+    platform support message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The manufactured scalar-handle Tensor helper path is not trustworthy here:
+    tensor-tensor raw handles worked, but tensor-scalar `gcd` returned `"1"`
+    and tensor-scalar `lcm` returned corrupted large values even after moving
+    scalar cleanup out to function scope. The working fast path does not
+    manufacture scalar handles; it uses existing scalar values through the
+    `i64` or borrowed BigInteger C ABI variants.
+- Current best recommendation:
+  - Treat Tensor `gcd` and `lcm` as closed for native BigInteger Tensor
+    inputs, with broadcast as an internal shape rule only.
+- Unresolved issues:
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push the Tensor `gcd`/`lcm` slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 16:34 CEST - Tensor Min/Max Semantics
+- Objective attempted:
+  - Continue precision Tensor work by adding ordered real comparison for
+    native Tensor inputs via `min` and `max`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `min` and `max` through Tensor handling when either argument is a
+    Tensor.
+  - Added native Tensor min/max handling for tensor-scalar, scalar-tensor, and
+    broadcast tensor-tensor inputs.
+  - Result dtype policy is `BigFloat` if either input is BigFloat, `Double` if
+    either input is Double, otherwise `BigInteger`.
+  - Integer scalar comparisons now normalize into BigInteger Tensor storage so
+    exact integer comparisons stay exact.
+  - Lazy Tensor operands are realized before ordered comparison.
+  - Complex Tensor inputs fail closed.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, broadcast tensor-tensor, lazy BigFloat, and complex rejection
+    coverage.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (min (Tensor Double [1] [3.7]) 4.2) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (dtype (min (Tensor BigInteger [1] [(BigInteger \"5\")]) 4)))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (ref (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4) [0]))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (dtype (max (Tensor BigFloat [1] [(BigFloat \"2.5\")]) 4)))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(min (Tensor BigComplex [1] [(BigComplex 1 0)]) 1)'`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes confirmed Double Tensor min/max preserves Double dtype,
+    BigInteger Tensor comparisons stay exact, BigFloat Tensor comparisons
+    preserve BigFloat dtype, and complex operands fail closed.
+  - Host targeted `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=387 fail=0`.
+  - Bounded container `advanced-collections-module` group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=387 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed immediately with the local C3 compiler's
+    platform support message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not classify scalar `Int` operands as Double in Tensor min/max when the
+    other side is exact integer storage; preserve BigInteger result dtype.
+- Current best recommendation:
+  - Treat Tensor min/max as closed for real ordered native Tensor dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push the Tensor min/max slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 14:38 CEST - Tensor Rounding Semantics
+- Objective attempted:
+  - Continue precision Tensor work by adding exact-integer rounding results for
+    real Tensor inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `floor`, `ceiling`, `round`, and `truncate` through Tensor handling.
+  - Added a shared Tensor rounding helper in `src/lisp/prim_tensor.c3`.
+  - Real Tensor inputs return same-shape native `BigInteger` Tensor results.
+  - `Double` Tensor inputs round through the C math operation and fail closed
+    when the rounded result cannot narrow to Omni `Integer`.
+  - `BigInteger` Tensor inputs clone exact integer values.
+  - `BigFloat` Tensor inputs use the exact scalar BigFloat rounding path and
+    preserve large integer results in BigInteger Tensor storage.
+  - `BigComplex` Tensor inputs fail closed.
+  - Lazy Tensor operands are realized before elementwise rounding.
+  - Added advanced collections/module regressions for all four rounding
+    primitives, result dtype, BigInteger clone behavior, large BigFloat
+    promotion, lazy BigFloat realization, complex rejection, and Double
+    out-of-range rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes confirmed Double Tensor rounding returns BigInteger dtype,
+    BigFloat Tensor rounding preserves huge exact integer results, and
+    BigComplex Tensor rounding fails closed.
+  - Initial negative test used `1e20`, which the reader treated as non-numeric
+    for Tensor construction; changed it to `1.0e20` so the Tensor constructs
+    and the rounding range check is actually exercised.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=379 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=379 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not use integer-looking exponent literals such as `1e20` when testing
+    Tensor Double construction; use `1.0e20` to force the floating literal path.
+- Current best recommendation:
+  - Treat Tensor rounding as closed for real native Tensor dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor rounding slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 14:26 CEST - Tensor Atan2 Semantics
+- Objective attempted:
+  - Continue direct Tensor support for scalar scientific numeric primitives by
+    adding real-plane binary `atan2`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `atan2` through Tensor handling when either argument is a Tensor.
+  - Added Tensor `atan2` runtime handling for tensor-scalar, scalar-tensor, and
+    broadcast tensor-tensor inputs.
+  - Matched scalar `atan2` policy: complex operands fail closed.
+  - `BigFloat` Tensor inputs preserve precision dtype; other real/exact inputs
+    return `Double` tensors through the hardened finite-conversion path.
+  - Lazy Tensor operands are realized before elementwise `atan2` evaluation.
+  - Generalized the Tensor binary input dtype helper used by `pow`.
+  - Added advanced collections/module regressions for Double tensor/scalar,
+    scalar/tensor, BigInteger-to-Double, broadcast Tensor/Tensor, BigFloat,
+    lazy BigFloat, BigComplex rejection, and huge BigInteger rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Initial focused run failed three Double tests because `test_eq_double`
+    compares raw binary equality and decimal source literals did not exactly
+    match `atan2(1, 1)`. The tests now assert the printed Double value.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=369 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=369 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not use `test_eq_double` with a decimal approximation for irrational
+    math results such as `atan2(1, 1)`; use exact stable operations or a string
+    or tolerance-based assertion.
+- Current best recommendation:
+  - Treat Tensor `atan2` as closed for real native Tensor dtypes and current
+    broadcasting semantics.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor `atan2` slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 14:17 CEST - Tensor Pow Semantics
+- Objective attempted:
+  - Continue direct Tensor support for scalar scientific numeric primitives by
+    adding the first binary scientific primitive beyond `map`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed `pow` through Tensor handling when either argument is a Tensor.
+  - Added Tensor `pow` runtime handling for tensor-scalar, scalar-tensor, and
+    broadcast tensor-tensor inputs.
+  - Result dtype policy is `BigComplex` if either input is complex,
+    `BigFloat` if either input is BigFloat, otherwise `Double`.
+  - `Double` and `BigInteger` Tensor inputs return `Double` tensors through
+    the hardened finite-conversion path.
+  - `BigFloat` and `BigComplex` Tensor inputs preserve precision dtype.
+  - Lazy Tensor operands are realized before elementwise power evaluation.
+  - Added advanced collections/module regressions for Double tensor/scalar,
+    scalar/tensor, BigInteger-to-Double, broadcast Tensor/Tensor, BigFloat,
+    BigComplex, lazy BigComplex, and huge BigInteger rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Initial focused run showed BigComplex Tensor `pow` produces the same
+    near-zero imaginary residual as scalar BigComplex `pow`; tests were changed
+    to magnitude tolerance instead of exact string equality.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=361 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=361 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not exact-string compare BigComplex Tensor `pow` results for analytic
+    values that may carry tiny residual components; use magnitude tolerance.
+- Current best recommendation:
+  - Treat Tensor `pow` as closed for native numeric dtypes and current
+    broadcasting semantics.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor `pow` slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 14:06 CEST - Tensor Unary Scientific Math
+- Objective attempted:
+  - Extend direct Tensor support from single scalar primitives to a broader
+    unary scientific-math family.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added a shared Tensor unary-math helper in `src/lisp/prim_tensor.c3`.
+  - Routed `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,
+    `tanh`, `exp`, `log`, and `log10` through the helper when their argument
+    is a Tensor.
+  - Folded Tensor `sqrt` onto the shared helper while preserving its result
+    dtype policy.
+  - `Double` Tensor inputs return same-shape `Double` tensors.
+  - `BigInteger` Tensor inputs return same-shape `Double` tensors through the
+    hardened finite-conversion path.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, including
+    lazy source realization.
+  - Added advanced collections/module regressions for every newly routed
+    primitive family and a lazy BigComplex `log10` source.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Initial focused run caught a real omission: inverse trig routes were wired
+    at the primitive level but missing from the Double helper switch. Added
+    `asin`/`acos`/`atan` C bindings and switch cases.
+  - Host focused advanced collections/module group passed after the fix:
+    `OMNI_TEST_SUMMARY suite=unified pass=353 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=353 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not assume routing a primitive through the shared Tensor helper is
+    enough; every routed operation must have a Double switch case when real
+    Tensor dtypes can produce `Double`.
+- Current best recommendation:
+  - Treat the Tensor unary scientific-math implementation as closed for the
+    routed primitive set.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor unary scientific-math slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:56 CEST - Tensor Sqrt Semantics
+- Objective attempted:
+  - Continue direct Tensor support for scalar scientific numeric primitives.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended the existing `sqrt` primitive to accept Tensor inputs.
+  - Added Tensor `sqrt` runtime handling for `Double`, `BigInteger`,
+    `BigFloat`, and `BigComplex` tensors in `src/lisp/prim_tensor.c3`.
+  - `Double` Tensor inputs return same-shape `Double` tensors.
+  - `BigInteger` Tensor inputs return same-shape `Double` tensors, matching
+    scalar `sqrt` conversion behavior for exact integers.
+  - `BigFloat` Tensor inputs preserve `BigFloat` dtype and shape.
+  - `BigComplex` Tensor inputs preserve `BigComplex` dtype and shape, including
+    lazy source realization.
+  - Hardened `csrc/big_integer_helpers.cpp` so `omni_big_integer_to_double`
+    rejects enormous `cpp_int` values by bit length before attempting
+    `convert_to<double>()`.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, BigComplex, lazy BigComplex, and out-of-Double-range BigInteger
+    Tensor `sqrt`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct `--eval` smokes for huge BigInteger `Double` conversion rejection,
+    huge BigInteger Tensor `sqrt` rejection, and BigComplex Tensor `sqrt`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes now fail closed instead of aborting for huge BigInteger
+    conversion and Tensor `sqrt`.
+  - Direct BigComplex Tensor `sqrt` returned `"0+1i"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=341 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=341 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not rely on `cpp_int::convert_to<double>()` alone as the range guard for
+    enormous exact integers; pre-screen by bit length before conversion.
+- Current best recommendation:
+  - Treat Tensor `sqrt` as closed for native numeric dtypes.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation
+    until proven otherwise.
+- Next actions:
+  - Commit and push this Tensor `sqrt` slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:47 CEST - Tensor Abs Semantics
+- Objective attempted:
+  - Continue the precision Tensor lane with a concrete scalar-to-Tensor
+    numeric primitive extension.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended the existing `abs` primitive to accept Tensor inputs.
+  - Added Tensor `abs` runtime handling for `Double`, `BigInteger`,
+    `BigFloat`, and `BigComplex` tensors in `src/lisp/prim_tensor.c3`.
+  - Real Tensor dtypes preserve dtype and shape under elementwise magnitude.
+  - `BigComplex` Tensor inputs return same-shape `BigFloat` magnitude tensors,
+    matching scalar `BigComplex` `abs`.
+  - Lazy Tensor sources are realized before magnitude extraction and cleaned
+    through the existing materialized-value boundary.
+  - Added advanced collections/module regressions for Double, BigInteger,
+    BigFloat, BigComplex, and lazy BigComplex Tensor `abs`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct `--eval` smokes for BigComplex Tensor `abs`, BigInteger Tensor
+    `abs`, and lazy BigComplex Tensor `abs`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `c3c build`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"5"`, `"9223372036854775808"`, and `"5"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=335 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=335 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat Tensor `abs` as closed for native numeric dtypes. The next scientific
+    slice should be another concrete kernel or an explicit naming decision for
+    solver/decomposition conveniences.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this Tensor `abs` slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:40 CEST - Real Tensor Component Semantics
+- Objective attempted:
+  - Close the real Tensor component-policy gap left by the BigComplex Tensor
+    component slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended Tensor `real-part`, `imag-part`, and `conjugate` behavior from
+    BigComplex-only Tensor handling to all native real Tensor dtypes.
+  - `real-part` and `conjugate` now copy `Double`, `BigInteger`, and
+    `BigFloat` tensors while preserving dtype and shape.
+  - `imag-part` now returns same-shape zero tensors in the same real dtype.
+  - Added advanced collections/module regressions for Double Tensor
+    `real-part`, Double Tensor `imag-part`, BigInteger Tensor `conjugate`,
+    and BigFloat Tensor `imag-part`.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `c3c build`
+  - direct `--eval` smokes for `imag-part` on Double Tensor and `conjugate`
+    on BigInteger Tensor
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `0.0` and `"9223372036854775808"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=330 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=330 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat Tensor component semantics as closed for current numeric dtypes. The
+    next scientific slice should move to a concrete kernel or accepted naming
+    decision rather than more component-policy cleanup.
+- Unresolved issues:
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this real Tensor component semantics slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:29 CEST - BigComplex Tensor Component Kernels
+- Objective attempted:
+  - Continue the complex Tensor lane by making `real-part`, `imag-part`, and
+    `conjugate` operate on native BigComplex Tensor inputs.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added BigComplex Tensor component helpers in `src/lisp/prim_tensor.c3`.
+  - Routed `real-part`, `imag-part`, and `conjugate` through those helpers
+    before scalar numeric handling when the argument is a Tensor.
+  - `real-part` and `imag-part` realize lazy BigComplex Tensor sources and
+    return native BigFloat Tensor results.
+  - `conjugate` realizes lazy BigComplex Tensor sources and returns native
+    BigComplex Tensor results.
+  - Added focused advanced collections/module regressions for concrete
+    component extraction, lazy-source component extraction, conjugation, and
+    non-BigComplex Tensor fail-closed behavior.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct `--eval` smokes for BigComplex Tensor `real-part`, `imag-part`, and
+    lazy-source `conjugate`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"3"`, `"2"`, and `"4-6i"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=327 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=327 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat BigComplex Tensor component access as shipped. The next scientific
+    slice should either choose a public LAPACK/decomposition namespace or add a
+    specific complex/scientific kernel with a locked result dtype.
+- Unresolved issues:
+  - Non-BigComplex Tensor inputs to component operations intentionally fail
+    closed; real Tensor component dtype policy remains undecided.
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BigComplex Tensor component slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:21 CEST - BigComplex Tensor Kernels
+- Objective attempted:
+  - Continue the scientific precision Tensor lane by adding native BigComplex
+    Tensor storage and pure C3 kernels behind the existing `Tensor`, `map`,
+    `contract`, and `realize` surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_COMPLEX`, dtype metadata, owned element cleanup,
+    deep clone, concrete storage copy, and lazy scalar operand cloning.
+  - Extended Tensor constructors to accept `BigComplex` dtype descriptors in
+    explicit shape/data and inferred prefix/suffix forms. Real numeric leaves
+    promote to zero-imaginary BigComplex elements.
+  - Extended `ref`, flat `(Array tensor)` / `(List tensor)` conversion,
+    concrete/scalar `realize`, tensor-dispatched `map`, and pure C3
+    `contract` for BigComplex tensors.
+  - Added advanced collections/module regressions for BigComplex Tensor dtype,
+    ref, constructor forms, collection conversion, scalar fill/copy,
+    lazy map boundaries, contraction boundaries, and mixed-dtype rejection.
+  - Updated `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `c3c build`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - direct `--eval` smokes for BigComplex Tensor `ref`, lazy `map`, and
+    `contract`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Direct smokes returned `"1+2i"`, `"3+5i"`, and `"11+3i"`.
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=321 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=321 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Treat native precision Tensor coverage as shipped for BigInteger,
+    BigFloat, and BigComplex. The next precision work should be a concrete
+    policy or kernel slice, not another storage dtype placeholder.
+- Unresolved issues:
+  - BLAS/LAPACK acceleration remains `Double`-only.
+  - Public LAPACK solver/decomposition naming remains unresolved.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BigComplex Tensor slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:08 CEST - Tensor BLAS DGER Fast Path
+- Objective attempted:
+  - Continue optional native BLAS backend coverage behind existing
+    `contract`/`realize` by accelerating the already-supported zero-axis
+    rank-1/rank-1 outer-product contraction.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_blas_helpers.c` to resolve `cblas_dger`, expose
+    availability/call-count probes, and execute rank-1 outer products through
+    the optional BLAS backend when available.
+  - Added C3 extern declarations in `src/lisp/tensor_blas_backend.c3`.
+  - Added `tensor_contract_try_blas_dger(...)` in `src/lisp/prim_tensor.c3`
+    before the existing `ddot`/`dgemm`/`dgemv` fast paths. It only accepts
+    contiguous rank-1/rank-1 `Double` zero-axis contractions into rank-2
+    row-major output; unsupported cases fall back to the pure C3 kernel.
+  - Extended the existing outer-product advanced collections/module regression
+    to verify the private BLAS call counter when `cblas_dger` is available.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=298 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=298 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Keep adding private BLAS kernels only where they are invisible behind the
+    existing Tensor surface and have pure-fallback regressions. Do not unblock
+    public LAPACK solver/decomposition work until the qualifier is accepted.
+- Unresolved issues:
+  - No `TENSOR-090E` runtime blocker remains from this slice.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BLAS dger slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 13:01 CEST - Tensor BLAS DDOT Fast Path
+- Objective attempted:
+  - Continue optional native BLAS backend coverage behind existing
+    `contract`/`realize` without adding unresolved LAPACK solver names or new
+    public Tensor surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_blas_helpers.c` to resolve `cblas_ddot`, expose
+    availability/call-count probes, and execute rank-1 dot products through
+    the optional BLAS backend when available.
+  - Added C3 extern declarations in `src/lisp/tensor_blas_backend.c3`.
+  - Added `tensor_contract_try_blas_ddot(...)` in `src/lisp/prim_tensor.c3`
+    before the existing `dgemm`/`dgemv` fast paths. It only accepts
+    contiguous rank-1/rank-1 `Double` single-axis contractions into rank-0
+    output; unsupported cases fall back to the pure C3 kernel.
+  - Added an advanced collections/module regression that verifies the vector
+    dot result and, when `cblas_ddot` is available, the private BLAS call
+    counter.
+  - Updated `memory/CHANGELOG.md`, `TODO.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `.agents/PLAN.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=297 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=297 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+- Current best recommendation:
+  - Keep LAPACK solver/decomposition public names blocked until the owner
+    accepts a qualifier. Additional private BLAS kernels can continue only
+    where they stay invisible behind `contract`/`realize` and have pure
+    fallback regressions.
+- Unresolved issues:
+  - No `TENSOR-090D` runtime blocker remains from this slice.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BLAS ddot slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 12:54 CEST - Native BigInteger Tensor Kernels
+- Objective attempted:
+  - Extend Omni Tensor precision support from `Double`/`BigFloat` to native
+    exact integer Tensor storage and kernels.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_INTEGER`, dtype metadata, owned element cleanup,
+    scalar-handle cleanup for lazy maps, concrete storage copy, and clone
+    support.
+  - Extended `Tensor` dtype parsing and constructors for
+    `(Tensor BigInteger shape data-or-scalar)`, `(Tensor data BigInteger)`,
+    and `(Tensor BigInteger data)`.
+  - Added BigInteger Tensor `ref`, `(Array tensor)`, `(List tensor)`, scalar
+    `realize` fill, concrete tensor copy, lazy `map`, and pure C3 `contract`
+    paths.
+  - Added focused advanced collection/module tests for BigInteger dtype/ref,
+    inferred prefix/suffix construction, flat conversions, scalar fill, copy,
+    map, broadcast, return/closure boundaries, contract, and mixed/inexact
+    rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigInteger dtype/ref, inferred prefix/suffix
+    constructors, flat collection conversion, scalar fill, concrete copy,
+    map, contract, and inexact-data rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - Host focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=295 fail=0`.
+  - Bounded container focused advanced collections/module group passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=295 fail=0`.
+  - Bounded container `memory-lifetime-smoke` passed:
+    `OMNI_TEST_SUMMARY suite=unified pass=225 fail=0`.
+  - Stage 3 e2e source parity passed.
+  - `git diff --check` passed.
+  - ASAN build attempt failed before compile with the local C3 compiler
+    sanitizer platform message.
+  - BLAS fast paths remain `Double`-only; BigInteger contracts use the pure C3
+    fallback and preserve exact integer results.
+- Invalidated assumptions or failed approaches:
+  - Treating precision Tensor work as BigFloat-only is now stale; BigInteger is
+    a native Tensor dtype with storage, map, and contract support.
+- Current best recommendation:
+  - Use the pure C3 Tensor fallback as the semantic oracle for additional
+    precision dtypes. Continue to BigComplex Tensor storage/kernels only when
+    complex scientific tensor workflows become the active priority.
+- Unresolved issues:
+  - No BigInteger Tensor runtime blocker remains from this slice.
+  - ASAN coverage remains unavailable through the local C3 compiler invocation.
+- Next actions:
+  - Commit and push this BigInteger Tensor slice.
+
+Signature: GPT-5 Codex
+
+## 2026-04-15 12:31 CEST - Native BigFloat Tensor Contract
+- Objective attempted:
+  - Complete the BigFloat Tensor arithmetic kernel lane by adding summed-axis
+    contraction support after native storage and elementwise `map`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended tensor-dispatched `contract` from `Double`-only evaluation to
+    native `BigFloat` evaluation through the pure C3 contraction fallback.
+  - Kept private BLAS `dgemm`/`dgemv` fast paths `Double`-only; BigFloat
+    contracts use owned BigFloat sum/product handles and preserve Tensor dtype.
+  - Preserved deterministic mixed tensor dtype rejection:
+    `Double`/`BigFloat` tensor-tensor `contract` still raises
+    `tensor/dtype-mismatch`.
+  - Added focused advanced collections/module regressions for BigFloat vector
+    dot, rank-2 matrix product, zero-size contracted-axis identity, explicit
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat dot, matrix product, zero-size identity,
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - BigFloat vector dot returns `"55"` for `[1.5 2] . [10 20]`.
+  - BigFloat rank-2 matrix product returns `"154"` for the existing Tensor
+    matrix-product smoke shape.
+  - BigFloat zero-size contracted-axis identity returns `"0"`.
+  - Explicit destination `realize` works for BigFloat contract expressions.
+  - Lazy BigFloat contract expressions survive function return and closure
+    capture.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `271 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - ASAN validation could not run: the local C3 compiler rejected the
+    sanitizer build before compilation with `Address sanitizer is only
+    supported on Linux, FreeBSD, NetBSD, Darwin and Windows.`
+- Invalidated assumptions or failed approaches worth preserving:
+  - The previous checkpoint statement that BigFloat Tensor `contract` is
+    unimplemented is now stale for pure C3 Tensor kernels. It remains true for
+    accelerated BLAS-style BigFloat backends and for other unimplemented Tensor
+    storage dtypes.
+- Unresolved issues:
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - BigFloat Tensor contracts are pure C3 and not BLAS-accelerated.
+  - ASAN still cannot run in this environment because the C3 compiler rejects
+    sanitizer builds before producing a binary.
+- Current best recommendation:
+  - Resume the optional LAPACK/LAPACKE solver/decomposition naming decision for
+    `Double` Tensor convenience APIs, or start a separate dtype-storage slice
+    for BigInteger/BigComplex Tensor support if high-precision non-real Tensor
+    work is prioritized.
+Signature: GPT-5 Codex
+
+## 2026-04-15 12:25 CEST - Native BigFloat Tensor Map
+- Objective attempted:
+  - Move BigFloat Tensor support beyond storage/ref/conversion into the
+    elementwise Tensor operation surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended tensor-dispatched `map` from `Double`-only evaluation to native
+    `BigFloat` evaluation for unary, tensor-scalar, scalar-tensor,
+    exact-shape tensor-tensor, and right-aligned singleton-axis broadcast
+    cases.
+  - Added owned BigFloat scalar handles to lazy map payloads and cloned them
+    during Tensor payload clone/promotion paths so BigFloat scalar operands
+    survive function-return and closure-capture boundaries.
+  - Preserved deterministic mixed tensor dtype rejection:
+    `Double`/`BigFloat` tensor-tensor `map` still raises
+    `tensor/dtype-mismatch`.
+  - Left `contract` `Double`-only; BigFloat contraction kernels remain a
+    separate implementation slice.
+  - Added focused advanced collections/module regressions for BigFloat unary
+    map outside Double range, scalar-left/right map, broadcast map,
+    destination realization, return-boundary survival, closure-capture
+    survival, and mixed-dtype rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat unary preservation, scalar-left/right map,
+    broadcast map, destination realization, return-boundary survival,
+    closure-capture survival, and mixed-dtype rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - `(String (ref (map (lambda (x) x) (Tensor [(BigFloat "1e309")] BigFloat)) [0]))`
+    returns `"1e+309"`.
+  - BigFloat tensor-scalar and scalar-tensor map cases return BigFloat values.
+  - BigFloat tensor-tensor map supports right-aligned singleton-axis broadcast.
+  - Explicit destination `realize` works for mapped BigFloat expressions.
+  - Lazy BigFloat map expressions survive function return and closure capture.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `264 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - ASAN validation could not run: the local C3 compiler rejected the
+    sanitizer build before compilation with `Address sanitizer is only
+    supported on Linux, FreeBSD, NetBSD, Darwin and Windows.`
+- Invalidated assumptions or failed approaches worth preserving:
+  - The previous checkpoint statement that BigFloat Tensor `map` is unshipped
+    is now stale. It remains true only for BigFloat `contract` kernels and for
+    other unimplemented Tensor dtypes.
+- Unresolved issues:
+  - BigFloat Tensor `contract` kernels are not implemented.
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - ASAN still cannot run in this environment because the C3 compiler rejects
+    the sanitizer build before producing a binary.
+- Current best recommendation:
+  - Continue with BigFloat Tensor `contract` only if high-precision reductions
+    are the next priority. Otherwise resume the optional LAPACK/LAPACKE naming
+    decision for `Double` solver/decomposition conveniences.
+Signature: GPT-5 Codex
+
+## 2026-04-15 12:14 CEST - Native BigFloat Tensor Storage
+- Objective attempted:
+  - Move beyond Double-only Tensor ingestion by adding the first
+    BigFloat-preserving concrete Tensor storage dtype.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `TENSOR_DTYPE_BIG_FLOAT` metadata, dtype printing/symbol lookup,
+    owned BigFloat handle storage, element cleanup, deep clone, and concrete
+    storage copy support.
+  - Extended `Tensor` constructors to accept `BigFloat` dtype descriptors:
+    `(Tensor BigFloat shape data-or-scalar)`, `(Tensor data BigFloat)`, and
+    `(Tensor BigFloat data)`.
+  - Added BigFloat Tensor support for `dtype`, `ref`, flat `(Array tensor)` /
+    `(List tensor)` conversion, scalar `realize` fill, and concrete tensor copy
+    realization.
+  - Kept `map` and `contract` `Double`-only; BigFloat tensors reject those
+    paths with `tensor/dtype-mismatch` until dedicated kernels land.
+  - Added focused advanced collections/module regressions for dtype/ref,
+    inferred prefix/suffix construction, flat collection conversion, scalar
+    fill, concrete copy, and map rejection.
+  - Updated the lifetime partial-constructor cleanup assertion for the more
+    specific Double narrowing error text.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/reference/04-type-system.md`,
+    `docs/reference/11-appendix-primitives.md`,
+    `docs/type-system-syntax.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat dtype/ref/inferred construction/Array/List
+    conversion/scalar fill/concrete copy/map rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+  - attempted `c3c build main --sanitize=address --output-dir build/asan --build-dir build/obj-asan`
+- Key results:
+  - `(format "%s" (dtype (Tensor BigFloat [2] [(BigFloat "1.25") 2])))`
+    returns `"BigFloat"`.
+  - `(String (ref (Tensor [(BigFloat "1e309")] BigFloat) [0]))` returns
+    `"1e+309"`, preserving values outside Double range.
+  - Flat `(Array tensor)` and `(List tensor)` conversions return BigFloat
+    values for BigFloat tensors.
+  - Concrete `realize` scalar fill and tensor copy work for BigFloat tensors.
+  - `(map + (Tensor BigFloat [1] [(BigFloat "1")]) 1)` fails closed with
+    `map: tensor dtype mismatch`.
+  - Focused advanced collections/module group passed on host and bounded
+    container: `257 passed, 0 failed`.
+  - Bounded `memory-lifetime-smoke` passed: `225 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The earlier phrase "BigFloat/BigInteger-preserving Tensor storage remains
+    unshipped" is now stale for BigFloat concrete storage. It remains true for
+    BigInteger storage and for BigFloat tensor arithmetic kernels.
+- Unresolved issues:
+  - BigFloat Tensor `map` and `contract` kernels are not implemented.
+  - BigInteger and BigComplex Tensor storage dtypes remain unshipped.
+  - ASAN validation could not run: the C3 compiler rejected the sanitizer build
+    immediately with `Address sanitizer is only supported on Linux, FreeBSD,
+    NetBSD, Darwin and Windows.`
+- Current best recommendation:
+  - Continue with BigFloat Tensor `map` kernels next if the goal is scientific
+    scalar precision through Tensor operations. Keep BLAS-backed Double kernels
+    separate from BigFloat handle storage.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:57 CEST - Tensor Real Numeric Narrowing
+- Objective attempted:
+  - Close the Tensor constructor contract gap after inferred-shape
+    construction: native `Double` tensors should accept real numeric inputs
+    that can safely narrow to finite `Double`, not only fixed-width
+    `Integer`/`Double` leaves.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Routed Tensor value-to-`Double` conversion through the shared
+    `try_numeric_to_double` helper.
+  - Native `Double` Tensor constructors now accept `Integer`, `Double`,
+    `BigInteger`, and `BigFloat` inputs when representable as finite `Double`.
+  - BigComplex values and out-of-`Double`-range BigFloat/BigInteger values fail
+    closed.
+  - Added focused advanced collections/module regressions for inferred
+    BigInteger/BigFloat leaves, explicit BigFloat scalar fill, explicit
+    BigInteger flat data, out-of-range BigFloat rejection, and BigComplex
+    rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigFloat Tensor data, BigInteger Tensor data,
+    out-of-range BigFloat rejection, and BigComplex rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Tensor [(BigFloat "1.25")]) [0])` returns `1.25`.
+  - `(ref (Tensor [(BigInteger "9223372036854775808")]) [0])` returns a
+    finite `Double` representation.
+  - `(Tensor [(BigFloat "1e309")])` fails closed.
+  - `(Tensor [(BigComplex 1 2)])` fails closed.
+  - Focused advanced collections/module group passed on host:
+    `248 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `248 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Treat native `Double` Tensor numeric ingress as shipped for all real
+    numeric values representable as finite `Double`. BigFloat/BigInteger
+    preserving Tensor storage remains a separate dtype/storage project.
+- Unresolved issues:
+  - Tensor dtypes beyond native `Double` are still unshipped.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this narrowing slice, then continue with either explicit
+    Tensor dtype work or the LAPACK/decomposition surface decision.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:52 CEST - Tensor Inferred Constructor Overloads
+- Objective attempted:
+  - Continue the owner-preferred constructor-dispatch Tensor surface by adding
+    inferred-shape construction through `Tensor` itself.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added recursive Tensor shape inference for numeric scalars and rectangular
+    nested arrays/proper lists.
+  - Added flattening into native row-major `Double` tensor storage.
+  - Preserved `(Tensor Double shape data-or-scalar)` and added
+    `(Tensor data)`, `(Tensor data Double)`, and `(Tensor Double data)`.
+  - Changed `Tensor` primitive registration from fixed arity 3 to variable
+    arity, and allowed both `Double` and `'Double` as dtype markers.
+  - Added focused advanced collections/module regressions for vector, matrix,
+    scalar rank-0, dtype prefix/suffix, quoted dtype, empty vector, ragged
+    rejection, and non-numeric rejection.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/00-overview.md`, `docs/reference/03-collections.md`,
+    `docs/reference/04-type-system.md`,
+    `docs/reference/11-appendix-primitives.md`,
+    `docs/type-system-syntax.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for inferred vector, inferred matrix shape, dtype-prefix
+    construction, and ragged rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Tensor [1 2 3]) [2])` returns `3.0`.
+  - `(format "%s" (shape (Tensor [[1 2] [3 4]])))` returns `"[2 2]"`.
+  - `(ref (Tensor Double [1 2]) [1])` returns `2.0`.
+  - `(Tensor [[1] [2 3]])` fails with `Tensor: inferred data must be rectangular`.
+  - Focused advanced collections/module group passed on host:
+    `242 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `242 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Treat constructor-dispatch Tensor ingestion as shipped for native `Double`
+    rectangular data. Continue next with backend naming policy, LAPACK solver
+    surfaces, or additional dtype work, not a separate Tensor-only conversion
+    helper.
+- Unresolved issues:
+  - Inferred constructors currently accept the first native `Double` storage
+    path only; BigFloat/BigInteger-preserving Tensor dtypes remain unshipped.
+  - Tensor-to-collection conversion remains flat row-major; nested
+    reconstruction is still intentionally not part of the shipped contract.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this inferred-constructor slice, then choose the next
+    Tensor/scientific lane explicitly.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:41 CEST - Tensor Collection Conversions
+- Objective attempted:
+  - Implement the owner-preferred constructor-dispatch Tensor conversion
+    surface through `(Array tensor)` and `(List tensor)` rather than adding a
+    Tensor-only materialization helper.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `tensor_to_flat_array_value` and `tensor_to_flat_list_value` helpers.
+  - Extended `Array` and `List` constructors to accept a single Tensor input.
+  - Tensor conversions force lazy Tensor expressions when needed and return
+    flat row-major element values.
+  - Shape/rank metadata remains explicit through `shape` and `rank`; collection
+    conversion does not synthesize nested arrays/lists.
+  - Added focused advanced collections/module regressions for concrete Tensor
+    conversion, lazy `map` conversion, and lazy `contract` conversion.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for `(Array tensor)`, `(List tensor)`, lazy map conversion,
+    and zero-size Tensor conversion
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(ref (Array (Tensor Double [2 2] [1 2 3 4])) 2)` returns `3.0`.
+  - `(ref (List (Tensor Double [2 2] [1 2 3 4])) 2)` returns `3.0`.
+  - `(ref (Array (map + (Tensor Double [2] [1 2]) 1)) 1)` returns `3.0`.
+  - `(length (Array (Tensor Double [0] 0.0)))` returns `0`.
+  - Focused advanced collections/module group passed on host:
+    `232 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `232 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - Tensor now participates in the same constructor/conversion dispatch model
+    as other collection-like values. Continue with LAPACK naming/surface
+    decision or scalar precision policy; do not add Tensor-only conversion
+    helper names for this already-shipped behavior.
+- Unresolved issues:
+  - Tensor-to-collection conversion is flat row-major only; nested shape
+    reconstruction remains intentionally unshipped.
+  - LAPACK/LAPACKE public qualifier is still undecided.
+- Next actions:
+  - Commit and push this conversion slice, then choose between LAPACK naming
+    and scalar precision policy work.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:28 CEST - Tensor BLAS `dgemv` Contracts
+- Objective attempted:
+  - Continue `TENSOR-090` by expanding private BLAS acceleration from
+    rank-2/rank-2 `dgemm` contracts to rank-2/rank-1 and rank-1/rank-2
+    `dgemv` contracts without adding a public backend-specific surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/tensor_blas_helpers.c` to resolve `cblas_dgemv`, expose a
+    `dgemv` availability probe and call counter, and call the BLAS routine with
+    row-major transpose flags.
+  - Added C3 externs for the new private Tensor BLAS `dgemv` backend functions.
+  - Added Tensor evaluator eligibility for contiguous row-major matrix-vector,
+    transposed matrix-vector, vector-matrix, and vector-transposed-matrix
+    single-axis `Double` contractions.
+  - Added path-sensitive advanced collections/module regressions that require
+    `dgemv` call-count movement when the symbol is available and otherwise
+    validate fallback semantics.
+  - Updated `.agents/PLAN.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/tensor-scientific-computing-plan-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for matrix-vector, transposed matrix-vector, vector-matrix,
+    and vector-transposed-matrix contract results
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - `(contract (Tensor Double [2 3] ...) (Tensor Double [3] ...) [1 0])`
+    returns the expected matrix-vector result; direct smoke checked `320.0`.
+  - Transposed matrix-vector direct smoke checked `150.0`.
+  - Vector-matrix direct smoke checked `280.0`.
+  - Vector-transposed-matrix direct smoke checked `320.0`.
+  - Focused advanced collections/module group passed on host:
+    `226 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `226 passed, 0 failed`.
+- Current best recommendation:
+  - `TENSOR-090` now has private BLAS `dgemm` and `dgemv` coverage behind
+    canonical `contract`/`realize`. The next backend step should be a
+    LAPACK/LAPACKE solver/decomposition naming decision before exposing solver
+    conveniences; do not add bare `solve`.
+- Unresolved issues:
+  - LAPACK/LAPACKE public qualifier is still undecided.
+  - CUDA/cuBLAS remains a future explicit-device design slice.
+- Next actions:
+  - Decide the solver/decomposition namespace and first LAPACK primitive, or
+    continue scalar precision policy work.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:21 CEST - BigComplex Component Access
+- Objective attempted:
+  - Continue the scientific scalar lane by making BigComplex analytically
+    usable without string parsing or ad hoc destructuring.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added C++ helper exports for BigComplex `real-part`, `imag-part`, and
+    `conjugate`.
+  - Added C3 externs and value helpers that return BigFloat components for
+    BigComplex inputs.
+  - Added public numeric primitives `real-part`, `imag-part`, and `conjugate`,
+    plus primitive-table registration and AOT lookup.
+  - Real scalar inputs keep their existing value as the real part, use Integer
+    `0` as the imaginary part, and are preserved by `conjugate`.
+  - Added focused advanced numeric regressions and updated language/reference
+    docs, `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigComplex component access and real-scalar conjugation
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results:
+  - `(String (real-part (BigComplex 1 2)))` returns `"1"`.
+  - `(String (imag-part (BigComplex 1 2)))` returns `"2"`.
+  - `(String (conjugate (BigComplex 1 2)))` returns `"1-2i"`.
+  - `(String (conjugate (BigFloat "1.25")))` returns `"1.25"`.
+  - Focused advanced numeric float-math group passed on host:
+    `172 passed, 0 failed`.
+  - Bounded container rerun passed:
+    `172 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Current best recommendation:
+  - BigComplex now has arithmetic, elementary math, hyperbolic math, magnitude,
+    and component access. The next scalar precision decision should be either a
+    precision-control policy or a deliberate BigComplex special-function /
+    distribution policy.
+- Unresolved issues:
+  - No precision-control API exists for BigFloat/BigComplex yet.
+  - Broader complex special functions and distributions remain unimplemented.
+- Next actions:
+  - Pick and implement the next scalar precision policy slice, or switch back
+    to Tensor backend acceleration once the scalar surface is sufficient.
+Signature: GPT-5 Codex
+
+## 2026-04-15 11:10 CEST - Hyperbolic Scalar Math
+- Objective attempted:
+  - Continue the scientific scalar math lane by adding standard hyperbolic
+    functions across existing scalar numeric backends.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `sinh`, `cosh`, and `tanh` primitives.
+  - Routed Double inputs through the C math library.
+  - Added BigFloat helper op codes so hyperbolic functions preserve BigFloat
+    results.
+  - Added BigComplex helper op codes so hyperbolic functions preserve
+    BigComplex results.
+  - Added primitive registration, AOT lookup, focused regressions, and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for Double, BigFloat, and BigComplex hyperbolic results
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(sinh 0.0)` returns `0.0`; `(cosh 0.0)` returns `1.0`.
+  - `(String (sinh (BigFloat "0")))` returns `"0"`.
+  - `(= (type-of (sinh (BigFloat "0"))) 'BigFloat)` returns `true`.
+  - `(String (sinh (BigComplex 0 0)))` returns `"0+0i"`.
+  - `(String (cosh (BigComplex 0 0)))` returns `"1+0i"`.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `163 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - No failed implementation path required negative memory for this slice.
+- Current best recommendation/checkpoint:
+  - Hyperbolic math is implemented for Double, BigFloat, and BigComplex. Next
+    scalar precision work should be BigFloat precision-control policy or a
+    deliberate BigComplex special-function/distribution policy.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-17 09:59 CEST - TENSOR-100F1 Vulkan SVD-Backed Singular Values
+
+- Objective attempted:
+  - Continue from the latest Vulkan math-library session report using multiple
+    agents, verify the in-progress Vulkan SVD-backed slice, and align the
+    runtime contract with docs/plans.
+- Workspace:
+  - `/home/christos/Omni`
+- Code/configuration changes made:
+  - Preserved and verified the existing dense row-major Vulkan `Float64`
+    `matrix/singular-values` implementation and spectral/nuclear
+    `matrix/norm` routing through `omni_tensor_backend_vulkan_singular_values_f64`.
+  - Fixed `matrix/svd`, `matrix/eigenvalues`, `matrix/eigenvectors`, and
+    `matrix/eigenpairs` so non-CPU Tensor placement is rejected before generic
+    realization can silently copy Vulkan input through CPU paths.
+  - Updated current Tensor/Vulkan docs, TODO, plan, and changelog artifacts so
+    `matrix/singular-values` plus `matrix/norm` `'spectral` / `'nuclear` are
+    recorded as supported on Vulkan, while direct SVD/eigen surfaces remain
+    CPU-only.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_singular_values_f64.comp -o /tmp/omni_tensor_vulkan_singular_values_f64.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_singular_values_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes returned `3.0`, `5.0`, `vulkan`, and empty length `0`.
+  - Initial focused `advanced-collections-module` run exposed stale/real
+    unsupported-surface failures for direct `matrix/svd` and eigen surfaces.
+  - After the fix,
+    `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+    passed with `pass=866 fail=0`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat direct `matrix/svd` or eigen surfaces as implicitly safe on
+    Vulkan just because `matrix/singular-values` has a Vulkan helper. Those
+    factor/eigensolver surfaces remain CPU-only until explicit Vulkan plans
+    land.
+  - Do not allow CPU-only matrix primitives to call generic realization before
+    checking source device placement; that can hide unsupported Vulkan input
+    behind CPU copyback.
+- Current best recommendation/checkpoint:
+  - Continue `TENSOR-100F` from the verified Vulkan singular-value helper.
+    Next useful implementation should either refactor shared Vulkan helper
+    plumbing without changing exported contracts, or add another explicit
+    backend-neutral kernel with dedicated Vulkan semantics.
+- Unresolved issues:
+  - Bounded-container and full heavy gates were not run in this pass.
+  - Direct `matrix/svd`, `matrix/eigenvalues`, `matrix/eigenvectors`, and
+    `matrix/eigenpairs` still need dedicated Vulkan design/implementation
+    before they can support Vulkan operands.
+- Signature: Codex GPT-5
+
+## 2026-04-17 10:37 CEST - TENSOR-100F1 Vulkan Audit Hardening
+
+- Objective attempted:
+  - Continue auditing and fixing the Tensor/Vulkan SVD-backed slice using
+    multiple agents, then close the audit findings with focused validation.
+- Workspace:
+  - `/home/christos/Omni`
+- Code/configuration changes made:
+  - Continued GPT-5.4 high audit coverage for source/device semantics and
+    tests/docs. The requested GPT-5.3-Codex-Spark implementation workers were
+    quota-blocked by the environment, so implementation proceeded locally with
+    fallback fast workers limited to no-conflict report/roadmap review.
+  - Hardened `realize` semantics: one-argument `realize` preserves concrete
+    Vulkan placement, while explicit destination `realize` rejects concrete or
+    lazy Vulkan sources with `tensor/backend-unsupported`.
+  - Hardened Vulkan singular-values execution: the helper now dispatches one
+    work item for the single-invocation shader while preserving the `k + 2`
+    payload, and shader non-convergence maps through
+    `OMNI_TENSOR_VULKAN_NO_CONVERGENCE` to public `tensor/no-convergence`.
+    The helper also rejects logical matrices whose element count exceeds the
+    shader's 32-bit index space before dispatch.
+  - Broadened tests for Vulkan `matrix/singular-values`, spectral/nuclear
+    `matrix/norm`, CPU-only direct `matrix/svd`/eigen fail-closed behavior on
+    lazy Vulkan inputs, explicit-destination `realize`, and CPU-only numeric
+    Tensor helpers on Vulkan operands.
+  - Added durable regressions for the `k == 64` singular-values boundary,
+    rectangular `2x65`, empty `0x65`, status-payload non-convergence mapping,
+    and the oversized-index validation guard.
+  - Updated TODO/docs/plan/changelog wording for the `k <= 64` cap, direct
+    SVD/eigen CPU-only behavior, stale `sqrt` roadmap wording, zero-axis
+    `contract` support, destination `realize`, and latest validation details.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 -o /tmp/omni_tensor_vulkan_singular_values_f64.spv csrc/tensor_vulkan_singular_values_f64.comp`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_singular_values_f64.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=904 fail=0`.
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`: passed, `pass=411 fail=0`.
+  - Durable advanced regressions now cover `k == 64`, `k == 65` fail-closed,
+    wide `2x65`, empty `0x65`, status-payload mapping, and oversized logical
+    index validation before Vulkan dispatch.
+  - Primitive docs parity, Stage 3 source parity, and targeted
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not rely on shallow root `source.device` checks for lazy Tensor
+    expressions. CPU-only helpers must inspect Tensor expression leaves before
+    generic realization.
+  - Do not treat the Vulkan singular-values shader status tail as a generic
+    singular-matrix status. Its non-convergence status maps to
+    `tensor/no-convergence`.
+  - Do not rely only on per-axis `UINT32_MAX` checks in Vulkan helpers whose
+    shaders index with 32-bit arithmetic; guard total logical element count
+    before dispatch.
+  - Do not treat destination `realize` as an implicit GPU-to-CPU copy boundary;
+    explicit `to-device 'cpu` is the copy boundary for non-CPU sources.
+- Current best recommendation/checkpoint:
+  - The `TENSOR-100F1` Vulkan singular-values helper is verified for the
+    current dense row-major `Float64`, `k <= 64` contract. Next useful work
+    should be a separate Vulkan factor-output SVD/eigensolver design, or a
+    shared Vulkan helper cleanup that preserves the public contracts.
+- Unresolved issues:
+  - Full heavy/container-only gates were not run in this pass.
+  - Actual shader iteration-exhaustion is still not forced by a public numeric
+    fixture; the status-payload mapping and C3 status-code mapping are now
+    covered by deterministic probes.
+  - Direct `matrix/svd`, `matrix/eigenvalues`, `matrix/eigenvectors`, and
+    `matrix/eigenpairs` still need dedicated Vulkan design/implementation
+    before they can support Vulkan operands.
+- Signature: Codex GPT-5
+
+## 2026-04-15 11:00 CEST - BigComplex Scalar Math
+- Objective attempted:
+  - Continue the BigComplex scientific scalar lane beyond arithmetic by adding
+    complex-preserving elementary math.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_complex_helpers.cpp` with BigComplex unary math for
+    `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`, and
+    `sqrt`, plus binary `pow`.
+  - Added C3 externs and value helper wrappers for BigComplex math.
+  - Routed the corresponding math primitives through BigComplex before the
+    BigFloat or Double paths.
+  - Kept `atan2` as a real-plane helper and added an explicit complex-operand
+    rejection.
+  - Added focused advanced numeric regressions and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for BigComplex `sqrt`, `exp`, `log`, `sin`, `cos`, `pow`,
+    and `atan2` rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(String (sqrt (BigComplex -1 0)))` returns `"0+1i"`.
+  - `(String (exp (BigComplex 0 0)))` returns `"1+0i"`.
+  - `(String (log (BigComplex 1 0)))` returns `"0+0i"`.
+  - `(String (sin (BigComplex 0 0)))` returns `"0+0i"`.
+  - `(String (cos (BigComplex 0 0)))` returns `"1+0i"`.
+  - Complex `pow` is validated by magnitude tolerance because the underlying
+    complex algorithm can leave tiny residual imaginary parts.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `152 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Exact string equality is not the right regression contract for complex
+    `pow`; use a magnitude tolerance for identities such as `i^2 = -1`.
+- Current best recommendation/checkpoint:
+  - BigComplex now supports elementary complex math. Next scalar precision
+    work should be BigFloat precision-control policy or a deliberate
+    BigComplex special-function/distribution policy.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 10:58 CEST - BigComplex Numeric Primitive
+- Objective attempted:
+  - Continue the scientific scalar precision lane by shipping the first
+    BigComplex runtime slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/big_complex_helpers.cpp` and C3 extern wiring for decimal
+    complex construction, cloning, destruction, rendering, arithmetic,
+    equality, zero checks, and magnitude.
+  - Added the `BIG_COMPLEX` value tag, payload field, runtime lifecycle hooks,
+    scope copy/promotion paths, boundary audit classification, printing, hash
+    and equality support.
+  - Registered `BigComplex` as a callable constructor/type descriptor and a
+    subtype of `Number`.
+  - Routed arithmetic through BigComplex when either operand is complex:
+    `+`, `-`, `*`, `/`, unary `-`, `=`, `zero?`, and `abs` are supported.
+    `abs` returns `BigFloat`.
+  - Ordered numeric operations fail closed for complex operands: `<`, `>`,
+    `<=`, `>=`, `min`, `max`, `positive?`, and `negative?`.
+  - Added focused advanced numeric regressions and updated
+    `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for `(String (BigComplex 1 2))`, type identity, `Number`
+    identity, addition, multiplication, division, `abs`, and ordering
+    rejection
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `(String (BigComplex 1 2))` returns `"1+2i"`.
+  - `(= (type-of (BigComplex 1 2)) 'BigComplex)` and
+    `(is? (BigComplex 1 2) 'Number)` return `true`.
+  - `(String (+ (BigComplex 1 2) 3))` returns `"4+2i"`.
+  - `(String (* (BigComplex 1 2) (BigComplex 3 4)))` returns `"-5+10i"`.
+  - `(String (/ (BigComplex 1 2) (BigComplex 3 -4)))` returns
+    `"-0.2+0.4i"`.
+  - `(String (abs (BigComplex 3 4)))` returns `"5"`.
+  - Focused advanced numeric float-math group passed on host and in the
+    bounded container at `145 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - No failed implementation path required negative memory for this slice.
+- Current best recommendation/checkpoint:
+  - BigComplex scalar arithmetic is shipped. Next scalar precision work should
+    be BigFloat precision-control policy or broader complex scientific math.
+- Unresolved issues / blockers:
+  - BigComplex transcendental functions are not implemented.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 10:20 CEST - Exact BigFloat Rounding
+- Objective attempted:
+  - Continue the scalar scientific numerics lane by closing the deferred exact
+    BigFloat rounding-to-integer policy.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added a C++ BigFloat rounding helper that performs `floor`, `ceiling`,
+    `round`, and `truncate` directly on `cpp_dec_float_50` and renders the
+    rounded integer as fixed decimal text.
+  - Added the C3 extern and runtime value helper to parse that decimal text
+    through the BigInteger constructor, then narrow to `Integer` when the
+    result fits `i64`.
+  - Routed the rounding primitives through the exact BigFloat path before the
+    existing Double-based path.
+  - Added advanced numeric regressions for small narrowing, large BigInteger
+    promotion, negative rounding semantics, and huge-result fail-closed
+    behavior.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - direct smokes for large BigFloat floor promotion, result type, negative
+    `round`, negative `truncate`, and over-cap failure
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Large BigFloat floor now returns string `"9223372036854775808"` and type
+    `BigInteger` instead of saturating or narrowing through `Double`.
+  - `(round (BigFloat "-3.5"))` returns `-4`; `(truncate (BigFloat "-3.9"))`
+    returns `-3`.
+  - `(floor (BigFloat "1e400000"))` fails closed with
+    `floor: BigFloat integer result out of supported range`.
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `134 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not convert rounded `cpp_dec_float_50` directly to `cpp_int` for this
+    path. Local Boost conversion saturated near fixed-width limits; fixed
+    decimal rendering plus BigInteger parsing is the validated path.
+  - The earlier report statement that BigFloat rounding still used the
+    Double-to-Integer path is superseded by this implementation.
+- Current best recommendation/checkpoint:
+  - Exact BigFloat integer rounding is shipped. Next scalar precision work is
+    now precision-control policy or `BigComplex`.
+- Unresolved issues / blockers:
+  - BigFloat precision remains fixed at `cpp_dec_float_50`.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 08:48 CEST - BigFloat Scalar Math And Agent Rule
+- Objective attempted:
+  - Continue Omni scientific numerics non-conservatively by closing the
+    BigFloat math gap instead of leaving the type at constructor/arithmetic
+    support.
+  - Persist the owner-requested hard anti-conservatism rule in `AGENTS.md`.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_float_helpers.cpp` with BigFloat-preserving wrappers for
+    trig, inverse trig, exponential/logarithmic, power/root,
+    `math/lgamma`, `math/erf`, `math/erfc`, `stats/normal-cdf`, and
+    `stats/normal-quantile`.
+  - Added C3 externs and value helper wrappers for BigFloat unary/binary math.
+  - Updated math primitives so `BigFloat` operands return `BigFloat` for the
+    supported scalar math/scientific helpers instead of narrowing through
+    `Double`.
+  - Added focused advanced numeric regressions for BigFloat math results,
+    probability-domain failure, high-range `exp`, and high-precision
+    `lgamma`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/11-appendix-primitives.md`, and `memory/CHANGELOG.md`.
+  - Added `AGENTS.md` hard anti-conservatism rule with a mandatory
+    conservative-choice tax.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `c3c build main --output-dir build --build-dir build/obj2`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - direct smokes for BigFloat `sqrt`, `pow`, `stats/normal-cdf`,
+    `stats/normal-quantile`, high-range `exp`, and `math/lgamma` precision
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `127 passed, 0 failed`.
+  - Direct smokes returned `"1024"` for `(pow (BigFloat "2") 10)`, `"0"` for
+    `(stats/normal-quantile (BigFloat "0.5"))`, and `true` for
+    `(= (type-of (exp (BigFloat "1000"))) 'BigFloat)`.
+  - `math/lgamma` on `BigFloat "6"` matched the high-precision expected value
+    within `1e-45`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Treating BigFloat scientific functions as requiring Double-range narrowing
+    is now superseded for the implemented scalar math set.
+  - `c3c build` sometimes exited clean without recreating `build/main` after the
+    executable had been removed; using explicit `--output-dir build --build-dir`
+    restored a reliable validation artifact for this session.
+- Current best recommendation/checkpoint:
+  - BigFloat now has the core scalar scientific math surface. Next scalar work
+    should choose precision-control policy, exact BigFloat rounding-to-integer
+    behavior, or `BigComplex`.
+- Unresolved issues / blockers:
+  - BigFloat precision remains fixed at `cpp_dec_float_50`.
+  - `floor`, `ceiling`, `round`, and `truncate` still use the existing
+    Double-to-Integer path; exact BigFloat rounding-to-Integer/BigInteger needs
+    a separate policy and implementation.
+  - Full all-slice and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 07:52 CEST - BigFloat Numeric Promotion
+- Objective attempted:
+  - Continue the scientific numerics scalar lane with a non-conservative
+    BigFloat implementation, not just a boxed constructor.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added Boost.Multiprecision `cpp_dec_float_50` helper plumbing in
+    `csrc/big_float_helpers.cpp`, helper archive/project wiring, and C3 externs.
+  - Added runtime `BIG_FLOAT` values with scope destruction, copy-to-parent,
+    escape promotion, printing, `String`, `Double`, and `Integer` conversion.
+  - Registered `BigFloat` as a callable constructor/type descriptor and
+    `Number` subtype.
+  - Added BigFloat support for `+`, `-`, `*`, `/`, numeric comparisons, `=`,
+    `abs`, `min`, and `max`. Arithmetic returns `BigFloat` when a `BigFloat`
+    operand participates.
+  - Updated `parse-number` so valid floating inputs that overflow `Double`,
+    such as `"1e309"`, promote to `BigFloat`.
+  - Added focused advanced numeric regressions and updated language/reference
+    docs plus `.agents/PLAN.md` and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (BigFloat "1.25"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (+ (BigFloat "1.25") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigFloat "10") 4))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "1e309")) '\''BigFloat)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "1e309"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(is? (BigFloat "1.25") '\''Number)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(/ (BigFloat "1") 0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(sin (BigFloat "1e309"))'`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `115 passed, 0 failed`.
+  - Direct smokes returned `"1.25"`, `"3.25"`, and `"2.5"` for constructor,
+    addition, and division.
+  - `parse-number "1e309"` now returns `BigFloat` and stringifies as
+    `"1e+309"`.
+  - `BigFloat` is recognized as a `Number`.
+  - BigFloat division by zero preserves `/: division by zero`.
+  - Double-returning transcendentals fail closed for out-of-Double-range
+    BigFloat input instead of silently narrowing.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - A constructor-only BigFloat slice would be misleading because arithmetic
+    gates would either reject or accidentally reinterpret the value. BigFloat
+    now has the core numeric path wired with it.
+  - Initial helper code assumed `cpp_dec_float_50` exposes `.isfinite()`; this
+    was wrong for the local Boost version. Use `boost::math::isfinite(...)`.
+- Current best recommendation/checkpoint:
+  - Treat the first BigFloat numeric surface as active. Next scalar work should
+    choose between precision-control APIs, broader BigFloat transcendental
+    wrappers, or BigComplex.
+- Unresolved issues / blockers:
+  - BigFloat currently uses the fixed `cpp_dec_float_50` backend. User-visible
+    precision configuration has not been designed.
+  - Broader full-suite and ASAN validation were not run for this slice.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 07:35 CEST - StackCtx Boundary Copy Efficiency Narrowing
+- Objective attempted:
+  - Respond to the efficiency concern about the prior StackCtx boundary-copy
+    safety fix.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/eval_promotion_copy.c3` so StackCtx leaf/data-container
+    values bypass the fast-reuse classifier only when current stack headroom is
+    below `BOUNDARY_ALIAS_STACK_MIN_HEADROOM`.
+  - Kept the original safety behavior for low-headroom effect-continuation
+    returns, but restored normal scope-aware reuse classification for StackCtx
+    payloads with enough stack headroom.
+  - Updated `memory/CHANGELOG.md` with the validation result.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - direct nested effect payload predicate via `./build/main --eval`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 16000))'`
+- Key results and observed behavior:
+  - The direct nested effect payload predicate still returns `true`.
+  - Container `memory-lifetime-smoke` still passes at `225 passed, 0 failed`;
+    the traversal-summary run reports `copy_fast_reuse=3` and
+    `copy_defensive=89`.
+  - Range/TCO checks stayed in the fixed regime: exact advanced TCO passed with
+    `copy_tag_cons=0` and `copy_site_tco=0`; `limit-busting` passed `17/0`;
+    `tco-recycling` passed `11/0`.
+  - Direct `(length (range 4000))` took about 0.32s and
+    `(length (range 16000))` about 4.18s.
+- Invalidated assumptions / failed approaches worth preserving:
+  - The broad "every StackCtx ordinary payload container must skip reuse
+    classification" rule is too conservative now that the alias graph scan uses
+    heap scratch storage. The correct safety boundary is low StackCtx headroom,
+    not StackCtx presence by itself.
+- Current best recommendation/checkpoint:
+  - Keep reuse classification active for StackCtx returns when headroom allows
+    it. Retain direct defensive copy as the low-headroom fallback for leaf values
+    and ordinary data containers.
+- Unresolved issues / blockers:
+  - Full all-slice and ASAN validation were not run for this narrowing.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 06:51 CEST - Parse Number BigInteger Promotion
+- Objective attempted:
+  - Continue the scalar precision lane by implementing automatic BigInteger
+    promotion for `parse-number` decimal integer overflow.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/prim_string_convert.c3` so syntactically valid decimal
+    integer overflow/underflow returns `BigInteger` instead of `nil`.
+  - Preserved maybe-valued parse failure behavior for malformed strings by
+    verifying the rest of the decimal input before calling the BigInteger
+    constructor.
+  - Updated `Double` string coercion so a `parse-number` BigInteger result can
+    narrow to finite `Double`.
+  - Added focused advanced numeric regressions in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/04-type-system.md`,
+    `docs/plans/number-parse-surface-decision-2026-04-11.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "9223372036854775808"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (parse-number "-9223372036854775809"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "9223372036854775808")) '\''BigInteger)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(= (type-of (parse-number "-9223372036854775808")) '\''Integer)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(parse-number "9223372036854775808x")'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(Double "9223372036854775808")'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - `parse-number` now returns `BigInteger` for valid decimal strings outside
+    fixed-width `Integer` range.
+  - The exact `long.min` string still returns fixed-width `Integer`.
+  - Malformed overflow-looking strings such as
+    `"9223372036854775808x"` still return `nil`.
+  - Focused advanced numeric float-math group passed on host and in the bounded
+    container at `101 passed, 0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not keep treating `parse-number` integer overflow/underflow as `nil`;
+    that contract is superseded for syntactically valid decimal integer input.
+- Current best recommendation/checkpoint:
+  - Treat the BigInteger scalar follow-up lane as closed through constructor,
+    exact arithmetic, comparisons, bitwise operations, and `parse-number`
+    decimal overflow promotion.
+- Unresolved issues / blockers:
+  - Source literals wider than fixed-width `Integer` still fail lexing; this
+    slice only changes string parsing through `parse-number`.
+  - BigFloat/BigComplex representation, precision policy, and lifetimes remain
+    the next scalar precision design problem.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 06:42 CEST - BigInteger Bitwise Primitives
+- Objective attempted:
+  - Continue the scalar Boost.Multiprecision lane by closing the deferred
+    BigInteger bitwise primitive surface.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` with Boost.Multiprecision-backed
+    bitwise binary ops, bitwise complement, and left/right shifts.
+  - Added C3 extern declarations in `src/lisp/big_integer_backend.c3`.
+  - Added BigInteger bitwise helper plumbing in
+    `src/lisp/value_big_integer.c3`.
+  - Updated `src/lisp/prim_math_core.c3` so `bitwise-and`, `bitwise-or`,
+    `bitwise-xor`, `bitwise-not`, `lshift`, and `rshift` accept exact
+    `Integer`/`BigInteger` operands.
+  - Added focused advanced numeric bitwise regressions in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-sort-bitwise-hof OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-sort-bitwise-hof OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (bitwise-and (BigInteger "18446744073709551615") 255))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (lshift 1 64))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (rshift (BigInteger "1267650600228229401496703205376") 100))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift (BigInteger "1") -1)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift 1 (BigInteger "9223372036854775808"))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(lshift 1 1048577)'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results and observed behavior:
+  - Focused advanced numeric bitwise group passed on host and in the bounded
+    container at `35 passed, 0 failed`.
+  - Direct BigInteger bitwise-and smoke returned `"255"`.
+  - `lshift 1 64` now returns `"18446744073709551616"` through overflow
+    promotion instead of the old machine-width `0`.
+  - BigInteger right shift smoke returned `"1"`.
+  - Negative shift counts still return `0`.
+  - Shift counts too large to narrow to `Integer`, or above the bounded
+    exact-shift cap (`1048576` bits), fail closed with
+    `shift count out of range`.
+  - Stage 3 source parity passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not treat the old `shift >= 64 -> 0` behavior as the exact-integer
+    contract for `lshift`; it is superseded by promotion for non-negative exact
+    integer shifts.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger bitwise operations as shipped. Remaining scalar precision
+    follow-ups are arbitrary-precision `parse-number` policy and the larger
+    `BigFloat`/`BigComplex` representation work.
+- Unresolved issues / blockers:
+  - Shift counts are still bounded; unbounded BigInteger shift counts and
+    representable-but-huge counts are intentionally rejected to avoid accidental
+    huge allocations.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 06:31 CEST - Signed Long-Min Lexer Boundary
+- Objective attempted:
+  - Fix the raw source literal `-9223372036854775808` after the prior
+    BigInteger primitive slice identified it as a lexer boundary failure.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/parser_lexer_symbol_number.c3` so decimal integer
+    scanning permits exactly the negative `long.min` magnitude while still
+    rejecting positive overflow and negative underflow.
+  - Updated `src/lisp/parser_lexer_number_helpers.c3` so float scanning uses a
+    separate `double` integer-part accumulator. This avoids accidentally
+    mis-signing `-9223372036854775808.0` while the integer scanner handles the
+    `long.min` token boundary.
+  - Added basic-suite regressions in `src/lisp/tests_core_groups.c3`.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/SYNTAX_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775809'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808.0'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Raw `-9223372036854775808` now parses and evaluates to the fixed-width
+    integer minimum.
+  - Raw `-9223372036854775809` and `9223372036854775808` still fail with
+    `integer literal overflow`.
+  - Raw `-9223372036854775808.0` parses as a negative `Double`.
+  - Host and bounded-container basic slices both passed at `144 passed,
+    0 failed`.
+  - Stage 3 source parity and whitespace checks passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - The prior operational warning that source literal `-9223372036854775808`
+    cannot be used is superseded after this commit. It remains true only for
+    older checkpoints before the lexer fix.
+- Current best recommendation/checkpoint:
+  - Treat fixed-width integer source literals as covering the full signed range
+    `long.min..long.max`. Wider decimal integers should still use the
+    `BigInteger` constructor until arbitrary-precision literal or
+    `parse-number` policy is explicitly implemented.
+- Unresolved issues / blockers:
+  - This does not add BigInteger source literals; positive overflow and
+    negative underflow still intentionally fail in the lexer.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 06:18 CEST - BigInteger Exact Number Primitives
+- Objective attempted:
+  - Explain and fix the observed BigInteger `gcd` failure by closing the next
+    scalar exact-number primitive slice.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` with Boost.Multiprecision-backed
+    `gcd` and `lcm` op codes.
+  - Added shared helper plumbing in `src/lisp/value_big_integer.c3` for exact
+    integer predicates and optional narrowing of BigInteger helper results back
+    to `Integer` when an overflow-boundary operation's exact result fits.
+  - Updated `src/lisp/prim_math_core.c3` so `abs`, `min`, `max`, `gcd`, and
+    `lcm` use the BigInteger-aware numeric path instead of rejecting
+    `BigInteger` at the older fixed-width-only gates.
+  - Updated advanced numeric tests so the old long-min overflow expectations
+    match the current auto-promotion contract.
+  - Updated `.agents/PLAN.md`, `docs/LANGUAGE_SPEC.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '-9223372036854775808'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(- -9223372036854775807 1)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(gcd (BigInteger "9223372036854775808") 2)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigInteger "18446744073709551616") 2))'`
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh bash -lc 'env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp && env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-string-predicate-format OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (gcd (BigInteger "18446744073709551616") 24))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (lcm (Integer "-9223372036854775808") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (abs (BigInteger "-5")))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (max (BigInteger "9223372036854775808") 1))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- Key results and observed behavior:
+  - The original failure was not a Boost helper issue: `gcd` still required
+    `INT` operands and rejected `BIG_INTEGER` before dispatching to exact
+    arithmetic.
+  - The raw source literal `-9223372036854775808` still fails at parse time as
+    `integer literal overflow`; use `(Integer "-9223372036854775808")` or build
+    long-min from in-range literals for runtime arithmetic tests.
+  - Helper archive rebuild and C3 build passed.
+  - Focused advanced numeric float-math group passed at `98 passed, 0 failed`.
+  - Focused advanced numeric string-predicate-format group passed at
+    `61 passed, 0 failed`.
+  - Bounded container rerun of those two advanced numeric group filters also
+    passed at `98 passed, 0 failed` and `61 passed, 0 failed`.
+  - Direct smokes returned `"8"` for BigInteger `gcd`, `"9223372036854775808"`
+    for long-min `lcm`, `"5"` for BigInteger `abs`, and
+    `"9223372036854775808"` for BigInteger `max`.
+  - Stage 3 source parity passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not treat `is_number`/`is_int` primitive gates as BigInteger-ready. New
+    numeric primitives that should accept exact integers need `is_numeric_value`
+    or `is_exact_integer_value`.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger `abs`, `min`, `max`, `gcd`, and `lcm` as shipped. The next
+    scalar precision follow-up should be BigInteger bitwise operations,
+    arbitrary-precision `parse-number`, or the larger `BigFloat`/`BigComplex`
+    representation work.
+- Unresolved issues / blockers:
+  - The parser still intentionally rejects the raw `-9223372036854775808`
+    source token; changing literal policy is separate from runtime promotion.
+- Signature: Codex (GPT-5)
+
+## 2026-04-15 05:31 CEST - BigInteger Division Modulo And Ordering
+- Objective attempted:
+  - Continue the scalar precision lane by closing the deferred BigInteger
+    `/`, `%`, and ordering-comparison surface before taking on BigFloat or
+    larger parsing policy.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/big_integer_helpers.cpp` so the Boost.Multiprecision
+    `cpp_int` helper supports division and modulo op codes.
+  - Added shared BigInteger-aware numeric comparison helpers in
+    `src/lisp/value_big_integer.c3`.
+  - Updated `src/lisp/prim_math_arithmetic.c3` so `/` supports exact
+    `Integer`/`BigInteger` quotient semantics when no `Double` participates,
+    promotes the `long.min / -1` overflow boundary to `BigInteger`, and keeps
+    mixed `Double` operations on the existing finite-narrowing path.
+  - Updated `%` to accept `Integer` and `BigInteger` operands, with
+    deterministic division-by-zero behavior and `long.min % -1` returning `0`.
+  - Updated `src/lisp/primitives_core.c3` and
+    `src/lisp/jit_jit_apply_multi_prims_tail.c3` so `<`, `>`, `<=`, and `>=`
+    compare BigInteger exactly against Integer/BigInteger; comparisons involving
+    `Double` require finite Double conversion.
+  - Added focused regression coverage in
+    `src/lisp/tests_advanced_stdlib_numeric_groups.c3`.
+  - Updated `docs/LANGUAGE_SPEC.md`, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (/ (BigInteger "18446744073709551616") 2))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(String (% (BigInteger "9223372036854775810") 3))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(< (BigInteger "9223372036854775808") (BigInteger "9223372036854775809"))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused advanced numeric float-math group passed at `90 passed, 0 failed`;
+    the group exercises interpreter and JIT paths for the added comparison
+    tests.
+  - Direct smokes returned `"9223372036854775808"` for BigInteger division,
+    `"1"` for BigInteger modulo, and `true` for BigInteger less-than.
+  - An initial test-only attempt used the literal
+    `-9223372036854775808`, which fails at parse time before runtime overflow
+    semantics are exercised. The regression now constructs `long.min` through
+    `(- -9223372036854775807 1)`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Do not use `-9223372036854775808` as a source literal when testing runtime
+    `long.min` arithmetic; build it from in-range literals instead.
+- Current best recommendation/checkpoint:
+  - Treat BigInteger `/`, `%`, and ordering comparisons as shipped for exact
+    integer operands. Remaining scalar precision work is now `BigFloat` /
+    `BigComplex`, BigInteger bitwise operations, `gcd`/`lcm`, and
+    arbitrary-precision `parse-number` policy.
+- Unresolved issues / blockers:
+  - Comparisons involving `Double` intentionally use finite Double narrowing;
+    exact integer-vs-decimal comparison is a separate BigFloat/decimal policy
+    question.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 22:27 CEST - Boost.Math Standard Normal Wrappers
+- Objective attempted:
+  - Continue the scalar scientific numerics plan by adding the first
+    Boost.Math distribution helpers on top of the validated unary scalar
+    wrapper pattern.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/boost_math_helpers.cpp` with standard normal CDF and
+    quantile C-ABI functions backed by `boost::math::normal_distribution`,
+    `boost::math::cdf`, and `boost::math::quantile`.
+  - Added C3 extern declarations in `src/lisp/boost_math_backend.c3`.
+  - Added one-argument `stats/normal-cdf` and `stats/normal-quantile`
+    primitives. `stats/normal-cdf` takes a finite standard-normal x value;
+    `stats/normal-quantile` takes a finite probability strictly between `0`
+    and `1`.
+  - Registered both primitives in the interpreter primitive table and AOT
+    primitive lookup table.
+  - Added focused float-math coverage for CDF values, quantile values,
+    probability-domain failure, and out-of-Double-range `BigInteger` input.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/reference/11-appendix-primitives.md`,
+    `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf 1.96)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-quantile 0.975)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-quantile 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(stats/normal-cdf (BigInteger "..."))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused float-math tests passed at `79 passed, 0 failed`.
+  - Direct runtime smokes returned `0.5` for `(stats/normal-cdf 0.0)`,
+    `0.97500210485178` for `(stats/normal-cdf 1.96)`, and
+    `1.95996398454005` for `(stats/normal-quantile 0.975)`.
+  - `(stats/normal-quantile 0.0)` fails closed with
+    `stats/normal-quantile: probability must be between 0 and 1`.
+  - Very large `BigInteger` input to `stats/normal-cdf` fails closed with
+    `stats/normal-cdf: value out of Double range`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - None in this slice.
+- Current best recommendation/checkpoint:
+  - Treat standard-normal CDF/quantile as the validated first distribution
+    wrapper contract. Do not broaden it silently to mean/stddev parameters; add
+    that as a separate surface decision if needed.
+  - The remaining high-value scientific numerics choices are now scalar
+    precision work (`BigFloat`, `BigComplex`, BigInteger division/comparison,
+    arbitrary-precision parsing) or Tensor LAPACK/LAPACKE public naming.
+- Unresolved issues / blockers:
+  - No container-only memory ownership run was needed for this slice because it
+    does not change Omni value ownership.
+  - Multi-parameter normal distributions and other distribution families are
+    intentionally not part of this first wrapper.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 21:48 CEST - StackCtx Boundary Copy Smoke Fix
+- Objective attempted:
+  - Continue the range/TCO follow-up by closing the container-only
+    `memory-lifetime-smoke` validation gap.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Built the local validation image `omni-validation:2026-03-10` from
+    `docker/validation.Dockerfile` so container-bound memory slices can run.
+  - Updated `src/lisp/eval_promotion_copy.c3` so copy-to-parent skips full
+    boundary reuse classification for leaf values and list/array/dict/set data
+    containers while executing inside a StackCtx. These values are copied
+    defensively instead, which preserves ownership and avoids spending the
+    128KB continuation stack on reuse probes during nested effect payload return
+    copying.
+  - Updated `memory/CHANGELOG.md` with the validation result.
+- Commands run:
+  - `OMNI_VALIDATION_IMAGE=omni-validation:2026-03-10 scripts/build_validation_image.sh`
+  - `c3c build --obj-out obj`
+  - direct nested effect payload expression and predicate via `./build/main --eval`
+  - `gdb --batch ... ./build/main --eval <nested effect payload expression>`
+  - `timeout 180s scripts/run_validation_container.sh env LD_LIBRARY_PATH=/usr/lib:/usr/local/lib:/workspace/build OMNI_LISP_TEST_SLICE=memory-lifetime-smoke OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `timeout 60s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib:/home/christos/Omni/build ./build/main --eval '(length (range 16000))'`
+- Key results and observed behavior:
+  - Initial bounded `memory-lifetime-smoke` run failed at
+    `lifetime: boundary nested effect payload graph`; direct evaluation showed
+    `stack overflow in resolve`.
+  - GDB localized the guard hit to recursive copy-to-parent of a nested
+    dict/list payload under `boundary_build_destination_cons_escape`, with full
+    `boundary_classify_return_value` reuse probes still occurring deep inside
+    the StackCtx.
+  - The direct nested payload test now returns the expected captured render
+    event, and the test predicate returns `true`.
+  - Container `memory-lifetime-smoke` now passes at `225 passed, 0 failed`.
+  - Range/TCO checks stayed in the fixed regime: exact advanced TCO passed with
+    `copy_tag_cons=0` and `copy_site_tco=0`; direct `(length (range 4000))`
+    took about 0.31s and `(length (range 16000))` about 4.17s.
+- Invalidated assumptions / failed approaches worth preserving:
+  - Bypassing reuse classification only for scalar leaves inside StackCtx was
+    insufficient; nested `HASHMAP` containers still triggered the same guarded
+    stack overflow. The data-container shortcut is required for this payload
+    shape.
+- Current best recommendation/checkpoint:
+  - Keep StackCtx copy-to-parent defensive for ordinary data payloads. Reuse
+    classification remains valuable on the main stack, but effect continuations
+    need the smaller-stack path to prefer copying over recursive provenance
+    probing for lists, arrays, dictionaries, and sets.
+- Unresolved issues / blockers:
+  - None known for this follow-up. The parent revision already contains the
+    Boost.Math `math/erf` / `math/erfc` slice; this change is scoped to the
+    StackCtx copy fix and handoff notes.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 16:20 CEST - Boost.Math `math/erf` And `math/erfc`
+- Objective attempted:
+  - Continue the scalar scientific numerics plan by extending the validated
+    Boost.Math wrapper pattern from `math/lgamma` to the error-function family.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Extended `csrc/boost_math_helpers.cpp` with a shared finite-input unary
+    Boost.Math helper and new C-ABI functions for `boost::math::erf` and
+    `boost::math::erfc`.
+  - Added C3 extern declarations in `src/lisp/boost_math_backend.c3`.
+  - Added `math/erf` and `math/erfc` runtime primitives with the same
+    numeric-narrowing and deterministic error policy as `math/lgamma`.
+  - Registered both primitives in the interpreter primitive table and AOT
+    primitive lookup table.
+  - Added focused float-math coverage for `math/erf`, `math/erfc`, and
+    out-of-Double-range `BigInteger` input.
+  - Updated `docs/LANGUAGE_SPEC.md`, `docs/reference/11-appendix-primitives.md`,
+    `.agents/PLAN.md`, and `memory/CHANGELOG.md`.
+- Commands run:
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erf 1.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erfc 1.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/erf (BigInteger "..."))'`
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Helper archive rebuild and full C3 build passed.
+  - Focused float-math tests passed at `73 passed, 0 failed`.
+  - Direct runtime smokes returned `0.842700792949715` for `(math/erf 1.0)`
+    and `0.157299207050285` for `(math/erfc 1.0)`.
+  - Very large `BigInteger` input to `math/erf` fails closed with
+    `math/erf: value out of Double range`.
+  - Stage 3 source parity and `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - None in this slice. The helper-archive ordering issue from the prior
+    `math/lgamma` slice remains the useful operational constraint.
+- Current best recommendation/checkpoint:
+  - Treat the unary Boost.Math finite-input wrapper pattern as validated for
+    scalar special functions with `Double` output.
+  - The next scalar Boost.Math slice can either add normal distribution helpers
+    (`stats/normal-cdf`, `stats/normal-quantile`) or pause scalar wrappers and
+    return to Tensor LAPACK/LAPACKE naming.
+- Unresolved issues / blockers:
+  - Container-only memory ownership validation was not run; this slice does not
+    change Omni value ownership.
+  - BigFloat/BigComplex, BigInteger division/modulo/comparisons, and
+    arbitrary-precision parsing remain deferred.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 15:45 CEST - Boost.Math `math/lgamma` First Wrapper
+- Objective attempted:
+  - Continue the scientific numerics plan by landing the first Boost.Math scalar
+    function behind an owned C++ shim, without changing the public Tensor or GSL
+    direction.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Added `csrc/boost_math_helpers.cpp` as the C++17 Boost.Math C-ABI bridge
+    for `boost::math::lgamma`, returning stable status codes rather than C++
+    exceptions across the C3 boundary.
+  - Added `src/lisp/boost_math_backend.c3` and wired `math/lgamma` through the
+    math primitive table and AOT primitive lookup.
+  - Updated the helper archive build script and project source list so the new
+    Boost.Math helper is part of `libomni_chelpers`.
+  - Added focused float-math regression coverage for ordinary results, a gamma
+    pole domain error, and out-of-Double-range `BigInteger` input.
+  - Updated the language spec, primitive appendix, `.agents/PLAN.md`, and
+    `memory/CHANGELOG.md` for the landed wrapper and remaining scientific
+    numerics checkpoints.
+- Commands run:
+  - `c3c build --obj-out obj` initially failed at link time because the local
+    `build/libomni_chelpers.a` archive had not yet been rebuilt with
+    `omni_boost_math_lgamma`.
+  - `./scripts/build_omni_chelpers.sh`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-float-math OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 6.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 0.5)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma 0.0)'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(math/lgamma (BigInteger "..."))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 16000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+- Key results and observed behavior:
+  - Rebuilding `libomni_chelpers` resolved the expected missing-symbol link
+    failure, and the project linked successfully.
+  - Focused float-math tests passed at `70 passed, 0 failed`.
+  - Direct runtime smokes returned `4.78749174278205` for `(math/lgamma 6.0)`
+    and `0.5723649429247` for `(math/lgamma 0.5)`.
+  - `(math/lgamma 0.0)` raises `math/lgamma: domain error`.
+  - Very large `BigInteger` input fails closed with
+    `math/lgamma: value out of Double range`, preserving the scalar
+    narrowing boundary.
+  - Since the same working copy includes the range/TCO fix, the sharp TCO
+    validation was rechecked: `(length (range 4000))` returned `4000`,
+    `(length (range 16000))` returned `16000`, the exact TCO group passed at
+    `1 passed, 0 failed`, and `limit-busting` passed at `17 passed, 0 failed`.
+  - `git diff --check` passed.
+- Invalidated assumptions / failed approaches worth preserving:
+  - `c3c build` alone is not enough after adding a helper translation unit if
+    `build/libomni_chelpers.a` is stale; run `./scripts/build_omni_chelpers.sh`
+    first or use a build path that refreshes the helper archive.
+- Current best recommendation/checkpoint:
+  - Treat `math/lgamma` as the validated first Boost.Math wrapper and reuse its
+    status-code/error-policy pattern for the next scalar wrappers.
+  - Continue with one narrow scalar follow-up such as `math/erf`,
+    `math/erfc`, `stats/normal-cdf`, or `stats/normal-quantile`, or switch back
+    to the unresolved Tensor LAPACK/LAPACKE public naming checkpoint.
+- Unresolved issues / blockers:
+  - Container-only memory ownership validation was not run in this continuation.
+  - BigFloat/BigComplex, BigInteger division/modulo/comparisons, and
+    arbitrary-precision parsing remain deferred.
+- Signature: Codex (GPT-5)
+
+## 2026-04-14 15:00 CEST - Default-Stack Range/TCO Crash Fix
+- Objective attempted:
+  - Debug and fix the normal-stack crash in `(length (range 4000))` and the
+    `advanced-stdlib-numeric-tco` regression that previously required a larger
+    process stack.
+- Workspace/target:
+  - `/home/christos/Omni`
+- Code or configuration changes made:
+  - Updated `src/lisp/eval_promotion_escape_structured.c3` so cons cdr tail
+    promotion remains iterative when target-chain reuse is unsafe under the
+    boundary alias scan.
+  - Updated `src/lisp/eval_promotion_escape.c3` so cons values already in the
+    current ESCAPE lane reuse directly before the full alias graph scan.
+  - Updated `src/lisp/jit_jit_eval_scope_chain_helpers.c3` so the TCO temp-graph
+    scanner walks cons spines iteratively, skips non-TEMP scalar child values,
+    and uses a separate cons-spine cap instead of the generic graph worklist cap.
+  - Updated `memory/CHANGELOG.md` to mark the previous "needs larger stack"
+    caveat as historical and record the verified default-stack/performance fix.
+- Commands run:
+  - `timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `prlimit --stack=67108864 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `gdb --batch ... ./build/main --eval '(length (range 4000))'`
+  - `c3c build --obj-out obj`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric-tco OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=limit-busting OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 120s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 4000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 8000))'`
+  - `/usr/bin/time -f 'elapsed=%E exit=%x' timeout 30s env LD_LIBRARY_PATH=/usr/local/lib ./build/main --eval '(length (range 16000))'`
+  - `env LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=tco-recycling OMNI_TEST_SUMMARY=1 OMNI_BOUNDARY_TRAVERSAL_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check -- src/lisp/eval_promotion_escape_structured.c3`
+- Key results and observed behavior:
+  - Reproduced the default-stack crash before the fix: the 30s guarded
+    `(length (range 4000))` command dumped core.
+  - Localized the recursive stack source to long cons cdr promotion:
+    `promote_escape_cons` called `promote_to_escape(old_cdr)` after treating a
+    target-chain cons tail as reusable; alias analysis then rejected the long
+    tail at `BOUNDARY_ALIAS_MAX_DEPTH` and recursive disjoint promotion could
+    walk the range spine deeply enough to exhaust the normal stack.
+  - After the fix, the exact advanced TCO group passed (`1 passed, 0 failed`)
+    and the limit-busting slice passed (`17 passed, 0 failed`) on the normal
+    stack.
+  - Direct default-stack `(length (range 4000))` now returns `4000`; measured
+    runtime improved from about 55s after the correctness-only fix to about
+    0.32s after the performance patch.
+  - The exact advanced TCO traversal summary changed from
+    `copy_tag_cons=3906`, `copy_site_tco=7812`, and `cons_spine_peak_len=4000`
+    to `copy_tag_cons=0`, `copy_site_tco=0`, and `cons_spine_peak_len=0`.
+  - Longer direct probes also stayed under the 30s guard: `range 8000` returned
+    in about 1.15s and `range 16000` returned in about 4.14s.
+  - Host-side `memory-lifetime-smoke` was not run because the test harness
+    correctly rejects memory ownership slices outside the container. The
+    bounded container wrapper could not run because the local validation image
+    `omni-validation:2026-03-10` is not present.
+- Invalidated assumptions / failed approaches worth preserving:
+  - A releasing-scope-only tail iteration check did not fix the crash; the
+    failing path involved target-chain cons tails that alias analysis considered
+    unsafe for reuse only after its bounded depth scan.
+  - Do not treat the earlier `prlimit --stack=67108864` workaround as the best
+    current recommendation; the default-stack correctness issue is fixed.
+- Current best recommendation/checkpoint:
+  - Keep the cons-tail promotion rule aligned with alias-analysis reuse safety:
+    target-chain cdr tails may short-circuit only when
+    `boundary_graph_alias_unsafe_for_reuse` says reuse is safe.
+  - Keep the TCO temp-graph scanner on its cons-specific iterative path; do not
+    reintroduce scalar child pushes or generic worklist caps for proper cons
+    spines.
+- Unresolved issues / blockers:
+  - No correctness or 30s performance blocker remains for the reported
+    default-stack range/TCO issue.
+  - Container-only memory ownership validation still needs the local
+    `omni-validation:2026-03-10` image or an allowed rebuild.
+- Signature: Codex (GPT-5)
+
 ## 2026-04-09 Report Docs Syntax Drift Audit
 - Objectives attempted
   - Audit report/status documentation for syntax-surface drift after recent large refactor volume.
@@ -617,7 +7421,7 @@
     and `tcp-*`/`udp-*`/`dns-resolve`/`tls-*` surfaces.
   - Deleted the `eval_serialized_expr(...)` AOT debug bridge.
   - Updated tests and docs to use canonical spellings and removed the stale
-    `filesystem-read-directory` test path.
+    long-form filesystem test path.
   - Scrubbed remaining explicit migration wording from archival plan notes and
     changelog slices so the repository history now records the removals as
     one-way contract changes rather than support promises.
@@ -5035,3 +11839,237 @@
   - Historical plan/session artifacts still include legacy names by design;
     those files are historical records, not canonical language contracts.
 - Signature: Codex (GPT-5)
+
+## 2026-04-17 19:46 CEST - TENSOR-100F Vulkan Float32 Contract Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and land Vulkan
+    `Float32` rank-N `contract` without using `Float32` as a fallback for
+    `Float64` or silently copying unsupported Vulkan paths to CPU.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan Tensor contract shader/helper ABI, public
+    contract dispatch, focused tests, TODO, and design/status artifacts.
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_contract_f32.comp` and generated
+    `csrc/tensor_vulkan_contract_f32_spv.c`.
+  - Added `omni_tensor_backend_vulkan_contract_f32` in
+    `csrc/tensor_vulkan_helpers.c` and the matching C3 extern in
+    `src/lisp/tensor_vulkan_backend.c3`; build manifests now include the
+    generated Float32 SPIR-V C source.
+  - Updated `src/lisp/prim_tensor.c3` so Vulkan `contract` accepts matching
+    dense row-major `Float32` operands, preserves result dtype, keeps the
+    existing rank-1 dot fast path `Float64`-only, and dispatches `Float32`
+    contractions through the dedicated generic Float32 helper.
+  - Added focused availability-gated regressions in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3` for eager and lazy
+    Vulkan `Float32` contract operands: rank-1 dot, rank-2, rank-N
+    single-axis, multi-axis, zero-axis, zero-size, zero-free output, dtype
+    preservation, result placement, mixed-device rejection, and mixed-dtype
+    rejection.
+  - Updated `TODO.md`, `.agents/PLAN.md`, `.agents/SESSION_REPORT.md`,
+    `memory/CHANGELOG.md`, `docs/LANGUAGE_SPEC.md`,
+    `docs/reference/03-collections.md`, `docs/areas/tensor-scientific.md`,
+    `docs/plans/README.md`,
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md` so `Float32`
+    `contract` is no longer listed as deferred.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_contract_f32.comp -o /tmp/omni_tensor_vulkan_contract_f32.spv`: passed.
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_tensor_vulkan_contract_f32.spv`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` contract smokes returned `154.0` for rank-2,
+    `"Float32"` for result dtype, `vulkan` for result placement, `0.0` for
+    zero-size dot, `460.0` for rank-N single-axis, `210.0` for multi-axis,
+    `0` for zero-free output length, and `tensor/dtype-mismatch` for mixed
+    `Float32`/`Float64` Vulkan operands.
+  - Host focused `advanced-collections-module`: passed, `pass=1039 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1026 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating Vulkan `Float32` `contract` as fail-closed. Dense
+    row-major rank-N matching-`Float32` contract now has a real Vulkan shader
+    and helper path.
+  - Do not route `Float32` rank-1 dot through the existing Float64 dot helper;
+    it intentionally falls through to the generic Float32 contract helper.
+- Current best recommendation/checkpoint:
+  - Continue Vulkan `Float32` from structural matrix kernels (`transpose`,
+    `diagonal`, `diagonal-matrix`, `trace`) with explicit Float32 shader/helper
+    ABI names. Reducers and factor/solve kernels remain later work requiring
+    dedicated Float32 tolerances and oracles.
+- Unresolved issues:
+  - Vulkan `Float32` structural matrix kernels, reducers, and factor/solve
+    kernels remain fail-closed.
+  - CUDA `Float32` placement and scalar `Float32` values remain fail-closed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 20:11 CEST - TENSOR-100F Vulkan Float32 Structural Matrix Slice
+
+- Objective attempted:
+  - Continue `TENSOR-100F` using multiple GPT-5.4 agents and land Vulkan
+    `Float32` structural matrix kernels without using `Float32` as a fallback
+    for `Float64` or silently copying unsupported Vulkan paths to CPU.
+- Workspace/target:
+  - `/home/christos/Omni`, Vulkan Tensor structural matrix shaders/helpers,
+    public matrix dispatch, focused tests, TODO, and design/status artifacts.
+- Code or configuration changes made:
+  - Added `csrc/tensor_vulkan_transpose_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_matrix_f32.comp`,
+    `csrc/tensor_vulkan_trace_f32.comp`, and generated matching `_spv.c`
+    sources.
+  - Added `omni_tensor_backend_vulkan_transpose_f32`,
+    `omni_tensor_backend_vulkan_diagonal_f32`,
+    `omni_tensor_backend_vulkan_diagonal_matrix_f32`, and
+    `omni_tensor_backend_vulkan_trace_f32` in `csrc/tensor_vulkan_helpers.c`
+    using the existing Float32 two-buffer dispatcher, plus matching C3 externs
+    and build-manifest entries.
+  - Updated `src/lisp/prim_tensor_matrix.c3` so Vulkan `matrix/transpose`,
+    `matrix/diagonal`, `matrix/diagonal-matrix`, and `matrix/trace` accept
+    matching dense row-major `Float32` operands, preserve Tensor result dtype,
+    keep trace as a public scalar `Float64`, and do not widen/downcast through
+    the Float64 helpers.
+  - Added availability-gated tests in
+    `src/lisp/tests_advanced_stdlib_module_groups.c3` for Vulkan `Float32`
+    structural matrix copyback, placement, dtype preservation, lazy inputs,
+    zero-size behavior, scalar trace readback, and `Float64` no-downcast
+    preservation.
+  - Updated `TODO.md`, `.agents/PLAN.md`, `memory/CHANGELOG.md`,
+    `docs/LANGUAGE_SPEC.md`, `docs/reference/03-collections.md`,
+    `docs/areas/tensor-scientific.md`, `docs/plans/README.md`,
+    `docs/plans/vulkan-dtype-layout-policy-2026-04-17.md`,
+    `docs/plans/vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`, and
+    `docs/plans/vulkan-math-library-roadmap-2026-04-17.md` so structural
+    matrix kernels are no longer listed as deferred.
+- Commands run and key results:
+  - `glslangValidator` and `spirv-val` for
+    `csrc/tensor_vulkan_transpose_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_f32.comp`,
+    `csrc/tensor_vulkan_diagonal_matrix_f32.comp`, and
+    `csrc/tensor_vulkan_trace_f32.comp`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan `Float32` structural smokes returned `6.0` for transpose
+    copyback, `"Float32"` for diagonal result dtype, `0.0` for
+    diagonal-matrix off-diagonal copyback, and `5.0` for scalar trace readback.
+  - Host focused `advanced-collections-module`: passed, `pass=1059 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1046 fail=0`.
+  - `./scripts/check_primitive_docs_parity.sh`: passed.
+  - `./scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: passed.
+  - Targeted `git diff --check`: passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating Vulkan `Float32` structural matrix operations as
+    fail-closed. Dense row-major matching-`Float32` transpose, diagonal,
+    diagonal-matrix, and trace now have real Vulkan shader/helper paths.
+  - Do not route these Float32 matrix operations through the existing Float64
+    helpers; the landed path uses explicit `_f32` shader/helper ABI names.
+- Current best recommendation/checkpoint:
+  - Continue Vulkan `Float32` from reducer and factor/solve kernels. Structural
+    matrix kernels (`transpose`, `diagonal`, `diagonal-matrix`, `trace`) have
+    landed with explicit Float32 shader/helper ABI names.
+- Unresolved issues:
+  - Vulkan `Float32` SVD-backed reducers, singular-value/SVD outputs, and
+    factor/solve kernels remain fail-closed.
+  - CUDA `Float32` placement and scalar `Float32` values remain fail-closed.
+- Signature: Codex GPT-5.4
+
+## 2026-04-18 18:37 CEST - Vulkan Fixed-Complex Singular Values And Norms
+
+- Objective attempted:
+  - Continue TENSOR-100F by landing the next fixed-width complex numerical
+    matrix slice after QR/Cholesky: `matrix/singular-values` plus dependent
+    spectral/nuclear `matrix/norm` selectors.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_matrix.c3`
+  - `csrc/tensor_vulkan_singular_values_complex128.comp`
+  - `csrc/tensor_vulkan_singular_values_complex64.comp`
+  - Tensor Vulkan helper ABI and advanced stdlib matrix tests
+- Code or configuration changes made:
+  - Added CPU `Complex128`/`Complex64` singular-value helpers using
+    realification and duplicate-pair collapse. Complex singular values return
+    component-width real tensors: `Float64` for `Complex128`, `Float32` for
+    `Complex64`.
+  - Routed CPU complex `matrix/norm` `'spectral` and `'nuclear` through the
+    same singular-value oracle while preserving the public `Float64` norm
+    result.
+  - Added Vulkan `Complex128`/`Complex64` singular-value shaders and helper
+    exports. Vulkan complex singular-values return Vulkan-placed
+    component-width real tensors, and Vulkan spectral/nuclear complex norms
+    read back only the scalar `Float64` public result.
+  - Kept full complex `matrix/svd` factor output fail-closed because its
+    public contract needs complex `u`/`v` tensors and component-width real `s`.
+  - Added a native validation guard so Vulkan fixed-complex singular-value
+    shapes whose realified Jacobi iteration bound would overflow `uint` fail
+    closed before shader dispatch, plus tests for non-diagonal lazy, wide,
+    zero-size, spectral/nuclear, and overflow-guard behavior.
+  - Updated TODO, active plan, language/reference docs, tensor area docs, and
+    fixed-width complex contract notes so complex singular-values and
+    spectral/nuclear norms are no longer described as deferred for CPU/Vulkan.
+- Commands run and key results:
+  - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
+    `tensor_vulkan_singular_values_complex128.comp` and
+    `tensor_vulkan_singular_values_complex64.comp`: passed.
+  - `./scripts/build_omni_chelpers.sh`: passed.
+  - `c3c build --obj-out obj`: passed with existing deprecation warnings.
+  - Direct Vulkan smokes passed:
+    - Complex128 singular-values copyback returned `("Float64" 5.0 2.0)`.
+    - Complex64 singular-values copyback returned `("Float32" 5.0 2.0)`.
+    - Vulkan complex spectral/nuclear norm smoke returned `(5.0 7.0)`.
+  - Host focused `advanced-collections-module`: passed, `pass=1598 fail=0`.
+  - Bounded-container focused `advanced-collections-module`: passed,
+    `pass=1581 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, and targeted diff hygiene
+    passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating fixed-width complex `matrix/singular-values` or
+    spectral/nuclear `matrix/norm` selectors as CPU/Vulkan deferred. They are
+    now implemented and validated for `Complex128` and `Complex64`.
+  - Do not infer full complex `matrix/svd` factor support from singular-value
+    support; complex SVD factor output remains a separate ABI/result-contract
+    item.
+  - Do not rely only on storage-size validation for Vulkan fixed-complex
+    singular-values. The realified Jacobi iteration bound has its own `uint`
+    overflow limit and is now guarded explicitly.
+- Current best recommendation/checkpoint:
+  - Next fixed-width complex numerical work should target either full complex
+    `matrix/svd` factor output, CUDA complex singular-values/norm selectors,
+    or complex eigen/eigenpair result contracts. Preserve no-hidden-fallback
+    tests for every backend path.
+- Unresolved issues:
+  - Full complex `matrix/svd` factor output remains fail-closed.
+  - CUDA fixed-width complex singular-values, spectral/nuclear norms, and SVD
+    remain unimplemented.
+- Signature: Codex GPT-5.4
+
+## 2026-04-17 20:42 CEST - TENSOR-100F Vulkan Float32 Direct Reducer Supersession
+
+- Objective attempted:
+  - Record that the later direct reducer slice supersedes the structural
+    matrix handoff line that listed all Vulkan `Float32` reducers as
+    fail-closed.
+- Current best recommendation/checkpoint:
+  - Vulkan `Float32` `matrix/rank` and direct `matrix/norm` selectors
+    default/`'frobenius`, `'one`, `'infinity`, and `'max` are landed and
+    validated with dedicated `_f32` shader/helper paths.
+  - Continue from SVD-backed `Float32` reducers (`matrix/norm`
+    `'spectral`/`'nuclear`, `matrix/singular-values`, `matrix/svd`) or
+    factor/solve kernels, not from the broad "all reducers fail-closed"
+    assumption.
+- Commands run and key results:
+  - Full details are recorded in the `20:42 CEST - TENSOR-100F Vulkan Float32
+    Direct Reducer Slice` entry above: shader validation, helper rebuild,
+    `c3c build --obj-out obj`, direct smokes, host focused
+    `advanced-collections-module` `pass=1098 fail=0`, bounded-container
+    focused `advanced-collections-module` `pass=1085 fail=0`, primitive docs
+    parity, Stage 3 source parity, and targeted `git diff --check` passed.
+- Unresolved issues:
+  - Vulkan `Float32` SVD-backed reducers, singular-value/SVD outputs, and
+    factor/solve kernels remain fail-closed.
+  - CUDA `Float32` placement and scalar `Float32` values remain fail-closed.
+- Signature: Codex GPT-5.4

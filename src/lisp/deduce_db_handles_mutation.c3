@@ -40,11 +40,13 @@ fn DeduceRuleRegisterStatus deduce_db_add_rule_signature(
     }
     for (usz i = 0; i < body_term_counts.len; i++) {
         if (i >= body_term_offsets.len) return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
-        if (body_term_offsets[i] + body_term_counts[i] > body_term_is_variable.len) {
+        if (body_term_offsets[i] > body_term_is_variable.len ||
+            body_term_counts[i] > body_term_is_variable.len - body_term_offsets[i]) {
             return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
         }
     }
 
+    if (db.rule_signature_count == usz.max) return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
     usz needed = db.rule_signature_count + 1;
     if (!deduce_db_ensure_rule_signature_capacity(db, needed)) {
         return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
@@ -75,6 +77,15 @@ fn DeduceRuleRegisterStatus deduce_db_add_rule_signature(
     dst.max_var_id = max_var_id;
 
     if (body_predicates.len > 0) {
+        if (body_predicates.len > usz.max / SymbolId.sizeof ||
+            body_negated.len > usz.max / bool.sizeof ||
+            body_bound_masks.len > usz.max / ulong.sizeof ||
+            body_selected_indexes.len > usz.max / int.sizeof ||
+            body_filter_pushdown.len > usz.max / bool.sizeof ||
+            body_projection_masks.len > usz.max / ulong.sizeof) {
+            deduce_rule_signature_release_allocations(dst);
+            return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
+        }
         dst.body_predicates = (SymbolId*)mem::malloc(SymbolId.sizeof * body_predicates.len);
         if (dst.body_predicates == null) {
             deduce_rule_signature_release_allocations(dst);
@@ -116,6 +127,14 @@ fn DeduceRuleRegisterStatus deduce_db_add_rule_signature(
     }
 
     if (head_term_kinds.len > 0) {
+        if (head_term_kinds.len > usz.max / DeduceRuleTermKind.sizeof ||
+            head_term_aggregate_ops.len > usz.max / DeduceAggregateOpKind.sizeof ||
+            head_term_is_variable.len > usz.max / bool.sizeof ||
+            head_term_var_ids.len > usz.max / uint.sizeof ||
+            head_term_literals.len > usz.max / Value*.sizeof) {
+            deduce_rule_signature_release_allocations(dst);
+            return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
+        }
         dst.head_term_kinds = (DeduceRuleTermKind*)mem::malloc(DeduceRuleTermKind.sizeof * head_term_kinds.len);
         if (dst.head_term_kinds == null) {
             deduce_rule_signature_release_allocations(dst);
@@ -154,6 +173,11 @@ fn DeduceRuleRegisterStatus deduce_db_add_rule_signature(
     }
 
     if (body_term_counts.len > 0) {
+        if (body_term_offsets.len > usz.max / usz.sizeof ||
+            body_term_counts.len > usz.max / usz.sizeof) {
+            deduce_rule_signature_release_allocations(dst);
+            return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
+        }
         dst.body_term_offsets = (usz*)mem::malloc(usz.sizeof * body_term_offsets.len);
         if (dst.body_term_offsets == null) {
             deduce_rule_signature_release_allocations(dst);
@@ -171,6 +195,12 @@ fn DeduceRuleRegisterStatus deduce_db_add_rule_signature(
     }
 
     if (body_term_is_variable.len > 0) {
+        if (body_term_is_variable.len > usz.max / bool.sizeof ||
+            body_term_var_ids.len > usz.max / uint.sizeof ||
+            body_term_literals.len > usz.max / Value*.sizeof) {
+            deduce_rule_signature_release_allocations(dst);
+            return DEDUCE_RULE_REGISTER_OUT_OF_MEMORY;
+        }
         dst.body_term_is_variable = (bool*)mem::malloc(bool.sizeof * body_term_is_variable.len);
         if (dst.body_term_is_variable == null) {
             deduce_rule_signature_release_allocations(dst);

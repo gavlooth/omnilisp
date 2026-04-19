@@ -8,7 +8,8 @@ bool g_bind_force_param_alloc_fail = false;
  */
 fn ParseHeaderResult parse_header_checked(LibclangHandle* h, char[] header_path,
     ParsedFunc* out, usz max,
-    void* filter, usz filter_count, bool use_filter) {
+    void* filter, usz filter_count, bool use_filter,
+    void* exclude_filter, usz exclude_filter_count, bool use_exclude_filter) {
     ParseHeaderResult result = {};
 
     // Null-terminate header path
@@ -46,6 +47,9 @@ fn ParseHeaderResult parse_header_checked(LibclangHandle* h, char[] header_path,
     state.filter = (char[64]*)filter;
     state.filter_count = filter_count;
     state.use_filter = use_filter;
+    state.exclude_filter = (char[64]*)exclude_filter;
+    state.exclude_filter_count = exclude_filter_count;
+    state.use_exclude_filter = use_exclude_filter;
     state.output_limit_hit = false;
     state.param_allocation_failed = false;
     state.unsupported_type = false;
@@ -70,5 +74,5 @@ fn ParseHeaderResult parse_header_checked(LibclangHandle* h, char[] header_path,
 fn usz parse_header(LibclangHandle* h, char[] header_path,
                     ParsedFunc* out, usz max,
                     void* filter, usz filter_count, bool use_filter) {
-    return parse_header_checked(h, header_path, out, max, filter, filter_count, use_filter).count;
+    return parse_header_checked(h, header_path, out, max, filter, filter_count, use_filter, null, 0, false).count;
 }

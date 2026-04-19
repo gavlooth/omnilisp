@@ -105,11 +105,15 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
     if (val != null && val.tag == ARRAY && val.array_val != null) {
         list_len = val.array_val.length;
     } else {
+        if (!is_list(val)) return match_fail();
         list_len = get_list_length(val);
     }
 
     Value** elems = null;
     if (list_len > 0) {
+        if (list_len > usz.max / Value*.sizeof) {
+            return match_error(raise_error(interp, "match: out of memory while collecting sequence elements"));
+        }
         elems = (Value**)mem::malloc(Value*.sizeof * list_len);
         if (elems == null) {
             return match_error(raise_error(interp, "match: out of memory while collecting sequence elements"));

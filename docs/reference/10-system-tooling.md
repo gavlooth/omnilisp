@@ -14,12 +14,12 @@
 
 ;; Symbols
 (gensym)                     ;; => unique symbol
-(string->symbol "foo")       ;; => foo
-(symbol->string 'foo)        ;; => "foo"
+(Symbol "foo")       ;; => foo
+(String 'foo)        ;; => "foo"
 
 ;; Conversions
-(exact->inexact 42)          ;; => 42.0
-(inexact->exact 42.5)        ;; => 42
+(Float64 42)          ;; => 42.0
+(Integer 42.5)        ;; => 42
 
 ;; Sorting
 (sort '(3 1 2))              ;; => (1 2 3)
@@ -32,7 +32,7 @@
 (unsafe-free! obj)           ;; manually free heap backing
 
 ;; Type predicates
-(string? "hi")    (int? 42)      (double? 3.14)
+(string? "hi")    (int? 42)      (float64? 3.14)
 (number? 42)      (symbol? 'x)   (closure? (lambda (x) x))
 (list? '(1 2))    (array? [1])   (dict? {'a 1})
 (pair? '(1 . 2))  (null? nil)    (boolean? true)
@@ -83,6 +83,19 @@ nil               ;; nil value
 
 ```lisp
 #r"[0-9]+"        ;; compiled regex (no string escaping needed)
+```
+
+### Reader Tags
+
+```lisp
+(define (reader-inc x) (+ x 1))
+#reader-inc 41    ;; parses as (reader-inc 41), evaluates to 42
+
+(define [reader tag] reader-Float64
+  (syntax-match
+    ([x] (template (+ (insert x) (insert x))))))
+
+#reader-Float64 21 ;; parses as (reader-Float64 21), macro-expands to 42
 ```
 
 ### Special Tokens
@@ -156,6 +169,8 @@ opt = "O0"                # O0 | O1 | O2 | O3 | Os | Oz
 library = "m"
 headers = ["/usr/include/math.h"]
 functions = ["sin", "cos", "sqrt"]
+# raw-syntax = "grouped"  # optional: legacy (default) or grouped
+# strip-prefixes = ["sqlite3_"]  # optional: facade-name prefix stripping
 ```
 
 ### `--bind` Workflow
@@ -164,9 +179,65 @@ functions = ["sin", "cos", "sqrt"]
 2. Run `omni --bind myproject/`
 3. Generated raw modules and facade stubs appear in `lib/ffi/` when header parsing succeeds without overrunning the current fixed bind scratch limits
 4. Import with `(import "lib/ffi/math.omni")`
-5. Execution-mode note: generated modules are declarative FFI and therefore currently target interpreter/JIT workflows; AOT currently rejects declarative `ffi` forms
+5. Execution-mode note: generated modules are declarative FFI. Interpreter/JIT enforces `ForeignHandle` metadata dictionaries; AOT carries the same policy into generated FFI declarations with handle descriptors for parameters and returns.
 
 Requires libclang (only for `--bind`, not for running programs).
+
+By default, `--bind` output still uses `[ffi lib]` plus `[ffi λ]`. Grouped
+`[ffi module]` output is available per FFI dependency with
+quoted `raw-syntax = "grouped"`; unquoted or unsupported values fail closed
+before header parsing.
+Grouped raw output includes `;; Raw syntax: grouped` in the generated header so
+review diffs expose the selected raw syntax explicitly.
+`strip-prefixes = ["prefix_"]` strips matching C prefixes from generated facade
+names and `raw-*` aliases while raw binding names keep the C-derived symbol
+names used by `dlsym`. Malformed, empty, or overlong `strip-prefixes` entries
+fail the dependency before header parsing.
+The same fail-closed parsing applies to the bind-only `library`, `headers`, and
+`functions` fields so missing required, malformed, empty, overlong, or
+incorrectly shaped values cannot be truncated, accepted loosely, or treated as
+no-op dependencies.
+Adjacent quoted scalar tails, such as `library = "sqlite3" "m"`, are treated as
+malformed and fail closed.
+Unsupported keys in `[dependencies.ffi.NAME]` fail closed before header parsing;
+future extension fields must be implemented deliberately instead of being
+accepted as no-ops.
+Unsafe `library` stems containing slash, backslash, quote, whitespace, or
+control characters fail before generated raw/facade/manifest output.
+Explicit `functions = [...]` filters require every listed C function to be
+found in parsed headers; missing entries fail before generated output.
+If a later header fails after earlier headers were parsed, `--bind` releases
+the earlier parsed function metadata before failing and does not write partial
+outputs.
+Inline `#` comments after section headers are accepted. Malformed
+section-header lines starting with `[` reset parser context so following keys
+cannot mutate the previously active dependency section.
+If bindgen writes a new raw module but facade generation then fails, the new
+raw file is removed before returning failure. Existing raw files are left in
+place on rerun failures.
+If raw/facade generation succeeds but manifest writing then fails, first-time
+raw, facade, and manifest artifacts are cleaned before dependency failure.
+Existing raw, facade, or manifest artifacts are left in place on rerun failures.
+Raw, facade, and manifest text writers use sibling temp paths and rename into
+place only after a full write and close succeeds. Failed final renames clean
+their temp output instead of replacing the target with a partial file.
+Anonymous C parameter fallback names format the full numeric index (`arg123`,
+etc.) so high-arity generated bindings do not emit invalid fallback symbols.
+Repeated bind dependency keys fail closed instead of using last-write-wins
+semantics for the library target, function filter, raw syntax mode, or
+generated-name rewrite policy.
+Repeated `[dependencies.ffi.NAME]` sections also fail closed so two dependencies
+cannot target the same generated raw, facade, or manifest output stem.
+Dependency section count overflow fails closed before header parsing or output
+generation, and overflow section keys cannot mutate the last accepted
+dependency.
+Inline `#` comments are ignored outside quoted bind dependency values and
+preserved inside quoted strings.
+The same plan tracks future fail-closed `omni.toml` extension fields such as
+`exclude-functions`, `clang-args`, `mode`, `facade`, `name-style`,
+`ownership-policy`, `output-raw`, `output-facade`, and `generator`;
+`raw-syntax` and facade-only `strip-prefixes` are the first shipped
+output-format fields.
 
 ### Other Flags
 

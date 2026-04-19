@@ -42,6 +42,11 @@ fn Value* root_store_route_to_scope(
             if (cloned == null) return raise_error(interp, "root-store: failed to clone array payload");
             return cloned;
         }
+        case TENSOR: {
+            Value* cloned = root_store_clone_tensor_to_scope(v, interp, target_scope, releasing_scope);
+            if (cloned == null) return raise_error(interp, "root-store: failed to clone tensor payload");
+            return cloned;
+        }
         case HASHMAP:
         case SET: {
             Value* cloned = root_store_clone_hashmap_to_scope(v, interp, target_scope, releasing_scope);
@@ -61,6 +66,11 @@ fn Value* root_store_route_to_scope(
         case NIL:
         case VOID:
         case INT:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
         case STRING:
         case SYMBOL:
         case CONS:
@@ -69,6 +79,7 @@ fn Value* root_store_route_to_scope(
         case PARTIAL_PRIM:
         case ERROR:
         case DOUBLE:
+        case FLOAT32:
         case FFI_HANDLE:
         case TYPE_INFO:
         case INSTANCE:

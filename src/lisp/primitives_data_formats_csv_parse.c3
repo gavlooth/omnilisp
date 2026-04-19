@@ -34,7 +34,9 @@ fn void csv_field_clear(CsvFieldBuf* fb) @inline {
 }
 
 fn bool csv_field_push(CsvFieldBuf* fb, char ch) {
+    if (fb.len == usz.max) return false;
     if (fb.len + 1 > fb.cap) {
+        if (fb.cap > usz.max / (usz)2) return false;
         usz new_cap = fb.cap == 0 ? 32 : fb.cap * 2;
         char* next = (char*)mem::realloc(fb.data, new_cap);
         if (next == null) return false;
@@ -49,7 +51,9 @@ fn bool csv_array_push(Value* arr_v, Value* val, Interp* interp) {
     if (arr_v == null || arr_v.tag != ARRAY || arr_v.array_val == null) return false;
     Array* arr = arr_v.array_val;
     if (arr.length >= arr.capacity) {
+        if (arr.capacity >= 4 && arr.capacity > usz.max / (usz)2) return false;
         usz new_cap = arr.capacity < 4 ? 4 : arr.capacity * 2;
+        if (new_cap > usz.max / Value*.sizeof) return false;
         Value** next_items = (Value**)mem::realloc(arr.items, Value*.sizeof * new_cap);
         if (next_items == null) return false;
         arr.items = next_items;

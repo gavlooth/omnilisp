@@ -77,7 +77,7 @@ run_case \
   "build" \
   "integration" \
   "build" \
-  "host-local repo integration build" \
+  "repo integration build" \
   c3c build
 
 run_case \
@@ -91,7 +91,7 @@ run_case \
   "e2e_live" \
   "integration" \
   "e2e" \
-  "local entrypoint, Docker-bound e2e compiler execution" \
+  "live e2e compiler execution" \
   scripts/run_e2e.sh
 
 run_case \
@@ -105,7 +105,7 @@ run_case \
   "ftxui_smoke" \
   "ui" \
   "smoke" \
-  "host-local FTXUI example smoke gate" \
+  "FTXUI example smoke gate" \
   scripts/run_ftxui_smoke.sh
 
 run_case \

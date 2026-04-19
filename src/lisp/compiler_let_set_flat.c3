@@ -63,48 +63,8 @@ fn usz Compiler.compile_set_flat(Compiler* self, Expr* expr) {
 }
 
 fn bool Compiler.is_builtin_primitive(Compiler* self, SymbolId sym) {
-    // Check ONLY the hardcoded primitives list, NOT defined_globals.
-    // Used for delegation injection — defined globals still need injection
-    // into the interpreter env since they're C3 locals, not interpreter vars.
-    char[] name = self.interp.symbols.get_name(sym);
-    char[][*] primitives = {
-        "+", "-", "*", "/", "%",
-        "=", "<", ">", "<=", ">=",
-        "cons", "car", "cdr", "null?", "pair?",
-        "List", "list", "length", "not",
-        "print", "println", "newline", "display",
-        "__ui-ftxui-run",
-        "string-append", "string-join", "substring",
-        "string-split", "string-length", "string->list",
-        "list->string", "string-upcase", "string-downcase", "string-casefold", "string-titlecase",
-        "string-trim", "string-contains?",
-        "string?", "integer?", "int?", "symbol?",
-        "closure?", "continuation?", "double?", "list?",
-        "boolean?", "bool?", "number?",
-        "string->number", "number->string",
-        "Integer", "Double", "String", "Symbol", "Pointer", "Boolean", "Nil", "Void", "Closure", "Iterator",
-        "gensym", "load", "apply", "equal?",
-        "Array",
-        "Dictionary", "dict?",
-        "Set", "set-add", "set-remove", "set-contains?", "set-size", "set->list",
-        "ref", "set!", "push!", "keys", "values", "has?", "remove!",
-        "iterator?", "__make-iterator", "next",
-        "Coroutine", "resume", "yield", "coroutine?",
-        "json-get",
-        "TimePoint", "time-point?",
-        "read-line", "read-file", "write-file", "file-exists?", "read-lines",
-        "fs-open", "fs-read", "fs-write", "fs-close",
-        "fs-stat", "fs-readdir", "fs-rename", "fs-unlink",
-        "type-of",
-        "abs", "min", "max", "floor", "ceiling", "round",
-        "truncate", "sqrt", "even?", "odd?", "zero?",
-        "positive?", "negative?", "gcd",
-        "bitwise-and", "bitwise-or", "bitwise-xor",
-        "bitwise-not", "lshift", "rshift",
-        "true", "false", "nil"
-    };
-    foreach (prim : primitives) {
-        if (self.str_eq(name, prim)) return true;
-    }
-    return false;
+    // Check ONLY compiler builtins, NOT defined_globals. Delegation injection
+    // still needs defined globals injected into the interpreter environment
+    // because they are C3 locals, not interpreter variables.
+    return self.is_compiler_builtin_symbol(sym);
 }

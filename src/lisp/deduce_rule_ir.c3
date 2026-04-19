@@ -87,6 +87,9 @@ fn Value* deduce_rule_parse_ir(
     }
 
     out.body_count = args.len - 1;
+    if (out.body_count > usz.max / DeduceRuleAtom.sizeof) {
+        return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
+    }
     out.body = (DeduceRuleAtom*)mem::malloc(DeduceRuleAtom.sizeof * out.body_count);
     if (out.body == null) {
         return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");

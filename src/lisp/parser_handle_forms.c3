@@ -83,16 +83,8 @@ fn Expr* Parser.parse_handle(Parser* self) {
     e.handle.strict_mode = strict;
 
     e.handle.clause_count = clause_list.len();
-    usz clause_count = e.handle.clause_count;
-    if (clause_count > 0) {
-        if (clause_count > usz.max / EffectClause.sizeof) {
-            self.set_error("handle clause list is too large");
-            clause_list.free();
-            return null;
-        }
-        e.handle.clauses = (EffectClause*)self.alloc_ast_bytes(EffectClause.sizeof * clause_count, "out of memory while allocating handle clauses");
-        if (e.handle.clauses == null) { clause_list.free(); return null; }
-    }
+    e.handle.clauses = (EffectClause*)self.alloc_ast_array_bytes(EffectClause.sizeof, clause_list.len(), "out of memory while allocating handle clauses");
+    if (e.handle.clauses == null && clause_list.len() > 0) { clause_list.free(); return null; }
     for (usz i = 0; i < clause_list.len(); i++) { e.handle.clauses[i] = clause_list[i]; }
     clause_list.free();
 

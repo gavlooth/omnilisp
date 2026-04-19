@@ -7,7 +7,7 @@ import main;
 // SECTION 1b: PRIMITIVE VARIABLE HASH TABLE
 // =============================================================================
 
-const usz PRIM_HASH_SIZE = 256;  // Power of 2, > 2*87
+const usz PRIM_HASH_SIZE = 512;  // Power of 2, keeps current primitive load comfortably below 50%
 struct PrimHashEntry {
     SymbolId key;
     char[]   emit;
@@ -16,8 +16,13 @@ struct PrimHashEntry {
 // Module-level hash table for primitive variable → C3 code mapping
 PrimHashEntry[PRIM_HASH_SIZE] g_prim_hash;
 bool g_prim_hash_initialized = false;
+bool g_prim_hash_init_failed = false;
 
 fn void prim_hash_insert(SymbolId key, char[] emit) {
+    if (key == INVALID_SYMBOL_ID) {
+        g_prim_hash_init_failed = true;
+        return;
+    }
     usz idx = ((usz)key) & (PRIM_HASH_SIZE - 1);
     for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
         usz slot = (idx + i) & (PRIM_HASH_SIZE - 1);
@@ -27,6 +32,7 @@ fn void prim_hash_insert(SymbolId key, char[] emit) {
             return;
         }
     }
+    g_prim_hash_init_failed = true;
 }
 
 fn char[] prim_hash_lookup(SymbolId key) {
@@ -42,6 +48,7 @@ fn char[] prim_hash_lookup(SymbolId key) {
 fn void init_prim_hash(Interp* interp) {
     if (g_prim_hash_initialized) return;
     g_prim_hash_initialized = true;
+    g_prim_hash_init_failed = false;
 
     // Clear
     for (usz i = 0; i < PRIM_HASH_SIZE; i++) {
@@ -53,4 +60,5 @@ fn void init_prim_hash(Interp* interp) {
     init_prim_hash_core_and_strings(st);
     init_prim_hash_files_and_misc(st);
     init_prim_hash_collections_math_bitwise(st);
+    if (g_prim_hash_init_failed) g_prim_hash_initialized = false;
 }

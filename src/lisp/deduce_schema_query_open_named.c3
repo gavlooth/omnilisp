@@ -76,6 +76,7 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
         return deduce_raise(interp, "deduce/open-named-dbi-open-failed", "deduce-open-named: dbi open failed");
     }
 
+    usz schema_start = db.relation_schema_count;
     DeduceSchemaRegisterStatus schema_status =
         deduce_db_register_relation_schema(
             db,
@@ -118,15 +119,15 @@ fn Value* prim_deduce_open_named(Value*[] args, Env* env, Interp* interp) {
             interp
         );
         if (meta_err != null) {
+            deduce_db_rollback_relation_schemas_to(db, schema_start);
             deduce_relation_free(rel);
             return meta_err;
         }
     }
 
-    bool ctor_took_ownership = false;
-    Value* rel_v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false, &ctor_took_ownership);
+    Value* rel_v = make_ffi_handle_ex(interp, (void*)rel, "deduce-relation", &deduce_relation_finalizer, true, false);
     if (rel_v == null) {
-        if (!ctor_took_ownership) deduce_relation_free(rel);
+        deduce_db_rollback_relation_schemas_to(db, schema_start);
         return deduce_raise(interp, "deduce/open-named-out-of-memory", "deduce-open-named: out of memory");
     }
     return rel_v;

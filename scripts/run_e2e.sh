@@ -78,6 +78,7 @@ omni_run_with_hard_cap ./scripts/build_omni_chelpers.sh
 
 stage3_compile_sources=(
   src/main*.c3
+  src/entry_*.c3
   src/scope_region*.c3
   src/stack_engine*.c3
   src/ffi_bindings.c3

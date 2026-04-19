@@ -5,7 +5,9 @@ import main;
 fn BoundaryGraphAuditResult boundary_graph_audit_escape_reachability_result(
     Value* root,
     main::ScopeRegion* target_scope,
-    bool emit = false
+    bool emit = false,
+    main::ScopeRegion* forbidden_scope = null,
+    Env* global_env = null
 ) @noinline {
     if (root == null || target_scope == null) {
         return {
@@ -104,6 +106,8 @@ fn BoundaryGraphAuditResult boundary_graph_audit_escape_reachability_result(
                 env_stack,
                 &env_stack_len,
                 target_scope,
+                forbidden_scope,
+                global_env,
                 emit,
                 root_tag,
                 root_scope_gen
@@ -137,6 +141,8 @@ fn BoundaryGraphAuditResult boundary_graph_audit_escape_reachability_result(
                 env_stack,
                 &env_stack_len,
                 target_scope,
+                forbidden_scope,
+                global_env,
                 emit,
                 root_tag,
                 root_scope_gen

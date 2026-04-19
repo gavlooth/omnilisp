@@ -21,37 +21,52 @@ fn EvalResult jit_eval_declared_module_file(List{Expr*}* expr_list, usz expr_cou
     EvalResult mod_result = jit_eval_to_result((*expr_list)[0], interp.global_env, interp);
     if (mod_result.error.has_error) return mod_result;
 
-    Module* mod = find_module(declared_name, interp);
+    usz mod_idx = find_module_index(declared_name, interp);
+    Module* mod = mod_idx != usz.max ? &interp.modules[mod_idx] : null;
     if (mod != null && mod.path_len == 0) {
-        if (!module_copy_path(mod, path)) return eval_error("module path allocation failed");
+        if (!module_copy_path(mod, path)) {
+            rollback_module_publication(interp, mod_idx);
+            return eval_error("module path allocation failed");
+        }
     }
 
     EvalResult top_level = jit_eval_module_top_level(expr_list, 1, expr_count, interp.global_env, interp);
-    if (top_level.error.has_error) return top_level;
+    if (top_level.error.has_error) {
+        rollback_module_publication(interp, mod_idx);
+        return top_level;
+    }
     return mod_result;
 }
 
 fn EvalResult jit_eval_implicit_module_file(SymbolId name, char[] path, List{Expr*}* expr_list, usz expr_count, Interp* interp) {
     Module* mod = jit_create_file_module(name, path, interp);
     if (mod == null) return eval_error("module path allocation failed");
+    usz mod_idx = find_module_index(name, interp);
+    if (mod_idx == usz.max) return eval_error("module table state invalid");
+    Env* mod_env = mod.env;
 
     Env* saved_global = interp.global_env;
-    interp.global_env = mod.env;
+    interp.global_env = mod_env;
     defer interp.global_env = saved_global;
 
     for (usz i = 0; i < expr_count; i++) {
         Expr* expr = (*expr_list)[i];
         bool export_candidate = expr != null && expr.tag == E_DEFINE;
         SymbolId export_name = export_candidate ? expr.define.name : (SymbolId)0;
-        EvalResult r = jit_eval_to_result(expr, mod.env, interp);
-        if (r.error.has_error) return r;
+        EvalResult r = jit_eval_to_result(expr, mod_env, interp);
+        if (r.error.has_error) {
+            rollback_module_publication(interp, mod_idx);
+            return r;
+        }
         if (export_candidate) {
-            if (!module_append_export(mod, export_name)) {
-                return eval_error("module: out of memory while growing exports");
+            Module* current_mod = &interp.modules[mod_idx];
+            if (!module_append_export(current_mod, export_name)) {
+                rollback_module_publication(interp, mod_idx);
+                return eval_error("module export allocation failed");
             }
         }
     }
-    mod.loaded = true;
+    interp.modules[mod_idx].loaded = true;
     return eval_ok(make_void(interp));
 }
 

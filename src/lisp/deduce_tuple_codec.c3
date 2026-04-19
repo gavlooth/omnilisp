@@ -4,7 +4,7 @@ module lisp;
 // Tuple encoding: Values → bytes for LMDB storage
 // ============================================================
 // Encode a tuple of Values into a byte buffer. Format: [tag byte][data]...
-// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(2 byte id), 5=time-point(1 kind byte + 8 ints LE)
+// Tags: 0=nil, 1=int(8 bytes LE), 2=double(8 bytes), 3=string(2 byte len + data), 4=symbol(4 byte id), 5=time-point(1 kind byte + 8 ints LE), 6=float32(4 bytes)
 fn usz write_i32_le(char* buf, usz pos, int value) {
     buf[pos++] = (char)(value & 0xFF);
     buf[pos++] = (char)((value >> 8) & 0xFF);
@@ -41,6 +41,12 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             double dval = v.double_val;
             char* dp = (char*)&dval;
             for (usz j = 0; j < 8; j++) buf[pos++] = dp[j];
+        } else if (v.tag == FLOAT32) {
+            if (pos + 5 > buf_size) return WRITE_FAILED~;
+            buf[pos++] = 6;
+            float fval = v.float32_val;
+            char* fp = (char*)&fval;
+            for (usz j = 0; j < 4; j++) buf[pos++] = fp[j];
         } else if (v.tag == STRING) {
             usz slen = v.str_len;
             if (slen > 0xFFFF) slen = 0xFFFF;
@@ -50,11 +56,14 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             buf[pos++] = (char)((slen >> 8) & 0xFF);
             for (usz j = 0; j < slen; j++) buf[pos++] = v.str_chars[j];
         } else if (v.tag == SYMBOL) {
-            if (pos + 3 > buf_size) return WRITE_FAILED~;
+            if (v.sym_val == INVALID_SYMBOL_ID) return WRITE_FAILED~;
+            if (pos + 5 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 4;
             uint sid = (uint)v.sym_val;
             buf[pos++] = (char)(sid & 0xFF);
             buf[pos++] = (char)((sid >> 8) & 0xFF);
+            buf[pos++] = (char)((sid >> 16) & 0xFF);
+            buf[pos++] = (char)((sid >> 24) & 0xFF);
         } else if (v.tag == TIME_POINT) {
             if (pos + 34 > buf_size) return WRITE_FAILED~;
             buf[pos++] = 5;
@@ -77,6 +86,7 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
 
 // Decode a tuple from bytes back to Values
 fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
+    if (interp == null) return READ_FAILED~;
     usz pos = 0;
     usz count = 0;
     while (pos < buf_size && count < out.len) {
@@ -104,10 +114,15 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             out[count++] = make_string(interp, buf[pos..pos + slen - 1]);
             pos += slen;
         } else if (tag == 4) {
-            if (pos + 2 > buf_size) return READ_FAILED~;
-            uint sid = (uint)(char)buf[pos] | ((uint)(char)buf[pos + 1] << 8);
-            pos += 2;
+            if (pos + 4 > buf_size) return READ_FAILED~;
+            uint sid = ((uint)buf[pos] & 0xFF) |
+                (((uint)buf[pos + 1] & 0xFF) << 8) |
+                (((uint)buf[pos + 2] & 0xFF) << 16) |
+                (((uint)buf[pos + 3] & 0xFF) << 24);
+            pos += 4;
+            if (sid == (uint)INVALID_SYMBOL_ID || (usz)sid >= interp.symbols.count) return READ_FAILED~;
             Value* v = interp.alloc_value();
+            if (v == null) return READ_FAILED~;
             v.tag = SYMBOL;
             v.sym_val = (SymbolId)sid;
             out[count++] = v;
@@ -123,6 +138,13 @@ fn usz? decode_tuple(char* buf, usz buf_size, Value*[] out, Interp* interp) {
             int microsecond = read_i32_le(buf, pos); pos += 4;
             int tz_offset = read_i32_le(buf, pos); pos += 4;
             out[count++] = make_time_point(interp, kind, year, month, day, hour, minute, second, microsecond, tz_offset);
+        } else if (tag == 6) {
+            if (pos + 4 > buf_size) return READ_FAILED~;
+            float fval;
+            char* fp = (char*)&fval;
+            for (usz j = 0; j < 4; j++) fp[j] = buf[pos + j];
+            pos += 4;
+            out[count++] = make_float32(interp, fval);
         } else {
             return READ_FAILED~;  // unknown tag = malformed data
         }

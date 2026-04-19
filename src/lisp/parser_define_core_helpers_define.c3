@@ -14,7 +14,7 @@ fn Expr* Parser.parse_shorthand_define(Parser* self, Expr* e) {
     List{TypeAnnotation} define_param_anns;
     bool define_has_typed = false;
     bool define_has_rest = false;
-    SymbolId define_rest_param = 0;
+    SymbolId define_rest_param = (SymbolId)0;
     List{Pattern*} destr_patterns;
     List{SymbolId} destr_param_names;
 

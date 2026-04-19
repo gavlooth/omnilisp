@@ -35,12 +35,6 @@ struct GensymTable {
 fn void gensym_table_init(GensymTable* self) {
     self.count = 0;
     self.capacity = GENSYM_INITIAL_CAPACITY;
-    if (self.capacity > usz.max / GensymMapping.sizeof) {
-        self.mappings = null;
-        self.capacity = 0;
-        return;
-    }
-
     self.mappings = (GensymMapping*)mem::malloc(GensymMapping.sizeof * self.capacity);
     if (self.mappings == null) self.capacity = 0;
 }
@@ -54,18 +48,12 @@ fn void gensym_table_destroy(GensymTable* self) {
 
 fn bool gensym_table_ensure_capacity(GensymTable* self, usz needed) {
     if (needed <= self.capacity) return true;
-
     usz new_cap = self.capacity < GENSYM_INITIAL_CAPACITY ? GENSYM_INITIAL_CAPACITY : self.capacity;
     while (new_cap < needed) {
-        if (new_cap > usz.max / 2) {
-            new_cap = needed;
-            break;
-        }
+        if (new_cap > usz.max / (usz)2) return false;
         new_cap *= 2;
     }
-
     if (new_cap > usz.max / GensymMapping.sizeof) return false;
-
     GensymMapping* next = (GensymMapping*)mem::malloc(GensymMapping.sizeof * new_cap);
     if (next == null) return false;
     for (usz i = 0; i < self.count; i++) next[i] = self.mappings[i];
@@ -98,19 +86,10 @@ fn MatchResult match_take_error(MatchResult* self) @inline {
 }
 
 fn bool MatchResult.add_binding(MatchResult* self, SymbolId name, Value* value) {
+    if (self == null) return false;
     if (self.binding_count >= self.capacity) {
-        usz needed = self.binding_count + 1;
-        if (needed < self.binding_count) return false;
-
-        usz new_cap = self.capacity < MATCH_INITIAL_CAPACITY ? MATCH_INITIAL_CAPACITY : self.capacity;
-        while (new_cap < needed) {
-            if (new_cap > usz.max / 2) {
-                new_cap = needed;
-                break;
-            }
-            new_cap *= 2;
-        }
-
+        if (self.capacity >= MATCH_INITIAL_CAPACITY && self.capacity > usz.max / (usz)2) return false;
+        usz new_cap = self.capacity < MATCH_INITIAL_CAPACITY ? MATCH_INITIAL_CAPACITY : self.capacity * 2;
         if (new_cap > usz.max / Binding.sizeof) return false;
         Binding* new_bindings = (Binding*)mem::malloc(Binding.sizeof * new_cap);
         if (new_bindings == null) return false;

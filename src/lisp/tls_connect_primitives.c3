@@ -140,7 +140,10 @@ fn Value* prim_tls_connect(Value*[] args, Env* env, Interp* interp) {
     Value*[1] yargs;
     yargs[0] = make_nil(interp);
     Value* y = prim_yield(yargs[..], null, interp);
-    if (y != null && y.tag == ERROR) return y;
+    if (y != null && y.tag == ERROR) {
+        scheduler_close_pending_offload(fiber_id);
+        return y;
+    }
 
     Value* out = scheduler_consume_pending_offload(fiber_id, interp);
     if (out != null && out.tag == ERROR) return out;

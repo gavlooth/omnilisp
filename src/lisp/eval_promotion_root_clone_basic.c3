@@ -82,6 +82,10 @@ fn Value* root_store_clone_array_to_scope(
 
     dst_arr.capacity = cap;
     dst_arr.length = src_arr.length;
+    if (cap > usz.max / Value*.sizeof) {
+        mem::free(dst_arr);
+        return null;
+    }
     dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
     if (dst_arr.items == null) {
         mem::free(dst_arr);
@@ -104,7 +108,7 @@ fn Value* root_store_clone_array_to_scope(
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, target_scope, true);
+        boundary_cleanup_partial_array_copy(src_arr, dst_arr, src_arr.length, target_scope);
         return null;
     }
     result.tag = ARRAY;
@@ -147,6 +151,10 @@ fn Value* root_store_clone_hashmap_to_scope(
     dst_map.entries = null;
 
     if (src_map.capacity > 0) {
+        if ((usz)src_map.capacity > usz.max / HashEntry.sizeof) {
+            mem::free(dst_map);
+            return null;
+        }
         dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
         if (dst_map.entries == null) {
             mem::free(dst_map);
@@ -187,7 +195,7 @@ fn Value* root_store_clone_hashmap_to_scope(
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, target_scope, true);
+        boundary_cleanup_partial_hashmap_copy(src_map, dst_map, src_map.capacity, target_scope);
         return null;
     }
     result.tag = src.tag;

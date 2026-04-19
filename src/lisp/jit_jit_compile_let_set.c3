@@ -36,19 +36,19 @@ fn void? jit_compile_let(void* s, Expr* expr, Interp* interp, JitLocals* locals,
 fn void? jit_compile_lambda(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Build env from JIT locals into V2 (callee-saved), or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 
     // Call jit_make_closure_from_expr(interp, expr, env)
-    emit_call_3i(s, (void*)&jit_make_closure_from_expr, JIT_V0, (long)expr, JIT_V2);
+    emit_call_3i(s, locals, (void*)&jit_make_closure_from_expr, JIT_V0, (long)expr, JIT_V2);
 }
 
 fn void? jit_compile_let_rec(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     // Build env from JIT locals into V2 (callee-saved), or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 
     // Call jit_eval_let_rec(interp, expr, env)
-    emit_call_3i(s, (void*)&jit_eval_let_rec, JIT_V0, (long)expr, JIT_V2);
+    emit_call_3i(s, locals, (void*)&jit_eval_let_rec, JIT_V0, (long)expr, JIT_V2);
 }
 
 fn void? jit_compile_set(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -78,7 +78,7 @@ fn void? jit_compile_define(void* s, Expr* expr, Interp* interp, JitLocals* loca
 
     // Call jit_eval_define(interp, name, value)
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);  // V1 = value
-    emit_call_3i(s, (void*)&jit_eval_define, JIT_V0, (long)(uint)expr.define.name, JIT_V1);
+    emit_call_3i(s, locals, (void*)&jit_eval_define, JIT_V0, (long)(uint)expr.define.name, JIT_V1);
 }
 
 fn void? jit_compile_quasiquote(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -93,10 +93,10 @@ fn void? jit_compile_match(void* s, Expr* expr, Interp* interp, JitLocals* local
 
     // Build env from locals for pattern bindings, or load runtime env
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 
     // Call jit_do_match(interp, scrutinee, expr, env)
-    emit_call_4_rrir(s, (void*)&jit_do_match, JIT_V0, JIT_V1, (long)expr, JIT_V2);
+    emit_call_4_rrir(s, locals, (void*)&jit_do_match, JIT_V0, JIT_V1, (long)expr, JIT_V2);
 }
 
 fn void? jit_compile_define_macro(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -117,6 +117,6 @@ fn void? jit_compile_handle(void* s, Expr* expr, Interp* interp, JitLocals* loca
 
 fn void? jit_compile_perform(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
-    emit_call_3i(s, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
+    emit_call_3i(s, locals, (void*)&jit_exec_perform, JIT_V0, (long)expr, JIT_V2);
 }

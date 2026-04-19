@@ -173,16 +173,16 @@ fn void repl_server_connection_destroy(ReplServerConnection* conn) {
 
 fn bool repl_server_ensure_session_capacity(ReplServerConnection* conn, usz needed) {
     if (needed <= conn.session_capacity) return true;
-    usz next_cap = conn.session_capacity > 0 ? conn.session_capacity : 4;
+    if (conn.session_capacity > usz.max / (usz)2) return false;
+    usz next_cap = conn.session_capacity > 0 ? conn.session_capacity * 2 : 4;
     while (next_cap < needed) {
-        if (next_cap > usz.max / 2) return false;
+        if (next_cap > usz.max / (usz)2) return false;
         next_cap *= 2;
     }
     if (next_cap > usz.max / ReplServerSession.sizeof) return false;
-    usz next_bytes = ReplServerSession.sizeof * next_cap;
     ReplServerSession* next = conn.sessions == null
-        ? (ReplServerSession*)mem::malloc(next_bytes)
-        : (ReplServerSession*)mem::realloc(conn.sessions, next_bytes);
+        ? (ReplServerSession*)mem::malloc(ReplServerSession.sizeof * next_cap)
+        : (ReplServerSession*)mem::realloc(conn.sessions, ReplServerSession.sizeof * next_cap);
     if (next == null) return false;
     for (usz i = conn.session_capacity; i < next_cap; i++) next[i] = {};
     conn.sessions = next;
@@ -215,6 +215,7 @@ fn ReplServerSession* repl_server_new_session(ReplServerConnection* conn) {
             break;
         }
     }
+    if (slot == conn.session_capacity && conn.session_capacity == usz.max) return null;
     if (slot == conn.session_capacity && !repl_server_ensure_session_capacity(conn, conn.session_capacity + 1)) {
         return null;
     }
@@ -222,7 +223,8 @@ fn ReplServerSession* repl_server_new_session(ReplServerConnection* conn) {
 
     char[REPL_SERVER_SESSION_ID_MAX] id_buf = {};
     char[] id;
-    if (try rendered = io::bprintf(&id_buf, "s%d", (int)conn.next_session_id)) {
+    if (conn.next_session_id > (usz)long.max) return null;
+    if (try rendered = io::bprintf(&id_buf, "s%d", (long)conn.next_session_id)) {
         id = rendered;
     } else {
         return null;

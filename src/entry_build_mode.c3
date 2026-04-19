@@ -33,13 +33,13 @@ fn int run_build(int argc, char** argv, int build_idx) {
         return print_unexpected_mode_arg("--build", extra);
     }
 
-    char[BUILD_PATH_BUFFER_CAP] cwd_buf;
+    char[1024] cwd_buf;
     if (c_getcwd(&cwd_buf[0], cwd_buf.len) == null) {
         io::printn("Error: failed to read current working directory");
         return 1;
     }
 
-    char[BUILD_PATH_BUFFER_CAP] input_abs_buf;
+    char[2048] input_abs_buf;
     if (input_file[0] != '/') {
         if (try input_abs = io::bprintf(&input_abs_buf, "%s/%s", (ZString)&cwd_buf[0], (ZString)input_file)) {
             input_file = &input_abs[0];
@@ -49,7 +49,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
         }
     }
 
-    char[BUILD_PATH_BUFFER_CAP] output_abs_buf;
+    char[2048] output_abs_buf;
     if (output_binary != null && output_binary[0] != '/') {
         if (try output_abs = io::bprintf(&output_abs_buf, "%s/%s", (ZString)&cwd_buf[0], (ZString)output_binary)) {
             output_binary = &output_abs[0];
@@ -59,7 +59,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
         }
     }
 
-    char[BUILD_PATH_BUFFER_CAP] repo_root_buf;
+    char[1024] repo_root_buf;
     usz repo_root_len = 0;
     if (!resolve_build_repo_root(argv[0], repo_root_buf[..], &repo_root_len)) {
         io::printn("Error: failed to resolve repo root for --build");
@@ -72,7 +72,7 @@ fn int run_build(int argc, char** argv, int build_idx) {
     }
     defer (void)c_chdir(&cwd_buf[0]);
 
-    char[BUILD_PATH_BUFFER_CAP] default_out;
+    char[512] default_out;
     if (output_binary == null) {
         output_binary = derive_default_output_name(input_file, default_out[..]);
         if (output_binary == null) {

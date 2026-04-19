@@ -55,7 +55,7 @@ constructor or coercion surface.
 
 ; Builtin coercion constructors
 (Integer 3.9)    ; => 3
-(Double 3)       ; => 3.0
+(Float64 3)       ; => 3.0
 (String 3)       ; => "3"
 (Symbol "name")  ; => 'name
 (Boolean 0)      ; => true
@@ -83,7 +83,8 @@ Current rule:
   behavior through the same symbol,
 - descriptive names are canonical (`Integer`, `Boolean`, `Dictionary`),
 - shorthand names only exist when explicitly approved; the current builtin
-  exception is `Dictionary` alongside canonical `Dictionary`,
+  exception is `Dict` alongside canonical `Dictionary`; annotation input such
+  as `^Dict` normalizes to `Dictionary`,
 - no lowercase wrappers are part of the canonical constructor
   surface.
 
@@ -94,6 +95,22 @@ Current exception note:
 - `Void` is now a real builtin singleton type/value; `(Void)` constructs the
   runtime no-result value, printed as `#<void>`, and FFI `^Void` returns map
   to that same value.
+- `Tensor` is registered as a builtin type descriptor for annotation,
+  dispatch, introspection, and construction. `(format "%s" Tensor)` prints
+  `#<type Tensor>`; `(Tensor data)` infers rectangular native `Float64` tensor
+  storage, `(Tensor data BigFloat)` preserves BigFloat storage, and
+  `(Tensor dtype shape data-or-scalar)` keeps the explicit shape/data
+  construction path in value position. Tensor-specific `map`
+  overloads
+  dispatch through typed `^Tensor` parameters for unary, tensor-scalar,
+  scalar-tensor, and exact-shape tensor-tensor elementwise operations.
+  `contract` performs pure `Float64` summed-axis contraction in value position
+  as `(contract a b left-axes right-axes)`. Tensor `map` and `contract` may
+  return lazy expression payloads under the existing `Tensor` value; no public
+  `TensorExpr` type is introduced. `realize` returns an already concrete
+  tensor unchanged, allocates concrete storage for a Tensor expression, or
+  writes a tensor/scalar source into a mutable exact-shape/dtype destination
+  tensor.
 - Existing side-effecting helpers may still return `nil` on the migration
   path; migrating ordinary no-result surfaces to `Void` is a separate
   language follow-up, not an implicit migration break.
@@ -304,7 +321,7 @@ Bounds are specified directly in metadata (flat by default):
 
 ; On a method
 (define [method] ^{'T Number}
-  double (^T x)
+  scale2 (^T x)
   (+ x x))
 
 ; Constraint on parametric type
@@ -415,7 +432,7 @@ Status tags:
 | Parametric type behavior | Parametric construction + constraints + substitution | Parametric constructors + `type-args` inference are implemented; method type variables unify by symbol at dispatch (`(^T a) (^T b)` requires same runtime type), with bounds checked via metadata constraints | `done` | `src/lisp/eval_type_evaluators.c3`; `src/lisp/eval_dispatch_types.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Variance policy | Explicit variance model in parametric dispatch | Explicit invariant policy: type params are invariant; `+T/-T` markers are rejected with deterministic parser errors | `done` (invariant policy) | `src/lisp/parser_type_defs.c3`; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
 | Union participation in dispatch applicability | Union/variant types participate in subtype dispatch | Union variants are registered as subtype of union; dispatch uses subtype chain so variant-specialized methods outrank union-parent methods | `done` | `src/lisp/eval_type_evaluators.c3` (`eval_defunion_register_variant_type`); `src/lisp/tests_advanced_type_effect_ffi_groups.c3` |
-| Numeric conversion in dispatch | Numeric conversion should be explicit at call sites | Dispatch uses exact-or-subtype applicability only; cross-numeric matching requires constructor conversion such as `(Double 7)` | `done` | `src/lisp/eval_dispatch_match.c3`; `src/lisp/tests_advanced_type_dispatch_groups.c3` |
+| Numeric conversion in dispatch | Numeric conversion should be explicit at call sites | Dispatch uses exact-or-subtype applicability only; cross-numeric matching requires constructor conversion such as `(Float64 7)` | `done` | `src/lisp/eval_dispatch_match.c3`; `src/lisp/tests_advanced_type_dispatch_groups.c3` |
 | `where`-style constraints | `where` clauses on methods/types | Omni uses metadata constraints (`^{'T Number}`), not Julia `where` syntax | `done` (intentional difference) | This document §1.6; `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (constraint tests) |
 | Match/union exhaustiveness | Exhaustiveness diagnostics | Runtime missing-case diagnostics are normative; compile-time exhaustiveness checker is currently an explicit non-goal | `done` (runtime policy) | `src/lisp/eval_dispatch_match_errors.c3` (`format_match_error`); `src/lisp/tests_runtime_feature_groups.c3` |
 
@@ -427,7 +444,7 @@ Status tags:
 | Typed method fallback behavior | Yes (fallback possible) | No |
 | Ambiguity policy | Partial (deterministic detection) | Yes: error on equal score, no implicit winner |
 | Parametric type declaration | Partial | Yes: metadata-bound constraints instead of `where` |
-| Numeric conversion in dispatch | Partial | Yes: Omni requires explicit constructor conversion (`(Double 7)`) instead of implicit dispatch-time widening |
+| Numeric conversion in dispatch | Partial | Yes: Omni requires explicit constructor conversion (`(Float64 7)`) instead of implicit dispatch-time widening |
 | Exhaustiveness checking | Partial | Yes: runtime diagnostics first, compile-time check pending |
 
 ### Test Anchors
@@ -462,20 +479,20 @@ Status tags:
   (Some T))
 
 ; Multiple dispatch
-(define (double (^Integer x)) (+ x x))
-(define (double (^Double x)) (+ x x))
+(define (scale2 (^Integer x)) (+ x x))
+(define (scale2 (^Float64 x)) (+ x x))
 
 ; Union pattern matching
 (match (Some 42)
   (None "empty")
   ((Some x) x))          ; => 42
 
-(double 21)              ; => 42 (dispatches to Integer version)
+(scale2 21)               ; => 42 (dispatches to Integer version)
 ```
 
 ---
 
-## Implementation Status (as of 2026-03-09)
+## Implementation Status (as of 2026-04-11)
 
 ### Implemented (Phases 1-7)
 - [x] TypeRegistry wired to Interp with FNV-1a hash lookup
@@ -487,7 +504,7 @@ Status tags:
 - [x] `^Type` annotation parsing (simple, compound `^(List Integer)`, Value `^(Value 42)`)
 - [x] `^{'T Number}` flat metadata dict parsing in parser
 - [x] Multiple dispatch via MethodTable (typed `define` creates dispatch entries)
-- [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool)
+- [x] Value dispatch `^(Value literal)` for value-level pattern matching (literals: int/symbol/string/bool/nil)
 - [x] Multi-argument dispatch
 - [x] Dispatch scoring: Value=1000, exact=100, subtype=10, any=1
 - [x] Struct field access via dot-path: `point.x`, `line.start.y`
@@ -504,6 +521,15 @@ Status tags:
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_parametric_ctor_annotation_tests`)
 - [x] Lambda typed call-boundary argument checking with deterministic mismatch payload fields (`failure`, `param-index`, `expected`, `actual`, `expected-arity`, `actual-arity`) and cross-coverage for dispatch/union/explicit-conversion behavior  
   Regression anchors: `src/lisp/tests_advanced_type_effect_ffi_groups.c3` (`run_advanced_type_lambda_call_boundary_tests`)
+- [x] `Tensor` builtin type descriptor participates in type identity and
+  dispatch; `(Tensor data)`, `(Tensor dtype shape data-or-scalar)`, and
+  `(ref tensor index-array)` are implemented for native tensor storage
+- [x] `realize` is implemented for concrete tensor sources, lazy Tensor
+  expression sources, tensor destinations, and scalar fills into destination
+  tensors
+- [x] `contract` is implemented for pure `Float64` tensor contraction and may
+  return a lazy Tensor expression payload
+  with axis-list validation and rank-0 scalar results
 - [x] 100+ type/dispatch/effect tests all passing
 
 ### Implementation Notes

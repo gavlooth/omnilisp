@@ -3,11 +3,13 @@ module lisp;
 import std::io;
 
 fn Value* dispatch_make_payload_data(Interp* interp, uint capacity) @inline {
-    Value* data = make_hashmap_checked(interp, capacity, "dispatch payload: out of memory");
+    Value* data = make_hashmap_no_raise(interp, capacity);
     return data != null && data.tag == HASHMAP ? data : null;
 }
 
 fn bool dispatch_payload_set(Value* data, SymbolId key, Value* value, Interp* interp) @inline {
+    if (key == INVALID_SYMBOL_ID || value == null) return false;
+    if (value.tag == ERROR || (value.tag == SYMBOL && value.sym_val == INVALID_SYMBOL_ID)) return false;
     return data != null &&
         data.tag == HASHMAP &&
         hashmap_set_checked(data.hashmap_val, make_symbol(interp, key), value, interp);
@@ -181,6 +183,7 @@ fn Value* dispatch_reverse_list(Value* list, Interp* interp) {
         out = make_cons(interp, cur.cons_val.car, out);
         cur = cur.cons_val.cdr;
     }
+    if (!is_nil(cur)) return raise_error(interp, "__reverse-list: expected a proper list");
     return out;
 }
 
@@ -213,9 +216,10 @@ fn Value* dispatch_ambiguous_error(
     Value* arg_types = dispatch_reverse_list(arg_types_rev, interp);
 
     if (data != null) {
+        SymbolId reason_ambiguous = interp.symbols.intern("ambiguous-equal-specificity");
         bool payload_ok =
             dispatch_payload_set(data, key_reason,
-                make_symbol(interp, interp.symbols.intern("ambiguous-equal-specificity")), interp) &&
+                make_symbol(interp, reason_ambiguous), interp) &&
             dispatch_payload_set(data, key_method, make_symbol(interp, mt.name), interp) &&
             dispatch_payload_set(data, key_arg_count, make_int(interp, (long)args.len), interp) &&
             dispatch_payload_set(data, key_arg_types, arg_types, interp) &&

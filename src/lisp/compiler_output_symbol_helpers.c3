@@ -61,6 +61,33 @@ fn void Compiler.emit_symbol_name(Compiler* self, SymbolId sym) {
     }
 }
 
+fn bool compiler_prim_emit_code_is_runtime_lookup(char[] emit_code) @inline {
+    return emit_code.len > 18 && emit_code[0] == 'a' && emit_code[4] == ':';
+}
+
+fn void Compiler.emit_symbol_value_reference(Compiler* self, SymbolId sym) {
+    char[] emit_code = prim_hash_lookup(sym);
+    if (emit_code.len > 0) {
+        if (compiler_prim_emit_code_is_runtime_lookup(emit_code)) {
+            self.record_prim_ref(sym);
+            self.emit_prim_global_name(sym);
+        } else {
+            self.emit(emit_code);
+        }
+        return;
+    }
+
+    if (self.is_mutable_captured_var(sym)) {
+        char[] sym_name = self.interp.symbols.get_name(sym);
+        self.emit("aot::lookup_var(\"");
+        self.emit_escaped(sym_name);
+        self.emit("\")");
+        return;
+    }
+
+    self.emit_symbol_name(sym);
+}
+
 /**
  * D2: Emit the global variable name for a cached primitive.
  * Uses _prim_ prefix followed by the sanitized symbol name.

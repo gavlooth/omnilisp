@@ -1,0 +1,55 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 2) buffer Output {
+    double out_data[];
+};
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint pivot;
+    uint work_count;
+    uint scratch_src;
+    uint scratch_dst;
+    uint scratch_count;
+} pc;
+
+double omni_abs(double value) {
+    return value < 0.0 ? -value : value;
+}
+
+void main() {
+    uint work = gl_GlobalInvocationID.x;
+    if (work >= pc.work_count) return;
+    if (status_code[0] != 2u) return;
+    if (pc.n == 0u || pc.rhs_cols == 0u || pc.pivot >= pc.n) return;
+    if (work >= pc.rhs_cols) return;
+
+    uint row = pc.pivot;
+    uint rhs_col = work;
+    uint coeff_offset = pc.result_count;
+    double pivot_value = out_data[coeff_offset + row * pc.n + row];
+    if (!(omni_abs(pivot_value) > 0.0)) {
+        status_code[0] = 1u;
+        return;
+    }
+
+    double sum = out_data[row * pc.rhs_cols + rhs_col];
+    for (uint col = row + 1u; col < pc.n; col++) {
+        sum -= out_data[coeff_offset + row * pc.n + col] *
+            out_data[col * pc.rhs_cols + rhs_col];
+    }
+    out_data[row * pc.rhs_cols + rhs_col] = sum / pivot_value;
+
+    if (row == 0u) {
+        status_code[0] = 0u;
+    }
+}

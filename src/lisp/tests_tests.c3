@@ -175,7 +175,7 @@ fn void emit_pass(char[] name) @inline {
 
 fn void emit_pass_literal(char[] msg) @inline {
     if (test_quiet_enabled()) return;
-    io::printfn("%s", (ZString)msg);
+    io::printn(msg);
 }
 
 fn void emit_test_section_banner(char[] name) @inline {
@@ -237,6 +237,8 @@ fn void run_test_global_boundary_reset() {
     }
     jit_cache_clear();
     g_jit_pool_warned = false;
+    g_tensor_force_expr_edge_copy_fail_nth = 0;
+    g_tensor_force_expr_edge_escape_fail_nth = 0;
     pika::regex_cache_reset();
 }
 
@@ -312,7 +314,7 @@ fn void run_test_group_boundary_reset(Interp* interp) {
     interp.flags.raise_pending = false;
     interp.raise_msg_len = 0;
     interp.raise_payload = null;
-    interp.last_call_name = 0;
+    interp.last_call_name = (SymbolId)0;
     interp.jit_env = null;
     interp.match_env = null;
     interp.flags.jit_tco_bounce = false;

@@ -11,6 +11,14 @@ struct FormatSpec {
     int width;
     int precision;
     bool has_precision;
+    bool invalid;
+}
+
+fn bool format_spec_accumulate_digit(int current, char ch, int* out) @inline {
+    int digit = (int)(ch - '0');
+    if (current > (int.max - digit) / 10) return false;
+    *out = current * 10 + digit;
+    return true;
 }
 
 fn FormatSpec parse_format_spec(char[] fmt, usz* i_ptr) {
@@ -20,13 +28,19 @@ fn FormatSpec parse_format_spec(char[] fmt, usz* i_ptr) {
     spec.width = 0;
     spec.precision = -1;
     spec.has_precision = false;
+    spec.invalid = false;
 
     if (i < fmt.len && fmt[i] == '-') {
         spec.left_align = true;
         i++;
     }
     while (i < fmt.len && fmt[i] >= '0' && fmt[i] <= '9') {
-        spec.width = spec.width * 10 + (int)(fmt[i] - '0');
+        int next_width = 0;
+        if (!format_spec_accumulate_digit(spec.width, fmt[i], &next_width)) {
+            spec.invalid = true;
+        } else {
+            spec.width = next_width;
+        }
         i++;
     }
     if (i < fmt.len && fmt[i] == '.') {
@@ -34,7 +48,12 @@ fn FormatSpec parse_format_spec(char[] fmt, usz* i_ptr) {
         spec.precision = 0;
         spec.has_precision = true;
         while (i < fmt.len && fmt[i] >= '0' && fmt[i] <= '9') {
-            spec.precision = spec.precision * 10 + (int)(fmt[i] - '0');
+            int next_precision = 0;
+            if (!format_spec_accumulate_digit(spec.precision, fmt[i], &next_precision)) {
+                spec.invalid = true;
+            } else {
+                spec.precision = next_precision;
+            }
             i++;
         }
     }
@@ -165,6 +184,7 @@ fn Value* format_binary_directive(StringVal* builder, Value* a, FormatSpec spec,
     } else {
         if (val < 0) {
             out[out_len++] = '-';
+            if (val == long.min) return raise_error(interp, "format: %b integer overflow");
             val = -val;
         }
         char[64] rev;
@@ -186,6 +206,9 @@ fn Value* format_binary_directive(StringVal* builder, Value* a, FormatSpec spec,
 fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] args, usz* arg_idx, Interp* interp) {
     usz i = *i_ptr;
     FormatSpec spec = parse_format_spec(fmt, &i);
+    if (spec.invalid) {
+        return raise_error(interp, "format: width or precision too large");
+    }
 
     if (i >= fmt.len) {
         // Trailing '%' with no directive — just emit '%'
@@ -256,6 +279,17 @@ fn Value* cl_format_directive(StringVal* builder, char directive, Value*[] args,
             } else if (is_double(a)) {
                 char[64] nbuf;
                 if (try char[] nslice = io::bprintf(&nbuf, "%.15g", a.double_val)) {
+                    if (!strval_append(builder, nslice)) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
+                } else {
+                    if (!strval_append(builder, "#<fmt-error>")) {
+                        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
+                    }
+                }
+            } else if (is_float32(a)) {
+                char[64] nbuf;
+                if (try char[] nslice = io::bprintf(&nbuf, "%.15g", (double)a.float32_val)) {
                     if (!strval_append(builder, nslice)) {
                         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "cl-format: failed to grow result buffer");
                     }

@@ -201,7 +201,7 @@ fn void scheduler_signal_poll_writable(usz fiber_id) {
     if (!op.active || op.completed) return;
     if (!op.write_mode) return;
     if (op.writable_pending) {
-        g_scheduler.readable_signal_coalesces.add(1);
+        g_scheduler.writable_signal_coalesces.add(1);
         return;
     }
 

@@ -2,11 +2,19 @@ module lisp;
 
 import std::io;
 
-fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, SymbolId base_type) {
+fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, TypeAnnotation* ann) {
     char[256] ebuf;
-    char[] type_name = interp.symbols.get_name(base_type);
+    char[] type_name = "metadata dictionary";
+    if (ann != null && !ann.is_dict) type_name = interp.symbols.get_name(ann.base_type);
     char[] msg;
-    if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
+    if (ann != null && ann.is_dict) {
+        if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation metadata dictionary",
+            (ZString)role)) {
+            msg = formatted;
+        } else {
+            msg = "ffi λ: unsupported type annotation";
+        }
+    } else if (try formatted = io::bprintf(&ebuf, "ffi λ: unsupported %s type annotation '^%s'",
         (ZString)role, (ZString)type_name)) {
         msg = formatted;
     } else {
@@ -15,40 +23,48 @@ fn Value* ffi_unsupported_type_annotation_error(Interp* interp, char[] role, Sym
     return raise_error(interp, msg);
 }
 
-fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
+fn Value* foreign_runtime_load_c_abi_bound(FfiBoundFn* bound, Interp* interp) {
+    if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
     if (bound.is_unavailable) return raise_error(interp, "ffi: bound symbol is unavailable");
-    if (bound.fn_ptr != null) return null;
-    if (bound.lib_handle == null) {
-        if (bound.lib_name == null || bound.lib_name_len == 0) {
-            if (!bound.required_library) {
-                bound.is_unavailable = true;
-                return null;
-            }
-            return raise_error(interp, "ffi: internal error — missing library name");
+    if (bound.lib_handle != null) return null;
+    if (bound.lib_name == null || bound.lib_name_len == 0) {
+        if (!bound.required_library) {
+            bound.is_unavailable = true;
+            return null;
         }
-        (void)dlerror();
-        bound.lib_handle = dlopen((ZString)bound.lib_name, RTLD_LAZY);
-        if (bound.lib_handle == null) {
-            char[256] ebuf;
-            char* dl_err = dlerror();
-            if (!bound.required_library) {
-                bound.is_unavailable = true;
-                return null;
-            }
-            if (dl_err != null && dl_err[0] != 0) {
-                if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s': %s",
-                    (ZString)bound.lib_name, (ZString)dl_err)) {
-                    return raise_error(interp, msg);
-                }
-                return raise_error(interp, "ffi: dlopen failed");
-            }
-            if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s'",
-                (ZString)bound.lib_name)) {
+        return raise_error(interp, "ffi: internal error — missing library name");
+    }
+    (void)dlerror();
+    bound.lib_handle = dlopen((ZString)bound.lib_name, RTLD_LAZY);
+    if (bound.lib_handle == null) {
+        char[256] ebuf;
+        char* dl_err = dlerror();
+        if (!bound.required_library) {
+            bound.is_unavailable = true;
+            return null;
+        }
+        if (dl_err != null && dl_err[0] != 0) {
+            if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s': %s",
+                (ZString)bound.lib_name, (ZString)dl_err)) {
                 return raise_error(interp, msg);
             }
             return raise_error(interp, "ffi: dlopen failed");
         }
+        if (try msg = io::bprintf(&ebuf, "ffi: dlopen failed for '%s'",
+            (ZString)bound.lib_name)) {
+            return raise_error(interp, msg);
+        }
+        return raise_error(interp, "ffi: dlopen failed");
     }
+    return null;
+}
+
+fn Value* foreign_runtime_resolve_c_abi_bound(FfiBoundFn* bound, Interp* interp) {
+    if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
+    if (bound.is_unavailable) return raise_error(interp, "ffi: bound symbol is unavailable");
+    if (bound.fn_ptr != null) return null;
+    if (Value* err = foreign_runtime_load_c_abi_bound(bound, interp)) return err;
+    if (bound.is_unavailable) return null;
     if (bound.c_name == null) return raise_error(interp, "ffi: internal error — missing symbol name");
     (void)dlerror();
     bound.fn_ptr = dlsym(bound.lib_handle, (ZString)bound.c_name);
@@ -74,6 +90,18 @@ fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
     return raise_error(interp, "ffi: dlsym failed");
 }
 
+fn Value* ffi_resolve_bound_fn(FfiBoundFn* bound, Interp* interp) {
+    ForeignRuntimeAdapter adapter;
+    if (!foreign_runtime_adapter_for_bound(bound, &adapter) ||
+        !foreign_runtime_adapter_supports(&adapter, FOREIGN_CAP_LOAD | FOREIGN_CAP_RESOLVE) ||
+        adapter.load_bound == null ||
+        adapter.resolve_bound == null) {
+        return raise_error(interp, "ffi: runtime adapter does not support resolution");
+    }
+    if (Value* err = adapter.load_bound(bound, interp)) return err;
+    return adapter.resolve_bound(bound, interp);
+}
+
 fn Value* ffi_arg_type_error(Interp* interp, usz arg_index, SymbolId expected_type, Value* actual) {
     char[256] ebuf;
     char[] expected_name = interp.symbols.get_name(expected_type);
@@ -87,14 +115,43 @@ fn Value* ffi_arg_type_error(Interp* interp, usz arg_index, SymbolId expected_ty
 
 fn Value* ffi_null_handle_error(Interp* interp, usz arg_index) {
     char[256] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected live Pointer handle",
+    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected live ForeignHandle",
         (int)(arg_index + 1))) {
         return raise_error(interp, msg);
     }
-    return raise_error(interp, "ffi: expected live Pointer handle");
+    return raise_error(interp, "ffi: expected live ForeignHandle");
+}
+
+fn Value* ffi_non_null_handle_error(Interp* interp, usz arg_index) {
+    char[256] ebuf;
+    if (try char[] msg = io::bprintf(&ebuf, "ffi: argument %d expected non-null ForeignHandle",
+        (int)(arg_index + 1))) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "ffi: expected non-null ForeignHandle");
+}
+
+fn Value* ffi_handle_name_error(Interp* interp, usz arg_index, SymbolId expected_name, FfiHandle* actual) {
+    char[256] ebuf;
+    char[] expected = interp.symbols.get_name(expected_name);
+    char[] actual_name = actual != null ? actual.lib_name[:actual.name_len] : "closed";
+    if (try char[] msg = io::bprintf(&ebuf,
+        "ffi: argument %d expected ForeignHandle %s, got %s",
+        (int)(arg_index + 1), (ZString)expected, (ZString)actual_name)) {
+        return raise_error(interp, msg);
+    }
+    return raise_error(interp, "ffi: ForeignHandle name mismatch");
+}
+
+fn bool ffi_handle_name_matches(FfiHandle* handle, SymbolId expected_name, Interp* interp) {
+    if (expected_name == INVALID_SYMBOL_ID) return true;
+    if (handle == null) return false;
+    char[] expected = interp.symbols.get_name(expected_name);
+    return ffi_char_slice_equals(handle.lib_name[:handle.name_len], expected);
 }
 
 fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
+                            FfiHandlePolicy* policy,
                             long* int_slot, double* dbl_slot, void** ptr_slot,
                             int* out_arg_type, void** out_arg_value,
                             Interp* interp) {
@@ -119,6 +176,8 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
         case FFI_TYPE_DOUBLE:
             if (arg != null && arg.tag == DOUBLE) {
                 *dbl_slot = arg.double_val;
+            } else if (arg != null && arg.tag == FLOAT32) {
+                *dbl_slot = (double)arg.float32_val;
             } else if (arg != null && arg.tag == INT) {
                 *dbl_slot = (double)arg.int_val;
             } else {
@@ -129,16 +188,22 @@ fn Value* ffi_pack_call_arg(Value* arg, FfiTypeTag param_type, usz arg_index,
             return null;
         case FFI_TYPE_PTR:
             if (arg == null || arg.tag == NIL) {
+                if (policy != null && policy.is_foreign_handle
+                    && policy.nullability == FFI_HANDLE_NON_NULL) {
+                    return ffi_non_null_handle_error(interp, arg_index);
+                }
                 *ptr_slot = null;
-            } else if (arg.tag == INT) {
-                *ptr_slot = (void*)(uptr)arg.int_val;
             } else if (arg.tag == FFI_HANDLE) {
                 if (arg.ffi_val == null || arg.ffi_val.lib_handle == null) {
                     return ffi_null_handle_error(interp, arg_index);
                 }
+                if (policy != null && policy.is_foreign_handle
+                    && !ffi_handle_name_matches(arg.ffi_val, policy.name, interp)) {
+                    return ffi_handle_name_error(interp, arg_index, policy.name, arg.ffi_val);
+                }
                 *ptr_slot = arg.ffi_val.lib_handle;
             } else {
-                return ffi_arg_type_error(interp, arg_index, interp.sym_Pointer, arg);
+                return ffi_arg_type_error(interp, arg_index, interp.sym_ForeignHandle, arg);
             }
             *out_arg_type = (int)param_type;
             *out_arg_value = (void*)ptr_slot;
@@ -176,7 +241,15 @@ fn void* ffi_return_storage_for(FfiTypeTag return_type, long* ret_int, double* r
     }
 }
 
-fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_dbl, void* ret_ptr, Interp* interp) {
+fn usz ffi_c_string_len(char* text) @inline {
+    if (text == null) return 0;
+    usz len = 0;
+    while (text[len] != 0) len++;
+    return len;
+}
+
+fn Value* ffi_return_value_for(FfiBoundFn* bound, FfiTypeTag return_type, FfiHandlePolicy* policy,
+                               long ret_int, double ret_dbl, void* ret_ptr, Interp* interp) {
     switch (return_type) {
         case FFI_TYPE_INT:
             return make_int(interp, ret_int);
@@ -186,9 +259,42 @@ fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_
         case FFI_TYPE_DOUBLE:
             return make_double(interp, ret_dbl);
         case FFI_TYPE_PTR:
+            if (ret_ptr == null) {
+                if (policy != null && policy.is_foreign_handle
+                    && policy.nullability == FFI_HANDLE_NON_NULL) {
+                    return raise_error(interp, "ffi: return expected non-null ForeignHandle");
+                }
+                return make_nil(interp);
+            }
+            char[] handle_name = "ffi-foreign-handle";
+            FfiHandleFinalizer finalizer = null;
+            FfiHandleOwnership ownership = FFI_HANDLE_BORROWED;
+            if (policy != null && policy.is_foreign_handle) {
+                if (policy.name != INVALID_SYMBOL_ID) handle_name = interp.symbols.get_name(policy.name);
+                ownership = policy.ownership;
+                if (ownership == FFI_HANDLE_OWNED) finalizer = policy.finalizer;
+            }
+            uint capabilities = ownership == FFI_HANDLE_OWNED ? FOREIGN_CAP_RELEASE : 0;
+            ForeignRuntimeKind return_runtime = foreign_runtime_bound_kind_for_runtime_call(bound);
+            Value* handle_v = make_ffi_handle_ex_with_descriptor(
+                interp,
+                ret_ptr,
+                handle_name,
+                finalizer,
+                false,
+                return_runtime,
+                FOREIGN_HANDLE_OPAQUE,
+                capabilities,
+                false,
+                ownership);
+            if (handle_v == null) {
+                return raise_error(interp, "ffi: out of memory while wrapping return ForeignHandle");
+            }
+            return handle_v;
         case FFI_TYPE_STRING:
             if (ret_ptr == null) return make_nil(interp);
-            return make_int(interp, (long)(uptr)ret_ptr);
+            char* ret_text = (char*)ret_ptr;
+            return make_string(interp, ret_text[:ffi_c_string_len(ret_text)]);
         case FFI_TYPE_VOID:
             return make_void(interp);
         default:
@@ -196,10 +302,7 @@ fn Value* ffi_return_value_for(FfiTypeTag return_type, long ret_int, double ret_
     }
 }
 
-// prim_ffi_bound_call — primitive handler for bound FFI functions.
-// user_data points to a heap-allocated FfiBoundFn.
-fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
-    FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
+fn Value* foreign_runtime_call_c_abi_bound(FfiBoundFn* bound, Value*[] args, Env* env, Interp* interp) {
     if (bound == null) return raise_error(interp, "ffi: internal error — no bound function");
     if (bound.is_variadic) return raise_error(interp, "ffi: internal error — variadic FFI binding should have been rejected");
     if (bound.is_unavailable) return raise_error(interp, "ffi: symbol unavailable");
@@ -207,6 +310,10 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     // Lazy dlsym: resolve on first call
     if (Value* err = ffi_resolve_bound_fn(bound, interp)) return err;
     if (bound.is_unavailable || bound.fn_ptr == null) return raise_error(interp, "ffi: symbol unavailable");
+
+    if (bound.param_count > (usz)int.max || args.len > (usz)int.max) {
+        return raise_error(interp, "ffi: argument count exceeds supported arity");
+    }
 
     // Validate arg count
     if (args.len != bound.param_count) {
@@ -229,6 +336,12 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     void** arg_values = null;
 
     if (bound.param_count > 0) {
+        if (bound.param_count > usz.max / long.sizeof
+            || bound.param_count > usz.max / double.sizeof
+            || bound.param_count > usz.max / uptr.sizeof
+            || bound.param_count > usz.max / int.sizeof) {
+            return raise_error(interp, "ffi: argument storage size overflow");
+        }
         int_store = (long*)interp.current_scope.alloc(long.sizeof * bound.param_count);
         dbl_store = (double*)interp.current_scope.alloc(double.sizeof * bound.param_count);
         ptr_store = (void**)interp.current_scope.alloc(uptr.sizeof * bound.param_count);
@@ -240,7 +353,10 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
     }
 
     for (usz i = 0; i < bound.param_count; i++) {
+        FfiHandlePolicy* policy = null;
+        if (bound.param_handle_policies != null) policy = &bound.param_handle_policies[i];
         if (Value* err = ffi_pack_call_arg(args[i], bound.param_types[i], i,
+            policy,
             &int_store[i], &dbl_store[i], &ptr_store[i],
             &arg_types[i], &arg_values[i], interp)) {
             return err;
@@ -258,5 +374,18 @@ fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
                            arg_types, arg_values, ret_type, ret_storage);
     if (rc != 0) return raise_error(interp, "ffi: libffi call failed");
 
-    return ffi_return_value_for(bound.return_type, ret_int, ret_dbl, ret_ptr, interp);
+    return ffi_return_value_for(bound, bound.return_type, &bound.return_handle_policy, ret_int, ret_dbl, ret_ptr, interp);
+}
+
+// prim_ffi_bound_call — primitive handler for bound FFI functions.
+// user_data points to a heap-allocated FfiBoundFn.
+fn Value* prim_ffi_bound_call(Value*[] args, Env* env, Interp* interp) {
+    FfiBoundFn* bound = (FfiBoundFn*)interp.prim_user_data;
+    ForeignRuntimeAdapter adapter;
+    if (!foreign_runtime_adapter_for_bound(bound, &adapter) ||
+        !foreign_runtime_adapter_supports(&adapter, FOREIGN_CAP_CALL) ||
+        adapter.call_bound == null) {
+        return raise_error(interp, "ffi: runtime adapter does not support calls");
+    }
+    return adapter.call_bound(bound, args, env, interp);
 }

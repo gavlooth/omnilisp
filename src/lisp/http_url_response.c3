@@ -142,7 +142,11 @@ fn Value* parse_response_make_symbol_key(Interp* interp, char[] name) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response field key");
     }
     key.tag = SYMBOL;
-    key.sym_val = interp.symbols.intern(name);
+    SymbolId key_sym = interp.symbols.intern(name);
+    if (key_sym == INVALID_SYMBOL_ID) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "http: failed to allocate response field key");
+    }
+    key.sym_val = key_sym;
     return key;
 }
 

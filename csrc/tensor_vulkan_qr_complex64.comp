@@ -1,0 +1,87 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const float OMNI_QR_COMPLEX64_EPS = 0.000001;
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint q_count;
+    uint r_count;
+} pc;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_values[];
+};
+
+layout(set = 0, binding = 1, std430) buffer QBuffer {
+    vec2 q_values[];
+};
+
+layout(set = 0, binding = 2, std430) buffer RBuffer {
+    vec2 r_values[];
+};
+
+float complex_abs2(vec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+vec2 complex_conj(vec2 value) {
+    return vec2(value.x, -value.y);
+}
+
+vec2 complex_mul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    for (uint index = 0u; index < pc.q_count; index++) {
+        q_values[index] = input_values[index];
+    }
+    for (uint index = 0u; index <= pc.r_count; index++) {
+        r_values[index] = vec2(0.0, 0.0);
+    }
+
+    uint status_index = pc.r_count;
+    r_values[status_index] = vec2(1.0, 0.0);
+
+    for (uint col = 0u; col < pc.cols; col++) {
+        for (uint prev_col = 0u; prev_col < col; prev_col++) {
+            vec2 dot = vec2(0.0, 0.0);
+            for (uint row = 0u; row < pc.rows; row++) {
+                dot += complex_mul(
+                    complex_conj(q_values[row * pc.cols + prev_col]),
+                    q_values[row * pc.cols + col]
+                );
+            }
+            r_values[prev_col * pc.cols + col] = dot;
+            for (uint row = 0u; row < pc.rows; row++) {
+                q_values[row * pc.cols + col] -= complex_mul(q_values[row * pc.cols + prev_col], dot);
+            }
+        }
+
+        float norm_squared = 0.0;
+        for (uint row = 0u; row < pc.rows; row++) {
+            norm_squared += complex_abs2(q_values[row * pc.cols + col]);
+        }
+        if (!(norm_squared > OMNI_QR_COMPLEX64_EPS * OMNI_QR_COMPLEX64_EPS)) {
+            return;
+        }
+
+        float norm = sqrt(norm_squared);
+        if (!(norm > OMNI_QR_COMPLEX64_EPS)) {
+            return;
+        }
+        r_values[col * pc.cols + col] = vec2(norm, 0.0);
+        for (uint row = 0u; row < pc.rows; row++) {
+            q_values[row * pc.cols + col] /= norm;
+        }
+    }
+
+    r_values[status_index] = vec2(0.0, 0.0);
+}

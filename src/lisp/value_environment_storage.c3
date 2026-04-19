@@ -13,7 +13,7 @@ const usz ENV_INITIAL_CAPACITY = 4;
 const usz ENV_HASH_THRESHOLD = 16;
 
 // Sentinel for empty hash table slots
-const SymbolId ENV_HASH_EMPTY = 0xFFFFFFFF;
+const SymbolId ENV_HASH_EMPTY = (SymbolId)0xFFFFFFFF;
 
 bool g_env_force_bindings_alloc_oom = false;
 bool g_env_force_hash_alloc_oom = false;
@@ -141,24 +141,24 @@ fn Env* make_env(Interp* interp, Env* parent) {
  */
 fn bool Env.build_hash_table(Env* self) {
     // Determine capacity (next power of 2 >= 2 * count)
-    if (self.binding_count > usz.max / 2) {
-        return false;
-    }
+    if (self.binding_count > usz.max / (usz)2) return false;
+    usz min_cap = self.binding_count * (usz)2;
     usz cap = 32;
-    while (cap < self.binding_count * 2) {
-        if (cap > usz.max / 2) {
-            return false;
-        }
-        cap *= 2;
+    while (cap < min_cap) {
+        if (cap > usz.max / (usz)2) return false;
+        cap *= (usz)2;
     }
-    if (cap > usz.max / EnvHashEntry.sizeof) {
-        return false;
-    }
+    if (cap > usz.max / EnvHashEntry.sizeof) return false;
 
     EnvHashEntry* new_hash_table = g_env_force_hash_alloc_oom
         ? null
         : (EnvHashEntry*)mem::malloc(EnvHashEntry.sizeof * cap);
     if (new_hash_table == null) {
+        if (self.hash_table != null) {
+            mem::free(self.hash_table);
+            self.hash_table = null;
+            self.hash_capacity = 0;
+        }
         return false;
     }
 
@@ -192,6 +192,7 @@ fn bool Env.build_hash_table(Env* self) {
  */
 <* @require self.hash_table != null : "hash_lookup called without hash table" *>
 fn usz Env.hash_lookup(Env* self, SymbolId name) {
+    if (name == INVALID_SYMBOL_ID) return ~(usz)0;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
     for (;;) {
@@ -207,6 +208,7 @@ fn usz Env.hash_lookup(Env* self, SymbolId name) {
  */
 <* @require self.hash_table != null : "hash_insert called without hash table" *>
 fn void Env.hash_insert(Env* self, SymbolId name, usz index) {
+    if (name == INVALID_SYMBOL_ID) return;
     usz mask = self.hash_capacity - 1;
     usz slot = (usz)name & mask;
     while (self.hash_table[slot].key != ENV_HASH_EMPTY && self.hash_table[slot].key != name) {

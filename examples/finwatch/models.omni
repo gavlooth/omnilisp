@@ -14,7 +14,7 @@
 ;; Dot access: q.symbol  q.price  q.ts
 (define [type] Quote
   (^String symbol)
-  (^Double price)
+  (^Float64 price)
   (^Integer    ts))
 
 ;; A Hacker News story used as a financial news item.
@@ -29,17 +29,17 @@
 ;; Dot access: h.symbol  h.qty  h.cost
 (define [type] Holding
   (^String symbol)
-  (^Double qty)
-  (^Double cost))
+  (^Float64 qty)
+  (^Float64 cost))
 
 ;; Per-holding P&L: cost basis, current value, and absolute gain.
 ;; Dot access: p.symbol  p.qty  p.cost  p.current  p.gain
 (define [type] PnL
   (^String symbol)
-  (^Double qty)
-  (^Double cost)
-  (^Double current)
-  (^Double gain))
+  (^Float64 qty)
+  (^Float64 cost)
+  (^Float64 current)
+  (^Float64 gain))
 
 ;; ── Sum type ──────────────────────────────────────────────────────────────────
 

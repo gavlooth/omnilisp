@@ -26,8 +26,8 @@ fn Value* explain_effect_result_from_signal_value(
     usz matched_search_order = usz.max;
     usz matched_clause_index = usz.max;
     Expr* matched_clause_body = null;
-    SymbolId matched_clause_arg = 0;
-    SymbolId matched_clause_k = 0;
+    SymbolId matched_clause_arg = (SymbolId)0;
+    SymbolId matched_clause_k = (SymbolId)0;
 
     bool strict_stop = false;
     usz strict_handler_index = usz.max;

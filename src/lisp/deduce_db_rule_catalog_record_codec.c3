@@ -103,12 +103,19 @@ fn bool deduce_db_append_persisted_rule_catalog_entry(
     entry.body_count = body_predicates.len;
 
     if (body_predicates.len > 0) {
-        entry.body_predicates = (SymbolId*)mem::malloc(SymbolId.sizeof * body_predicates.len);
+        usz body_predicates_bytes = 0;
+        usz body_negated_bytes = 0;
+        if (!deduce_checked_mul_usz(SymbolId.sizeof, body_predicates.len, &body_predicates_bytes) ||
+            !deduce_checked_mul_usz(bool.sizeof, body_negated.len, &body_negated_bytes)) {
+            deduce_persisted_rule_catalog_entry_release(entry);
+            return false;
+        }
+        entry.body_predicates = (SymbolId*)mem::malloc(body_predicates_bytes);
         if (entry.body_predicates == null) {
             deduce_persisted_rule_catalog_entry_release(entry);
             return false;
         }
-        entry.body_negated = (bool*)mem::malloc(bool.sizeof * body_negated.len);
+        entry.body_negated = (bool*)mem::malloc(body_negated_bytes);
         if (entry.body_negated == null) {
             deduce_persisted_rule_catalog_entry_release(entry);
             return false;
@@ -123,16 +130,20 @@ fn bool deduce_db_append_persisted_rule_catalog_entry(
     return true;
 }
 
-fn usz deduce_rule_catalog_record_size(DeduceRuleSignature* sig, Interp* interp) {
-    if (sig == null || interp == null || sig.head_predicate == (SymbolId)0) return 0;
+fn bool deduce_rule_catalog_record_size(DeduceRuleSignature* sig, Interp* interp, usz* out_size) {
+    if (sig == null || interp == null || out_size == null || sig.head_predicate == (SymbolId)0) return false;
     char[] head_name = interp.symbols.get_name(sig.head_predicate);
-    usz total = DeducePersistedRuleCatalogRecordV1.sizeof + head_name.len;
+    usz total = 0;
+    if (!deduce_checked_add_usz(DeducePersistedRuleCatalogRecordV1.sizeof, head_name.len, &total)) return false;
     for (usz i = 0; i < sig.body_count; i++) {
-        if (sig.body_predicates == null) return 0;
+        if (sig.body_predicates == null) return false;
         char[] body_name = interp.symbols.get_name(sig.body_predicates[i]);
-        total += DeducePersistedRuleCatalogBodyAtomV1.sizeof + body_name.len;
+        usz body_atom_size = 0;
+        if (!deduce_checked_add_usz(DeducePersistedRuleCatalogBodyAtomV1.sizeof, body_name.len, &body_atom_size)) return false;
+        if (!deduce_checked_add_inplace(&total, body_atom_size)) return false;
     }
-    return total;
+    *out_size = total;
+    return true;
 }
 
 fn bool deduce_encode_rule_catalog_record(
@@ -141,7 +152,8 @@ fn bool deduce_encode_rule_catalog_record(
     char[] out
 ) {
     if (sig == null || interp == null) return false;
-    usz needed = deduce_rule_catalog_record_size(sig, interp);
+    usz needed = 0;
+    if (!deduce_rule_catalog_record_size(sig, interp, &needed)) return false;
     if (needed == 0 || out.len < needed) return false;
 
     char[] head_name = interp.symbols.get_name(sig.head_predicate);
@@ -157,12 +169,9 @@ fn bool deduce_encode_rule_catalog_record(
         .body_count = sig.body_count,
         .head_name_len = head_name.len
     };
-    mem::copy(out.ptr, &header, DeducePersistedRuleCatalogRecordV1.sizeof);
-    usz cursor = DeducePersistedRuleCatalogRecordV1.sizeof;
-    if (head_name.len > 0) {
-        mem::copy(out.ptr + cursor, head_name.ptr, head_name.len);
-        cursor += head_name.len;
-    }
+    usz cursor = 0;
+    if (!deduce_copy_bytes_into_record(out, &cursor, &header, DeducePersistedRuleCatalogRecordV1.sizeof)) return false;
+    if (!deduce_copy_bytes_into_record(out, &cursor, head_name.ptr, head_name.len)) return false;
 
     for (usz i = 0; i < sig.body_count; i++) {
         char[] body_name = interp.symbols.get_name(sig.body_predicates[i]);
@@ -177,12 +186,8 @@ fn bool deduce_encode_rule_catalog_record(
             .reserved6 = 0,
             .name_len = body_name.len
         };
-        mem::copy(out.ptr + cursor, &atom, DeducePersistedRuleCatalogBodyAtomV1.sizeof);
-        cursor += DeducePersistedRuleCatalogBodyAtomV1.sizeof;
-        if (body_name.len > 0) {
-            mem::copy(out.ptr + cursor, body_name.ptr, body_name.len);
-            cursor += body_name.len;
-        }
+        if (!deduce_copy_bytes_into_record(out, &cursor, &atom, DeducePersistedRuleCatalogBodyAtomV1.sizeof)) return false;
+        if (!deduce_copy_bytes_into_record(out, &cursor, body_name.ptr, body_name.len)) return false;
     }
     return cursor == needed;
 }

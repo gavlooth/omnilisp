@@ -129,7 +129,21 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44d. Cons patterns lower to explicit cons/car/cdr checks instead of matching unconditionally.
+    // 44d. Registered primitives in stdlib/user lambdas are looked up, not captured as C3 locals.
+    {
+        char[] code = compile_to_c3("(let (f (lambda (x) (block (error? x) Dict json-parse sin string-byte-length sort-by))) f)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"error?\")", "lookup_prim(\"Dict\")", "lookup_prim(\"json-parse\")", "lookup_prim(\"sin\")", "lookup_prim(\"string-byte-length\")", "lookup_prim(\"sort-by\")"})
+            && compiler_code_contains_none(code, {"captured_error", "captured_error_p", "captured_Dict", "captured_json_parse", "captured_sin", "captured_string_byte_length", "captured_sort_by", " = error;", " = error_p;", " = Dict;", " = json_parse;", " = sin;", " = string_byte_length;", " = sort_by;"});
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: runtime primitives are not closure captures",
+            "[FAIL] Compiler: runtime primitives are not closure captures",
+            &pass,
+            &fail
+        );
+    }
+
+    // 44e. Cons patterns lower to explicit cons/car/cdr checks instead of matching unconditionally.
     {
         char[] code = compile_to_c3("(match (cons 1 2) ((a . b) a) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::is_cons(", "aot::car(", "aot::cdr("})
@@ -143,7 +157,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44e. Sequence patterns lower through recursive seq helpers, not shallow list-only checks.
+    // 44f. Sequence patterns lower through recursive seq helpers, not shallow list-only checks.
     {
         char[] code = compile_to_c3("(match (Array 1 2) ([1 x] x) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::seq_length(", "aot::seq_nth(", "aot::values_equal("})
@@ -157,7 +171,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44f. Dict patterns lower through explicit dict helpers and symbol-key binding.
+    // 44g. Dict patterns lower through explicit dict helpers and symbol-key binding.
     {
         char[] code = compile_to_c3("(match (Dictionary 'name 7) ({name} name) (_ 0))", interp);
         bool ok = compiler_code_contains_all(code, {"aot::is_dict(", "aot::dict_get_symbol("})
@@ -171,7 +185,7 @@ fn void run_compiler_group_multiarg_tco_tests(Interp* interp, usz* pass_out, usz
         );
     }
 
-    // 44g. Constructor/nullary-constructor patterns lower through typed instance helpers.
+    // 44h. Constructor/nullary-constructor patterns lower through typed instance helpers.
     {
         char[] code = compile_to_c3(
             "(define [union] Maybe None (Some Integer)) (match (Some 1) ((Some x) x) (None 0))",
@@ -335,23 +349,23 @@ fn void run_compiler_group_quasiquote_macro_tests(Interp* interp, usz* pass_out,
 
 fn void run_compiler_group_missing_numeric_symbol_tests(Interp* interp, usz* pass, usz* fail) {
     // =========================================================================
-    // Phase 4: Missing primitives
+    // Phase 4: Numeric parse primitives
     // =========================================================================
 
-    // 52. string->number compiles
+    // 52. parse-number compiles
     {
-        char[] code = compile_to_c3("(string->number \"42\")", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"string->number\")"})
+        char[] code = compile_to_c3("(parse-number \"42\")", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"parse-number\")"})
             && compiler_code_contains_none(code, {"unsupported"});
-        compiler_test_finish_bool(ok, "Compiler: string->number", "[FAIL] Compiler: string->number", pass, fail);
+        compiler_test_finish_bool(ok, "Compiler: parse-number", "[FAIL] Compiler: parse-number", pass, fail);
     }
 
-    // 53. number->string compiles
+    // 53. String compiles
     {
-        char[] code = compile_to_c3("(number->string 42)", interp);
-        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"number->string\")"})
+        char[] code = compile_to_c3("(String 42)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"String\")"})
             && compiler_code_contains_none(code, {"unsupported"});
-        compiler_test_finish_bool(ok, "Compiler: number->string", "[FAIL] Compiler: number->string", pass, fail);
+        compiler_test_finish_bool(ok, "Compiler: String", "[FAIL] Compiler: String", pass, fail);
     }
 
     // 54. gensym compiles
@@ -403,17 +417,17 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: List", "[FAIL] Compiler: List", pass, fail);
     }
-    // 58ab. Dictionary constructor compiles
+    // 58ab. Dictionary constructors compile through normal callable dispatch.
     {
         char[] code = compile_to_c3("(Dictionary 'a 1 'b 2)", interp);
-        bool ok = compiler_code_contains_all(code, {"aot::dict_from_args("})
-            && compiler_code_contains_none(code, {"unsupported"});
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi("})
+            && compiler_code_contains_none(code, {"aot::dict_from_args(", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: Dictionary", "[FAIL] Compiler: Dictionary", pass, fail);
     }
     {
         char[] code = compile_to_c3("(Dict 'a 1 'b 2)", interp);
-        bool ok = compiler_code_contains_all(code, {"aot::dict_from_args("})
-            && compiler_code_contains_none(code, {"unsupported"});
+        bool ok = compiler_code_contains_all(code, {"aot::apply_multi("})
+            && compiler_code_contains_none(code, {"aot::dict_from_args(", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: Dict", "[FAIL] Compiler: Dict", pass, fail);
     }
     // 58bb. TimePoint constructor compiles

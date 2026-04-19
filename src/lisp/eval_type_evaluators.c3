@@ -79,9 +79,13 @@ fn TypeId eval_defunion_register_variant_type(UnionVariant* variant, TypeId unio
     for (usz j = 0; j < variant.field_count; j++) {
         var_info.fields[j].name = variant.fields[j];
         var_info.fields[j].field_type = INVALID_TYPE_ID;
-        var_info.fields[j].annotation_sym = 0;
+        var_info.fields[j].annotation_sym = (SymbolId)0;
     }
-    return interp.types.register_type(var_info, &interp.symbols);
+    TypeId type_id = interp.types.register_type(var_info, &interp.symbols);
+    if (type_id == INVALID_TYPE_ID) {
+        type_registry_destroy_type_info(&var_info);
+    }
+    return type_id;
 }
 
 fn EvalResult eval_defunion_bind_variant(UnionVariant* variant, TypeId var_id, Interp* interp) {
@@ -104,6 +108,9 @@ fn EvalResult eval_defunion_bind_variant(UnionVariant* variant, TypeId var_id, I
     }
 
     // Variant with fields: define as constructor primitive (make_primitive uses root_scope)
+    if (variant.field_count > (usz)int.max) {
+        return eval_error("union variant constructor arity exceeds supported limit");
+    }
     char[] vname = interp.symbols.get_name(variant.name);
     Value* ctor = make_primitive(interp, vname, &prim_type_constructor, (int)variant.field_count);
     if (ctor == null) {
@@ -130,6 +137,7 @@ fn EvalResult eval_defunion(Expr* expr, Env* env, Interp* interp) {
 
     TypeId union_id = interp.types.register_type(union_info, &interp.symbols);
     if (union_id == INVALID_TYPE_ID) {
+        type_registry_destroy_type_info(&union_info);
         return eval_error("out of memory while registering union type");
     }
 
@@ -219,6 +227,7 @@ fn EvalResult eval_defeffect(Expr* expr, Env* env, Interp* interp) {
 
     TypeId type_id = interp.types.register_type(info, &interp.symbols);
     if (type_id == INVALID_TYPE_ID) {
+        type_registry_destroy_type_info(&info);
         return eval_error("out of memory while registering effect type");
     }
 

@@ -82,94 +82,45 @@ fn Value* deduce_refresh_db_wide(
         if (deduce_relation_schema_is_materialized_stale(db, &db.relation_schemas[i])) continue;
         refreshed_materialized_view_count++;
         refreshed_rev = make_cons(interp, make_symbol(interp, db.relation_schemas[i].name), refreshed_rev);
-        if (refreshed_rev != null && refreshed_rev.tag == ERROR) return refreshed_rev;
     }
     Value* refreshed_relations = deduce_explain_reverse_list(refreshed_rev, interp);
-    if (refreshed_relations != null && refreshed_relations.tag == ERROR) return refreshed_relations;
 
     if (!relation_scope) {
         if (result.tag == HASHMAP && result.hashmap_val != null) {
-            if (Value* err = explain_dict_set_symbol(result, interp, "kind", interp.symbols.intern("deduce-refresh"))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set_symbol(result, interp, "refresh-policy", interp.symbols.intern("manual"))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set_symbol(result, interp, "refresh-scope", interp.symbols.intern("database"))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set_symbol(result, interp, "refresh-execution-path", interp.symbols.intern("db-wide"))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "refresh-fallback-reason", make_nil(interp))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count))) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "refreshed-materialized-relations", refreshed_relations)) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "cleared-dirty-predicates", cleared_dirty_predicates)) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "remaining-dirty-predicates", remaining_dirty_predicates)) {
-                return err;
-            }
-            if (Value* err = explain_dict_set(result, interp, "remaining-stale-materialized-relations", remaining_stale_relations)) {
-                return err;
-            }
+            explain_dict_set_symbol(result, interp, "kind", interp.symbols.intern("deduce-refresh"));
+            explain_dict_set_symbol(result, interp, "refresh-policy", interp.symbols.intern("manual"));
+            explain_dict_set_symbol(result, interp, "refresh-scope", interp.symbols.intern("database"));
+            explain_dict_set_symbol(result, interp, "refresh-execution-path", interp.symbols.intern("db-wide"));
+            explain_dict_set(result, interp, "refresh-fallback-reason", make_nil(interp));
+            explain_dict_set(result, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count));
+            explain_dict_set(result, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count));
+            explain_dict_set(result, interp, "refreshed-materialized-relations", refreshed_relations);
+            explain_dict_set(result, interp, "cleared-dirty-predicates", cleared_dirty_predicates);
+            explain_dict_set(result, interp, "remaining-dirty-predicates", remaining_dirty_predicates);
+            explain_dict_set(result, interp, "remaining-stale-materialized-relations", remaining_stale_relations);
         }
         return result;
     }
+
     Value* out = deduce_relation_schema_payload(rel, target_schema, interp);
     if (out == null || out.tag == ERROR || out.tag != HASHMAP || out.hashmap_val == null) return out;
-    if (Value* err = explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-refresh"))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set_symbol(
-            out,
-            interp,
-            "refresh-policy",
-            deduce_materialized_refresh_policy_value(target_schema, interp)
-        )) {
-        return err;
-    }
-    if (Value* err = explain_dict_set_symbol(out, interp, "refresh-scope", interp.symbols.intern("relation"))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set_symbol(out, interp, "refresh-execution-path", interp.symbols.intern("db-wide"))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set_symbol(out, interp, "refresh-fallback-reason", interp.symbols.intern("full-recompute-required"))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "requested-refresh-relation", make_symbol(interp, rel.name))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "refreshed-relation", make_symbol(interp, rel.name))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count))) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "refreshed-materialized-relations", refreshed_relations)) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates)) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "remaining-dirty-predicates", remaining_dirty_predicates)) {
-        return err;
-    }
-    if (Value* err = explain_dict_set(out, interp, "remaining-stale-materialized-relations", remaining_stale_relations)) {
-        return err;
-    }
+    explain_dict_set_symbol(out, interp, "kind", interp.symbols.intern("deduce-refresh"));
+    explain_dict_set_symbol(
+        out,
+        interp,
+        "refresh-policy",
+        deduce_materialized_refresh_policy_value(target_schema, interp)
+    );
+    explain_dict_set_symbol(out, interp, "refresh-scope", interp.symbols.intern("relation"));
+    explain_dict_set_symbol(out, interp, "refresh-execution-path", interp.symbols.intern("db-wide"));
+    explain_dict_set_symbol(out, interp, "refresh-fallback-reason", interp.symbols.intern("full-recompute-required"));
+    explain_dict_set(out, interp, "requested-refresh-relation", make_symbol(interp, rel.name));
+    explain_dict_set(out, interp, "refreshed-relation", make_symbol(interp, rel.name));
+    explain_dict_set(out, interp, "refreshed-materialized-view-count", make_int(interp, refreshed_materialized_view_count));
+    explain_dict_set(out, interp, "stale-materialized-view-count", make_int(interp, remaining_stale_materialized_view_count));
+    explain_dict_set(out, interp, "refreshed-materialized-relations", refreshed_relations);
+    explain_dict_set(out, interp, "cleared-dirty-predicates", cleared_dirty_predicates);
+    explain_dict_set(out, interp, "remaining-dirty-predicates", remaining_dirty_predicates);
+    explain_dict_set(out, interp, "remaining-stale-materialized-relations", remaining_stale_relations);
     return out;
 }

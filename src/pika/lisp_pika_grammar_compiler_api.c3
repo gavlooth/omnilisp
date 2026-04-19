@@ -9,6 +9,10 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
         gc_set_error(gc, "parser/grammar-rule-not-list", "pika/grammar: rule must be a list");
         return false;
     }
+    if (!lisp::is_list(rule_def)) {
+        gc_set_error(gc, "parser/grammar-rule-not-list", "pika/grammar: rule definition must be a proper list");
+        return false;
+    }
 
     lisp::Value* head = rule_def.cons_val.car;
     if (!lisp::is_symbol(head)) {
@@ -40,44 +44,40 @@ fn bool parse_rule_definition(GrammarCompiler* gc, lisp::Value* rule_def, lisp::
         gc_set_error(gc, "parser/grammar-rule-missing-clause", "pika/grammar: rule requires a clause");
         return false;
     }
+    if (!lisp::is_nil(clause_rest.cons_val.cdr)) {
+        gc_set_error(gc, "parser/grammar-rule-arity", "pika/grammar: rule expects exactly name and clause");
+        return false;
+    }
     *clause_out = clause_rest.cons_val.car;
     return true;
 }
 
-fn bool gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
+fn void gc_register_rule(GrammarCompiler* gc, lisp::Interp* interp, lisp::SymbolId rule_name, int clause_idx) {
     int existing = gc.find_rule(rule_name);
     if (existing >= 0) {
         gc.rb.rules[existing].clause = gc.rb.rules[clause_idx].clause;
-        return true;
+        if (gc.start_rule_index < 0) gc.start_rule_index = existing;
+        return;
     }
-
     char[] name_str = interp.symbols.get_name(rule_name);
     gc.rb.rules[clause_idx].name = (String)name_str;
-    if (!gc_ensure_rule_capacity(gc)) return false;
-    if (gc.rule_count < 0 || gc.rule_count >= gc.rule_capacity || gc.rule_names == null || gc.rule_indices == null) {
-        gc_set_error(gc, "parser/grammar-oom", "pika/grammar: failed to grow rule table");
-        return false;
-    }
-
+    if (!gc_ensure_rule_capacity(gc)) return;
     gc.rule_names[gc.rule_count] = rule_name;
     gc.rule_indices[gc.rule_count] = clause_idx;
     gc.rule_count++;
-    return true;
+    if (gc.start_rule_index < 0) gc.start_rule_index = clause_idx;
 }
 
 fn lisp::Value* finalize_named_grammar(lisp::Interp* interp, lisp::SymbolId grammar_name, GrammarCompiler* gc) {
-    if (gc.has_error) {
-        return parser_raise(interp, gc.error_code, gc.error_message);
-    }
     if (gc.rb.len == 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
-    if (gc.rule_count == 0) {
+    if (gc.start_rule_index < 0) {
         return parser_raise(interp, "parser/grammar-no-rules", "pika/grammar: grammar has no rules");
     }
 
     String[] starts = mem::new_array(String, 1);
-    starts[0] = gc.rb.rules[gc.rule_indices[0]].name;
+    starts[0] = gc.rb.rules[gc.start_rule_index].name;
     Grammar grammar = make_grammar(starts, gc.rb.to_array());
     int start_clause = find_name_index(&grammar, starts[0]);
     if (start_clause < 0) {
@@ -129,9 +129,7 @@ fn lisp::Value* prim_pika_grammar(lisp::Value*[] args, lisp::Env* env, lisp::Int
         // Compile the clause
         int clause_idx = compile_clause(&gc, clause);
         if (gc.has_error) return parser_raise(interp, gc.error_code, gc.error_message);
-        if (!gc_register_rule(&gc, interp, rule_name, clause_idx)) {
-            return parser_raise(interp, gc.error_code, gc.error_message);
-        }
+        gc_register_rule(&gc, interp, rule_name, clause_idx);
     }
     return finalize_named_grammar(interp, grammar_name, &gc);
 }

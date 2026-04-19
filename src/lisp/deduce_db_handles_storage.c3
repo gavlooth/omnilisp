@@ -6,6 +6,7 @@ fn bool deduce_value_supported_by_tuple_codec(Value* v) @inline {
     if (v == null || v.tag == NIL) return true;
     return v.tag == INT ||
         v.tag == DOUBLE ||
+        v.tag == FLOAT32 ||
         v.tag == STRING ||
         v.tag == SYMBOL ||
         v.tag == TIME_POINT;
@@ -56,7 +57,9 @@ fn bool deduce_relation_meta_apply_persisted_state(
         if ((meta_v1.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MATERIALIZED) == 0) return false;
         *materialized_view_io = true;
         if ((meta_v1.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
-            *materialized_refresh_policy_io = interp.symbols.intern("manual");
+            SymbolId policy = interp.symbols.intern("manual");
+            if (policy == INVALID_SYMBOL_ID) return false;
+            *materialized_refresh_policy_io = policy;
         }
         *materialized_refresh_count_io = 0;
         *materialized_last_refresh_mutation_epoch_io = 0;
@@ -76,9 +79,13 @@ fn bool deduce_relation_meta_apply_persisted_state(
 
     *materialized_view_io = true;
     if ((meta_v2.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_MANUAL_REFRESH) != 0) {
-        *materialized_refresh_policy_io = interp.symbols.intern("manual");
+        SymbolId policy = interp.symbols.intern("manual");
+        if (policy == INVALID_SYMBOL_ID) return false;
+        *materialized_refresh_policy_io = policy;
     } else if ((meta_v2.flags & DEDUCE_PERSISTED_RELATION_META_FLAG_ON_READ_REFRESH) != 0) {
-        *materialized_refresh_policy_io = interp.symbols.intern("on-read");
+        SymbolId policy = interp.symbols.intern("on-read");
+        if (policy == INVALID_SYMBOL_ID) return false;
+        *materialized_refresh_policy_io = policy;
     }
     *materialized_refresh_count_io = meta_v2.materialized_refresh_count;
     *materialized_last_refresh_mutation_epoch_io = meta_v2.materialized_last_refresh_mutation_epoch;
@@ -120,10 +127,10 @@ fn Value* deduce_relation_meta_persist_state(
     }
 
     MdbDbi meta_dbi = 0;
-    bool meta_open = deduce_open_relation_meta_dbi(db, txn, !delete_entry, &meta_dbi);
-    if (!meta_open) {
+    int meta_open_rc = deduce_open_relation_meta_dbi_rc(db, txn, !delete_entry, &meta_dbi);
+    if (meta_open_rc != MDB_SUCCESS) {
         mdb_txn_abort(txn);
-        if (delete_entry) return null;
+        if (delete_entry && meta_open_rc == MDB_NOTFOUND) return null;
         return deduce_raise(interp, "deduce/materialized-meta-open-failed",
             "deduce: materialized relation metadata dbi open failed");
     }

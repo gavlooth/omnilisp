@@ -55,7 +55,11 @@ fn Value* prim_udp_bind(Value*[] args, Env* env, Interp* interp) {
 
     SockaddrIn addr = {};
     char[] host = host_v.str_chars[:host_v.str_len];
-    int port = (int)port_v.int_val;
+    long raw_port = port_v.int_val;
+    if (raw_port < 0 || raw_port > 65535) {
+        return io_raise(interp, "io/udp-bind-invalid-port", "udp-bind: port must be between 0 and 65535");
+    }
+    int port = (int)raw_port;
     if (!fill_sockaddr_ipv4(host, port, &addr)) {
         return io_raise(interp, "io/udp-bind-invalid-address", "udp-bind: invalid host or port");
     }
@@ -119,7 +123,11 @@ fn Value* prim_udp_send(Value*[] args, Env* env, Interp* interp) {
 
     SockaddrIn addr = {};
     char[] host = host_v.str_chars[:host_v.str_len];
-    int port = (int)port_v.int_val;
+    long raw_port = port_v.int_val;
+    if (raw_port < 0 || raw_port > 65535) {
+        return io_raise(interp, "io/udp-send-invalid-port", "udp-send: port must be between 0 and 65535");
+    }
+    int port = (int)raw_port;
     if (!fill_sockaddr_ipv4(host, port, &addr)) {
         return io_raise(interp, "io/udp-send-invalid-address", "udp-send: invalid host or port");
     }

@@ -11,6 +11,9 @@ fn void run_advanced_core_semantics_match_tests(Interp* interp, int* pass, int* 
     test_eq(interp, "match computed", "(match (+ 1 1) (1 10) (2 20) (3 30))", 20, pass, fail);
     test_eq(interp, "match [a b] => 30", "(match (quote (10 20)) ([a b] (+ a b)))", 30, pass, fail);
     test_eq(interp, "match [x] => 42", "(match (quote (42)) ([x] x))", 42, pass, fail);
+    test_eq(interp, "match rejects improper sequence input", "(match (cons 1 2) ([x] 1) (_ 0))", 0, pass, fail);
+    test_eq(interp, "match rejects improper rest sequence input", "(match (cons 1 2) ([x .. tail] 1) (_ 0))", 0, pass, fail);
+    test_eq(interp, "match rejects scalar empty sequence input", "(match 7 ([] 1) (_ 0))", 0, pass, fail);
     test_eq(interp, "match [a b c] product", "(match (quote (2 3 4)) ([a b c] (* a (* b c))))", 24, pass, fail);
     test_eq(interp, "match [h .. t] tail len", "(match (quote (1 2 3 4 5)) ([h .. t] (length t)))", 4, pass, fail);
     test_eq(interp, "match _ wildcard", "(match 42 (_ 0))", 0, pass, fail);
@@ -124,7 +127,7 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "/: division by zero", pass, fail);
     test_str_val(interp, "try catch arity error",
         "(try (lambda (xx) (+ )) (lambda (payload) (ref payload 'message)))",
-        "+: expected at least 1 argument, got 0", pass, fail);
+        "+: arity mismatch: expected 1 or 2 arguments, got 0", pass, fail);
     test_str_val(interp, "try catch type error",
         "(try (lambda (xx) (+ \"a\" 1)) (lambda (payload) (ref payload 'message)))",
         "+: argument 1 expected number, got \"a\"", pass, fail);
@@ -161,10 +164,10 @@ fn void run_advanced_core_semantics_try_raise_tests(Interp* interp, int* pass, i
         "                      (has? payload 'data))))))",
         pass, fail);
     test_str_val(interp, "try canonical payload domain",
-        "(try (lambda (xx) (resolve 42)) (lambda (payload) (symbol->string (ref payload 'domain))))",
+        "(try (lambda (xx) (resolve 42)) (lambda (payload) (String (ref payload 'domain))))",
         "runtime", pass, fail);
     test_str_val(interp, "try canonical payload code",
-        "(try (lambda (xx) (resolve 42)) (lambda (payload) (symbol->string (ref payload 'code))))",
+        "(try (lambda (xx) (resolve 42)) (lambda (payload) (String (ref payload 'code))))",
         "runtime/invalid-continuation", pass, fail);
     test_str_val(interp, "try canonical payload message",
         "(try (lambda (xx) (resolve 42)) (lambda (payload) (ref payload 'message)))",

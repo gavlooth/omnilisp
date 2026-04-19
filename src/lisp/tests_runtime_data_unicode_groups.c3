@@ -149,12 +149,18 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(TimePoint 'unknown 1 2 3)", "time-point:", pass, fail);
     test_error_contains(interp, "time-point rejects bad datetime-tz arity",
         "(TimePoint 'datetime-tz 2026 3 7 8 15 30)", "time-point: datetime-tz expects", pass, fail);
+    test_error_contains(interp, "time-point rejects date field out of range",
+        "(TimePoint 'date 2026 13 7)", "out of range", pass, fail);
+    test_error_contains(interp, "time-point rejects datetime-tz offset out of range",
+        "(TimePoint 'datetime-tz 2026 3 7 8 15 30 0 2000)", "out of range", pass, fail);
     test_tag(interp, "toml-parse supports options list",
         "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 false)))", HASHMAP, pass, fail);
     test_error_contains(interp, "toml-parse validates unknown option key",
         "(toml-parse \"title = \\\"Toml\\\"\n\" '((bogus true)))", "toml-parse: unknown option key", pass, fail);
     test_error_contains(interp, "toml-parse validates option value",
         "(toml-parse \"title = \\\"Toml\\\"\n\" '((check-utf8 1)))", "toml-parse: check-utf8 must be a boolean", pass, fail);
+    test_error_contains(interp, "toml-parse rejects improper options tail",
+        "(toml-parse \"title = \\\"Toml\\\"\n\" (cons (list 'check-utf8 false) \"tail\"))", "toml-parse: options must be a proper list", pass, fail);
     test_error_contains(interp, "toml-parse rejects invalid input",
         "(toml-parse \"[broken = 1\")", "toml-parse", pass, fail);
 
@@ -173,6 +179,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(ref (ref (csv-parse \"a,b\\rc,d\" '((strict false))) 1) 0)", "c", pass, fail);
     test_error_contains(interp, "csv-parse strict true matches default CRLF enforcement",
         "(csv-parse \"a,b\\r;c\" '((strict true)))", "csv-parse: strict mode requires CRLF line endings", pass, fail);
+    test_error_contains(interp, "csv-parse rejects improper options tail",
+        "(csv-parse \"a,b\" (cons (list 'delimiter \",\") \"tail\"))", "csv-parse: options list must be a proper list", pass, fail);
     test_str_val(interp, "csv-parse strict allows quote inside unquoted field",
         "(ref (ref (csv-parse \"a\\\"b,c\" '((strict false))) 0) 0)", "a\"b", pass, fail);
     test_eq(interp, "csv-parse omits trailing empty row",
@@ -207,6 +215,8 @@ fn void run_data_format_tests(Interp* interp, int* pass, int* fail) {
         "(csv-emit [[\"a\"]] '((quote-char \",\") (strict false)))", "a", pass, fail);
     test_error_contains(interp, "csv-emit validates quote-char != delimiter in strict mode",
         "(csv-emit [[\"a\"]] '((quote-char \",\") (strict true)))", "quote-char", pass, fail);
+    test_error_contains(interp, "csv-emit rejects improper options tail",
+        "(csv-emit [[\"a\"]] (cons (list 'delimiter \",\") \"tail\"))", "csv-emit: options list must be a proper list", pass, fail);
     test_error_contains(interp, "csv-emit validates row type",
         "(csv-emit [\"bad\"])", "csv-emit: expected each row", pass, fail);
     test_error_contains(interp, "csv-emit validates row cell types",
@@ -282,20 +292,22 @@ fn void run_compression_tests(Interp* interp, int* pass, int* fail) {
     test_error_contains(interp, "gzip rejects too many args",
         "(gzip \"hello\" 1 2)", "expected 1-2 arguments", pass, fail);
     test_str_val(interp, "gzip invalid arg payload domain",
-        "(handle (gzip 42) (raise msg (symbol->string (ref msg 'domain))))",
+        "(handle (gzip 42) (raise msg (String (ref msg 'domain))))",
         "type", pass, fail);
     test_str_val(interp, "gzip too-many-args payload code",
-        "(handle (gzip \"hello\" 1 2) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (gzip \"hello\" 1 2) (raise msg (String (ref msg 'code))))",
         "type/arity", pass, fail);
     test_error_contains(interp, "zlib-decompress rejects corrupt payload",
         "(zlib-decompress \"not-a-zlib-stream\")", "decompression failed", pass, fail);
+    test_error_contains(interp, "zlib-decompress rejects oversized original-size",
+        "(zlib-decompress (zlib-compress \"zlib payload\") 4611686018427387904)", "original-size is too large", pass, fail);
     test_str_val(interp, "zlib-decompress corrupt payload code",
-        "(handle (zlib-decompress \"not-a-zlib-stream\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (zlib-decompress \"not-a-zlib-stream\") (raise msg (String (ref msg 'code))))",
         "runtime/zlib-decompress-failed", pass, fail);
     test_error_contains(interp, "gunzip rejects corrupt payload",
         "(gunzip \"not-a-gzip-stream\")", "decompression failed", pass, fail);
     test_str_val(interp, "gunzip corrupt payload code",
-        "(handle (gunzip \"not-a-gzip-stream\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (gunzip \"not-a-gzip-stream\") (raise msg (String (ref msg 'code))))",
         "runtime/gunzip-failed", pass, fail);
     test_error_contains(interp, "inflate rejects corrupt payload",
         "(inflate \"not-a-deflate-stream\")", "decompression failed", pass, fail);
@@ -363,6 +375,10 @@ fn void run_unicode_tests(Interp* interp, int* pass, int* fail) {
         "(char-width 65)", 1, pass, fail);
     test_error_contains(interp, "char-width rejects non-int",
         "(char-width \"A\")", "expected integer", pass, fail);
+    test_error_contains(interp, "char-category rejects out-of-range codepoint",
+        "(char-category 1114112)", "out of range", pass, fail);
+    test_error_contains(interp, "char-property rejects negative codepoint",
+        "(char-property -1 'category)", "out of range", pass, fail);
     test_str_val(interp, "char-property category",
         "(char-property 65 'category)", "Lu", pass, fail);
     test_eq(interp, "char-property width",

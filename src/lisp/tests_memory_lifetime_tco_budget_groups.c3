@@ -2,6 +2,7 @@ module lisp;
 
 
 import std::io;
+import std::core::mem;
 import main;
 
 fn void run_memory_lifetime_jit_copy_hot_budget_test(Interp* interp, int* pass, int* fail) {
@@ -176,6 +177,40 @@ fn void run_memory_lifetime_tco_list_accumulator_budget_test(Interp* interp, int
     }
 }
 
+fn void run_memory_lifetime_tco_string_argument_list_promotion_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: ESCAPE-lane arg-list construction may reuse surviving string
+    // literals, but must not mistake that identity reuse for promotion failure.
+    {
+        EvalResult r = run(
+            "(let loop (i 0 p \"\") "
+            "  (if (= i 3) "
+            "      p "
+            "      (loop (+ i 1) (string-append p \"a\"))))",
+            interp);
+
+        bool ok_eval = !r.error.has_error &&
+                       r.value != null &&
+                       r.value.tag == STRING &&
+                       r.value.str_len == 3 &&
+                       r.value.str_chars[0] == 'a' &&
+                       r.value.str_chars[1] == 'a' &&
+                       r.value.str_chars[2] == 'a';
+
+        if (ok_eval) {
+            emit_pass_literal("[PASS] lifetime: tco string argument-list promotion");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tco string argument-list promotion (tag=%d len=%d err=%s)",
+                r.value != null ? (int)r.value.tag : -1,
+                (r.value != null && r.value.tag == STRING) ? (int)r.value.str_len : -1,
+                r.error.has_error ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
 fn void run_memory_lifetime_tco_runtime_fields_restore_test(Interp* interp, int* pass, int* fail) {
     // Invariant: TCO paths restore recycle/defer runtime fields on both success and error.
     {
@@ -289,6 +324,164 @@ fn void run_memory_lifetime_tco_recycle_error_restore_test(Interp* interp, int* 
                 err_ok ? "yes" : "no",
                 env_ok ? "yes" : "no",
                 restored_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn Value* make_tco_opaque_primitive_for_test(
+    Interp* interp,
+    main::ScopeRegion* owner,
+    char name0,
+    int tag
+) {
+    if (interp == null || owner == null) return null;
+    Value* opaque = interp.alloc_value();
+    Primitive* prim = (Primitive*)mem::malloc(Primitive.sizeof);
+    int* payload = (int*)owner.alloc(int.sizeof);
+    if (opaque == null || prim == null || payload == null) {
+        if (prim != null) mem::free(prim);
+        return null;
+    }
+    opaque.tag = PRIMITIVE;
+    main::scope_register_dtor(owner, (void*)opaque, &scope_dtor_value);
+    *prim = {};
+    *payload = tag;
+    prim.name[0] = name0;
+    prim.name[1] = 0;
+    prim.arity = 1;
+    prim.tag = tag;
+    prim.user_data = (void*)payload;
+    opaque.prim_val = prim;
+    return opaque;
+}
+
+fn void run_memory_lifetime_tco_env_copy_failure_fail_closed_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: direct TCO env-chain copying rejects a boundary-copy failure
+    // before committing a broken binding into the copied env frame.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* source = main::scope_create(saved_scope);
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        if (source == null || target == null) {
+            if (source != null) main::scope_release(source);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: tco env copy failure fails closed");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId sym = interp.symbols.intern("__tco_env_copy_opaque");
+
+        interp.current_scope = source;
+        Env* source_env = make_env(interp, interp.global_env);
+        Value* opaque = make_tco_opaque_primitive_for_test(interp, source, 't', 7301);
+        bool setup_ok = source_env != null &&
+                        opaque != null &&
+                        env_define_with_barrier_checked(source_env, sym, opaque, interp);
+
+        interp.current_scope = target;
+        Env* copied_env = setup_ok
+            ? jit_copy_tco_env_chain_for_recycle(source_env, interp, source)
+            : null;
+
+        Value* original_value = source_env != null ? source_env.lookup(sym) : null;
+        bool fail_closed = setup_ok &&
+            copied_env == null &&
+            original_value == opaque &&
+            original_value != null &&
+            original_value.tag == PRIMITIVE &&
+            original_value.prim_val != null &&
+            original_value.prim_val.user_data != null;
+
+        interp.current_scope = saved_scope;
+        main::scope_release(source);
+        main::scope_release(target);
+
+        if (fail_closed) {
+            emit_pass_literal("[PASS] lifetime: tco env copy failure fails closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tco env copy failure fails closed (setup_ok=%s copied_null=%s original_ok=%s)",
+                setup_ok ? "yes" : "no",
+                copied_env == null ? "yes" : "no",
+                (original_value == opaque) ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_tco_recycle_env_copy_failure_restore_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: TCO recycle preserves the previous env and call scope when
+    // env-chain copying fails while preparing the fresh recycle scope.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_tco_recycle = interp.tco_recycle_scope;
+        usz saved_tco_slot = interp.tco_scope_defer_slot;
+        bool saved_tco_active = interp.tco_scope_defer_active;
+        Env* saved_jit_env = interp.jit_env;
+
+        main::ScopeRegion* cs = main::scope_create(saved_scope);
+        if (cs == null) {
+            io::printn("[FAIL] lifetime: tco recycle env copy failure restores state");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId sym = interp.symbols.intern("__tco_recycle_opaque");
+
+        interp.current_scope = cs;
+        interp.tco_recycle_scope = cs;
+        interp.tco_scope_defer_slot = 0;
+        interp.tco_scope_defer_active = false;
+        interp.jit_env = interp.global_env;
+
+        Env* env = make_env(interp, interp.global_env);
+        Value* opaque = make_tco_opaque_primitive_for_test(interp, cs, 'r', 7302);
+        bool setup_ok = env != null &&
+                        opaque != null &&
+                        env_define_with_barrier_checked(env, sym, opaque, interp);
+        Env* env_io = env;
+
+        Value* err = setup_ok
+            ? jit_prepare_tco_recycle(&env_io, interp.global_env, interp)
+            : make_nil(interp);
+
+        bool err_ok = err != null &&
+                      err.tag == ERROR &&
+                      err.str_chars != null &&
+                      str_contains(
+                          err.str_chars[:err.str_len],
+                          "jit: failed to copy TCO recycle env"
+                      );
+        bool env_ok = env_io == env &&
+                      env != null &&
+                      env.lookup(sym) == opaque;
+        bool state_ok = interp.current_scope == cs &&
+                        interp.tco_recycle_scope == cs &&
+                        interp.jit_env == interp.global_env;
+
+        interp.current_scope = saved_scope;
+        interp.tco_recycle_scope = saved_tco_recycle;
+        interp.tco_scope_defer_slot = saved_tco_slot;
+        interp.tco_scope_defer_active = saved_tco_active;
+        interp.jit_env = saved_jit_env;
+        main::scope_release(cs);
+
+        bool ok = setup_ok && err_ok && env_ok && state_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tco recycle env copy failure restores state");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tco recycle env copy failure restores state (setup_ok=%s err_ok=%s env_ok=%s state_ok=%s)",
+                setup_ok ? "yes" : "no",
+                err_ok ? "yes" : "no",
+                env_ok ? "yes" : "no",
+                state_ok ? "yes" : "no"
+            );
             (*fail)++;
         }
     }
@@ -553,9 +746,12 @@ fn void run_memory_lifetime_hot_budget_tests(Interp* interp, int* pass, int* fai
     run_memory_lifetime_jit_copy_hot_budget_test(interp, pass, fail);
     run_memory_lifetime_tco_frame_budget_test(interp, pass, fail);
     run_memory_lifetime_tco_list_accumulator_budget_test(interp, pass, fail);
+    run_memory_lifetime_tco_string_argument_list_promotion_test(interp, pass, fail);
     run_memory_lifetime_tco_boundary_state_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_runtime_fields_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_recycle_error_restore_test(interp, pass, fail);
+    run_memory_lifetime_tco_env_copy_failure_fail_closed_test(interp, pass, fail);
+    run_memory_lifetime_tco_recycle_env_copy_failure_restore_test(interp, pass, fail);
     run_memory_lifetime_tco_nested_temp_graph_recycle_guard_test(interp, pass, fail);
     run_memory_lifetime_tco_closure_payload_temp_recycle_guard_test(interp, pass, fail);
 }

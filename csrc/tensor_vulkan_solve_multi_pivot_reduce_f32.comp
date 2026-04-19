@@ -1,0 +1,64 @@
+#version 450
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 3) buffer Status {
+    uint status_code[];
+};
+
+layout(std430, binding = 4) buffer PivotScratch {
+    float pivot_abs[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint pivot;
+    uint work_count;
+    uint scratch_src;
+    uint scratch_dst;
+    uint scratch_count;
+} pc;
+
+shared float pivot_abs_parts[64];
+shared uint pivot_row_parts[64];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint group_id = gl_WorkGroupID.x;
+
+    if (status_code[0] != 2u) return;
+
+    uint candidate_index = group_id * 64u + tid;
+    float local_abs = 0.0;
+    uint local_row = pc.pivot;
+    if (candidate_index < pc.work_count) {
+        uint src_index = pc.scratch_src + candidate_index;
+        local_abs = pivot_abs[src_index];
+        local_row = status_code[4u + src_index];
+    }
+
+    pivot_abs_parts[tid] = local_abs;
+    pivot_row_parts[tid] = local_row;
+    barrier();
+
+    for (uint stride = 32u; stride > 0u; stride >>= 1u) {
+        if (tid < stride) {
+            float candidate_abs = pivot_abs_parts[tid + stride];
+            uint candidate_row = pivot_row_parts[tid + stride];
+            float current_abs = pivot_abs_parts[tid];
+            uint current_row = pivot_row_parts[tid];
+            if (candidate_abs > current_abs || (candidate_abs == current_abs && candidate_row < current_row)) {
+                pivot_abs_parts[tid] = candidate_abs;
+                pivot_row_parts[tid] = candidate_row;
+            }
+        }
+        barrier();
+    }
+
+    if (tid == 0u) {
+        uint dst_index = pc.scratch_dst + group_id;
+        pivot_abs[dst_index] = pivot_abs_parts[0];
+        status_code[4u + dst_index] = pivot_row_parts[0];
+    }
+}

@@ -3,14 +3,30 @@ module pika;
 import std::core::mem;
 import lisp;
 
-fn int count_clause_elements(lisp::Value* rest) {
+fn bool clause_list_length_checked(GrammarCompiler* gc, lisp::Value* rest, int* out_count, char[] message) {
     int elem_count = 0;
     lisp::Value* curr = rest;
     while (lisp::is_cons(curr)) {
         elem_count++;
         curr = curr.cons_val.cdr;
     }
-    return elem_count;
+    if (!lisp::is_nil(curr)) {
+        gc_set_error(gc, "parser/grammar-malformed-clause", message);
+        *out_count = 0;
+        return false;
+    }
+    *out_count = elem_count;
+    return true;
+}
+
+fn bool clause_rest_exact_arity(GrammarCompiler* gc, lisp::Value* rest, int expected, char[] message) {
+    int elem_count = 0;
+    if (!clause_list_length_checked(gc, rest, &elem_count, "pika/grammar: grammar clause operands must be a proper list")) return false;
+    if (elem_count != expected) {
+        gc_set_error(gc, "parser/grammar-arity", message);
+        return false;
+    }
+    return true;
 }
 
 fn int[] compile_clause_children_from_list(GrammarCompiler* gc, lisp::Value* rest, int elem_count) {
@@ -36,7 +52,7 @@ fn int compile_clause_symbol_ref(GrammarCompiler* gc, lisp::Value* clause) {
 
     char[] sym_name = gc.interp.symbols.get_name(sym);
     int placeholder = gc.rb.add((String)sym_name, mk_fail());
-    if (!gc_ensure_rule_capacity(gc)) return -1;
+    if (!gc_ensure_rule_capacity(gc)) return placeholder;
     gc.rule_names[gc.rule_count] = sym;
     gc.rule_indices[gc.rule_count] = placeholder;
     gc.rule_count++;
@@ -44,14 +60,16 @@ fn int compile_clause_symbol_ref(GrammarCompiler* gc, lisp::Value* clause) {
 }
 
 fn int compile_clause_seq_op(GrammarCompiler* gc, lisp::Value* rest) {
-    int elem_count = count_clause_elements(rest);
+    int elem_count = 0;
+    if (!clause_list_length_checked(gc, rest, &elem_count, "pika/grammar: seq operands must be a proper list")) return gc.rb.add("_err", mk_fail());
     if (elem_count == 0) return gc.rb.add("_eps", mk_epsilon());
     int[] children = compile_clause_children_from_list(gc, rest, elem_count);
     return gc.rb.add("_seq", mk_seq(children));
 }
 
 fn int compile_clause_first_op(GrammarCompiler* gc, lisp::Value* rest) {
-    int elem_count = count_clause_elements(rest);
+    int elem_count = 0;
+    if (!clause_list_length_checked(gc, rest, &elem_count, "pika/grammar: first operands must be a proper list")) return gc.rb.add("_err", mk_fail());
     if (elem_count == 0) return gc.rb.add("_fail", mk_fail());
     int[] children = compile_clause_children_from_list(gc, rest, elem_count);
     return gc.rb.add("_first", mk_first(children));

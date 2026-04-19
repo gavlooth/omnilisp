@@ -4,8 +4,20 @@ import std::io;
 import main;
 
 fn BoundaryEnvCopyResult copy_env_alloc_frame(Env* src, Interp* interp, usz depth) {
+    Binding* heap_bindings = null;
+    if (src.binding_count > 4) {
+        if (src.binding_count > usz.max / Binding.sizeof) {
+            return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC, depth);
+        }
+        heap_bindings = (Binding*)mem::malloc(Binding.sizeof * src.binding_count);
+        if (heap_bindings == null) {
+            return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC, depth);
+        }
+    }
+
     Env* dst = interp.alloc_env();
     if (dst == null) {
+        if (heap_bindings != null) mem::free(heap_bindings);
         return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_ENV_ALLOC, depth);
     }
     dst.binding_count = src.binding_count;
@@ -25,10 +37,7 @@ fn BoundaryEnvCopyResult copy_env_alloc_frame(Env* src, Interp* interp, usz dept
     }
 
     dst.is_inline = false;
-    dst.bindings = (Binding*)mem::malloc(Binding.sizeof * src.binding_count);
-    if (dst.bindings == null) {
-        return boundary_env_copy_fail(BOUNDARY_ENV_COPY_FAULT_BINDING_BUFFER_ALLOC, depth);
-    }
+    dst.bindings = heap_bindings;
     dst.capacity = src.binding_count;
     return boundary_env_copy_ok(dst, depth);
 }

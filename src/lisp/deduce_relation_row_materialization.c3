@@ -1,22 +1,22 @@
 module lisp;
 
-import main;
 import std::core::mem;
 
 bool g_deduce_force_row_dict_oom = false;
 bool g_deduce_force_column_key_values_oom = false;
 
 fn uint deduce_relation_row_dict_capacity(Relation* rel) {
-    usz dict_capacity = 8;
-    if (rel == null) return (uint)dict_capacity;
-    if (rel.col_count > (usz)uint.max / 2) return 0;
-    usz needed_capacity = rel.col_count * 2;
+    uint dict_capacity = 8;
+    if (rel == null) return dict_capacity;
+    if (rel.col_count > (usz)uint.max / (usz)2) return uint.max;
+    usz needed = rel.col_count * (usz)2;
+    if (needed > (usz)uint.max) return uint.max;
+    uint needed_capacity = (uint)needed;
     while (dict_capacity < needed_capacity) {
-        if (dict_capacity > (usz)uint.max / 2) return 0;
-        dict_capacity *= 2;
+        if (dict_capacity > uint.max / (uint)2) return uint.max;
+        dict_capacity *= (uint)2;
     }
-    if (dict_capacity > (usz)uint.max) return 0;
-    return (uint)dict_capacity;
+    return dict_capacity;
 }
 
 fn Value* deduce_relation_materialize_row_dict(
@@ -25,11 +25,8 @@ fn Value* deduce_relation_materialize_row_dict(
     Interp* interp,
     uint dict_capacity
 ) {
-    if (dict_capacity == 0) {
-        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
-    }
     Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-scan-range: out of memory");
-    if (g_deduce_force_row_dict_oom || main::getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+    if (g_deduce_force_row_dict_oom || test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
     }
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
@@ -49,7 +46,6 @@ fn Value* deduce_reverse_list(Value* list, Interp* interp) {
     Value* curr = list;
     while (is_cons(curr)) {
         reversed = make_cons(interp, car(curr), reversed);
-        if (reversed != null && reversed.tag == ERROR) return reversed;
         curr = cdr(curr);
     }
     return reversed;
@@ -64,10 +60,10 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count > usz.max / Value*.sizeof) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
-    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
-    if (g_deduce_force_column_key_values_oom || main::getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
-        key_values = null;
+    if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
+        return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
+    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
     if (key_values == null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }

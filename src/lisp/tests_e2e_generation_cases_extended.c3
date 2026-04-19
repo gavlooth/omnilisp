@@ -9,7 +9,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "recursive list build", "(length (cons 1 (cons 2 (cons 3 (quote ())))))" },
 
     // === Stdlib HOFs ===
-    { "stdlib map double", "(map (lambda (x) (* x 2)) (quote (1 2 3)))" },
+    { "stdlib map Float64", "(map (lambda (x) (* x 2)) (quote (1 2 3)))" },
     { "stdlib map inc", "(map (lambda (x) (+ x 1)) (quote (10 20 30)))" },
     { "stdlib map identity", "(map (lambda (x) x) (quote (1 2 3)))" },
     { "stdlib filter gt2", "(filter (lambda (x) (> x 2)) (quote (1 2 3 4 5)))" },
@@ -55,10 +55,10 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "dict keys", "(length (keys (Dictionary 1 10 2 20)))" },
     { "dict canonical keys", "(keys (Dictionary 'b 2 'a 1 'c 3))" },
     { "dict canonical values", "(values (Dictionary 'b 2 'a 1 'c 3))" },
-    { "set canonical list", "(set->list (Set 3 1 2 2))" },
+    { "set canonical list", "(List (Set 3 1 2 2))" },
 
     // string-contains?, string-index-of, string-replace, char-at,
-    // string-repeat, symbol->string, string->symbol — not mapped in compiler
+    // and string-repeat are not mapped in this extended compiler path.
 
     // === String operations (extended) ===
     { "string-upcase", `(string-upcase "hello")` },
@@ -113,7 +113,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "effect abort skips remainder", "(let (x 0) (block (handle (block (signal bail 1) (set! x 99) 7) (bail v 5)) x))" },
     { "resolve is terminal in clause",
       "(let (x 0) (block (handle (signal once 10) (once v (block (resolve (+ v 1)) (set! x 99) 0))) x))" },
-    { "capture double resume", "(checkpoint (+ (capture k (+ (k 1) (k 2))) 10))" },
+    { "capture Float64 resume", "(checkpoint (+ (capture k (+ (k 1) (k 2))) 10))" },
     // Top-level replay bookkeeping defines still generate invalid AOT locals.
     { "let-rec factorial 8", "(let ^rec (f (lambda (n) (if (= n 0) 1 (* n (f (- n 1)))))) (f 8))" },
 
@@ -125,7 +125,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "type-of nil", "(type-of nil)" },
     { "type-of true", "(type-of true)" },
     { "type-of closure", "(type-of (lambda (x) x))" },
-    { "type-of double", "(type-of 3.14)" },
+    { "type-of Float64", "(type-of 3.14)" },
 
     // === P1: type predicates ===
     { "int? yes", "(int? 42)" },
@@ -134,10 +134,10 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "string? no", "(string? 42)" },
     { "symbol? yes", "(symbol? (quote foo))" },
     { "symbol? no", "(symbol? 42)" },
-    { "double? yes", "(double? 3.14)" },
-    { "double? no", "(double? 42)" },
+    { "float64? yes", "(float64? 3.14)" },
+    { "float64? no", "(float64? 42)" },
     { "number? int", "(number? 42)" },
-    { "number? double", "(number? 3.14)" },
+    { "number? Float64", "(number? 3.14)" },
     { "number? no", "(number? (quote foo))" },
     { "pair? yes", "(pair? (quote (1 2)))" },
     { "pair? no", "(pair? 42)" },
@@ -148,7 +148,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "abs positive", "(abs 5)" },
     { "abs negative", "(abs -7)" },
     { "abs zero", "(abs 0)" },
-    { "abs double", "(abs -3.5)" },
+    { "abs Float64", "(abs -3.5)" },
     { "min ints", "(min 3 7)" },
     { "min reversed", "(min 7 3)" },
     { "min doubles", "(min 1.5 2.5)" },
@@ -163,8 +163,8 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "round down", "(round 3.4)" },
     { "truncate pos", "(truncate 3.9)" },
     { "truncate neg", "(truncate -3.9)" },
-    // inexact->exact, symbol->string, and pow are still not mapped in the AOT e2e compiler path.
-    { "string->number int overflow type", "(type-of (string->number \"9223372036854775808\"))" },
+    // pow and this overflow shape are still not mapped in the AOT e2e compiler path.
+    { "parse-number int overflow type", "(type-of (parse-number \"9223372036854775808\"))" },
     { "sqrt 4", "(sqrt 4)" },
     { "sqrt 9", "(sqrt 9)" },
     { "even? yes", "(even? 4)" },
@@ -196,8 +196,10 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "when false", "(when false 42)" },
     // Command-valued when predicates with nested define/set! still generate invalid AOT locals.
     { "when command Void predicate", "(let (e2e-void-when 0) (block (when (block 0 1) (set! e2e-void-when 9)) e2e-void-when))" },
+    { "when false skips set! side-effect", "(let (x 3) (block (when false (set! x 10)) x))" },
     { "unless true", "(unless true 42)" },
     { "unless false", "(unless false 42)" },
+    { "unless true skips set! side-effect", "(let (x 4) (block (unless true (set! x 20)) x))" },
 
     // === P3: Bitwise ops ===
     { "bitwise-and", "(bitwise-and 12 10)" },
@@ -220,7 +222,7 @@ const E2ETestCase[] E2E_TESTS_EXTENDED = {
     { "type union ctor", "(type-of (Some 5))" },
     { "dispatch exact subtype", `(who (Admin "ops"))` },
     { "dispatch parent subtype", `(who-parent (Admin "ops"))` },
-    { "dispatch numeric explicit conversion", "(who (Double 7))" },
+    { "dispatch numeric explicit conversion", "(who (Float64 7))" },
     { "dispatch value literal exact", "(ping 'ping)" },
     { "dispatch value literal fallback", "(ping 'other)" },
     { "alias annotation dispatch", `(alias-check (User "amy"))` },

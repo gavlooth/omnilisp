@@ -40,6 +40,20 @@
 - **`gensym`** function for manual hygiene
 - Legacy clause-style macro forms are rejected with migration diagnostics
 
+### Reader Tag Macros
+
+Reader tags are constrained syntax: `#tag form` parses as `(tag form)`.
+Use an ordinary function for evaluated tag calls, or define a tag macro with
+the canonical reader-tag attribute:
+
+```lisp
+(define [reader tag] reader-double
+  (syntax-match
+    ([x] (template (+ (insert x) (insert x))))))
+
+#reader-double 21 ;; => 42
+```
+
 ### Expansion
 
 ```lisp

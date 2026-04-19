@@ -6,11 +6,16 @@ import std::core::mem;
 // Unicode-aware string-upcase
 // ============================================================
 
+fn bool unicode_string_len_fits_utf8proc(char[] src) @inline {
+    return src.len <= (usz)long.max;
+}
+
 fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1) return raise_error(interp, "string-upcase: expected 1 argument");
     if (!is_string(args[0])) return raise_error(interp, "string-upcase: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
+    if (!unicode_string_len_fits_utf8proc(src)) return raise_error(interp, "string-upcase: input too large");
     usz cap = src.len > 0 ? src.len : 16;
     char* buf = (char*)mem::malloc(cap);
     if (buf == null) return raise_error(interp, "string-upcase: out of memory");
@@ -23,14 +28,7 @@ fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
         int cp = 0;
         long consumed = utf8proc_iterate((Utf8Char*)&src[pos], (long)(src.len - pos), &cp);
         if (consumed < 1 || cp < 0) {
-            if (out + 1 > cap) {
-                usz new_cap = cap * 2;
-                if (new_cap < out + 1) new_cap = out + 1;
-                char* grown = (char*)mem::realloc(buf, new_cap);
-                if (grown == null) return raise_error(interp, "string-upcase: out of memory");
-                buf = grown;
-                cap = new_cap;
-            }
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)1)) return raise_error(interp, "string-upcase: out of memory");
             buf[out++] = src[pos++];
             continue;
         }
@@ -39,27 +37,11 @@ fn Value* prim_string_upcase_unicode(Value*[] args, Env* env, Interp* interp) {
         char[4] enc;
         long enc_len = utf8proc_encode_char(upper, (Utf8Char*)&enc);
         if (enc_len < 0) {
-            if (out + 1 > cap) {
-                usz new_cap = cap * 2;
-                if (new_cap < out + 1) new_cap = out + 1;
-                char* grown = (char*)mem::realloc(buf, new_cap);
-                if (grown == null) return raise_error(interp, "string-upcase: out of memory");
-                buf = grown;
-                cap = new_cap;
-            }
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)1)) return raise_error(interp, "string-upcase: out of memory");
             buf[out++] = src[pos++];
             continue;
         }
-        if (out + (usz)enc_len > cap) {
-            usz new_cap = cap;
-            while (new_cap < out + (usz)enc_len) {
-                new_cap *= 2;
-            }
-            char* grown = (char*)mem::realloc(buf, new_cap);
-            if (grown == null) return raise_error(interp, "string-upcase: out of memory");
-            buf = grown;
-            cap = new_cap;
-        }
+        if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)enc_len)) return raise_error(interp, "string-upcase: out of memory");
         for (long j = 0; j < enc_len; j++) {
             buf[out++] = enc[j];
         }
@@ -78,6 +60,7 @@ fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) 
     if (!is_string(args[0])) return raise_error(interp, "string-downcase: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
+    if (!unicode_string_len_fits_utf8proc(src)) return raise_error(interp, "string-downcase: input too large");
     usz cap = src.len > 0 ? src.len : 16;
     char* buf = (char*)mem::malloc(cap);
     if (buf == null) return raise_error(interp, "string-downcase: out of memory");
@@ -90,14 +73,7 @@ fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) 
         int cp = 0;
         long consumed = utf8proc_iterate((Utf8Char*)&src[pos], (long)(src.len - pos), &cp);
         if (consumed < 1 || cp < 0) {
-            if (out + 1 > cap) {
-                usz new_cap = cap * 2;
-                if (new_cap < out + 1) new_cap = out + 1;
-                char* grown = (char*)mem::realloc(buf, new_cap);
-                if (grown == null) return raise_error(interp, "string-downcase: out of memory");
-                buf = grown;
-                cap = new_cap;
-            }
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)1)) return raise_error(interp, "string-downcase: out of memory");
             buf[out++] = src[pos++];
             continue;
         }
@@ -106,27 +82,11 @@ fn Value* prim_string_downcase_unicode(Value*[] args, Env* env, Interp* interp) 
         char[4] enc;
         long enc_len = utf8proc_encode_char(lower, (Utf8Char*)&enc);
         if (enc_len < 0) {
-            if (out + 1 > cap) {
-                usz new_cap = cap * 2;
-                if (new_cap < out + 1) new_cap = out + 1;
-                char* grown = (char*)mem::realloc(buf, new_cap);
-                if (grown == null) return raise_error(interp, "string-downcase: out of memory");
-                buf = grown;
-                cap = new_cap;
-            }
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)1)) return raise_error(interp, "string-downcase: out of memory");
             buf[out++] = src[pos++];
             continue;
         }
-        if (out + (usz)enc_len > cap) {
-            usz new_cap = cap;
-            while (new_cap < out + (usz)enc_len) {
-                new_cap *= 2;
-            }
-            char* grown = (char*)mem::realloc(buf, new_cap);
-            if (grown == null) return raise_error(interp, "string-downcase: out of memory");
-            buf = grown;
-            cap = new_cap;
-        }
+        if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)enc_len)) return raise_error(interp, "string-downcase: out of memory");
         for (long j = 0; j < enc_len; j++) {
             buf[out++] = enc[j];
         }
@@ -145,6 +105,7 @@ fn Value* prim_string_casefold_unicode(Value*[] args, Env* env, Interp* interp) 
     if (!is_string(args[0])) return raise_error(interp, "string-casefold: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
+    if (!unicode_string_len_fits_utf8proc(src)) return raise_error(interp, "string-casefold: input too large");
     Utf8Char* result = null;
     long new_len = utf8proc_map(
         (Utf8Char*)src.ptr,
@@ -170,6 +131,7 @@ fn Value* prim_string_titlecase_unicode(Value*[] args, Env* env, Interp* interp)
     if (!is_string(args[0])) return raise_error(interp, "string-titlecase: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
+    if (!unicode_string_len_fits_utf8proc(src)) return raise_error(interp, "string-titlecase: input too large");
     usz cap = src.len > 0 ? src.len : 16;
     char* buf = (char*)mem::malloc(cap);
     if (buf == null) return raise_error(interp, "string-titlecase: out of memory");
@@ -183,7 +145,7 @@ fn Value* prim_string_titlecase_unicode(Value*[] args, Env* env, Interp* interp)
         int cp = 0;
         long consumed = utf8proc_iterate((Utf8Char*)&src[pos], (long)(src.len - pos), &cp);
         if (consumed < 1 || cp < 0) {
-            if (!ensure_utf8_buf_capacity(&buf, &cap, out + 1)) {
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)1)) {
                 return raise_error(interp, "string-titlecase: out of memory");
             }
             buf[out++] = src[pos++];
@@ -203,7 +165,7 @@ fn Value* prim_string_titlecase_unicode(Value*[] args, Env* env, Interp* interp)
         char[4] enc;
         long enc_len = utf8proc_encode_char(mapped, (Utf8Char*)&enc);
         if (enc_len < 0) {
-            if (!ensure_utf8_buf_capacity(&buf, &cap, out + (usz)consumed)) {
+            if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)consumed)) {
                 return raise_error(interp, "string-titlecase: out of memory");
             }
             for (long j = 0; j < consumed; j++) {
@@ -213,7 +175,7 @@ fn Value* prim_string_titlecase_unicode(Value*[] args, Env* env, Interp* interp)
             continue;
         }
 
-        if (!ensure_utf8_buf_capacity(&buf, &cap, out + (usz)enc_len)) {
+        if (!ensure_utf8_buf_capacity_for_append(&buf, &cap, out, (usz)enc_len)) {
             return raise_error(interp, "string-titlecase: out of memory");
         }
         for (long j = 0; j < enc_len; j++) {

@@ -99,6 +99,7 @@ fn bool jit_value_is_graph_carrying(Value* v) @inline {
         case METHOD_TABLE:
         case ITERATOR:
         case INSTANCE:
+        case TENSOR:
             return true;
         default:
             return false;
@@ -106,6 +107,7 @@ fn bool jit_value_is_graph_carrying(Value* v) @inline {
 }
 
 const usz JIT_TEMP_GRAPH_SCAN_MAX_NODES = 4096;
+const usz JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES = 65536;
 
 struct JitTempGraphScan {
     Value*[JIT_TEMP_GRAPH_SCAN_MAX_NODES] value_stack;
@@ -152,6 +154,18 @@ fn bool jit_temp_graph_push_env(
     return true;
 }
 
+fn bool jit_temp_graph_push_child_or_detect_temp(
+    Value** stack,
+    usz* stack_len,
+    Value* value,
+    main::ScopeRegion* scope
+) @inline {
+    if (value == null) return false;
+    if (value_in_temp_lane(value, scope)) return true;
+    if (!jit_value_is_graph_carrying(value)) return false;
+    return !jit_temp_graph_push_value(stack, stack_len, value);
+}
+
 fn bool jit_graph_binding_reaches_temp_scope(
     Value* root,
     main::ScopeRegion* scope,
@@ -183,15 +197,46 @@ fn bool jit_graph_binding_reaches_temp_scope(
 
             switch (cur.tag) {
                 case CONS:
-                    if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.car) ||
-                        !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.cons_val.cdr)) {
-                        return true;
+                    Value* current = cur;
+                    usz list_nodes = 0;
+                    while (current != null && current.tag == CONS) {
+                        if (list_nodes >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
+                        if (value_in_temp_lane(current, scope)) return true;
+                        if (jit_temp_graph_push_child_or_detect_temp(
+                            &scan.value_stack[0],
+                            &value_stack_len,
+                            current.cons_val.car,
+                            scope
+                        )) {
+                            return true;
+                        }
+
+                        Value* cdr = current.cons_val.cdr;
+                        if (cdr == null) break;
+                        if (cdr.tag != CONS) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                cdr,
+                                scope
+                            )) {
+                                return true;
+                            }
+                            break;
+                        }
+                        current = cdr;
+                        list_nodes++;
                     }
                     break;
                 case ARRAY:
                     if (cur.array_val != null) {
                         for (usz i = 0; i < cur.array_val.length; i++) {
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.array_val.items[i])) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                cur.array_val.items[i],
+                                scope
+                            )) {
                                 return true;
                             }
                         }
@@ -202,8 +247,18 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key) ||
-                                !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, cur.hashmap_val.entries[i].value)) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                key,
+                                scope
+                            ) ||
+                                jit_temp_graph_push_child_or_detect_temp(
+                                    &scan.value_stack[0],
+                                    &value_stack_len,
+                                    cur.hashmap_val.entries[i].value,
+                                    scope
+                                )) {
                                 return true;
                             }
                         }
@@ -214,7 +269,12 @@ fn bool jit_graph_binding_reaches_temp_scope(
                         for (uint i = 0; i < cur.hashmap_val.capacity; i++) {
                             Value* key = cur.hashmap_val.entries[i].key;
                             if (key == null) continue;
-                            if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, key)) {
+                            if (jit_temp_graph_push_child_or_detect_temp(
+                                &scan.value_stack[0],
+                                &value_stack_len,
+                                key,
+                                scope
+                            )) {
                                 return true;
                             }
                         }
@@ -267,6 +327,33 @@ fn bool jit_graph_binding_reaches_temp_scope(
                             if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, &cur.instance_val.fields[i])) {
                                 return true;
                             }
+                        }
+                    }
+                    break;
+                case TENSOR:
+                    if (cur.tensor_val != null) {
+                        TensorVal* tensor = cur.tensor_val;
+                        switch (tensor.kind) {
+                            case TENSOR_PAYLOAD_CONCRETE:
+                                break;
+                            case TENSOR_PAYLOAD_MAP:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_func) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_left) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.map_right)) {
+                                    return true;
+                                }
+                                break;
+                            case TENSOR_PAYLOAD_CONTRACT:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_left) ||
+                                    !jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.contract_right)) {
+                                    return true;
+                                }
+                                break;
+                            case TENSOR_PAYLOAD_VIEW:
+                                if (!jit_temp_graph_push_value(&scan.value_stack[0], &value_stack_len, tensor.view_source)) {
+                                    return true;
+                                }
+                                break;
                         }
                     }
                     break;
@@ -348,6 +435,30 @@ fn bool jit_binding_payload_in_releasing_scope(Value* v, main::ScopeRegion* rele
             return true;
         }
     }
+    if (v.tag == TENSOR && v.tensor_val != null) {
+        TensorVal* tensor = v.tensor_val;
+        if (boundary_ptr_in_scope((void*)tensor, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.shape, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.strides, releasing_scope) ||
+            boundary_ptr_in_scope(tensor.data, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_left_axes, releasing_scope) ||
+            boundary_ptr_in_scope((void*)tensor.contract_right_axes, releasing_scope)) {
+            return true;
+        }
+        switch (tensor.kind) {
+            case TENSOR_PAYLOAD_CONCRETE:
+                return false;
+            case TENSOR_PAYLOAD_MAP:
+                return value_in_temp_lane(tensor.map_func, releasing_scope) ||
+                    value_in_temp_lane(tensor.map_left, releasing_scope) ||
+                    value_in_temp_lane(tensor.map_right, releasing_scope);
+            case TENSOR_PAYLOAD_CONTRACT:
+                return value_in_temp_lane(tensor.contract_left, releasing_scope) ||
+                    value_in_temp_lane(tensor.contract_right, releasing_scope);
+            case TENSOR_PAYLOAD_VIEW:
+                return value_in_temp_lane(tensor.view_source, releasing_scope);
+        }
+    }
     return false;
 }
 
@@ -365,7 +476,7 @@ fn bool jit_binding_graph_needs_copy(Value* v, Interp* interp, usz depth = 0) {
                 Value* current = v;
                 usz cur_depth = depth;
                 while (current != null && current.tag == CONS) {
-                    if (cur_depth >= 128) return true;
+                    if (cur_depth >= JIT_TEMP_CONS_SPINE_SCAN_MAX_NODES) return true;
 
                     Value* car = current.cons_val.car;
                     if (car != null) {

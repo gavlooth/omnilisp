@@ -21,6 +21,135 @@ fn Value* runtime_alloc_null_iterator_next(Value*[] args, Env* env, Interp* inte
     return null;
 }
 
+int g_runtime_alloc_ffi_finalizer_calls = 0;
+int g_runtime_alloc_tensor_device_finalizer_calls = 0;
+int g_runtime_alloc_tensor_cuda_free_finalizer_calls = 0;
+
+fn void runtime_alloc_ffi_finalizer(void* payload) {
+    g_runtime_alloc_ffi_finalizer_calls += 1;
+    if (payload != null) {
+        *(int*)payload = 0;
+    }
+}
+
+fn void runtime_alloc_tensor_device_finalizer(void* payload) {
+    g_runtime_alloc_tensor_device_finalizer_calls += 1;
+    if (payload != null) {
+        *(int*)payload = 0;
+    }
+}
+
+fn void runtime_alloc_tensor_cuda_free_finalizer(void* payload) {
+    g_runtime_alloc_tensor_cuda_free_finalizer_calls += 1;
+    if (payload != null) {
+        omni_tensor_backend_cuda_free(payload);
+    }
+}
+
+fn usz runtime_alloc_active_tensor_dtor_count(main::ScopeRegion* scope) {
+    usz count = 0;
+    if (scope == null) return count;
+    main::ScopeDtor* dtor = scope.dtors;
+    while (dtor != null) {
+        if (dtor.ptr != null && dtor.func == &scope_dtor_value) {
+            Value* v = (Value*)dtor.ptr;
+            if (v.tag == TENSOR && v.tensor_val != null) count++;
+        }
+        dtor = dtor.next;
+    }
+    return count;
+}
+
+fn usz runtime_alloc_active_hashmap_dtor_count(main::ScopeRegion* scope) {
+    usz count = 0;
+    if (scope == null) return count;
+    main::ScopeDtor* dtor = scope.dtors;
+    while (dtor != null) {
+        if (dtor.ptr != null && dtor.func == &scope_dtor_value) {
+            Value* v = (Value*)dtor.ptr;
+            if ((v.tag == HASHMAP || v.tag == SET) && v.hashmap_val != null) count++;
+        }
+        dtor = dtor.next;
+    }
+    return count;
+}
+
+fn usz runtime_alloc_active_value_dtor_count(main::ScopeRegion* scope) {
+    usz count = 0;
+    if (scope == null) return count;
+    main::ScopeDtor* dtor = scope.dtors;
+    while (dtor != null) {
+        if (dtor.ptr != null && dtor.func == &scope_dtor_value) count++;
+        dtor = dtor.next;
+    }
+    return count;
+}
+
+fn bool runtime_alloc_process_spawn_cleanup_case(
+    Interp* interp,
+    int* pass,
+    int* fail,
+    char[] label,
+    int forced_fail_nth,
+    int expected_stage,
+    bool expect_stdin_wrapper_created,
+    bool expect_stdout_wrapper_created,
+    bool expect_stderr_wrapper_created,
+    bool expect_stdin_cleanup_called,
+    bool expect_stdout_cleanup_called,
+    bool expect_stderr_cleanup_called
+) {
+    Value* proc_argv = make_cons(interp,
+        make_string(interp, "-c"),
+        make_cons(interp, make_string(interp, "sleep 0.05"), make_nil(interp)));
+    Value*[3] spawn_args = {
+        make_string(interp, "/bin/sh"),
+        proc_argv,
+        make_nil(interp)
+    };
+
+    ProcessSpawnCleanupTrace trace = {};
+    int saved_force = g_value_force_make_ffi_box_alloc_fail_nth;
+    g_value_force_make_ffi_box_alloc_fail_nth = forced_fail_nth;
+    Value* spawn_fail = process_spawn_impl(spawn_args[0:3], null, interp, &trace);
+    g_value_force_make_ffi_box_alloc_fail_nth = saved_force;
+
+    bool ok = runtime_alloc_error_matches(spawn_fail, "fs-open: out of memory") &&
+        trace.spawn_succeeded &&
+        trace.process_handle_created &&
+        trace.failed_stage == expected_stage &&
+        trace.stdin_wrapper_created == expect_stdin_wrapper_created &&
+        trace.stdout_wrapper_created == expect_stdout_wrapper_created &&
+        trace.stderr_wrapper_created == expect_stderr_wrapper_created &&
+        trace.stdin_cleanup_called == expect_stdin_cleanup_called &&
+        trace.stdout_cleanup_called == expect_stdout_cleanup_called &&
+        trace.stderr_cleanup_called == expect_stderr_cleanup_called &&
+        trace.process_closed;
+
+    if (ok) {
+        io::printfn("[PASS] %s", (ZString)label);
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] %s (error=%s spawned=%s handle=%s stage=%d stdin_created=%s stdout_created=%s stderr_created=%s stdin_cleanup=%s stdout_cleanup=%s stderr_cleanup=%s process_closed=%s)",
+            (ZString)label,
+            runtime_alloc_error_text(spawn_fail),
+            trace.spawn_succeeded ? "yes" : "no",
+            trace.process_handle_created ? "yes" : "no",
+            trace.failed_stage,
+            trace.stdin_wrapper_created ? "yes" : "no",
+            trace.stdout_wrapper_created ? "yes" : "no",
+            trace.stderr_wrapper_created ? "yes" : "no",
+            trace.stdin_cleanup_called ? "yes" : "no",
+            trace.stdout_cleanup_called ? "yes" : "no",
+            trace.stderr_cleanup_called ? "yes" : "no",
+            trace.process_closed ? "yes" : "no");
+        (*fail)++;
+    }
+
+    return ok;
+}
+
 fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass, int* fail) {
     {
         int saved_force = g_value_force_make_error_chars_alloc_fail_nth;
@@ -95,6 +224,24 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        Value* prim = interp.alloc_value();
+        if (prim != null) {
+            prim.tag = PRIMITIVE;
+            prim.prim_val = null;
+        }
+        bool ok = prim != null &&
+            !primitive_name_equals(prim, "aot-closure") &&
+            !primitive_name_equals(prim, "this-name-is-longer-than-the-primitive-name-backing-store-and-must-not-read-past-it");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: primitive name predicate handles null and long names");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] lifetime: primitive name predicate handles null and long names");
+            (*fail)++;
+        }
+    }
+
+    {
         usz root_before = interp.root_scope.alloc_count;
         int saved_force = g_value_force_make_primitive_payload_alloc_fail_nth;
         g_value_force_make_primitive_payload_alloc_fail_nth = 1;
@@ -144,6 +291,181 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 second == null ? "null" : "value",
                 (long)before,
                 (long)after);
+            (*fail)++;
+        }
+    }
+
+    {
+        int* payload = (int*)mem::malloc(int.sizeof);
+        bool payload_ok = payload != null;
+        if (payload_ok) {
+            *payload = 0x7BEEF;
+        }
+
+        g_runtime_alloc_ffi_finalizer_calls = 0;
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-finalizer", &runtime_alloc_ffi_finalizer, false, false)
+            : null;
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+
+        bool ok = payload_ok &&
+            failed == null &&
+            g_runtime_alloc_ffi_finalizer_calls == 1 &&
+            *payload == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi finalizer-owned payload release survives value alloc failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi finalizer-owned payload release survives value alloc failure (payload_ok=%s result=%s calls=%d payload=%d)",
+                payload_ok ? "yes" : "no",
+                failed == null ? "null" : "value",
+                g_runtime_alloc_ffi_finalizer_calls,
+                payload_ok ? *payload : -1);
+            (*fail)++;
+        }
+
+        if (payload_ok) {
+            mem::free(payload);
+        }
+    }
+
+    {
+        int* payload = (int*)mem::malloc(int.sizeof);
+        bool payload_ok = payload != null;
+        if (payload_ok) {
+            *payload = 0x7BEEF;
+        }
+
+        g_runtime_alloc_ffi_finalizer_calls = 0;
+        int saved_force = g_value_force_make_ffi_box_alloc_fail_nth;
+        g_value_force_make_ffi_box_alloc_fail_nth = 1;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-box-finalizer", &runtime_alloc_ffi_finalizer, false, false)
+            : null;
+        g_value_force_make_ffi_box_alloc_fail_nth = saved_force;
+
+        bool ok = payload_ok &&
+            failed == null &&
+            g_runtime_alloc_ffi_finalizer_calls == 1 &&
+            *payload == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi finalizer-owned payload release survives box alloc failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi finalizer-owned payload release survives box alloc failure (payload_ok=%s result=%s calls=%d payload=%d)",
+                payload_ok ? "yes" : "no",
+                failed == null ? "null" : "value",
+                g_runtime_alloc_ffi_finalizer_calls,
+                payload_ok ? *payload : -1);
+            (*fail)++;
+        }
+
+        if (payload_ok) {
+            mem::free(payload);
+        }
+    }
+
+    {
+        void* payload = mem::malloc(8);
+        bool payload_ok = payload != null;
+
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-free-only", null, true, false)
+            : null;
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+
+        bool ok = payload_ok && failed == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi free-owned payload release survives value alloc failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi free-owned payload release survives value alloc failure (payload_ok=%s result=%s)",
+                payload_ok ? "yes" : "no",
+                failed == null ? "null" : "value");
+            (*fail)++;
+            if (payload_ok && failed == null) {
+                mem::free(payload);
+            }
+        }
+    }
+
+    {
+        void* payload = mem::malloc(8);
+        bool payload_ok = payload != null;
+
+        int saved_force = g_value_force_make_ffi_box_alloc_fail_nth;
+        g_value_force_make_ffi_box_alloc_fail_nth = 1;
+        Value* failed = payload_ok
+            ? make_ffi_handle_ex(interp, payload, "oom-ffi-box-free-only", null, true, false)
+            : null;
+        g_value_force_make_ffi_box_alloc_fail_nth = saved_force;
+
+        bool ok = payload_ok && failed == null;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ffi free-owned payload release survives box alloc failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ffi free-owned payload release survives box alloc failure (payload_ok=%s result=%s)",
+                payload_ok ? "yes" : "no",
+                failed == null ? "null" : "value");
+            (*fail)++;
+            if (payload_ok && failed == null) {
+                mem::free(payload);
+            }
+        }
+    }
+
+    {
+        EvalResult cb_eval = run("(lambda (sig) nil)", interp);
+        bool setup_ok = !cb_eval.error.has_error && cb_eval.value != null;
+
+        usz root_before = interp.root_scope != null ? interp.root_scope.refcount : 0;
+        usz registry_before = 0;
+        SignalHandle* sh = (SignalHandle*)interp.signal_handles_head;
+        while (sh != null) {
+            registry_before++;
+            sh = sh.registry_next;
+        }
+
+        Value*[2] signal_args;
+        signal_args[0] = make_int(interp, 10);
+        signal_args[1] = setup_ok ? cb_eval.value : null;
+        int saved_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        Value* signal_fail = setup_ok ? prim_signal_handle(signal_args[..], null, interp) : null;
+        g_boundary_force_alloc_value_fail_nth = saved_force;
+
+        usz root_after = interp.root_scope != null ? interp.root_scope.refcount : 0;
+        usz registry_after = 0;
+        sh = (SignalHandle*)interp.signal_handles_head;
+        while (sh != null) {
+            registry_after++;
+            sh = sh.registry_next;
+        }
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(signal_fail, "signal-handle: out of memory") &&
+            root_after == root_before &&
+            registry_after == registry_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: signal-handle alloc wrapper failure returns signal-handle OOM and cleans runtime state");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: signal-handle alloc wrapper failure returns signal-handle OOM and cleans runtime state (setup_ok=%s root_before=%d root_after=%d registry_before=%d registry_after=%d)",
+                setup_ok ? "yes" : "no",
+                (long)root_before,
+                (long)root_after,
+                (long)registry_before,
+                (long)registry_after);
             (*fail)++;
         }
     }
@@ -297,6 +619,48 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
         }
     }
 
+    runtime_alloc_process_spawn_cleanup_case(
+        interp,
+        pass,
+        fail,
+        "lifetime: process spawn stdin wrapper alloc failure closes process and pipes",
+        2,
+        PROCESS_SPAWN_TRACE_STAGE_STDIN,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true);
+
+    runtime_alloc_process_spawn_cleanup_case(
+        interp,
+        pass,
+        fail,
+        "lifetime: process spawn stdout wrapper alloc failure closes process and pipes",
+        3,
+        PROCESS_SPAWN_TRACE_STAGE_STDOUT,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true);
+
+    runtime_alloc_process_spawn_cleanup_case(
+        interp,
+        pass,
+        fail,
+        "lifetime: process spawn stderr wrapper alloc failure closes process and pipes",
+        4,
+        PROCESS_SPAWN_TRACE_STAGE_STDERR,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true);
+
     {
         bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
         g_hashmap_force_struct_alloc_fail = true;
@@ -313,6 +677,42 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(wait_fail));
             (*fail)++;
         }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null && interp.root_scope != null;
+        usz root_hashmaps_before = runtime_alloc_active_hashmap_dtor_count(interp.root_scope);
+        Value* wait_fail = null;
+
+        bool saved_force = g_process_wait_force_result_insert_fail;
+        if (setup_ok) {
+            interp.current_scope = child;
+            g_process_wait_force_result_insert_fail = true;
+            wait_fail = make_process_wait_result(interp, 42, 0, 0);
+            interp.current_scope = saved;
+        }
+        g_process_wait_force_result_insert_fail = saved_force;
+        usz root_hashmaps_after = runtime_alloc_active_hashmap_dtor_count(interp.root_scope);
+
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(wait_fail, "process-wait: out of memory") &&
+            root_hashmaps_after == root_hashmaps_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: process wait result promotion failure cleans partial root dictionary");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: process wait result promotion failure cleans partial root dictionary (setup_ok=%s msg=%s before=%d after=%d)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(wait_fail),
+                (long)root_hashmaps_before,
+                (long)root_hashmaps_after);
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
     }
 
     {
@@ -415,7 +815,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             ? explain_dispatch_result_from_evaluated_call(interp, make_nil(interp), callee, no_args)
             : raise_error(interp, "setup failed");
 
-        if (interp.handler_count >= interp.handler_capacity) interp.grow_handler_stack();
+        if (interp.handler_count >= interp.handler_capacity && !interp.grow_handler_stack()) setup_ok = false;
         if (setup_ok) {
             interp.handler_stack[interp.handler_count++] = handler;
             g_schema_explain_force_cons_alloc_fail_nth = 1;
@@ -505,6 +905,132 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 runtime_alloc_error_text(runtime_effect_fail),
                 runtime_alloc_error_text(ambiguous_fail),
                 ctor_data == null ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        usz saved_handler_count = interp.handler_count;
+        bool setup_ok = interp.handler_count < interp.handler_capacity || interp.grow_handler_stack();
+        SymbolId[1] handler_tags = { interp.sym_raise };
+        EffectHandler handler = {
+            .tags = &handler_tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = null,
+        };
+
+        Value* ctor_data = null;
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        if (setup_ok) {
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.handler_stack[interp.handler_count++] = handler;
+            g_hashmap_force_struct_alloc_fail = true;
+            ctor_data = ctor_mismatch_data(
+                interp,
+                interp.symbols.intern("Box"),
+                make_cons(interp, make_symbol(interp, interp.sym_Integer), make_nil(interp)),
+                make_nil(interp),
+                false,
+                0,
+                null);
+            g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+            interp.handler_count = saved_handler_count;
+        }
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = setup_ok &&
+                  ctor_data == null &&
+                  !interp.flags.raise_pending &&
+                  interp.raise_payload == null &&
+                  interp.raise_msg_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: ctor mismatch payload allocation failure does not preseed raise");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: ctor mismatch payload allocation failure does not preseed raise (setup_ok=%s ctor_null=%s pending=%s)",
+                setup_ok ? "yes" : "no",
+                ctor_data == null ? "yes" : "no",
+                interp.flags.raise_pending ? "yes" : "no");
+            interp.handler_count = saved_handler_count;
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            (*fail)++;
+        }
+    }
+
+    {
+        usz saved_handler_count = interp.handler_count;
+        bool setup_ok = interp.handler_count < interp.handler_capacity || interp.grow_handler_stack();
+        SymbolId[1] handler_tags = { interp.sym_raise };
+        EffectHandler handler = {
+            .tags = &handler_tags[0],
+            .clauses = null,
+            .closures = null,
+            .clause_count = 1,
+            .handler_env = null,
+            .body_expr = null,
+            .body_env = null,
+            .strict_mode = false,
+            .effect_state = null,
+        };
+
+        SymbolId rel_sym = interp.symbols.intern("integrity-audit-rel");
+        SymbolId col_sym = interp.symbols.intern("id");
+        SymbolId[1] columns = { col_sym };
+        Relation rel = {};
+        rel.name = rel_sym;
+        rel.columns = &columns[0];
+        rel.col_count = 1;
+        rel.key_col = col_sym;
+
+        Value*[1] attempted = { make_int(interp, 1) };
+        Value*[1] existing = { make_int(interp, 2) };
+        Value* integrity_data = null;
+        Value* iteration_data = null;
+        bool saved_struct_fail = g_hashmap_force_struct_alloc_fail;
+        if (setup_ok) {
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
+            interp.handler_stack[interp.handler_count++] = handler;
+            g_hashmap_force_struct_alloc_fail = true;
+            integrity_data = deduce_build_key_integrity_payload(&rel, attempted[..], existing[..], 0, interp);
+            iteration_data = deduce_analyze_iteration_limit_payload(interp, 1, 32);
+            g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+            interp.handler_count = saved_handler_count;
+        }
+        g_hashmap_force_struct_alloc_fail = saved_struct_fail;
+
+        bool ok = setup_ok &&
+                  integrity_data == null &&
+                  iteration_data == null &&
+                  !interp.flags.raise_pending &&
+                  interp.raise_payload == null &&
+                  interp.raise_msg_len == 0;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: deduce optional payload allocation failures do not preseed raise");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: deduce optional payload allocation failures do not preseed raise (setup_ok=%s integrity_null=%s iteration_null=%s pending=%s)",
+                setup_ok ? "yes" : "no",
+                integrity_data == null ? "yes" : "no",
+                iteration_data == null ? "yes" : "no",
+                interp.flags.raise_pending ? "yes" : "no");
+            interp.handler_count = saved_handler_count;
+            interp.flags.raise_pending = false;
+            interp.raise_payload = null;
+            interp.raise_msg_len = 0;
             (*fail)++;
         }
     }
@@ -1053,6 +1579,663 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        usz[2] shape_dims = { 2, 3 };
+        Value* tensor = make_tensor_double_uninitialized(interp, shape_dims[0:2]);
+        TensorVal* clone = tensor != null && tensor.tag == TENSOR ? tensor_clone_payload(tensor.tensor_val) : null;
+        Value*[1] tensor_args = { tensor };
+        Value* dtype_val = tensor != null ? prim_dtype(tensor_args[0:1], null, interp) : null;
+        Value* rank_val = tensor != null ? prim_rank(tensor_args[0:1], null, interp) : null;
+        Value* shape_val = tensor != null ? prim_shape(tensor_args[0:1], null, interp) : null;
+        Value* length_val = tensor != null ? prim_length(tensor_args[0:1], null, interp) : null;
+        char[128] printed;
+        usz printed_len = tensor != null ? print_value_to_buf(tensor, &interp.symbols, &printed[0], 128) : 0;
+
+        bool ok = tensor != null &&
+            tensor.tag == TENSOR &&
+            tensor.tensor_val != null &&
+            tensor.tensor_val.dtype == TENSOR_DTYPE_DOUBLE &&
+            tensor.tensor_val.rank == 2 &&
+            tensor.tensor_val.shape != null &&
+            tensor.tensor_val.shape[0] == 2 &&
+            tensor.tensor_val.shape[1] == 3 &&
+            tensor.tensor_val.strides != null &&
+            tensor.tensor_val.strides[0] == 3 &&
+            tensor.tensor_val.strides[1] == 1 &&
+            tensor.tensor_val.element_count == 6 &&
+            tensor.tensor_val.byte_len == double.sizeof * 6 &&
+            tensor.tensor_val.data != null &&
+            clone != null &&
+            clone != tensor.tensor_val &&
+            clone.shape != tensor.tensor_val.shape &&
+            clone.strides != tensor.tensor_val.strides &&
+            clone.data != tensor.tensor_val.data &&
+            clone.element_count == 6 &&
+            is_tensor(tensor) &&
+            value_type_name(tensor, interp) == interp.sym_Tensor &&
+            infer_value_type(tensor, interp) == interp.tid_Tensor &&
+            dtype_val != null &&
+            dtype_val.tag == SYMBOL &&
+            dtype_val.sym_val == interp.sym_Double &&
+            rank_val != null &&
+            rank_val.tag == INT &&
+            rank_val.int_val == 2 &&
+            shape_val != null &&
+            shape_val.tag == ARRAY &&
+            shape_val.array_val != null &&
+            shape_val.array_val.length == 2 &&
+            shape_val.array_val.items[0] != null &&
+            shape_val.array_val.items[0].tag == INT &&
+            shape_val.array_val.items[0].int_val == 2 &&
+            shape_val.array_val.items[1] != null &&
+            shape_val.array_val.items[1].tag == INT &&
+            shape_val.array_val.items[1].int_val == 3 &&
+            length_val != null &&
+            length_val.tag == INT &&
+            length_val.int_val == 6 &&
+            printed_len > 0 &&
+            str_contains(printed[:printed_len], "#<tensor Float64 shape [2 3]>");
+
+        tensor_free_payload(clone);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor payload and introspection primitives");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor payload and introspection primitives (tag=%d dtype=%s rank=%s shape=%s length=%s print=%s)",
+                tensor != null ? (int)tensor.tag : -1,
+                dtype_val != null && dtype_val.tag == SYMBOL ? "yes" : "no",
+                rank_val != null && rank_val.tag == INT ? "yes" : "no",
+                shape_val != null && shape_val.tag == ARRAY ? "yes" : "no",
+                length_val != null && length_val.tag == INT ? "yes" : "no",
+                printed_len > 0 ? (ZString)&printed : (ZString)"<none>");
+            (*fail)++;
+        }
+    }
+
+    {
+        usz[1] shape_dims = { 3 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_FLOAT32, shape_dims[0:1], true, "test tensor allocation failed");
+        bool zero_initialized = false;
+        if (tensor != null && tensor.data != null) {
+            float* values = (float*)tensor.data;
+            zero_initialized = values[0] == 0.0f && values[1] == 0.0f && values[2] == 0.0f;
+            values[1] = 2.5f;
+        }
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        bool clone_valid = clone != null &&
+            clone != tensor &&
+            clone.data != tensor.data &&
+            clone.dtype == TENSOR_DTYPE_FLOAT32 &&
+            clone.rank == 1 &&
+            clone.element_count == 3 &&
+            clone.byte_len == float.sizeof * 3 &&
+            clone.data != null &&
+            ((float*)clone.data)[1] == 2.5f;
+
+        bool ok = tensor != null &&
+            tensor.dtype == TENSOR_DTYPE_FLOAT32 &&
+            tensor.rank == 1 &&
+            tensor.shape != null &&
+            tensor.shape[0] == 3 &&
+            tensor.strides != null &&
+            tensor.strides[0] == 1 &&
+            tensor.element_count == 3 &&
+            tensor.byte_len == float.sizeof * 3 &&
+            zero_initialized &&
+            clone_valid;
+
+        tensor_free_payload(clone);
+        tensor_free_payload(tensor);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor Float32 payload clone and byte length");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor Float32 payload clone and byte length (tensor=%s clone=%s zero=%s)",
+                tensor != null ? "yes" : "no",
+                clone_valid ? "yes" : "no",
+                zero_initialized ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_device_finalizer_calls = 0;
+        int device_marker = 123;
+        usz[1] shape_dims = { 1 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+        bool cpu_storage_valid = tensor_has_valid_storage(tensor);
+        if (tensor != null) {
+            if (tensor.data != null) {
+                mem::free(tensor.data);
+                tensor.data = null;
+            }
+            tensor.device = TENSOR_DEVICE_CUDA;
+            tensor.device_handle = (void*)&device_marker;
+            tensor.device_finalizer = &runtime_alloc_tensor_device_finalizer;
+        }
+        bool cuda_device_metadata_valid = tensor_has_valid_device_storage(tensor, TENSOR_DEVICE_CUDA);
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        tensor_free_payload(tensor);
+
+        bool ok = cpu_storage_valid &&
+            cuda_device_metadata_valid &&
+            clone == null &&
+            g_runtime_alloc_tensor_device_finalizer_calls == 1 &&
+            device_marker == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor opaque device payload finalizer");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor opaque device payload finalizer (cpu_valid=%s cuda_metadata=%s clone_null=%s calls=%d marker=%d)",
+                cpu_storage_valid ? "yes" : "no",
+                cuda_device_metadata_valid ? "yes" : "no",
+                clone == null ? "yes" : "no",
+                g_runtime_alloc_tensor_device_finalizer_calls,
+                device_marker);
+            (*fail)++;
+            tensor_free_payload(clone);
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_cuda_free_finalizer_calls = 0;
+        bool cuda_available = omni_tensor_backend_cuda_available() != 0;
+        bool ok = true;
+
+        if (cuda_available) {
+            usz[1] shape_dims = { 2 };
+            double[2] host_values = { 1.25, 2.5 };
+            double[2] clone_values = { 0.0, 0.0 };
+            void* source_device = null;
+            int alloc_status = omni_tensor_backend_cuda_alloc(double.sizeof * 2, &source_device);
+            int copy_status = alloc_status == OMNI_TENSOR_CUDA_SUCCESS
+                ? omni_tensor_backend_cuda_copy_to_existing_device((void*)&host_values[0], double.sizeof * 2, source_device)
+                : OMNI_TENSOR_CUDA_UNAVAILABLE;
+
+            TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+            bool source_owned_by_tensor = false;
+            if (tensor != null && copy_status == OMNI_TENSOR_CUDA_SUCCESS && source_device != null) {
+                if (tensor.data != null) {
+                    mem::free(tensor.data);
+                    tensor.data = null;
+                }
+                tensor.device = TENSOR_DEVICE_CUDA;
+                tensor.device_handle = source_device;
+                tensor.device_finalizer = &runtime_alloc_tensor_cuda_free_finalizer;
+                source_owned_by_tensor = true;
+            }
+
+            TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+            int copyback_status = clone != null && clone.device_handle != null
+                ? omni_tensor_backend_cuda_copy_to_host(clone.device_handle, clone.byte_len, (void*)&clone_values[0])
+                : OMNI_TENSOR_CUDA_UNAVAILABLE;
+
+            ok = alloc_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                copy_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                source_device != null &&
+                tensor != null &&
+                clone != null &&
+                clone.device == TENSOR_DEVICE_CUDA &&
+                clone.device_handle != null &&
+                clone.device_handle != source_device &&
+                clone.device_finalizer == &tensor_cuda_device_finalizer &&
+                copyback_status == OMNI_TENSOR_CUDA_SUCCESS &&
+                clone_values[0] == 1.25 &&
+                clone_values[1] == 2.5;
+
+            if (clone != null && clone.device_handle == source_device) {
+                clone.device_handle = null;
+                clone.device_finalizer = null;
+            }
+
+            tensor_free_payload(tensor);
+            tensor_free_payload(clone);
+            if (!source_owned_by_tensor && source_device != null) {
+                omni_tensor_backend_cuda_free(source_device);
+            }
+
+            ok = ok && g_runtime_alloc_tensor_cuda_free_finalizer_calls == 1;
+        }
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor foreign CUDA payload clone deep-copies to Omni-owned storage");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor foreign CUDA payload clone deep-copies to Omni-owned storage (cuda=%s calls=%d)",
+                cuda_available ? "yes" : "no",
+                g_runtime_alloc_tensor_cuda_free_finalizer_calls);
+            (*fail)++;
+        }
+    }
+
+    {
+        g_runtime_alloc_tensor_device_finalizer_calls = 0;
+        int device_marker = 124;
+        usz[1] shape_dims = { 1 };
+        TensorVal* tensor = tensor_alloc_payload_checked(TENSOR_DTYPE_DOUBLE, shape_dims[0:1], true, "test tensor allocation failed");
+        bool cpu_storage_valid = tensor_has_valid_storage(tensor);
+        if (tensor != null) {
+            if (tensor.data != null) {
+                mem::free(tensor.data);
+                tensor.data = null;
+            }
+            tensor.device = TENSOR_DEVICE_VULKAN;
+            tensor.device_handle = (void*)&device_marker;
+            tensor.device_finalizer = &runtime_alloc_tensor_device_finalizer;
+        }
+        bool vulkan_storage_rejected = tensor != null && !tensor_has_valid_storage(tensor);
+        TensorVal* clone = tensor != null ? tensor_clone_payload(tensor) : null;
+        tensor_free_payload(tensor);
+
+        bool ok = cpu_storage_valid &&
+            vulkan_storage_rejected &&
+            clone == null &&
+            g_runtime_alloc_tensor_device_finalizer_calls == 1 &&
+            device_marker == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor opaque Vulkan device payload finalizer");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor opaque Vulkan device payload finalizer (cpu_valid=%s vulkan_rejected=%s clone_null=%s calls=%d marker=%d)",
+                cpu_storage_valid ? "yes" : "no",
+                vulkan_storage_rejected ? "yes" : "no",
+                clone == null ? "yes" : "no",
+                g_runtime_alloc_tensor_device_finalizer_calls,
+                device_marker);
+            (*fail)++;
+            tensor_free_payload(clone);
+        }
+    }
+
+    {
+        usz[1] tensor_shape = { 4 };
+        bool saved_struct_fail = g_value_force_make_tensor_struct_alloc_fail;
+        bool saved_shape_fail = g_value_force_make_tensor_shape_alloc_fail;
+        bool saved_strides_fail = g_value_force_make_tensor_strides_alloc_fail;
+        bool saved_data_fail = g_value_force_make_tensor_data_alloc_fail;
+
+        g_value_force_make_tensor_struct_alloc_fail = true;
+        Value* struct_fail = make_tensor_double_uninitialized_checked(interp, tensor_shape[0:1], "Tensor: out of memory");
+        g_value_force_make_tensor_struct_alloc_fail = false;
+        g_value_force_make_tensor_shape_alloc_fail = true;
+        Value* shape_fail = make_tensor_double_uninitialized_checked(interp, tensor_shape[0:1], "Tensor: out of memory");
+        g_value_force_make_tensor_shape_alloc_fail = false;
+        g_value_force_make_tensor_strides_alloc_fail = true;
+        Value* strides_fail = make_tensor_double_uninitialized_checked(interp, tensor_shape[0:1], "Tensor: out of memory");
+        g_value_force_make_tensor_strides_alloc_fail = false;
+        g_value_force_make_tensor_data_alloc_fail = true;
+        Value* data_fail = make_tensor_double_uninitialized_checked(interp, tensor_shape[0:1], "Tensor: out of memory");
+
+        g_value_force_make_tensor_data_alloc_fail = saved_data_fail;
+        g_value_force_make_tensor_strides_alloc_fail = saved_strides_fail;
+        g_value_force_make_tensor_shape_alloc_fail = saved_shape_fail;
+        g_value_force_make_tensor_struct_alloc_fail = saved_struct_fail;
+
+        bool ok =
+            runtime_alloc_error_matches(struct_fail, "Tensor: out of memory") &&
+            runtime_alloc_error_matches(shape_fail, "Tensor: out of memory") &&
+            runtime_alloc_error_matches(strides_fail, "Tensor: out of memory") &&
+            runtime_alloc_error_matches(data_fail, "Tensor: out of memory");
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: tensor constructor alloc failures fail closed");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: tensor constructor alloc failures fail closed (struct=%s shape=%s strides=%s data=%s)",
+                runtime_alloc_error_text(struct_fail),
+                runtime_alloc_error_text(shape_fail),
+                runtime_alloc_error_text(strides_fail),
+                runtime_alloc_error_text(data_fail));
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) 3)", interp);
+        EvalResult index_eval = run("[1]", interp);
+        bool setup_ok = !expr_eval.error.has_error &&
+            expr_eval.value != null &&
+            expr_eval.value.tag == TENSOR &&
+            expr_eval.value.tensor_val != null &&
+            expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP &&
+            !index_eval.error.has_error &&
+            index_eval.value != null;
+
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        Value* ref_result = setup_ok ? tensor_ref_value(expr_eval.value, index_eval.value, interp) : null;
+        usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = setup_ok &&
+            ref_result != null &&
+            ref_result.tag == DOUBLE &&
+            ref_result.double_val == 5.0 &&
+            active_tensor_dtors_after == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: lazy tensor ref cleans temporary realized tensor");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: lazy tensor ref cleans temporary realized tensor (setup=%s result=%s before=%d after=%d)",
+                setup_ok ? "yes" : "no",
+                ref_result != null && ref_result.tag == DOUBLE ? (ZString)"double" : runtime_alloc_error_text(ref_result),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult expr_eval = run("(map + (map + (Tensor Float64 [2] [1 2]) 1) 2)", interp);
+        bool setup_ok = !expr_eval.error.has_error &&
+            expr_eval.value != null &&
+            expr_eval.value.tag == TENSOR &&
+            expr_eval.value.tensor_val != null &&
+            expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP;
+
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        Value* realized = setup_ok ? tensor_realize_to_value(expr_eval.value, interp) : null;
+        usz active_tensor_dtors_realized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool value_ok = realized != null &&
+            realized.tag == TENSOR &&
+            realized.tensor_val != null &&
+            realized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
+            realized.tensor_val.element_count == 2 &&
+            realized.tensor_val.data != null;
+        if (value_ok) {
+            double* data = (double*)realized.tensor_val.data;
+            value_ok = data[0] == 4.0 && data[1] == 5.0;
+        }
+
+        if (realized != null && realized != expr_eval.value && realized.tag != ERROR) {
+            boundary_cleanup_materialized_value(null, realized, interp.current_scope);
+        }
+        usz active_tensor_dtors_after_cleanup = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = setup_ok &&
+            value_ok &&
+            active_tensor_dtors_realized == active_tensor_dtors_before + 1 &&
+            active_tensor_dtors_after_cleanup == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: nested lazy tensor realize cleans child temporaries");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: nested lazy tensor realize cleans child temporaries (setup=%s realized=%s before=%d during=%d after=%d)",
+                setup_ok ? "yes" : "no",
+                realized != null && realized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(realized),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_realized,
+                (long)active_tensor_dtors_after_cleanup);
+            (*fail)++;
+        }
+    }
+
+    {
+        EvalResult expr_eval = run(
+            "(contract (contract (Tensor Float64 [2 2] [1 2 3 4]) (Tensor Float64 [2 2] [1 0 0 1]) [1] [0]) (Tensor Float64 [2] [10 20]) [1] [0])",
+            interp);
+        bool setup_ok = !expr_eval.error.has_error &&
+            expr_eval.value != null &&
+            expr_eval.value.tag == TENSOR &&
+            expr_eval.value.tensor_val != null &&
+            expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_CONTRACT;
+
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        Value* realized = setup_ok ? tensor_realize_to_value(expr_eval.value, interp) : null;
+        usz active_tensor_dtors_realized = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool value_ok = realized != null &&
+            realized.tag == TENSOR &&
+            realized.tensor_val != null &&
+            realized.tensor_val.kind == TENSOR_PAYLOAD_CONCRETE &&
+            realized.tensor_val.element_count == 2 &&
+            realized.tensor_val.data != null;
+        if (value_ok) {
+            double* data = (double*)realized.tensor_val.data;
+            value_ok = data[0] == 50.0 && data[1] == 110.0;
+        }
+
+        if (realized != null && realized != expr_eval.value && realized.tag != ERROR) {
+            boundary_cleanup_materialized_value(null, realized, interp.current_scope);
+        }
+        usz active_tensor_dtors_after_cleanup = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = setup_ok &&
+            value_ok &&
+            active_tensor_dtors_realized == active_tensor_dtors_before + 1 &&
+            active_tensor_dtors_after_cleanup == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: nested lazy tensor contract realize cleans child temporaries");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: nested lazy tensor contract realize cleans child temporaries (setup=%s realized=%s before=%d during=%d after=%d)",
+                setup_ok ? "yes" : "no",
+                realized != null && realized.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(realized),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_realized,
+                (long)active_tensor_dtors_after_cleanup);
+            (*fail)++;
+        }
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* copied = null;
+        BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(saved);
+        usz active_tensor_dtors_after = active_tensor_dtors_before;
+
+        int saved_force = g_tensor_force_expr_edge_copy_fail_nth;
+        if (setup_ok) {
+            interp.current_scope = child;
+            EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [3 4]))", interp);
+            setup_ok = !expr_eval.error.has_error &&
+                expr_eval.value != null &&
+                expr_eval.value.tag == TENSOR &&
+                expr_eval.value.tensor_val != null &&
+                expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP;
+
+            interp.current_scope = saved;
+            interp.releasing_scope = child;
+            g_tensor_force_expr_edge_copy_fail_nth = 3;
+            copied = setup_ok ? copy_to_parent_with_fault(expr_eval.value, interp, &copy_fault) : null;
+            g_tensor_force_expr_edge_copy_fail_nth = saved_force;
+            interp.releasing_scope = null;
+            active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(saved);
+        }
+        g_tensor_force_expr_edge_copy_fail_nth = saved_force;
+        interp.current_scope = saved;
+        interp.releasing_scope = null;
+
+        bool ok = setup_ok &&
+            copied == null &&
+            copy_fault == BOUNDARY_COPY_FAULT_NULL_RESULT &&
+            active_tensor_dtors_after == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: lazy tensor edge copy rollback cleans partial child copies");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: lazy tensor edge copy rollback cleans partial child copies (setup=%s copied=%s fault=%s before=%d after=%d)",
+                setup_ok ? "yes" : "no",
+                copied == null ? (ZString)"null" : runtime_alloc_error_text(copied),
+                (ZString)boundary_copy_fault_name(copy_fault),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* promoted = null;
+        bool map_left_in_child = true;
+        bool map_right_in_child = true;
+
+        if (setup_ok) {
+            interp.current_scope = child;
+            EvalResult expr_eval = run("(map + (Tensor Float64 [2] [1 2]) (Tensor Float64 [2] [3 4]))", interp);
+            setup_ok = !expr_eval.error.has_error &&
+                expr_eval.value != null &&
+                expr_eval.value.tag == TENSOR &&
+                expr_eval.value.tensor_val != null &&
+                expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP;
+            promoted = setup_ok ? promote_to_root(expr_eval.value, interp) : null;
+            if (promoted != null &&
+                promoted.tag == TENSOR &&
+                promoted.tensor_val != null &&
+                promoted.tensor_val.kind == TENSOR_PAYLOAD_MAP) {
+                map_left_in_child = boundary_ptr_in_scope((void*)promoted.tensor_val.map_left, child);
+                map_right_in_child = boundary_ptr_in_scope((void*)promoted.tensor_val.map_right, child);
+            }
+            interp.current_scope = saved;
+            interp.releasing_scope = null;
+        }
+
+        bool ok = setup_ok &&
+            promoted != null &&
+            promoted.tag == TENSOR &&
+            promoted.scope_gen == saved.escape_generation &&
+            promoted.tensor_val != null &&
+            promoted.tensor_val.kind == TENSOR_PAYLOAD_MAP &&
+            !map_left_in_child &&
+            !map_right_in_child;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: lazy tensor root promotion keeps expression edges out of child scope");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: lazy tensor root promotion keeps expression edges out of child scope (setup=%s promoted=%s left_child=%s right_child=%s)",
+                setup_ok ? "yes" : "no",
+                promoted != null && promoted.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(promoted),
+                map_left_in_child ? "yes" : "no",
+                map_right_in_child ? "yes" : "no");
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
+    }
+
+    {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* child = main::scope_create(saved);
+        bool setup_ok = child != null;
+        Value* promoted = null;
+        bool map_func_value_in_child = true;
+        bool map_func_env_in_child = true;
+
+        if (setup_ok) {
+            interp.current_scope = child;
+            EvalResult expr_eval = run("(let (bias 10) (map (lambda (x) (+ x bias)) (Tensor Float64 [2] [1 2])))", interp);
+            setup_ok = !expr_eval.error.has_error &&
+                expr_eval.value != null &&
+                expr_eval.value.tag == TENSOR &&
+                expr_eval.value.tensor_val != null &&
+                expr_eval.value.tensor_val.kind == TENSOR_PAYLOAD_MAP;
+            promoted = setup_ok ? promote_to_root(expr_eval.value, interp) : null;
+            if (promoted != null &&
+                promoted.tag == TENSOR &&
+                promoted.tensor_val != null &&
+                promoted.tensor_val.kind == TENSOR_PAYLOAD_MAP &&
+                promoted.tensor_val.map_func != null &&
+                promoted.tensor_val.map_func.tag == CLOSURE &&
+                promoted.tensor_val.map_func.closure_val != null) {
+                map_func_value_in_child = boundary_ptr_in_scope((void*)promoted.tensor_val.map_func, child);
+                map_func_env_in_child = env_chain_has_frame_in_scope(
+                    promoted.tensor_val.map_func.closure_val.env,
+                    child,
+                    interp.global_env
+                );
+            }
+            interp.current_scope = saved;
+            interp.releasing_scope = null;
+        }
+
+        bool ok = setup_ok &&
+            promoted != null &&
+            promoted.tag == TENSOR &&
+            promoted.scope_gen == saved.escape_generation &&
+            promoted.tensor_val != null &&
+            promoted.tensor_val.kind == TENSOR_PAYLOAD_MAP &&
+            !map_func_value_in_child &&
+            !map_func_env_in_child;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: lazy tensor closure map root promotion detaches callable env");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: lazy tensor closure map root promotion detaches callable env (setup=%s promoted=%s func_child=%s env_child=%s)",
+                setup_ok ? "yes" : "no",
+                promoted != null && promoted.tag == TENSOR ? (ZString)"tensor" : runtime_alloc_error_text(promoted),
+                map_func_value_in_child ? "yes" : "no",
+                map_func_env_in_child ? "yes" : "no");
+            (*fail)++;
+        }
+
+        if (child != null) main::scope_release(child);
+    }
+
+    {
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        EvalResult expr_eval = run("(realize (map (lambda (x) 'bad) (Tensor Float64 [1] [1])))", interp);
+        usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = expr_eval.error.has_error &&
+            str_starts_with(expr_eval.error.message[:256], "map: function result dtype mismatch") &&
+            active_tensor_dtors_after == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: failed lazy tensor realize cleans fresh result tensor");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: failed lazy tensor realize cleans fresh result tensor (error=%s msg=%s before=%d after=%d)",
+                expr_eval.error.has_error ? "yes" : "no",
+                expr_eval.error.has_error ? (ZString)expr_eval.error.message[:256] : runtime_alloc_error_text(expr_eval.value),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+    }
+
+    {
+        usz active_tensor_dtors_before = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+        EvalResult expr_eval = run("(Tensor Float64 [2] [1 'bad])", interp);
+        usz active_tensor_dtors_after = runtime_alloc_active_tensor_dtor_count(interp.current_scope);
+
+        bool ok = expr_eval.error.has_error &&
+            str_starts_with(expr_eval.error.message[:256], "Tensor: data elements must be real numbers representable as Float64") &&
+            active_tensor_dtors_after == active_tensor_dtors_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: failed tensor constructor cleans partial tensor result");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: failed tensor constructor cleans partial tensor result (error=%s msg=%s before=%d after=%d)",
+                expr_eval.error.has_error ? "yes" : "no",
+                expr_eval.error.has_error ? (ZString)expr_eval.error.message[:256] : runtime_alloc_error_text(expr_eval.value),
+                (long)active_tensor_dtors_before,
+                (long)active_tensor_dtors_after);
+            (*fail)++;
+        }
+    }
+
+    {
         main::ScopeRegion* saved = interp.current_scope;
         main::ScopeRegion* foreign = main::scope_create(saved);
         int* opaque_payload = null;
@@ -1153,6 +2336,183 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
     }
 
     {
+        main::ScopeRegion* saved = interp.current_scope;
+        main::ScopeRegion* foreign = main::scope_create(saved);
+        SymbolId type_sym = interp.symbols.intern("__JitFieldBoundaryBox");
+        SymbolId field_sym = interp.symbols.intern("slot");
+        TypeFieldInfo* type_fields = (TypeFieldInfo*)mem::malloc(TypeFieldInfo.sizeof);
+        bool setup_ok = foreign != null &&
+            type_sym != INVALID_SYMBOL_ID &&
+            field_sym != INVALID_SYMBOL_ID &&
+            type_fields != null;
+
+        TypeId type_id = INVALID_TYPE_ID;
+        if (setup_ok) {
+            type_fields[0] = {
+                .name = field_sym,
+                .field_type = INVALID_TYPE_ID,
+                .annotation_sym = INVALID_SYMBOL_ID,
+            };
+            TypeInfo info = {
+                .name = type_sym,
+                .kind = TK_CONCRETE,
+                .parent = INVALID_TYPE_ID,
+                .fields = type_fields,
+                .field_count = 1,
+                .type_params = null,
+                .type_param_count = 0,
+                .constraints = null,
+                .constraint_count = 0,
+                .variants = null,
+                .variant_count = 0,
+                .alias_target = INVALID_TYPE_ID,
+            };
+            type_id = interp.types.register_type(info, &interp.symbols);
+            setup_ok = type_id != INVALID_TYPE_ID;
+            if (!setup_ok && type_fields != null) {
+                mem::free(type_fields);
+                type_fields = null;
+            }
+        }
+
+        Value* initial = setup_ok ? make_int(interp, 1) : null;
+        Value*[1] fields = { initial };
+        Value* inst = setup_ok ? make_instance(interp, type_id, &fields[0], 1) : null;
+        setup_ok = setup_ok &&
+            inst != null &&
+            inst.tag == INSTANCE &&
+            inst.instance_val != null &&
+            inst.instance_val.fields != null;
+
+        int* opaque_payload = null;
+        Value* opaque = null;
+        Primitive* opaque_prim = null;
+        if (setup_ok) {
+            interp.current_scope = foreign;
+            opaque_payload = (int*)interp.current_scope.alloc(int.sizeof);
+            opaque = interp.alloc_value();
+            if (opaque != null) {
+                opaque.tag = PRIMITIVE;
+                main::scope_register_dtor(foreign, (void*)opaque, &scope_dtor_value);
+            }
+            setup_ok = opaque_payload != null && opaque != null;
+        }
+
+        if (setup_ok) {
+            opaque_prim = (Primitive*)mem::malloc(Primitive.sizeof);
+            setup_ok = opaque_prim != null;
+        }
+
+        if (setup_ok) {
+            *opaque_payload = 719;
+            *opaque_prim = {};
+            opaque_prim.name[0] = 'f';
+            opaque_prim.name[1] = 0;
+            opaque_prim.func = &prim_add;
+            opaque_prim.arity = 2;
+            opaque_prim.tag = 719;
+            opaque_prim.user_data = (void*)opaque_payload;
+            opaque.prim_val = opaque_prim;
+        }
+
+        Value* set_fail = null;
+        if (setup_ok) {
+            set_fail = jit_set_path_mutate_instance(inst, field_sym, opaque, interp);
+        } else {
+            set_fail = raise_error(interp, "setup failed");
+        }
+        interp.current_scope = saved;
+
+        bool field_intact = inst != null &&
+            inst.tag == INSTANCE &&
+            inst.instance_val != null &&
+            inst.instance_val.fields != null &&
+            inst.instance_val.fields[0].tag == INT &&
+            inst.instance_val.fields[0].int_val == 1;
+        bool ok = setup_ok &&
+            runtime_alloc_error_matches(set_fail, "boundary: refusing primitive copy with opaque user_data") &&
+            field_intact;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: JIT instance field write fails closed on boundary promotion faults");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: JIT instance field write fails closed on boundary promotion faults (setup_ok=%s set=%s field_intact=%s)",
+                setup_ok ? "yes" : "no",
+                runtime_alloc_error_text(set_fail),
+                field_intact ? "yes" : "no");
+            (*fail)++;
+        }
+
+        if (foreign != null) main::scope_release(foreign);
+    }
+
+    {
+        SymbolId export_sym = interp.symbols.intern("__module_growth_value");
+        SymbolId first_name = interp.symbols.intern("__module_growth_first");
+        Module* first = first_name != INVALID_SYMBOL_ID
+            ? jit_create_file_module(first_name, "/tmp/omni-module-growth-first.omni", interp)
+            : null;
+        bool setup_ok = export_sym != INVALID_SYMBOL_ID &&
+            first != null &&
+            first.env != null &&
+            module_append_export(first, export_sym) &&
+            env_define_with_barrier_result(first.env, export_sym, make_int(interp, 42), interp) == null;
+        if (setup_ok) first.loaded = true;
+
+        Module* table_before = interp.modules;
+        usz initial_capacity = interp.module_capacity;
+        Value* mod_val = setup_ok ? make_module(interp, first) : null;
+        setup_ok = setup_ok &&
+            mod_val != null &&
+            mod_val.tag == MODULE &&
+            mod_val.module_val != null;
+
+        usz target_count = initial_capacity + 2;
+        for (usz i = 0; setup_ok && interp.module_count < target_count; i++) {
+            char[80] name_buf;
+            if (try char[] name = io::bprintf(
+                &name_buf,
+                "__module_growth_extra_%d_%d",
+                (int)initial_capacity,
+                (int)i
+            )) {
+                SymbolId name_sym = interp.symbols.intern(name);
+                Module* extra = name_sym != INVALID_SYMBOL_ID
+                    ? jit_create_file_module(name_sym, "/tmp/omni-module-growth-extra.omni", interp)
+                    : null;
+                setup_ok = extra != null;
+                if (setup_ok) extra.loaded = true;
+            } else {
+                setup_ok = false;
+            }
+        }
+
+        bool grew = table_before != null &&
+            interp.modules != null &&
+            interp.modules != table_before &&
+            interp.module_capacity > initial_capacity;
+        EvalResult step = setup_ok ? eval_path_step(mod_val, export_sym, interp) : eval_error("setup failed");
+        bool ok = setup_ok &&
+            grew &&
+            !step.error.has_error &&
+            step.value != null &&
+            step.value.tag == INT &&
+            step.value.int_val == 42;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: module values survive module table growth");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: module values survive module table growth (setup_ok=%s grew=%s value_ok=%s)",
+                setup_ok ? "yes" : "no",
+                grew ? "yes" : "no",
+                step.value != null && step.value.tag == INT && step.value.int_val == 42 ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+
+    {
         Value* array_value = make_array(interp, 1);
         bool setup_ok = array_value != null && array_value.tag == ARRAY && array_value.array_val != null;
         if (setup_ok) {
@@ -1211,6 +2571,7 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
 
         Value* checked_map = make_hashmap_checked(interp, 2, "hashmap test: ctor oom");
         bool grow_ok = false;
+        bool no_slot_fail_cleans_promoted_values = false;
         if (checked_map != null && checked_map.tag == HASHMAP) {
             bool saved_grow_fail = g_hashmap_force_grow_entries_alloc_fail;
             grow_ok =
@@ -1220,21 +2581,68 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
             bool grow_fail = hashmap_set_checked(checked_map.hashmap_val, make_int(interp, 3), make_int(interp, 3), interp);
             g_hashmap_force_grow_entries_alloc_fail = saved_grow_fail;
             grow_ok = grow_ok && !grow_fail;
+
+            if (checked_map.hashmap_val != null && checked_map.hashmap_val.capacity == 2) {
+                uint saved_count = checked_map.hashmap_val.count;
+                checked_map.hashmap_val.count = 0;
+                main::ScopeRegion* saved_scope = interp.current_scope;
+                main::ScopeRegion* child = main::scope_create(saved_scope);
+                usz root_values_before = runtime_alloc_active_value_dtor_count(interp.root_scope);
+                bool no_slot_fail = true;
+                if (child != null) {
+                    interp.current_scope = child;
+                    Value* nested_value = boundary_alloc_value_in_scope(interp, child, true);
+                    Array* nested_array = (Array*)mem::malloc(Array.sizeof);
+                    Value* nested_item = boundary_alloc_value_in_scope(interp, child, true);
+                    bool nested_array_attached = false;
+                    if (nested_value != null && nested_array != null && nested_item != null) {
+                        nested_array.capacity = 4;
+                        nested_array.length = 1;
+                        nested_array.items = (Value**)mem::malloc(Value*.sizeof * nested_array.capacity);
+                        if (nested_array.items != null) {
+                            for (usz i = 0; i < nested_array.capacity; i++) nested_array.items[i] = null;
+                            nested_item.tag = INT;
+                            nested_item.int_val = 100;
+                            nested_array.items[0] = nested_item;
+                            nested_value.tag = ARRAY;
+                            nested_value.array_val = nested_array;
+                            nested_array_attached = true;
+                        }
+                    }
+                    if (nested_array != null && !nested_array_attached) mem::free(nested_array);
+                    no_slot_fail = hashmap_set_checked(
+                        checked_map.hashmap_val,
+                        make_int(interp, 99),
+                        nested_value,
+                        interp
+                    );
+                    interp.current_scope = saved_scope;
+                }
+                usz root_values_after = runtime_alloc_active_value_dtor_count(interp.root_scope);
+                if (child != null) main::scope_release(child);
+                checked_map.hashmap_val.count = saved_count;
+                no_slot_fail_cleans_promoted_values =
+                    child != null &&
+                    !no_slot_fail &&
+                    root_values_after == root_values_before;
+            }
         }
 
         bool ok =
             runtime_alloc_error_matches(dict_fail, "Dictionary: out of memory") &&
             runtime_alloc_error_matches(set_fail, "Set: out of memory") &&
-            grow_ok;
+            grow_ok &&
+            no_slot_fail_cleans_promoted_values;
         if (ok) {
             emit_pass_literal("[PASS] lifetime: checked collection constructors fail closed");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: checked collection constructors fail closed (dict_ok=%s set_ok=%s grow_ok=%s dict_msg=%s set_msg=%s)",
+                "[FAIL] lifetime: checked collection constructors fail closed (dict_ok=%s set_ok=%s grow_ok=%s no_slot_cleanup=%s dict_msg=%s set_msg=%s)",
                 runtime_alloc_error_matches(dict_fail, "Dictionary: out of memory") ? "yes" : "no",
                 runtime_alloc_error_matches(set_fail, "Set: out of memory") ? "yes" : "no",
                 grow_ok ? "yes" : "no",
+                no_slot_fail_cleans_promoted_values ? "yes" : "no",
                 runtime_alloc_error_text(dict_fail),
                 runtime_alloc_error_text(set_fail));
             (*fail)++;
@@ -2150,6 +3558,29 @@ fn void run_memory_lifetime_runtime_helper_alloc_tests(Interp* interp, int* pass
                 "[FAIL] lifetime: pending raise payload map helper fails closed (tag=%d msg=%s)",
                 raise_payload != null ? (int)raise_payload.tag : -1,
                 runtime_alloc_error_text(raise_payload));
+            (*fail)++;
+        }
+    }
+
+    {
+        usz root_hashmaps_before = runtime_alloc_active_hashmap_dtor_count(interp.root_scope);
+        bool saved_force = g_value_force_make_string_alloc_fail;
+        g_value_force_make_string_alloc_fail = true;
+        Value* raise_payload = make_raise_payload_names(interp, "runtime", "runtime/error", "boom", make_int(interp, 42));
+        g_value_force_make_string_alloc_fail = saved_force;
+        usz root_hashmaps_after = runtime_alloc_active_hashmap_dtor_count(interp.root_scope);
+
+        bool ok = raise_payload == null &&
+            root_hashmaps_after == root_hashmaps_before;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: pending raise payload mid-build failure cleans partial root dictionary");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: pending raise payload mid-build failure cleans partial root dictionary (result=%s before=%d after=%d)",
+                raise_payload == null ? "null" : "value",
+                (long)root_hashmaps_before,
+                (long)root_hashmaps_after);
             (*fail)++;
         }
     }

@@ -3,13 +3,9 @@ module lisp;
 fn Value* prim_define_relation(Value*[] args, Env* env, Interp* interp) {
     // fault: lisp::ARITY_MISMATCH
     if (args.len < 1) return deduce_raise(interp, "deduce/define-relation-expected-spec", "__define-relation: expected (cons db '(name col...))");
-    if ((args[0] != null && !jit_pointer_looks_canonical((void*)args[0])) ||
-        (args.len >= 2 && args[1] != null && !jit_pointer_looks_canonical((void*)args[1]))) {
-        return deduce_raise(interp, "deduce/define-relation-invalid-arg-pointer", "__define-relation: invalid argument pointer");
-    }
 
     DeduceDb* db = null;
-    SymbolId rel_name = 0;
+    SymbolId rel_name = (SymbolId)0;
     Value* cols = null;
     bool direct_form = args.len >= 2 &&
                        args[0] != null && args[0].tag == FFI_HANDLE &&

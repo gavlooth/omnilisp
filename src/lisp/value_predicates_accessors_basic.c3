@@ -41,7 +41,8 @@ fn bool is_cons(Value* v) @inline {
 }
 
 fn bool primitive_name_equals(Value* v, char[] expected) @inline {
-    if (v == null || v.tag != PRIMITIVE) return false;
+    if (v == null || v.tag != PRIMITIVE || v.prim_val == null) return false;
+    if (expected.len >= 64) return false;
     for (usz i = 0; i < expected.len; i++) {
         char actual = v.prim_val.name[i];
         if (actual == 0 || actual != expected[i]) return false;
@@ -74,13 +75,78 @@ fn bool is_double(Value* v) @inline {
     return v != null && v.tag == DOUBLE;
 }
 
+fn bool is_float32(Value* v) @inline {
+    return v != null && v.tag == FLOAT32;
+}
+
+fn bool is_big_integer(Value* v) @inline {
+    return v != null && v.tag == BIG_INTEGER;
+}
+
+fn bool is_big_float(Value* v) @inline {
+    return v != null && v.tag == BIG_FLOAT;
+}
+
+fn bool is_big_complex(Value* v) @inline {
+    return v != null && v.tag == BIG_COMPLEX;
+}
+
+fn bool is_complex128(Value* v) @inline {
+    return v != null && v.tag == COMPLEX128;
+}
+
+fn bool is_complex64(Value* v) @inline {
+    return v != null && v.tag == COMPLEX64;
+}
+
+fn bool is_fixed_complex(Value* v) @inline {
+    return v != null && (v.tag == COMPLEX128 || v.tag == COMPLEX64);
+}
+
 fn bool is_number(Value* v) @inline {
-    return v != null && (v.tag == INT || v.tag == DOUBLE);
+    return v != null && (v.tag == INT || v.tag == DOUBLE || v.tag == FLOAT32 || v.tag == COMPLEX128 || v.tag == COMPLEX64);
+}
+
+fn bool is_numeric_value(Value* v) @inline {
+    return v != null && (
+        v.tag == INT || v.tag == DOUBLE || v.tag == FLOAT32 ||
+        v.tag == BIG_INTEGER || v.tag == BIG_FLOAT || v.tag == BIG_COMPLEX ||
+        v.tag == COMPLEX128 || v.tag == COMPLEX64);
 }
 
 fn double to_double(Value* v) @inline {
     if (v.tag == DOUBLE) return v.double_val;
+    if (v.tag == FLOAT32) return (double)v.float32_val;
+    if (v.tag == BIG_FLOAT) {
+        double out = 0.0;
+        if (big_float_try_to_double(v, &out)) return out;
+        return 0.0;
+    }
     return (double)v.int_val;
+}
+
+fn bool try_numeric_to_double(Value* v, double* out) @inline {
+    if (v == null || out == null) return false;
+    if (v.tag == DOUBLE) {
+        *out = v.double_val;
+        return true;
+    }
+    if (v.tag == FLOAT32) {
+        *out = (double)v.float32_val;
+        return true;
+    }
+    if (v.tag == COMPLEX128 || v.tag == COMPLEX64 || v.tag == BIG_COMPLEX) return false;
+    if (v.tag == INT) {
+        *out = (double)v.int_val;
+        return true;
+    }
+    if (v.tag == BIG_INTEGER) {
+        return big_integer_try_to_double(v, out);
+    }
+    if (v.tag == BIG_FLOAT) {
+        return big_float_try_to_double(v, out);
+    }
+    return false;
 }
 
 fn bool is_ffi_handle(Value* v) @inline {
@@ -101,7 +167,7 @@ fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_
         *out_tag = FFI_TYPE_STRING;
         return true;
     }
-    if (base_type == interp.sym_Pointer) {
+    if (base_type == interp.sym_ForeignHandle) {
         *out_tag = FFI_TYPE_PTR;
         return true;
     }
@@ -114,6 +180,116 @@ fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_
         return true;
     }
     return false;
+}
+
+fn bool ffi_char_slice_equals(char[] left, char[] right) @inline {
+    if (left.len != right.len) return false;
+    for (usz i = 0; i < left.len; i++) {
+        if (left[i] != right[i]) return false;
+    }
+    return true;
+}
+
+fn bool ffi_symbol_name_equals(SymbolId sym, Interp* interp, char[] expected) @inline {
+    return ffi_char_slice_equals(interp.symbols.get_name(sym), expected);
+}
+
+fn FfiHandlePolicy ffi_handle_policy_default() @inline {
+    FfiHandlePolicy policy = {};
+    policy.is_foreign_handle = false;
+    policy.name = INVALID_SYMBOL_ID;
+    policy.ownership = FFI_HANDLE_BORROWED;
+    policy.nullability = FFI_HANDLE_NULLABLE;
+    policy.finalizer_symbol = INVALID_SYMBOL_ID;
+    policy.finalizer = null;
+    return policy;
+}
+
+fn bool ffi_meta_key_is_handle_policy(SymbolId key, Interp* interp) @inline {
+    return ffi_symbol_name_equals(key, interp, "type")
+        || ffi_symbol_name_equals(key, interp, "name")
+        || ffi_symbol_name_equals(key, interp, "ownership")
+        || ffi_symbol_name_equals(key, interp, "finalizer")
+        || ffi_symbol_name_equals(key, interp, "nullability");
+}
+
+fn bool ffi_metadata_type_annotation_to_tag(TypeAnnotation* ann, Interp* interp,
+    FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
+    if (ann == null || !ann.is_dict) return false;
+
+    FfiHandlePolicy policy = ffi_handle_policy_default();
+    bool saw_handle_policy_key = false;
+    bool saw_type = false;
+    bool saw_ownership = false;
+    bool saw_finalizer = false;
+
+    for (usz i = 0; i < ann.meta_count; i++) {
+        MetaEntry* entry = &ann.meta[i];
+        for (usz j = 0; j < i; j++) {
+            if (ann.meta[j].key == entry.key) return false;
+        }
+
+        if (!ffi_meta_key_is_handle_policy(entry.key, interp)) return false;
+        saw_handle_policy_key = true;
+
+        if (ffi_symbol_name_equals(entry.key, interp, "type")) {
+            if (entry.is_int || entry.sym_value != interp.sym_ForeignHandle) return false;
+            saw_type = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "name")) {
+            if (entry.is_int) return false;
+            policy.name = entry.sym_value;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "ownership")) {
+            if (entry.is_int) return false;
+            if (ffi_symbol_name_equals(entry.sym_value, interp, "owned")) {
+                policy.ownership = FFI_HANDLE_OWNED;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "borrowed")) {
+                policy.ownership = FFI_HANDLE_BORROWED;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "manual")) {
+                policy.ownership = FFI_HANDLE_MANUAL;
+            } else {
+                return false;
+            }
+            saw_ownership = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "finalizer")) {
+            if (entry.is_int) return false;
+            policy.finalizer_symbol = entry.sym_value;
+            saw_finalizer = true;
+        } else if (ffi_symbol_name_equals(entry.key, interp, "nullability")) {
+            if (entry.is_int) return false;
+            if (ffi_symbol_name_equals(entry.sym_value, interp, "nullable")) {
+                policy.nullability = FFI_HANDLE_NULLABLE;
+            } else if (ffi_symbol_name_equals(entry.sym_value, interp, "non-null")) {
+                policy.nullability = FFI_HANDLE_NON_NULL;
+            } else {
+                return false;
+            }
+        }
+    }
+
+    if (!saw_handle_policy_key && !saw_type) return false;
+    if (saw_finalizer && saw_ownership && policy.ownership != FFI_HANDLE_OWNED) return false;
+    if (saw_finalizer && !saw_ownership) policy.ownership = FFI_HANDLE_OWNED;
+    if (policy.ownership == FFI_HANDLE_OWNED && policy.finalizer_symbol == INVALID_SYMBOL_ID) return false;
+
+    policy.is_foreign_handle = true;
+    *out_tag = FFI_TYPE_PTR;
+    *out_policy = policy;
+    return true;
+}
+
+fn bool ffi_type_annotation_to_tag(TypeAnnotation* ann, Interp* interp,
+    FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
+    if (ann == null || !ann.has_annotation) return false;
+
+    FfiHandlePolicy policy = ffi_handle_policy_default();
+    if (ann.is_dict) {
+        return ffi_metadata_type_annotation_to_tag(ann, interp, out_tag, out_policy);
+    }
+
+    if (!type_ann_to_ffi_tag(ann.base_type, interp, out_tag)) return false;
+    if (*out_tag == FFI_TYPE_PTR) policy.is_foreign_handle = true;
+    *out_policy = policy;
+    return true;
 }
 
 fn bool is_array(Value* v) @inline {
@@ -133,33 +309,35 @@ fn bool is_hashmap_backed(Value* v) @inline {
 }
 
 fn Value* make_array_checked(Interp* interp, usz capacity, char[] oom_message) {
-    Value* v = boundary_alloc_value_in_root(interp, true);
-    if (v == null) {
-        return raise_error(interp, oom_message);
-    }
-    v.tag = ARRAY;
-
     Array* arr = g_value_force_make_array_struct_alloc_fail
         ? null
         : (Array*)mem::malloc(Array.sizeof);
     if (arr == null) {
-        v.tag = NIL;
-        v.array_val = null;
         return raise_error(interp, oom_message);
     }
 
     arr.capacity = capacity < 4 ? 4 : capacity;
     arr.length = 0;
+    if (arr.capacity > usz.max / Value*.sizeof) {
+        mem::free(arr);
+        return raise_error(interp, oom_message);
+    }
     arr.items = g_value_force_make_array_items_alloc_fail
         ? null
         : (Value**)mem::malloc(Value*.sizeof * arr.capacity);
     if (arr.items == null) {
         mem::free(arr);
-        v.tag = NIL;
-        v.array_val = null;
         return raise_error(interp, oom_message);
     }
 
+    Value* v = boundary_alloc_value_in_root(interp, true);
+    if (v == null) {
+        mem::free(arr.items);
+        mem::free(arr);
+        return raise_error(interp, oom_message);
+    }
+
+    v.tag = ARRAY;
     v.array_val = arr;
     return v;
 }
@@ -169,13 +347,22 @@ fn Value* make_array(Interp* interp, usz capacity) {
 }
 
 fn Value* make_module(Interp* interp, Module* mod) {
+    if (interp == null || interp.root_scope == null || mod == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-module", "module: invalid module value");
+    }
+    Module* stable_mod = (Module*)interp.root_scope.alloc(Module.sizeof);
+    if (stable_mod == null) {
+        return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "module: failed to allocate module descriptor");
+    }
+    *stable_mod = *mod;
+
     // Allocate Value in root_scope so it persists across scope releases.
     Value* v = boundary_alloc_value_in_root(interp);
     if (v == null) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "module: failed to allocate module value");
     }
     v.tag = MODULE;
-    v.module_val = mod;
+    v.module_val = stable_mod;
     return v;
 }
 

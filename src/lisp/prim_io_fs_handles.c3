@@ -21,7 +21,9 @@ fn bool fs_array_push(Value* arr_v, Value* val, Interp* interp) {
     if (arr_v == null || arr_v.tag != ARRAY || arr_v.array_val == null) return false;
     Array* arr = arr_v.array_val;
     if (arr.length >= arr.capacity) {
+        if (arr.capacity == 0 || arr.capacity > usz.max / (usz)2) return false;
         usz new_cap = arr.capacity * 2;
+        if (new_cap > usz.max / Value*.sizeof) return false;
         Value** new_items = (Value**)mem::malloc(Value*.sizeof * new_cap);
         if (new_items == null) return false;
         for (usz i = 0; i < arr.length; i++) new_items[i] = arr.items[i];
@@ -52,8 +54,16 @@ fn Value* prim_fs_stat(Value*[] args, Env* env, Interp* interp) {
     if (out == null || out.tag != HASHMAP) {
         return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: out of memory");
     }
-    Value* size_key = make_symbol(interp, interp.symbols.intern("size"));
-    Value* mode_key = make_symbol(interp, interp.symbols.intern("mode"));
+    if (size_out > (ulong)long.max) {
+        return io_fs_raise(interp, "io/fs-stat-size-out-of-range", "fs-stat: file size out of range");
+    }
+    SymbolId size_sym = interp.symbols.intern("size");
+    SymbolId mode_sym = interp.symbols.intern("mode");
+    if (size_sym == INVALID_SYMBOL_ID || mode_sym == INVALID_SYMBOL_ID) {
+        return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: failed to intern result keys");
+    }
+    Value* size_key = make_symbol(interp, size_sym);
+    Value* mode_key = make_symbol(interp, mode_sym);
     if (!hashmap_set_checked(out.hashmap_val, size_key, make_int(interp, (long)size_out), interp) ||
         !hashmap_set_checked(out.hashmap_val, mode_key, make_int(interp, (long)mode_out), interp)) {
         return io_fs_raise(interp, "io/fs-stat-out-of-memory", "fs-stat: out of memory");

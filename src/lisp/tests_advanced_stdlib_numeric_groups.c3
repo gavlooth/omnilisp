@@ -70,17 +70,25 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "foldl product", "(foldl * 1 (quote (1 2 3 4)))", 24, pass, fail);
     test_eq(interp, "foldr cons len", "(length (foldr cons nil (quote (1 2 3))))", 3, pass, fail);
     test_eq(interp, "foldr cons car", "(car (foldr cons nil (quote (1 2 3))))", 1, pass, fail);
+    test_error_contains(interp, "map rejects improper list", "(map (lambda (x) x) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "filter rejects improper list", "(filter (lambda (x) true) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "foldl rejects improper list", "(foldl + 0 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "foldr rejects improper list", "(foldr cons nil (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "append length", "(length (append (quote (1 2)) (quote (3 4))))", 4, pass, fail);
     test_eq(interp, "append car", "(car (append (quote (1 2)) (quote (3 4))))", 1, pass, fail);
     test_eq(interp, "append nil left", "(car (append nil (quote (1 2))))", 1, pass, fail);
     test_eq(interp, "reverse car", "(car (reverse (quote (1 2 3))))", 3, pass, fail);
     test_eq(interp, "reverse length", "(length (reverse (quote (1 2 3))))", 3, pass, fail);
     test_nil(interp, "reverse nil", "(reverse nil)", pass, fail);
+    test_error_contains(interp, "reverse rejects improper list", "(reverse (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "append rejects improper left list", "(append (cons 1 2) '(3))", "proper list", pass, fail);
+    test_error_contains(interp, "append rejects improper right list", "(append '(1) (cons 2 3))", "proper list", pass, fail);
     test_eq(interp, "compose *2.+1", "((compose (lambda (x) (* x 2)) (lambda (x) (+ x 1))) 3)", 8, pass, fail);
     test_eq(interp, "compose +1.*2", "((compose (lambda (x) (+ x 1)) (lambda (x) (* x 2))) 3)", 7, pass, fail);
     test_eq(interp, "id", "(id 42)", 42, pass, fail);
     test_eq(interp, "nth 0", "(nth 0 (quote (10 20 30 40)))", 10, pass, fail);
     test_eq(interp, "nth 2", "(nth 2 (quote (10 20 30 40)))", 30, pass, fail);
+    test_error_contains(interp, "nth rejects improper list", "(nth 0 (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "take length", "(length (take 3 (quote (1 2 3 4 5))))", 3, pass, fail);
     test_eq(interp, "take car", "(car (take 3 (quote (1 2 3 4 5))))", 1, pass, fail);
     test_nil(interp, "take 0", "(take 0 (quote (1 2 3)))", pass, fail);
@@ -91,14 +99,21 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_eq(interp, "zip first car", "(car (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 1, pass, fail);
     test_eq(interp, "zip first cdr", "(cdr (car (zip (quote (1 2 3)) (quote (4 5 6)))))", 4, pass, fail);
     test_eq(interp, "zip unequal", "(length (zip (quote (1 2)) (quote (4 5 6))))", 2, pass, fail);
+    test_error_contains(interp, "take rejects improper list", "(take 1 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "drop rejects improper list", "(drop 0 (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "zip rejects improper left list", "(zip (cons 1 2) '(3))", "proper list", pass, fail);
+    test_error_contains(interp, "zip rejects improper right list", "(zip '(1) (cons 3 4))", "proper list", pass, fail);
     test_eq(interp, "range length", "(length (range 5))", 5, pass, fail);
     test_eq(interp, "range car", "(car (range 5))", 0, pass, fail);
     test_nil(interp, "range 0", "(range 0)", pass, fail);
     test_nil(interp, "for-each", "(for-each (lambda (x) (+ x 1)) (quote (1 2 3)))", pass, fail);
+    test_error_contains(interp, "for-each rejects improper list", "(for-each (lambda (x) x) (cons 1 2))", "proper list", pass, fail);
     test_truthy(interp, "any? found", "(any? (lambda (x) (= x 3)) (quote (1 2 3 4)))", pass, fail);
     test_nil(interp, "any? not found", "(any? (lambda (x) (= x 99)) (quote (1 2 3 4)))", pass, fail);
     test_truthy(interp, "every? all", "(every? (lambda (x) (> x 0)) (quote (1 2 3 4)))", pass, fail);
     test_nil(interp, "every? not all", "(every? (lambda (x) (> x 2)) (quote (1 2 3 4)))", pass, fail);
+    test_error_contains(interp, "any? rejects improper list before truthy tail", "(any? (lambda (x) false) (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "every? rejects improper list before early false", "(every? (lambda (x) false) (cons 1 2))", "proper list", pass, fail);
     test_truthy(interp, "every? empty", "(every? (lambda (x) (> x 0)) nil)", pass, fail);
     test_eq(interp, "try/raise catch payload data", "(try (lambda (xx) (+ 1 (signal raise 42))) (lambda (payload) (ref payload 'data)))", 42, pass, fail);
     test_eq(interp, "try no error", "(try (lambda (xx) (+ 1 2)) (lambda (msg) msg))", 3, pass, fail);
@@ -106,8 +121,8 @@ fn void run_advanced_stdlib_numeric_collection_tests(Interp* interp, int* pass, 
     test_truthy(interp, "assert! false raises canonical payload",
         "(let (payload (handle (assert! (= 1 2) \"fail\") (raise msg msg))) "
         "  (and (dict? payload) "
-        "       (and (= (symbol->string (ref payload 'domain)) \"stdlib\") "
-        "            (and (= (symbol->string (ref payload 'code)) \"stdlib/assert-failed\") "
+        "       (and (= (String (ref payload 'domain)) \"stdlib\") "
+        "            (and (= (String (ref payload 'code)) \"stdlib/assert-failed\") "
         "                 (= (ref payload 'message) \"fail\")))))",
         pass, fail);
     test_eq(interp, "map+filter+foldl", "(foldl + 0 (filter (lambda (x) (> x 3)) (map (lambda (x) (* x 2)) (quote (1 2 3 4 5)))))", 28, pass, fail);
@@ -126,46 +141,255 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "float/int", "(/ 1.0 3)", 0.333333, pass, fail);
     test_double(interp, "float-float", "(- 5.5 2.5)", 3.0, pass, fail);
     test_eq(interp, "int+int stays int", "(+ 1 2)", 3, pass, fail);
+    test_error_contains(interp, "+ rejects trailing arg", "(+ 10 20 30)", "arity mismatch", pass, fail);
+    test_error_contains(interp, "* rejects trailing arg", "(* 2 3 4)", "arity mismatch", pass, fail);
     test_truthy(interp, "< int float", "(< 1 2.5)", pass, fail);
     test_truthy(interp, "> float int", "(> 3.5 2)", pass, fail);
     test_truthy(interp, "= int float", "(= 1 1.0)", pass, fail);
     test_truthy(interp, "<= float", "(<= 1.5 1.5)", pass, fail);
     test_truthy(interp, ">= float", "(>= 2.0 1.5)", pass, fail);
     test_double(interp, "unary neg float", "(- 0 3.14)", -3.14, pass, fail);
-    test_double(interp, "exact->inexact", "(exact->inexact 5)", 5.0, pass, fail);
-    test_eq(interp, "inexact->exact", "(inexact->exact 3.7)", 3, pass, fail);
-    test_eq(interp, "inexact->exact negative truncates toward zero", "(inexact->exact -3.7)", -3, pass, fail);
-    test_double(interp, "string->number float", "(string->number \"3.14\")", 3.14, pass, fail);
-    test_double(interp, "string->number exp", "(string->number \"1.5e2\")", 150.0, pass, fail);
-    test_nil(interp, "string->number integer overflow => nil", "(string->number \"9223372036854775808\")", pass, fail);
-    test_nil(interp, "string->number integer underflow => nil", "(string->number \"-9223372036854775809\")", pass, fail);
+    test_double(interp, "Float64", "(Float64 5)", 5.0, pass, fail);
+    test_eq(interp, "Integer", "(Integer 3.7)", 3, pass, fail);
+    test_eq(interp, "Integer negative truncates toward zero", "(Integer -3.7)", -3, pass, fail);
+    test_double(interp, "parse-number float", "(parse-number \"3.14\")", 3.14, pass, fail);
+    test_double(interp, "parse-number exp", "(parse-number \"1.5e2\")", 150.0, pass, fail);
+    test_str_val(interp, "parse-number integer overflow => BigInteger",
+        "(String (parse-number \"9223372036854775808\"))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "parse-number integer underflow => BigInteger",
+        "(String (parse-number \"-9223372036854775809\"))",
+        "-9223372036854775809", pass, fail);
+    test_truthy(interp, "parse-number overflow type is BigInteger",
+        "(= (type-of (parse-number \"9223372036854775808\")) 'BigInteger)", pass, fail);
+    test_truthy(interp, "parse-number long-min type is Integer",
+        "(= (type-of (parse-number \"-9223372036854775808\")) 'Integer)", pass, fail);
+    test_nil(interp, "parse-number invalid overflow suffix => nil",
+        "(parse-number \"9223372036854775808x\")", pass, fail);
+    test_str_val(interp, "BigInteger ctor large string",
+        "(String (BigInteger \"9223372036854775808\"))",
+        "9223372036854775808", pass, fail);
+    test_truthy(interp, "BigInteger type-of",
+        "(= (type-of (BigInteger \"1\")) 'BigInteger)", pass, fail);
+    test_truthy(interp, "BigInteger is Number",
+        "(number? (BigInteger \"1\"))", pass, fail);
+    test_str_val(interp, "BigFloat ctor string",
+        "(String (BigFloat \"1.25\"))",
+        "1.25", pass, fail);
+    test_truthy(interp, "BigFloat type-of",
+        "(= (type-of (BigFloat \"1.25\")) 'BigFloat)", pass, fail);
+    test_truthy(interp, "BigFloat is Number",
+        "(number? (BigFloat \"1.25\"))", pass, fail);
+    test_str_val(interp, "BigFloat addition",
+        "(String (+ (BigFloat \"1.25\") 2))",
+        "3.25", pass, fail);
+    test_str_val(interp, "BigFloat subtraction",
+        "(String (- (BigFloat \"5.5\") 2))",
+        "3.5", pass, fail);
+    test_str_val(interp, "BigFloat multiplication with BigInteger",
+        "(String (* (BigFloat \"1.5\") (BigInteger \"4\")))",
+        "6", pass, fail);
+    test_str_val(interp, "BigFloat division",
+        "(String (/ (BigFloat \"10\") 4))",
+        "2.5", pass, fail);
+    test_error_contains(interp, "BigFloat division by zero",
+        "(/ (BigFloat \"1\") 0)", "/: division by zero", pass, fail);
+    test_truthy(interp, "BigFloat less-than",
+        "(< (BigFloat \"1.25\") (BigFloat \"2.5\"))", pass, fail);
+    test_str_val(interp, "BigFloat abs",
+        "(String (abs (BigFloat \"-3.5\")))",
+        "3.5", pass, fail);
+    test_str_val(interp, "BigFloat max",
+        "(String (max (BigFloat \"1.25\") 2))",
+        "2", pass, fail);
+    test_str_val(interp, "BigComplex constructor stringifies parts",
+        "(String (BigComplex 1 2))",
+        "1+2i", pass, fail);
+    test_truthy(interp, "BigComplex type-of",
+        "(= (type-of (BigComplex 1 2)) 'BigComplex)", pass, fail);
+    test_truthy(interp, "BigComplex is Number",
+        "(is? (BigComplex 1 2) 'Number)", pass, fail);
+    test_str_val(interp, "BigComplex scalar addition",
+        "(String (+ (BigComplex 1 2) 3))",
+        "4+2i", pass, fail);
+    test_str_val(interp, "BigComplex multiplication",
+        "(String (* (BigComplex 1 2) (BigComplex 3 4)))",
+        "-5+10i", pass, fail);
+    test_str_val(interp, "BigComplex division",
+        "(String (/ (BigComplex 1 2) (BigComplex 3 -4)))",
+        "-0.2+0.4i", pass, fail);
+    test_str_val(interp, "BigComplex abs returns BigFloat magnitude",
+        "(String (abs (BigComplex 3 4)))",
+        "5", pass, fail);
+    test_str_val(interp, "BigComplex real-part returns BigFloat component",
+        "(String (real-part (BigComplex 1 2)))",
+        "1", pass, fail);
+    test_str_val(interp, "BigComplex imag-part returns BigFloat component",
+        "(String (imag-part (BigComplex 1 2)))",
+        "2", pass, fail);
+    test_str_val(interp, "BigComplex conjugate flips imaginary sign",
+        "(String (conjugate (BigComplex 1 2)))",
+        "1-2i", pass, fail);
+    test_truthy(interp, "BigComplex real-part preserves BigFloat component type",
+        "(= (type-of (real-part (BigComplex 1 2))) 'BigFloat)", pass, fail);
+    test_eq(interp, "real-part on real Integer is identity",
+        "(real-part 42)", 42, pass, fail);
+    test_eq(interp, "imag-part on real Integer is zero",
+        "(imag-part 42)", 0, pass, fail);
+    test_str_val(interp, "real-part on BigFloat preserves scalar value",
+        "(String (real-part (BigFloat \"1.25\")))",
+        "1.25", pass, fail);
+    test_str_val(interp, "conjugate on BigFloat preserves scalar value",
+        "(String (conjugate (BigFloat \"1.25\")))",
+        "1.25", pass, fail);
+    test_error_contains(interp, "real-part rejects non-number",
+        "(real-part \"x\")", "number", pass, fail);
+    test_truthy(interp, "BigComplex equality",
+        "(= (BigComplex 1 2) (BigComplex 1 2))", pass, fail);
+    test_truthy(interp, "BigComplex zero predicate",
+        "(zero? (BigComplex 0 0))", pass, fail);
+    test_error_contains(interp, "BigComplex ordering rejected",
+        "(< (BigComplex 1 2) (BigComplex 2 3))", "complex numbers are not ordered", pass, fail);
+    test_error_contains(interp, "BigComplex division by zero",
+        "(/ (BigComplex 1 2) (BigComplex 0 0))", "/: division by zero", pass, fail);
+    test_str_val(interp, "BigComplex sin zero",
+        "(String (sin (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex cos zero",
+        "(String (cos (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex exp zero",
+        "(String (exp (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex sinh zero",
+        "(String (sinh (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex cosh zero",
+        "(String (cosh (BigComplex 0 0)))",
+        "1+0i", pass, fail);
+    test_str_val(interp, "BigComplex tanh zero",
+        "(String (tanh (BigComplex 0 0)))",
+        "0+0i", pass, fail);
+    test_truthy(interp, "BigComplex sinh preserves type",
+        "(= (type-of (sinh (BigComplex 0 0))) 'BigComplex)", pass, fail);
+    test_str_val(interp, "BigComplex log one",
+        "(String (log (BigComplex 1 0)))",
+        "0+0i", pass, fail);
+    test_str_val(interp, "BigComplex sqrt negative one",
+        "(String (sqrt (BigComplex -1 0)))",
+        "0+1i", pass, fail);
+    test_truthy(interp, "BigComplex pow within tolerance",
+        "(< (abs (- (pow (BigComplex 0 1) 2) (BigComplex -1 0))) (BigFloat \"1e-40\"))",
+        pass, fail);
+    test_error_contains(interp, "BigComplex atan2 rejected",
+        "(atan2 (BigComplex 1 0) 1)", "atan2: complex numbers are not supported", pass, fail);
+    test_truthy(interp, "parse-number Float64 overflow type is BigFloat",
+        "(= (type-of (parse-number \"1e309\")) 'BigFloat)", pass, fail);
+    test_str_val(interp, "parse-number Float64 overflow value",
+        "(String (parse-number \"1e309\"))",
+        "1e+309", pass, fail);
+    test_str_val(interp, "Float64 rejects out-of-range BigFloat payload code",
+        "(handle (Float64 (BigFloat \"1e309\")) (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "BigInteger + overflow promotion",
+        "(String (+ 9223372036854775807 1))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger subtraction",
+        "(String (- (BigInteger \"9223372036854775808\") 1))",
+        "9223372036854775807", pass, fail);
+    test_str_val(interp, "BigInteger multiplication",
+        "(String (* (BigInteger \"9223372036854775808\") 2))",
+        "18446744073709551616", pass, fail);
+    test_str_val(interp, "BigInteger division",
+        "(String (/ (BigInteger \"18446744073709551616\") 2))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger modulo",
+        "(String (% (BigInteger \"9223372036854775810\") 3))",
+        "1", pass, fail);
+    test_str_val(interp, "BigInteger abs",
+        "(String (abs (BigInteger \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "Integer abs overflow promotes",
+        "(String (abs (Integer \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger min",
+        "(String (min (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775809\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger max",
+        "(String (max (BigInteger \"9223372036854775808\") 1))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "BigInteger gcd",
+        "(String (gcd (BigInteger \"18446744073709551616\") 24))",
+        "8", pass, fail);
+    test_str_val(interp, "BigInteger lcm",
+        "(String (lcm (BigInteger \"9223372036854775808\") 3))",
+        "27670116110564327424", pass, fail);
+    test_str_val(interp, "Integer division overflow promotes",
+        "(String (/ (- -9223372036854775807 1) -1))",
+        "9223372036854775808", pass, fail);
+    test_eq(interp, "Integer modulo overflow boundary returns zero",
+        "(% (- -9223372036854775807 1) -1)",
+        0, pass, fail);
+    test_eq(interp, "Integer gcd long-min boundary narrows when possible",
+        "(gcd (Integer \"-9223372036854775808\") 2)",
+        2, pass, fail);
+    test_str_val(interp, "Integer lcm long-min boundary promotes",
+        "(String (lcm (Integer \"-9223372036854775808\") 2))",
+        "9223372036854775808", pass, fail);
+    test_error_contains(interp, "BigInteger division by zero",
+        "(/ (BigInteger \"10\") 0)", "/: division by zero", pass, fail);
+    test_error_contains(interp, "BigInteger modulo by zero",
+        "(% (BigInteger \"10\") 0)", "%: division by zero", pass, fail);
+    test_truthy(interp, "BigInteger less-than",
+        "(< (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775809\"))", pass, fail);
+    test_truthy(interp, "BigInteger greater-than Integer",
+        "(> (BigInteger \"9223372036854775808\") 9223372036854775807)", pass, fail);
+    test_truthy(interp, "BigInteger less-equal equality",
+        "(<= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
+    test_truthy(interp, "BigInteger greater-equal equality",
+        "(>= (BigInteger \"9223372036854775808\") (BigInteger \"9223372036854775808\"))", pass, fail);
+    test_truthy(interp, "BigInteger compare with Float64 in range",
+        "(< (BigInteger \"42\") 42.5)", pass, fail);
+    test_eq(interp, "Integer ctor accepts in-range BigInteger",
+        "(Integer (BigInteger \"9223372036854775807\"))",
+        9223372036854775807, pass, fail);
     test_str_val(interp, "Integer ctor overflow payload code",
-        "(handle (Integer \"9223372036854775808\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer \"9223372036854775808\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "Integer ctor underflow payload code",
-        "(handle (Integer \"-9223372036854775809\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (Integer \"-9223372036854775809\") (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp, "Integer ctor huge-double payload code",
-        "(handle (Integer (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+    test_str_val(interp, "Integer ctor huge-Float64 payload code",
+        "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str_val(interp, "inexact->exact huge-double payload code",
-        "(handle (inexact->exact (pow 10.0 400.0)) (raise msg (symbol->string (ref msg 'code))))",
+    test_str_val(interp, "Integer huge-Float64 payload code",
+        "(handle (Integer (pow 10.0 400.0)) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
-    test_str(interp, "number->string double", "(number->string 3.14)", pass, fail);
-    test_str_val(interp, "number->string invalid arg payload domain",
-        "(handle (number->string 'bad) (raise msg (symbol->string (ref msg 'domain))))",
+    test_str_val(interp, "BigInteger invalid string payload code",
+        "(handle (BigInteger \"12x\") (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str_val(interp, "Integer rejects out-of-range BigInteger payload code",
+        "(handle (Integer (BigInteger \"9223372036854775808\")) (raise msg (String (ref msg 'code))))",
+        "type/arg-mismatch", pass, fail);
+    test_str(interp, "String Float64", "(String 3.14)", pass, fail);
+    test_error_contains(interp, "String rejects trailing arg", "(String 42 99)", "arity mismatch", pass, fail);
+    test_str_val(interp, "String invalid array payload domain",
+        "(handle (String [1]) (raise msg (String (ref msg 'domain))))",
         "type", pass, fail);
-    test_str_val(interp, "number->string invalid arg payload code",
-        "(handle (number->string 'bad) (raise msg (symbol->string (ref msg 'code))))",
+    test_str_val(interp, "String invalid array payload code",
+        "(handle (String [1]) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
     test_str_val(interp, "read-string parse failure payload code",
-        "(handle (read-string \"(+ 1\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (read-string \"(+ 1\") (raise msg (String (ref msg 'code))))",
         "runtime/read-string-failed", pass, fail);
 
     // === MATH LIBRARY TESTS (Phase 2) ===
     test_double(interp, "sin 0", "(sin 0.0)", 0.0, pass, fail);
     test_double(interp, "cos 0", "(cos 0.0)", 1.0, pass, fail);
     test_double(interp, "tan 0", "(tan 0.0)", 0.0, pass, fail);
+    test_double(interp, "sinh 0", "(sinh 0.0)", 0.0, pass, fail);
+    test_double(interp, "cosh 0", "(cosh 0.0)", 1.0, pass, fail);
+    test_double(interp, "tanh 0", "(tanh 0.0)", 0.0, pass, fail);
     test_double(interp, "asin 0", "(asin 0.0)", 0.0, pass, fail);
     test_double(interp, "acos 1", "(acos 1.0)", 0.0, pass, fail);
     test_double(interp, "atan 0", "(atan 0.0)", 0.0, pass, fail);
@@ -174,11 +398,82 @@ fn void run_advanced_stdlib_numeric_float_math_tests(Interp* interp, int* pass, 
     test_double(interp, "log 1", "(log 1.0)", 0.0, pass, fail);
     test_double(interp, "sqrt 4", "(sqrt 4.0)", 2.0, pass, fail);
     test_double(interp, "pow 2 10", "(pow 2.0 10.0)", 1024.0, pass, fail);
+    test_double(interp, "math/lgamma 6", "(math/lgamma 6.0)", 4.78749174278, pass, fail);
+    test_double(interp, "math/lgamma half", "(math/lgamma 0.5)", 0.57236494292, pass, fail);
+    test_error_contains(interp, "math/lgamma pole domain error",
+        "(math/lgamma 0.0)", "math/lgamma: domain error", pass, fail);
+    test_error_contains(interp, "math/lgamma rejects out-of-range BigInteger",
+        "(math/lgamma (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "math/lgamma: value out of Float64 range", pass, fail);
+    test_double(interp, "math/erf 1", "(math/erf 1.0)", 0.84270079295, pass, fail);
+    test_double(interp, "math/erfc 1", "(math/erfc 1.0)", 0.15729920705, pass, fail);
+    test_error_contains(interp, "math/erf rejects out-of-range BigInteger",
+        "(math/erf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "math/erf: value out of Float64 range", pass, fail);
+    test_double(interp, "stats/normal-cdf 0", "(stats/normal-cdf 0.0)", 0.5, pass, fail);
+    test_double(interp, "stats/normal-cdf 1.96", "(stats/normal-cdf 1.96)", 0.97500210485, pass, fail);
+    test_double(interp, "stats/normal-quantile median", "(stats/normal-quantile 0.5)", 0.0, pass, fail);
+    test_double(interp, "stats/normal-quantile 0.975", "(stats/normal-quantile 0.975)", 1.95996398454, pass, fail);
+    test_error_contains(interp, "stats/normal-quantile rejects zero probability",
+        "(stats/normal-quantile 0.0)", "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
+    test_error_contains(interp, "stats/normal-cdf rejects out-of-range BigInteger",
+        "(stats/normal-cdf (BigInteger \"10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"))",
+        "stats/normal-cdf: value out of Float64 range", pass, fail);
+    test_str_val(interp, "BigFloat sin zero",
+        "(String (sin (BigFloat \"0\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat cos zero",
+        "(String (cos (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat exp zero",
+        "(String (exp (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat sinh zero",
+        "(String (sinh (BigFloat \"0\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat cosh zero",
+        "(String (cosh (BigFloat \"0\")))", "1", pass, fail);
+    test_str_val(interp, "BigFloat tanh zero",
+        "(String (tanh (BigFloat \"0\")))", "0", pass, fail);
+    test_truthy(interp, "BigFloat sinh preserves type",
+        "(= (type-of (sinh (BigFloat \"0\"))) 'BigFloat)", pass, fail);
+    test_str_val(interp, "BigFloat sqrt exact",
+        "(String (sqrt (BigFloat \"4\")))", "2", pass, fail);
+    test_str_val(interp, "BigFloat pow exact",
+        "(String (pow (BigFloat \"2\") 10))", "1024", pass, fail);
+    test_str_val(interp, "BigFloat atan2 zero",
+        "(String (atan2 (BigFloat \"0\") 1))", "0", pass, fail);
+    test_str_val(interp, "BigFloat normal cdf median",
+        "(String (stats/normal-cdf (BigFloat \"0\")))", "0.5", pass, fail);
+    test_str_val(interp, "BigFloat normal quantile median",
+        "(String (stats/normal-quantile (BigFloat \"0.5\")))", "0", pass, fail);
+    test_str_val(interp, "BigFloat erfc zero",
+        "(String (math/erfc (BigFloat \"0\")))", "1", pass, fail);
+    test_truthy(interp, "BigFloat lgamma precision",
+        "(< (abs (- (math/lgamma (BigFloat \"6\")) (BigFloat \"4.787491742782045994247700934523243048399592315172\"))) (BigFloat \"1e-45\"))",
+        pass, fail);
+    test_truthy(interp, "BigFloat exp beyond Float64 range stays BigFloat",
+        "(= (type-of (exp (BigFloat \"1000\"))) 'BigFloat)", pass, fail);
+    test_error_contains(interp, "BigFloat normal quantile rejects zero probability",
+        "(stats/normal-quantile (BigFloat \"0\"))",
+        "stats/normal-quantile: probability must be between 0 and 1", pass, fail);
     test_eq(interp, "floor 3.7", "(floor 3.7)", 3, pass, fail);
     test_eq(interp, "ceiling 3.2", "(ceiling 3.2)", 4, pass, fail);
     test_eq(interp, "round 3.5", "(round 3.5)", 4, pass, fail);
     test_eq(interp, "truncate 3.9", "(truncate 3.9)", 3, pass, fail);
     test_eq(interp, "truncate -3.9", "(truncate -3.9)", -3, pass, fail);
+    test_eq(interp, "BigFloat floor narrows to Integer",
+        "(floor (BigFloat \"3.7\"))", 3, pass, fail);
+    test_eq(interp, "BigFloat ceiling narrows to Integer",
+        "(ceiling (BigFloat \"3.2\"))", 4, pass, fail);
+    test_eq(interp, "BigFloat round negative half away from zero",
+        "(round (BigFloat \"-3.5\"))", -4, pass, fail);
+    test_eq(interp, "BigFloat truncate negative toward zero",
+        "(truncate (BigFloat \"-3.9\"))", -3, pass, fail);
+    test_str_val(interp, "BigFloat floor promotes large integer result",
+        "(String (floor (BigFloat \"9223372036854775808.9\")))",
+        "9223372036854775808", pass, fail);
+    test_truthy(interp, "BigFloat floor large result is BigInteger",
+        "(= (type-of (floor (BigFloat \"9223372036854775808.9\"))) 'BigInteger)", pass, fail);
+    test_error_contains(interp, "BigFloat floor rejects huge integer allocation",
+        "(floor (BigFloat \"1e400000\"))",
+        "floor: BigFloat integer result out of supported range", pass, fail);
     test_error_contains(interp, "truncate overflow raises",
         "(truncate (pow 10.0 400.0))", "out of Integer range", pass, fail);
     test_eq(interp, "abs -5", "(abs -5)", 5, pass, fail);
@@ -215,30 +510,30 @@ fn void run_advanced_stdlib_numeric_array_set_tests(Interp* interp, int* pass, i
     test_eq(interp, "empty Array", "(length (Array))", 0, pass, fail);
 
     // === SET TESTS (Phase 9) ===
-    test_eq(interp, "set-size", "(set-size (Set 1 2 3))", 3, pass, fail);
+    test_eq(interp, "length", "(length (Set 1 2 3))", 3, pass, fail);
     test_eq(interp, "set length", "(length (Set 1 2 3))", 3, pass, fail);
     test_truthy(interp, "set-contains?", "(set-contains? (Set 1 2 3) 2)", pass, fail);
     test_nil(interp, "set-contains? miss", "(set-contains? (Set 1 2 3) 5)", pass, fail);
     setup(interp, "(define test-set (Set 1 2))");
     test_tag_interp(interp, "set-add returns void", "(set-add test-set 3)", VOID, pass, fail);
-    test_eq(interp, "set-add", "(set-size test-set)", 3, pass, fail);
+    test_eq(interp, "set-add", "(length test-set)", 3, pass, fail);
     test_truthy(interp, "set-add contains", "(set-contains? test-set 3)", pass, fail);
     test_tag_interp(interp, "set-remove returns void", "(set-remove test-set 2)", VOID, pass, fail);
-    test_eq(interp, "set-remove", "(set-size test-set)", 2, pass, fail);
+    test_eq(interp, "set-remove", "(length test-set)", 2, pass, fail);
     test_nil(interp, "set-remove gone", "(set-contains? test-set 2)", pass, fail);
-    test_eq(interp, "set dedup", "(set-size (Set 1 1 2 2 3))", 3, pass, fail);
-    test_truthy(interp, "set->list canonical order",
-        "(= (set->list (Set 3 1 2 2)) '(1 2 3))", pass, fail);
-    test_truthy(interp, "set->list canonical after mutations",
-        "(let (s (Set 5 1 3)) (block (set-add s 4) (set-remove s 3) (= (set->list s) '(1 4 5))))", pass, fail);
+    test_eq(interp, "set dedup", "(length (Set 1 1 2 2 3))", 3, pass, fail);
+    test_truthy(interp, "List canonical order",
+        "(= (List (Set 3 1 2 2)) '(1 2 3))", pass, fail);
+    test_truthy(interp, "List canonical after mutations",
+        "(let (s (Set 5 1 3)) (block (set-add s 4) (set-remove s 3) (= (List s) '(1 4 5))))", pass, fail);
     test_truthy(interp, "set type-of is Set", "(= (type-of (Set 1 2 3)) 'Set)", pass, fail);
 
     // === CONVENIENCE TESTS (Phase 12) ===
     test_eq(interp, "read-string", "(read-string \"(+ 1 2)\")", 3, pass, fail);
-    test_truthy(interp, "symbol->string", "(= (symbol->string 'hello) \"hello\")", pass, fail);
-    test_truthy(interp, "string->symbol", "(= (string->symbol \"abc\") 'abc)", pass, fail);
-    test_str_val(interp, "string->symbol invalid arg payload code",
-        "(handle (string->symbol 42) (raise msg (symbol->string (ref msg 'code))))",
+    test_truthy(interp, "String", "(= (String 'hello) \"hello\")", pass, fail);
+    test_truthy(interp, "Symbol", "(= (Symbol \"abc\") 'abc)", pass, fail);
+    test_str_val(interp, "Symbol invalid arg payload code",
+        "(handle (Symbol 42) (raise msg (String (ref msg 'code))))",
         "type/arg-mismatch", pass, fail);
 }
 
@@ -248,21 +543,60 @@ fn void run_advanced_stdlib_sort_bitwise_hof_tests(Interp* interp, int* pass, in
     test_eq(interp, "sort length", "(length (sort (quote (5 3 1 4 2))))", 5, pass, fail);
     test_eq(interp, "sort last", "(car (cdr (cdr (sort (quote (3 1 2))))))", 3, pass, fail);
     test_eq(interp, "sort-by custom", "(car (sort-by (lambda (a) (lambda (b) (- a b))) (quote (3 1 2))))", 1, pass, fail);
+    test_error_contains(interp, "sort rejects non-list",
+        "(sort 42)", "sort: expected list argument", pass, fail);
+    test_error_contains(interp, "sort rejects improper list tail",
+        "(sort (cons 2 1))", "sort: expected a proper list", pass, fail);
+    test_error_contains(interp, "sort-by rejects non-list",
+        "(sort-by (lambda (a) (lambda (b) (- a b))) 42)", "sort-by: expected list argument", pass, fail);
+    test_error_contains(interp, "sort-by rejects improper list tail",
+        "(sort-by (lambda (a) (lambda (b) (- a b))) (cons 2 1))", "sort-by: expected a proper list", pass, fail);
     test_eq(interp, "bitwise-and", "(bitwise-and 12 10)", 8, pass, fail);
     test_eq(interp, "bitwise-or", "(bitwise-or 12 10)", 14, pass, fail);
     test_eq(interp, "bitwise-xor", "(bitwise-xor 12 10)", 6, pass, fail);
     test_eq(interp, "bitwise-not 0", "(bitwise-not 0)", -1, pass, fail);
     test_eq(interp, "lshift", "(lshift 1 4)", 16, pass, fail);
     test_eq(interp, "rshift", "(rshift 16 4)", 1, pass, fail);
+    test_str_val(interp, "BigInteger bitwise-and",
+        "(String (bitwise-and (BigInteger \"18446744073709551615\") 255))",
+        "255", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-or",
+        "(String (bitwise-or (BigInteger \"18446744073709551360\") 255))",
+        "18446744073709551615", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-xor",
+        "(String (bitwise-xor (BigInteger \"18446744073709551615\") 255))",
+        "18446744073709551360", pass, fail);
+    test_str_val(interp, "BigInteger bitwise-not",
+        "(String (bitwise-not (BigInteger \"0\")))",
+        "-1", pass, fail);
+    test_str_val(interp, "Integer lshift overflow promotes",
+        "(String (lshift 1 64))",
+        "18446744073709551616", pass, fail);
+    test_str_val(interp, "BigInteger lshift",
+        "(String (lshift (BigInteger \"1\") 100))",
+        "1267650600228229401496703205376", pass, fail);
+    test_str_val(interp, "BigInteger rshift",
+        "(String (rshift (BigInteger \"1267650600228229401496703205376\") 100))",
+        "1", pass, fail);
+    test_eq(interp, "BigInteger negative lshift count returns zero",
+        "(lshift (BigInteger \"1\") -1)", 0, pass, fail);
+    test_error_contains(interp, "BigInteger shift count out of range",
+        "(lshift 1 (BigInteger \"9223372036854775808\"))", "shift count out of range", pass, fail);
+    test_error_contains(interp, "Integer shift count allocation cap",
+        "(lshift 1 1048577)", "shift count out of range", pass, fail);
 
     // === STDLIB HOFs (Phase 3) ===
     test_eq(interp, "flatten", "(length (flatten (quote ((1 2) (3 4) (5)))))", 5, pass, fail);
     test_eq(interp, "flatten car", "(car (flatten (quote ((1 2) (3)))))", 1, pass, fail);
     test_eq(interp, "partition yes", "(length (car (partition (lambda (x) (> x 3)) (quote (1 2 3 4 5)))))", 2, pass, fail);
     test_eq(interp, "partition no", "(length (cdr (partition (lambda (x) (> x 3)) (quote (1 2 3 4 5)))))", 3, pass, fail);
+    test_error_contains(interp, "flatten rejects improper outer list", "(flatten (cons 1 2))", "proper list", pass, fail);
+    test_error_contains(interp, "flatten rejects improper nested list", "(flatten (list (cons 1 2)))", "proper list", pass, fail);
+    test_error_contains(interp, "partition rejects improper list", "(partition (lambda (x) true) (cons 1 2))", "proper list", pass, fail);
     test_eq(interp, "remove", "(length (remove (lambda (x) (= x 3)) (quote (1 2 3 4 5))))", 4, pass, fail);
     test_eq(interp, "find found", "(find (lambda (x) (= x 3)) (quote (1 2 3 4 5)))", 3, pass, fail);
     test_nil(interp, "find not found", "(find (lambda (x) (= x 99)) (quote (1 2 3)))", pass, fail);
+    test_error_contains(interp, "find rejects improper list before early match", "(find odd? (cons 1 2))", "proper list", pass, fail);
 }
 
 fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* pass, int* fail) {
@@ -274,12 +608,14 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_str(interp, "string-replace", "(string-replace \"hello world\" \"world\" \"there\")", pass, fail);
     test_str(interp, "char-at", "(char-at \"hello\" 1)", pass, fail);
     test_str(interp, "string-repeat", "(string-repeat \"ab\" 3)", pass, fail);
+    test_error_contains(interp, "string-join rejects non-string element",
+        "(string-join \",\" (quote (\"a\" 1 \"b\")))", "string-join: expected string elements", pass, fail);
 
     // === TYPE PREDICATE TESTS (Phase 5) ===
-    test_truthy(interp, "double? yes", "(double? 3.14)", pass, fail);
-    test_nil(interp, "double? no", "(double? 42)", pass, fail);
+    test_truthy(interp, "float64? yes", "(float64? 3.14)", pass, fail);
+    test_nil(interp, "float64? no", "(float64? 42)", pass, fail);
     test_truthy(interp, "number? int", "(number? 42)", pass, fail);
-    test_truthy(interp, "number? double", "(number? 3.14)", pass, fail);
+    test_truthy(interp, "number? Float64", "(number? 3.14)", pass, fail);
     test_nil(interp, "number? string", "(number? \"hello\")", pass, fail);
     test_truthy(interp, "boolean? true", "(boolean? true)", pass, fail);
     test_nil(interp, "boolean? nil", "(boolean? nil)", pass, fail);
@@ -287,6 +623,7 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_truthy(interp, "list? yes", "(list? (quote (1 2 3)))", pass, fail);
     test_truthy(interp, "list? nil", "(list? nil)", pass, fail);
     test_nil(interp, "list? int", "(list? 42)", pass, fail);
+    test_nil(interp, "list? improper list", "(list? (cons 1 2))", pass, fail);
     test_truthy(interp, "procedure? lambda", "(procedure? (lambda (x) x))", pass, fail);
     test_truthy(interp, "procedure? prim", "(procedure? +)", pass, fail);
     test_nil(interp, "procedure? int", "(procedure? 42)", pass, fail);
@@ -300,6 +637,19 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_nil(interp, "even? 3", "(even? 3)", pass, fail);
     test_truthy(interp, "odd? 3", "(odd? 3)", pass, fail);
     test_nil(interp, "odd? 4", "(odd? 4)", pass, fail);
+    test_str_val(interp, "abs long min promotes",
+        "(String (abs (Integer \"-9223372036854775808\")))",
+        "9223372036854775808", pass, fail);
+    test_str_val(interp, "divide long min by negative one promotes",
+        "(String (/ (Integer \"-9223372036854775808\") -1))",
+        "9223372036854775808", pass, fail);
+    test_eq(interp, "mod long min by negative one returns zero",
+        "(% (Integer \"-9223372036854775808\") -1)", 0, pass, fail);
+    test_eq(interp, "gcd long min narrows when possible",
+        "(gcd (Integer \"-9223372036854775808\") 2)", 2, pass, fail);
+    test_str_val(interp, "lcm long min promotes",
+        "(String (lcm (Integer \"-9223372036854775808\") 2))",
+        "9223372036854775808", pass, fail);
 
     // === FORMAT & DISPLAY TESTS (Phase 5) ===
     test_str_val(interp, "cl-format ~a", "(cl-format \"~a\" 42)", "42", pass, fail);
@@ -321,6 +671,10 @@ fn void run_advanced_stdlib_string_predicate_format_tests(Interp* interp, int* p
     test_str_val(interp, "format %%", "(format \"100%%\")", "100%", pass, fail);
     test_str_val(interp, "format mixed", "(format \"%s is %d\" \"x\" 42)", "x is 42", pass, fail);
     test_str_val(interp, "format %b zero", "(format \"%b\" 0)", "0", pass, fail);
+    test_error_contains(interp, "format %b long min overflow",
+        "(format \"%b\" (Integer \"-9223372036854775808\"))", "format: %b integer overflow", pass, fail);
+    test_error_contains(interp, "format width overflow",
+        "(format \"%2147483648s\" 1)", "format: width or precision too large", pass, fail);
     test_str_val(interp, "format %d neg", "(format \"%d\" -7)", "-7", pass, fail);
     test_str_val(interp, "format %.0f", "(format \"%.0f\" 3.7)", "3", pass, fail);
 }
@@ -333,12 +687,46 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         setup(interp, "(define [macro] my-inc (syntax-match ([x] (template (+ (insert x) 1)))))");
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco macroexpand");
         test_truthy(interp, "macroexpand", "(pair? (macroexpand (quote (my-inc 5))))", pass, fail);
+        test_error_contains(interp, "macroexpand surfaces improper form conversion error", "(macroexpand (cons 'my-inc (cons 1 2)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-literal");
         test_eq(interp, "eval literal", "(eval 42)", 42, pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco eval-list");
         test_eq(interp, "eval list", "(eval (quote (+ 1 2)))", 3, pass, fail);
+        test_eq(interp, "eval lambda preserves implicit block body", "((eval '(lambda (x) (set! x 2) x)) 1)",
+            2, pass, fail);
+        test_eq(interp, "eval let preserves implicit block body", "(eval '(let (x 1) (set! x 2) x))",
+            2, pass, fail);
+        test_error_contains(interp, "eval rejects improper call form", "(eval (cons '+ (cons 1 2)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects improper and form", "(eval (cons 'and (cons true false)))",
+            "value->expr: expected expression form to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects improper lambda params", "(eval (list 'lambda (cons 'x 'y) 'x))",
+            "value->expr: expected lambda parameters to be a proper list", pass, fail);
+        test_error_contains(interp, "eval rejects short if form", "(eval '(if true 1))",
+            "value->expr: if expects exactly 3 arguments", pass, fail);
+        test_error_contains(interp, "eval rejects long if form", "(eval '(if true 1 2 3))",
+            "value->expr: if expects exactly 3 arguments", pass, fail);
+        test_error_contains(interp, "eval rejects long quote form", "(eval '(quote a b))",
+            "value->expr: quote expects exactly 1 argument", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol define name", "(eval '(define 42 \"x\"))",
+            "value->expr: define name must be a symbol", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol set name", "(eval '(set! 42 1))",
+            "value->expr: set! name must be a symbol", pass, fail);
+        test_eq(interp, "eval lowers generic set call", "(block (define eval-set-d (Dictionary 'a 1)) (eval '(set! eval-set-d 'b 2)) (ref eval-set-d 'b))",
+            2, pass, fail);
+        test_error_contains(interp, "eval rejects long checkpoint form", "(eval '(checkpoint 1 2))",
+            "value->expr: checkpoint expects exactly 1 argument", pass, fail);
+        test_error_contains(interp, "eval rejects long capture form", "(eval '(capture k 1 2))",
+            "value->expr: capture expects continuation name and body", pass, fail);
+        test_error_contains(interp, "eval rejects non-symbol signal tag", "(eval '(signal 42 1))",
+            "value->expr: signal tag must be a symbol", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco apply");
         test_eq(interp, "apply +", "(apply + (quote (1 2)))", 3, pass, fail);
+        test_error_contains(interp, "apply rejects non-list args", "(apply + 1)",
+            "apply: expected argument list", pass, fail);
+        test_error_contains(interp, "apply rejects improper args", "(apply + (cons 1 2))",
+            "apply: expected a proper argument list", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-yes");
         test_truthy(interp, "bound? yes", "(bound? '+)", pass, fail);
         emit_advanced_group_trace("step", "advanced-stdlib-numeric-introspection-lazy-tco bound-no");
@@ -347,6 +735,8 @@ fn void run_advanced_stdlib_introspection_lazy_tco_phase_tests(Interp* interp, i
         test_truthy(interp, "bound? Dict shorthand", "(bound? 'Dict)", pass, fail);
         test_nil(interp, "bound? dictionary removed", "(bound? 'dictionary)", pass, fail);
         test_nil(interp, "bound? dict removed", "(bound? 'dict)", pass, fail);
+        test_truthy(interp, "bound? String canonical", "(bound? 'String)", pass, fail);
+        test_nil(interp, "bound? number->string removed", "(bound? 'number->string)", pass, fail);
         test_truthy(interp, "bound? Array canonical", "(bound? 'Array)", pass, fail);
         test_nil(interp, "bound? array removed", "(bound? 'array)", pass, fail);
         test_truthy(interp, "bound? Coroutine canonical", "(bound? 'Coroutine)", pass, fail);

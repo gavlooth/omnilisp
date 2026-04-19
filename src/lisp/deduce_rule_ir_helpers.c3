@@ -31,7 +31,7 @@ fn void deduce_rule_atom_free(DeduceRuleAtom* atom) {
     }
     atom.term_count = 0;
     atom.negated = false;
-    atom.predicate = 0;
+    atom.predicate = (SymbolId)0;
 }
 
 fn void deduce_rule_ir_free(DeduceRuleIr* rule) {
@@ -57,7 +57,7 @@ fn Value* deduce_rule_parse_atom(
     DeduceRuleAtom* out,
     Interp* interp
 ) {
-    out.predicate = 0;
+    out.predicate = (SymbolId)0;
     out.negated = false;
     out.terms = null;
     out.term_count = 0;
@@ -100,6 +100,9 @@ fn Value* deduce_rule_parse_atom(
     }
 
     if (term_count > 0) {
+        if (term_count > usz.max / DeduceRuleTerm.sizeof) {
+            return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");
+        }
         out.terms = (DeduceRuleTerm*)mem::malloc(DeduceRuleTerm.sizeof * term_count);
         if (out.terms == null) {
             return deduce_raise(interp, "deduce/rule-out-of-memory", "deduce-rule!: out of memory");

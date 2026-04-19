@@ -44,6 +44,14 @@ fn int run_bind(int argc, char** argv, int bind_idx) {
         io::printfn("Error: cannot read %s", (ZString)&toml_path[0]);
         return 1;
     }
+    if (config.ffi_dep_limit_hit) {
+        io::printfn(
+            "Error: too many FFI dependencies in %s (maximum %d)",
+            (ZString)&toml_path[0],
+            (int)lisp::TOML_MAX_DEPS
+        );
+        return 1;
+    }
 
     if (config.ffi_dep_count == 0) {
         io::printn("No FFI dependencies found in omni.toml");

@@ -15,20 +15,15 @@ fn ScopeChunk* scope_chunk_alloc_raw(usz min_bytes) {
         scope_c_getenv("OMNI_SCOPE_FORCE_CHUNK_ALLOC_OOM") != null) {
         return null;
     }
-    // Double from initial, capped at max
+    // Grow by doubling from the initial size, capped at max.
     usz capacity = SCOPE_CHUNK_INITIAL;
     while (capacity < min_bytes) {
-        if (capacity > usz.max / 2) {
-            capacity = min_bytes;
-            break;
-        }
         capacity *= 2;
         if (capacity > SCOPE_CHUNK_MAX) {
             capacity = min_bytes;  // Oversized allocation — exact fit
             break;
         }
     }
-    if (capacity > usz.max - ScopeChunk.sizeof) return null;
     usz total = ScopeChunk.sizeof + capacity;
     ScopeChunk* chunk = (ScopeChunk*)mem::malloc(total);
     if (chunk == null) return null;

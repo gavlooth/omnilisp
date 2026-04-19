@@ -19,6 +19,7 @@ fn void fs_handle_finalizer(void* handle) {
         fh.fd = -1;
         fh.open = false;
     }
+    mem::free(fh);
 }
 
 fn FsHandle* get_fs_handle(Value* v) {
@@ -26,22 +27,19 @@ fn FsHandle* get_fs_handle(Value* v) {
     return (FsHandle*)v.ffi_val.lib_handle;
 }
 
-fn Value* make_fs_handle(Interp* interp, int fd) {
+fn Value* make_fs_handle(Interp* interp, int fd, bool* trace_fd_closed = null) {
     FsHandle* fh = (FsHandle*)mem::malloc(FsHandle.sizeof);
     if (fh == null) {
         (void)fs_uv_close(fd);
+        if (trace_fd_closed != null) *trace_fd_closed = true;
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
     fh.fd = fd;
     fh.open = true;
 
-    bool ctor_took_ownership = false;
-    Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false, &ctor_took_ownership);
+    Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false);
     if (v == null) {
-        if (!ctor_took_ownership) {
-            (void)fs_uv_close(fd);
-            mem::free(fh);
-        }
+        if (trace_fd_closed != null) *trace_fd_closed = true;
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
     return v;
@@ -76,15 +74,23 @@ fn Value* prim_fs_open(Value*[] args, Env* env, Interp* interp) {
         return io_fs_raise(interp, "io/fs-open-expected-path-flags", "fs-open: expected (fs-open path flags [mode])");
     }
 
+    if (flags_v.int_val < 0 || flags_v.int_val > (long)int.max) {
+        return io_fs_raise(interp, "io/fs-open-flags-out-of-range", "fs-open: flags out of range");
+    }
+    int flags = (int)flags_v.int_val;
+
     int mode = 420;
     if (mode_v != null) {
         if (!is_int(mode_v)) {
             return io_fs_raise(interp, "io/fs-open-mode-not-integer", "fs-open: mode must be an integer");
         }
+        if (mode_v.int_val < 0 || mode_v.int_val > (long)int.max) {
+            return io_fs_raise(interp, "io/fs-open-mode-out-of-range", "fs-open: mode out of range");
+        }
         mode = (int)mode_v.int_val;
     }
 
-    int fd = fs_uv_open((ZString)path_v.str_chars, (int)flags_v.int_val, mode);
+    int fd = fs_uv_open((ZString)path_v.str_chars, flags, mode);
     if (fd < 0) {
         return io_fs_raise(interp, "io/fs-open-failed", "fs-open: open failed");
     }

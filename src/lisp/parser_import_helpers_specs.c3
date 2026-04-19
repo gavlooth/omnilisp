@@ -22,7 +22,8 @@ fn bool Parser.parse_import_target(Parser* self, Expr* e) {
         path_buf[len] = 0;
         e.import_expr.path = path_buf;
         e.import_expr.path_len = len;
-        e.import_expr.name = self.interp.symbols.intern(str);
+        e.import_expr.name = self.intern_or_error(str, "failed to intern import path");
+        if (e.import_expr.name == INVALID_SYMBOL_ID) return false;
         self.lexer.advance();
         return true;
     }
@@ -96,6 +97,10 @@ fn bool Parser.parse_import_paren_spec(Parser* self, Expr* e, usz idx) {
 fn bool Parser.parse_import_selective_list(Parser* self, Expr* e) {
     self.lexer.advance();  // consume '('
     while (self.lexer.current.type != T_RPAREN && !self.lexer.at_end() && !self.has_error) {
+        if (e.import_expr.import_count == usz.max) {
+            self.set_error("import specifier count overflow");
+            return false;
+        }
         if (!self.import_ensure_capacity(e, e.import_expr.import_count + 1)) return false;
         usz idx = e.import_expr.import_count;
         bool ok = false;

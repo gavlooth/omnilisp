@@ -15,6 +15,55 @@ enum FfiTypeTag : char {
     FFI_TYPE_STRING,
 }
 
+enum FfiHandleOwnership : char {
+    FFI_HANDLE_BORROWED,
+    FFI_HANDLE_OWNED,
+    FFI_HANDLE_MANUAL,
+}
+
+enum FfiHandleNullability : char {
+    FFI_HANDLE_NULLABLE,
+    FFI_HANDLE_NON_NULL,
+}
+
+enum ForeignRuntimeKind : char {
+    FOREIGN_RUNTIME_NATIVE,
+    FOREIGN_RUNTIME_C_ABI,
+    FOREIGN_RUNTIME_PYTHON,
+    FOREIGN_RUNTIME_JULIA,
+    FOREIGN_RUNTIME_CUDA,
+    FOREIGN_RUNTIME_CPP,
+    FOREIGN_RUNTIME_POLYGLOT,
+}
+
+enum ForeignHandleKind : char {
+    FOREIGN_HANDLE_OPAQUE,
+    FOREIGN_HANDLE_LIBRARY,
+    FOREIGN_HANDLE_MODULE,
+    FOREIGN_HANDLE_CALLABLE,
+    FOREIGN_HANDLE_OBJECT,
+    FOREIGN_HANDLE_BUFFER,
+    FOREIGN_HANDLE_RUNTIME,
+}
+
+const uint FOREIGN_CAP_LOAD = 1u << 0;
+const uint FOREIGN_CAP_RESOLVE = 1u << 1;
+const uint FOREIGN_CAP_CALL = 1u << 2;
+const uint FOREIGN_CAP_REFLECT = 1u << 3;
+const uint FOREIGN_CAP_TENSOR_BUFFER = 1u << 4;
+const uint FOREIGN_CAP_RELEASE = 1u << 5;
+const uint FOREIGN_CAP_IMPORT = 1u << 6;
+const uint FOREIGN_CAP_MEMBER = 1u << 7;
+
+struct FfiHandlePolicy {
+    bool is_foreign_handle;
+    SymbolId name;
+    FfiHandleOwnership ownership;
+    FfiHandleNullability nullability;
+    SymbolId finalizer_symbol;
+    FfiHandleFinalizer finalizer;
+}
+
 struct ExprFfiLib {
     SymbolId name;           // e.g. "libc"
     Expr* path_expr;         // string literal "libc.so.6"
@@ -44,7 +93,10 @@ struct FfiBoundFn {
     usz c_name_len;
     usz param_count;
     FfiTypeTag* param_types;
+    FfiHandlePolicy* param_handle_policies;
     FfiTypeTag return_type;
+    FfiHandlePolicy return_handle_policy;
+    ForeignRuntimeKind runtime_kind;
     bool has_return;
     bool is_variadic;
     bool required_library;

@@ -1,0 +1,88 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint rows;
+    uint cols;
+    uint mode;
+    uint padding;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    vec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+float abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+float complex_abs(vec2 value) {
+    float real_abs = abs_f32(value.x);
+    float imag_abs = abs_f32(value.y);
+    if (real_abs > imag_abs) {
+        float ratio = imag_abs / real_abs;
+        return real_abs * sqrt(1.0 + ratio * ratio);
+    }
+    if (imag_abs > 0.0) {
+        float ratio = real_abs / imag_abs;
+        return imag_abs * sqrt(1.0 + ratio * ratio);
+    }
+    return 0.0;
+}
+
+void main() {
+    float result = 0.0;
+
+    if (params.mode == 0u) {
+        uint count = params.rows * params.cols;
+        float scale = 0.0;
+        float sum_squares = 1.0;
+        bool saw_nonzero = false;
+        for (uint i = 0u; i < count; i++) {
+            float abs_value = complex_abs(input_data[i]);
+            if (!(abs_value > 0.0)) continue;
+            saw_nonzero = true;
+            if (scale < abs_value) {
+                float ratio = scale / abs_value;
+                sum_squares = 1.0 + sum_squares * ratio * ratio;
+                scale = abs_value;
+            } else {
+                float ratio = abs_value / scale;
+                sum_squares += ratio * ratio;
+            }
+        }
+        output_data[0] = saw_nonzero ? scale : 0.0;
+        output_data[1] = saw_nonzero ? sum_squares : 0.0;
+        return;
+    } else if (params.mode == 1u) {
+        for (uint col = 0u; col < params.cols; col++) {
+            float col_sum = 0.0;
+            for (uint row = 0u; row < params.rows; row++) {
+                col_sum += complex_abs(input_data[row * params.cols + col]);
+            }
+            if (col_sum > result) result = col_sum;
+        }
+    } else if (params.mode == 2u) {
+        for (uint row = 0u; row < params.rows; row++) {
+            float row_sum = 0.0;
+            for (uint col = 0u; col < params.cols; col++) {
+                row_sum += complex_abs(input_data[row * params.cols + col]);
+            }
+            if (row_sum > result) result = row_sum;
+        }
+    } else if (params.mode == 3u) {
+        uint count = params.rows * params.cols;
+        for (uint i = 0u; i < count; i++) {
+            float value = complex_abs(input_data[i]);
+            if (value > result) result = value;
+        }
+    }
+
+    output_data[0] = result;
+    output_data[1] = 0.0;
+}

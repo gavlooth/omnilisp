@@ -9,6 +9,7 @@ fn Value* eval_path_lookup_root(SymbolId root, Env* env, Interp* interp) {
 }
 
 fn bool module_exports_key(Module* mod, SymbolId key) @inline {
+    if (mod == null || (mod.export_count > 0 && mod.exports == null)) return false;
     for (usz ei = 0; ei < mod.export_count; ei++) {
         if ((uint)mod.exports[ei] == (uint)key) return true;
     }
@@ -17,6 +18,9 @@ fn bool module_exports_key(Module* mod, SymbolId key) @inline {
 
 fn EvalResult eval_path_module_step(Value* current, SymbolId key, Interp* interp) {
     Module* mod = current.module_val;
+    if (mod == null || mod.env == null || (mod.export_count > 0 && mod.exports == null)) {
+        return eval_error("module value is invalid");
+    }
     if (!module_exports_key(mod, key)) {
         char[256] ebuf;
         char[] msg;

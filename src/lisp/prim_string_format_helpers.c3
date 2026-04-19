@@ -163,6 +163,7 @@ fn bool strval_append_padded(StringVal* sv, char[] s, int width, int precision, 
     if (has_precision && precision >= 0 && (usz)precision < content.len) {
         content = content[:(usz)precision];
     }
+    if (content.len > (usz)int.max) return false;
     int content_len = (int)content.len;
     int pad = 0;
     if (width > content_len) pad = width - content_len;
@@ -183,6 +184,7 @@ fn bool strval_append_padded(StringVal* sv, char[] s, int width, int precision, 
 
 // Helper: append numeric string with width padding (no precision truncation)
 fn bool strval_append_num_padded(StringVal* sv, char[] s, int width, bool left_align) {
+    if (s.len > (usz)int.max) return false;
     int content_len = (int)s.len;
     int pad = 0;
     if (width > content_len) pad = width - content_len;
@@ -223,6 +225,15 @@ fn bool format_append_display(StringVal* sv, Value* a, Interp* interp) {
             usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
             return strval_append(sv, rendered[:rendered_len]);
         }
+    } else if (is_float32(a)) {
+        char[64] nbuf;
+        if (try nslice = io::bprintf(&nbuf, "%.15g", (double)a.float32_val)) {
+            return strval_append(sv, nslice);
+        } else {
+            char[64] rendered;
+            usz rendered_len = print_value_to_buf(a, &interp.symbols, &rendered, rendered.len);
+            return strval_append(sv, rendered[:rendered_len]);
+        }
     } else if (a.tag == STRING) {
         return strval_append(sv, a.str_chars[:a.str_len]);
     } else if (is_symbol(a)) {
@@ -243,6 +254,10 @@ fn bool value_as_double(Value* a, double* out) {
     }
     if (is_double(a)) {
         *out = a.double_val;
+        return true;
+    }
+    if (is_float32(a)) {
+        *out = (double)a.float32_val;
         return true;
     }
     return false;

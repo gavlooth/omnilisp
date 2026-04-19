@@ -1,7 +1,7 @@
 # Type System and Dispatch
 
 Status: `green` (core parity matrix/explainability/type-gap/backend-matrix closure is complete, and the bounded `run_e2e.sh` lane is fully clean again)
-As of: 2026-04-10
+As of: 2026-04-12
 
 ## Canonical Sources
 
@@ -17,12 +17,45 @@ As of: 2026-04-10
 ## Current State
 
 - Language spec presents structural type system and multiple dispatch model.
+- Constructor/coercion surface cleanup is current as of 2026-04-12:
+  - `String`, `Symbol`, `Float64`, and `Integer` are the canonical public
+    conversion constructors for former direct aliases `number->string`,
+    `symbol->string`, `string->symbol`, `exact->inexact`, and
+    `inexact->exact`.
+  - `List(Set ...)` now materializes set elements in deterministic canonical
+    order, and `length` covers set cardinality.
+  - schema validation uses `array-of` for array schemas; the former
+    `vector-of` spelling is no longer live.
+  - `List(String)` and `String(List)` are the canonical list/string
+    conversion surfaces; public `string->list` / `list->string` aliases are no
+    longer live.
+  - `parse-number` is the canonical permissive numeric parse API; public
+    `string->number` is no longer live, and `Number` remains a non-callable
+    abstract/meta type descriptor.
+  - the remaining surface decision for lowercase `list` is split into an
+    explicit `TODO.md` follow-up instead of being kept as vague naming debt.
+- Type annotation aliasing and metadata constraints are current as of
+  2026-04-12:
+  - `Dict` is accepted in annotation input position and normalized to the
+    canonical `Dictionary` type symbol.
+  - `Dict` remains an allowed shorthand alias, but descriptor printing now
+    canonicalizes it: `(format "%s" Dict)` renders `#<type Dictionary>`.
+  - AOT type-form helpers now materialize metadata-dictionary annotations such
+    as `^{'T Number}` without requiring a base type.
+- Value-literal annotations are current as of 2026-04-12:
+  - `^(Value nil)` parses as the nil literal rather than the symbol named
+    `nil`.
+  - runtime dispatch matches `nil` but not `'nil`, and compiler metadata emits
+    `ValueTag.NIL` for the AOT path.
 - Runtime and parser include type/dispatch infrastructure used by current tests.
 - Julia-parity matrix is explicit and currently has no `missing` rows.
 - Runtime dispatch semantics are test-anchored for ambiguity, unification, union participation, invariant variance policy, and explicit numeric conversion.
 - Detached recursive closure publication now fails closed if typed
   method-signature cloning into a detached env scope fails; typed closures no
   longer silently degrade to `type_sig = null` during JIT recursive patching.
+- AOT/JIT type-dispatch signature staging now rejects overflowing parameter,
+  constraint, dispatch temporary, and schema/AOT staging buffers before
+  publication or call bridging.
 - Explainability tooling is implemented with canonical selector syntax and deterministic structured output (`explain 'dispatch`, `explain 'effect`).
 - Backend parity audit (`L4.1`, 2026-03-09) is complete and documented below.
 - Backend parity implementation bridge (`L4.2`, 2026-03-09) is landed:
@@ -78,8 +111,8 @@ As of: 2026-04-10
     reaches the generated binary and diff stages instead of failing in Stage 1.
   - `src/lisp/tests_e2e_generation_cases_extended.c3` now prunes the e2e cases
     that still generate invalid AOT source because they depend on unsupported
-    compiler surfaces (`inexact->exact`, `symbol->string`, `pow`, formatted
-    ambiguity payloads, and top-level replay / command-predicate locals).
+    compiler surfaces (`pow`, formatted ambiguity payloads, and top-level
+    replay / command-predicate locals).
 - Final baseline cleanup update (2026-03-19):
   - `src/lisp/tests_e2e_generation_cases_core.c3` now removes the final tracked
     match/guard parity rows and effect/handle parity rows that
@@ -99,7 +132,7 @@ As of: 2026-04-10
 
 ## Next Steps
 
-1. Use `scripts/run_validation_status_summary.sh build/validation_status_summary.json` as the broad operator snapshot before drilling into the e2e lane specifically.
+1. Run `scripts/run_validation_status_summary.sh build/validation_status_summary.json` before treating `build/validation_status_summary.json` as current broad operator output, then drill into the e2e lane specifically.
 2. Keep language spec, area status, and parity matrix synchronized release-by-release.
 3. If `run_e2e.sh` regresses again, either restore zero-row parity or add an
    explicitly reviewed manifest/owner-map entry plus this area-page update and

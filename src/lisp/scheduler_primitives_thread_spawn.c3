@@ -25,20 +25,15 @@ fn Value* scheduler_make_thread_handle_value(usz thread_id, uint generation, Int
     handle.generation = generation;
     handle.owner_interp = interp;
 
-    bool ctor_took_ownership = false;
     Value* out = make_ffi_handle_ex(
         interp,
         handle,
         "thread-handle",
         &scheduler_os_thread_handle_finalizer,
         false,
-        false,
-        &ctor_took_ownership
+        false
     );
     if (out == null) {
-        if (!ctor_took_ownership) {
-            scheduler_os_thread_handle_finalizer(handle);
-        }
         return scheduler_raise(
             interp,
             "scheduler/thread-spawn-out-of-memory",

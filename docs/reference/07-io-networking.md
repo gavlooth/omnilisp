@@ -66,11 +66,9 @@ deterministic `io/*-fiber-required` errors.
 ## 22. Networking
 
 Naming policy for public wrappers:
-- Preferred descriptive spellings in new docs/examples: `fs-*`,
-  `tcp-*`, `udp-*`, `dns-resolve`,
-  `tls-*`.
-- Compatibility shorthands remain accepted and stable: `fs-*`, `tcp-*`,
-  `udp-*`, `dns-resolve`, `tls-*`.
+- Canonical spellings in docs/examples: `fs-*`, `tcp-*`, `udp-*`,
+  `dns-resolve`, and `tls-*`.
+- Long-form filesystem compatibility aliases are not exported.
 
 ### TCP
 
@@ -109,10 +107,8 @@ Naming policy for public wrappers:
 Calling them outside a fiber raises deterministic `io/tcp-*-fiber-required`
 errors.
 
-Descriptive aliases are available for readability-oriented codebases:
-`tcp-connect`, `tcp-listen`,
-`tcp-accept`, `tcp-read`,
-`tcp-write`, and `tcp-close`.
+The public TCP operation wrappers are `tcp-connect`, `tcp-listen`,
+`tcp-accept`, `tcp-read`, `tcp-write`, and `tcp-close`.
 
 ### API Layering Contract (Anti-Drift)
 
@@ -146,9 +142,8 @@ or introduce parallel runtime plumbing.
 `udp-recv` is fiber-safe and uses the scheduler async readiness bridge in fiber
 context.
 
-Descriptive aliases are also available:
-`udp-socket`, `udp-bind`, `udp-send`,
-`udp-receive`, and `udp-close`.
+The public UDP operation wrappers are `udp-socket`, `udp-bind`, `udp-send`,
+`udp-recv`, and `udp-close`.
 
 ### Unix Domain Sockets
 
@@ -336,4 +331,4 @@ All network operations go through effects and can be intercepted for testing.
 ```
 
 JSON types map to Omni types: object -> dict, array -> array, string -> string,
-number -> int or double, null -> nil, true/false -> true/false.
+number -> int or Float64, null -> nil, true/false -> true/false.

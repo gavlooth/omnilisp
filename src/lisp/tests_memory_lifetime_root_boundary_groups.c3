@@ -161,7 +161,7 @@ fn void run_memory_lifetime_root_boundary_method_table_clone_test(Interp* interp
         src_sig.param_types[0] = interp.tid_Integer;
         src_sig.val_literals[0].tag = NIL;
         src_sig.val_literals[0].int_value = 0;
-        src_sig.val_literals[0].sym_value = 0;
+        src_sig.val_literals[0].sym_value = (SymbolId)0;
         src_sig.has_val_literal[0] = false;
         if (!method_signature_copy_to_heap(&mt.entries[0].sig, &src_sig)) {
             mem::free(mt.entries);

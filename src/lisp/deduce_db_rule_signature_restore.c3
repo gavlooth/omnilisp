@@ -2,6 +2,20 @@ module lisp;
 
 import std::core::mem;
 
+fn void deduce_db_rollback_rule_signature_restore(DeduceDb* db, usz rule_start, usz schema_start) {
+    if (db == null) return;
+    while (db.rule_signature_count > rule_start) {
+        db.rule_signature_count--;
+        deduce_rule_signature_release_allocations(&db.rule_signatures[db.rule_signature_count]);
+        db.rule_signatures[db.rule_signature_count] = {};
+    }
+    while (db.relation_schema_count > schema_start) {
+        db.relation_schema_count--;
+        deduce_relation_schema_release_storage(&db.relation_schemas[db.relation_schema_count]);
+        db.relation_schemas[db.relation_schema_count] = {};
+    }
+}
+
 fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* interp) {
     if (db == null || !db.open || interp == null) return null;
 
@@ -14,7 +28,12 @@ fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* inte
     defer mdb_txn_abort(txn);
 
     MdbDbi rule_signature_dbi = 0;
-    if (!deduce_open_rule_signature_dbi(db, txn, false, &rule_signature_dbi)) return null;
+    int dbi_rc = deduce_open_rule_signature_dbi_rc(db, txn, false, &rule_signature_dbi);
+    if (dbi_rc == MDB_NOTFOUND) return null;
+    if (dbi_rc != MDB_SUCCESS) {
+        return deduce_raise(interp, "deduce/rule-signature-restore-dbi-open-failed",
+            "deduce/open: persisted rule signature dbi open failed");
+    }
 
     MdbCursor* cursor = null;
     rc = mdb_cursor_open(txn, rule_signature_dbi, &cursor);
@@ -23,6 +42,11 @@ fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* inte
             "deduce/open: persisted rule signature cursor open failed");
     }
     defer mdb_cursor_close(cursor);
+
+    usz restore_rule_start = db.rule_signature_count;
+    usz restore_schema_start = db.relation_schema_count;
+    bool committed = false;
+    defer if (!committed) deduce_db_rollback_rule_signature_restore(db, restore_rule_start, restore_schema_start);
 
     MdbVal key = {};
     MdbVal data = {};
@@ -60,21 +84,21 @@ fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* inte
         char[] body_term_is_variable_bytes = {};
         char[] body_term_var_ids_bytes = {};
         char[] body_literal_bytes = {};
-        if (!deduce_record_slice(record, &cursor_offset, SymbolId.sizeof * header.body_count, &body_predicates_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, bool.sizeof * header.body_count, &body_negated_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, ulong.sizeof * header.body_count, &body_bound_masks_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, int.sizeof * header.body_count, &body_selected_indexes_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, bool.sizeof * header.body_count, &body_filter_pushdown_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, ulong.sizeof * header.body_count, &body_projection_masks_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, DeduceRuleTermKind.sizeof * header.head_term_count, &head_term_kinds_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, DeduceAggregateOpKind.sizeof * header.head_term_count, &head_term_aggregate_ops_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, bool.sizeof * header.head_term_count, &head_term_is_variable_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, uint.sizeof * header.head_term_count, &head_term_var_ids_bytes) ||
+        if (!deduce_record_array_slice(record, &cursor_offset, SymbolId.sizeof, header.body_count, &body_predicates_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, bool.sizeof, header.body_count, &body_negated_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, ulong.sizeof, header.body_count, &body_bound_masks_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, int.sizeof, header.body_count, &body_selected_indexes_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, bool.sizeof, header.body_count, &body_filter_pushdown_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, ulong.sizeof, header.body_count, &body_projection_masks_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, DeduceRuleTermKind.sizeof, header.head_term_count, &head_term_kinds_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, DeduceAggregateOpKind.sizeof, header.head_term_count, &head_term_aggregate_ops_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, bool.sizeof, header.head_term_count, &head_term_is_variable_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, uint.sizeof, header.head_term_count, &head_term_var_ids_bytes) ||
             !deduce_record_slice(record, &cursor_offset, header.head_literal_blob_len, &head_literal_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, usz.sizeof * header.body_count, &body_term_offsets_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, usz.sizeof * header.body_count, &body_term_counts_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, bool.sizeof * header.body_term_total_count, &body_term_is_variable_bytes) ||
-            !deduce_record_slice(record, &cursor_offset, uint.sizeof * header.body_term_total_count, &body_term_var_ids_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, usz.sizeof, header.body_count, &body_term_offsets_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, usz.sizeof, header.body_count, &body_term_counts_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, bool.sizeof, header.body_term_total_count, &body_term_is_variable_bytes) ||
+            !deduce_record_array_slice(record, &cursor_offset, uint.sizeof, header.body_term_total_count, &body_term_var_ids_bytes) ||
             !deduce_record_slice(record, &cursor_offset, header.body_literal_blob_len, &body_literal_bytes) ||
             cursor_offset != record.len) {
             return deduce_raise(interp, "deduce/rule-signature-restore-invalid-record",
@@ -239,5 +263,6 @@ fn Value* deduce_db_restore_persisted_rule_signatures(DeduceDb* db, Interp* inte
         record_index++;
     }
 
+    committed = true;
     return null;
 }

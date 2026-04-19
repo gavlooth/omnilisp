@@ -130,6 +130,10 @@ fn bool io_uv_read_all_file(char[] path, char** out_buf, usz* out_len) {
         return false;
     }
 
+    if (size_out > (ulong)(usz.max - (usz)1)) {
+        (void)omni_uv_fs_close(fd);
+        return false;
+    }
     usz cap = (usz)size_out;
     char* buf = (char*)mem::malloc(cap + 1);
     if (buf == null) {
@@ -148,7 +152,11 @@ fn bool io_uv_read_all_file(char[] path, char** out_buf, usz* out_len) {
         if (read_n == 0) break;
         total += (usz)read_n;
     }
-    (void)omni_uv_fs_close(fd);
+    int close_status = omni_uv_fs_close(fd);
+    if (close_status < 0) {
+        mem::free(buf);
+        return false;
+    }
     buf[total] = 0;
 
     *out_buf = buf;

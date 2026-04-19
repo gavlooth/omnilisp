@@ -1,0 +1,122 @@
+#version 450
+layout(local_size_x = 1) in;
+
+const float OMNI_MATRIX_F32_EPS = 0.000001;
+
+layout(std430, binding = 0) readonly buffer Coefficients {
+    float coeffs[];
+};
+
+layout(std430, binding = 1) readonly buffer RightHandSide {
+    float rhs[];
+};
+
+layout(std430, binding = 2) buffer Output {
+    float out_data[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint padding;
+} pc;
+
+float omni_abs_f32(float value) {
+    return value < 0.0 ? -value : value;
+}
+
+void swap_coeff_rows(uint left_row, uint right_row, uint coeff_offset) {
+    if (left_row == right_row) {
+        return;
+    }
+    for (uint col = 0u; col < pc.n; col++) {
+        uint left_index = coeff_offset + left_row * pc.n + col;
+        uint right_index = coeff_offset + right_row * pc.n + col;
+        float tmp = out_data[left_index];
+        out_data[left_index] = out_data[right_index];
+        out_data[right_index] = tmp;
+    }
+}
+
+void swap_rhs_rows(uint left_row, uint right_row) {
+    if (left_row == right_row) {
+        return;
+    }
+    for (uint col = 0u; col < pc.rhs_cols; col++) {
+        uint left_index = left_row * pc.rhs_cols + col;
+        uint right_index = right_row * pc.rhs_cols + col;
+        float tmp = out_data[left_index];
+        out_data[left_index] = out_data[right_index];
+        out_data[right_index] = tmp;
+    }
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    uint coeff_count = pc.n * pc.n;
+    uint coeff_offset = pc.result_count;
+    uint status_offset = coeff_offset + coeff_count;
+    out_data[status_offset] = 1.0;
+
+    if (pc.n == 0u || pc.rhs_cols == 0u) {
+        return;
+    }
+
+    for (uint i = 0u; i < coeff_count; i++) {
+        out_data[coeff_offset + i] = coeffs[i];
+    }
+    for (uint i = 0u; i < pc.result_count; i++) {
+        out_data[i] = rhs[i];
+    }
+
+    for (uint pivot = 0u; pivot < pc.n; pivot++) {
+        uint pivot_row = pivot;
+        float pivot_abs = omni_abs_f32(out_data[coeff_offset + pivot * pc.n + pivot]);
+        for (uint row = pivot + 1u; row < pc.n; row++) {
+            float candidate_abs = omni_abs_f32(out_data[coeff_offset + row * pc.n + pivot]);
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+        if (!(pivot_abs > OMNI_MATRIX_F32_EPS)) {
+            return;
+        }
+
+        swap_coeff_rows(pivot, pivot_row, coeff_offset);
+        swap_rhs_rows(pivot, pivot_row);
+
+        float pivot_value = out_data[coeff_offset + pivot * pc.n + pivot];
+        for (uint row = pivot + 1u; row < pc.n; row++) {
+            float factor = out_data[coeff_offset + row * pc.n + pivot] / pivot_value;
+            out_data[coeff_offset + row * pc.n + pivot] = 0.0;
+            for (uint col = pivot + 1u; col < pc.n; col++) {
+                out_data[coeff_offset + row * pc.n + col] -= factor * out_data[coeff_offset + pivot * pc.n + col];
+            }
+            for (uint rhs_col = 0u; rhs_col < pc.rhs_cols; rhs_col++) {
+                out_data[row * pc.rhs_cols + rhs_col] -= factor * out_data[pivot * pc.rhs_cols + rhs_col];
+            }
+        }
+    }
+
+    for (uint i = pc.n; i > 0u; i--) {
+        uint row = i - 1u;
+        float diagonal = out_data[coeff_offset + row * pc.n + row];
+        if (!(omni_abs_f32(diagonal) > OMNI_MATRIX_F32_EPS)) {
+            return;
+        }
+        for (uint rhs_col = 0u; rhs_col < pc.rhs_cols; rhs_col++) {
+            float sum = out_data[row * pc.rhs_cols + rhs_col];
+            for (uint col = row + 1u; col < pc.n; col++) {
+                sum -= out_data[coeff_offset + row * pc.n + col] * out_data[col * pc.rhs_cols + rhs_col];
+            }
+            out_data[row * pc.rhs_cols + rhs_col] = sum / diagonal;
+        }
+    }
+
+    out_data[status_offset] = 0.0;
+}

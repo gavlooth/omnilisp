@@ -125,6 +125,8 @@ fn Expr* expand_macros_in_expr(Expr* expr, Interp* interp) {
  * Find a module by name in the module table.
  */
 fn Module* find_module(SymbolId name, Interp* interp) {
+    if (interp == null || interp.module_hash_index == null || interp.module_hash_capacity == 0) return null;
+    if (name == (SymbolId)0 || name == INVALID_SYMBOL_ID) return null;
     usz hash_slot = (usz)name % interp.module_hash_capacity;
     for (usz probe = 0; probe < interp.module_hash_capacity; probe++) {
         usz idx = interp.module_hash_index[hash_slot];

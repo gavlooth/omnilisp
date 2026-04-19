@@ -158,13 +158,13 @@ without calling `resolve` — so the body aborts and the string becomes the resu
   (let (buf "")
     (handle (block (thunk) buf)
       (io/println x
-        (set! buf (string-append buf (number->string x) "\n"))
+        (set! buf (string-append buf (String x) "\n"))
         (resolve nil))
       (io/print x
-        (set! buf (string-append buf (number->string x)))
+        (set! buf (string-append buf (String x)))
         (resolve nil))
       (io/display x
-        (set! buf (string-append buf (number->string x)))
+        (set! buf (string-append buf (String x)))
         (resolve nil)))))
 
 (with-output-to-string

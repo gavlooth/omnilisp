@@ -44,8 +44,8 @@ sequence, returning the last:
 `(define (f x y) body)` desugars to `(define f (lambda (x y) body))`.
 
 Brackets in `define` are reserved for attributes: `[type]`, `[macro]`,
-`[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`, `[relation]`,
-`[ffi lib]`, `[ffi λ]`.
+`[reader tag]`, `[abstract]`, `[union]`, `[alias]`, `[effect]`, `[schema]`,
+`[relation]`, `[ffi lib]`, `[ffi λ]`.
 
 ### `let` — Local Binding
 
@@ -240,7 +240,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 
 ```lisp
 ;; In let
-(let ([x y z] [10 20 30]) (+ x y z))          ;; => 60
+(let ([x y z] [10 20 30]) (+ x (+ y z)))      ;; => 60
 (let ([head .. tail] '(1 2 3 4)) tail)         ;; => (2 3 4)
 (let ([a b ..] '(1 2 3 4 5)) (+ a b))         ;; => 3
 (let ([.. last] '(1 2 3 4 5)) last)            ;; => 5
@@ -257,7 +257,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 ```lisp
 ;; In let — keys become local bindings
 (let ({name age} {'name "Alice" 'age 30})
-  (string-append name " is " (number->string age)))
+  (string-append name " is " (String age)))
 ;; => "Alice is 30"
 
 ;; Missing keys become nil
@@ -276,7 +276,7 @@ Destructuring works in `let`, `match`, and lambda/define parameters.
 ```lisp
 (match '(1 2 3)
   ([1 b c] (+ b c))       ;; => 5
-  ([a b c] (* a b c)))
+  ([a b c] (* a (* b c))))
 
 (match (Some 42)
   ((Some x) x)             ;; => 42

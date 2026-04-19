@@ -27,6 +27,7 @@ fn bool deduce_schema_add_index(
         return true;
     }
 
+    if (positions.len > usz.max / usz.sizeof) return false;
     usz* cols = (usz*)mem::malloc(usz.sizeof * positions.len);
     if (cols == null) return false;
     for (usz i = 0; i < positions.len; i++) cols[i] = positions[i];

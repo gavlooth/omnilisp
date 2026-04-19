@@ -1,0 +1,232 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    dvec2 input_values[];
+};
+
+layout(std430, binding = 1) buffer OutputBuffer {
+    double output_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint k;
+    uint output_count;
+} pc;
+
+double abs_f64(double value) {
+    return value < 0.0lf ? -value : value;
+}
+
+bool is_finite_f64(double value) {
+    return value == value && (value - value) == 0.0lf;
+}
+
+uint eigen_index(uint index) {
+    return pc.k + 2u + index;
+}
+
+uint gram_index(uint row, uint col, uint real_n) {
+    return pc.k + 2u + real_n + row * real_n + col;
+}
+
+double realified_value(uint row, uint col) {
+    bool bottom = row >= pc.rows;
+    bool right = col >= pc.cols;
+    uint source_row = bottom ? row - pc.rows : row;
+    uint source_col = right ? col - pc.cols : col;
+    dvec2 value = input_values[source_row * pc.cols + source_col];
+    if (!bottom && !right) return value.x;
+    if (!bottom && right) return -value.y;
+    if (bottom && !right) return value.y;
+    return value.x;
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u || pc.output_count < pc.k + 2u) {
+        return;
+    }
+
+    uint status_index = pc.k;
+    uint nuclear_index = pc.k + 1u;
+    double status = 0.0lf;
+    output_values[status_index] = 1.0lf;
+    output_values[nuclear_index] = 0.0lf;
+
+    if (pc.k == 0u) {
+        output_values[status_index] = status;
+        return;
+    }
+
+    uint real_rows = pc.rows * 2u;
+    uint real_cols = pc.cols * 2u;
+    uint real_n = pc.k * 2u;
+    if (pc.output_count < pc.k + 2u + real_n + real_n * real_n) {
+        return;
+    }
+
+    bool tall_or_square = pc.rows >= pc.cols;
+    bool failed = false;
+    for (uint row = 0u; row < real_n; row++) {
+        for (uint col = 0u; col < real_n; col++) {
+            double sum = 0.0lf;
+            if (tall_or_square) {
+                for (uint source_row = 0u; source_row < real_rows; source_row++) {
+                    sum += realified_value(source_row, row) * realified_value(source_row, col);
+                }
+            } else {
+                for (uint source_col = 0u; source_col < real_cols; source_col++) {
+                    sum += realified_value(row, source_col) * realified_value(col, source_col);
+                }
+            }
+            if (!is_finite_f64(sum)) {
+                status = 1.0lf;
+                failed = true;
+                sum = 0.0lf;
+            }
+            output_values[gram_index(row, col, real_n)] = sum;
+            if (failed) break;
+        }
+        if (failed) break;
+    }
+
+    if (failed) {
+        for (uint i = 0u; i < pc.k; i++) output_values[i] = 0.0lf;
+        output_values[nuclear_index] = 0.0lf;
+        output_values[status_index] = status;
+        return;
+    }
+
+    uint max_iterations = 64u * real_n * real_n;
+    bool converged = false;
+    for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+        uint p = 0u;
+        uint q = 0u;
+        double max_offdiag = 0.0lf;
+        bool local_failed = false;
+        for (uint row = 0u; row < real_n; row++) {
+            for (uint col = row + 1u; col < real_n; col++) {
+                double value = abs_f64(output_values[gram_index(row, col, real_n)]);
+                if (!is_finite_f64(value)) {
+                    status = 1.0lf;
+                    local_failed = true;
+                    break;
+                }
+                if (value > max_offdiag) {
+                    max_offdiag = value;
+                    p = row;
+                    q = col;
+                }
+            }
+            if (local_failed) break;
+        }
+        if (local_failed || !is_finite_f64(max_offdiag)) {
+            failed = true;
+            break;
+        }
+        if (!(max_offdiag > 0.000000000001lf)) {
+            converged = true;
+            break;
+        }
+
+        double app = output_values[gram_index(p, p, real_n)];
+        double aqq = output_values[gram_index(q, q, real_n)];
+        double apq = output_values[gram_index(p, q, real_n)];
+        if (!is_finite_f64(app) || !is_finite_f64(aqq) || !is_finite_f64(apq)) {
+            status = 1.0lf;
+            failed = true;
+            break;
+        }
+        if (!(abs_f64(apq) > 0.0lf)) continue;
+
+        double tau = (aqq - app) / (2.0lf * apq);
+        double sign_tau = tau < 0.0lf ? -1.0lf : 1.0lf;
+        double t = sign_tau / (abs_f64(tau) + sqrt(1.0lf + tau * tau));
+        double c = 1.0lf / sqrt(1.0lf + t * t);
+        double s = t * c;
+
+        for (uint r = 0u; r < real_n; r++) {
+            if (r == p || r == q) continue;
+            double arp = output_values[gram_index(r, p, real_n)];
+            double arq = output_values[gram_index(r, q, real_n)];
+            double new_rp = c * arp - s * arq;
+            double new_rq = s * arp + c * arq;
+            if (!is_finite_f64(new_rp) || !is_finite_f64(new_rq)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+            output_values[gram_index(r, p, real_n)] = new_rp;
+            output_values[gram_index(p, r, real_n)] = new_rp;
+            output_values[gram_index(r, q, real_n)] = new_rq;
+            output_values[gram_index(q, r, real_n)] = new_rq;
+        }
+        if (failed) break;
+
+        double new_app = c * c * app - 2.0lf * s * c * apq + s * s * aqq;
+        double new_aqq = s * s * app + 2.0lf * s * c * apq + c * c * aqq;
+        if (!is_finite_f64(new_app) || !is_finite_f64(new_aqq)) {
+            status = 1.0lf;
+            failed = true;
+            break;
+        }
+        output_values[gram_index(p, p, real_n)] = new_app;
+        output_values[gram_index(q, q, real_n)] = new_aqq;
+        output_values[gram_index(p, q, real_n)] = 0.0lf;
+        output_values[gram_index(q, p, real_n)] = 0.0lf;
+    }
+    if (!converged && status == 0.0lf) status = 2.0lf;
+
+    for (uint i = 0u; i < real_n; i++) {
+        double eigenvalue = output_values[gram_index(i, i, real_n)];
+        if (!is_finite_f64(eigenvalue)) {
+            status = 1.0lf;
+            eigenvalue = 0.0lf;
+        } else if (eigenvalue < -0.000000000001lf) {
+            if (status == 0.0lf) status = 1.0lf;
+            eigenvalue = 0.0lf;
+        } else if (eigenvalue < 0.0lf) {
+            eigenvalue = 0.0lf;
+        }
+        output_values[eigen_index(i)] = eigenvalue;
+    }
+
+    for (uint i = 0u; i < real_n; i++) {
+        uint best = i;
+        double best_value = output_values[eigen_index(i)];
+        for (uint j = i + 1u; j < real_n; j++) {
+            if (output_values[eigen_index(j)] > best_value) {
+                best = j;
+                best_value = output_values[eigen_index(j)];
+            }
+        }
+        if (best != i) {
+            double tmp = output_values[eigen_index(i)];
+            output_values[eigen_index(i)] = output_values[eigen_index(best)];
+            output_values[eigen_index(best)] = tmp;
+        }
+    }
+
+    double nuclear = 0.0lf;
+    for (uint i = 0u; i < pc.k; i++) {
+        double first = sqrt(output_values[eigen_index(i * 2u)]);
+        double second = sqrt(output_values[eigen_index(i * 2u + 1u)]);
+        double singular_value = (first + second) * 0.5lf;
+        if (!is_finite_f64(singular_value)) {
+            status = 1.0lf;
+            singular_value = 0.0lf;
+        }
+        output_values[i] = singular_value;
+        nuclear += singular_value;
+        if (!is_finite_f64(nuclear)) {
+            status = 1.0lf;
+            nuclear = 0.0lf;
+        }
+    }
+    output_values[nuclear_index] = nuclear;
+    output_values[status_index] = status;
+}

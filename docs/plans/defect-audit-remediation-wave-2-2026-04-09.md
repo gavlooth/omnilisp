@@ -38,7 +38,189 @@ Post-wave follow-up (2026-04-09, late pass):
     heap signatures on abort.
   - `TODO.md` is back to zero live items for this audit wave.
 
+Post-wave follow-up (2026-04-11):
+
+- The runtime promotion allocation-staging lane is now also closed:
+  - `src/lisp/eval_promotion_copy_route_helpers.c3`,
+    `src/lisp/eval_promotion_escape_structured.c3`, and
+    `src/lisp/eval_promotion_root_clone_basic.c3`
+    now reject overflowing array/hashmap/method-table/signature/closure
+    allocation sizes before boundary copy, ESCAPE promotion, or root clone
+    publication.
+  - `src/lisp/eval_promotion_escape_structured.c3` now resets staged method
+    signatures on dependent allocation failure and delays closure result
+    wrapper publication until fallible clone/env work succeeds.
+  - `src/lisp/eval_env_copy_frame_helpers.c3` now allocates non-inline binding
+    storage before publishing the copied frame.
+  - `src/lisp/eval_pattern_matching.c3` now rejects overflowing sequence
+    element collection buffers.
+  - validation:
+    - bounded memory-lifetime smoke slice: `pass=189 fail=0`
+
+- The deduce SCC allocation-bound lane is now also closed:
+  - `src/lisp/deduce_rule_eval_scc_plan.c3` and
+    `src/lisp/deduce_rule_eval_validation.c3` now guard square matrix and
+    fixpoint relaxation sizing.
+  - `src/lisp/deduce_rule_eval_exec_seminaive.c3`,
+    `src/lisp/deduce_rule_eval_exec_seminaive_recursive_aggregates_impl.c3`,
+    and `src/lisp/deduce_rule_eval_exec_component_delta_restore.c3`
+    now guard proof-key, aggregate batch, and decoded delta-entry allocation
+    sizes.
+  - `src/lisp/deduce_schema_query_input_shape.c3`,
+    `src/lisp/deduce_schema_query_input_roles.c3`, and
+    `src/lisp/deduce_schema_query_input_constraints.c3` now reject
+    overflowing `count + 1` relation capacity requests.
+  - validation:
+    - bounded deduce slice: `pass=330 fail=0`
+
+- The AOT/FFI allocation-staging lane is now also closed:
+  - `src/lisp/aot_type_definitions.c3` now initializes cleanup-owned type
+    field and union variant state before later fallible allocation can trigger
+    deferred cleanup, and checks AOT allocation sizes.
+  - `src/lisp/eval_ffi_bound_call.c3` now rejects unsupported/narrowing
+    runtime FFI argument counts and overflowing libffi staging buffers.
+  - validation:
+    - bounded compiler slice: `pass=191 fail=0`
+    - bounded memory-lifetime smoke slice: `pass=189 fail=0`
+
+- The parser AST array allocation-helper lane is now also closed:
+  - `src/lisp/parser_parser.c3` now centralizes checked parser AST array
+    allocation in `Parser.alloc_ast_array_bytes(...)`.
+  - Dynamic parser AST array allocations for calls, relation definitions,
+    literals, patterns, type annotations, modules, lambda params, named lets,
+    paths, macro clauses, blocks, and pipe rewrites now route through the
+    checked helper.
+  - `src/lisp/parser_set_pipe_helpers.c3` now rejects overflowing
+    `arg_count + 1` before growing pipe call arguments.
+  - validation:
+    - bounded compiler slice: `pass=191 fail=0`
+    - bounded deduce slice: `pass=330 fail=0`
+
+- The parser AST argument size-guard lane is now also closed:
+  - `src/lisp/parser_define_relation_attr_helpers.c3`
+    now checks relation role/count arithmetic and `Expr*` allocation sizing
+    before building `__define-relation` call arguments.
+  - `src/lisp/parser_application_helpers.c3`
+    now checks generic call argument `Expr*` allocation sizing before copying
+    argument pointers.
+  - `src/lisp/parser_ffi_helpers.c3`
+    now rejects overflowing FFI parameter counts before `+ 1` capacity checks.
+  - `src/lisp/parser_import_helpers_specs.c3`
+    now rejects overflowing selective-import counts before `+ 1` capacity
+    checks.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded compiler slice: `pass=191 fail=0`
+    - bounded deduce slice: `pass=330 fail=0`
+
+- The shared/async string size-guard lane is now also closed:
+  - `src/lisp/scheduler_shared_handles_blob.c3`
+    now rejects max-sized blob copies before `len + 1` allocation.
+  - `src/lisp/async_process_signal_handles.c3`
+    now rejects max-sized C-string copies, cons sequence count overflow, and
+    argv/env `char*` table byte-size overflow before allocation.
+  - `src/lisp/tls_offload_connect.c3`
+    now rejects max-sized TLS duplicate strings before `len + 1` allocation.
+  - `src/lisp/prim_io_fs_handles.c3`
+    now rejects invalid/overflowing filesystem result array growth before
+    replacing array backing storage.
+  - `src/lisp/scheduler_offload_network.c3`
+    now rejects max-sized compression bounds before allocating the output
+    scratch buffer.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded async slice: `pass=61 fail=0`
+    - bounded scheduler slice: `pass=111 fail=0`
+
 Post-wave follow-up (2026-04-10):
+
+- The async file I/O size-guard lane is now also closed:
+  - `src/lisp/prim_io_file.c3`
+    now checks path/content payload length arithmetic before building the
+    internal async write-file offload payload.
+  - `src/lisp/scheduler_offload_ops.c3`
+    now checks atomic temp-path length arithmetic before allocating the
+    temporary path buffer.
+  - `src/lisp/prim_io_file_helpers.c3`
+    now rejects a max-sized read buffer before adding the trailing byte for
+    the file-read scratch buffer.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded async slice: `pass=61 fail=0`
+
+- The scheduler offload nil-completion projection lane is now also closed:
+  - `src/lisp/scheduler_wakeup_io.c3`
+    now returns directly from each offload completion-kind projection,
+    including `OFFLOAD_RES_NIL`, so async read-file/read-lines missing-path
+    cases remap nil offload results to I/O payload codes instead of leaking
+    `scheduler/offload-invalid-completion-kind`.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded async slice: `pass=61 fail=0`
+
+- The I/O/string-buffer growth hardening lane is now also closed:
+  - `src/lisp/prim_io_console_helpers.c3`
+    now checks console capture append/copy growth arithmetic before appending
+    or duplicating buffered text.
+  - `src/lisp/prim_io_helpers.c3`
+    now rejects overflowing input-state append lengths before mutating the
+    live buffer.
+  - `src/lisp/primitives_data_formats_csv_parse.c3`
+    now guards CSV field and row-array growth before allocating replacement
+    storage.
+  - `src/lisp/eval_repl_server_state.c3`
+    now rejects overflowing session-string and session-capacity growth before
+    publishing replacement session state.
+  - `src/lisp/unicode_case_utf8proc.c3` and
+    `src/lisp/unicode_case_mapping.c3`
+    now route case-mapping append growth through a checked helper so the
+    UTF-8 output buffer cannot overflow or grow from invalid capacity state.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded unicode slice: `pass=25 fail=0`
+    - bounded data-format slice: `pass=59 fail=0`
+    - bounded async slice after scheduler nil-completion projection fix:
+      `pass=61 fail=0`
+    - bounded advanced unicode iterator group: `pass=129 fail=0`
+
+- The deduce direct allocation/schema mutation hardening lane is now also
+  closed:
+  - `src/lisp/deduce_db_handles_mutation.c3`
+    now guards rule-signature count increments, offset/count range checks, and
+    direct metadata array allocation sizes before copying.
+  - `src/lisp/deduce_db_relation_schema_init.c3`,
+    `src/lisp/deduce_db_handles.c3`, and
+    `src/lisp/deduce_db_handles_register.c3`
+    now reject overflowing schema/index sizing before allocation or schema
+    count publication.
+  - `src/lisp/deduce_db_handles_mutation_txn.c3`
+    now increments transaction insert counts only after tuple delta append
+    succeeds.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded deduce slice: `pass=330 fail=0`
+
+- The core registry/table growth hardening lane is now also closed:
+  - `src/lisp/value_symbol_table.c3` and
+    `src/lisp/value_type_registry.c3`
+    now fail closed when init/grow replacement allocations are unavailable,
+    and reject overflowed table/hash byte-size arithmetic before allocation.
+  - `src/lisp/value_interp_init_helpers.c3`
+    now checks macro/module init table/hash size multiplication before
+    allocation.
+  - `src/lisp/eval_pattern_match_support.c3`
+    now guards `gensym` and match-binding growth loops against doubling and
+    allocation-byte overflow before replacing backing arrays.
+  - `src/lisp/prim_collection_hashmap.c3` and
+    `src/lisp/prim_collection_sort_array.c3`
+    now enforce valid grow preconditions and reject overflowing grow
+    arithmetic before mutating live hashmap/array backing storage.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded allocator-validation slice: `pass=1 fail=0`
+    - bounded advanced collections/module group: `pass=134 fail=0`
+    - bounded advanced type-dispatch/mutation-chain group: `pass=236 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
 
 - The iterator/coroutine malformed-state normalization lane is now also closed:
   - `src/lisp/primitives_iter_state.c3`
@@ -105,7 +287,7 @@ Post-wave follow-up (2026-04-10):
     alloc-failure completion materialization fail, instead of returning with
     the entry still running.
   - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`
-    now proves the double-failure seam wakes the blocked waiter, clears the
+    now proves the float64-failure seam wakes the blocked waiter, clears the
     join token, and removes the OS-thread entry.
   - `src/lisp/tests_scheduler_groups.c3`
     now wires that regression into the bounded scheduler slice.
@@ -184,6 +366,39 @@ Post-wave follow-up (2026-04-10):
     - `c3c build`
     - bounded deduce parallel group: `pass=6 fail=0`
     - bounded scheduler slice: `pass=111 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+
+- The runtime module export growth fail-closed lane is now also closed:
+  - `src/lisp/jit_jit_module_setup_helpers.c3`
+    now uses a checked export allocation helper, preserves existing exports
+    on growth failure, and rejects oversized export capacity before byte-size
+    arithmetic can wrap.
+  - `src/lisp/jit_jit_compile_effects_modules.c3` and
+    `src/lisp/jit_jit_module_import_setup.c3`
+    now propagate export-table growth failure during re-export and implicit
+    module export paths.
+  - `src/lisp/tests_advanced_stdlib_module_groups.c3`
+    now pins forced module export growth allocation failure.
+  - validation:
+    - `c3c build`
+    - bounded advanced collections/module group: `pass=134 fail=0`
+
+- The next overflow-hardening batch is now also closed:
+  - persisted deduce rule signature/catalog record encode/restore paths now
+    use checked size and cursor helpers instead of raw `sizeof * count` and
+    `cursor + len` arithmetic.
+  - AST arena alignment/chunk accounting and parser import/module/export
+    growth now reject allocation-size overflow before state mutation.
+  - JIT arg-buffer, effect-handler, handle-state copy, interpreter table,
+    env binding, and method-table growth paths now guard doubling and byte-size
+    multiplication before allocation/mutation.
+  - validation:
+    - `c3c build --warn-deprecation=no`
+    - bounded deduce slice: `pass=330 fail=0`
+    - bounded allocator-validation slice: `pass=1 fail=0`
+    - bounded advanced collections/module group: `pass=134 fail=0`
+    - bounded advanced effect-continuation group: `pass=56 fail=0`
+    - bounded advanced runtime-control group: `pass=22 fail=0`
     - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
 
 - The pure string/list materializer follow-up is now also closed:
@@ -1095,6 +1310,50 @@ Progress update (2026-04-09):
     `Void print surface` failure
 - backlog shaping after this slice:
   - actionable backlog remains `0`
+- Closed AOT/module/deduce/collection sentinel and rollback drift:
+  - `src/lisp/aot_runtime_bridge_closure.c3`
+  - `src/lisp/aot_runtime_bridge_helpers.c3`
+  - `src/lisp/aot_runtime_bridge_ffi.c3`
+  - `src/lisp/aot_runtime_bridge_ffi_lib.c3`
+  - `src/lisp/value_environment_storage.c3`
+  - `src/lisp/value_environment.c3`
+  - `src/lisp/value_environment_barrier.c3`
+  - `src/lisp/jit_jit_module_setup_helpers.c3`
+  - `src/lisp/jit_jit_module_import_setup.c3`
+  - `src/lisp/macros_expansion.c3`
+  - `src/lisp/value_interp_lifecycle.c3`
+  - `src/lisp/deduce_db_storage_open.c3`
+  - `src/lisp/deduce_db_rule_catalog_persistence.c3`
+  - `src/lisp/deduce_db_rule_signature_restore.c3`
+  - `src/lisp/deduce_db_handles_storage.c3`
+  - `src/lisp/eval_promotion_root_clones.c3`
+  - `src/lisp/value_constructors.c3`
+  - `src/lisp/prim_collection_sort_array.c3`
+  - `src/lisp/prim_collection_hashmap.c3`
+  - `src/lisp/prim_collection_generic_set.c3`
+- shipped behavior:
+  - AOT bridge intern call sites and env hash/define/set paths now reject
+    `INVALID_SYMBOL_ID` before hash probing or binding mutation.
+  - module import/setup now rolls back failed body/path/top-level publication,
+    rebuilds module hash state, skips tombstones during module hash rebuild,
+    and reacquires module entries by index after nested loads can grow the
+    module table.
+  - deduce restore now distinguishes missing DBIs from other LMDB open errors,
+    rejects invalid restored rule-catalog symbol IDs, and rolls back
+    partially restored rule signatures/schemas on mid-restore failure.
+  - raise payload construction, method-table root cloning, and collection
+    primitives now fail closed on invalid symbols, allocation-size overflow,
+    or nullable backing storage instead of dereferencing or publishing invalid
+    state.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `advanced`: green (`pass=1183 fail=0`)
+  - bounded `compiler`: green (`pass=191 fail=0`)
+  - bounded `deduce`: green (`pass=330 fail=0`)
+  - bounded `string-type`: green (`pass=40 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
 - Closed boundary wrapper allocation drift:
   - `src/lisp/eval_boundary_scope_env.c3`
   - `src/lisp/value_constructors.c3`
@@ -1290,3 +1549,569 @@ Progress update (2026-04-09):
     - long `%s` string requiring builder growth returns the source text
 - backlog shaping after this slice:
   - actionable backlog returns to `0`
+- Closed environment/process-spawn allocation-size drift:
+  - `src/lisp/value_environment_storage.c3`
+  - `src/lisp/value_environment.c3`
+  - `src/lisp/eval_promotion_copy_wrapper_helpers.c3`
+  - `src/lisp/async_process_spawn.c3`
+- shipped behavior:
+  - environment hash-table capacity and load-factor calculations now reject
+    overflowing arithmetic before allocation or rebuild decisions.
+  - closure wrapper parameter-copy and async process argv/env pointer-table
+    staging now reject overflowing buffer sizes before allocation.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `async`: green (`pass=61 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
+- Closed JIT effect / deduce allocation-size drift:
+  - `src/lisp/jit_jit_handle_signal_handle.c3`
+  - `src/lisp/jit_jit_runtime_effects_signal.c3`
+  - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+  - `src/lisp/deduce_rule_eval_exec_aggregate_groups.c3`
+  - `src/lisp/deduce_rule_eval_exec_aggregate_helpers.c3`
+  - `src/lisp/deduce_rule_ir_helpers.c3`
+  - `src/lisp/deduce_rule_ir.c3`
+  - `src/lisp/deduce_relation_row_materialization.c3`
+  - `src/lisp/deduce_db_goal_directed_read_tracking.c3`
+- shipped behavior:
+  - JIT effect handle/signal paths now check clause and signal argument buffer
+    sizes before allocation.
+  - deduce aggregate group state, encoded tuple staging, rule IR staging,
+    relation key materialization, and read-tracking buffers now reject
+    overflowing allocation arithmetic before writes.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `deduce`: green (`pass=330 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
+- Closed AOT/JIT type-dispatch signature allocation and publication drift:
+  - `src/lisp/aot_type_spec_helpers.c3`
+  - `src/lisp/jit_jit_closure_support.c3`
+  - `src/lisp/eval_type_declarations.c3`
+  - `src/lisp/value_type_registry.c3`
+  - `src/lisp/eval_dispatch_match.c3`
+  - `src/lisp/eval_dispatch_match_breakdown.c3`
+  - `src/lisp/schema_explain_helpers.c3`
+  - `src/lisp/aot_runtime_bridge_helpers.c3`
+  - `src/lisp/eval_dispatch_types.c3`
+  - `src/lisp/eval_init_primitives.c3`
+- shipped behavior:
+  - AOT/JIT method-signature staging now checks parameter/constraint counts and
+    buffer sizes before publication.
+  - deftype registration now rolls back a just-added type if late constructor,
+    global binding, or type-value publication fails after registry insertion.
+  - type-dispatch/schema/AOT temporary buffer allocation now rejects overflowing
+    sizes.
+  - dispatched primitive/type-symbol bootstrap now cleans up empty method-table
+    payloads when root-wrapper or global binding publication fails.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `compiler`: green (`pass=191 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
+- Closed registry/bootstrap/unicode/collection/I/O/TLS guard drift:
+  - `src/lisp/value_symbol_table.c3`
+  - `src/lisp/value_type_registry.c3`
+  - `src/lisp/eval_type_declarations.c3`
+  - `src/lisp/value_interp_init_helpers.c3`
+  - `src/lisp/value_interp_state.c3`
+  - `src/lisp/unicode_case_mapping.c3`
+  - `src/lisp/scheduler_offload_network.c3`
+  - `src/lisp/prim_collection_hashmap.c3`
+  - `src/lisp/prim_io_file_helpers.c3`
+  - `src/lisp/prim_io_console_helpers.c3`
+- shipped behavior:
+  - symbol/type registry insertion now rejects exhausted ID spaces before
+    narrowing counts, symbol probing skips stale out-of-range indices, and type
+    rollback rebuilds the hash table after removing a just-added failed entry.
+  - interpreter bootstrap symbols now fail fast on intern failure instead of
+    publishing invalid sentinel IDs into runtime state.
+  - unicode case conversion rejects strings too large for `utf8proc`'s `long`
+    length API before narrowing.
+  - TLS offload cleanup calls `br_sslio_close(...)` only when the SSL I/O
+    context was initialized.
+  - Dictionary capacity derivation now uses checked arithmetic, and hashmap
+    payload allocation now precedes root-wrapper publication.
+  - read-file rejects oversized `ulong` file sizes before `usz` narrowing, and
+    console emit reports render/write failures as typed I/O errors.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `compiler`: green (`pass=191 fail=0`)
+  - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
+  - bounded `async`: green (`pass=61 fail=0`)
+  - bounded `scheduler`: green (`pass=111 fail=0`)
+  - bounded `advanced` unicode iterator: green (`pass=129 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
+- Closed numeric/macro/parser/data-format/async guard drift:
+  - `src/lisp/prim_math.c3`
+  - `src/lisp/prim_math_core.c3`
+  - `src/lisp/prim_math_arithmetic.c3`
+  - `src/lisp/prim_string_format_directives.c3`
+  - `src/lisp/prim_string_ops.c3`
+  - `src/lisp/prim_string_transform.c3`
+  - `src/lisp/prim_string_convert.c3`
+  - `src/lisp/primitives_data_formats_csv.c3`
+  - `src/lisp/primitives_data_formats_toml_options.c3`
+  - `src/lisp/macros_template_expansion.c3`
+  - `src/lisp/macros_expr_conversion_form_builders.c3`
+  - `src/lisp/parser_parser.c3`
+  - `src/lisp/parser_application_placeholders.c3`
+  - `src/lisp/async_tcp_transport_helpers.c3`
+  - `src/lisp/async_tcp_transport_core.c3`
+  - `src/lisp/async_process_signal_dns.c3`
+  - `src/lisp/async_tcp_transport_connect.c3`
+  - `src/lisp/async_udp_pipe.c3`
+  - `src/lisp/async_tcp_transport_listen.c3`
+  - `src/lisp/scheduler_state_types.c3`
+  - `src/lisp/scheduler_wakeup_queue.c3`
+  - `src/lisp/tests_advanced_core_unicode_groups.c3`
+  - `src/lisp/tests_advanced_stdlib_numeric_groups.c3`
+  - `src/lisp/tests_runtime_data_unicode_groups.c3`
+- shipped behavior:
+  - RNG primitives now check and complete `getrandom` reads before using the
+    stack buffer.
+  - signed integer arithmetic and format binary rendering now reject
+    `long.min`/overflow edges instead of executing undefined signed operations.
+  - format width/precision parsing now rejects overflowing `int` accumulation.
+  - string/data-format helpers now preserve multibyte list elements and reject
+    improper list/option tails.
+  - macro/parser paths now reject invalid symbol IDs and checked macro AST
+    block/call allocation failures.
+  - async TCP read rejects non-positive max byte counts, resumed-before-
+    completion branches clean up pending state, and writable wakeup coalescing
+    has separate telemetry.
+- validation status:
+  - host `c3c build --warn-deprecation=no`: green
+  - bounded `arithmetic-comparison`: green (`pass=45 fail=0`)
+  - bounded `string-type`: green (`pass=40 fail=0`)
+  - bounded `data-format`: green (`pass=62 fail=0`)
+  - bounded `async`: green (`pass=61 fail=0`)
+  - bounded `scheduler`: green (`pass=111 fail=0`)
+  - bounded `advanced-stdlib-numeric-string-predicate-format`: green
+    (`pass=59 fail=0`)
+  - bounded `advanced-unicode-iterator`: green (`pass=130 fail=0`)
+  - bounded `advanced-macro-hygiene`: green (`pass=82 fail=0`)
+- backlog shaping after this slice:
+  - actionable backlog remains `0`
+- Closed slice `AUDIT-AOT-PRINT-DEDUCE-SENTINELS-059`:
+  - AOT generated type/type-spec and match/bridge helpers now use checked
+    symbol conversion before publishing symbol IDs into type metadata,
+    method signatures, match constructors, dictionary key lookup, or effect
+    explain payloads.
+  - Compiled list helper indexing now rejects negative indexes before `usz`
+    conversion.
+  - Direct and buffered value printers now handle nullable dictionary/set
+    backing storage, and buffered printing rejects null/zero-capacity output
+    buffers before writing.
+  - Constructor type constraint diagnostics now use guarded type-registry
+    lookups, while instance type inference rejects out-of-range type IDs.
+  - Deduce tuple persistence now encodes full 32-bit `SymbolId` values and
+    rejects invalid/out-of-range decoded IDs.
+  - Deduce materialized metadata deletion now propagates real relation-meta DBI
+    open errors and treats only `MDB_NOTFOUND` as a no-op delete.
+  - Deduce path/name copy helpers now guard `+1` and suffix concatenation
+    allocation sizes.
+  - Deduce relation and rule install paths now roll back newly appended
+    in-memory schemas/rule signatures when later fallible metadata, handle, or
+    persistence steps fail.
+  - Validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - bounded `compiler`: `pass=191 fail=0`
+    - bounded `deduce`: `pass=330 fail=0`
+    - bounded `advanced`: `pass=1183 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+- Closed slice `AUDIT-PARSER-JIT-ASYNC-BOUNDARY-060`:
+  - Parser surface interning now uses checked fail-closed paths for import
+    string targets, path segments, type annotations and value-literal
+    annotations, collection literal constructors, datum/quasiquote template
+    underscore symbols, relation definition helper rewrites, explain selectors,
+    and special-form comparisons.
+  - Compiler effect-wrapper lambda scanning now checks synthetic AST arena
+    allocation and wrapper symbols before publishing rewritten reset/shift/
+    handle bodies.
+  - Primitive variable hash initialization now rejects invalid symbol keys and
+    exposes initialization failure to `Compiler.init`.
+  - Compiler integer emission now prints signed and unsigned values without
+    negating `long.min` or narrowing `usz` through `long`.
+  - Macro splice append now fails on improper splice lists and recursion-limit
+    exhaustion rather than silently truncating.
+  - Runtime boundary promotion/destination-copy helpers now guard `len + 1`
+    string/error allocation arithmetic, and boundary policy `usz` parsing now
+    rejects numeric overflow.
+  - JIT continuation yield-failure paths restore saved interpreter state before
+    cleanup/return, pending-raise handler staging delays state clearing until
+    payload/list/env construction succeeds, and runtime handle initialization
+    rejects null non-empty clause arrays.
+  - TLS offload yield-error paths now close pending offloads, async TCP/UDP
+    ports and signal numbers are range-checked before `int` narrowing, and
+    file-read close failure now fails the read operation.
+  - Validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - bounded `compiler`: `pass=191 fail=0`
+    - bounded `async`: `pass=61 fail=0`
+    - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
+    - bounded `advanced` macro hygiene group: `pass=82 fail=0`
+  - Backlog shaping after this slice:
+    - actionable backlog remains `0`
+
+- Closed slice `AUDIT-SCHEMA-LIFETIME-WIDTH-061`:
+  - schema explain and deduce payload helpers now fail closed on failed symbol
+    interning before dictionary publication or symbol payload construction.
+  - deduce integrity payload builders now propagate the concrete `Value*` error
+    from `explain_dict_set*` calls instead of returning `null`, and list payload
+    builders stop on cons allocation errors.
+  - deduce materialize rejects failed `"manual"` refresh-policy interning before
+    persisting relation/schema state.
+  - primitive name matching now guards null primitive backing pointers and
+    overlong expected names before reading fixed-size primitive name storage.
+  - checked array construction now stages payload allocation before publishing
+    the root wrapper, matching the checked hashmap constructor discipline.
+  - closure escape promotion now releases retained/detached environment scopes
+    if final wrapper allocation fails.
+  - external-boundary integer narrowing now has explicit guards for `exit`,
+    `TimePoint`, Unicode codepoints, `fs-open`, `fs-stat`, `tcp-listen`, JSON
+    pointer symbol fallback, process-handle lookup, and zlib original-size
+    expansion.
+  - Validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - bounded normal+ASAN `data-format`: `pass=64 fail=0`
+    - bounded normal+ASAN `unicode`: `pass=27 fail=0`
+    - bounded normal+ASAN `compression`: `pass=27 fail=0`
+    - bounded normal+ASAN `async`: `pass=65 fail=0`
+    - bounded normal+ASAN `compiler`: `pass=194 fail=0`
+    - bounded normal+ASAN `memory-lifetime-smoke`: `pass=190 fail=0`
+    - bounded normal `advanced`: `pass=1185 fail=0`
+    - bounded ASAN `advanced`: `pass=1172 fail=0`
+    - bounded normal+ASAN `deduce`: `pass=330 fail=0`
+  - Residual split:
+    - `AUDIT-FTXUI-SMOKE-SEGFAULT-062` tracks the unrelated FTXUI
+      `smoke.omni` SIGSEGV observed after targeted Lisp validation passed.
+
+- Closed slice `AUDIT-FTXUI-SMOKE-SEGFAULT-062`:
+  - The FTXUI `smoke.omni` crash was isolated to runtime boundary provenance,
+    not to the FTXUI lowering/backend path: nested effect payload graphs could
+    recurse through alias-safety classification until stack overflow.
+  - `src/lisp/eval_boundary_provenance.c3` now uses a bounded iterative
+    alias-safety worklist with visited tracking for nested arrays, dicts, sets,
+    method tables, partials, iterators, and cons payloads.
+  - Scalar leaves are skipped before consuming alias worklist/visited capacity,
+    so wide scalar-only payloads no longer trip the fail-closed graph cap.
+  - `src/lisp/tests_memory_lifetime_boundary_state_groups.c3` adds the minimal
+    nested effect-payload regression plus a wide scalar payload regression, and
+    `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` keeps both in the
+    bounded smoke lane.
+  - The FTXUI sidecar hardening slice also landed:
+    `src/lisp/prim_ui_ftxui.c3` guards child pointer-array sizing,
+    `src/lisp/prim_ui_ftxui_helpers.c3` guards helper-array growth and graph
+    series allocation arithmetic, `src/lisp/prim_ui_ftxui_lowering.c3` rejects
+    oversized menu selected-index counts before `int` narrowing, and
+    `csrc/ftxui_shim.cpp` orders `keep_alive` before `component`, rejects
+    nonzero child counts with null child arrays, checks table `rows * cols`
+    overflow, and rejects table selector indexes outside FTXUI `int` range.
+  - Closed residual slice `AUDIT-FTXUI-C-ABI-EXCEPTION-SAFETY-063`:
+    status-returning FTXUI C ABI entrypoints now use a shared fail-closed
+    exception guard around backend work, and deferred graph/render/event/quit
+    callbacks catch callback exceptions locally before they can cross the C ABI
+    or FTXUI callback frame.
+  - Closed residual slice `AUDIT-FTXUI-SCREEN-LIFETIME-064`:
+    `omni_ftxui_component_wrap_quit_keys(...)` retains shared ownership of the
+    screen loop object in the wrapped component keep-alive list instead of
+    capturing a raw screen handle.
+  - Validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - host `scripts/run_ftxui_smoke.sh`: green
+    - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+      `pass=192 fail=0`
+  - Backlog shaping after this slice:
+    - residual boundary alias visited-set performance work split to
+      `AUDIT-BOUNDARY-ALIAS-WORKLIST-PERF-065`.
+  - Follow-up on 2026-04-11:
+    - added a shared composite cycle payload regression to the
+      `memory-lifetime-smoke` lane so repeated composite aliases do not consume
+      visit capacity while true graph cycles are still tracked.
+    - closed `AUDIT-BOUNDARY-ALIAS-WORKLIST-PERF-065` by fronting the
+      authoritative linear `seen` list with a small bounded `ushort`
+      index-table accelerator for repeated composite alias checks.
+    - the accelerator saturates into the existing linear scan to preserve the
+      no-false-negative contract and fail-closed graph caps.
+    - scalar/non-graph roots now return before entering the large traversal
+      frame, and the large-array walker sits behind a small stack-headroom
+      wrapper that fails closed to copy-required if the current stack context is
+      too shallow.
+    - larger local pointer/index-table attempts regressed FTXUI smoke with a
+      `smoke.omni` boundary resolve stack overflow and were not kept; the
+      landed table stays deliberately small to fit the effect/FTXUI stack
+      budget.
+    - validation after the fast-set and regression-test addition:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/run_ftxui_smoke.sh`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=193 fail=0`
+  - Closed follow-up `AUDIT-BOUNDARY-DESTINATION-BUILD-SPLICE-FACADE-067`:
+    - `src/lisp/eval_boundary_commit_escape_builder_helpers.c3` no longer
+      calls `main::scope_splice_escapes(...)` directly.
+    - the narrow low-level splice now lives behind
+      `boundary_destination_build_scope_splice(...)` in the existing
+      allowlisted boundary builder implementation file.
+    - destination `cons`, `partial`, `iterator`, and `error` builders keep the
+      previous build-scope commit behavior, avoiding source-wrapper fallback
+      through nested effect payload return boundaries.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_boundary_change_policy.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=193 fail=0`
+  - Closed follow-up `AUDIT-BOUNDARY-INSTANCE-MODULE-ALIAS-GRAPH-068`:
+    - `src/lisp/eval_boundary_provenance.c3` now treats `INSTANCE` and
+      `MODULE` as graph-bearing alias payloads, matching committed-root graph
+      audit coverage.
+    - the rare path uses a heap-backed value/env reachability scan instead of
+      adding large local arrays to the hot alias walker stack frame.
+    - the scan rejects reuse when by-value instance fields or module/env
+      bindings still reach the releasing scope.
+    - root-persistent env boxes are still traversed for parent/binding edges;
+      they are only excluded from direct temp-frame ownership checks.
+    - `src/lisp/tests_memory_lifetime_boundary_state_groups.c3` now covers an
+      instance field graph retaining a releasing-scope array payload.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=194 fail=0`
+  - Closed follow-up `AUDIT-JIT-MODULE-VALUE-GROWTH-069`:
+    - `src/lisp/value_predicates_accessors_basic.c3` now snapshots module
+      descriptors into root-scope storage for first-class `MODULE` values, so
+      module values no longer point into the reallocating interpreter module
+      table.
+    - `src/lisp/eval_path.c3` now fails closed on invalid module descriptors
+      before reading exports/envs.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` now forces
+      module table growth after creating a first-class module value and
+      verifies exported path access still works under normal and ASAN smoke.
+  - Closed follow-up `AUDIT-JIT-MUTATION-PROMOTION-NULL-GUARDS-070`:
+    - `src/lisp/jit_jit_closure_let_set_helpers.c3` now rejects null
+      cons-field promotion and null instance-field boundary-copy results before
+      mutating storage.
+    - `src/lisp/jit_jit_define_method_table.c3` now rejects null typed method
+      implementations and null global define promotion results before mutating
+      method-table entries or fallbacks.
+    - `src/lisp/aot_type_definitions.c3` mirrors the typed-method promotion
+      null guard for AOT.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_boundary_change_policy.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=196 fail=0`
+  - Closed follow-up `AUDIT-TCO-ENV-COPY-FAIL-CLOSED-071`:
+    - `src/lisp/jit_jit_eval_scope_copy.c3` now uses checked boundary-copy
+      results while copying TCO env-frame bindings and rejects copy faults,
+      null results, and copied `ERROR` values before binding them into a copied
+      env frame.
+    - Root-persistent env-box parent rewrites now fail closed if the required
+      parent-chain copy fails.
+  - Closed follow-up `AUDIT-TCO-RECYCLE-HOOK-FAIL-CLOSED-072`:
+    - `src/lisp/runtime_backend_hooks.c3` now preserves `*env_io`, releases the
+      fresh recycle scope, restores the original call scope, and returns an
+      explicit error when TCO env-chain copy fails.
+    - Active defer retargeting is restored back to the original call scope on
+      that failure path.
+    - `src/lisp/tests_memory_lifetime_tco_budget_groups.c3` now covers both the
+      direct env-copy failure and recycle-hook state-restore failure paths.
+    - `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` wires both
+      regressions into the bounded smoke lane.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_boundary_change_policy.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=198 fail=0`
+  - Closed follow-up `AUDIT-JIT-MUTABLE-LOCAL-NULL-BOX-073`:
+    - `src/lisp/jit_jit_apply_multi_prims_tail.c3` now makes
+      `jit_env_lookup_local(...)` reject null envs and missing bindings with an
+      explicit `jit: missing mutable local binding` error.
+    - `jit_env_reparent(...)` now returns the effective env and lets compiled
+      capture setup continue with the helper result when the original env box is
+      null.
+    - `src/lisp/jit_jit_compile_expr_basic.c3` and
+      `src/lisp/jit_jit_emit_helpers.c3` now consume those checked helper
+      contracts.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3` covers both helper
+      contracts in `jit-policy`.
+  - Closed follow-up `AUDIT-RAISE-PAYLOAD-NESTED-PENDING-074`:
+    - `src/lisp/value_constructors.c3` now builds handled raise payload
+      dictionaries through the non-raising hashmap allocation helper instead
+      of the raising dictionary constructor path.
+    - Payload dictionary allocation failure no longer publishes a stale nested
+      `raise_pending` value that the surrounding handler can accidentally
+      consume as a successful handled raise.
+  - Closed follow-up `AUDIT-DISPATCH-PAYLOAD-NO-PRESEED-075`:
+    - `src/lisp/prim_collection_hashmap.c3` now provides
+      `make_hashmap_no_raise(...)` for optional dictionary payload construction
+      that must not publish allocation failures through the raise channel.
+    - `src/lisp/eval_dispatch_error_payloads.c3` now uses that helper so
+      dispatch diagnostic payload allocation failure cannot pre-seed
+      `raise_pending` before the intended dispatch/type error is raised.
+    - `src/lisp/tests_runtime_feature_jit_groups_more.c3` covers the active
+      handler case directly.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_boundary_change_policy.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal `jit-policy` with FTXUI smoke enabled:
+        `pass=51 fail=0`
+      - bounded ASAN `jit-policy`: `pass=50 fail=0`
+  - Closed follow-up `AUDIT-CTOR-PAYLOAD-NO-PRESEED-076`:
+    - `src/lisp/primitives_meta_types_ctor_helpers.c3` now uses
+      `make_hashmap_no_raise(...)` for optional constructor mismatch payloads
+      and checks payload key interning before symbol construction.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` covers the
+      active handler case directly and verifies constructor payload allocation
+      failure leaves pending raise state clear.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - host `scripts/check_boundary_facade_usage.sh`: green
+      - host `scripts/check_boundary_change_policy.sh`: green
+      - host `scripts/check_status_consistency.sh`: green
+      - host `git diff --check`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=199 fail=0`
+  - Closed follow-up `AUDIT-DEDUCE-INTEGRITY-PAYLOAD-NO-PRESEED-077`:
+    - `src/lisp/deduce_relation_ops_validation_payload.c3` now uses
+      `make_hashmap_no_raise(...)` for optional integrity/check-context
+      diagnostic payloads and routes payload field insertion through local
+      no-raise setters.
+    - `src/lisp/deduce_rule_eval_exec_component_state.c3` now uses the same
+      non-raising helper for optional iteration-limit diagnostic payloads
+      returned before the later iteration-limit raise.
+    - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3` covers the
+      active handler case directly and verifies deduce integrity and
+      iteration-limit payload allocation failures leave pending raise state
+      clear.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=200 fail=0`
+  - Closed follow-up `AUDIT-DEDUCE-GOAL-DIRECTED-PAYLOAD-NO-PRESEED-078`:
+    - `src/lisp/deduce_rule_eval_analyze_setup.c3` now uses
+      `make_hashmap_no_raise(...)` and local checked insertion for
+      goal-directed selector analysis diagnostic payload dictionaries before
+      publishing the existing `deduce/analyze-out-of-memory` fallback.
+    - `src/lisp/deduce_rule_eval_fixpoint_goal_directed_selector_prepare.c3`
+      now uses the same non-raising payload construction path for
+      goal-directed selector and relation surface diagnostics before
+      publishing the existing `deduce/out-of-memory` fallback.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
+        `pass=200 fail=0`
+  - Closed follow-up `AUDIT-DEDUCE-GOAL-DIRECTED-INTERN-GUARDS-079`:
+    - `src/lisp/deduce_rule_ops_explain_goal_directed_components.c3` now
+      routes goal-directed blocker and shape symbols through a checked helper
+      that rejects `INVALID_SYMBOL_ID` before constructing payload symbols.
+    - `src/lisp/deduce_rule_ops_explain_snapshot.c3` now uses that helper for
+      goal-directed shape and execution-path payload values.
+    - `src/lisp/deduce_why_result_path_payload.c3` now rejects invalid lookup
+      key interning before constructing a temporary dictionary key symbol.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded normal+ASAN `deduce` slice: `pass=330 fail=0`
+  - Closed follow-up `AUDIT-RUNTIME-RESULT-KEY-INTERN-GUARDS-080`:
+    - `src/lisp/eval_dispatch_error_payloads.c3` now rejects invalid payload
+      keys and invalid symbol payload values in the optional dispatch payload
+      setter.
+    - `src/lisp/async_process_spawn.c3` now checks process-spawn result key
+      interning before constructing dictionary key symbols and closes spawned
+      resources on failure.
+    - `src/lisp/http_url_response.c3` now checks HTTP response-field key
+      interning before publishing response payload dictionaries.
+    - `src/lisp/prim_ui_ftxui_helpers.c3` now checks UI dictionary lookup key
+      interning before probing.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded normal+ASAN `async` slice with FTXUI smoke enabled:
+        `pass=65 fail=0`
+      - bounded normal `jit-policy`: `pass=51 fail=0`
+      - bounded ASAN `jit-policy`: `pass=50 fail=0`
+
+  - Closed follow-up `AUDIT-RUNTIME-INTERN-RAISEPAYLOAD-GUARDS-081`:
+    - `src/lisp/eval_init_primitive_registration.c3` now rejects failed `nil`
+      symbol interning before defining the language constant.
+    - `src/lisp/jit_jit_closure_runtime.c3` now treats failed promise env-tag
+      interning as a non-match instead of probing environments with invalid
+      symbols.
+    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now builds
+      unhandled-effect raise payload dictionaries through the non-raising
+      hashmap helper and checks payload-key interning before publication.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded normal `jit-policy`: `pass=51 fail=0`
+      - bounded ASAN `jit-policy`: `pass=50 fail=0`
+      - bounded normal `advanced`: `pass=1185 fail=0`
+      - bounded ASAN `advanced`: `pass=1172 fail=0`
+
+  - Closed follow-up `AUDIT-CONSTRUCTOR-DISPATCH-SURFACE-083`:
+    - public conversion aliases `number->string`, `symbol->string`,
+      `string->symbol`, `exact->inexact`, and `inexact->exact` were removed
+      in favor of canonical callable constructors `String`, `Symbol`,
+      `Float64`, and `Integer`.
+    - `set-size` and `set->list` were removed from public primitive
+      registration and compiler primitive maps; `length` now covers set
+      cardinality and `List(Set ...)` materializes deterministic canonical set
+      element order.
+    - fast-dev-only constructor aliases `Int`/`Bool` and duplicate
+      `filesystem-*` primitive aliases were removed.
+    - schema validation now uses `array-of` instead of `vector-of`.
+    - `lib/immer.omni` now exposes `persistent-array`,
+      `persistent-dictionary`, and `persistent-set` names instead of
+      `vector`, `hash-map`, and `hash-set`; the broken generic
+      `count`/`conj`/`into` facade was removed because current opaque FFI
+      handles have no defined persistent collection predicates.
+    - residual open items were split into explicit TODO lanes for:
+      - list/string constructor semantics,
+      - string-to-number parse/coercion naming,
+      - lowercase `list` helper policy,
+      - `fs-*` versus `filesystem-*` naming,
+      - typed persistent Immer wrappers or explicit non-generic API
+        (later superseded by retiring the optional Immer bridge entirely),
+      - repeated bounded `http` and `pika` slice failures.
+    - validation:
+      - host `c3c build --warn-deprecation=no`: green
+      - bounded `string-type` slice: `pass=40 fail=0`
+      - bounded `advanced` slice: `pass=1189 fail=0`
+      - bounded `compiler` slice: `pass=194 fail=0`
+      - quick eval confirmed `set-size`/`set->list` are unbound,
+        `length`/`List(Set ...)` behavior is correct, and `array-of` schema
+        validation works.
+
+- Closed slice `AUDIT-OFFLOAD-WIDTH-GUARDS-066`:
+  - `src/lisp/scheduler_offload_network.c3` now rejects listener file
+    descriptors outside `int` range before calling `tcp_accept_fd(...)`.
+  - `src/lisp/eval_repl_server_state.c3` now formats REPL session IDs from a
+    guarded `long` value instead of narrowing `next_session_id` through `int`.
+  - `src/lisp/scheduler_offload_ops.c3` now formats atomic temp-path
+    `unique_id` suffixes from a guarded `long` value instead of truncating to
+    `uint`.
+  - `src/lisp/scheduler_state_support_types.c3` now asserts the current
+    `OffloadWork` pointer-through-`long` payload width contract at compile
+    time.
+  - Validation:
+    - host `c3c build --warn-deprecation=no`: green
+    - host `scripts/run_ftxui_smoke.sh`: green
+    - bounded normal+ASAN `async`: `pass=65 fail=0`

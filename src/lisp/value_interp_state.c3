@@ -99,11 +99,18 @@ struct Interp {
     // FFI annotation symbols and shared builtin type names
     SymbolId sym_ffi;       // "ffi" for [ffi ...] annotation
     SymbolId sym_lib;       // "lib" for [ffi lib]
-    SymbolId sym_Pointer;   // "Pointer" canonical FFI pointer annotation type
+    SymbolId sym_ForeignHandle; // "ForeignHandle" canonical FFI handle annotation type
     SymbolId sym_Void;      // "Void" for ^Void type and runtime Void value/type
 
     // Built-in type name symbols
     SymbolId sym_Integer;
+    SymbolId sym_BigInteger;
+    SymbolId sym_BigFloat;
+    SymbolId sym_BigComplex;
+    SymbolId sym_Complex128;
+    SymbolId sym_Complex64;
+    SymbolId sym_Float;
+    SymbolId sym_Float32;
     SymbolId sym_Double;
     SymbolId sym_String;
     SymbolId sym_Symbol;
@@ -121,6 +128,7 @@ struct Interp {
     SymbolId sym_Iterator;
     SymbolId sym_TimePoint;
     SymbolId sym_Coroutine;
+    SymbolId sym_Tensor;
 
     // Error-as-effect
     SymbolId sym_raise;
@@ -142,7 +150,13 @@ struct Interp {
 
     // Cached TypeIds for built-in types (avoid repeated hash lookups)
     TypeId tid_Integer;
+    TypeId tid_BigInteger;
+    TypeId tid_BigFloat;
+    TypeId tid_BigComplex;
+    TypeId tid_Complex128;
+    TypeId tid_Complex64;
     TypeId tid_Double;
+    TypeId tid_Float32;
     TypeId tid_String;
     TypeId tid_Symbol;
     TypeId tid_List;
@@ -159,6 +173,7 @@ struct Interp {
     TypeId tid_Iterator;
     TypeId tid_TimePoint;
     TypeId tid_Coroutine;
+    TypeId tid_Tensor;
 
     // Type registry
     TypeRegistry types;
@@ -241,9 +256,9 @@ struct Interp {
 fn void Interp.init(Interp* self) {
     runtime_attach_interp(self);
     interp_init_runtime_state(self);
-    interp_init_core_symbols(self);
-    interp_init_type_symbols(self);
-    interp_init_misc_symbols(self);
+    assert(interp_init_core_symbols(self), "interp core symbol init failed");
+    assert(interp_init_type_symbols(self), "interp type symbol init failed");
+    assert(interp_init_misc_symbols(self), "interp misc symbol init failed");
     self.types.init();
     interp_init_module_state(self);
     interp_init_runtime_flags(self);

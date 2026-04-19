@@ -51,6 +51,9 @@ fn Value* deduce_relation_collect_columns(Relation* rel, Value* cols, Interp* in
     while (is_cons(curr)) {
         Value* col = car(curr);
         if (col.tag == SYMBOL) {
+            if (rel.col_count == usz.max) {
+                return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
+            }
             if (!deduce_relation_ensure_column_capacity(rel, rel.col_count + 1)) {
                 return deduce_raise(interp, "deduce/define-relation-out-of-memory", "__define-relation: out of memory");
             }

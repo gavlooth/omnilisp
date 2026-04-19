@@ -9,7 +9,9 @@ fn bool boundary_graph_audit_escape_reachability(Value* root, main::ScopeRegion*
 
 fn void boundary_debug_graph_audit_committed_escape_root(
     BoundaryCommitEscapeResult committed,
-    main::ScopeRegion* target_scope
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope = null,
+    Env* global_env = null
 ) @noinline {
     if (!boundary_graph_audit_enabled()) return;
     if (committed.value == null || target_scope == null) return;
@@ -36,7 +38,9 @@ fn void boundary_debug_graph_audit_committed_escape_root(
         return;
     }
 
-    BoundaryGraphAuditResult audit = boundary_graph_audit_escape_reachability_result(committed.value, target_scope, true);
+    main::ScopeRegion* forbidden_scope = committed.releasing_scope_spliced ? null : releasing_scope;
+    BoundaryGraphAuditResult audit =
+        boundary_graph_audit_escape_reachability_result(committed.value, target_scope, true, forbidden_scope, global_env);
     if (!audit.ok) {
         boundary_graph_audit_log_reason(audit);
         boundary_graph_audit_log_commit_context(committed, audit);

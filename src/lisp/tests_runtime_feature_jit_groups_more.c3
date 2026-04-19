@@ -85,16 +85,16 @@ fn void run_jit_policy_tco_stale_generation_moved_binding_copy_test(Interp* inte
     Closure* source_payload = (Closure*)source.alloc(Closure.sizeof);
     bool setup_ok = source_payload != null;
     if (setup_ok) {
-        source_payload.param = 0;
+        source_payload.param = (SymbolId)0;
         source_payload.params = null;
         source_payload.param_count = 0;
         source_payload.has_rest = false;
-        source_payload.rest_param = 0;
+        source_payload.rest_param = (SymbolId)0;
         source_payload.body = null;
         source_payload.env = interp.global_env;
         source_payload.has_param = false;
         source_payload.has_typed_params = false;
-        source_payload.name = 0;
+        source_payload.name = (SymbolId)0;
         source_payload.env_scope = null;
         source_payload.scope_gen = interp.root_scope.generation; // stale on purpose
         source_payload.type_sig = null;
@@ -446,16 +446,16 @@ fn void run_jit_policy_cross_scope_alias_policy_test(Interp* interp, int* pass, 
     Closure* foreign_payload = (Closure*)foreign.alloc(Closure.sizeof);
     bool setup_ok = foreign_payload != null;
     if (setup_ok) {
-        foreign_payload.param = 0;
+        foreign_payload.param = (SymbolId)0;
         foreign_payload.params = null;
         foreign_payload.param_count = 0;
         foreign_payload.has_rest = false;
-        foreign_payload.rest_param = 0;
+        foreign_payload.rest_param = (SymbolId)0;
         foreign_payload.body = null;
         foreign_payload.env = interp.global_env;
         foreign_payload.has_param = false;
         foreign_payload.has_typed_params = false;
-        foreign_payload.name = 0;
+        foreign_payload.name = (SymbolId)0;
         foreign_payload.env_scope = null;
         foreign_payload.scope_gen = foreign.generation;
         foreign_payload.type_sig = null;
@@ -1233,7 +1233,7 @@ fn void run_jit_policy_rec_closure_type_sig_copy_failure_test(Interp* interp, in
             sig.has_val_literal[0] = false;
             sig.val_literals[0].tag = NIL;
             sig.val_literals[0].int_value = 0;
-            sig.val_literals[0].sym_value = 0;
+            sig.val_literals[0].sym_value = (SymbolId)0;
             closure.closure_val.has_typed_params = true;
             closure.closure_val.type_sig = sig;
         } else {
@@ -1334,6 +1334,39 @@ fn void run_jit_policy_stdlib_teardown_redefinition_test(Interp* interp, int* pa
         (*pass)++;
     } else {
         io::printn("[FAIL] jit policy: stdlib teardown redefinition destroys cleanly");
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_mutable_local_null_box_helpers_fail_closed_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: generated mutable-local helper paths must not dereference a
+    // null env box if root-box setup failed before later lookup/capture code.
+    Value* lookup_err = jit_env_lookup_local(
+        interp,
+        (uint)interp.symbols.intern("__jit_policy_missing_mutable_box"),
+        null
+    );
+    Env* reparented = jit_env_reparent(null, interp.global_env);
+
+    bool lookup_ok = lookup_err != null &&
+                     lookup_err.tag == ERROR &&
+                     lookup_err.str_chars != null &&
+                     jit_policy_str_contains(
+                         lookup_err.str_chars[:lookup_err.str_len],
+                         "jit: missing mutable local binding"
+                     );
+    bool reparent_ok = reparented == interp.global_env;
+    bool ok = lookup_ok && reparent_ok;
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: mutable local null box helpers fail closed");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: mutable local null box helpers fail closed (lookup_ok=%s reparent_ok=%s)",
+            lookup_ok ? "yes" : "no",
+            reparent_ok ? "yes" : "no"
+        );
         (*fail)++;
     }
 }
@@ -1552,6 +1585,61 @@ fn void run_jit_policy_pending_raise_payload_alloc_failure_test(Interp* interp, 
             r.error.has_error ? "yes" : "no",
             r.error.has_error ? (ZString)msg : (ZString)"<none>"
         );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_dispatch_payload_alloc_failure_does_not_preseed_raise_test(Interp* interp, int* pass, int* fail) {
+    usz saved_handler_count = interp.handler_count;
+    bool setup_ok = interp.handler_count < interp.handler_capacity || interp.grow_handler_stack();
+
+    SymbolId[1] handler_tags = { interp.sym_raise };
+    EffectHandler handler = {
+        .tags = &handler_tags[0],
+        .clauses = null,
+        .closures = null,
+        .clause_count = 1,
+        .handler_env = null,
+        .body_expr = null,
+        .body_env = null,
+        .strict_mode = false,
+        .effect_state = null,
+    };
+
+    Value* data = null;
+    bool saved_force = g_hashmap_force_struct_alloc_fail;
+    if (setup_ok) {
+        interp.flags.raise_pending = false;
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
+        interp.handler_stack[interp.handler_count++] = handler;
+        g_hashmap_force_struct_alloc_fail = true;
+        data = dispatch_make_payload_data(interp, 8);
+        g_hashmap_force_struct_alloc_fail = saved_force;
+        interp.handler_count = saved_handler_count;
+    }
+    g_hashmap_force_struct_alloc_fail = saved_force;
+
+    bool ok = setup_ok &&
+              data == null &&
+              !interp.flags.raise_pending &&
+              interp.raise_payload == null &&
+              interp.raise_msg_len == 0;
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: dispatch payload allocation failure does not preseed raise");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: dispatch payload allocation failure does not preseed raise (setup_ok=%s data=%s pending=%s)",
+            setup_ok ? "yes" : "no",
+            data == null ? "null" : "non-null",
+            interp.flags.raise_pending ? "yes" : "no"
+        );
+        interp.handler_count = saved_handler_count;
+        interp.flags.raise_pending = false;
+        interp.raise_payload = null;
+        interp.raise_msg_len = 0;
         (*fail)++;
     }
 }
@@ -1830,6 +1918,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("invalid-primitive-state-fails-closed", &run_jit_policy_invalid_primitive_state_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("pending-raise-string-alloc-failure", &run_jit_policy_pending_raise_string_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("pending-raise-payload-alloc-failure", &run_jit_policy_pending_raise_payload_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("dispatch-payload-alloc-failure-does-not-preseed-raise", &run_jit_policy_dispatch_payload_alloc_failure_does_not_preseed_raise_test, interp, pass, fail);
         run_jit_policy_case("handle-continuation-alloc-failure", &run_jit_policy_handle_continuation_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
@@ -1845,6 +1934,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("closure-method-iterator-boundary", &run_jit_policy_closure_method_iterator_boundary_test, interp, pass, fail);
         run_jit_policy_case("rec-closure-type-sig-copy-failure", &run_jit_policy_rec_closure_type_sig_copy_failure_test, interp, pass, fail);
         run_jit_policy_case("stdlib-teardown-redefinition", &run_jit_policy_stdlib_teardown_redefinition_test, interp, pass, fail);
+        run_jit_policy_case("mutable-local-null-box-helpers-fail-closed", &run_jit_policy_mutable_local_null_box_helpers_fail_closed_test, interp, pass, fail);
     }
 
     interp.flags.jit_enabled = saved_jit_enabled;

@@ -146,6 +146,131 @@ fn void run_memory_lifetime_boundary_graph_audit_tests(Interp* interp, int* pass
         }
     }
 
+    // Invariant: commit-scoped graph audit also rejects TEMP edges from the releasing child.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        if (target_scope == null || releasing_scope == null) {
+            if (releasing_scope != null) main::scope_release(releasing_scope);
+            if (target_scope != null) main::scope_release(target_scope);
+            io::printn("[FAIL] lifetime: boundary graph audit rejects releasing temp edge");
+            (*fail)++;
+        } else {
+            interp.current_scope = target_scope;
+            Value* escape_nil = interp.alloc_value_escape();
+            Value* escape_root = interp.alloc_value_escape();
+            if (escape_nil != null) escape_nil.tag = NIL;
+            if (escape_root != null) {
+                escape_root.tag = CONS;
+                escape_root.cons_val.car = null;
+                escape_root.cons_val.cdr = escape_nil;
+            }
+
+            interp.current_scope = releasing_scope;
+            Value* releasing_leaf = make_int(interp, 919);
+            if (escape_root != null) {
+                escape_root.cons_val.car = releasing_leaf;
+            }
+
+            BoundaryGraphAuditResult audit = boundary_graph_audit_escape_reachability_result(
+                escape_root,
+                target_scope,
+                false,
+                releasing_scope,
+                interp.global_env
+            );
+            bool ok = escape_root != null &&
+                      releasing_leaf != null &&
+                      escape_root.scope_gen == target_scope.escape_generation &&
+                      releasing_leaf.scope_gen == releasing_scope.generation &&
+                      !audit.ok &&
+                      audit.reason == BOUNDARY_GRAPH_AUDIT_REACHABLE_TEMP_VALUE &&
+                      audit.root_tag == (usz)escape_root.tag &&
+                      audit.violating_edge_tag == (usz)releasing_leaf.tag &&
+                      audit.root_scope_gen == (usz)escape_root.scope_gen &&
+                      audit.violating_scope_gen == (usz)releasing_leaf.scope_gen &&
+                      audit.target_scope_gen == (usz)target_scope.generation &&
+                      audit.target_escape_gen == (usz)target_scope.escape_generation;
+
+            interp.current_scope = saved_scope;
+            main::scope_release(releasing_scope);
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary graph audit rejects releasing temp edge");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] lifetime: boundary graph audit rejects releasing temp edge");
+                (*fail)++;
+            }
+        }
+    }
+
+    // Invariant: graph audit treats global-env context as a traversal terminal.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        if (target_scope == null) {
+            io::printn("[FAIL] lifetime: boundary graph audit stops at global env");
+            (*fail)++;
+        } else {
+            interp.current_scope = target_scope;
+            Env* terminal_env = make_env(interp, null);
+            SymbolId terminal_sym = interp.symbols.intern("__graph_audit_terminal_temp");
+            Value* terminal_leaf = make_int(interp, 920);
+            bool setup_ok = terminal_env != null &&
+                terminal_leaf != null &&
+                env_define_with_barrier_checked(terminal_env, terminal_sym, terminal_leaf, interp);
+
+            Closure* closure = setup_ok
+                ? (Closure*)target_scope.alloc_escape(Closure.sizeof)
+                : null;
+            Value* escape_root = setup_ok && closure != null
+                ? interp.alloc_value_escape()
+                : null;
+            if (escape_root != null) {
+                *closure = {};
+                closure.scope_gen = target_scope.escape_generation;
+                closure.env = terminal_env;
+                escape_root.tag = CLOSURE;
+                escape_root.closure_val = closure;
+                main::scope_register_dtor_escape(target_scope, (void*)escape_root, &scope_dtor_closure);
+            }
+
+            BoundaryGraphAuditResult audit = boundary_graph_audit_escape_reachability_result(
+                escape_root,
+                target_scope,
+                false,
+                null,
+                terminal_env
+            );
+            bool ok = setup_ok &&
+                      escape_root != null &&
+                      escape_root.scope_gen == target_scope.escape_generation &&
+                      terminal_leaf.scope_gen == target_scope.generation &&
+                      audit.ok &&
+                      audit.reason == BOUNDARY_GRAPH_AUDIT_OK &&
+                      audit.root_tag == (usz)escape_root.tag &&
+                      audit.violating_edge_tag == BOUNDARY_GRAPH_AUDIT_EDGE_TAG_NONE &&
+                      audit.root_scope_gen == (usz)escape_root.scope_gen &&
+                      audit.violating_scope_gen == 0 &&
+                      audit.target_scope_gen == (usz)target_scope.generation &&
+                      audit.target_escape_gen == (usz)target_scope.escape_generation;
+
+            interp.current_scope = saved_scope;
+            main::scope_release(target_scope);
+
+            if (ok) {
+                emit_pass_literal("[PASS] lifetime: boundary graph audit stops at global env");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] lifetime: boundary graph audit stops at global env");
+                (*fail)++;
+            }
+        }
+    }
+
     // Invariant: opaque wrappers are excluded from Omni-owned edge traversal.
     {
         main::ScopeRegion* saved_scope = interp.current_scope;

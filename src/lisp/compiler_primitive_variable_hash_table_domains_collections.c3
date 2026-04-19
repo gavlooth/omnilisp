@@ -14,8 +14,6 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("set-add"), "aot::lookup_prim(\"set-add\")");
     prim_hash_insert(st.intern("set-remove"), "aot::lookup_prim(\"set-remove\")");
     prim_hash_insert(st.intern("set-contains?"), "aot::lookup_prim(\"set-contains?\")");
-    prim_hash_insert(st.intern("set-size"), "aot::lookup_prim(\"set-size\")");
-    prim_hash_insert(st.intern("set->list"), "aot::lookup_prim(\"set->list\")");
     prim_hash_insert(st.intern("ref"), "aot::lookup_prim(\"ref\")");
     prim_hash_insert(st.intern("set!"), "aot::lookup_prim(\"set!\")");
     prim_hash_insert(st.intern("keys"), "aot::lookup_prim(\"keys\")");
@@ -23,6 +21,8 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("has?"), "aot::lookup_prim(\"has?\")");
     prim_hash_insert(st.intern("remove!"), "aot::lookup_prim(\"remove!\")");
     prim_hash_insert(st.intern("push!"), "aot::lookup_prim(\"push!\")");
+    prim_hash_insert(st.intern("sort"), "aot::lookup_prim(\"sort\")");
+    prim_hash_insert(st.intern("sort-by"), "aot::lookup_prim(\"sort-by\")");
     prim_hash_insert(st.intern("iterator?"), "aot::lookup_prim(\"iterator?\")");
     prim_hash_insert(st.intern("__make-iterator"), "aot::lookup_prim(\"__make-iterator\")");
     prim_hash_insert(st.intern("next"), "aot::lookup_prim(\"next\")");
@@ -39,6 +39,40 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("csv-emit"), "aot::lookup_prim(\"csv-emit\")");
     prim_hash_insert(st.intern("TimePoint"), "aot::lookup_prim(\"TimePoint\")");
     prim_hash_insert(st.intern("time-point?"), "aot::lookup_prim(\"time-point?\")");
+    prim_hash_insert(st.intern("is?"), "aot::lookup_prim(\"is?\")");
+    prim_hash_insert(st.intern("instance?"), "aot::lookup_prim(\"instance?\")");
+    prim_hash_insert(st.intern("type-args"), "aot::lookup_prim(\"type-args\")");
+    prim_hash_insert(st.intern("Tensor"), "aot::lookup_prim(\"Tensor\")");
+    prim_hash_insert(st.intern("__tensor-map"), "aot::lookup_prim(\"__tensor-map\")");
+    prim_hash_insert(st.intern("contract"), "aot::lookup_prim(\"contract\")");
+    prim_hash_insert(st.intern("matrix/transpose"), "aot::lookup_prim(\"matrix/transpose\")");
+    prim_hash_insert(st.intern("matrix/transpose-view"), "aot::lookup_prim(\"matrix/transpose-view\")");
+    prim_hash_insert(st.intern("matrix/diagonal"), "aot::lookup_prim(\"matrix/diagonal\")");
+    prim_hash_insert(st.intern("matrix/diagonal-matrix"), "aot::lookup_prim(\"matrix/diagonal-matrix\")");
+    prim_hash_insert(st.intern("matrix/identity"), "aot::lookup_prim(\"matrix/identity\")");
+    prim_hash_insert(st.intern("matrix/trace"), "aot::lookup_prim(\"matrix/trace\")");
+    prim_hash_insert(st.intern("matrix/rank"), "aot::lookup_prim(\"matrix/rank\")");
+    prim_hash_insert(st.intern("matrix/norm"), "aot::lookup_prim(\"matrix/norm\")");
+    prim_hash_insert(st.intern("matrix/solve"), "aot::lookup_prim(\"matrix/solve\")");
+    prim_hash_insert(st.intern("matrix/lu"), "aot::lookup_prim(\"matrix/lu\")");
+    prim_hash_insert(st.intern("matrix/determinant"), "aot::lookup_prim(\"matrix/determinant\")");
+    prim_hash_insert(st.intern("matrix/inverse"), "aot::lookup_prim(\"matrix/inverse\")");
+    prim_hash_insert(st.intern("matrix/qr"), "aot::lookup_prim(\"matrix/qr\")");
+    prim_hash_insert(st.intern("matrix/cholesky"), "aot::lookup_prim(\"matrix/cholesky\")");
+    prim_hash_insert(st.intern("matrix/singular-values"), "aot::lookup_prim(\"matrix/singular-values\")");
+    prim_hash_insert(st.intern("matrix/svd"), "aot::lookup_prim(\"matrix/svd\")");
+    prim_hash_insert(st.intern("matrix/eigenvalues"), "aot::lookup_prim(\"matrix/eigenvalues\")");
+    prim_hash_insert(st.intern("matrix/eigenvectors"), "aot::lookup_prim(\"matrix/eigenvectors\")");
+    prim_hash_insert(st.intern("matrix/eigenpairs"), "aot::lookup_prim(\"matrix/eigenpairs\")");
+    prim_hash_insert(st.intern("realize"), "aot::lookup_prim(\"realize\")");
+    prim_hash_insert(st.intern("tensor?"), "aot::lookup_prim(\"tensor?\")");
+    prim_hash_insert(st.intern("dtype"), "aot::lookup_prim(\"dtype\")");
+    prim_hash_insert(st.intern("device"), "aot::lookup_prim(\"device\")");
+    prim_hash_insert(st.intern("tensor-layout"), "aot::lookup_prim(\"tensor-layout\")");
+    prim_hash_insert(st.intern("tensor-backends"), "aot::lookup_prim(\"tensor-backends\")");
+    prim_hash_insert(st.intern("to-device"), "aot::lookup_prim(\"to-device\")");
+    prim_hash_insert(st.intern("shape"), "aot::lookup_prim(\"shape\")");
+    prim_hash_insert(st.intern("rank"), "aot::lookup_prim(\"rank\")");
 
     // Math
     prim_hash_insert(st.intern("abs"), "aot::lookup_prim(\"abs\")");
@@ -55,6 +89,29 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("positive?"), "aot::lookup_prim(\"positive?\")");
     prim_hash_insert(st.intern("negative?"), "aot::lookup_prim(\"negative?\")");
     prim_hash_insert(st.intern("gcd"), "aot::lookup_prim(\"gcd\")");
+    prim_hash_insert(st.intern("lcm"), "aot::lookup_prim(\"lcm\")");
+    prim_hash_insert(st.intern("sin"), "aot::lookup_prim(\"sin\")");
+    prim_hash_insert(st.intern("cos"), "aot::lookup_prim(\"cos\")");
+    prim_hash_insert(st.intern("tan"), "aot::lookup_prim(\"tan\")");
+    prim_hash_insert(st.intern("asin"), "aot::lookup_prim(\"asin\")");
+    prim_hash_insert(st.intern("acos"), "aot::lookup_prim(\"acos\")");
+    prim_hash_insert(st.intern("atan"), "aot::lookup_prim(\"atan\")");
+    prim_hash_insert(st.intern("atan2"), "aot::lookup_prim(\"atan2\")");
+    prim_hash_insert(st.intern("exp"), "aot::lookup_prim(\"exp\")");
+    prim_hash_insert(st.intern("log"), "aot::lookup_prim(\"log\")");
+    prim_hash_insert(st.intern("log10"), "aot::lookup_prim(\"log10\")");
+    prim_hash_insert(st.intern("sinh"), "aot::lookup_prim(\"sinh\")");
+    prim_hash_insert(st.intern("cosh"), "aot::lookup_prim(\"cosh\")");
+    prim_hash_insert(st.intern("tanh"), "aot::lookup_prim(\"tanh\")");
+    prim_hash_insert(st.intern("real-part"), "aot::lookup_prim(\"real-part\")");
+    prim_hash_insert(st.intern("imag-part"), "aot::lookup_prim(\"imag-part\")");
+    prim_hash_insert(st.intern("conjugate"), "aot::lookup_prim(\"conjugate\")");
+    prim_hash_insert(st.intern("pow"), "aot::lookup_prim(\"pow\")");
+    prim_hash_insert(st.intern("math/lgamma"), "aot::lookup_prim(\"math/lgamma\")");
+    prim_hash_insert(st.intern("math/erf"), "aot::lookup_prim(\"math/erf\")");
+    prim_hash_insert(st.intern("math/erfc"), "aot::lookup_prim(\"math/erfc\")");
+    prim_hash_insert(st.intern("stats/normal-cdf"), "aot::lookup_prim(\"stats/normal-cdf\")");
+    prim_hash_insert(st.intern("stats/normal-quantile"), "aot::lookup_prim(\"stats/normal-quantile\")");
 
     // Bitwise
     prim_hash_insert(st.intern("bitwise-and"), "aot::lookup_prim(\"bitwise-and\")");
@@ -63,6 +120,8 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("bitwise-not"), "aot::lookup_prim(\"bitwise-not\")");
     prim_hash_insert(st.intern("lshift"), "aot::lookup_prim(\"lshift\")");
     prim_hash_insert(st.intern("rshift"), "aot::lookup_prim(\"rshift\")");
+    // Type annotation constructor
+    prim_hash_insert(st.intern("^"), "aot::lookup_prim(\"^\")");
 
     // Literals
     prim_hash_insert(st.intern("true"), "aot::make_true()");

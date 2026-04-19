@@ -30,10 +30,11 @@ fn Value* prim_signal_handle(Value*[] args, Env* env, Interp* interp) {
         return io_raise(interp, "io/signal-handle-callback-not-callable", "signal-handle: callback must be a procedure");
     }
 
-    int signum = (int)sig_v.int_val;
-    if (signum <= 0) {
+    long raw_signum = sig_v.int_val;
+    if (raw_signum <= 0 || raw_signum > (long)int.max) {
         return io_raise(interp, "io/signal-handle-invalid-sig", "signal-handle: sig must be > 0");
     }
+    int signum = (int)raw_signum;
 
     void* uv_watch = null;
     int start_status = omni_uv_signal_start(signum, &uv_watch);
@@ -172,6 +173,7 @@ fn Value* prim_dns_resolve(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (!dns.active || !dns.completed || dns.req_handle == null || dns.request_token == 0) {
+        scheduler_close_pending_dns(fiber_id);
         return io_raise(
             interp,
             "io/dns-resolve-resumed-before-completion",

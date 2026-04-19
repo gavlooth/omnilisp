@@ -1,0 +1,118 @@
+#version 450
+
+layout(local_size_x = 1) in;
+
+layout(std430, binding = 0) readonly buffer Coefficients {
+    vec2 coeffs[];
+};
+
+layout(std430, binding = 1) readonly buffer RightHandSide {
+    vec2 rhs[];
+};
+
+layout(std430, binding = 2) buffer Output {
+    vec2 out_data[];
+};
+
+layout(push_constant) uniform Push {
+    uint n;
+    uint rhs_cols;
+    uint result_count;
+    uint padding;
+} pc;
+
+float complex_abs2(vec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+vec2 complex_mul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+vec2 complex_div(vec2 a, vec2 b) {
+    float denom = complex_abs2(b);
+    return vec2((a.x * b.x + a.y * b.y) / denom, (a.y * b.x - a.x * b.y) / denom);
+}
+
+void swap_coeff_rows(uint left_row, uint right_row, uint coeff_offset) {
+    if (left_row == right_row) return;
+    for (uint col = 0u; col < pc.n; col++) {
+        uint left_index = coeff_offset + left_row * pc.n + col;
+        uint right_index = coeff_offset + right_row * pc.n + col;
+        vec2 tmp = out_data[left_index];
+        out_data[left_index] = out_data[right_index];
+        out_data[right_index] = tmp;
+    }
+}
+
+void swap_rhs_rows(uint left_row, uint right_row) {
+    if (left_row == right_row) return;
+    for (uint col = 0u; col < pc.rhs_cols; col++) {
+        uint left_index = left_row * pc.rhs_cols + col;
+        uint right_index = right_row * pc.rhs_cols + col;
+        vec2 tmp = out_data[left_index];
+        out_data[left_index] = out_data[right_index];
+        out_data[right_index] = tmp;
+    }
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) return;
+
+    uint coeff_count = pc.n * pc.n;
+    uint coeff_offset = pc.result_count;
+    uint status_offset = coeff_offset + coeff_count;
+    out_data[status_offset] = vec2(1.0, 0.0);
+
+    if (pc.n == 0u || pc.rhs_cols == 0u) return;
+
+    for (uint i = 0u; i < coeff_count; i++) {
+        out_data[coeff_offset + i] = coeffs[i];
+    }
+    for (uint i = 0u; i < pc.result_count; i++) {
+        out_data[i] = rhs[i];
+    }
+
+    for (uint pivot = 0u; pivot < pc.n; pivot++) {
+        uint pivot_row = pivot;
+        float pivot_abs = complex_abs2(out_data[coeff_offset + pivot * pc.n + pivot]);
+        for (uint row = pivot + 1u; row < pc.n; row++) {
+            float candidate_abs = complex_abs2(out_data[coeff_offset + row * pc.n + pivot]);
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+        if (!(pivot_abs > 0.0)) return;
+
+        swap_coeff_rows(pivot, pivot_row, coeff_offset);
+        swap_rhs_rows(pivot, pivot_row);
+
+        vec2 pivot_value = out_data[coeff_offset + pivot * pc.n + pivot];
+        for (uint row = pivot + 1u; row < pc.n; row++) {
+            vec2 factor = complex_div(out_data[coeff_offset + row * pc.n + pivot], pivot_value);
+            out_data[coeff_offset + row * pc.n + pivot] = vec2(0.0, 0.0);
+            for (uint col = pivot + 1u; col < pc.n; col++) {
+                out_data[coeff_offset + row * pc.n + col] -= complex_mul(factor, out_data[coeff_offset + pivot * pc.n + col]);
+            }
+            for (uint rhs_col = 0u; rhs_col < pc.rhs_cols; rhs_col++) {
+                out_data[row * pc.rhs_cols + rhs_col] -= complex_mul(factor, out_data[pivot * pc.rhs_cols + rhs_col]);
+            }
+        }
+    }
+
+    for (uint i = pc.n; i > 0u; i--) {
+        uint row = i - 1u;
+        vec2 diagonal = out_data[coeff_offset + row * pc.n + row];
+        if (!(complex_abs2(diagonal) > 0.0)) return;
+        for (uint rhs_col = 0u; rhs_col < pc.rhs_cols; rhs_col++) {
+            vec2 sum = out_data[row * pc.rhs_cols + rhs_col];
+            for (uint col = row + 1u; col < pc.n; col++) {
+                sum -= complex_mul(out_data[coeff_offset + row * pc.n + col], out_data[col * pc.rhs_cols + rhs_col]);
+            }
+            out_data[row * pc.rhs_cols + rhs_col] = complex_div(sum, diagonal);
+        }
+    }
+
+    out_data[status_offset] = vec2(0.0, 0.0);
+}

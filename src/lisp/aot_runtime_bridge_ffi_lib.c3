@@ -14,11 +14,22 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
     if (binding_name.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: binding name must not be empty");
     if (soname.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: soname must not be empty");
 
-    lisp::SymbolId binding_sid = interp.symbols.intern(binding_name);
+    lisp::SymbolId binding_sid = (lisp::SymbolId)0;
+    if (!aot_intern_checked(interp, binding_name, &binding_sid)) {
+        return aot_make_error_best_effort(interp, "aot ffi lib: invalid or uninternable binding name");
+    }
     lisp::Value* existing = interp.global_env.lookup(binding_sid);
     if (existing != null) {
         if (existing.tag != lisp::ValueTag.FFI_HANDLE || existing.ffi_val == null) {
             return aot_make_error_best_effort(interp, "aot ffi lib: existing binding is not an FFI handle");
+        }
+        if (existing.ffi_val.name_len != soname.len) {
+            return aot_make_error_best_effort(interp, "aot ffi lib: existing binding already exists with different soname");
+        }
+        for (usz i = 0; i < soname.len; i++) {
+            if (existing.ffi_val.lib_name[i] != soname[i]) {
+                return aot_make_error_best_effort(interp, "aot ffi lib: existing binding already exists with different soname");
+            }
         }
         if (existing.ffi_val.lib_handle != null) {
             return existing;
@@ -62,13 +73,25 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
 
     lisp::Value* ffi_handle = existing;
     if (ffi_handle == null) {
-        ffi_handle = lisp::make_ffi_handle_ex(interp, handle, soname, null, false, true);
+        ffi_handle = lisp::make_ffi_handle_ex_with_descriptor(
+            interp,
+            handle,
+            soname,
+            null,
+            false,
+            lisp::ForeignRuntimeKind.FOREIGN_RUNTIME_C_ABI,
+            lisp::ForeignHandleKind.FOREIGN_HANDLE_LIBRARY,
+            lisp::FOREIGN_CAP_LOAD | lisp::FOREIGN_CAP_RESOLVE | lisp::FOREIGN_CAP_REFLECT,
+            true);
         if (ffi_handle == null) {
             if (handle != null) dlclose(handle);
             return aot_make_error_best_effort(interp, "aot ffi lib: out of memory while creating handle");
         }
         if (!lisp::env_define_with_barrier_checked(interp.global_env, binding_sid, ffi_handle, interp)) {
             if (handle != null) dlclose(handle);
+            lisp::FfiHandle* box = ffi_handle.ffi_val;
+            ffi_handle.ffi_val = null;
+            lisp::ffi_handle_release(box);
             return aot_make_error_best_effort(interp, "aot ffi lib: out of memory while registering library binding");
         }
     } else if (handle != null) {

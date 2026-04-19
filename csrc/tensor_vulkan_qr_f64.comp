@@ -1,0 +1,72 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    double input_values[];
+};
+
+layout(std430, binding = 1) buffer QBuffer {
+    double q_values[];
+};
+
+layout(std430, binding = 2) buffer RBuffer {
+    double r_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint q_count;
+    uint r_count;
+} pc;
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    for (uint index = 0u; index < pc.q_count; index++) {
+        q_values[index] = input_values[index];
+    }
+    for (uint index = 0u; index <= pc.r_count; index++) {
+        r_values[index] = 0.0lf;
+    }
+
+    uint status_index = pc.r_count;
+    r_values[status_index] = 1.0lf;
+
+    for (uint col = 0u; col < pc.cols; col++) {
+        for (uint prev_col = 0u; prev_col < col; prev_col++) {
+            double dot = 0.0lf;
+            for (uint row = 0u; row < pc.rows; row++) {
+                dot += q_values[row * pc.cols + prev_col] * q_values[row * pc.cols + col];
+            }
+            r_values[prev_col * pc.cols + col] = dot;
+            for (uint row = 0u; row < pc.rows; row++) {
+                q_values[row * pc.cols + col] -= dot * q_values[row * pc.cols + prev_col];
+            }
+        }
+
+        double norm_squared = 0.0lf;
+        for (uint row = 0u; row < pc.rows; row++) {
+            double value = q_values[row * pc.cols + col];
+            norm_squared += value * value;
+        }
+        if (!(norm_squared > 0.0lf)) {
+            return;
+        }
+
+        double norm = sqrt(norm_squared);
+        if (!(norm > 0.000000000001lf)) {
+            return;
+        }
+        r_values[col * pc.cols + col] = norm;
+        for (uint row = 0u; row < pc.rows; row++) {
+            q_values[row * pc.cols + col] /= norm;
+        }
+    }
+
+    r_values[status_index] = 0.0lf;
+}

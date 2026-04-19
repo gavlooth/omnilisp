@@ -14,7 +14,7 @@ struct SchemaTagSet {
     SymbolId s_eq;
     SymbolId s_re;
     SymbolId s_map;
-    SymbolId s_vector_of;
+    SymbolId s_array_of;
     SymbolId s_tuple;
     SymbolId s_enum;
 }
@@ -32,7 +32,7 @@ fn SchemaTagSet schema_make_tag_set(Interp* interp) {
     tags.s_eq = interp.symbols.intern("=");
     tags.s_re = interp.symbols.intern("re");
     tags.s_map = interp.symbols.intern("map");
-    tags.s_vector_of = interp.symbols.intern("vector-of");
+    tags.s_array_of = interp.symbols.intern("array-of");
     tags.s_tuple = interp.symbols.intern("tuple");
     tags.s_enum = interp.symbols.intern("enum");
     return tags;
@@ -49,6 +49,7 @@ fn bool schema_string_equals(Value* a, Value* b) {
 
 fn bool schema_option_equals(Value* opt, Value* val) {
     if (opt == null || val == null) return opt == val;
+    if (is_numeric_value(opt) && is_numeric_value(val)) return values_equal(opt, val);
     if (opt.tag == INT && val.tag == INT) return opt.int_val == val.int_val;
     if (opt.tag == STRING && val.tag == STRING) return schema_string_equals(opt, val);
     if (opt.tag == SYMBOL && val.tag == SYMBOL) return opt.sym_val == val.sym_val;
@@ -62,17 +63,24 @@ fn bool schema_check_symbol_schema(Value* schema, Value* val, Interp* interp) {
     if (name.len == 3 && name[0] == 'i' && name[1] == 'n' && name[2] == 't') return val != null && val.tag == INT;
     if (name.len == 6 && name[0] == 's' && name[1] == 't' && name[2] == 'r') return val != null && val.tag == STRING;
     if (name.len == 6 && name[0] == 'd' && name[1] == 'o' && name[2] == 'u') return val != null && val.tag == DOUBLE;
+    if (name.len == 7 && name[0] == 'f' && name[1] == 'l' && name[2] == 'o' && name[3] == 'a' && name[4] == 't' && name[5] == '3' && name[6] == '2') return val != null && val.tag == FLOAT32;
     if (name.len == 4 && name[0] == 'b' && name[1] == 'o' && name[2] == 'o' && name[3] == 'l') return val != null && val.tag == SYMBOL;
 
     SymbolId s_string = interp.symbols.intern("string");
     SymbolId s_int = interp.symbols.intern("int");
     SymbolId s_double = interp.symbols.intern("double");
+    SymbolId s_float32 = interp.symbols.intern("float32");
+    SymbolId s_complex128 = interp.symbols.intern("complex128");
+    SymbolId s_complex64 = interp.symbols.intern("complex64");
     SymbolId s_bool = interp.symbols.intern("bool");
     SymbolId s_any = interp.symbols.intern("any");
     SymbolId s_nil = interp.symbols.intern("nil");
     if (schema.sym_val == s_string) return val != null && val.tag == STRING;
     if (schema.sym_val == s_int) return val != null && val.tag == INT;
     if (schema.sym_val == s_double) return val != null && val.tag == DOUBLE;
+    if (schema.sym_val == s_float32) return val != null && val.tag == FLOAT32;
+    if (schema.sym_val == s_complex128) return val != null && val.tag == COMPLEX128;
+    if (schema.sym_val == s_complex64) return val != null && val.tag == COMPLEX64;
     if (schema.sym_val == s_any) return true;
     if (schema.sym_val == s_nil) return val == null || val.tag == NIL;
     if (schema.sym_val == s_bool) return val != null && val.tag == SYMBOL;
@@ -98,11 +106,12 @@ fn bool schema_check_or_clause(Value* schema, Value* val, Interp* interp) {
 }
 
 fn bool schema_check_numeric_compare(SymbolId tag_sym, Value* schema, Value* val, SchemaTagSet* tags) {
-    if (val == null || (val.tag != INT && val.tag != DOUBLE)) return false;
+    if (val == null || is_fixed_complex(val) || val.tag == BIG_COMPLEX) return false;
     Value* bound = car(cdr(schema));
-    if (bound == null || (bound.tag != INT && bound.tag != DOUBLE)) return false;
-    double v = val.tag == INT ? (double)val.int_val : val.double_val;
-    double b = bound.tag == INT ? (double)bound.int_val : bound.double_val;
+    if (bound == null || is_fixed_complex(bound) || bound.tag == BIG_COMPLEX) return false;
+    double v = 0.0;
+    double b = 0.0;
+    if (!try_numeric_to_double(val, &v) || !try_numeric_to_double(bound, &b)) return false;
     if (tag_sym == tags.s_gt) return v > b;
     if (tag_sym == tags.s_lt) return v < b;
     if (tag_sym == tags.s_ge) return v >= b;
@@ -112,6 +121,7 @@ fn bool schema_check_numeric_compare(SymbolId tag_sym, Value* schema, Value* val
 fn bool schema_check_equal_clause(Value* schema, Value* val) {
     Value* expected = car(cdr(schema));
     if (expected == null || val == null) return expected == val;
+    if (is_numeric_value(expected) && is_numeric_value(val)) return values_equal(expected, val);
     if (expected.tag == INT && val.tag == INT) return expected.int_val == val.int_val;
     if (expected.tag == STRING && val.tag == STRING) return schema_string_equals(expected, val);
     return false;
@@ -145,7 +155,7 @@ fn bool schema_check_map_clause(Value* schema, Value* val, Interp* interp) {
     return true;
 }
 
-fn bool schema_check_vector_of_clause(Value* schema, Value* val, Interp* interp) {
+fn bool schema_check_array_of_clause(Value* schema, Value* val, Interp* interp) {
     if (val == null || val.tag != ARRAY) return false;
     Value* elem_schema = car(cdr(schema));
     for (usz i = 0; i < val.array_val.length; i++) {
@@ -204,7 +214,7 @@ fn bool schema_check(Value* schema, Value* val, Interp* interp) {
         if (tag_sym == tags.s_eq) return schema_check_equal_clause(schema, val);
         if (tag_sym == tags.s_re) return schema_check_regex_clause(schema, val, interp);
         if (tag_sym == tags.s_map) return schema_check_map_clause(schema, val, interp);
-        if (tag_sym == tags.s_vector_of) return schema_check_vector_of_clause(schema, val, interp);
+        if (tag_sym == tags.s_array_of) return schema_check_array_of_clause(schema, val, interp);
         if (tag_sym == tags.s_tuple) return schema_check_tuple_clause(schema, val, interp);
         if (tag_sym == tags.s_enum) return schema_check_enum_clause(schema, val);
     }

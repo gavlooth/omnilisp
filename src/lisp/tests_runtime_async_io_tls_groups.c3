@@ -107,20 +107,20 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(read-lines \"/tmp/omni-read-lines-nonfiber.txt\")",
         "read-lines: requires running fiber context", pass, fail);
     test_str_val(interp, "read-file invalid args payload code",
-        "(handle (read-file 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (read-file 42) (raise msg (String (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
     test_str_val(interp, "write-file invalid args payload code",
-        "(handle (write-file 42 \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (write-file 42 \"x\") (raise msg (String (ref msg 'code))))",
         "io/write-file-expected-path-content", pass, fail);
     test_str_val(interp, "file-exists? invalid args payload code",
-        "(handle (file-exists? 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (file-exists? 42) (raise msg (String (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
     test_str_val(interp, "read-lines invalid args payload code",
-        "(handle (read-lines 42) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (read-lines 42) (raise msg (String (ref msg 'code))))",
         "runtime/effect-arg-mismatch", pass, fail);
     test_tag(interp, "write-file returns Void on success",
         "(block "
-        "  (define p (string-append \"/tmp/omni-write-file-void-\" (number->string (time-ms)) \".txt\")) "
+        "  (define p (string-append \"/tmp/omni-write-file-void-\" (String (time-ms)) \".txt\")) "
         "  (define result (await (spawn (lambda () (write-file p \"ok\"))))) "
         "  (fs-unlink p) "
         "  result)",
@@ -128,7 +128,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
 
     test_truthy(interp, "async file ops in fiber via offload path",
         "(block "
-        "  (define p (string-append \"/tmp/omni-async-file-\" (number->string (time-ms)) \".txt\")) "
+        "  (define p (string-append \"/tmp/omni-async-file-\" (String (time-ms)) \".txt\")) "
         "  (define ok "
         "    (await "
         "      (spawn (lambda () "
@@ -146,7 +146,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
 
     test_truthy(interp, "async file ops large payload roundtrip",
         "(block "
-        "  (define p (string-append \"/tmp/omni-async-large-\" (number->string (time-ms)) \".txt\")) "
+        "  (define p (string-append \"/tmp/omni-async-large-\" (String (time-ms)) \".txt\")) "
         "  (define ok "
         "    (await "
         "      (spawn (lambda () "
@@ -163,34 +163,34 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
 
     test_str_val(interp, "async write-file missing-path payload code",
         "(block "
-        "  (define p (string-append \"/tmp/omni-missing-dir-wf-\" (number->string (time-ms)) \"/x.txt\")) "
+        "  (define p (string-append \"/tmp/omni-missing-dir-wf-\" (String (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
-        "    (try (lambda (ignored) (write-file p \"x\")) (lambda (e) (symbol->string (ref e 'code))))))))",
+        "    (try (lambda (ignored) (write-file p \"x\")) (lambda (e) (String (ref e 'code))))))))",
         "io/write-file-failed", pass, fail);
 
     test_str_val(interp, "async read-file missing-path payload code",
         "(block "
-        "  (define p (string-append \"/tmp/omni-missing-dir-rf-\" (number->string (time-ms)) \"/x.txt\")) "
+        "  (define p (string-append \"/tmp/omni-missing-dir-rf-\" (String (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
-        "    (try (lambda (ignored) (read-file p)) (lambda (e) (symbol->string (ref e 'code))))))))",
+        "    (try (lambda (ignored) (read-file p)) (lambda (e) (String (ref e 'code))))))))",
         "io/read-file-failed", pass, fail);
 
     test_str_val(interp, "async read-lines missing-path payload code",
         "(block "
-        "  (define p (string-append \"/tmp/omni-missing-dir-rl-\" (number->string (time-ms)) \"/x.txt\")) "
+        "  (define p (string-append \"/tmp/omni-missing-dir-rl-\" (String (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () "
-        "    (try (lambda (ignored) (read-lines p)) (lambda (e) (symbol->string (ref e 'code))))))))",
+        "    (try (lambda (ignored) (read-lines p)) (lambda (e) (String (ref e 'code))))))))",
         "io/read-lines-failed", pass, fail);
 
     test_nil(interp, "async file-exists? missing-path returns nil",
         "(block "
-        "  (define p (string-append \"/tmp/omni-missing-dir-fe-\" (number->string (time-ms)) \"/x.txt\")) "
+        "  (define p (string-append \"/tmp/omni-missing-dir-fe-\" (String (time-ms)) \"/x.txt\")) "
         "  (await (spawn (lambda () (file-exists? p)))))",
         pass, fail);
 
     test_truthy(interp, "async file read cancel stress",
         "(block "
-        "  (define p (string-append \"/tmp/omni-async-cancel-\" (number->string (time-ms)) \".txt\")) "
+        "  (define p (string-append \"/tmp/omni-async-cancel-\" (String (time-ms)) \".txt\")) "
         "  (await "
         "    (spawn (lambda () "
         "      (define (grow s n) "
@@ -219,13 +219,13 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(tls-read nil \"x\")",
         "max-bytes must be an integer", pass, fail);
     test_str_val(interp, "tls-read non-integer max-bytes payload code",
-        "(handle (tls-read nil \"x\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tls-read nil \"x\") (raise msg (String (ref msg 'code))))",
         "io/tls-read-max-bytes-not-integer", pass, fail);
     test_error_contains(interp, "tls-read rejects non-positive max-bytes",
         "(tls-read nil 0)",
         "max-bytes must be > 0", pass, fail);
     test_str_val(interp, "tls-read non-positive max-bytes payload code",
-        "(handle (tls-read nil 0) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tls-read nil 0) (raise msg (String (ref msg 'code))))",
         "io/tls-read-max-bytes-invalid", pass, fail);
     test_error_contains(interp, "tls-write requires fiber context",
         "(tls-write nil \"ping\")",
@@ -234,12 +234,26 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(tls-close nil)",
         "requires running fiber context", pass, fail);
 
+    test_error_contains(interp, "tcp-connect rejects out-of-range port",
+        "(tcp-connect \"127.0.0.1\" 65536)",
+        "port must be between 0 and 65535", pass, fail);
+    test_str_val(interp, "tcp-connect invalid port payload code",
+        "(handle (tcp-connect \"127.0.0.1\" 65536) (raise msg (String (ref msg 'code))))",
+        "io/tcp-connect-invalid-port", pass, fail);
+
+    test_error_contains(interp, "signal-handle rejects out-of-range sig",
+        "(signal-handle 0 (lambda (sig) sig))",
+        "sig must be > 0", pass, fail);
+    test_str_val(interp, "signal-handle invalid sig payload code",
+        "(handle (signal-handle 0 (lambda (sig) sig)) (raise msg (String (ref msg 'code))))",
+        "io/signal-handle-invalid-sig", pass, fail);
+
     // tls-connect optional CA path validation
     test_error_contains(interp, "tls-connect rejects non-string ca bundle path",
         "(tls-connect nil \"localhost\" 1)",
         "ca-bundle-path must be a string", pass, fail);
     test_str_val(interp, "tls-connect non-string ca bundle payload code",
-        "(handle (tls-connect nil \"localhost\" 1) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tls-connect nil \"localhost\" 1) (raise msg (String (ref msg 'code))))",
         "io/tls-connect-expected-ca-bundle-path-string", pass, fail);
     test_error_contains(interp, "tls-connect rejects non-string client cert path",
         "(tls-connect nil \"localhost\" \"ca.pem\" 1 \"client-key.pem\")",
@@ -254,7 +268,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(tls-connect nil \"localhost\" true)",
         "invalid TCP handle", pass, fail);
     test_str_val(interp, "tls-connect invalid tcp handle payload code",
-        "(handle (tls-connect nil \"localhost\" true) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tls-connect nil \"localhost\" true) (raise msg (String (ref msg 'code))))",
         "io/tls-connect-invalid-tcp-handle", pass, fail);
     test_error_contains(interp, "tls-connect accepts direct mTLS form without CA",
         "(tls-connect nil \"localhost\" \"client-cert.pem\" \"client-key.pem\")",
@@ -263,12 +277,12 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(tls-connect nil \"localhost\" \"ca.pem\" true)",
         "invalid TCP handle", pass, fail);
     test_str_val(interp, "tls-write expected data payload code",
-        "(handle (tls-write nil 1) (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (tls-write nil 1) (raise msg (String (ref msg 'code))))",
         "io/tls-write-expected-data-string", pass, fail);
 
     test_truthy(interp, "tls-connect missing CA bundle preserves path cause",
         "(block "
-        "  (define missing (string-append \"/tmp/omni-missing-ca-\" (number->string (time-ms)) \".pem\")) "
+        "  (define missing (string-append \"/tmp/omni-missing-ca-\" (String (time-ms)) \".pem\")) "
         "  (define msg (__raw-tls-trust-store-cause missing)) "
         "  (and (string? msg) "
         "       (string-contains? msg missing) "
@@ -286,7 +300,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
         "      [\"-c\" (string-append "
-        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (number->string p) "
+        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (String p) "
         "        \" LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\")] "
         "      nil)) "
         "  (async-sleep 200) "
@@ -320,7 +334,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
         "      [\"-c\" (string-append "
-        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (number->string p) "
+        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (String p) "
         "        \" OMNI_TLS_TEST_CERT=tests/lib/tls/bad-server.cert.pem OMNI_TLS_TEST_KEY=tests/lib/tls/bad-server.key.pem\" "
         "        \" LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\")] "
         "      nil)) "
@@ -359,7 +373,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
         "      [\"-c\" (string-append "
-        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (number->string p) "
+        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (String p) "
         "        \" LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\")] "
         "      nil)) "
         "  (async-sleep 200) "
@@ -397,7 +411,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
         "      [\"-c\" (string-append "
-        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (number->string p) "
+        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (String p) "
         "        \" LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\")] "
         "      nil)) "
         "  (async-sleep 200) "
@@ -431,7 +445,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "  (define proc "
         "    (process-spawn \"/bin/sh\" "
         "      [\"-c\" (string-append "
-        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (number->string p) "
+        "        \"ASAN_OPTIONS=detect_leaks=0 OMNI_TLS_TEST_PORT=\" (String p) "
         "        \" LD_LIBRARY_PATH=/usr/local/lib ./build/main tests/lib/tls/server_once.omni\")] "
         "      nil)) "
         "  (async-sleep 200) "
@@ -468,7 +482,7 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(__raw-tls-server-wrap nil 1 \"key.pem\")",
         "cert-pem-path must be a string", pass, fail);
     test_str_val(interp, "tls-server-wrap invalid stream payload code",
-        "(handle (__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\") (raise msg (symbol->string (ref msg 'code))))",
+        "(handle (__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\") (raise msg (String (ref msg 'code))))",
         "io/tls-server-wrap-invalid-tcp-stream-handle", pass, fail);
     test_error_contains(interp, "tls-server-wrap rejects non-stream handle",
         "(__raw-tls-server-wrap nil \"cert.pem\" \"key.pem\")",

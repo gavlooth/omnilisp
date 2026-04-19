@@ -90,6 +90,7 @@ fn Value* env_promote_for_target_result(Env* env, SymbolId _name, Value* value, 
 
 fn Value* env_define_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp) {
     if (env == null) return raise_error(interp, "out of memory while defining binding");
+    if (name == INVALID_SYMBOL_ID) return raise_error(interp, "invalid symbol while defining binding");
     Value* stored = env_promote_for_target_result(env, name, value, interp, "out of memory while defining binding");
     if (stored != null && stored.tag == ERROR && value != stored) {
         return stored;
@@ -115,6 +116,7 @@ fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* i
 // Walks parent chain and applies TEMP->ESCAPE promotion at the actual write site.
 fn Value* env_set_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp, bool* found_out) {
     if (found_out != null) *found_out = false;
+    if (name == INVALID_SYMBOL_ID) return raise_error(interp, "invalid symbol while mutating binding");
     Env* cur = env;
     while (cur != null) {
         if (cur.hash_table != null) {

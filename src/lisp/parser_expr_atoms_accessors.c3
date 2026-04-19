@@ -16,7 +16,11 @@ fn Expr* Parser.parse_path_expr(Parser* self) {
         if (i == text_len || self.lexer.current.text[i] == '.') {
             if (i > start) {
                 usz seg_len = i - start;
-                SymbolId seg_sym = self.interp.symbols.intern(self.lexer.current.text[start:seg_len]);
+                SymbolId seg_sym = self.intern_or_error(self.lexer.current.text[start:seg_len], "failed to intern path segment");
+                if (seg_sym == INVALID_SYMBOL_ID) {
+                    segments.free();
+                    return null;
+                }
                 segments.push(seg_sym);
             }
             start = i + 1;
@@ -28,7 +32,7 @@ fn Expr* Parser.parse_path_expr(Parser* self) {
         return null;
     }
     e.path.segment_count = segments.len();
-    e.path.segments = (SymbolId*)self.alloc_ast_bytes(SymbolId.sizeof * segments.len(), "out of memory while parsing path expression");
+    e.path.segments = (SymbolId*)self.alloc_ast_array_bytes(SymbolId.sizeof, segments.len(), "out of memory while parsing path expression");
     if (e.path.segments == null) {
         segments.free();
         return null;

@@ -21,8 +21,6 @@ fn EvalResult jit_qq_make_cons_result(Value* car, Value* cdr, Interp* interp, ch
 }
 
 fn Value* jit_eval_quasiquote(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     EvalResult r = jit_qq_impl(expr.quasiquote.body, env, interp, 0);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
@@ -107,6 +105,9 @@ fn EvalResult jit_qq_expand_elements(Expr*[] elements, Env* env, Interp* interp,
                 if (is_cons(tmp)) {
                     return eval_error("quasiquote splice: too many items (max 64)");
                 }
+                if (!is_nil(tmp)) {
+                    return eval_error(",@ value is not a proper list");
+                }
                 for (usz j = item_count; j > 0; j--) {
                     EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
                     if (next.error.has_error) return next;
@@ -154,6 +155,9 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
                 if (is_cons(tmp)) {
                     return eval_error("quasiquote splice: too many items (max 64)");
                 }
+                if (!is_nil(tmp)) {
+                    return eval_error(",@ value is not a proper list");
+                }
                 for (usz j = item_count; j > 0; j--) {
                     EvalResult next = jit_qq_make_cons_result(items[j - 1], result, interp, "quasiquote: failed to allocate pair");
                     if (next.error.has_error) return next;
@@ -176,8 +180,6 @@ fn EvalResult jit_qq_expand_call(Expr* tmpl, Env* env, Interp* interp, usz depth
 // define-macro helper — called from JIT-compiled code.
 // Delegates to the interpreter's eval_define_macro.
 fn Value* jit_eval_define_macro(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     EvalResult r = eval_define_macro(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
@@ -185,16 +187,12 @@ fn Value* jit_eval_define_macro(Interp* interp, Expr* expr, Env* env) {
 
 // JIT-native effects — no eval() dependency.
 fn Value* jit_exec_reset(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     EvalResult r = jit_reset_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     // Returns Value* directly (fits in RAX, no hidden pointer).
     // EvalResult is >16 bytes, so the System V ABI uses a hidden stack pointer.
     // After stack_ctx_clone that pointer is stale.
@@ -202,15 +200,11 @@ fn Value* jit_exec_shift(Interp* interp, Expr* expr, Env* env) {
 }
 
 fn Value* jit_exec_handle(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     EvalResult r = jit_handle_impl(expr, env, interp);
     if (r.error.has_error) return make_error(interp, r.error.message[:256]);
     return r.value;
 }
 
 fn Value* jit_exec_perform(Interp* interp, Expr* expr, Env* env) {
-    interp = jit_resolve_interp(interp);
-    if (interp == null) return null;
     return jit_signal_impl(expr, env, interp);
 }

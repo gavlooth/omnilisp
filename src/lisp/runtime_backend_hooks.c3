@@ -87,8 +87,9 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
     interp.tco_recycle_scope = fresh;
     boundary_assert_interp_scope_chain(interp);
 
+    main::StackCtx* defer_ctx = null;
     if (interp.tco_scope_defer_active) {
-        main::StackCtx* defer_ctx = main::g_current_stack_ctx;
+        defer_ctx = main::g_current_stack_ctx;
         if (defer_ctx == null) {
             interp.current_scope = cs;
             interp.tco_recycle_scope = cs;
@@ -112,7 +113,24 @@ fn Value* runtime_prepare_tco_recycle_env(Env** env_io, Env* saved_env, Interp* 
         }
     }
 
-    *env_io = jit_copy_tco_env_chain_for_recycle(*env_io, interp, cs);
+    Env* previous_env = *env_io;
+    Env* copied_env = jit_copy_tco_env_chain_for_recycle(previous_env, interp, cs);
+    if (previous_env != null && copied_env == null) {
+        if (interp.tco_scope_defer_active && defer_ctx != null) {
+            (void)main::stack_ctx_defer_update_arg(
+                defer_ctx,
+                interp.tco_scope_defer_slot,
+                (void*)cs
+            );
+        }
+        interp.current_scope = cs;
+        interp.tco_recycle_scope = cs;
+        main::scope_release(fresh);
+        interp.jit_env = saved_env;
+        boundary_assert_interp_scope_chain(interp);
+        return raise_error(interp, "jit: failed to copy TCO recycle env");
+    }
+    *env_io = copied_env;
     main::scope_release(cs);
     boundary_assert_interp_scope_chain(interp);
     return null;
@@ -158,6 +176,7 @@ fn Value* runtime_eval_expr(Expr* expr, Env* env, Interp* interp) {
 
             Value* recycle_err = runtime_prepare_tco_recycle_env(&env, saved_env, interp);
             if (recycle_err != null) {
+                interp.jit_env = saved_env;
                 return recycle_err;
             }
             continue;

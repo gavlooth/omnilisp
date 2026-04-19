@@ -1,0 +1,101 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const double OMNI_CHOLESKY_COMPLEX128_EPS = 0.0;
+const double OMNI_CHOLESKY_COMPLEX128_HERMITIAN_EPS = 0.000000000001;
+
+layout(push_constant) uniform Params {
+    uint n;
+    uint padding0;
+    uint padding1;
+    uint padding2;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    dvec2 input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    dvec2 output_data[];
+};
+
+double abs_f64(double value) {
+    return value < 0.0 ? -value : value;
+}
+
+double complex_abs2(dvec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+bool complex_close(dvec2 a, dvec2 b, double tolerance) {
+    return abs_f64(a.x - b.x) <= tolerance && abs_f64(a.y - b.y) <= tolerance;
+}
+
+dvec2 complex_conj(dvec2 value) {
+    return dvec2(value.x, -value.y);
+}
+
+dvec2 complex_mul(dvec2 a, dvec2 b) {
+    return dvec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    uint element_count = params.n * params.n;
+    uint status_offset = element_count;
+    output_data[status_offset] = dvec2(1.0, 0.0);
+
+    for (uint i = 0u; i < element_count; i++) {
+        output_data[i] = dvec2(0.0, 0.0);
+    }
+
+    if (params.n == 0u) {
+        output_data[status_offset] = dvec2(0.0, 0.0);
+        return;
+    }
+
+    for (uint row = 0u; row < params.n; row++) {
+        for (uint col = 0u; col <= row; col++) {
+            dvec2 lower_value = input_data[row * params.n + col];
+            dvec2 upper_conj = complex_conj(input_data[col * params.n + row]);
+            if (!complex_close(lower_value, upper_conj, OMNI_CHOLESKY_COMPLEX128_HERMITIAN_EPS)) {
+                return;
+            }
+
+            dvec2 sum = lower_value;
+            for (uint k = 0u; k < col; k++) {
+                sum -= complex_mul(
+                    output_data[row * params.n + k],
+                    complex_conj(output_data[col * params.n + k])
+                );
+            }
+
+            if (row == col) {
+                if (abs_f64(sum.y) > OMNI_CHOLESKY_COMPLEX128_HERMITIAN_EPS) {
+                    return;
+                }
+                if (!(sum.x > OMNI_CHOLESKY_COMPLEX128_EPS)) {
+                    return;
+                }
+                double diagonal = sqrt(sum.x);
+                if (!(diagonal > OMNI_CHOLESKY_COMPLEX128_EPS)) {
+                    return;
+                }
+                output_data[row * params.n + col] = dvec2(diagonal, 0.0);
+            } else {
+                double diagonal = output_data[col * params.n + col].x;
+                if (!(diagonal > OMNI_CHOLESKY_COMPLEX128_EPS)) {
+                    return;
+                }
+                output_data[row * params.n + col] = sum / diagonal;
+            }
+        }
+    }
+
+    output_data[status_offset] = dvec2(0.0, 0.0);
+}

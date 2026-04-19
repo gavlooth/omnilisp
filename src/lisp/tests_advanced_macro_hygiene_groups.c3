@@ -31,7 +31,7 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
     test_eq(interp, "stdlib branch default clause with _", "(branch (false 1) (false 2) (_ 3))", 3, pass, fail);
     test_nil(interp, "stdlib branch no match without default returns nil", "(branch (false 1) (false 2))", pass, fail);
     test_truthy(interp, "stdlib branch rejects non-final _ default marker",
-        "(= (symbol->string (handle (branch (_ 1) (true 2)) (raise msg (ref msg 'code)))) \"stdlib/assert-failed\")",
+        "(= (String (handle (branch (_ 1) (true 2)) (raise msg (ref msg 'code)))) \"stdlib/assert-failed\")",
         pass, fail);
     test_eq(interp, "stdlib match Void branch chain", "(match Void ((? false) 1) ((? true) 2) (_ 3))", 2, pass, fail);
     test_nil(interp, "stdlib match Void no matching guard", "(match Void ((? false) 1) ((? false) 2) (_ nil))", pass, fail);
@@ -42,22 +42,20 @@ fn void run_advanced_stdlib_macro_migration_regression_tests(Interp* interp, int
 
 fn void run_advanced_macro_hygiene_string_number_tests(Interp* interp, int* pass, int* fail) {
     // String<->number
-    test_eq(interp, "string->number 42", "(string->number \"42\")", 42, pass, fail);
-    test_eq(interp, "string->number -7", "(string->number \"-7\")", -7, pass, fail);
-    test_nil(interp, "string->number abc => nil", "(string->number \"abc\")", pass, fail);
-    test_nil(interp, "string->number empty => nil", "(string->number \"\")", pass, fail);
-    test_eq(interp, "number->string round-trip 42", "(string->number (number->string 42))", 42, pass, fail);
-    test_eq(interp, "number->string round-trip 0", "(string->number (number->string 0))", 0, pass, fail);
-    test_eq(interp, "number->string round-trip -99", "(string->number (number->string -99))", -99, pass, fail);
+    test_eq(interp, "parse-number 42", "(parse-number \"42\")", 42, pass, fail);
+    test_eq(interp, "parse-number -7", "(parse-number \"-7\")", -7, pass, fail);
+    test_nil(interp, "parse-number abc => nil", "(parse-number \"abc\")", pass, fail);
+    test_nil(interp, "parse-number empty => nil", "(parse-number \"\")", pass, fail);
+    test_eq(interp, "String round-trip 42", "(parse-number (String 42))", 42, pass, fail);
+    test_eq(interp, "String round-trip 0", "(parse-number (String 0))", 0, pass, fail);
+    test_eq(interp, "String round-trip -99", "(parse-number (String -99))", -99, pass, fail);
 
-    // Stack overflow / non-tail recursion headroom. Under ASAN the host-thread
-    // interpreter stack burns much more space per recursive frame, so keep a
-    // lower but still substantial probe there instead of routing this check
-    // through checkpoint semantics.
-    long deep_recursion_target = main::stack_runtime_asan_enabled() ? 896 : 1200;
-    char[] deep_recursion_expr = main::stack_runtime_asan_enabled()
-        ? "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 896))"
-        : "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 1200))";
+    // Stack overflow / non-tail recursion headroom. This is a portable
+    // non-tail recursion probe, not a maximum-depth assertion; ARM64 host and
+    // validation-container stack layouts diverge enough that deeper thresholds
+    // become environment-specific.
+    long deep_recursion_target = 512;
+    char[] deep_recursion_expr = "(let ^rec (f (lambda (n) (if (= n 0) 0 (+ 1 (f (- n 1)))))) (f 512))";
     test_eq(interp, "non-tail recursion headroom",
         deep_recursion_expr,
         deep_recursion_target, pass, fail);
@@ -79,6 +77,9 @@ fn void run_advanced_macro_hygiene_quasi_pattern_tests(Interp* interp, int* pass
     test_eq(interp, "quasiquote splice len", "(length `(a ,@qq-lst d))", 5, pass, fail);
     setup(interp, "(define qq-empty (list))");
     test_eq(interp, "quasiquote splice empty", "(length `(a ,@qq-empty b))", 2, pass, fail);
+    setup(interp, "(define qq-bad-tail (cons 1 2))");
+    test_error_contains(interp, "quasiquote splice rejects improper list",
+        "`(a ,@qq-bad-tail b)", ",@ value is not a proper list", pass, fail);
     test_eq(
         interp,
         "quasiquote wide list length",

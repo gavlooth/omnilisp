@@ -65,14 +65,14 @@
 ;; Usage: (if-let [x (may-fail)] success-expr failure-expr)
 (define [syntax if-let]
   [(if-let [name value] then-expr else-expr)
-   (let [name value]
+   (let (name value)
      (if name then-expr else-expr))])
 
 ;; when-let - Like if-let but with only a then-clause
 ;; Usage: (when-let [x (may-fail)] body ...)
 (define [syntax when-let]
   [(when-let [name value] body ...)
-   (let [name value]
+   (let (name value)
      (when name body ...))])
 
 ;; ============================================================
@@ -83,8 +83,8 @@
 ;; Usage: (dotimes [i 10] (print i))
 (define [syntax dotimes]
   [(dotimes [var count] body ...)
-   (let [__max count]
-     (let loop [var 0]
+   (let (__max count)
+     (let loop (var 0)
        (when (< var __max)
          body ...
          (loop (+ var 1)))))])
@@ -93,10 +93,10 @@
 ;; Usage: (for-each [x coll] (print x))
 (define [syntax for-each]
   [(for-each [var coll] body ...)
-   (let [__items coll]
-     (let loop [__rest __items]
+   (let (__items coll)
+     (let loop (__rest __items)
        (unless (null? __rest)
-         (let [var (first __rest)]
+         (let (var (first __rest))
            body ...
            (loop (rest __rest))))))])
 
@@ -120,9 +120,9 @@
 ;; Usage: (time-expr (slow-computation))
 (define [syntax time-expr]
   [(time-expr expr)
-   (let [__start (current-time-nanos)
+   (let (__start (current-time-nanos)
          __result expr
-         __end (current-time-nanos)]
+         __end (current-time-nanos))
      (print "Time:" (- __end __start) "ns")
      __result)])
 
@@ -143,7 +143,7 @@
   [(or) false]
   [(or x) x]
   [(or x y ...)
-   (let [__tmp x]
+   (let (__tmp x)
      (if __tmp __tmp (or y ...)))])
 
 ;; ============================================================
@@ -171,7 +171,7 @@
 ;; Usage: (with-open [f (open-file "foo.txt")] (read-all f))
 (define [syntax with-open]
   [(with-open [name resource] body ...)
-   (let [name resource
-         __result (do body ...)]
+   (let (name resource
+         __result (do body ...))
      (close name)
      __result)])

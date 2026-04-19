@@ -135,12 +135,12 @@ fn bool has_closure_set_on_local(Expr* body, SymbolId name, Interp* interp) {
 
 fn void jit_load_locals_env_or_runtime(void* s, Interp* interp, JitLocals* locals) @inline {
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 }
 
 fn void? jit_compile_destructuring_let(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
     jit_load_locals_env_or_runtime(s, interp, locals);
-    emit_call_3i(s, (void*)&jit_eval_let_destruct, JIT_V0, (long)expr, JIT_V2);
+    emit_call_3i(s, locals, (void*)&jit_eval_let_destruct, JIT_V0, (long)expr, JIT_V2);
 }
 
 fn void jit_store_mutable_let_local(void* s, Expr* expr, Interp* interp, JitLocals* locals, int offset) {
@@ -150,7 +150,7 @@ fn void jit_store_mutable_let_local(void* s, Expr* expr, Interp* interp, JitLoca
 
     // Call jit_env_extend_root(interp, parent_env, name, init_value) -> Env* (the box)
     // Uses root-scope lifetime so the box is persistent and shared with closures.
-    emit_call_4_rrir(s, (void*)&jit_env_extend_root, JIT_V0, JIT_V2, (long)(uint)expr.let_expr.name, JIT_V1);
+    emit_call_4_rrir(s, locals, (void*)&jit_env_extend_root, JIT_V0, JIT_V2, (long)(uint)expr.let_expr.name, JIT_V1);
 
     // Store Env* to stack slot
     _jit_new_node_www(s, CODE_STXI_L, (long)offset, (long)JIT_FP, (long)JIT_R0);
@@ -177,9 +177,9 @@ fn void? jit_compile_set_path_assign(void* s, Expr* expr, Interp* interp, JitLoc
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 
-    emit_call_4_rirr(s, (void*)&jit_eval_set_path, JIT_V0, (long)expr, JIT_V1, JIT_V2);
+    emit_call_4_rirr(s, locals, (void*)&jit_eval_set_path, JIT_V0, (long)expr, JIT_V1, JIT_V2);
 }
 
 fn isz jit_find_local_binding(JitLocals* locals, SymbolId name) {
@@ -196,14 +196,14 @@ fn void? jit_compile_set_mutable_local(void* s, Expr* expr, Interp* interp, JitL
     _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V2, (long)JIT_FP,
                      (long)locals.locals[local_idx].stack_offset);
 
-    emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
+    emit_call_4_rirr(s, locals, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
 }
 
 fn void? jit_compile_set_immutable_local(void* s, Expr* expr, Interp* interp, JitLocals* locals, usz local_idx) {
     jit_compile_expr(s, expr.set_expr.value, interp, locals)!;
     _jit_new_node_www(s, CODE_STXI_L, (long)locals.locals[local_idx].stack_offset,
                      (long)JIT_FP, (long)JIT_R0);
-    emit_call_1(s, (void*)&jit_make_void);
+    emit_call_1(s, locals, (void*)&jit_make_void);
 }
 
 fn void? jit_compile_set_env_assign(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
@@ -211,7 +211,7 @@ fn void? jit_compile_set_env_assign(void* s, Expr* expr, Interp* interp, JitLoca
     _jit_new_node_ww(s, CODE_MOVR, JIT_V1, JIT_R0);
 
     bool has_env = emit_build_locals_env(s, interp, locals);
-    if (!has_env) emit_load_env(s, JIT_V2);
+    if (!has_env) emit_load_env(s, locals, JIT_V2);
 
-    emit_call_4_rirr(s, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
+    emit_call_4_rirr(s, locals, (void*)&jit_eval_set, JIT_V0, (long)(uint)expr.set_expr.name, JIT_V1, JIT_V2);
 }

@@ -67,13 +67,8 @@ fn Value* prim_deduce_block(Value*[] args, Env* env, Interp* interp) {
     txn.mutation_entry_count = 0;
     txn.mutation_entry_capacity = 0;
 
-    bool ctor_took_ownership = false;
-    Value* txn_v = make_ffi_handle_ex(interp, (void*)txn, "deduce-txn", &deduce_txn_finalizer, true, false, &ctor_took_ownership);
+    Value* txn_v = make_ffi_handle_ex(interp, (void*)txn, "deduce-txn", &deduce_txn_finalizer, true, false);
     if (txn_v == null) {
-        if (!ctor_took_ownership) {
-            deduce_txn_finalize(txn);
-            mem::free(txn);
-        }
         return deduce_raise(interp, "deduce/block-out-of-memory", "deduce-block: out of memory");
     }
     return txn_v;

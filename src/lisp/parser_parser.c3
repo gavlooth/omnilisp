@@ -1,5 +1,4 @@
 module lisp;
-import std::core::mem;
 // =============================================================================
 // SECTION 2: PARSER
 // =============================================================================
@@ -9,7 +8,6 @@ const int PARSER_MAX_NESTING = 1024;
 bool g_parser_force_ast_expr_alloc_fail = false;
 bool g_parser_force_ast_pattern_alloc_fail = false;
 bool g_parser_force_ast_alloc_fail = false;
-bool g_parser_force_string_literal_alloc_fail = false;
 
 struct Parser {
     Lexer*    lexer;
@@ -51,6 +49,13 @@ fn void Parser.set_error(Parser* self, char[] msg) {
     self.error_msg_len = len;
 }
 
+fn SymbolId Parser.intern_or_error(Parser* self, char[] name, char[] err_msg) {
+    if (self.has_error) return INVALID_SYMBOL_ID;
+    SymbolId sym = self.interp.symbols.intern(name);
+    if (sym == INVALID_SYMBOL_ID) self.set_error(err_msg);
+    return sym;
+}
+
 /**
  * Expect a token type, or set a parse error.
  */
@@ -86,20 +91,13 @@ fn void* Parser.alloc_ast_bytes(Parser* self, usz size, char[] err_msg) {
     return ptr;
 }
 
-fn bool Parser.alloc_ast_bytes_for_count(
-    Parser* self,
-    usz elem_size,
-    usz count,
-    char[] err_msg,
-    usz* out_size
-) {
-    if (out_size == null) return false;
-    if (count > 0 && elem_size > 0 && count > usz.max / elem_size) {
+fn void* Parser.alloc_ast_array_bytes(Parser* self, usz elem_size, usz count, char[] err_msg) {
+    if (count == 0) return null;
+    if (count != 0 && elem_size > usz.max / count) {
         self.set_error(err_msg);
-        return false;
+        return null;
     }
-    *out_size = elem_size * count;
-    return true;
+    return self.alloc_ast_bytes(elem_size * count, err_msg);
 }
 
 fn Expr* Parser.alloc_expr(Parser* self) {
@@ -131,41 +129,13 @@ fn Expr* Parser.alloc_expr_here(Parser* self) {
     return e;
 }
 
-fn bool Parser.init_root_string_literal_value(
-    Parser* self,
-    Value* value,
-    char[] text,
-    char[] err_msg = "parser: out of memory while allocating string literal"
-) {
-    if (value == null) {
-        self.set_error(err_msg);
-        return false;
-    }
-
-    usz len = text.len;
-    usz cap = len + 1;
-    if (cap < 32) cap = 32;
-    char* chars = g_parser_force_string_literal_alloc_fail
-        ? null
-        : (char*)mem::malloc(cap);
-    if (chars == null) {
-        self.set_error(err_msg);
-        return false;
-    }
-
-    value.tag = STRING;
-    value.str_chars = chars;
-    for (usz i = 0; i < len; i++) {
-        value.str_chars[i] = text[i];
-    }
-    value.str_chars[len] = 0;
-    value.str_len = len;
-    return true;
-}
-
 /**
  * Get interned symbol from current token text.
  */
 fn SymbolId Parser.get_current_symbol(Parser* self) {
-    return self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+    SymbolId sym = self.interp.symbols.intern(self.lexer.current.text[:self.lexer.current.text_len]);
+    if (sym == INVALID_SYMBOL_ID) {
+        self.set_error("parser: failed to intern symbol");
+    }
+    return sym;
 }

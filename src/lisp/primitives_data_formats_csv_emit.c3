@@ -78,6 +78,12 @@ fn Value* csv_emit_cell(DString* out, Value* cell, CsvEmitOptions* opts, Interp*
         return null;
     }
 
+    if (is_float32(cell)) {
+        char[64] fbuf;
+        csv_emit_escaped_cell(out, double_to_string((double)cell.float32_val, &fbuf), opts.delimiter, opts.quote_char, opts.quote_style);
+        return null;
+    }
+
     if (is_symbol(cell)) {
         csv_emit_escaped_cell(out, interp.symbols.get_name(cell.sym_val), opts.delimiter, opts.quote_char, opts.quote_style);
         return null;

@@ -69,7 +69,7 @@ These support user extension via method tables.
 
 | Name | Arity | Category |
 |------|-------|----------|
-| `+` | 2 | Arithmetic |
+| `+` | 1-2 | Arithmetic |
 | `-` | 2 | Arithmetic |
 | `*` | 2 | Arithmetic |
 | `/` | 2 | Arithmetic |
@@ -79,8 +79,8 @@ These support user extension via method tables.
 | `>` | 2 | Comparison |
 | `<=` | 2 | Comparison |
 | `>=` | 2 | Comparison |
-| `length` | 1 | Collection |
-| `ref` | 2 | Collection |
+| `length` | 1 | Collection size; cons/list dotted terminal tails count as one element |
+| `ref` | 2 | Collection lookup; cons/list chains support positive and negative indexes |
 | `push!` | 2 | Collection |
 | `keys` | 1 | Collection |
 | `values` | 1 | Collection |
@@ -115,7 +115,7 @@ These support user extension via method tables.
 | `List` | variadic | Canonical list constructor / conversion surface |
 | `null?` | 1 | Is nil? |
 | `pair?` | 1 | Is cons? |
-| `list` | variadic | Public helper for list construction/conversion |
+| `list` | variadic | Approved public helper for list construction/conversion |
 
 **Boolean:**
 
@@ -150,9 +150,8 @@ These support user extension via method tables.
 | `fs-rename` | 2 | Rename/move file |
 | `fs-unlink` | 1 | Remove file path |
 
-Compatibility shorthands (same behavior/arity):
-`fs-open`, `fs-read`, `fs-write`, `fs-close`, `fs-stat`, `fs-readdir`,
-`fs-rename`, and `fs-unlink`.
+`fs-*` is the canonical filesystem family; long-form compatibility aliases are
+not exported.
 
 **String:**
 
@@ -161,10 +160,8 @@ Compatibility shorthands (same behavior/arity):
 | `string-join` | 2 | Join list with separator |
 | `substring` | 3 | Extract substring |
 | `string-split` | 2 | Split by delimiter |
-| `string-length` | 1 | Length |
+| `string-length` | 1 | Codepoint length |
 | `string-byte-length` | 1 | Byte length |
-| `string->list` | 1 | To list of chars |
-| `list->string` | 1 | List to string |
 | `string-trim` | 1 | Trim whitespace |
 | `string-index-of` | 2 | Find index |
 | `string-replace` | 3 | Replace occurrences |
@@ -183,6 +180,8 @@ Compatibility shorthands (same behavior/arity):
 | `bound?` | 1 | Is name defined? |
 | `type-args` | 1 | Parametric type args |
 | `iterator?` | 1 | Is iterator value? |
+| `foreign-describe` | 1 | Return `ForeignHandle` or FFI-bound callable metadata dictionary |
+| `foreign-release` | 1 | Explicitly release an owned/releasable `ForeignHandle` payload and return `Void` |
 
 `Nil` is the language-level empty/false value type. `Void` is now a real
 singleton value constructor with zero arguments, and FFI `^Void` returns map to
@@ -194,16 +193,22 @@ that same runtime value.
 
 | Name | Arity | Description |
 |------|-------|-------------|
-| `string->number` | 1 | Parse number |
-| `number->string` | 1 | Number to string |
-| `exact->inexact` | 1 | Integer to double |
-| `inexact->exact` | 1 | Double to int |
-| `string->symbol` | 1 | String to symbol |
-| `symbol->string` | 1 | Symbol to string |
+| `parse-number` | 1 | Parse number |
+| `String` | 1 | Canonical string constructor/coercion surface; dispatches string, number, symbol, and proper list-of-string-fragment conversion |
+| `Float` | 1-2 | Canonical floating constructor; `(Float x)` defaults to `Float64`, `(Float x 64)` and `(Float x "64")` produce `Float64`, while `(Float x 32)` and `(Float x "32")` produce scalar `Float32` |
+| `Float32` | 1 | Canonical binary32 constructor/coercion surface; accepts representable numeric and numeric-string inputs and fails closed on non-finite or out-of-range narrowing |
+| `Float64` | 1 | Canonical binary64 constructor/coercion surface |
+| `Integer` | 1 | Canonical integer constructor/coercion surface; truncates finite doubles toward zero |
+| `BigComplex` | 1-2 | High-precision complex constructor from a real part and optional imaginary part |
+| `Complex128` | 1-2 | Fixed-width complex constructor with two finite `Float64` components; optional imaginary part defaults to zero |
+| `Complex64` | 1-2 | Fixed-width complex constructor with two finite `Float32` components; optional imaginary part defaults to zero |
+| `Symbol` | 1 | Canonical symbol constructor/coercion surface |
 
 Callable core type symbols also provide constructor/coercion surface here:
-`Integer`, `Integer`, `Double`, `String`, `Symbol`, `Boolean`, `Boolean`, `Nil`,
-`Void`, and `Closure`.
+`Integer`, `BigInteger`, `BigFloat`, `BigComplex`, `Complex128`, `Complex64`,
+`Float`, `Float32`, `Float64`, `String`,
+`Symbol`, `Boolean`, `Nil`, `Void`, `Closure`, `List`, `Array`, `Dictionary`,
+`Dict`, `Set`, `Iterator`, `Coroutine`, `TimePoint`, and `Tensor`.
 
 **Math:**
 
@@ -212,6 +217,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `sin` | 1 | Sine |
 | `cos` | 1 | Cosine |
 | `tan` | 1 | Tangent |
+| `sinh` | 1 | Hyperbolic sine |
+| `cosh` | 1 | Hyperbolic cosine |
+| `tanh` | 1 | Hyperbolic tangent |
 | `asin` | 1 | Arc sine |
 | `acos` | 1 | Arc cosine |
 | `atan` | 1 | Arc tangent |
@@ -220,8 +228,47 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `log` | 1 | Natural log |
 | `log10` | 1 | Log base 10 |
 | `pow` | 2 | Power |
+| `real-part` | 1 | Real component of any number; returns `BigFloat` for BigComplex inputs |
+| `imag-part` | 1 | Imaginary component of any number; returns `0` for real scalar inputs |
+| `conjugate` | 1 | Complex conjugate; preserves real scalar inputs |
+| `floor` | 1 | Floor; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `ceiling` | 1 | Ceiling; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `round` | 1 | Round; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `truncate` | 1 | Truncate; `BigFloat` inputs return exact `Integer`/`BigInteger` results up to the supported allocation cap |
+| `math/lgamma` | 1 | Natural log of absolute gamma value |
+| `math/erf` | 1 | Error function; applies elementwise to supported Tensor inputs |
+| `math/erfc` | 1 | Complementary error function; applies elementwise to supported Tensor inputs |
+| `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
+| `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
+
+Core scalar math functions return `BigFloat` when a `BigFloat` operand
+participates for trigonometric, inverse trigonometric, hyperbolic, exponential,
+logarithmic, power/root, gamma/error-function, and standard-normal helpers.
+`floor`, `ceiling`, `round`, and `truncate` instead return exact integer
+values, narrowing to `Integer` when representable and promoting to `BigInteger`
+otherwise. Huge integer materializations fail closed.
+Non-`BigFloat` floating inputs continue to return `Float64`.
+`BigComplex`, `Complex128`, and `Complex64` participate in `+`, `-`, `*`, `/`,
+unary `-`, `=`, and `abs` within their compatible complex families. Fixed-width
+complex operations may mix with real numeric values and promote `Complex64` to
+`Complex128` when a `Complex128` operand participates; they do not implicitly
+coerce pointer-backed `BigComplex` to fixed-width storage. `abs` returns a
+`BigFloat` magnitude for `BigComplex`, a `Float64` magnitude for `Complex128`,
+and a `Float32` magnitude for `Complex64`. `real-part` and `imag-part` return
+`BigFloat` components for `BigComplex`, `Float64` components for `Complex128`,
+and `Float32` components for `Complex64`; real scalar inputs keep their value
+as the real part and use `0` as the imaginary part. `conjugate` preserves real
+scalar inputs and returns the matching complex family for complex inputs. For
+`BigComplex`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`,
+`tanh`, `exp`, `log`, `log10`, `sqrt`, and `pow` preserve complex results when
+a complex operand participates. Fixed-width complex scientific/transcendental
+operations beyond arithmetic, component helpers, `abs`, and `conjugate` remain
+fail-closed until a dedicated approximation/precision contract lands. `atan2`
+remains real-valued and rejects complex operands. Ordered comparisons and
+ordered helpers such as `min`, `max`, `positive?`, and `negative?` fail closed
+for complex operands.
 
 **Bitwise:**
 
@@ -245,8 +292,71 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `set-add` | 2 | Add to set |
 | `set-remove` | 2 | Remove from set |
 | `set-contains?` | 2 | Set membership |
-| `set-size` | 1 | Set cardinality |
-| `set->list` | 1 | Convert set to list |
+| `length` | 1 | Set cardinality |
+| `List` | 1 | Convert set to list |
+
+**Tensor:**
+
+| Name | Arity | Description |
+|------|-------|-------------|
+| `Tensor` | 1-3 | Construct native CPU `Float64`, `Float32`, `Complex128`, `Complex64`, `BigInteger`, `BigFloat`, or `BigComplex` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor iterator)`, `(Tensor iterator dtype)`, `(Tensor dtype shape data-or-scalar)`, or `(Tensor dtype shape iterator)` |
+| `tensor?` | 1 | Predicate for native tensor values |
+| `length` | 1 | Tensor element count |
+| `dtype` | 1 | Tensor dtype symbol |
+| `shape` | 1 | Tensor shape array |
+| `rank` | 1 | Tensor rank |
+| `tensor-layout` | 1 | Tensor metadata dictionary: dtype/device/payload/layout/shape/strides/rank/element-count/byte-length/storage offset and extent/view ownership/write policy |
+| `contract` | 3-4 | Summed-axis tensor contraction for native tensor dtypes |
+| `realize` | 1-2 | Low-level tensor storage primitive: return concrete tensor storage or write tensor/scalar source into a destination tensor |
+| `matrix/transpose-view` | 1 | Construct a read-only rank-2 transpose view over a Tensor source |
+
+Tensor indexing uses generic `ref`. Tensor length uses generic `length`.
+Tensor elementwise operations use generic `map` through `^Tensor` dispatch
+methods. Lazy tensor expression payloads are internal to `Tensor`; there is no
+public `TensorExpr` primitive or type. `tensor-layout` is query-style
+introspection only. It reports payload values `concrete`, `map`, `contract`,
+or `view`; layout values `dense-row-major` or `strided`; owner values `self`,
+`view-source`, or `expression`; and write-policy values `mutable`,
+`immutable`, `mutable-view`, or `read-only-view`. `matrix/transpose-view` is
+the first public view constructor. Its views are read-only, source-owned, and
+CPU-readable through `ref`, `Array`, `List`, and `realize`. The view contract
+does not make GPU kernels or raw copy helpers accept strided/view-backed
+inputs; unsupported device/copy paths fail closed.
+
+`Complex128` and `Complex64` Tensor support includes CPU execution and
+capability-gated CUDA/Vulkan storage round-trips. CPU construction, `ref`,
+flat collection conversion, destination `realize`, tensor `map`, `contract`,
+`real-part`, `imag-part`, and `conjugate` preserve the fixed-width complex
+contract. `real-part` and `imag-part` return `Float64` tensors for
+`Complex128` inputs and `Float32` tensors for `Complex64` inputs; `conjugate`
+returns the same complex dtype. CUDA and Vulkan may accept explicit
+`to-device` placement and explicit `to-device 'cpu` copyback for
+`Complex128` or `Complex64` concrete dense storage when `tensor-backends`
+reports the matching `complex128` or `complex64` capability. CUDA/Vulkan
+storage capability is not operation capability. Vulkan fixed-width complex
+`map` is available only when `tensor-backends` reports
+`elementwise-map-complex128` or `elementwise-map-complex64`; it supports dense
+row-major `+`, `-`, `*`, `/`, unary `+`, `abs`, unary `-`, `real-part`,
+`imag-part`, and `conjugate` without hidden CPU fallback. CUDA fixed-width
+complex `map` uses the same operation capability bits when its generated PTX
+helper is available and supports binary `+`, `-`, `*`, `/`; unary `abs`,
+unary `-`, identity/`+`, `real-part`, `imag-part`, and `conjugate`. Generic
+CUDA complex map preserves complex dtype, including zero-imaginary results for
+map `real-part`, `imag-part`, and `abs`; direct CUDA `real-part`, `imag-part`,
+and `abs` return component-width real CUDA tensors. CUDA/Vulkan complex
+`contract` is available only when `tensor-backends` reports
+`contract-complex128` or `contract-complex64`; supported contractions compute
+on the selected device, preserve fixed-width complex dtype and placement, and
+require explicit `to-device 'cpu` for CPU inspection. CUDA/Vulkan complex
+structural matrix support is available on Vulkan when `tensor-backends` reports
+`matrix-structural-complex128` or `matrix-structural-complex64`; supported
+`matrix/transpose`, `matrix/diagonal`, `matrix/diagonal-matrix`, and
+`matrix/trace` operations compute on Vulkan and preserve fixed-width complex
+dtype/placement except for `matrix/trace`, which reads back the public scalar
+result. CUDA structural complex matrix kernels and CUDA/Vulkan complex
+numerical matrix kernels still fail closed unless a matrix operation has its
+own explicit backend contract and capability reporting. Matrix support is not
+implied by complex storage, complex elementwise `map`, or complex `contract`.
 
 **Coroutines:**
 
@@ -270,7 +380,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 |------|-------|-------------|
 | `next` | 1 | Get next (value . rest) pair |
 
-Preferred forcing style uses collection constructors:
+Preferred iterator consumption uses collection constructors:
 `(List it)` and `(Array it)`.
 
 **Misc:**

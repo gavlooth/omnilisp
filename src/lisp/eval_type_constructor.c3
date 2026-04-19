@@ -50,20 +50,11 @@ fn Value* validate_constructor_fields(Value*[] args, TypeInfo* ti, Interp* inter
     return null;
 }
 
-fn bool infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, Interp* interp) {
+fn void infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, Interp* interp) {
     inst.type_arg_count = ti.type_param_count;
-
-    if (ti.type_param_count > 0 && ti.type_param_count > usz.max / TypeId.sizeof) {
-        return false;
-    }
-
     inst.type_args = ti.type_param_count > 0
         ? (TypeId*)inst.owner_scope.alloc(TypeId.sizeof * ti.type_param_count)
         : null;
-    if (inst.type_args == null && ti.type_param_count > 0) {
-        return false;
-    }
-
     for (usz p = 0; p < ti.type_param_count; p++) {
         SymbolId param_sym = ti.type_params[p];
         inst.type_args[p] = INVALID_TYPE_ID;
@@ -74,8 +65,6 @@ fn bool infer_instance_type_args(Instance* inst, TypeInfo* ti, Value*[] args, In
             }
         }
     }
-
-    return true;
 }
 
 fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* interp) {
@@ -90,8 +79,10 @@ fn Value* validate_instance_constraints(Instance* inst, TypeInfo* ti, Interp* in
                     if (inferred != bound && !interp.types.is_subtype(inferred, bound)) {
                         char[128] ebuf;
                         char[] param_name = interp.symbols.get_name(param);
-                        char[] bound_name = interp.symbols.get_name(interp.types.types[(usz)bound].name);
-                        char[] actual_name = interp.symbols.get_name(interp.types.types[(usz)inferred].name);
+                        TypeInfo* bound_info = interp.types.get(bound);
+                        TypeInfo* inferred_info = interp.types.get(inferred);
+                        char[] bound_name = bound_info != null ? interp.symbols.get_name(bound_info.name) : "<invalid-type-id>";
+                        char[] actual_name = inferred_info != null ? interp.symbols.get_name(inferred_info.name) : "<invalid-type-id>";
                         char[] emsg;
                         if (try formatted = io::bprintf(&ebuf, "type constraint violated: %s must be subtype of %s, got %s",
                             (ZString)param_name, (ZString)bound_name, (ZString)actual_name)) {
@@ -136,9 +127,7 @@ fn Value* prim_type_constructor(Value*[] args, Env* env, Interp* interp) {
 
     if (ti.type_param_count > 0 && result.instance_val != null) {
         Instance* inst = result.instance_val;
-        if (!infer_instance_type_args(inst, ti, args, interp)) {
-            return make_error(interp, "type constructor: failed to infer constructor type args");
-        }
+        infer_instance_type_args(inst, ti, args, interp);
         Value* constraint_error = validate_instance_constraints(inst, ti, interp);
         if (constraint_error != null) return constraint_error;
     }
