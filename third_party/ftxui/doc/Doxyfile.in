@@ -2,7 +2,7 @@
 
 # Split into ordered fragments to keep the config manageable.
 # The fragments are included in source order.
-@INCLUDE = @CMAKE_CURRENT_SOURCE_DIR@/Doxyfile.in.parts/part-01.txt
-@INCLUDE = @CMAKE_CURRENT_SOURCE_DIR@/Doxyfile.in.parts/part-02.txt
-@INCLUDE = @CMAKE_CURRENT_SOURCE_DIR@/Doxyfile.in.parts/part-03.txt
-@INCLUDE = @CMAKE_CURRENT_SOURCE_DIR@/Doxyfile.in.parts/part-04.txt
+@INCLUDE = @CMAKE_CURRENT_BINARY_DIR@/Doxyfile.parts/part-01.txt
+@INCLUDE = @CMAKE_CURRENT_BINARY_DIR@/Doxyfile.parts/part-02.txt
+@INCLUDE = @CMAKE_CURRENT_BINARY_DIR@/Doxyfile.parts/part-03.txt
+@INCLUDE = @CMAKE_CURRENT_BINARY_DIR@/Doxyfile.parts/part-04.txt

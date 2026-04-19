@@ -137,6 +137,43 @@ The historical content was split mechanically to keep individual files below the
   - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run.
 - Signature: Codex GPT-5.4
 
+## 2026-04-19 23:00 CEST - Missing Dependency Install and Docs Verification
+
+- Objective attempted:
+  - Install dependencies that blocked the prior split verification and prove
+    the previously blocked checks can now run.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - Host Ubuntu/aarch64 package environment and FTXUI docs/test verification.
+- Code or configuration changes made:
+  - Installed `doxygen`, `graphviz`, `libgtest-dev`, and `googletest` via apt.
+  - Fixed FTXUI's split Doxyfile flow so CMake configures the included
+    Doxyfile fragments into the build directory before Doxygen reads them.
+- Commands run:
+  - `sudo apt-get update`
+  - `sudo apt-get install -y doxygen graphviz libgtest-dev googletest`
+  - `doxygen --version`, `dot -V`, and `/usr/include/gtest/gtest.h` checks.
+  - `c++ -std=c++17 -Ithird_party/ftxui/include -Ithird_party/ftxui/src -fsyntax-only third_party/ftxui/src/ftxui/component/input_test.cpp`
+  - `c++ -std=c++17 -Ithird_party/ftxui/include -Ithird_party/ftxui/src -fsyntax-only third_party/ftxui/src/ftxui/dom/table_test.cpp`
+  - `cmake -S third_party/ftxui -B /tmp/omni-ftxui-docs-verify -DFTXUI_BUILD_DOCS=ON -DFTXUI_BUILD_EXAMPLES=OFF -DFTXUI_BUILD_TESTS=OFF -DFTXUI_ENABLE_INSTALL=OFF`
+  - `cmake --build /tmp/omni-ftxui-docs-verify --target doc`
+- Key results:
+  - Doxygen 1.9.8, Graphviz `dot`, and GoogleTest headers are installed.
+  - The previously blocked FTXUI syntax checks now pass.
+  - The FTXUI Doxygen target now builds successfully from `/tmp`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Installing Doxygen was not sufficient by itself; split Doxyfile fragments
+    must be configured before inclusion or raw CMake placeholders reach
+    Doxygen.
+- Current best recommendation/checkpoint:
+  - Treat the prior missing-dependency validation blockers as resolved.
+  - Remaining Doxygen output is warning-only upstream documentation noise, not
+    a missing dependency or split wrapper failure.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not rerun in this
+    dependency-install pass.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-19 22:34 CEST - Generated SPIR-V Split Follow-Up
 
 - Objective attempted:

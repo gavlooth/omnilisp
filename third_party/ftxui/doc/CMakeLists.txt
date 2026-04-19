@@ -16,6 +16,16 @@ foreach(EXAMPLE IN LISTS EXAMPLES)
   file(APPEND ${EXAMPLE_LIST} "\n@example examples/${EXAMPLE}.cpp")
 endforeach(EXAMPLE IN LISTS EXAMPLES)
 
+set(DOXYFILE_PART_DIR "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.parts")
+file(MAKE_DIRECTORY ${DOXYFILE_PART_DIR})
+foreach(DOXYFILE_PART IN ITEMS part-01.txt part-02.txt part-03.txt part-04.txt)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in.parts/${DOXYFILE_PART}"
+    "${DOXYFILE_PART_DIR}/${DOXYFILE_PART}"
+    @ONLY
+  )
+endforeach()
+
 configure_file(Doxyfile.in Doxyfile @ONLY)
 
 # note the option ALL which allows to build the docs together with the application
