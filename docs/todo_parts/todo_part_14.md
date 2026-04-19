@@ -272,9 +272,12 @@ Source: `TODO.md`
     - [x] `AUDIT-ML-VK-001-CAPABILITY-KEYS` add explicit backend-neutral ML
       capability keys to `tensor-backends` for all backend entries, with
       regression coverage proving unimplemented ML families report `false`.
-    - [ ] `AUDIT-ML-VK-001-FAIL-CLOSED` add fail-closed regression tests for
-      the first public unsupported Vulkan ML operation once the operation names
-      are frozen.
+    - [x] `AUDIT-ML-VK-001-NAMING` freeze `ml/linear` as the first
+      backend-neutral public ML operation name.
+    - [x] `AUDIT-ML-VK-001-FAIL-CLOSED` add Vulkan regression tests for the
+      first frozen unsupported public ML operation name, asserting the call
+      fails closed with no CPU fallback and that the capability key remains
+      `false`.
     - [x] `AUDIT-VK-SCIENTIFIC-F64-CAPABILITY` split or document partial
       Vulkan Float64 scientific coverage so `stats/normal-*` support is not
       hidden behind the coarse `scientific-map-float64` key.

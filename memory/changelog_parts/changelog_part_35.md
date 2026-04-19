@@ -181,3 +181,17 @@ Source: `memory/CHANGELOG.md`
     `advanced-collections-module` (`1416 passed, 0 failed`); CUDA PTX
     generation and `ptxas` for `csrc/tensor_cuda_complex_map.cu`; C helper
     syntax check; docs parity; Stage 3 source parity; targeted diff-check.
+
+- 2026-04-19 23:52 CEST: Vulkan ML contract first-operation checkpoint:
+  - Froze `ml/linear` as the first backend-neutral public ML operation name.
+    The CPU implementation computes `input[..., in_features]` by
+    `weights[out_features, in_features]` plus optional `bias[out_features]`,
+    returning `input[..., out_features]`.
+  - `ml/linear` currently supports dense row-major CPU `Float64` and
+    `Float32` tensors. Non-CPU Tensor expressions fail closed before
+    realization, preserving the no-hidden-CPU-fallback Vulkan contract.
+  - `tensor-backends` now reports `ml-linear` true for CPU and false for
+    Vulkan, CUDA, and cuBLAS until backend kernels land.
+  - AOT primitive lookup now includes `ml/linear`.
+  - Preserved boundary: this is not a Vulkan ML kernel. Vulkan `ml-linear`
+    remains unsupported and capability-gated false.

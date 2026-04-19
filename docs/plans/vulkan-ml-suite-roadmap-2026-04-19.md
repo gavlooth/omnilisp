@@ -59,14 +59,21 @@ Required decisions:
 - capability keys for operation families such as `ml-linear`, `ml-convolution`,
   `ml-autograd`, and `ml-optimizer`.
 
-Initial capability inventory:
+Initial public operation names and capability inventory:
 
+- `ml/linear` is the first frozen public ML operation name. It is
+  backend-neutral and computes an affine dense projection:
+  `input[..., in_features]` by `weights[out_features, in_features]`, with an
+  optional `bias[out_features]`, producing `input[..., out_features]`.
 - `tensor-backends` exposes `ml-linear`, `ml-convolution`, `ml-neural-map`,
   `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
   `ml-graph-execution` for every backend entry.
-- All ML capability keys are explicit `false` until the named operation family
-  has real backend kernels and fail-closed tests. This prevents a hidden CPU
-  fallback from masquerading as Vulkan ML support.
+- `ml-linear` is true for CPU dense `Float64` and `Float32` Tensor execution.
+  It remains false for Vulkan, CUDA, and cuBLAS until backend kernels land.
+  Other ML capability keys are explicit `false` until the named operation
+  family has real backend kernels and fail-closed tests.
+- Non-CPU `ml/linear` operands fail closed with Tensor backend diagnostics
+  before any implicit CPU materialization.
 
 ### `ML-VK-010` Batched Linear Algebra Foundation
 

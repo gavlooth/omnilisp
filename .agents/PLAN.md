@@ -141,3 +141,27 @@ Date: 2026-04-19
   - continue `ML-VK-001` by freezing the first public ML operation names and
     adding fail-closed tests for unsupported Vulkan ML operations before
     implementing kernels.
+
+## Active Vulkan ML First Operation Checkpoint
+
+Date: 2026-04-19
+
+- Audit finding:
+  - `ML-VK-001` could not honestly claim fail-closed coverage while no public
+    ML operation name was frozen.
+- Implemented checkpoint:
+  - froze `ml/linear` as the first backend-neutral public ML operation;
+  - implemented CPU dense `Float64`/`Float32` affine projection with optional
+    bias;
+  - registered runtime and AOT primitive lookup for `ml/linear`;
+  - kept GPU `ml-linear` capability false and added Vulkan fail-closed tests
+    that reject concrete and lazy Vulkan operands before CPU realization.
+- Validation:
+  - `c3c build`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - focused advanced collections suite: `pass=1606 fail=0`
+- Next checkpoint:
+  - start `ML-VK-010` by deciding whether Vulkan `ml/linear` should lower
+    through existing `contract` kernels or get a dedicated batched GEMM path.

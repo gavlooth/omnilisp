@@ -250,6 +250,53 @@ The historical content was split mechanically to keep individual files below the
     ML operation names still need to be frozen.
 - Signature: Codex GPT-5.4
 
+## 2026-04-19 23:59 CEST - Vulkan ML First Operation Slice
+
+- Objective attempted:
+  - Continue the strict ML-VK-001 audit by freezing the first public ML
+    operation name and implementing the first TODO item with subagent review.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ml/linear`, `tensor-backends`, AOT primitive lookup, advanced collections
+    tests, and ML roadmap/TODO state.
+- Code or configuration changes made:
+  - Added `src/lisp/prim_ml_linear.c3`.
+  - Registered `ml/linear` in runtime primitive tables and AOT primitive lookup.
+  - Implemented CPU dense row-major `Float64`/`Float32` affine projection:
+    `input[..., in_features]` by `weights[out_features, in_features]`, plus
+    optional `bias[out_features]`, producing `input[..., out_features]`.
+  - Used `tensor_expr_resolve_concrete_cpu` so any non-CPU Tensor expression
+    fails before realization. This preserves the no-hidden-CPU-fallback Vulkan
+    contract.
+  - Updated `tensor-backends` so `ml-linear` is true for CPU and false for
+    Vulkan/CUDA/cuBLAS.
+  - Marked the ML-VK-001 naming and fail-closed audit checkboxes complete.
+- Commands run:
+  - Subagent audit of primitive registration and Tensor fail-closed surfaces.
+  - Subagent TODO wording audit for ML-VK-001 naming/fail-closed gaps.
+  - `c3c build`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1606 fail=0`.
+  - File-size gate passed with no tracked text files above 700 LOC.
+  - `c3c build` linked `build/main`.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not use `tensor_expr_resolve_concrete_any_device` for CPU-only ML
+    primitives; it can realize device expressions before the primitive has
+    made the explicit backend decision.
+- Current best recommendation/checkpoint:
+  - Start `ML-VK-010` by deciding whether Vulkan `ml/linear` should lower
+    through the existing `contract` kernels first or receive a dedicated
+    batched GEMM helper.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `ml-linear` remains intentionally unsupported and capability-gated
+    false.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-19 22:34 CEST - Generated SPIR-V Split Follow-Up
 
 - Objective attempted:

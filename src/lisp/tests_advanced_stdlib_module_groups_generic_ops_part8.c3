@@ -5,8 +5,23 @@ import std::io;
 import main;
 
 fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
-    test_truthy(interp, "tensor-backends reports ML capability contract as explicit false",
-        "(let (ml-off (lambda (b) (and (= (ref b 'ml-linear) false) (= (ref b 'ml-convolution) false) (= (ref b 'ml-neural-map) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) backends (tensor-backends)) (and (ml-off (ref backends 0)) (ml-off (ref backends 1)) (ml-off (ref backends 2)) (ml-off (ref backends 3))))", pass, fail);
+    test_truthy(interp, "tensor-backends reports ML capability contract",
+        "(let (rest-off (lambda (b) (and (= (ref b 'ml-convolution) false) (= (ref b 'ml-neural-map) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cuda 'ml-linear) false) (= (ref cublas 'ml-linear) false) (= (ref vulkan 'ml-linear) false) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
+    test_eq_double(interp, "ml/linear Float64 vector projection",
+        "(ref (ml/linear (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1])",
+        32.0, pass, fail);
+    test_eq_double(interp, "ml/linear Float64 batched bias projection",
+        "(ref (ml/linear (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2 3] [1 2 3 4 5 6]) (Tensor Float64 [2] [10 100])) [1 1])",
+        177.0, pass, fail);
+    test_truthy(interp, "ml/linear Float32 preserves dtype and values",
+        "(let (out (ml/linear (Tensor Float32 [2] [1.5 2.0]) (Tensor Float32 [1 2] [2.0 3.0]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 9.0))))", pass, fail);
+    test_error_contains(interp, "ml/linear rejects incompatible shapes",
+        "(ml/linear (Tensor Float64 [2] [1 2]) (Tensor Float64 [3 3] [1 2 3 4 5 6 7 8 9]))",
+        "ml/linear: input, weights, and bias shapes are incompatible", pass, fail);
+    test_truthy(interp, "ml/linear rejects Vulkan input without CPU fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan) (Tensor Float64 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/linear rejects lazy Vulkan source before CPU realization",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (= (handle (ml/linear (map + (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan) 0.0) (Tensor Float64 [2 3] [1 2 3 4 5 6])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_truthy(interp, "tensor-backends reports stats normal capability separately",
         "(let (backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'stats-normal-float64) true) (= (ref cpu 'stats-normal-float32) true) (or (= (ref cuda 'stats-normal-float64) true) (= (ref cuda 'stats-normal-float64) false)) (or (= (ref cuda 'stats-normal-float32) true) (= (ref cuda 'stats-normal-float32) false)) (= (ref cublas 'stats-normal-float64) false) (= (ref cublas 'stats-normal-float32) false) (= (ref vulkan 'stats-normal-float64) (ref vulkan 'float64)) (= (ref vulkan 'stats-normal-float32) (ref vulkan 'float32))))", pass, fail);
     test_truthy(interp, "matrix eigenvalues vulkan n>64 result stays on device",
