@@ -243,6 +243,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/mean` | 2 | Axis mean reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/variance` | 2 | Axis population-variance reduction for supported Tensor inputs; drops reduced axes from the result shape |
+| `ml/max` | 2 | Axis maximum reduction for supported Tensor inputs; drops reduced axes from the result shape |
+| `ml/logsumexp` | 2 | Stable max-shifted log-sum-exp reduction for supported Tensor inputs; drops reduced axes from the result shape |
+| `ml/softmax` | 2 | Stable single-axis softmax for supported Tensor inputs; preserves input shape |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

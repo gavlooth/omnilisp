@@ -440,8 +440,20 @@ Date: 2026-04-20
   - The current Vulkan helper layer lacks a one-input axis reducer that
     preserves free axes; pretending `contract` is that substrate would repeat
     the known-bad design.
+  - The just-landed Float32 reduction overflow path incorrectly reported
+    `tensor/backend-unsupported`; overflow is a numeric/representation failure,
+    not a backend capability failure.
+  - Stable `logsumexp`/`softmax` needs an axis max path. A sum/mean/variance
+    layer alone is not enough to implement the next loss/normalization slice
+    without numerically sloppy shortcuts.
 - Current approach:
   - ship CPU `Float64`/`Float32` axis reductions with truthful capability bits;
+  - add CPU `ml/max` as the canonical axis maximum reducer before exposing
+    stable `ml/logsumexp` or `ml/softmax`;
+  - ship CPU `ml/logsumexp(input axes)` and `ml/softmax(input axis)` with
+    max-shifted numerics, while leaving loss primitives split into separate
+    TODO items;
+  - keep Float32 reduction overflow under `tensor/numeric-overflow`;
   - fail closed for CUDA/Vulkan until backend-specific axis kernels exist;
   - keep `ML-VK-020-006-VK` open for the real Vulkan reduction substrate.
 - Validation path:
@@ -449,6 +461,6 @@ Date: 2026-04-20
   - focused advanced collections suite
   - docs parity, whitespace, and file-size gates before commit/push.
 - Next checkpoint:
-  - use the landed CPU reducer for `ML-VK-020-007` softmax/loss CPU semantics,
-    or implement `ML-VK-020-006-VK` first if claiming Vulkan reduction
-    capability.
+  - decide and implement `ML-VK-020-007-B` cross-entropy target semantics, or
+    implement `ML-VK-020-007-C` MSE; implement `ML-VK-020-006-VK` first if
+    claiming Vulkan reduction capability.

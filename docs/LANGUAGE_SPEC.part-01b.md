@@ -359,12 +359,14 @@ validated ML activation route supports `Float32` Tensor inputs and preserves
 Tensor placement through composed `Tensor` map kernels. `ml/gelu` uses the
 standard tanh approximation; the `Float64` transcendental ML activation bits
 remain false and `Float64` inputs fail closed until their numerical policy is
-validated. `ml/sum`, `ml/mean`, and population `ml/variance` are canonical
-`ml/*` axis reductions for CPU `Float64` and `Float32` tensors. They accept a
-single integer axis or an array/proper list of axes, remove reduced axes from
-the result shape, preserve dtype, reject duplicate/out-of-range axes with
-Tensor diagnostics, and fail closed for CUDA/Vulkan until backend reduction
-kernels land.
+validated. `ml/sum`, `ml/mean`, population `ml/variance`, `ml/max`, and
+`ml/logsumexp` are canonical `ml/*` axis reductions for CPU `Float64` and
+`Float32` tensors. They accept a single integer axis or an array/proper list of
+axes, remove reduced axes from the result shape, preserve dtype, reject
+duplicate/out-of-range axes with Tensor diagnostics, and fail closed for
+CUDA/Vulkan until backend reduction kernels land. `ml/softmax` accepts a single
+integer axis, uses max-shifted normalization, preserves input shape and dtype,
+and rejects axis lists.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

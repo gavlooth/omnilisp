@@ -353,3 +353,21 @@ Source: `memory/CHANGELOG.md`
     kernel path that preserves free axes.
   - Validation passed: `c3c build` and focused advanced collections suite
     `pass=1672 fail=0`.
+
+- 2026-04-20 02:45 CEST: ML stable reduction and softmax checkpoint:
+  - Added canonical CPU `ml/max` axis reduction for Float64 and Float32 tensors
+    as the max path required by stable softmax/logsumexp numerics.
+  - Changed Float32 reduction output narrowing failures from
+    `tensor/backend-unsupported` to `tensor/numeric-overflow`.
+  - Added CPU `ml/logsumexp(input axes)` with max-shifted multi-axis reduction
+    semantics and CPU `ml/softmax(input axis)` with max-shifted single-axis
+    normalization.
+  - Split stable reduction code into `src/lisp/prim_ml_stable_reduction.c3` so
+    `src/lisp/prim_ml_reduction.c3` stays under the repository 700-line file
+    cap.
+  - Updated TODO and roadmap state: cross-entropy and mean-squared-error remain
+    explicit open items, and cross-entropy must choose a target contract before
+    exposing a public primitive.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1681 fail=0`, `git diff --check`, primitive docs parity, and the
+    file-size gate.

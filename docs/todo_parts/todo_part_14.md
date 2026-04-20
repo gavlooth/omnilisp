@@ -412,6 +412,13 @@ Source: `TODO.md`
         unsupported-dtype checks, and Vulkan fail-closed regression coverage.
       - [x] Add truthful `ml-reduction-float64` and `ml-reduction-float32`
         capability bits: CPU true, CUDA/cuBLAS/Vulkan false.
+      - [x] `AUDIT-ML-REDUCTION-DIAGNOSTIC` split Float32 reduction
+        overflow/representation failures into `tensor/numeric-overflow`
+        instead of reusing `tensor/backend-unsupported`.
+      - [x] `AUDIT-ML-REDUCTION-COVERAGE` add CPU regressions for proper-list
+        axes and view-input materialization on the reduction path.
+    - [x] `ML-VK-020-006-MAX` add canonical CPU `ml/max` as the axis maximum
+      reduction needed by stable `logsumexp`/`softmax` implementations.
     - [ ] `ML-VK-020-006-VK` add Vulkan axis-reduction kernels for
       `ml/sum`, `ml/mean`, and `ml/variance`.
       - blocker: current Vulkan helpers have scalar/matrix special cases and
@@ -419,12 +426,29 @@ Source: `TODO.md`
         free axes.
       - next step: implement a real Vulkan Float32 axis-sum kernel and build
         mean/variance on that substrate without hidden CPU fallback.
-    - [ ] `ML-VK-020-007` add stable `logsumexp`, `softmax`, cross-entropy,
-      and mean-squared-error after the reduction layer lands.
+    - [x] `ML-VK-020-007-A` add CPU stable `ml/logsumexp(input axes)` and
+      `ml/softmax(input axis)`.
+      - [x] Keep `ml/logsumexp(input axes)` aligned with multi-axis reduction
+        parsing and implement it with a max-shifted reduction path.
+      - [x] Keep `ml/softmax(input axis)` single-axis only and reject axis
+        lists/multi-axis inputs until a product contract says otherwise.
+      - [x] Preserve Float64/Float32 dtype, stable large-logit behavior, and
+        CUDA/Vulkan fail-closed behavior with focused regressions.
+    - [ ] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
+      - [ ] Decide whether `ml/cross-entropy` targets are probability/one-hot
+        tensors or class-index tensors before exposing the primitive.
+      - [ ] Normalize over one explicit class axis and keep target/logit shape
+        diagnostics explicit.
+    - [ ] `ML-VK-020-007-C` add canonical
+      `ml/mean-squared-error(predictions targets)`.
+      - [ ] Return a scalar loss over all elements and reject shape/dtype
+        mismatches with Tensor diagnostics.
+      - [ ] Keep CUDA/Vulkan fail-closed until backend reduction kernels exist;
+        no hidden CPU fallback.
   - scope:
     - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
     - stable `exp`, `log`, `logsumexp`, and `softmax`;
-    - axis `sum`, `mean`, and `variance`;
+    - axis `sum`, `mean`, `variance`, and `max`;
     - cross-entropy and mean-squared-error losses.
   - negative constraint:
     - do not reuse invalidated GLSL double-transcendental assumptions for

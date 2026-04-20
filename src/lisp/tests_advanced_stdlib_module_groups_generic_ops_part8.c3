@@ -43,13 +43,32 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (out (ml/mean (Tensor Float32 [2 2] [1 2 3 5]) -1)) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 1.5)) (= (ref out [1]) (Float32 4.0))))", pass, fail);
     test_truthy(interp, "ml/variance Float64 axis 1 population variance",
         "(let (out (ml/variance (Tensor Float64 [2 2] [1 3 2 6]) [1])) (and (= (ref out [0]) 1.0) (= (ref out [1]) 4.0)))", pass, fail);
+    test_truthy(interp, "ml/max Float64 axis 1 prerequisite",
+        "(let (out (ml/max (Tensor Float64 [2 3] [1 9 3 4 5 6]) 1)) (and (= (rank out) 1) (= (ref out [0]) 9.0) (= (ref out [1]) 6.0)))", pass, fail);
     test_eq_double(interp, "ml/sum Float64 multi-axis scalar",
         "(ref (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) [0 1]) [])",
         10.0, pass, fail);
+    test_eq_double(interp, "ml/sum Float64 proper-list axes scalar",
+        "(ref (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) (List 0 1)) [])",
+        10.0, pass, fail);
+    test_truthy(interp, "ml/mean realizes transpose-view input",
+        "(let (out (ml/mean (matrix/transpose-view (Tensor Float64 [2 3] [1 2 3 4 5 6])) 1)) (and (= (rank out) 1) (= (ref out [0]) 2.5) (= (ref out [2]) 4.5)))", pass, fail);
+    test_truthy(interp, "ml/sum Float32 overflow reports numeric overflow",
+        "(= (handle (ml/sum (Tensor Float32 [2] [2.0e38 2.0e38]) [0]) (raise msg (ref msg 'code))) 'tensor/numeric-overflow)", pass, fail);
+    test_truthy(interp, "ml/logsumexp Float64 multi-axis stable",
+        "(let (out (ml/logsumexp (Tensor Float64 [2 2] [1000 1000 1000 1000]) [0 1])) (< (abs (- (ref out []) (+ 1000.0 (log 4.0)))) 0.000000001))", pass, fail);
+    test_truthy(interp, "ml/logsumexp Float32 negative axis preserves dtype",
+        "(let (out (ml/logsumexp (Tensor Float32 [1 2] [0 0]) -1)) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0]) (log 2.0))) 0.0001)))", pass, fail);
+    test_truthy(interp, "ml/softmax Float64 large logits stable",
+        "(let (out (ml/softmax (Tensor Float64 [2] [1000 1000]) 0)) (and (= (rank out) 1) (< (abs (- (ref out [0]) 0.5)) 0.000000001) (< (abs (- (ref out [1]) 0.5)) 0.000000001)))", pass, fail);
+    test_truthy(interp, "ml/softmax Float32 row axis preserves shape and sums",
+        "(let (out (ml/softmax (Tensor Float32 [2 2] [0 0 1 1]) 1)) (and (= (String (dtype out)) \"Float32\") (= (ref (shape out) 0) 2) (= (ref (shape out) 1) 2) (< (abs (- (+ (ref out [0 0]) (ref out [0 1])) 1.0)) 0.0001) (< (abs (- (+ (ref out [1 0]) (ref out [1 1])) 1.0)) 0.0001)))", pass, fail);
+    test_truthy(interp, "ml/softmax rejects axis lists",
+        "(= (handle (ml/softmax (Tensor Float64 [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'type/arg-mismatch)", pass, fail);
     test_truthy(interp, "ml reductions reject duplicate and empty axes",
         "(and (= (handle (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) [0 0]) (raise msg (ref msg 'code))) 'tensor/axis-duplicate) (= (handle (ml/mean (Tensor Float64 [2] [1 2]) []) (raise msg (ref msg 'code))) 'tensor/shape-mismatch))", pass, fail);
     test_truthy(interp, "ml reductions reject unsupported dtype and Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/sum (Tensor BigInteger [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float32) (= (handle (ml/sum (to-device (Tensor Float32 [2] [1 2]) 'vulkan) [0]) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/sum (Tensor BigInteger [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float32) (and (= (handle (ml/sum (to-device (Tensor Float32 [2] [1 2]) 'vulkan) [0]) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/logsumexp (to-device (Tensor Float32 [2] [1 2]) 'vulkan) [0]) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/softmax (to-device (Tensor Float32 [2] [1 2]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)) true)))", pass, fail);
     test_eq_double(interp, "ml/linear Float64 vector projection",
         "(ref (ml/linear (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [2 3] [1 2 3 4 5 6])) [1])",
         32.0, pass, fail);

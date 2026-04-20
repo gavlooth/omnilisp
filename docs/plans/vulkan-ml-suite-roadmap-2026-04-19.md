@@ -153,17 +153,29 @@ reduction operations:
   reduced axes, preserve Float64/Float32 dtype, report CPU-only
   `ml-reduction-float64`/`ml-reduction-float32`, and fail closed for
   CUDA/Vulkan instead of copying inputs to CPU.
+- `ML-VK-020-006-MAX`: shipped canonical CPU `ml/max` as the axis maximum
+  reducer needed by stable `logsumexp`/`softmax` max-shift paths. It shares
+  the same axis parsing, result-shape, dtype preservation, and CUDA/Vulkan
+  fail-closed contract as the other CPU reductions.
 - `ML-VK-020-006-VK`: add real Vulkan axis-reduction kernels for
   `ml/sum`/`ml/mean`/`ml/variance`. Do not reuse matrix `contract`; the Vulkan
   helper layer needs a one-input reducer that preserves free axes.
-- `ML-VK-020-007`: add stable `logsumexp`, `softmax`, cross-entropy, and
-  mean-squared-error after the reduction layer lands.
+- `ML-VK-020-007-A`: shipped CPU `ml/logsumexp(input axes)` and
+  `ml/softmax(input axis)` with max-shifted numerics, Float64/Float32 dtype
+  preservation, no hidden CUDA/Vulkan CPU fallback, and focused large-logit
+  regressions.
+- `ML-VK-020-007-B`: add `ml/cross-entropy(logits targets axis)`. Lock the
+  target contract before exposing it; do not ship a primitive whose targets can
+  mean either probabilities/one-hot rows or class indices.
+- `ML-VK-020-007-C`: add `ml/mean-squared-error(predictions targets)` as a
+  scalar loss with explicit Tensor shape/dtype diagnostics.
 
 Scope:
 
 - `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
 - `exp`, `log`, `logsumexp`, `softmax`;
-- `sum`, `mean`, `variance`, and axis reductions needed by normalization;
+- `sum`, `mean`, `variance`, `max`, and axis reductions needed by
+  normalization;
 - cross-entropy and mean-squared-error loss primitives.
 
 This lane must not reuse invalidated GLSL double-transcendental assumptions.

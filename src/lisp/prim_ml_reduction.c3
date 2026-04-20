@@ -6,6 +6,7 @@ import main;
 const int ML_REDUCTION_SUM = 0;
 const int ML_REDUCTION_MEAN = 1;
 const int ML_REDUCTION_VARIANCE = 2;
+const int ML_REDUCTION_MAX = 3;
 
 fn bool ml_reduction_supported_dtype(TensorDType dtype) @inline {
     return dtype == TENSOR_DTYPE_DOUBLE || dtype == TENSOR_DTYPE_FLOAT32;
@@ -218,7 +219,7 @@ fn Value* ml_reduction_write_result(TensorVal* out, double* values, Interp* inte
                 if (!conversion_double_is_finite(value) ||
                     value > TENSOR_FLOAT32_FINITE_LIMIT ||
                     value < -TENSOR_FLOAT32_FINITE_LIMIT) {
-                    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", value_label, null);
+                    return raise_error_with_payload_names(interp, "tensor", "tensor/numeric-overflow", value_label, null);
                 }
                 out_data[i] = (float)value;
             }
@@ -254,6 +255,20 @@ fn Value* ml_reduction_eval_cpu(
     defer mem::free(accum);
     for (usz i = 0; i < out.element_count; i++) accum[i] = 0.0;
 
+    bool* max_seen = null;
+    if (op == ML_REDUCTION_MAX) {
+        usz seen_bytes = 0;
+        if (!tensor_checked_mul_usz(out.element_count, bool.sizeof, &seen_bytes)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/max: accumulator flags are too large", null);
+        }
+        max_seen = (bool*)mem::malloc(seen_bytes);
+        if (max_seen == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/max: failed to allocate accumulator flags", null);
+        }
+        for (usz i = 0; i < out.element_count; i++) max_seen[i] = false;
+    }
+    defer if (max_seen != null) mem::free(max_seen);
+
     for (usz i = 0; i < source.element_count; i++) {
         usz result_index = 0;
         double value = 0.0;
@@ -262,7 +277,14 @@ fn Value* ml_reduction_eval_cpu(
             !ml_reduction_read(source, i, &value)) {
             return tensor_runtime_raise(interp, index_label);
         }
-        accum[result_index] += value;
+        if (op == ML_REDUCTION_MAX) {
+            if (!max_seen[result_index] || value > accum[result_index]) {
+                accum[result_index] = value;
+                max_seen[result_index] = true;
+            }
+        } else {
+            accum[result_index] += value;
+        }
     }
 
     if (op == ML_REDUCTION_VARIANCE) {
@@ -325,28 +347,46 @@ fn Value* ml_reduction_apply(Value*[] args, Interp* interp, int op, char[] name)
         ? "ml/sum: axes must be an integer, array, or proper list of integers"
         : op == ML_REDUCTION_MEAN
             ? "ml/mean: axes must be an integer, array, or proper list of integers"
-            : "ml/variance: axes must be an integer, array, or proper list of integers";
+            : op == ML_REDUCTION_VARIANCE
+                ? "ml/variance: axes must be an integer, array, or proper list of integers"
+                : "ml/max: axes must be an integer, array, or proper list of integers";
     char[] range_label = op == ML_REDUCTION_SUM
         ? "ml/sum: axis out of range"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: axis out of range" : "ml/variance: axis out of range";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: axis out of range"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: axis out of range" : "ml/max: axis out of range";
     char[] duplicate_label = op == ML_REDUCTION_SUM
         ? "ml/sum: duplicate reduction axis"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: duplicate reduction axis" : "ml/variance: duplicate reduction axis";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: duplicate reduction axis"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: duplicate reduction axis" : "ml/max: duplicate reduction axis";
     char[] empty_label = op == ML_REDUCTION_SUM
         ? "ml/sum: expected at least one reduction axis"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: expected at least one reduction axis" : "ml/variance: expected at least one reduction axis";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: expected at least one reduction axis"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: expected at least one reduction axis" : "ml/max: expected at least one reduction axis";
     char[] empty_axis_label = op == ML_REDUCTION_SUM
         ? "ml/sum: cannot reduce an empty axis"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: cannot reduce an empty axis" : "ml/variance: cannot reduce an empty axis";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: cannot reduce an empty axis"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: cannot reduce an empty axis" : "ml/max: cannot reduce an empty axis";
     char[] shape_label = op == ML_REDUCTION_SUM
         ? "ml/sum: result shape is too large"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: result shape is too large" : "ml/variance: result shape is too large";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: result shape is too large"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: result shape is too large" : "ml/max: result shape is too large";
     char[] value_label = op == ML_REDUCTION_SUM
-        ? "ml/sum: Float32 result is not finite"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: Float32 result is not finite" : "ml/variance: Float32 result is not finite";
+        ? "ml/sum: Float32 result is not representable"
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: Float32 result is not representable"
+            : op == ML_REDUCTION_VARIANCE
+                ? "ml/variance: Float32 result is not representable"
+                : "ml/max: Float32 result is not representable";
     char[] index_label = op == ML_REDUCTION_SUM
         ? "ml/sum: tensor index offset is invalid"
-        : op == ML_REDUCTION_MEAN ? "ml/mean: tensor index offset is invalid" : "ml/variance: tensor index offset is invalid";
+        : op == ML_REDUCTION_MEAN
+            ? "ml/mean: tensor index offset is invalid"
+            : op == ML_REDUCTION_VARIANCE ? "ml/variance: tensor index offset is invalid" : "ml/max: tensor index offset is invalid";
 
     usz* axes = null;
     usz axis_count = 0;
@@ -389,4 +429,8 @@ fn Value* prim_ml_mean(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_ml_variance(Value*[] args, Env* env, Interp* interp) {
     return ml_reduction_apply(args, interp, ML_REDUCTION_VARIANCE, "ml/variance");
+}
+
+fn Value* prim_ml_max(Value*[] args, Env* env, Interp* interp) {
+    return ml_reduction_apply(args, interp, ML_REDUCTION_MAX, "ml/max");
 }
