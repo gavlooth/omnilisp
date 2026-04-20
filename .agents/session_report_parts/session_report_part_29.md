@@ -1,5 +1,64 @@
 # Session Report Part 29
 
+## 2026-04-20 14:22 CEST - Vulkan ML Staged Cross Entropy Checkpoint
+
+- Objective attempted:
+  - Continue auditing and implementing the Vulkan ML loss lane by closing the
+    staged cross-entropy reduction follow-up.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `csrc/tensor_vulkan_helpers_ml_loss.c`
+  - `csrc/tensor_vulkan_ml_cross_entropy_f32.comp`
+  - `csrc/tensor_vulkan_ml_cross_entropy_reduce_f32.comp`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Replaced the direct scalar Vulkan Float32 cross-entropy kernel with a
+    per-slice fused loss shader and staged status-preserving device reduction.
+  - Added a dedicated pair-reduction shader for interleaved `(loss,status)`
+    buffers and wired its generated SPIR-V into the helper build.
+  - Kept the final host validation contract stable: status offset
+    `sizeof(float)` still controls invalid-target diagnostics before scalar
+    finiteness is checked.
+  - Added a public primitive preflight so mixed Vulkan/non-Vulkan lazy operands
+    fail closed before generic CPU realization.
+  - Added staged Vulkan Float32 value, invalid-target, and lazy mixed-device
+    tests.
+  - Updated TODO, plan, changelog, and this session report.
+- Commands run:
+  - Static audit subagents for implementation shape and docs/tests gaps.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_cross_entropy_f32.comp -o /tmp/omni_spv/tensor_vulkan_ml_cross_entropy_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_spv/tensor_vulkan_ml_cross_entropy_f32.spv`
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_cross_entropy_reduce_f32.comp -o /tmp/omni_spv/tensor_vulkan_ml_cross_entropy_reduce_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_spv/tensor_vulkan_ml_cross_entropy_reduce_f32.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct `LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --eval ...`
+    smokes for staged value parity, staged invalid targets, and lazy
+    CPU/Vulkan mixing.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Direct staged Vulkan cross-entropy smokes returned `true`.
+  - Focused advanced collections passed with `pass=1710 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Primitive docs parity, whitespace diff check, and file-size gate passed.
+  - Generated cross-entropy SPIR-V C embeddings are split into under-700-line
+    part files.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat the direct scalar cross-entropy kernel as the final Vulkan
+    large-input path; it has been replaced by staged device-side reduction.
+- Current best recommendation / checkpoint:
+  - Continue Vulkan ML with Float64 exp/log policy validation or the next suite
+    lane such as convolution and pooling.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 14:07 CEST - Vulkan ML Float32 Cross Entropy Checkpoint
 
 - Objective attempted:

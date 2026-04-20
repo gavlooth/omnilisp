@@ -3,10 +3,15 @@
 
 #define OMNI_TENSOR_VULKAN_ML_MSE_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_ML_MSE_CHUNK_SIZE 256u
-#define OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE 1u
+#define OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE 64u
+#define OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_CHUNK_SIZE 256u
 
 static size_t omni_tensor_vulkan_mse_chunk_count(size_t count) {
     return (count + OMNI_TENSOR_VULKAN_ML_MSE_CHUNK_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_MSE_CHUNK_SIZE;
+}
+
+static size_t omni_tensor_vulkan_cross_entropy_chunk_count(size_t count) {
+    return (count + OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_CHUNK_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_CHUNK_SIZE;
 }
 
 static int omni_tensor_vulkan_mse_validate_f32_result(void* result_device_ptr) {
@@ -52,15 +57,20 @@ static int omni_tensor_vulkan_dispatch_cross_entropy_f32(
     size_t metadata_byte_len,
     const void* push_data,
     size_t push_size,
+    size_t output_byte_len,
+    size_t output_element_count,
     void** out_device_ptr
 ) {
     if (out_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     *out_device_ptr = NULL;
     if (logits == NULL || targets == NULL || metadata == NULL ||
         logits_byte_len == 0 || targets_byte_len == 0 || metadata_byte_len == 0 ||
-        push_data == NULL || push_size == 0 || push_size > UINT32_MAX) {
+        push_data == NULL || push_size == 0 || push_size > UINT32_MAX ||
+        output_byte_len == 0 || output_element_count == 0 || output_element_count > UINT32_MAX) {
         return OMNI_TENSOR_VULKAN_INVALID;
     }
+    if (output_element_count > SIZE_MAX / (2u * sizeof(float))) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (output_byte_len < output_element_count * 2u * sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
 
     OmniTensorVulkanContext* context = logits->context;
     if (context == NULL || context->device == NULL ||
@@ -77,10 +87,10 @@ static int omni_tensor_vulkan_dispatch_cross_entropy_f32(
         { logits->buffer, (OmniVulkanDeviceSize)logits_byte_len },
         { targets->buffer, (OmniVulkanDeviceSize)targets_byte_len },
         { metadata->buffer, (OmniVulkanDeviceSize)metadata_byte_len },
-        { NULL, (OmniVulkanDeviceSize)(2u * sizeof(float)) }
+        { NULL, (OmniVulkanDeviceSize)output_byte_len }
     };
     OmniTensorVulkanBuffer* output = NULL;
-    int status = omni_tensor_backend_vulkan_create_buffer_on_context(context, 2u * sizeof(float), &output);
+    int status = omni_tensor_backend_vulkan_create_buffer_on_context(context, output_byte_len, &output);
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
     buffer_descriptors[3].buffer = output->buffer;
 
@@ -132,6 +142,7 @@ static int omni_tensor_vulkan_dispatch_cross_entropy_f32(
     result = omni_tensor_vulkan_allocate_storage_descriptor_set(device, buffer_descriptors, 4, &descriptors);
     if (result != OMNI_TENSOR_VULKAN_SUCCESS) goto cleanup;
 
+    uint32_t group_count = ((uint32_t)output_element_count + OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE - 1u) / OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE;
     result = omni_tensor_vulkan_record_submit_single_dispatch(
         device,
         queue,
@@ -141,7 +152,7 @@ static int omni_tensor_vulkan_dispatch_cross_entropy_f32(
         descriptors.set,
         push_data,
         (uint32_t)push_size,
-        OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE
+        group_count
     );
 
 cleanup:
@@ -155,6 +166,58 @@ cleanup:
     }
 
     *out_device_ptr = output;
+    return OMNI_TENSOR_VULKAN_SUCCESS;
+}
+
+static int omni_tensor_vulkan_cross_entropy_reduce_partials(
+    void* partial_device_ptr,
+    size_t partial_count,
+    size_t slice_count,
+    void** out_device_ptr
+) {
+    if (out_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
+    *out_device_ptr = NULL;
+    if (partial_device_ptr == NULL || partial_count == 0 || slice_count == 0 || slice_count > UINT32_MAX) {
+        return OMNI_TENSOR_VULKAN_INVALID;
+    }
+
+    void* current_device_ptr = partial_device_ptr;
+    size_t current_count = partial_count;
+    while (current_count > 1) {
+        size_t next_count = omni_tensor_vulkan_cross_entropy_chunk_count(current_count);
+        if (next_count == 0 || next_count > UINT32_MAX ||
+            current_count > SIZE_MAX / (2u * sizeof(float)) ||
+            next_count > SIZE_MAX / (2u * sizeof(float))) {
+            omni_tensor_backend_vulkan_destroy_buffer_handle((OmniTensorVulkanBuffer*)current_device_ptr);
+            return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        }
+
+        OmniTensorVulkanMapUnaryPushConstants push = {
+            (uint32_t)current_count,
+            next_count == 1 ? 1u : 0u,
+            OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_CHUNK_SIZE,
+            (uint32_t)slice_count
+        };
+        void* next_device_ptr = NULL;
+        int status = omni_tensor_backend_vulkan_dispatch_two_buffer_f32(
+            current_device_ptr,
+            current_count * 2u * sizeof(float),
+            next_count * 2u * sizeof(float),
+            next_count,
+            omni_tensor_vulkan_ml_cross_entropy_reduce_f32_spv,
+            omni_tensor_vulkan_ml_cross_entropy_reduce_f32_spv_size,
+            &push,
+            sizeof(push),
+            OMNI_TENSOR_VULKAN_ML_CROSS_ENTROPY_LOCAL_SIZE,
+            &next_device_ptr
+        );
+        omni_tensor_backend_vulkan_destroy_buffer_handle((OmniTensorVulkanBuffer*)current_device_ptr);
+        if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
+        current_device_ptr = next_device_ptr;
+        current_count = next_count;
+    }
+
+    *out_device_ptr = current_device_ptr;
     return OMNI_TENSOR_VULKAN_SUCCESS;
 }
 
@@ -470,7 +533,12 @@ int omni_tensor_backend_vulkan_ml_cross_entropy_f32(
         (uint32_t)reduction_count
     };
 
-    void* result_device_ptr = NULL;
+    if (slice_count > SIZE_MAX / (2u * sizeof(float))) {
+        omni_tensor_backend_vulkan_destroy_buffer_handle(metadata_buffer);
+        return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    }
+
+    void* partial_device_ptr = NULL;
     status = omni_tensor_vulkan_dispatch_cross_entropy_f32(
         logits,
         logits_byte_len,
@@ -480,10 +548,25 @@ int omni_tensor_backend_vulkan_ml_cross_entropy_f32(
         metadata_words * sizeof(uint32_t),
         &push,
         sizeof(push),
-        &result_device_ptr
+        slice_count * 2u * sizeof(float),
+        slice_count,
+        &partial_device_ptr
     );
     omni_tensor_backend_vulkan_destroy_buffer_handle(metadata_buffer);
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
+
+    void* result_device_ptr = NULL;
+    if (slice_count == 1) {
+        result_device_ptr = partial_device_ptr;
+    } else {
+        status = omni_tensor_vulkan_cross_entropy_reduce_partials(
+            partial_device_ptr,
+            slice_count,
+            slice_count,
+            &result_device_ptr
+        );
+        if (status != OMNI_TENSOR_VULKAN_SUCCESS) return status;
+    }
 
     status = omni_tensor_vulkan_cross_entropy_validate_f32_result(result_device_ptr);
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {

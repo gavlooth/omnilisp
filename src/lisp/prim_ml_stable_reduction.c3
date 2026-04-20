@@ -480,6 +480,16 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
         return tensor_type_raise(interp, "ml/cross-entropy: expected Tensor logits and Tensor targets");
     }
 
+    bool logits_touches_vulkan = tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN);
+    bool targets_touches_vulkan = tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN);
+    if (logits_touches_vulkan || targets_touches_vulkan) {
+        if (!logits_touches_vulkan || !targets_touches_vulkan ||
+            tensor_expr_has_non_vulkan_device(args[0]) ||
+            tensor_expr_has_non_vulkan_device(args[1])) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: Vulkan operands must remain Vulkan-placed", null);
+        }
+    }
+
     TensorVal* logits = null;
     Value* logits_value = null;
     Value* err = tensor_expr_resolve_concrete_any_device(

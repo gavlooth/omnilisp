@@ -1,6 +1,6 @@
 #version 450
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform Params {
     uint input_rank;
@@ -50,65 +50,64 @@ uint slice_offset(uint slice_index, uint stride_base) {
 }
 
 void main() {
-    if (gl_GlobalInvocationID.x > 0u) return;
-    output_data[0] = 0.0;
-    output_data[1] = 0.0;
+    uint slice = gl_GlobalInvocationID.x;
+    if (slice >= params.out_count) return;
+
+    uint output_base = slice * 2u;
+    output_data[output_base] = 0.0;
+    output_data[output_base + 1u] = 0.0;
     if (params.input_rank == 0u || params.reduction_count == 0u || params.out_count == 0u) {
-        output_data[1] = -1.0;
+        output_data[output_base + 1u] = -1.0;
         return;
     }
 
     uint logits_axis_stride = meta_data[logits_stride_base() + params.axis];
     uint targets_axis_stride = meta_data[targets_stride_base() + params.axis];
-    float total_loss = 0.0;
     float tolerance = 0.0001;
 
-    for (uint slice = 0; slice < params.out_count; slice++) {
-        uint logits_base = slice_offset(slice, logits_stride_base());
-        uint targets_base = slice_offset(slice, targets_stride_base());
-        float max_value = logits[logits_base];
-        if (!valid_number(max_value)) {
-            output_data[1] = -1.0;
+    uint logits_base = slice_offset(slice, logits_stride_base());
+    uint targets_base = slice_offset(slice, targets_stride_base());
+    float max_value = logits[logits_base];
+    if (!valid_number(max_value)) {
+        output_data[output_base + 1u] = -1.0;
+        return;
+    }
+    for (uint i = 1; i < params.reduction_count; i++) {
+        float value = logits[logits_base + (i * logits_axis_stride)];
+        if (!valid_number(value)) {
+            output_data[output_base + 1u] = -1.0;
             return;
         }
-        for (uint i = 1; i < params.reduction_count; i++) {
-            float value = logits[logits_base + (i * logits_axis_stride)];
-            if (!valid_number(value)) {
-                output_data[1] = -1.0;
-                return;
-            }
-            if (value > max_value) max_value = value;
-        }
-
-        float exp_sum = 0.0;
-        for (uint i = 0; i < params.reduction_count; i++) {
-            exp_sum += exp(logits[logits_base + (i * logits_axis_stride)] - max_value);
-        }
-        if (!valid_number(exp_sum) || exp_sum <= 0.0) {
-            output_data[1] = -1.0;
-            return;
-        }
-
-        float target_sum = 0.0;
-        float slice_loss = 0.0;
-        float log_exp_sum = log(exp_sum);
-        for (uint i = 0; i < params.reduction_count; i++) {
-            float target = targets[targets_base + (i * targets_axis_stride)];
-            if (!valid_number(target) || target < -tolerance) {
-                output_data[1] = -1.0;
-                return;
-            }
-            float logit = logits[logits_base + (i * logits_axis_stride)];
-            float log_prob = logit - max_value - log_exp_sum;
-            slice_loss += -target * log_prob;
-            target_sum += target;
-        }
-        if (abs(target_sum - 1.0) > tolerance) {
-            output_data[1] = -1.0;
-            return;
-        }
-        total_loss += slice_loss;
+        if (value > max_value) max_value = value;
     }
 
-    output_data[0] = total_loss / float(params.out_count);
+    float exp_sum = 0.0;
+    for (uint i = 0; i < params.reduction_count; i++) {
+        exp_sum += exp(logits[logits_base + (i * logits_axis_stride)] - max_value);
+    }
+    if (!valid_number(exp_sum) || exp_sum <= 0.0) {
+        output_data[output_base + 1u] = -1.0;
+        return;
+    }
+
+    float target_sum = 0.0;
+    float slice_loss = 0.0;
+    float log_exp_sum = log(exp_sum);
+    for (uint i = 0; i < params.reduction_count; i++) {
+        float target = targets[targets_base + (i * targets_axis_stride)];
+        if (!valid_number(target) || target < -tolerance) {
+            output_data[output_base + 1u] = -1.0;
+            return;
+        }
+        float logit = logits[logits_base + (i * logits_axis_stride)];
+        float log_prob = logit - max_value - log_exp_sum;
+        slice_loss += -target * log_prob;
+        target_sum += target;
+    }
+    if (abs(target_sum - 1.0) > tolerance) {
+        output_data[output_base + 1u] = -1.0;
+        return;
+    }
+
+    output_data[output_base] = slice_loss;
 }

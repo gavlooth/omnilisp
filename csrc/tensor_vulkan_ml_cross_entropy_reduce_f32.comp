@@ -1,0 +1,52 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint aux0;
+    uint aux1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    uint chunk_size = params.aux0 == 0u ? 1u : params.aux0;
+    uint start = out_index * chunk_size;
+    if (start >= params.count) return;
+
+    uint end = start + chunk_size;
+    if (end > params.count) end = params.count;
+
+    float loss_sum = 0.0;
+    float status = 0.0;
+    for (uint i = start; i < end; i++) {
+        uint input_base = i * 2u;
+        float loss = input_data[input_base];
+        float lane_status = input_data[input_base + 1u];
+        if (lane_status < 0.0) {
+            status = -1.0;
+        }
+        loss_sum += loss;
+    }
+
+    if (params.op == 1u && status >= 0.0) {
+        if (params.aux1 == 0u) {
+            status = -1.0;
+        } else {
+            loss_sum = loss_sum / float(params.aux1);
+        }
+    }
+
+    uint output_base = out_index * 2u;
+    output_data[output_base] = loss_sum;
+    output_data[output_base + 1u] = status;
+}

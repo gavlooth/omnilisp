@@ -484,20 +484,19 @@ Date: 2026-04-20
   - guarded staged MSE tests now cover a >256-element Float64 path, a
     >65k-element recursive Float32 path, and staged Float32 overflow mapping;
   - Vulkan Float32 `ml/cross-entropy` now uses a dedicated fused loss shader
-    that preserves Vulkan placement, target probability diagnostics, and
-    fail-closed Float64 behavior;
+    plus staged status-preserving reduction passes that preserve Vulkan
+    placement, target probability diagnostics, and fail-closed Float64
+    behavior;
   - `AUDIT-AOT-RUNTIME-MANIFEST-061` regenerated the manifest-backed AOT
     non-test Lisp source set into four under-700 parts and strengthened the
     Stage 3 parity checker to compare the full source set;
   - unsupported dtype coverage remains, while Vulkan Float64 `ml/logsumexp`
     and Vulkan Float64 `ml/softmax` stay backend-unsupported.
 - Next checkpoint:
-  - `ML-VK-020-007-VK-CE-F32` is implemented for Vulkan Float32
-    `ml/cross-entropy`; `ML-VK-020-007-VK-CE-PAR` tracks the remaining staged
-    status-preserving reduction rewrite for large Vulkan cross-entropy inputs.
-    Next Vulkan ML work should either close that staged loss item, validate the
-    Float64 exp/log policy, or move to the next suite lane such as convolution
-    and pooling.
+  - `ML-VK-020-007-VK-CE-F32` and `ML-VK-020-007-VK-CE-PAR` are implemented
+    for Vulkan Float32 `ml/cross-entropy`. Next Vulkan ML work should validate
+    the Float64 exp/log policy or move to the next suite lane such as
+    convolution and pooling.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.

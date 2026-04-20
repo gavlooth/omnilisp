@@ -548,3 +548,23 @@ Source: `memory/CHANGELOG.md`
     `c3c build`, direct Vulkan cross-entropy smokes, focused advanced
     collections `pass=1707 fail=0`, basic Lisp slice `pass=160 fail=0`,
     primitive docs parity, `git diff --check`, and file-size gate.
+
+- 2026-04-20 14:22 CEST: Vulkan ML staged Float32 cross-entropy checkpoint:
+  - Closed `ML-VK-020-007-VK-CE-PAR`.
+  - Replaced the Vulkan Float32 cross-entropy single-invocation scalar kernel
+    with a per-slice fused loss shader plus a staged device-side `(loss,status)`
+    reduction shader.
+  - Preserved the host-visible status-lane layout: negative status still maps
+    to `tensor/invalid-argument`, and non-finite final Float32 loss still maps
+    to `tensor/numeric-overflow`.
+  - Added a Vulkan preflight in the public cross-entropy primitive so mixed
+    Vulkan/non-Vulkan lazy operands fail closed before generic CPU realization.
+  - Split generated cross-entropy SPIR-V C embeddings into under-700-line
+    wrapper/part files.
+  - Added guarded staged Vulkan Float32 tests for recursive reduction value
+    parity, staged invalid-target diagnostics, and lazy CPU/Vulkan mixing.
+  - Validation passed: shader compile/`spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct staged Vulkan
+    cross-entropy smokes, focused advanced collections `pass=1710 fail=0`,
+    basic Lisp slice `pass=160 fail=0`, primitive docs parity,
+    `git diff --check`, and file-size gate.
