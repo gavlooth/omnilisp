@@ -808,3 +808,20 @@ Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with s
 - Execution must be explicit, for example `(kernel/run k inputs push)`.
 - Do not make `Kernel` pretend to be `Lambda`; do not overload ordinary calls,
   path access, postfix indexing, or `ref` into kernel execution.
+
+## Completed ML-VK-070-005 Dense Training Facade Checkpoint
+Date: 2026-04-21 - Implemented the first data-oriented NN training facade.
+
+- Added `nn/forward`, `nn/grad`, and `nn/train-step`.
+- `nn/forward` reuses `nn/apply` model/explicit-data execution arities without
+  requiring eval mode.
+- `nn/grad` requires train-mode model bundles and supports direct dense or
+  sequential dense-plus-activation specs by lowering to the shipped CPU
+  `ml/grad` linear MSE and linear softmax cross-entropy contracts.
+- `nn/train-step` composes `nn/grad` with `ml/optimizer-step` and returns
+  updated model data, optimizer state, gradients, loss, output, and nested
+  gradient/optimizer results without hidden mutation.
+- CUDA/Vulkan backward remains fail-closed through `ml/grad`; no hidden CPU
+  fallback was added.
+- Remaining follow-up: `ML-VK-070-006` ergonomic optimizer constructors
+  `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.

@@ -277,6 +277,9 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/gelu` | 0 | Construct a GELU activation layer spec |
 | `nn/softmax` | 0 | Construct a softmax activation layer spec |
 | `nn/apply` | 2, 4-5 | Run inference from normalized model or explicit `(spec params state input [options])` data; optional options must currently be empty and supported layers lower to `ml/*` |
+| `nn/forward` | 2, 4-5 | Training-friendly forward execution over the same model or explicit data shapes as `nn/apply`; returns the output Tensor without requiring eval mode |
+| `nn/grad` | 3-4 | Build gradients for train-mode dense or single dense-plus-activation model data using the supported CPU `ml/grad` linear MSE and softmax cross-entropy contracts |
+| `nn/train-step` | 5-6 | Compose `nn/grad` with `ml/optimizer-step` and return updated model data, optimizer state, gradients, loss, and output without hidden mutation |
 | `nn/predict` | 2 | Run inference through a model bundle in `'eval` mode only |
 | `nn/summary` | 1 | Return inspectable summary metadata from a model bundle (`kind`, `mode`, `dtype`, `device`, `layers`, `parameter-tensors`, `parameter-elements`) |
 | `nn/spec` | 1 | Extract the normalized model spec from a model bundle |

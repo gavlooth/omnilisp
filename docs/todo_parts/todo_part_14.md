@@ -708,9 +708,21 @@ Source: `TODO.md`
         through checkpoint strings or paths, and `nn/save`/`nn/load` round-trip
         transparent model bundles with tensor dtype, shape, data, and recorded
         placement metadata restored through explicit device transfer.
-    - [ ] `ML-VK-070-005` add the training facade after `ML-VK-050` autograd
+    - [x] `ML-VK-070-005` add the training facade after `ML-VK-050` autograd
       and `ML-VK-060` optimizers: `nn/forward`, `nn/grad`, and
       `nn/train-step` returning updated data values.
+      - shipped: `nn/forward` delegates through the same data execution surface
+        as `nn/apply` without requiring eval mode.
+      - shipped: `nn/grad` requires train-mode dense or sequential
+        dense-plus-activation model data and lowers to the existing CPU
+        `ml/grad` linear MSE / softmax cross-entropy contracts.
+      - shipped: `nn/train-step` composes `nn/grad` with `ml/optimizer-step`
+        and returns updated model data, optimizer state, gradients, loss, and
+        output without hidden mutation.
+      - shipped: CUDA/Vulkan backward remains fail-closed before hidden CPU
+        fallback through the underlying `ml/grad` contract.
+    - [ ] `ML-VK-070-006` add ergonomic optimizer spec constructors
+      `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
 
 - [ ] `ML-VK-080` add Vulkan ML graph capture, fusion, and memory planning
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`

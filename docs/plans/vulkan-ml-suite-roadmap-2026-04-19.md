@@ -383,6 +383,15 @@ bundles instead of hidden mutable layer objects. Vulkan inference and training
 remain first-class through explicit Tensor placement, fail-closed unsupported
 paths, and truthful `tensor-backends` capability reporting.
 
+Shipped training facade slice:
+
+- `ML-VK-070-005`: `nn/forward`, `nn/grad`, and `nn/train-step` now connect
+  train-mode dense model data to the existing CPU `ml/grad` linear MSE/softmax
+  CE contracts and `ml/optimizer-step`, returning updated model and optimizer
+  data without hidden mutation.
+- Remaining `ML-VK-070` ergonomics: `nn/sgd`, `nn/adam`, `nn/adamw`, and
+  `nn/rmsprop` optimizer spec constructors.
+
 ### `ML-VK-080` Graph Capture Fusion And Memory Planning
 
 Add optional execution graph capture for inference and training steps:

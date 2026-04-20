@@ -722,3 +722,20 @@ The historical content was split mechanically to keep individual files below the
 - Commands noted: `c3c build`, targeted advanced collections module slice,
   `git diff --check`, and `scripts/check_primitive_docs_parity.sh`.
 - Signature: Codex GPT-5.4
+
+## 2026-04-21 - ML-VK-070-005 Dense NN Training Facade
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented `nn/forward`, `nn/grad`, and `nn/train-step` over train-mode
+    dense model data.
+  - `nn/train-step` returns updated model data, optimizer state, gradients,
+    loss, and output without hidden mutation.
+  - CUDA/Vulkan backward remains fail-closed through the existing `ml/grad`
+    contract.
+  - Validation: `scripts/build_omni_chelpers.sh`, `c3c build`, focused
+    advanced collections `pass=1828 fail=0`, compiler slice `pass=284 fail=0`,
+    basic Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex

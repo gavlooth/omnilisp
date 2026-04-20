@@ -225,3 +225,37 @@ Signature: GPT-5 Codex
   - `nn/train-step` remains out of scope for this checkpoint.
   - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-070-005 Dense NN Training Facade
+
+- Objective attempted: add the first data-oriented NN training facade over the
+  shipped DataSpec, `ml/grad`, and `ml/optimizer-step` surfaces.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_nn_training.c3`
+  - `src/lisp/eval_init_primitive_tables.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+  - `src/entry_build_runtime_manifest_lisp_part3.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+  - docs, TODO, plan, and changelog surfaces for `ML-VK-070-005`.
+- Code or configuration changes made:
+  - Added `nn/forward`, `nn/grad`, and `nn/train-step`.
+  - `nn/grad` lowers train-mode dense or sequential dense-plus-activation model
+    data to existing CPU `ml/grad` linear MSE / softmax CE specs.
+  - `nn/train-step` composes `nn/grad` with `ml/optimizer-step` and returns
+    updated model data and optimizer state without hidden mutation.
+  - Added runtime/AOT primitive registration and AOT manifest coverage.
+- Key results:
+  - `scripts/build_omni_chelpers.sh` passed.
+  - `c3c build` linked `build/main`.
+  - Focused advanced collections passed with `pass=1828 fail=0`.
+  - Compiler slice passed with `pass=284 fail=0`.
+  - Basic Lisp passed with `pass=160 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
+  - `ML-VK-070-006` remains open for ergonomic optimizer spec constructors.
+  - Broader tape-backed autograd and CUDA/Vulkan backward kernels remain open.
+- Signature: GPT-5 Codex

@@ -426,12 +426,26 @@ with no hidden device fallback. Optimizer checkpoints are covered by
 
 ### `ML-VK-070-005` Training Facade
 
-After `ML-VK-050` and `ML-VK-060`, add:
+Shipped first dense training facade:
 
-- `nn/forward`;
-- `nn/grad`;
-- `nn/train-step`;
-- optimizer constructors under `nn/*` that delegate to the optimizer suite.
+- `nn/forward` runs the same model or explicit `(spec params state input
+  [options])` data shapes as `nn/apply` without requiring eval mode.
+- `nn/grad(model input targets [options])` requires a train-mode model and
+  builds gradients for direct dense specs or sequential dense-plus-activation
+  specs by lowering to the existing CPU `ml/grad` linear MSE and linear
+  softmax-cross-entropy contracts.
+- `nn/train-step(model input targets optimizer-spec optimizer-state [options])`
+  composes `nn/grad` with `ml/optimizer-step` and returns ordinary updated data:
+  `model`, `parameters`, `optimizer-state`, `gradients`, `loss`, `loss-kind`,
+  `output`, `input-gradient`, and nested gradient/optimizer result dictionaries.
+- CUDA/Vulkan backward remains fail-closed through the underlying `ml/grad`
+  contract; no hidden CPU fallback is introduced.
+
+Remaining ergonomic follow-up:
+
+- optimizer constructors under `nn/*` (`nn/sgd`, `nn/adam`, `nn/adamw`,
+  `nn/rmsprop`) that produce validated optimizer spec dictionaries and delegate
+  execution to the optimizer suite.
 
 ## Validation
 

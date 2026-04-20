@@ -387,3 +387,23 @@
     `pass=1823 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-070-005 Dense NN Training Facade
+
+- Implemented `nn/forward`, `nn/grad`, and `nn/train-step`.
+  - `nn/forward` delegates through `nn/apply` and supports the same model or
+    explicit `(spec params state input [options])` data arities without
+    requiring eval mode.
+  - `nn/grad` requires train-mode model bundles and supports direct dense or
+    sequential dense-plus-activation specs. It lowers to the existing CPU
+    `ml/grad` linear mean-squared-error and linear softmax cross-entropy
+    contracts, then lifts parameter gradients back into the model parameter-tree
+    shape.
+  - `nn/train-step` composes `nn/grad` with `ml/optimizer-step` and returns
+    ordinary updated data: `model`, `parameters`, `optimizer-state`,
+    `gradients`, `loss`, `loss-kind`, `output`, `input-gradient`, and nested
+    gradient/optimizer results.
+  - CUDA/Vulkan backward remains fail-closed through the underlying `ml/grad`
+    contract; no hidden CPU fallback or hidden mutable model state was added.
+  - `ML-VK-070-006` remains open for `nn/sgd`, `nn/adam`, `nn/adamw`, and
+    `nn/rmsprop` optimizer spec constructors.

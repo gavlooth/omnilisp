@@ -454,6 +454,24 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: ml/load-optimizer", "[FAIL] Compiler: ml/load-optimizer", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(nn/forward model input)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"nn/forward\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: nn/forward", "[FAIL] Compiler: nn/forward", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(nn/grad model input targets)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"nn/grad\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: nn/grad", "[FAIL] Compiler: nn/grad", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(nn/train-step model input targets opt state)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"nn/train-step\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: nn/train-step", "[FAIL] Compiler: nn/train-step", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

@@ -478,6 +478,22 @@ Unsupported mixed-device, unsupported-layout, and unsupported-backend paths for
 inference are fail-closed with `tensor/backend-unsupported`; there is no hidden
 CPU fallback in these execution paths.
 
+`nn/forward(model input)` is the training-friendly forward path. It shares
+`nn/apply` lowering and explicit-data arities, but does not require eval mode.
+`nn/grad(model input targets [options])` requires a train-mode model and
+currently supports direct dense models or sequential dense-plus-activation
+models that lower to the shipped CPU `ml/grad` linear mean-squared-error and
+linear softmax cross-entropy contracts. The optional training options dictionary
+currently accepts only `loss`, either `mean-squared-error` or
+`softmax-cross-entropy`; softmax output layers default to cross entropy and other
+dense outputs default to MSE. `nn/train-step(model input targets optimizer-spec
+optimizer-state [options])` composes `nn/grad` with `ml/optimizer-step` and
+returns an ordinary dictionary containing updated `model`, `parameters`,
+`optimizer-state`, `gradients`, `loss`, `loss-kind`, `output`,
+`input-gradient`, and the nested gradient/optimizer result data. It does not
+mutate hidden model or optimizer state. Unsupported CUDA/Vulkan backward paths
+fail closed before hidden CPU fallback.
+
 Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
 fail-closed as `tensor/backend-unsupported` instead of hidden fallback.
 
