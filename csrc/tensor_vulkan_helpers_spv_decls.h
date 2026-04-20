@@ -61,6 +61,8 @@ extern const uint32_t omni_tensor_vulkan_ml_reduction_f64_spv[];
 extern const size_t omni_tensor_vulkan_ml_reduction_f64_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_softmax_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_softmax_f32_spv_size;
+extern const uint32_t omni_tensor_vulkan_ml_layer_norm_f32_spv[];
+extern const size_t omni_tensor_vulkan_ml_layer_norm_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_contract_complex128_spv[];
 extern const size_t omni_tensor_vulkan_contract_complex128_spv_size;
 extern const uint32_t omni_tensor_vulkan_contract_complex64_spv[];

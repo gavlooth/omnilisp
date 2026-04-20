@@ -104,3 +104,62 @@
   - Continue Vulkan ML prerequisites for `ML-VK-050` autograd and `ML-VK-060`
     optimizers before training facade work.
 - Signature: Codex GPT-5.4
+
+# 2026-04-20 18:21 CEST - Vulkan ML Layer Normalization
+
+- Objective attempted:
+  - Continue `ML-VK-040` by implementing the first normalization primitive for
+    CPU and Vulkan ML execution.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - Vulkan ML roadmap item `ML-VK-040-001`.
+- Code or configuration changes made:
+  - Added public `ml/layer-normalization(input axis [epsilon])`.
+  - Implemented CPU `Float64`/`Float32` normalization and direct Vulkan
+    `Float32` normalization.
+  - Added dedicated C helper, GLSL compute shader, and embedded SPIR-V source
+    for same-shape Vulkan layer normalization.
+  - Wired runtime primitive registration, AOT primitive lookup, runtime source
+    manifest inclusion, and Vulkan backend externs.
+  - Added `ml-layer-normalization-float64`,
+    `ml-layer-normalization-float32`, and broad `ml-normalization` backend
+    capability reporting.
+  - Added focused CPU/Vulkan/fail-closed tests.
+  - Updated language spec, primitive appendix, collections reference,
+    Vulkan ML roadmap, TODO, plan, and memory changelog artifacts.
+- Commands run:
+  - Fast read-only subagent implementation-surface probe.
+  - Fast read-only subagent Vulkan helper/shader probe.
+  - `glslangValidator -V csrc/tensor_vulkan_ml_layer_norm_f32.comp`
+  - `spirv-val` on the generated layer-normalization SPIR-V.
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct CPU and Vulkan `--eval` smokes.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - `c3c build` passed.
+  - Direct CPU and Vulkan layer-normalization smokes returned `true`.
+  - Focused advanced collections passed with `pass=1758 fail=0`.
+  - Basic Lisp passed with `pass=160 fail=0`.
+  - Primitive docs parity, file-size gate, and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat the existing rank-reducing Vulkan ML reduction helper as a
+    layer-normalization implementation. Layer normalization preserves input
+    shape and needs a dedicated same-shape helper/shader path.
+  - Do not satisfy Vulkan layer normalization by realizing to CPU. Unsupported
+    placements must fail closed until a validated backend kernel exists.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run in this
+    slice.
+  - Affine gamma/beta layer normalization is not implemented; it should be a
+    separate multi-buffer Vulkan kernel slice rather than an implicit CPU path.
+- Next actions:
+  - Continue `ML-VK-040` with batch normalization or scaled dot-product
+    attention.
+  - If affine layer normalization is needed first, add explicit scale/bias
+    tensor operands and a matching Vulkan dispatch path.
+- Signature: Codex GPT-5.4

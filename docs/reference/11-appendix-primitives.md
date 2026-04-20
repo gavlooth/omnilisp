@@ -246,6 +246,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/max` | 2 | Axis maximum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/logsumexp` | 2 | Stable max-shifted log-sum-exp reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/softmax` | 2 | Stable single-axis softmax for supported Tensor inputs; preserves input shape |
+| `ml/layer-normalization` | 2-3 | Single-axis layer normalization for supported Tensor inputs; preserves input shape and accepts optional positive epsilon |
 | `ml/cross-entropy` | 3 | Scalar cross-entropy loss for same-shape probability/one-hot targets over an explicit class axis |
 | `ml/mean-squared-error` | 2 | Scalar mean-squared-error loss for same-shape supported Tensor inputs |
 | `ml/conv1d` | 6 | Dense NCW 1D convolution with OCK kernels, explicit stride/padding/dilation/groups, and supported Tensor inputs |

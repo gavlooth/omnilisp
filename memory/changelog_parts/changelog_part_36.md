@@ -33,3 +33,20 @@
   - Validation passed: `c3c build`, focused advanced collections
     `pass=1753 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
     file-size gate, and `git diff --check`.
+
+- 2026-04-20 18:21 CEST: Vulkan ML layer normalization:
+  - Closed `ML-VK-040-001`.
+  - Added `ml/layer-normalization(input axis [epsilon])` with positive finite
+    epsilon, default `1e-5`, input-shape preservation, CPU `Float64`/`Float32`,
+    and direct Vulkan `Float32`.
+  - Added a dedicated Vulkan same-shape layer-normalization helper and shader
+    pair instead of reusing rank-reducing reductions or falling back to CPU.
+  - Added `ml-layer-normalization-float64`,
+    `ml-layer-normalization-float32`, and broad `ml-normalization` capability
+    reporting.
+  - Vulkan Float64 and CUDA paths remain fail-closed until validated kernels
+    exist for those placements.
+  - Validation passed: `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    CPU/Vulkan eval smokes, focused advanced collections `pass=1758 fail=0`,
+    basic Lisp `pass=160 fail=0`, primitive docs parity, file-size gate, and
+    `git diff --check`.

@@ -239,7 +239,12 @@ claim arbitrary views, transposed layouts, or backward kernels.
 
 Add Vulkan kernels for normalization and attention building blocks:
 
-- batch normalization and layer normalization;
+- `ML-VK-040-001`: shipped `ml/layer-normalization(input axis [epsilon])`
+  for CPU `Float64`/`Float32` and direct Vulkan `Float32`. It preserves input
+  shape, normalizes each explicit axis slice, reports narrow
+  `ml-layer-normalization-*` capability bits, and turns broad
+  `ml-normalization` true when at least one dtype route exists.
+- batch normalization;
 - stable scaled dot-product attention;
 - mask handling with fail-closed shape and dtype diagnostics;
 - optional fused softmax/dropout/matmul only after the unfused oracle kernels

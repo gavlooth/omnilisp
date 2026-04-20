@@ -562,3 +562,30 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue Vulkan ML prerequisites for `ML-VK-050` autograd and `ML-VK-060`
     optimizers before opening `ML-VK-070-005` training facade work.
+
+## Active Vulkan ML Layer Normalization Checkpoint
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - closed `ML-VK-040-001` as the first normalization primitive slice;
+  - added `ml/layer-normalization(input axis [epsilon])` with default
+    epsilon `1e-5` and positive finite epsilon validation;
+  - shipped CPU `Float64`/`Float32` and direct Vulkan `Float32` execution;
+  - added a dedicated same-shape Vulkan layer-normalization helper/shader and
+    embedded SPIR-V source;
+  - exposed `ml-layer-normalization-float64`,
+    `ml-layer-normalization-float32`, and broad `ml-normalization` capability
+    reporting;
+  - kept Vulkan Float64/CUDA fail-closed instead of routing through CPU.
+- Validation:
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - direct CPU and Vulkan `--eval` smokes
+  - focused advanced collections suite: `pass=1758 fail=0`
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, file-size gate, and `git diff --check`
+- Next checkpoint:
+  - continue `ML-VK-040` with batch normalization or scaled dot-product
+    attention; affine gamma/beta layer-normalization should be a separate
+    multi-buffer Vulkan kernel slice rather than a hidden CPU fallback.

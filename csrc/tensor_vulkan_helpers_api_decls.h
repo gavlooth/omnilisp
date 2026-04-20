@@ -205,6 +205,18 @@ int omni_tensor_backend_vulkan_dispatch_three_buffer_f32(
     uint32_t local_size,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_layer_norm_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t input_element_count,
+    size_t input_rank,
+    size_t axis,
+    float epsilon,
+    const size_t* input_shape,
+    const size_t* input_strides,
+    const size_t* out_strides,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_dispatch_one_input_two_outputs(
     const void* input_device_ptr,
     size_t input_byte_len,

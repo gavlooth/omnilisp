@@ -339,7 +339,8 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-reduction-float32`, `ml-conv1d-direct-float64`,
 `ml-conv1d-direct-float32`, `ml-conv2d-direct-float64`,
 `ml-conv2d-direct-float32`, `ml-pool2d-direct-float64`,
-`ml-pool2d-direct-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-pool2d-direct-float32`, `ml-layer-normalization-float64`,
+`ml-layer-normalization-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -351,7 +352,8 @@ and optional bias through `Tensor` `contract` plus broadcast `map`.
 Vulkan-only expressions may participate only when existing Tensor realization
 lowers them to concrete dense Vulkan storage of the same dtype without CPU fallback;
 `ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
-stay explicit `false` until a backend ships the named operation family.
+stay explicit `false` until a backend ships the named operation family, except
+`ml-normalization`, which is true when layer normalization for at least one dtype is available.
 `ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs,
 preserving dtype and Tensor placement; CPU, CUDA, and Vulkan expose the narrow
 `ml-neural-relu-float64`/`ml-neural-relu-float32` bits when that route is
@@ -373,9 +375,10 @@ preserve dtype, reject duplicate/out-of-range axes with Tensor diagnostics, and
 fail closed for unsupported backends without CPU fallback. `ml/softmax` accepts
 a single integer axis, uses max-shifted normalization, preserves input shape and
 dtype, rejects axis lists, and supports Vulkan Float32 while keeping Vulkan
-Float64 fail-closed. `ml/mean-squared-error(predictions targets)` accepts
-same-shape, same-dtype CPU or Vulkan `Float64`/`Float32` tensors and returns a
-scalar tensor containing the population mean squared error. `ml/cross-entropy(logits
+Float64 fail-closed. `ml/layer-normalization(input axis [epsilon])` normalizes each single-axis slice in place,
+preserves input shape and dtype, requires positive finite epsilon, supports CPU `Float64`/`Float32`, and supports direct Vulkan `Float32`.
+`ml/mean-squared-error(predictions targets)` accepts same-shape, same-dtype CPU or Vulkan
+`Float64`/`Float32` tensors and returns a scalar tensor containing the population mean squared error. `ml/cross-entropy(logits
 targets axis)` accepts same-shape probability/one-hot target tensors, uses
 max-shifted log-softmax over the explicit class axis, returns the mean loss
 over non-class positions, and supports Vulkan `Float32` while keeping Vulkan

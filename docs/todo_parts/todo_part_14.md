@@ -569,9 +569,14 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-040` add Vulkan normalization and attention primitives
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - [x] `ML-VK-040-001` add canonical `ml/layer-normalization(input axis [epsilon])`.
+    - shipped CPU `Float64`/`Float32` and direct Vulkan `Float32`.
+    - preserves input shape and normalizes each explicit axis slice.
+    - reports `ml-layer-normalization-float64`,
+      `ml-layer-normalization-float32`, and broad `ml-normalization` capability.
+    - keeps unsupported CUDA/Vulkan paths fail-closed without CPU fallback.
   - scope:
     - batch normalization;
-    - layer normalization;
     - stable scaled dot-product attention;
     - mask diagnostics;
     - optional fused attention kernels only after unfused oracle kernels pass.

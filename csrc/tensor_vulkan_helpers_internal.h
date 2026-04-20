@@ -477,6 +477,14 @@ typedef struct OmniTensorVulkanMlReductionPushConstants {
     uint32_t reduction_count;
 } OmniTensorVulkanMlReductionPushConstants;
 
+typedef struct OmniTensorVulkanMlLayerNormPushConstants {
+    uint32_t input_rank;
+    uint32_t out_count;
+    uint32_t axis;
+    uint32_t reduction_count;
+    float epsilon;
+} OmniTensorVulkanMlLayerNormPushConstants;
+
 typedef struct OmniTensorVulkanTransposePushConstants {
     uint32_t rows;
     uint32_t cols;
