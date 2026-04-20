@@ -35,6 +35,17 @@ fn bool ml_optimizer_any_non_vulkan_sgd_operand(Value* params, Value* grads, Val
     return has_velocity && tensor_expr_has_non_vulkan_device(velocity);
 }
 
+fn bool ml_optimizer_all_vulkan_adam_operands(Value* params, Value* grads, Value* first, Value* second, bool has_moments) {
+    if (!tensor_expr_has_device(params, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(grads, TENSOR_DEVICE_VULKAN)) return false;
+    if (has_moments && (!tensor_expr_has_device(first, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(second, TENSOR_DEVICE_VULKAN))) return false;
+    return true;
+}
+
+fn bool ml_optimizer_any_non_vulkan_adam_operand(Value* params, Value* grads, Value* first, Value* second, bool has_moments) {
+    if (tensor_expr_has_non_vulkan_device(params) || tensor_expr_has_non_vulkan_device(grads)) return true;
+    return has_moments && (tensor_expr_has_non_vulkan_device(first) || tensor_expr_has_non_vulkan_device(second));
+}
+
 fn Value* ml_optimizer_step_tensor_try_vulkan(
     Value* params_arg,
     Value* grads_arg,
@@ -137,5 +148,140 @@ fn Value* ml_optimizer_step_tensor_try_vulkan(
     Value* next_velocity = ml_optimizer_vulkan_tensor_value(params, out_velocity_device, interp, "ml/optimizer-step: failed to allocate Vulkan velocity tensor metadata", "ml/optimizer-step: failed to allocate Vulkan velocity tensor value");
     if (next_velocity == null || next_velocity.tag == ERROR) return next_velocity;
     *out_velocity = next_velocity;
+    return null;
+}
+
+fn Value* ml_adam_step_tensor_try_vulkan(
+    Value* params_arg,
+    Value* grads_arg,
+    Value* first_arg,
+    Value* second_arg,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon,
+    double weight_decay,
+    bool decoupled_weight_decay,
+    long next_step,
+    Interp* interp,
+    Value** out_params,
+    Value** out_first,
+    Value** out_second,
+    bool* out_attempted
+) {
+    if (out_attempted != null) *out_attempted = false;
+    bool has_moments = first_arg != null && second_arg != null;
+    bool touches_vulkan = tensor_expr_has_device(params_arg, TENSOR_DEVICE_VULKAN) ||
+        tensor_expr_has_device(grads_arg, TENSOR_DEVICE_VULKAN) ||
+        (has_moments && (tensor_expr_has_device(first_arg, TENSOR_DEVICE_VULKAN) || tensor_expr_has_device(second_arg, TENSOR_DEVICE_VULKAN)));
+    if (!touches_vulkan) return null;
+    if (out_attempted != null) *out_attempted = true;
+
+    if (!ml_optimizer_all_vulkan_adam_operands(params_arg, grads_arg, first_arg, second_arg, has_moments) ||
+        ml_optimizer_any_non_vulkan_adam_operand(params_arg, grads_arg, first_arg, second_arg, has_moments)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam operands must remain Vulkan-placed", null);
+    }
+    if (has_moments && (!is_tensor(first_arg) || !is_tensor(second_arg))) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam moment leaves must be tensors");
+
+    TensorVal* params = null;
+    TensorVal* grads = null;
+    TensorVal* first = null;
+    TensorVal* second = null;
+    Value* params_value = null;
+    Value* grads_value = null;
+    Value* first_value = null;
+    Value* second_value = null;
+    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
+    err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
+    if (has_moments) {
+        err = tensor_expr_resolve_concrete_any_device(first_arg, &first, &first_value, interp, "ml/optimizer-step: first-moment tensor backing storage is missing");
+        if (err != null) return err;
+        err = tensor_expr_resolve_concrete_any_device(second_arg, &second, &second_value, interp, "ml/optimizer-step: second-moment tensor backing storage is missing");
+        if (err != null) return err;
+    }
+    defer if (first_value != null && first_value != first_arg) boundary_cleanup_materialized_value(null, first_value, interp.current_scope);
+    defer if (second_value != null && second_value != second_arg) boundary_cleanup_materialized_value(null, second_value, interp.current_scope);
+
+    if (params.device != TENSOR_DEVICE_VULKAN || grads.device != TENSOR_DEVICE_VULKAN || (has_moments && (first.device != TENSOR_DEVICE_VULKAN || second.device != TENSOR_DEVICE_VULKAN))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam operands must realize to Vulkan storage", null);
+    }
+    if (params.dtype != grads.dtype || (has_moments && (params.dtype != first.dtype || params.dtype != second.dtype))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/optimizer-step: parameter, gradient, and Adam moment dtypes must match", null);
+    }
+    if (params.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam currently supports Float32 tensors", null);
+    }
+    if (!ml_sgd_tensor_shapes_match(params, grads) || (has_moments && (!ml_sgd_tensor_shapes_match(params, first) || !ml_sgd_tensor_shapes_match(params, second)))) {
+        return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and Adam moment shapes must match");
+    }
+    if (params.element_count == 0) return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: empty parameter tensors are not supported");
+    if (!tensor_dense_row_major(params) || !tensor_dense_row_major(grads) || (has_moments && (!tensor_dense_row_major(first) || !tensor_dense_row_major(second)))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam currently supports dense row-major tensors", null);
+    }
+    if (!tensor_has_valid_device_storage(params, TENSOR_DEVICE_VULKAN) ||
+        !tensor_has_valid_device_storage(grads, TENSOR_DEVICE_VULKAN) ||
+        (has_moments && (!tensor_has_valid_device_storage(first, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(second, TENSOR_DEVICE_VULKAN)))) {
+        return tensor_runtime_raise(interp, "ml/optimizer-step: Vulkan tensor backing storage is missing");
+    }
+
+    double first_correction = 1.0 - ml_optimizer_c_pow(beta1, (double)next_step);
+    double second_correction = 1.0 - ml_optimizer_c_pow(beta2, (double)next_step);
+    if (first_correction <= 0.0 || second_correction <= 0.0 || !conversion_double_is_finite(first_correction) || !conversion_double_is_finite(second_correction)) {
+        return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam bias correction is not finite");
+    }
+
+    void* out_params_device = null;
+    void* out_first_device = null;
+    void* out_second_device = null;
+    int status = omni_tensor_backend_vulkan_ml_adam_f32(
+        params.device_handle,
+        params.byte_len,
+        grads.device_handle,
+        grads.byte_len,
+        has_moments ? first.device_handle : null,
+        has_moments ? first.byte_len : 0,
+        has_moments ? second.device_handle : null,
+        has_moments ? second.byte_len : 0,
+        params.element_count,
+        (float)learning_rate,
+        (float)beta1,
+        (float)beta2,
+        (float)epsilon,
+        (float)weight_decay,
+        (float)first_correction,
+        (float)second_correction,
+        decoupled_weight_decay ? 1 : 0,
+        has_moments ? 1 : 0,
+        &out_params_device,
+        &out_first_device,
+        &out_second_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        if (out_params_device != null) omni_tensor_backend_vulkan_free(out_params_device);
+        if (out_first_device != null) omni_tensor_backend_vulkan_free(out_first_device);
+        if (out_second_device != null) omni_tensor_backend_vulkan_free(out_second_device);
+        return tensor_vulkan_status_raise(interp, status, "ml/optimizer-step: Vulkan Adam kernel failed");
+    }
+
+    Value* updated = ml_optimizer_vulkan_tensor_value(params, out_params_device, interp, "ml/optimizer-step: failed to allocate Vulkan updated tensor metadata", "ml/optimizer-step: failed to allocate Vulkan updated tensor value");
+    if (updated == null || updated.tag == ERROR) {
+        if (out_first_device != null) omni_tensor_backend_vulkan_free(out_first_device);
+        if (out_second_device != null) omni_tensor_backend_vulkan_free(out_second_device);
+        return updated;
+    }
+    Value* next_first = ml_optimizer_vulkan_tensor_value(params, out_first_device, interp, "ml/optimizer-step: failed to allocate Vulkan first-moment tensor metadata", "ml/optimizer-step: failed to allocate Vulkan first-moment tensor value");
+    if (next_first == null || next_first.tag == ERROR) {
+        if (out_second_device != null) omni_tensor_backend_vulkan_free(out_second_device);
+        return next_first;
+    }
+    Value* next_second = ml_optimizer_vulkan_tensor_value(params, out_second_device, interp, "ml/optimizer-step: failed to allocate Vulkan second-moment tensor metadata", "ml/optimizer-step: failed to allocate Vulkan second-moment tensor value");
+    if (next_second == null || next_second.tag == ERROR) return next_second;
+    *out_params = updated;
+    *out_first = next_first;
+    *out_second = next_second;
     return null;
 }

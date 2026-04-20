@@ -725,6 +725,19 @@ Date: 2026-04-20 - Implemented Vulkan dense row-major `Float32`
 - Adam, AdamW, RMSProp, clipping kernels, CUDA optimizer kernels, and
   `nn/train-step` remain open.
 
+## Active ML-VK-060-008 Vulkan Float32 Adam And AdamW Optimizer
+Date: 2026-04-20 - Implemented Vulkan dense row-major `Float32`
+`ml/optimizer-step` Adam and AdamW for all-Vulkan parameter/gradient/moment
+leaves.
+
+- Initial first/second moment creation and prior-moment continuation preserve
+  Vulkan placement and explicit integer `step` state.
+- Adam keeps coupled weight decay; AdamW keeps decoupled weight decay.
+- `tensor-backends` now reports narrow `ml-optimizer-adam-float32` and
+  `ml-optimizer-adamw-float32`; broad `ml-optimizer` remains false.
+- Remaining optimizer work: Vulkan RMSProp and clipping, CUDA optimizer
+  kernels, and train-step integration after autograd is sufficient.
+
 ## Active Custom Kernel Surface Decision
 Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.
 

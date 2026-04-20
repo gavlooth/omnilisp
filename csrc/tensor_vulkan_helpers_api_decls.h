@@ -465,6 +465,29 @@ int omni_tensor_backend_vulkan_ml_sgd_f32(
     void** out_params_device_ptr,
     void** out_velocity_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_adam_f32(
+    const void* params_device_ptr,
+    size_t params_byte_len,
+    const void* grads_device_ptr,
+    size_t grads_byte_len,
+    const void* first_device_ptr,
+    size_t first_byte_len,
+    const void* second_device_ptr,
+    size_t second_byte_len,
+    size_t element_count,
+    float learning_rate,
+    float beta1,
+    float beta2,
+    float epsilon,
+    float weight_decay,
+    float first_correction,
+    float second_correction,
+    int decoupled_weight_decay,
+    int has_moments,
+    void** out_params_device_ptr,
+    void** out_first_device_ptr,
+    void** out_second_device_ptr
+);
 int omni_tensor_backend_vulkan_copy_range_to_host(
     const void* device_ptr,
     size_t offset,

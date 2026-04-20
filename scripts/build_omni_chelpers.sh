@@ -82,6 +82,8 @@ sources=(
   "csrc/tensor_vulkan_ml_sgd_f32_spv.c"
   "csrc/tensor_vulkan_ml_sgd_init_momentum_f32_spv.c"
   "csrc/tensor_vulkan_ml_sgd_momentum_f32_spv.c"
+  "csrc/tensor_vulkan_ml_adam_init_f32_spv.c"
+  "csrc/tensor_vulkan_ml_adam_f32_spv.c"
   "csrc/tensor_vulkan_ml_layer_norm_f32_spv.c"
   "csrc/tensor_vulkan_ml_batch_norm_f32_spv.c"
   "csrc/tensor_vulkan_ml_attention_f32_spv.c"

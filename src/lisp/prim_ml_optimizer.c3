@@ -185,6 +185,11 @@ fn Value* ml_optimizer_step_tree(Value* params, Value* grads, Value* velocity, d
 }
 
 fn Value* ml_adam_step_tensor(Value* params_arg, Value* grads_arg, Value* first_arg, Value* second_arg, double learning_rate, double beta1, double beta2, double epsilon, double weight_decay, bool decoupled_weight_decay, long next_step, Interp* interp, Value** out_params, Value** out_first, Value** out_second) {
+    bool vulkan_attempted = false;
+    Value* vulkan_err = ml_adam_step_tensor_try_vulkan(params_arg, grads_arg, first_arg, second_arg, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, out_params, out_first, out_second, &vulkan_attempted);
+    if (vulkan_err != null) return vulkan_err;
+    if (vulkan_attempted) return null;
+
     TensorVal* params = null;
     TensorVal* grads = null;
     TensorVal* first = null;

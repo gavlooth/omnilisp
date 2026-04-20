@@ -268,3 +268,26 @@
     file-size gate, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, and
     `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-008 Vulkan Float32 Adam And AdamW Optimizer
+
+- Implemented all-Vulkan dense row-major `Float32` Adam and AdamW support for
+  `ml/optimizer-step(spec parameters gradients state)`.
+  - Added Vulkan compute shaders and C helper plumbing for initial first/second
+    moment creation and prior-moment continuation.
+  - The Vulkan path preserves the CPU optimizer state contract: explicit
+    `first-moment`, `second-moment`, and integer `step` state with Adam coupled
+    weight decay and AdamW decoupled weight decay.
+  - Added C3 Vulkan dispatch before CPU materialization for all-Vulkan
+    parameter/gradient/moment leaves. Mixed placement and non-`Float32` Vulkan
+    leaves still fail closed.
+  - `tensor-backends` now reports narrow `ml-optimizer-adam-float32` and
+    `ml-optimizer-adamw-float32` support where Vulkan `Float32` placement is
+    available. Broad `ml-optimizer` remains false.
+  - RMSProp, clipping kernels, and CUDA optimizer kernels remain fail-closed.
+  - Validation passed: GLSL compile and `spirv-val --target-env vulkan1.0` for
+    the two Adam shaders, `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    Vulkan Adam/AdamW smokes, focused advanced collections `pass=1807 fail=0`,
+    basic Lisp `pass=160 fail=0`, compiler slice `pass=281 fail=0`, primitive
+    docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.

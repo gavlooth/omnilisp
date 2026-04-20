@@ -626,8 +626,12 @@ Source: `TODO.md`
   - [x] `ML-VK-060-007` add Vulkan dense row-major `Float32` SGD optimizer
         kernels with explicit velocity state and `ml-optimizer-sgd-float32`
         capability reporting.
+  - [x] `ML-VK-060-008` add Vulkan dense row-major `Float32` Adam and AdamW
+        optimizer kernels with explicit first/second moment state and narrow
+        `ml-optimizer-adam-float32` / `ml-optimizer-adamw-float32` capability
+        reporting.
   - remaining scope:
-    - Vulkan Adam, AdamW, RMSProp, and clipping kernels;
+    - Vulkan RMSProp and clipping kernels;
     - CUDA optimizer kernels;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.

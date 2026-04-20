@@ -1,0 +1,53 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamsBuffer {
+    float params[];
+};
+
+layout(std430, binding = 1) readonly buffer GradBuffer {
+    float grads[];
+};
+
+layout(std430, binding = 2) buffer OutputParamsBuffer {
+    float output_params[];
+};
+
+layout(std430, binding = 3) buffer OutputFirstBuffer {
+    float output_first[];
+};
+
+layout(std430, binding = 4) buffer OutputSecondBuffer {
+    float output_second[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint count;
+    float learning_rate;
+    float beta1;
+    float beta2;
+    float epsilon;
+    float weight_decay;
+    float first_correction;
+    float second_correction;
+    uint decoupled_weight_decay;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.count) return;
+
+    float param = params[idx];
+    float grad = grads[idx];
+    float moment_grad = pc.decoupled_weight_decay != 0u ? grad : grad + pc.weight_decay * param;
+    float next_first = (1.0 - pc.beta1) * moment_grad;
+    float next_second = (1.0 - pc.beta2) * moment_grad * moment_grad;
+    float first_hat = next_first / pc.first_correction;
+    float second_hat = next_second / pc.second_correction;
+    float decay_update = pc.decoupled_weight_decay != 0u ? pc.learning_rate * pc.weight_decay * param : 0.0;
+
+    output_params[idx] = param - decay_update - pc.learning_rate * first_hat / (sqrt(second_hat) + pc.epsilon);
+    output_first[idx] = next_first;
+    output_second[idx] = next_second;
+}
