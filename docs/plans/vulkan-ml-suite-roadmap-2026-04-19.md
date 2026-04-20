@@ -308,7 +308,9 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   state)` for `adam` and `adamw` specs with explicit first-moment,
   second-moment, and step state. Adam uses coupled weight decay; AdamW uses
   decoupled weight decay. CUDA/Vulkan optimizer kernels stay fail-closed.
-- RMSProp;
+- `ML-VK-060-004`: shipped CPU `ml/optimizer-step(spec parameters gradients
+  state)` for `rmsprop` specs with explicit square-average, optional momentum
+  velocity, and step state. CUDA/Vulkan optimizer kernels stay fail-closed.
 - gradient clipping;
 - parameter state initialization, checkpoint, and restore.
 

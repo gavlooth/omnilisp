@@ -704,3 +704,6 @@ Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for SGD momentum state; v
 
 ## Active ML-VK-060-003 Adam And AdamW Optimizer Step Checkpoint
 Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for Adam and AdamW explicit moment state; validation passed.
+
+## Active ML-VK-060-004 RMSProp Optimizer Step Checkpoint
+Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for RMSProp explicit square-average and optional velocity state; validation passed.

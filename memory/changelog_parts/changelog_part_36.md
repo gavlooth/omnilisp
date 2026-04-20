@@ -187,3 +187,24 @@
     collections `pass=1788 fail=0`, compiler slice `pass=278 fail=0`, basic
     Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-004 RMSProp Optimizer Step
+
+- Implemented CPU `ml/optimizer-step(spec parameters gradients state)` support
+  for `rmsprop` specs.
+  - RMSProp state is explicit data: returned state contains `square-average`,
+    integer `step`, and `velocity` when `momentum` is positive.
+  - Supported spec fields are `learning-rate`, optional `alpha`, optional
+    `epsilon`, optional `momentum`, and optional `weight-decay`, with range
+    validation before execution.
+  - The supported contract is uncentered RMSProp with coupled weight decay and
+    optional momentum velocity.
+  - CPU dense row-major `Float64`/`Float32` tensor leaves are supported through
+    matching array/dictionary parameter, gradient, square-average, and velocity
+    trees.
+  - CUDA/Vulkan optimizer kernels stay fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1791 fail=0`, compiler slice `pass=278 fail=0`, basic
+    Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

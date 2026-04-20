@@ -531,3 +531,50 @@
     explicit optimizer state to the training facade once the remaining autograd
     path is sufficient.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 21:45 CEST - ML-VK-060-004 RMSProp Optimizer Step
+
+- Objective attempted:
+  - Continue `ML-VK-060` by extending `ml/optimizer-step` with a CPU RMSProp
+    optimizer spec and explicit state.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_optimizer.c3`, advanced collection tests, public ML
+    docs, TODO, roadmap, changelog, and agent plan/report artifacts.
+- Code or configuration changes made:
+  - Added `{'kind 'rmsprop ...}` support to
+    `ml/optimizer-step(spec parameters gradients state)`.
+  - Added explicit RMSProp state: `square-average`, integer `step`, and
+    `velocity` when `momentum` is positive.
+  - Added `alpha`/`epsilon`/`momentum`/`weight-decay` validation.
+  - Implemented uncentered RMSProp with coupled weight decay and optional
+    momentum velocity over CPU dense row-major `Float64`/`Float32` tensor
+    leaves.
+  - Kept CUDA/Vulkan optimizer kernels fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+- Commands run:
+  - `c3c build`
+  - direct CPU `--eval` RMSProp, RMSProp momentum-resume, and invalid
+    hyperparameter smokes with `LD_LIBRARY_PATH=build:/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `bash -n scripts/check_file_size_gate.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1791 fail=0`.
+  - Compiler slice passed: `pass=278 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - C3 build, direct smokes, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and diff whitespace checks passed.
+- Unresolved issues:
+  - Gradient clipping, optimizer checkpoint helpers, Vulkan optimizer kernels,
+    and `nn/train-step` integration remain open.
+- Next actions:
+  - Continue `ML-VK-060` with gradient clipping or optimizer checkpoint
+    helpers, then wire `nn/train-step` once the remaining autograd path is
+    sufficient.
+- Signature: Codex GPT-5.4

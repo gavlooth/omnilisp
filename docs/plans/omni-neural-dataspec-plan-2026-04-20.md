@@ -252,8 +252,8 @@ The first ergonomic training MVP is complete when all of these are true:
    reduction, softmax, loss, convolution, and pooling paths included in the
    inference MVP.
 2. `nn/grad` computes gradients over explicit model data.
-3. `ML-VK-060` supplies `ml/optimizer-step` SGD momentum state plus Adam and
-   AdamW moment state.
+3. `ML-VK-060` supplies `ml/optimizer-step` SGD momentum state plus Adam,
+   AdamW, and RMSProp optimizer state.
 4. `nn/train-step` returns updated model and optimizer data.
 5. Vulkan training either remains on Vulkan for the supported path or fails
    closed before CPU fallback.
