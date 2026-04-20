@@ -243,7 +243,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/grad` | 1 | Data-oriented gradient spec evaluator; currently supports CPU linear MSE, linear-activation MSE, and linear softmax cross-entropy gradients |
 | `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU Float64/Float32 Tensor leaves: parameters, gradients, learning-rate |
 | `ml/clip-gradients` | 2 | CPU max-norm gradient clipping over dense Float64/Float32 Tensor leaves in explicit gradient trees |
-| `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU SGD, Adam, AdamW, and RMSProp over explicit parameter/state trees |
+| `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU SGD, Adam, AdamW, and RMSProp plus all-Vulkan Float32 SGD over explicit parameter/state trees |
 | `ml/save-optimizer` | 2-3 | Serialize a supported optimizer spec and explicit state Dictionary checkpoint to JSON, or write it to a path and return `Void` |
 | `ml/load-optimizer` | 1 | Load an optimizer checkpoint from JSON or path and return an ordinary `{kind spec state}` Dictionary after envelope/spec/state-container validation |
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |

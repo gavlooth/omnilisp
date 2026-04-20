@@ -320,7 +320,14 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   round trips through the existing checkpoint envelope. Checkpoint load
   revalidates the payload family, supported optimizer spec, and state container;
   optimizer tree/device compatibility remains enforced at `ml/optimizer-step`.
-- Vulkan optimizer kernels and training-step integration remain open.
+- `ML-VK-060-007`: shipped Vulkan dense row-major `Float32` SGD optimizer
+  kernels for all-Vulkan parameter/gradient/velocity leaves. Stateless SGD,
+  initial momentum velocity creation, and momentum velocity consumption preserve
+  Vulkan placement and explicit state. `tensor-backends` exposes the narrow
+  `ml-optimizer-sgd-float32` capability while broad `ml-optimizer` remains
+  false.
+- Vulkan Adam, AdamW, RMSProp, clipping kernels, CUDA optimizer kernels, and
+  training-step integration remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.
@@ -354,11 +361,19 @@ Add optional execution graph capture for inference and training steps:
 - operation DAG capture for Tensor expressions;
 - command-buffer batching;
 - kernel fusion for safe elementwise/reduction chains;
+- custom `Kernel` values for user-defined backend kernels, constructed as
+  explicit data specs and executed through an explicit kernel runner;
+- optional `(define [kernel] ...)` macro/declaration sugar only if it
+  desugars to canonical `(define name (Kernel spec))`;
 - device buffer reuse and lifetime planning;
 - deterministic invalidation when shapes, dtypes, devices, or capability bits
   change.
 
-This lane is performance work and must not change scalar or Tensor semantics.
+This lane is performance and extension work. It must not change scalar or
+Tensor semantics, must not turn `Kernel` values into ordinary `Lambda`
+closures, and must not overload path access, postfix indexing, or `ref` into
+kernel execution. Kernel specs should use ordinary Omni data, quoted symbol
+keys, path access such as `k.inputs.[0].name`, and explicit execution.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

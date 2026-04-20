@@ -1,0 +1,41 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer ParamsBuffer {
+    float params[];
+};
+
+layout(std430, binding = 1) readonly buffer GradBuffer {
+    float grads[];
+};
+
+layout(std430, binding = 2) readonly buffer VelocityBuffer {
+    float velocity[];
+};
+
+layout(std430, binding = 3) buffer OutputParamsBuffer {
+    float output_params[];
+};
+
+layout(std430, binding = 4) buffer OutputVelocityBuffer {
+    float output_velocity[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint count;
+    float learning_rate;
+    float momentum;
+    float weight_decay;
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.count) return;
+
+    float param = params[idx];
+    float effective_grad = grads[idx] + pc.weight_decay * param;
+    float new_velocity = pc.momentum * velocity[idx] + effective_grad;
+    output_params[idx] = param - pc.learning_rate * new_velocity;
+    output_velocity[idx] = new_velocity;
+}

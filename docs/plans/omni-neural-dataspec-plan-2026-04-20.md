@@ -60,6 +60,62 @@ Use this split consistently:
 
 Layer constructors return normalized data, not opaque objects.
 
+## Custom Kernel Surface
+
+Custom kernels should follow the same data-oriented rule as models and
+optimizers: the user creates inspectable data, and execution is explicit.
+
+`Kernel` is the planned public type/value for user-defined backend kernels.
+It may need special runtime/compiler support for validation, compilation,
+backend cache state, and ABI checks, but it should still be constructed and
+inspected as ordinary Omni data:
+
+```lisp
+(define sgd-update
+  (Kernel
+    {'backend 'vulkan
+     'operation 'elementwise
+     'inputs [(Dictionary 'name 'params 'dtype Float32 'shape ['n])
+              (Dictionary 'name 'grads 'dtype Float32 'shape ['n])]
+     'outputs [(Dictionary 'name 'updated 'dtype Float32 'shape ['n])]
+     'push {'learning-rate Float32 'weight-decay Float32}
+     'workgroup [64 1 1]}))
+```
+
+Kernel fields should use Omni path and postfix-index conventions:
+
+```lisp
+sgd-update.inputs
+sgd-update.inputs.[0]
+sgd-update.inputs.[0].name
+```
+
+Use `ref` for dynamic keys or higher-order lookup, not as a hidden execution
+surface. Kernel execution should remain explicit, for example:
+
+```lisp
+(kernel/run sgd-update
+  {'params params-tensor 'grads grads-tensor}
+  {'learning-rate (Float32 0.1) 'weight-decay (Float32 0.0)})
+```
+
+Declaration sugar is allowed only when it expands to canonical Omni forms. A
+future macro/declaration family such as:
+
+```lisp
+(define [kernel] sgd-update spec)
+```
+
+must desugar to:
+
+```lisp
+(define sgd-update (Kernel spec))
+```
+
+Do not make `Kernel` pretend to be a `Lambda`, do not overload ordinary
+function invocation for kernel execution, and do not overload path or `ref`
+access into execution.
+
 ## Core Data Shapes
 
 ### Layer Spec

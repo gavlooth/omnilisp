@@ -245,3 +245,26 @@
     advanced collections `pass=1798 fail=0`, compiler slice `pass=281 fail=0`,
     basic Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-007 Vulkan Float32 SGD Optimizer
+
+- Implemented all-Vulkan dense row-major `Float32` SGD support for
+  `ml/optimizer-step(spec parameters gradients state)`.
+  - Added Vulkan compute shaders and C helper plumbing for stateless SGD,
+    initial momentum velocity creation, and momentum velocity consumption.
+  - Added `src/lisp/prim_ml_optimizer_vulkan.c3` so SGD tensor leaves intercept
+    all-Vulkan operands before CPU materialization.
+  - Parameter and velocity outputs preserve Vulkan placement; mixed CPU/Vulkan
+    optimizer leaves fail closed before hidden fallback.
+  - `tensor-backends` now reports narrow `ml-optimizer-sgd-float32` support for
+    CPU and Vulkan where `Float32` placement is available. Broad `ml-optimizer`
+    remains false until the optimizer family is complete.
+  - Adam, AdamW, RMSProp, clipping kernels, and CUDA optimizer kernels remain
+    fail-closed.
+  - Validation passed: GLSL compile for the three SGD shaders,
+    `spirv-val --target-env vulkan1.0`, `scripts/build_omni_chelpers.sh`,
+    `c3c build`, direct Vulkan SGD stateless and momentum smokes, direct Adam
+    fail-closed smoke, focused advanced collections `pass=1803 fail=0`, code
+    file-size gate, basic Lisp `pass=160 fail=0`, compiler slice
+    `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, and
+    `git diff --check`.

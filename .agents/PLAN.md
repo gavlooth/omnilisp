@@ -713,3 +713,28 @@ Date: 2026-04-20 - Implemented CPU `ml/clip-gradients` and optimizer `clip-norm`
 
 ## Active ML-VK-060-006 Optimizer Checkpoint Helpers
 Date: 2026-04-20 - Implemented CPU `ml/save-optimizer` and `ml/load-optimizer` for explicit optimizer spec/state checkpoints; validation passed.
+
+## Active ML-VK-060-007 Vulkan Float32 SGD Optimizer
+Date: 2026-04-20 - Implemented Vulkan dense row-major `Float32`
+`ml/optimizer-step` SGD for all-Vulkan parameter/gradient/velocity leaves.
+
+- Stateless SGD, initial velocity creation, and momentum velocity consumption
+  preserve Vulkan placement and explicit optimizer state.
+- `tensor-backends` now reports narrow `ml-optimizer-sgd-float32`; broad
+  `ml-optimizer` remains false.
+- Adam, AdamW, RMSProp, clipping kernels, CUDA optimizer kernels, and
+  `nn/train-step` remain open.
+
+## Active Custom Kernel Surface Decision
+Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.
+
+- Canonical base form: `(define name (Kernel spec))`.
+- Optional declaration sugar may exist later as `(define [kernel] name spec)`
+  only if it macro-expands/desugars to `(define name (Kernel spec))`.
+- Specs use ordinary Omni data with quoted symbol keys, `Dictionary`, arrays,
+  path access, and postfix index access. Example inspection:
+  `k.inputs`, `k.inputs.[0]`, `k.inputs.[0].name`.
+- Use `ref` only for dynamic lookup, not execution.
+- Execution must be explicit, for example `(kernel/run k inputs push)`.
+- Do not make `Kernel` pretend to be `Lambda`; do not overload ordinary calls,
+  path access, postfix indexing, or `ref` into kernel execution.

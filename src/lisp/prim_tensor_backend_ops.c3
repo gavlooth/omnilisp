@@ -185,6 +185,10 @@ fn Value* tensor_backend_set_ml_capability_fields(
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-optimizer", false);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-optimizer-sgd-float64", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-optimizer-sgd-float32", false);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-graph-execution", false);
     if (err != null) return err;
     return null;
@@ -258,6 +262,8 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "rounding-big-integer", vulkan_rounding_i64_available);
     if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-sgd-float32", vulkan_float32_available);
     if (err != null) return err;
     Value* result = make_cons_or_error(interp, vulkan_entry, make_nil(interp), "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -369,6 +375,10 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, cpu_entry, "stats-normal-float32", true);
     if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true, false, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "ml-optimizer-sgd-float64", true);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "ml-optimizer-sgd-float32", true);
     if (err != null) return err;
     result = make_cons_or_error(interp, cpu_entry, result, "tensor-backends: failed to allocate result list");
     return result;

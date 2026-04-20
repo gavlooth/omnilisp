@@ -623,8 +623,12 @@ Source: `TODO.md`
   - [x] `ML-VK-060-005` add CPU `ml/clip-gradients` and optimizer `clip-norm`.
   - [x] `ML-VK-060-006` add CPU `ml/save-optimizer` and `ml/load-optimizer`
         checkpoint helpers for explicit optimizer spec/state data.
+  - [x] `ML-VK-060-007` add Vulkan dense row-major `Float32` SGD optimizer
+        kernels with explicit velocity state and `ml-optimizer-sgd-float32`
+        capability reporting.
   - remaining scope:
-    - Vulkan optimizer kernels;
+    - Vulkan Adam, AdamW, RMSProp, and clipping kernels;
+    - CUDA optimizer kernels;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.
   - acceptance:
@@ -688,10 +692,16 @@ Source: `TODO.md`
     - operation DAG capture;
     - command-buffer batching;
     - safe elementwise/reduction fusion;
+    - user-defined `Kernel` type/value specs with explicit `kernel/run`
+      execution;
+    - optional `(define [kernel] ...)` sugar only as macro/desugaring to
+      `(define name (Kernel spec))`;
     - device buffer reuse and lifetime planning;
     - deterministic invalidation on shape, dtype, device, or capability change.
   - constraint:
-    - performance work only; Tensor semantics must not change.
+    - performance work only; Tensor semantics must not change;
+    - do not overload ordinary function calls, path access, postfix indexing,
+      or `ref` into kernel execution.
 
 - [ ] `ML-VK-090` add Vulkan ML validation and benchmark suite
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
