@@ -332,8 +332,14 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   placement, explicit step state, and Adam versus AdamW weight-decay semantics.
   `tensor-backends` exposes `ml-optimizer-adam-float32` and
   `ml-optimizer-adamw-float32` while broad `ml-optimizer` remains false.
-- Vulkan RMSProp, clipping kernels, CUDA optimizer kernels, and training-step
-  integration remain open.
+- `ML-VK-060-009`: shipped Vulkan dense row-major `Float32` RMSProp optimizer
+  kernels for all-Vulkan parameter/gradient/square-average/velocity leaves.
+  Missing square-average or velocity state initializes from zero, matching the
+  CPU explicit-state contract; output square-average and optional velocity state
+  preserve Vulkan placement. `tensor-backends` exposes
+  `ml-optimizer-rmsprop-float32` while broad `ml-optimizer` remains false.
+- Vulkan clipping kernels, CUDA optimizer kernels, and training-step integration
+  remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.

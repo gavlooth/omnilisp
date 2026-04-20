@@ -71,6 +71,8 @@ extern const uint32_t omni_tensor_vulkan_ml_adam_init_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_adam_init_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_adam_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_adam_f32_spv_size;
+extern const uint32_t omni_tensor_vulkan_ml_rmsprop_f32_spv[];
+extern const size_t omni_tensor_vulkan_ml_rmsprop_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_layer_norm_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_layer_norm_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_batch_norm_f32_spv[];

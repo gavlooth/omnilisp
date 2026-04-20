@@ -46,6 +46,19 @@ fn bool ml_optimizer_any_non_vulkan_adam_operand(Value* params, Value* grads, Va
     return has_moments && (tensor_expr_has_non_vulkan_device(first) || tensor_expr_has_non_vulkan_device(second));
 }
 
+fn bool ml_optimizer_all_vulkan_rmsprop_operands(Value* params, Value* grads, Value* square, Value* velocity, bool has_square, bool has_velocity) {
+    if (!tensor_expr_has_device(params, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(grads, TENSOR_DEVICE_VULKAN)) return false;
+    if (has_square && !tensor_expr_has_device(square, TENSOR_DEVICE_VULKAN)) return false;
+    if (has_velocity && !tensor_expr_has_device(velocity, TENSOR_DEVICE_VULKAN)) return false;
+    return true;
+}
+
+fn bool ml_optimizer_any_non_vulkan_rmsprop_operand(Value* params, Value* grads, Value* square, Value* velocity, bool has_square, bool has_velocity) {
+    if (tensor_expr_has_non_vulkan_device(params) || tensor_expr_has_non_vulkan_device(grads)) return true;
+    if (has_square && tensor_expr_has_non_vulkan_device(square)) return true;
+    return has_velocity && tensor_expr_has_non_vulkan_device(velocity);
+}
+
 fn Value* ml_optimizer_step_tensor_try_vulkan(
     Value* params_arg,
     Value* grads_arg,
@@ -283,5 +296,142 @@ fn Value* ml_adam_step_tensor_try_vulkan(
     *out_params = updated;
     *out_first = next_first;
     *out_second = next_second;
+    return null;
+}
+
+fn Value* ml_rmsprop_step_tensor_try_vulkan(
+    Value* params_arg,
+    Value* grads_arg,
+    Value* square_arg,
+    Value* velocity_arg,
+    double learning_rate,
+    double alpha,
+    double epsilon,
+    double momentum,
+    double weight_decay,
+    Interp* interp,
+    Value** out_params,
+    Value** out_square,
+    Value** out_velocity,
+    bool* out_attempted
+) {
+    if (out_attempted != null) *out_attempted = false;
+    bool has_square = square_arg != null && !is_nil(square_arg);
+    bool has_velocity = momentum > 0.0 && velocity_arg != null && !is_nil(velocity_arg);
+    bool touches_vulkan = tensor_expr_has_device(params_arg, TENSOR_DEVICE_VULKAN) ||
+        tensor_expr_has_device(grads_arg, TENSOR_DEVICE_VULKAN) ||
+        (has_square && tensor_expr_has_device(square_arg, TENSOR_DEVICE_VULKAN)) ||
+        (has_velocity && tensor_expr_has_device(velocity_arg, TENSOR_DEVICE_VULKAN));
+    if (!touches_vulkan) return null;
+    if (out_attempted != null) *out_attempted = true;
+
+    if (!ml_optimizer_all_vulkan_rmsprop_operands(params_arg, grads_arg, square_arg, velocity_arg, has_square, has_velocity) ||
+        ml_optimizer_any_non_vulkan_rmsprop_operand(params_arg, grads_arg, square_arg, velocity_arg, has_square, has_velocity)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp operands must remain Vulkan-placed", null);
+    }
+    if (has_square && !is_tensor(square_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: RMSProp square-average leaves must be tensors");
+    if (has_velocity && !is_tensor(velocity_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: RMSProp velocity leaves must be tensors");
+
+    TensorVal* params = null;
+    TensorVal* grads = null;
+    TensorVal* square = null;
+    TensorVal* velocity = null;
+    Value* params_value = null;
+    Value* grads_value = null;
+    Value* square_value = null;
+    Value* velocity_value = null;
+    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
+    err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
+    if (has_square) {
+        err = tensor_expr_resolve_concrete_any_device(square_arg, &square, &square_value, interp, "ml/optimizer-step: square-average tensor backing storage is missing");
+        if (err != null) return err;
+    }
+    if (has_velocity) {
+        err = tensor_expr_resolve_concrete_any_device(velocity_arg, &velocity, &velocity_value, interp, "ml/optimizer-step: velocity tensor backing storage is missing");
+        if (err != null) return err;
+    }
+    defer if (square_value != null && square_value != square_arg) boundary_cleanup_materialized_value(null, square_value, interp.current_scope);
+    defer if (velocity_value != null && velocity_value != velocity_arg) boundary_cleanup_materialized_value(null, velocity_value, interp.current_scope);
+
+    if (params.device != TENSOR_DEVICE_VULKAN || grads.device != TENSOR_DEVICE_VULKAN ||
+        (has_square && square.device != TENSOR_DEVICE_VULKAN) || (has_velocity && velocity.device != TENSOR_DEVICE_VULKAN)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp operands must realize to Vulkan storage", null);
+    }
+    if (params.dtype != grads.dtype || (has_square && params.dtype != square.dtype) || (has_velocity && params.dtype != velocity.dtype)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/optimizer-step: parameter, gradient, and RMSProp state dtypes must match", null);
+    }
+    if (params.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp currently supports Float32 tensors", null);
+    }
+    if (!ml_sgd_tensor_shapes_match(params, grads) || (has_square && !ml_sgd_tensor_shapes_match(params, square)) || (has_velocity && !ml_sgd_tensor_shapes_match(params, velocity))) {
+        return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and RMSProp state shapes must match");
+    }
+    if (params.element_count == 0) return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: empty parameter tensors are not supported");
+    if (!tensor_dense_row_major(params) || !tensor_dense_row_major(grads) || (has_square && !tensor_dense_row_major(square)) || (has_velocity && !tensor_dense_row_major(velocity))) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp currently supports dense row-major tensors", null);
+    }
+    if (!tensor_has_valid_device_storage(params, TENSOR_DEVICE_VULKAN) ||
+        !tensor_has_valid_device_storage(grads, TENSOR_DEVICE_VULKAN) ||
+        (has_square && !tensor_has_valid_device_storage(square, TENSOR_DEVICE_VULKAN)) ||
+        (has_velocity && !tensor_has_valid_device_storage(velocity, TENSOR_DEVICE_VULKAN))) {
+        return tensor_runtime_raise(interp, "ml/optimizer-step: Vulkan tensor backing storage is missing");
+    }
+
+    void* out_params_device = null;
+    void* out_square_device = null;
+    void* out_velocity_device = null;
+    int status = omni_tensor_backend_vulkan_ml_rmsprop_f32(
+        params.device_handle,
+        params.byte_len,
+        grads.device_handle,
+        grads.byte_len,
+        has_square ? square.device_handle : null,
+        has_square ? square.byte_len : 0,
+        has_velocity ? velocity.device_handle : null,
+        has_velocity ? velocity.byte_len : 0,
+        params.element_count,
+        (float)learning_rate,
+        (float)alpha,
+        (float)epsilon,
+        (float)momentum,
+        (float)weight_decay,
+        has_square ? 1 : 0,
+        has_velocity ? 1 : 0,
+        &out_params_device,
+        &out_square_device,
+        &out_velocity_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        if (out_params_device != null) omni_tensor_backend_vulkan_free(out_params_device);
+        if (out_square_device != null) omni_tensor_backend_vulkan_free(out_square_device);
+        if (out_velocity_device != null) omni_tensor_backend_vulkan_free(out_velocity_device);
+        return tensor_vulkan_status_raise(interp, status, "ml/optimizer-step: Vulkan RMSProp kernel failed");
+    }
+
+    Value* updated = ml_optimizer_vulkan_tensor_value(params, out_params_device, interp, "ml/optimizer-step: failed to allocate Vulkan updated tensor metadata", "ml/optimizer-step: failed to allocate Vulkan updated tensor value");
+    if (updated == null || updated.tag == ERROR) {
+        if (out_square_device != null) omni_tensor_backend_vulkan_free(out_square_device);
+        if (out_velocity_device != null) omni_tensor_backend_vulkan_free(out_velocity_device);
+        return updated;
+    }
+    Value* next_square = ml_optimizer_vulkan_tensor_value(params, out_square_device, interp, "ml/optimizer-step: failed to allocate Vulkan square-average tensor metadata", "ml/optimizer-step: failed to allocate Vulkan square-average tensor value");
+    if (next_square == null || next_square.tag == ERROR) {
+        if (out_velocity_device != null) omni_tensor_backend_vulkan_free(out_velocity_device);
+        return next_square;
+    }
+    *out_params = updated;
+    *out_square = next_square;
+    if (momentum <= 0.0) {
+        if (out_velocity_device != null) omni_tensor_backend_vulkan_free(out_velocity_device);
+        *out_velocity = null;
+        return null;
+    }
+    Value* next_velocity = ml_optimizer_vulkan_tensor_value(params, out_velocity_device, interp, "ml/optimizer-step: failed to allocate Vulkan velocity tensor metadata", "ml/optimizer-step: failed to allocate Vulkan velocity tensor value");
+    if (next_velocity == null || next_velocity.tag == ERROR) return next_velocity;
+    *out_velocity = next_velocity;
     return null;
 }

@@ -291,3 +291,28 @@
     basic Lisp `pass=160 fail=0`, compiler slice `pass=281 fail=0`, primitive
     docs parity, Stage 3 source parity, code file-size gate, and
     `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-009 Vulkan Float32 RMSProp Optimizer
+
+- Implemented all-Vulkan dense row-major `Float32` RMSProp support for
+  `ml/optimizer-step(spec parameters gradients state)`.
+  - Added a Vulkan compute shader and C helper plumbing for square-average
+    initialization, square-average continuation, optional velocity
+    initialization, and velocity continuation.
+  - The Vulkan path preserves the CPU explicit-state contract: missing
+    `square-average` or `velocity` leaves initialize from zero, returned state
+    contains `square-average`, and returned state contains `velocity` only when
+    momentum is positive.
+  - Added C3 Vulkan dispatch before CPU materialization for all-Vulkan
+    parameter/gradient/square-average/velocity leaves. Mixed placement and
+    non-`Float32` Vulkan leaves still fail closed.
+  - `tensor-backends` now reports narrow `ml-optimizer-rmsprop-float32` support
+    where Vulkan `Float32` placement is available. Broad `ml-optimizer` remains
+    false.
+  - Vulkan clipping and CUDA optimizer kernels remain fail-closed.
+  - Validation passed: GLSL compile and `spirv-val --target-env vulkan1.0` for
+    the RMSProp shader, `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    Vulkan RMSProp smokes, focused advanced collections `pass=1809 fail=0`,
+    basic Lisp `pass=160 fail=0`, compiler slice `pass=281 fail=0`, primitive
+    docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.

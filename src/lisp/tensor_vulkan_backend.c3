@@ -411,6 +411,27 @@ extern fn int omni_tensor_backend_vulkan_ml_adam_f32(
     void** out_first_device_ptr,
     void** out_second_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_adam_f32");
+extern fn int omni_tensor_backend_vulkan_ml_rmsprop_f32(
+    void* params_device_ptr,
+    usz params_byte_len,
+    void* grads_device_ptr,
+    usz grads_byte_len,
+    void* square_device_ptr,
+    usz square_byte_len,
+    void* velocity_device_ptr,
+    usz velocity_byte_len,
+    usz element_count,
+    float learning_rate,
+    float alpha,
+    float epsilon,
+    float momentum,
+    float weight_decay,
+    int has_square,
+    int has_velocity,
+    void** out_params_device_ptr,
+    void** out_square_device_ptr,
+    void** out_velocity_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_rmsprop_f32");
 extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     void* input_device_ptr,
     usz input_byte_len,

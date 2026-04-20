@@ -356,6 +356,11 @@ fn Value* ml_adam_step_tree(Value* params, Value* grads, Value* first, Value* se
 }
 
 fn Value* ml_rmsprop_step_tensor(Value* params_arg, Value* grads_arg, Value* square_arg, Value* velocity_arg, double learning_rate, double alpha, double epsilon, double momentum, double weight_decay, Interp* interp, Value** out_params, Value** out_square, Value** out_velocity) {
+    bool vulkan_attempted = false;
+    Value* vulkan_err = ml_rmsprop_step_tensor_try_vulkan(params_arg, grads_arg, square_arg, velocity_arg, learning_rate, alpha, epsilon, momentum, weight_decay, interp, out_params, out_square, out_velocity, &vulkan_attempted);
+    if (vulkan_err != null) return vulkan_err;
+    if (vulkan_attempted) return null;
+
     TensorVal* params = null;
     TensorVal* grads = null;
     TensorVal* square = null;

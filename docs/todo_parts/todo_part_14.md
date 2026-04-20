@@ -630,8 +630,11 @@ Source: `TODO.md`
         optimizer kernels with explicit first/second moment state and narrow
         `ml-optimizer-adam-float32` / `ml-optimizer-adamw-float32` capability
         reporting.
+  - [x] `ML-VK-060-009` add Vulkan dense row-major `Float32` RMSProp optimizer
+        kernels with explicit square-average/velocity state and narrow
+        `ml-optimizer-rmsprop-float32` capability reporting.
   - remaining scope:
-    - Vulkan RMSProp and clipping kernels;
+    - Vulkan clipping kernels;
     - CUDA optimizer kernels;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.
