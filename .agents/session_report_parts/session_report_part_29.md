@@ -36,6 +36,10 @@
   - Added a Vulkan Float32 MSE overflow check that reads back the scalar status
     value from the device result, rejects non-finite output, and maps it to
     `tensor/numeric-overflow` to match the CPU Float32 loss contract.
+  - Added direct Vulkan same-device shape/dtype mismatch regressions for MSE
+    pre-dispatch validation.
+  - Recorded `ML-VK-020-007-VK-MSE-PAR` as the remaining staged-reduction
+    follow-up for large Vulkan MSE inputs.
 - Commands run:
   - Medium subagent audit for MSE implementation surface.
   - Fast docs/TODO audit subagent.
@@ -63,6 +67,8 @@
     fail-closed behavior.
   - Direct CPU and Vulkan Float32 overflow smokes both returned
     `tensor/numeric-overflow`.
+  - Direct Vulkan dtype/shape guard coverage is now part of the focused
+    advanced collections module group.
   - AOT manifest parity passed and an AOT binary using
     `ml/mean-squared-error` compiled, linked, and ran.
 - Invalidated assumptions or failed approaches worth preserving:
@@ -78,6 +84,8 @@
 - Unresolved issues:
   - Full bounded-container suite was not run.
   - Vulkan `ml/cross-entropy` remains open.
+  - Vulkan MSE still uses a single shader invocation for the whole scalar
+    reduction; `ML-VK-020-007-VK-MSE-PAR` tracks the staged parallel rewrite.
   - Vulkan Float64 `ml/logsumexp` and `ml/softmax` remain blocked on a
     validated Float64 exp/log policy.
 - Signature: Codex GPT-5.4

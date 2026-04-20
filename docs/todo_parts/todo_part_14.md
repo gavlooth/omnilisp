@@ -506,6 +506,16 @@ Source: `TODO.md`
         mismatches with Tensor diagnostics.
       - [x] Keep CUDA fail-closed; Vulkan support is tracked and shipped
         separately by `ML-VK-020-007-VK-MSE`.
+    - [ ] `ML-VK-020-007-VK-MSE-PAR` replace the single-invocation Vulkan MSE
+      reduction with a parallel staged reduction.
+      - [ ] Current helper intentionally computes the whole scalar loss in one
+        shader invocation; this is correct for small tensors but can monopolize
+        a device invocation or hit watchdogs on large tensors.
+      - [ ] Implement a staged partial-sum kernel plus final scalar reduction,
+        preserving the current no-CPU-fallback contract and Float32 overflow
+        status mapping.
+      - [ ] Add a larger guarded Vulkan regression that exercises the staged
+        path without exceeding the bounded validation policy.
   - scope:
     - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
     - stable `exp`, `log`, `logsumexp`, and `softmax`;

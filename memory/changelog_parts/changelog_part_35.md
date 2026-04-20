@@ -502,3 +502,7 @@ Source: `memory/CHANGELOG.md`
     focused advanced collections `pass=1701 fail=0`, basic Lisp slice
     `pass=160 fail=0`, direct CPU/Vulkan Float32 overflow smokes, and the AOT
     MSE smoke.
+  - Added Vulkan same-device dtype/shape mismatch regressions for MSE and
+    recorded `ML-VK-020-007-VK-MSE-PAR` for the remaining staged parallel
+    reduction rewrite. Current Vulkan MSE remains correctness-first and
+    single-invocation for small tensors.

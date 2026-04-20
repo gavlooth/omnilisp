@@ -488,6 +488,9 @@ Date: 2026-04-20
     `ml/mean-squared-error`; next Vulkan ML work should add a dedicated
     Vulkan cross-entropy kernel or a validated Float64 exp/log policy before
     claiming broader stable-reduction or loss capability.
+  - `ML-VK-020-007-VK-MSE-PAR` tracks the staged parallel MSE reduction rewrite
+    for large tensors; the current Vulkan MSE helper is correctness-first and
+    single-invocation.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.
