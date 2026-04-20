@@ -1,0 +1,32 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint count;
+    uint op;
+    uint aux0;
+    uint aux1;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer PredictionsBuffer {
+    double predictions[];
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer TargetsBuffer {
+    double targets[];
+};
+
+layout(set = 0, binding = 2, std430) buffer OutputBuffer {
+    double output_data[];
+};
+
+void main() {
+    double total = 0.0;
+    for (uint i = 0; i < params.count; i++) {
+        double diff = predictions[i] - targets[i];
+        total += diff * diff;
+    }
+    output_data[0] = total / double(params.count);
+}

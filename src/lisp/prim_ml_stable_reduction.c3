@@ -388,13 +388,12 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* predictions = null;
     Value* predictions_value = null;
-    Value* err = tensor_expr_resolve_concrete_cpu(
+    Value* err = tensor_expr_resolve_concrete_any_device(
         args[0],
         &predictions,
         &predictions_value,
         interp,
-        "ml/mean-squared-error: predictions tensor backing storage is missing",
-        "ml/mean-squared-error: backend kernel is not implemented for non-CPU tensors"
+        "ml/mean-squared-error: predictions tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_predictions = predictions_value != args[0];
@@ -404,13 +403,12 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* targets = null;
     Value* targets_value = null;
-    err = tensor_expr_resolve_concrete_cpu(
+    err = tensor_expr_resolve_concrete_any_device(
         args[1],
         &targets,
         &targets_value,
         interp,
-        "ml/mean-squared-error: targets tensor backing storage is missing",
-        "ml/mean-squared-error: backend kernel is not implemented for non-CPU tensors"
+        "ml/mean-squared-error: targets tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_targets = targets_value != args[1];
@@ -418,8 +416,17 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
         boundary_cleanup_materialized_value(null, targets_value, interp.current_scope);
     }
 
-    if (!tensor_has_valid_storage(predictions) || !tensor_has_valid_storage(targets)) {
+    if (predictions.device != targets.device) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: predictions and targets must be on the same device", null);
+    }
+    if (predictions.device != TENSOR_DEVICE_CPU && predictions.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: backend kernel is not implemented for this tensor placement", null);
+    }
+    if (predictions.device == TENSOR_DEVICE_CPU && (!tensor_has_valid_storage(predictions) || !tensor_has_valid_storage(targets))) {
         return tensor_runtime_raise(interp, "ml/mean-squared-error: tensor backing storage is missing");
+    }
+    if (predictions.device == TENSOR_DEVICE_VULKAN && (!tensor_has_valid_device_storage(predictions, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN))) {
+        return tensor_runtime_raise(interp, "ml/mean-squared-error: Vulkan tensor backing storage is missing");
     }
     if (!ml_reduction_supported_dtype(predictions.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: currently supports Float64 and Float32 tensors", null);
@@ -432,6 +439,9 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
     }
     if (predictions.element_count == 0) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/mean-squared-error: cannot reduce empty tensors", null);
+    }
+    if (predictions.device == TENSOR_DEVICE_VULKAN) {
+        return ml_mean_squared_error_eval_vulkan(predictions, targets, interp);
     }
 
     double total = 0.0;

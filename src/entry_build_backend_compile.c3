@@ -58,6 +58,7 @@ fn bool append_aot_runtime_sources(List { String }* out_sources) {
         append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART0[..], "AOT runtime lisp source") &&
         append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART1[..], "AOT runtime lisp source") &&
         append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART2[..], "AOT runtime lisp source") &&
+        append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART3[..], "AOT runtime lisp source") &&
         append_manifest_sources(out_sources, AOT_RUNTIME_PIKA_SOURCES[..], "AOT runtime pika source");
 }
 

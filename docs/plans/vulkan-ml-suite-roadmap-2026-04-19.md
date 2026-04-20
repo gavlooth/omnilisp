@@ -173,6 +173,10 @@ reduction operations:
   `ml/softmax(input axis)` through a dedicated same-shape axis-normalization
   shader/helper. Vulkan Float64 `ml/softmax` and losses remain fail-closed
   until their dedicated kernels/policies land.
+- `ML-VK-020-007-VK-MSE`: shipped Vulkan Float64/Float32
+  `ml/mean-squared-error(predictions targets)` through a dedicated two-input
+  scalar loss shader/helper. Mixed CPU/Vulkan operands fail closed before CPU
+  fallback.
 - `ML-VK-020-007-B`: shipped CPU `ml/cross-entropy(logits targets axis)` for
   same-shape probability/one-hot targets. It uses max-shifted log-softmax over
   one explicit class axis, averages over non-class positions, rejects
@@ -188,7 +192,7 @@ Scope:
 - `exp`, `log`, `logsumexp`, `softmax`;
 - `sum`, `mean`, `variance`, `max`, and axis reductions needed by
   normalization;
-- cross-entropy and mean-squared-error loss primitives.
+- cross-entropy loss primitive.
 
 This lane must not reuse invalidated GLSL double-transcendental assumptions.
 Float64 transcendental support needs a validated approximation or a separate

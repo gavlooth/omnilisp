@@ -468,3 +468,37 @@ Source: `memory/CHANGELOG.md`
     softmax/fail-closed smokes, focused advanced collections
     `pass=1699 fail=0`, basic Lisp slice `pass=160 fail=0`, primitive docs
     parity, `git diff --check`, and file-size gate.
+
+- 2026-04-20 13:09 CEST: Vulkan ML mean-squared-error checkpoint:
+  - Added and closed `ML-VK-020-007-VK-MSE`.
+  - Added dedicated Vulkan Float64/Float32 two-input scalar MSE shaders and a
+    loss helper instead of composing public Tensor ops or falling back to CPU.
+  - Routed Vulkan `ml/mean-squared-error(predictions targets)` through
+    `src/lisp/prim_ml_stable_reduction.c3`, preserving dtype and Vulkan
+    placement for the scalar result.
+  - Kept mixed CPU/Vulkan operands fail-closed before fallback, and left
+    Vulkan `ml/cross-entropy` as the remaining loss follow-up.
+  - Validation passed: shader compile/`spirv-val` for Float64/Float32 MSE,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct Vulkan MSE and
+    mixed-device smokes, focused advanced collections `pass=1700 fail=0`,
+    basic Lisp slice `pass=160 fail=0`, primitive docs parity,
+    Stage 3 source parity, baseline policy, `git diff --check`, and
+    file-size gate.
+  - Follow-up audit found the manifest-based AOT compile path was checked by
+    stale `append_matching_sources(...)` sentinels and that the explicit Lisp
+    runtime manifests omitted newer tensor/ML runtime files. Regenerated the
+    non-test Lisp AOT manifests into four under-700 parts, added full
+    manifest-vs-filesystem parity checks, and verified an AOT binary using
+    `ml/mean-squared-error` compiles, links, and runs.
+  - Production deduce row materialization no longer depends on test-only
+    `test_c_getenv`; it uses the production boundary getenv wrapper so AOT
+    runtime builds can exclude `src/lisp/tests_*.c3`.
+  - Follow-up Vulkan MSE audit found Float32 overflow could return an `inf`
+    device scalar instead of the CPU contract's `tensor/numeric-overflow`.
+    The C helper now validates the Float32 scalar result after dispatch,
+    destroys the device buffer on non-finite output, and the Lisp wrapper maps
+    that status to `tensor/numeric-overflow`.
+  - Validation rerun with `LD_LIBRARY_PATH=build:/usr/local/lib` passed:
+    focused advanced collections `pass=1701 fail=0`, basic Lisp slice
+    `pass=160 fail=0`, direct CPU/Vulkan Float32 overflow smokes, and the AOT
+    MSE smoke.

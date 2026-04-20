@@ -159,6 +159,27 @@ Source: `TODO.md`
     - bounded `advanced`: green (`pass=1183 fail=0`)
     - bounded `memory-lifetime-smoke`: green (`pass=189 fail=0`)
 
+- [x] `AUDIT-AOT-RUNTIME-MANIFEST-061` restore manifest-backed AOT source parity
+  - closure evidence:
+    - `src/entry_build_runtime_manifest_lisp_part*.c3` now covers every
+      non-test `src/lisp/*.c3` runtime file, including the tensor, Vulkan, and
+      ML primitive sources that had drifted out of the explicit AOT manifest.
+    - The manifest split now uses four under-700 parts, and
+      `src/entry_build_backend_compile.c3` appends all four parts.
+    - `scripts/check_e2e_baseline_policy.sh` now validates the manifest-based
+      AOT source path, checks representative root/pika anchors, and compares
+      the full non-test Lisp source set against the manifest entries to catch
+      omissions and duplicates.
+    - `src/lisp/deduce_relation_row_materialization.c3` no longer depends on
+      test-only `test_c_getenv` from production runtime code; it uses the
+      production boundary getenv wrapper.
+  - validation:
+    - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`: green
+    - `scripts/check_e2e_baseline_policy.sh`: green
+    - `c3c build`: green
+    - AOT smoke using `ml/mean-squared-error`: compiled, linked, and ran with
+      output `1.66666666666667`
+
 - [x] `AUDIT-PARSER-JIT-ASYNC-BOUNDARY-060` close parser/compiler, JIT boundary, macro splice, and async/TLS soundness defects
   - closure evidence:
     - parser language-surface interning now fails closed through a parser-local
@@ -465,6 +486,15 @@ Source: `TODO.md`
         parity tests for stable row normalization.
       - [x] Keep Vulkan Float64 `ml/softmax` fail-closed until a validated
         Float64 exp/log policy lands.
+    - [x] `ML-VK-020-007-VK-MSE` add Vulkan Float64/Float32
+      `ml/mean-squared-error(predictions targets)`.
+      - [x] Add a dedicated two-input scalar loss shader/helper instead of
+        composing public Tensor ops or falling back to CPU.
+      - [x] Preserve dtype and Vulkan placement, with CPU copy-back parity
+        tests for Float64 and Float32.
+      - [x] Map Vulkan Float32 non-finite scalar output to
+        `tensor/numeric-overflow`, matching the CPU Float32 write contract.
+      - [x] Keep mixed CPU/Vulkan operands fail-closed before fallback.
     - [x] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
       - [x] Decide targets are same-shape probability/one-hot tensors, not
         class-index tensors.
@@ -474,13 +504,13 @@ Source: `TODO.md`
       `ml/mean-squared-error(predictions targets)`.
       - [x] Return a scalar loss over all elements and reject shape/dtype
         mismatches with Tensor diagnostics.
-      - [x] Keep CUDA/Vulkan fail-closed until backend reduction kernels exist;
-        no hidden CPU fallback.
+      - [x] Keep CUDA fail-closed; Vulkan support is tracked and shipped
+        separately by `ML-VK-020-007-VK-MSE`.
   - scope:
     - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;
     - stable `exp`, `log`, `logsumexp`, and `softmax`;
     - axis `sum`, `mean`, `variance`, and `max`;
-    - cross-entropy and mean-squared-error losses.
+    - cross-entropy loss.
   - negative constraint:
     - do not reuse invalidated GLSL double-transcendental assumptions for
       Vulkan `Float64`; use validated approximations or fail closed.

@@ -275,6 +275,22 @@ extern fn int omni_tensor_backend_vulkan_ml_reduction_f32(
     uint op,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_reduction_f32");
+extern fn int omni_tensor_backend_vulkan_ml_mse_f64(
+    void* predictions_device_ptr,
+    usz predictions_byte_len,
+    void* targets_device_ptr,
+    usz targets_byte_len,
+    usz element_count,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_mse_f64");
+extern fn int omni_tensor_backend_vulkan_ml_mse_f32(
+    void* predictions_device_ptr,
+    usz predictions_byte_len,
+    void* targets_device_ptr,
+    usz targets_byte_len,
+    usz element_count,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_mse_f32");
 extern fn int omni_tensor_backend_vulkan_ml_softmax_f32(
     void* input_device_ptr,
     usz input_byte_len,

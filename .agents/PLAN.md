@@ -473,9 +473,21 @@ Date: 2026-04-20
     max-shifted shader and device-preserving parity tests;
   - Vulkan Float32 `ml/softmax` now uses a dedicated same-shape
     axis-normalization shader and keeps the result on Vulkan;
+  - Vulkan Float64/Float32 `ml/mean-squared-error` now uses a dedicated
+    two-input scalar loss shader and keeps the scalar result on Vulkan;
+  - Vulkan Float32 `ml/mean-squared-error` now checks the device scalar for
+    non-finite output and maps overflow to `tensor/numeric-overflow`, matching
+    the CPU Float32 write contract instead of returning an `inf` tensor;
+  - `AUDIT-AOT-RUNTIME-MANIFEST-061` regenerated the manifest-backed AOT
+    non-test Lisp source set into four under-700 parts and strengthened the
+    Stage 3 parity checker to compare the full source set;
   - unsupported dtype coverage remains, while Vulkan Float64 `ml/logsumexp`
     and Vulkan Float64 `ml/softmax` stay backend-unsupported.
 - Next checkpoint:
-  - `ML-VK-020-007-VK-SM-F32` is implemented for Vulkan Float32 `ml/softmax`;
-    next Vulkan ML work should add Vulkan loss kernels or a validated Float64
-    exp/log policy before claiming broader stable-reduction or loss capability.
+  - `ML-VK-020-007-VK-MSE` is implemented for Vulkan Float64/Float32
+    `ml/mean-squared-error`; next Vulkan ML work should add a dedicated
+    Vulkan cross-entropy kernel or a validated Float64 exp/log policy before
+    claiming broader stable-reduction or loss capability.
+  - Runtime validation for helper changes should put `build` before
+    `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
+    stale installed `libomni_chelpers`.

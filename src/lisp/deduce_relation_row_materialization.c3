@@ -26,7 +26,7 @@ fn Value* deduce_relation_materialize_row_dict(
     uint dict_capacity
 ) {
     Value* dict = make_hashmap_checked(interp, dict_capacity, "deduce-scan-range: out of memory");
-    if (g_deduce_force_row_dict_oom || test_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
+    if (g_deduce_force_row_dict_oom || boundary_c_getenv("OMNI_DEDUCE_FORCE_ROW_DICT_OOM") != null) {
         dict = null;
     }
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
@@ -60,7 +60,7 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count > usz.max / Value*.sizeof) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
-    if (g_deduce_force_column_key_values_oom || test_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
+    if (g_deduce_force_column_key_values_oom || boundary_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
     Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);

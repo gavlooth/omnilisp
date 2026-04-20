@@ -302,6 +302,22 @@ int omni_tensor_backend_vulkan_ml_reduction_f32(
     uint32_t op,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_mse_f64(
+    const void* predictions_device_ptr,
+    size_t predictions_byte_len,
+    const void* targets_device_ptr,
+    size_t targets_byte_len,
+    size_t element_count,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_mse_f32(
+    const void* predictions_device_ptr,
+    size_t predictions_byte_len,
+    const void* targets_device_ptr,
+    size_t targets_byte_len,
+    size_t element_count,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_ml_softmax_f32(
     const void* input_device_ptr,
     size_t input_byte_len,

@@ -1,5 +1,87 @@
 # Session Report Part 29
 
+## 2026-04-20 13:09 CEST - Vulkan ML Mean Squared Error Checkpoint
+
+- Objective attempted:
+  - Continue the Vulkan ML suite after Float32 softmax by adding the first
+    Vulkan loss kernel.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_loss.c`
+  - `csrc/tensor_vulkan_ml_mse_f64.comp`
+  - `csrc/tensor_vulkan_ml_mse_f32.comp`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/prim_ml_vulkan_losses.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `src/entry_build_backend_compile.c3`
+  - `src/entry_build_runtime_manifest_lisp_part*.c3`
+  - `scripts/check_e2e_baseline_policy.sh`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added and closed `ML-VK-020-007-VK-MSE`.
+  - Added dedicated Vulkan Float64/Float32 MSE shaders, generated SPIR-V
+    objects, and C helper wiring.
+  - Routed Vulkan `ml/mean-squared-error(predictions targets)` without hidden
+    CPU fallback, preserving dtype and Vulkan placement for the scalar result.
+  - Added guarded Vulkan Float64/Float32 parity coverage and mixed CPU/Vulkan
+    fail-closed coverage.
+  - Updated roadmap/spec/reference/TODO text for the new Vulkan MSE contract.
+  - Regenerated the AOT non-test Lisp runtime manifests into four under-700
+    parts after audit found the manifest omitted tensor/ML runtime files.
+  - Strengthened the Stage 3 parity checker to compare the full non-test
+    `src/lisp/*.c3` set against the AOT manifest parts.
+  - Replaced a production deduce OOM-test env hook's dependency on
+    `test_c_getenv` with the production boundary getenv wrapper so AOT builds
+    do not require test-only sources.
+  - Added a Vulkan Float32 MSE overflow check that reads back the scalar status
+    value from the device result, rejects non-finite output, and maps it to
+    `tensor/numeric-overflow` to match the CPU Float32 loss contract.
+- Commands run:
+  - Medium subagent audit for MSE implementation surface.
+  - Fast docs/TODO audit subagent.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_mse_f32.comp -o /tmp/omni_ml_mse_f32.spv`
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_mse_f64.comp -o /tmp/omni_ml_mse_f64.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_mse_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_mse_f64.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct REPL smokes for Vulkan Float64/Float32 MSE and mixed CPU/Vulkan
+    fail-closed behavior.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_e2e_baseline_policy.sh`
+  - Direct Vulkan/CPU Float32 overflow smokes for `ml/mean-squared-error`.
+  - AOT smoke: `LD_LIBRARY_PATH=build:/usr/local/lib:deps/lib ./build/main --build /tmp/.../mse.omni -o /tmp/.../mse_bin` and run output `1.66666666666667`.
+- Key results:
+  - Focused advanced collections passed with `pass=1701 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Direct smokes returned `true` for Vulkan MSE support and mixed-device
+    fail-closed behavior.
+  - Direct CPU and Vulkan Float32 overflow smokes both returned
+    `tensor/numeric-overflow`.
+  - AOT manifest parity passed and an AOT binary using
+    `ml/mean-squared-error` compiled, linked, and ran.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not treat the old `append_matching_sources(...)` Stage 3 checker shape
+    as authoritative; the AOT build path now uses explicit runtime manifests.
+  - Do not use `test_c_getenv` in non-test runtime files because production AOT
+    builds intentionally exclude `src/lisp/tests_*.c3`.
+  - Put `build` before `/usr/local/lib` in `LD_LIBRARY_PATH` when validating
+    freshly rebuilt C helpers; otherwise the process can load stale installed
+    helper libraries.
+- Current best recommendation / checkpoint:
+  - Commit and push the non-artifact source/docs/session changes.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan `ml/cross-entropy` remains open.
+  - Vulkan Float64 `ml/logsumexp` and `ml/softmax` remain blocked on a
+    validated Float64 exp/log policy.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 12:52 CEST - Vulkan ML Softmax Float32 Checkpoint
 
 - Objective attempted:
