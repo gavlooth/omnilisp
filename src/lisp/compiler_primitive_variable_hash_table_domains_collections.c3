@@ -75,6 +75,8 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("ml/grad"), "aot::lookup_prim(\"ml/grad\")");
     prim_hash_insert(st.intern("ml/sgd-step"), "aot::lookup_prim(\"ml/sgd-step\")");
     prim_hash_insert(st.intern("ml/clip-gradients"), "aot::lookup_prim(\"ml/clip-gradients\")");
+    prim_hash_insert(st.intern("ml/save-optimizer"), "aot::lookup_prim(\"ml/save-optimizer\")");
+    prim_hash_insert(st.intern("ml/load-optimizer"), "aot::lookup_prim(\"ml/load-optimizer\")");
     prim_hash_insert(st.intern("ml/optimizer-step"), "aot::lookup_prim(\"ml/optimizer-step\")");
     prim_hash_insert(st.intern("ml/relu"), "aot::lookup_prim(\"ml/relu\")");
     prim_hash_insert(st.intern("ml/sigmoid"), "aot::lookup_prim(\"ml/sigmoid\")");

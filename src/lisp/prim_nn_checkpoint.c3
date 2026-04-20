@@ -374,7 +374,7 @@ fn Value* nn_ckpt_save_text_or_path(Value* json, Value*[] args, Interp* interp, 
     if (args.len != 2) return primitive_arity_raise(interp, prim_name, "1 or 2 arguments: value [path]", args.len);
     if (args[1] == null || args[1].tag != STRING) return primitive_arg_type_raise(interp, prim_name, 1, "path string", args[1]);
     int fd = fs_uv_open(args[1].str_chars, 577, 420);
-    if (fd < 0) return nn_ckpt_io_error(interp, "nn/save: failed to open checkpoint path");
+    if (fd < 0) return nn_ckpt_io_error(interp, "checkpoint: failed to open checkpoint path");
     usz written = 0;
     bool ok = true;
     while (written < json.str_len) {
@@ -386,7 +386,7 @@ fn Value* nn_ckpt_save_text_or_path(Value* json, Value*[] args, Interp* interp, 
         written += (usz)n;
     }
     int close_status = fs_uv_close(fd);
-    if (!ok || close_status < 0) return nn_ckpt_io_error(interp, "nn/save: failed to write checkpoint path");
+    if (!ok || close_status < 0) return nn_ckpt_io_error(interp, "checkpoint: failed to write checkpoint path");
     return make_void(interp);
 }
 

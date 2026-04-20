@@ -382,7 +382,7 @@ preserves input shape and dtype, requires positive finite epsilon, supports CPU 
 targets axis)` accepts same-shape probability/one-hot target tensors, uses
 max-shifted log-softmax over the explicit class axis, returns the mean loss
 over non-class positions, and supports Vulkan `Float32` while keeping Vulkan
-`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error`, `linear-activation-mean-squared-error`, and `linear-softmax-cross-entropy` gradient specs; these return ordinary dictionaries with loss, output, input-gradient, and parameter-gradients, validate probability targets for softmax CE, and keep CUDA/Vulkan backward fail-closed. `ml/sgd-step(parameters gradients learning-rate)` applies an immutable CPU SGD update over matching array/dictionary parameter trees with dense `Float64`/`Float32` tensor leaves. `ml/clip-gradients(gradients max-norm)` is available for CPU max-norm gradient-tree clipping. `ml/optimizer-step(spec parameters gradients state)` returns updated parameters and explicit optimizer state for CPU SGD, Adam, AdamW, and RMSProp specs and accepts optional `clip-norm`; CUDA/Vulkan optimizer kernels remain fail-closed.
+`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error`, `linear-activation-mean-squared-error`, and `linear-softmax-cross-entropy` gradient specs; these return ordinary dictionaries with loss, output, input-gradient, and parameter-gradients, validate probability targets for softmax CE, and keep CUDA/Vulkan backward fail-closed. `ml/sgd-step(parameters gradients learning-rate)` applies an immutable CPU SGD update over matching array/dictionary parameter trees with dense `Float64`/`Float32` tensor leaves. `ml/clip-gradients(gradients max-norm)` is available for CPU max-norm gradient-tree clipping. `ml/optimizer-step(spec parameters gradients state)` returns updated parameters and explicit optimizer state for CPU SGD, Adam, AdamW, and RMSProp specs and accepts optional `clip-norm`; `ml/save-optimizer(spec state [path])` and `ml/load-optimizer(source)` checkpoint explicit optimizer spec/state dictionaries and revalidate the checkpoint envelope, supported spec, and state container on load; CUDA/Vulkan optimizer kernels remain fail-closed.
 `ml/conv1d(input kernel stride padding dilation groups)` is the first
 convolution surface: it requires dense row-major `input[batch channels width]`
 and `kernel[out-channels in-channels-per-group kernel-width]`, supports CPU
@@ -511,6 +511,12 @@ Loading reconstructs the tensors and restores their recorded device through the
 explicit `to-device` path. Malformed checkpoint envelopes, payload-family
 mismatches, unsupported tensor dtypes, or invalid restored DataSpecs fail closed
 with `nn/invalid-spec`.
+`ml/save-optimizer(spec state [path])` and `ml/load-optimizer(source)` are the
+optimizer-state checkpoint pair. They serialize a supported optimizer spec and
+ordinary state `Dictionary` as an `optimizer` payload, either returning a JSON
+checkpoint string or writing to a path. Loading accepts a checkpoint JSON string
+or path, restores an ordinary `Dictionary` with `kind`, `spec`, and `state`, and
+rejects wrong payload families or invalid optimizer specs before returning.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

@@ -170,6 +170,8 @@ The explicit path must remain available:
 - `nn/load-spec`
 - `nn/save`
 - `nn/load`
+- `ml/save-optimizer`
+- `ml/load-optimizer`
 
 `nn/save-spec(spec [path])` serializes a non-model DataSpec to a JSON checkpoint
 string, or writes that checkpoint to `path` and returns `Void`.
@@ -183,6 +185,12 @@ and flat data. Non-CPU tensors are copied through explicit `to-device` routes fo
 serialization and are restored to their recorded placement on load.
 Malformed checkpoint envelopes, wrong payload families, unsupported tensor dtypes,
 and invalid restored DataSpecs fail closed with `nn/invalid-spec`.
+
+`ml/save-optimizer(spec state [path])` and `ml/load-optimizer(source)` use the
+same checkpoint envelope for explicit optimizer data. The payload kind is
+`optimizer`; load returns an ordinary `Dictionary` containing `kind`, `spec`, and
+`state` after validating the envelope family, supported optimizer spec, and state
+container.
 
 ### Training
 
@@ -253,7 +261,7 @@ The first ergonomic training MVP is complete when all of these are true:
    inference MVP.
 2. `nn/grad` computes gradients over explicit model data.
 3. `ML-VK-060` supplies `ml/optimizer-step` SGD momentum state plus Adam,
-   AdamW, RMSProp, and max-norm clipping.
+   AdamW, RMSProp, max-norm clipping, and optimizer checkpoint helpers.
 4. `nn/train-step` returns updated model and optimizer data.
 5. Vulkan training either remains on Vulkan for the supported path or fails
    closed before CPU fallback.
@@ -357,7 +365,8 @@ Lowering rules:
 Shipped: `nn/save-spec`, `nn/load-spec`, `nn/save`, and `nn/load` round-trip
 specs and model bundles through checkpoint strings or paths. Model checkpoints
 preserve `params`, `state`, dtype, shape, mode, metadata, and placement metadata
-with no hidden device fallback.
+with no hidden device fallback. Optimizer checkpoints are covered by
+`ML-VK-060-006` through `ml/save-optimizer` and `ml/load-optimizer`.
 
 ### `ML-VK-070-005` Training Facade
 

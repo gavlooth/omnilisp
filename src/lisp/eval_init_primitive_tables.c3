@@ -116,6 +116,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "ml/grad", &prim_ml_grad, 1 },
         { "ml/sgd-step", &prim_ml_sgd_step, 3 },
         { "ml/clip-gradients", &prim_ml_clip_gradients, 2 },
+        { "ml/save-optimizer", &prim_ml_save_optimizer, -1 },
+        { "ml/load-optimizer", &prim_ml_load_optimizer, 1 },
         { "ml/optimizer-step", &prim_ml_optimizer_step, 4 },
         { "ml/relu", &prim_ml_relu, 1 },
         { "ml/sigmoid", &prim_ml_sigmoid, 1 },

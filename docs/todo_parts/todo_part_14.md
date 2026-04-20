@@ -621,8 +621,12 @@ Source: `TODO.md`
   - [x] `ML-VK-060-003` add CPU `ml/optimizer-step` for Adam and AdamW specs.
   - [x] `ML-VK-060-004` add CPU `ml/optimizer-step` for RMSProp specs.
   - [x] `ML-VK-060-005` add CPU `ml/clip-gradients` and optimizer `clip-norm`.
+  - [x] `ML-VK-060-006` add CPU `ml/save-optimizer` and `ml/load-optimizer`
+        checkpoint helpers for explicit optimizer spec/state data.
   - remaining scope:
-    - optimizer state checkpoint and restore.
+    - Vulkan optimizer kernels;
+    - `nn/train-step` integration after the remaining autograd surface is
+      sufficient.
   - acceptance:
     - optimizer state keeps dtype/device placement explicit;
     - mixed-device parameter groups fail closed unless transfer is explicit.

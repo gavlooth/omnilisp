@@ -225,3 +225,23 @@
     collections `pass=1795 fail=0`, compiler slice `pass=279 fail=0`, basic
     Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-006 Optimizer Checkpoint Helpers
+
+- Implemented CPU `ml/save-optimizer(spec state [path])` and
+  `ml/load-optimizer(source)`.
+  - Optimizer checkpoints wrap an ordinary `{kind spec state}` Dictionary in the
+    existing checkpoint envelope with payload kind `optimizer`.
+  - Save and load validate supported optimizer specs for SGD, Adam, AdamW, and
+    RMSProp, including numeric range checks for learning rate, weight decay,
+    clip norm, momentum, beta values, alpha, and epsilon.
+  - Load rejects wrong payload families before returning ordinary data.
+  - Checkpoint validation covers envelope/spec/state-container integrity;
+    parameter-tree/device compatibility remains enforced by `ml/optimizer-step`.
+  - Shared checkpoint path I/O errors now use generic checkpoint wording instead
+    of hard-coded `nn/save` text.
+  - Validation passed: `c3c build`, direct CPU eval smokes for Adam state
+    string round trip, SGD path round trip, and invalid spec rejection, focused
+    advanced collections `pass=1798 fail=0`, compiler slice `pass=281 fail=0`,
+    basic Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.

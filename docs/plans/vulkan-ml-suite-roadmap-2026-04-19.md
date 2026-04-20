@@ -315,7 +315,12 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   optional `clip-norm` on `ml/optimizer-step` specs. Gradients are max-norm
   clipped before optimizer state updates; CUDA/Vulkan clipping and optimizer
   kernels stay fail-closed.
-- parameter state initialization, checkpoint, and restore.
+- `ML-VK-060-006`: shipped CPU `ml/save-optimizer(spec state [path])` and
+  `ml/load-optimizer(source)` for explicit optimizer spec/state checkpoint
+  round trips through the existing checkpoint envelope. Checkpoint load
+  revalidates the payload family, supported optimizer spec, and state container;
+  optimizer tree/device compatibility remains enforced at `ml/optimizer-step`.
+- Vulkan optimizer kernels and training-step integration remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.

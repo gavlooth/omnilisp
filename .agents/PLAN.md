@@ -710,3 +710,6 @@ Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for RMSProp explicit squa
 
 ## Active ML-VK-060-005 Gradient Clipping Checkpoint
 Date: 2026-04-20 - Implemented CPU `ml/clip-gradients` and optimizer `clip-norm` max-norm clipping; validation passed.
+
+## Active ML-VK-060-006 Optimizer Checkpoint Helpers
+Date: 2026-04-20 - Implemented CPU `ml/save-optimizer` and `ml/load-optimizer` for explicit optimizer spec/state checkpoints; validation passed.

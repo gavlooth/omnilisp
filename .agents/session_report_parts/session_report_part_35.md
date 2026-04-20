@@ -625,3 +625,49 @@
   - Continue `ML-VK-060` with optimizer checkpoint helpers or start the
     training facade only after the remaining autograd path is sufficient.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 22:07 CEST - ML-VK-060-006 Optimizer Checkpoint Helpers
+
+- Objective attempted:
+  - Continue `ML-VK-060` by adding explicit optimizer spec/state checkpoint
+    helpers for the data-oriented optimizer suite.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_optimizer_checkpoint.c3`, primitive registration/AOT
+    lookup/runtime source manifest, advanced and compiler tests, public ML docs,
+    TODO, roadmap, changelog, and plan/report artifacts.
+- Code or configuration changes made:
+  - Added `ml/save-optimizer(spec state [path])` and
+    `ml/load-optimizer(source)`.
+  - Reused the existing NN checkpoint envelope with payload kind `optimizer`.
+  - Validated supported SGD, Adam, AdamW, and RMSProp optimizer specs on save
+    and load, while keeping optimizer tree/device compatibility checks in
+    `ml/optimizer-step`.
+  - Changed shared checkpoint path I/O error text from hard-coded `nn/save`
+    wording to generic checkpoint wording for NN and ML checkpoint callers.
+  - Added runtime primitive registration, AOT primitive lookup, and runtime
+    source-manifest wiring.
+- Commands run:
+  - `c3c build`
+  - direct CPU `--eval` Adam state string round trip, SGD path round trip, and
+    invalid optimizer spec smokes with `LD_LIBRARY_PATH=build:/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1798 fail=0`.
+  - Compiler slice passed: `pass=281 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - C3 build, direct smokes, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and diff whitespace checks passed.
+- Unresolved issues:
+  - Vulkan optimizer kernels and `nn/train-step` integration remain open.
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run.
+- Next actions:
+  - Continue `ML-VK-060` with Vulkan optimizer kernels, or move to
+    `nn/train-step` only after the remaining autograd surface is sufficient.
+- Signature: Codex GPT-5.4

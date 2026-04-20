@@ -442,6 +442,18 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: ml/clip-gradients", "[FAIL] Compiler: ml/clip-gradients", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(ml/save-optimizer (Dictionary 'kind 'sgd 'learning-rate 0.1) (Dictionary))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/save-optimizer\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/save-optimizer", "[FAIL] Compiler: ml/save-optimizer", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(ml/load-optimizer \"{}\")", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/load-optimizer\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/load-optimizer", "[FAIL] Compiler: ml/load-optimizer", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);
