@@ -299,7 +299,11 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   dictionaries, updates dense row-major `Float64`/`Float32` tensor leaves, keeps
   CUDA/Vulkan optimizer kernels fail-closed, and leaves broad `ml-optimizer`
   false until optimizer state and device kernels exist.
-- SGD with momentum;
+- `ML-VK-060-002`: shipped CPU `ml/optimizer-step(spec parameters gradients
+  state)` for data-oriented SGD specs with optional momentum and weight decay.
+  It returns explicit updated `parameters` plus optimizer `state`, initializes
+  and consumes momentum velocity trees, and keeps CUDA/Vulkan optimizer kernels
+  fail-closed.
 - Adam and AdamW;
 - RMSProp;
 - gradient clipping;

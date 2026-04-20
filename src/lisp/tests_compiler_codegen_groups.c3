@@ -430,6 +430,12 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"aot::dict_from_args(", "unsupported"});
         compiler_test_finish_bool(ok, "Compiler: Dict", "[FAIL] Compiler: Dict", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 0.1) (Dictionary) (Dictionary) (Dictionary))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"ml/optimizer-step\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: ml/optimizer-step", "[FAIL] Compiler: ml/optimizer-step", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

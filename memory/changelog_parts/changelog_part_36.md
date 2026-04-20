@@ -151,3 +151,20 @@
     collections `pass=1781 fail=0`, basic Lisp `pass=160 fail=0`, primitive
     docs parity, Stage 3 source parity, code file-size gate, and
     `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-002 Optimizer Step Primitive
+
+- Implemented `ml/optimizer-step(spec parameters gradients state)`.
+  - The first supported optimizer spec is `{'kind 'sgd 'learning-rate n}` with
+    optional `momentum` and `weight-decay`.
+  - The primitive returns a dictionary containing fresh `parameters` and
+    explicit optimizer `state`; momentum state is stored as a `velocity`
+    parameter tree.
+  - CPU dense row-major `Float64`/`Float32` tensor leaves are supported through
+    matching array/dictionary parameter, gradient, and velocity trees.
+  - CUDA/Vulkan optimizer kernels stay fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1785 fail=0`, compiler slice `pass=278 fail=0`, basic
+    Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

@@ -698,3 +698,6 @@ Date: 2026-04-20
 - Next checkpoint: tape-backed composition or optimizer prerequisites before `nn/grad`.
 ## Active ML-VK-060-001 SGD Step Checkpoint
 Date: 2026-04-20 - Implemented CPU `ml/sgd-step` for data-oriented parameter trees; validation passed.
+
+## Active ML-VK-060-002 Optimizer Step Checkpoint
+Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for SGD momentum state; validation passed.

@@ -115,6 +115,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "ml/linear/batched-reduce", &prim_ml_linear_batched_reduce, -1 },
         { "ml/grad", &prim_ml_grad, 1 },
         { "ml/sgd-step", &prim_ml_sgd_step, 3 },
+        { "ml/optimizer-step", &prim_ml_optimizer_step, 4 },
         { "ml/relu", &prim_ml_relu, 1 },
         { "ml/sigmoid", &prim_ml_sigmoid, 1 },
         { "ml/tanh", &prim_ml_tanh, 1 },
