@@ -50,6 +50,10 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("nn/forward"), "aot::lookup_prim(\"nn/forward\")");
     prim_hash_insert(st.intern("nn/grad"), "aot::lookup_prim(\"nn/grad\")");
     prim_hash_insert(st.intern("nn/train-step"), "aot::lookup_prim(\"nn/train-step\")");
+    prim_hash_insert(st.intern("nn/sgd"), "aot::lookup_prim(\"nn/sgd\")");
+    prim_hash_insert(st.intern("nn/adam"), "aot::lookup_prim(\"nn/adam\")");
+    prim_hash_insert(st.intern("nn/adamw"), "aot::lookup_prim(\"nn/adamw\")");
+    prim_hash_insert(st.intern("nn/rmsprop"), "aot::lookup_prim(\"nn/rmsprop\")");
     prim_hash_insert(st.intern("nn/predict"), "aot::lookup_prim(\"nn/predict\")");
     prim_hash_insert(st.intern("nn/summary"), "aot::lookup_prim(\"nn/summary\")");
     prim_hash_insert(st.intern("nn/save-spec"), "aot::lookup_prim(\"nn/save-spec\")");

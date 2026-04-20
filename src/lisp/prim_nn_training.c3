@@ -1,5 +1,12 @@
 module lisp;
 
+enum NnOptimizerKind : char {
+    NN_OPTIMIZER_SGD,
+    NN_OPTIMIZER_ADAM,
+    NN_OPTIMIZER_ADAMW,
+    NN_OPTIMIZER_RMSPROP,
+}
+
 struct NnTrainHead {
     Value* dense_spec;
     Value* dense_params;
@@ -59,6 +66,140 @@ fn Value* nn_train_loss(Value* options, Value* activation, Interp* interp) {
         return nn_train_invalid(interp, "options.loss", "mean-squared-error or softmax-cross-entropy", loss);
     }
     return loss;
+}
+
+fn bool nn_optimizer_option_is(Value* key, Interp* interp, char[] name) @inline {
+    return key != null && key.tag == SYMBOL && nn_symbol_name_is(key.sym_val, interp, name);
+}
+
+fn bool nn_optimizer_common_option(Value* key, Interp* interp) @inline {
+    return nn_optimizer_option_is(key, interp, "weight-decay") ||
+        nn_optimizer_option_is(key, interp, "clip-norm");
+}
+
+fn char[] nn_optimizer_kind_name(NnOptimizerKind kind) {
+    switch (kind) {
+        case NN_OPTIMIZER_SGD: return "sgd";
+        case NN_OPTIMIZER_ADAM: return "adam";
+        case NN_OPTIMIZER_ADAMW: return "adamw";
+        case NN_OPTIMIZER_RMSPROP: return "rmsprop";
+    }
+}
+
+fn bool nn_optimizer_option_allowed(Value* key, Interp* interp, NnOptimizerKind kind) {
+    if (nn_optimizer_common_option(key, interp)) return true;
+    switch (kind) {
+        case NN_OPTIMIZER_SGD:
+            return nn_optimizer_option_is(key, interp, "momentum");
+        case NN_OPTIMIZER_ADAM:
+        case NN_OPTIMIZER_ADAMW:
+            return nn_optimizer_option_is(key, interp, "beta1") ||
+                nn_optimizer_option_is(key, interp, "beta2") ||
+                nn_optimizer_option_is(key, interp, "epsilon");
+        case NN_OPTIMIZER_RMSPROP:
+            return nn_optimizer_option_is(key, interp, "alpha") ||
+                nn_optimizer_option_is(key, interp, "epsilon") ||
+                nn_optimizer_option_is(key, interp, "momentum");
+    }
+}
+
+fn Value* nn_optimizer_read_number(Value* value, Interp* interp, char[] path, char[] expected, double* out) {
+    if (!try_numeric_to_double(value, out) || !conversion_double_is_finite(*out)) {
+        return nn_train_invalid(interp, path, expected, value);
+    }
+    return null;
+}
+
+fn Value* nn_optimizer_validate_nonnegative(Value* value, Interp* interp, char[] path) {
+    if (value == null) return null;
+    double number = 0.0;
+    if (Value* err = nn_optimizer_read_number(value, interp, path, "non-negative finite number", &number)) return err;
+    if (number < 0.0) return nn_train_invalid(interp, path, "non-negative finite number", value);
+    return null;
+}
+
+fn Value* nn_optimizer_validate_positive(Value* value, Interp* interp, char[] path) {
+    if (value == null) return null;
+    double number = 0.0;
+    if (Value* err = nn_optimizer_read_number(value, interp, path, "positive finite number", &number)) return err;
+    if (number <= 0.0) return nn_train_invalid(interp, path, "positive finite number", value);
+    return null;
+}
+
+fn Value* nn_optimizer_validate_unit_open(Value* value, Interp* interp, char[] path) {
+    if (value == null) return null;
+    double number = 0.0;
+    if (Value* err = nn_optimizer_read_number(value, interp, path, "finite number in [0, 1)", &number)) return err;
+    if (number < 0.0 || number >= 1.0) return nn_train_invalid(interp, path, "finite number in [0, 1)", value);
+    return null;
+}
+
+fn Value* nn_optimizer_validate_options(Value* options, Interp* interp, char[] prim_name, NnOptimizerKind kind) {
+    if (options == null || options.tag == NIL) return null;
+    if (options.tag != HASHMAP || options.hashmap_val == null) return primitive_arg_type_raise(interp, prim_name, 1, "Dictionary options", options);
+    for (uint i = 0; i < options.hashmap_val.capacity; i++) {
+        HashEntry* entry = &options.hashmap_val.entries[i];
+        if (entry.key == null) continue;
+        if (!nn_optimizer_option_allowed(entry.key, interp, kind)) {
+            return nn_train_invalid(interp, "optimizer.options", "optimizer option valid for this kind", entry.key);
+        }
+    }
+    if (Value* err = nn_optimizer_validate_nonnegative(nn_dict_get(options, interp, "weight-decay"), interp, "optimizer.weight-decay")) return err;
+    if (Value* err = nn_optimizer_validate_nonnegative(nn_dict_get(options, interp, "clip-norm"), interp, "optimizer.clip-norm")) return err;
+    switch (kind) {
+        case NN_OPTIMIZER_SGD:
+            return nn_optimizer_validate_unit_open(nn_dict_get(options, interp, "momentum"), interp, "optimizer.momentum");
+        case NN_OPTIMIZER_ADAM:
+        case NN_OPTIMIZER_ADAMW:
+            if (Value* err = nn_optimizer_validate_unit_open(nn_dict_get(options, interp, "beta1"), interp, "optimizer.beta1")) return err;
+            if (Value* err = nn_optimizer_validate_unit_open(nn_dict_get(options, interp, "beta2"), interp, "optimizer.beta2")) return err;
+            return nn_optimizer_validate_positive(nn_dict_get(options, interp, "epsilon"), interp, "optimizer.epsilon");
+        case NN_OPTIMIZER_RMSPROP:
+            if (Value* err = nn_optimizer_validate_unit_open(nn_dict_get(options, interp, "alpha"), interp, "optimizer.alpha")) return err;
+            if (Value* err = nn_optimizer_validate_positive(nn_dict_get(options, interp, "epsilon"), interp, "optimizer.epsilon")) return err;
+            return nn_optimizer_validate_unit_open(nn_dict_get(options, interp, "momentum"), interp, "optimizer.momentum");
+    }
+}
+
+fn Value* nn_optimizer_copy_option(Value* spec, Value* options, Interp* interp, char[] key) {
+    Value* value = nn_dict_get(options, interp, key);
+    if (value == null) return null;
+    return nn_dict_set(spec, interp, key, value);
+}
+
+fn Value* nn_optimizer_copy_common_options(Value* spec, Value* options, Interp* interp) {
+    if (Value* err = nn_optimizer_copy_option(spec, options, interp, "weight-decay")) return err;
+    return nn_optimizer_copy_option(spec, options, interp, "clip-norm");
+}
+
+fn Value* nn_optimizer_spec(Value*[] args, Interp* interp, char[] prim_name, NnOptimizerKind kind) {
+    if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, prim_name, "1 or 2 arguments: learning-rate [options]", args.len);
+    double learning_rate = 0.0;
+    if (Value* err = nn_optimizer_read_number(args[0], interp, "optimizer.learning-rate", "non-negative finite number", &learning_rate)) return err;
+    if (learning_rate < 0.0) return nn_train_invalid(interp, "optimizer.learning-rate", "non-negative finite number", args[0]);
+    Value* options = args.len == 2 ? args[1] : null;
+    if (Value* err = nn_optimizer_validate_options(options, interp, prim_name, kind)) return err;
+
+    Value* spec = nn_make_dict(interp, 12);
+    if (spec == null || spec.tag == ERROR) return spec;
+    if (Value* err = nn_dict_set_symbol(spec, interp, "kind", nn_optimizer_kind_name(kind))) return err;
+    if (Value* err = nn_dict_set(spec, interp, "learning-rate", args[0])) return err;
+    if (options == null || options.tag == NIL) return spec;
+    if (Value* err = nn_optimizer_copy_common_options(spec, options, interp)) return err;
+    switch (kind) {
+        case NN_OPTIMIZER_SGD:
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "momentum")) return err;
+        case NN_OPTIMIZER_ADAM:
+        case NN_OPTIMIZER_ADAMW:
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "beta1")) return err;
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "beta2")) return err;
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "epsilon")) return err;
+        case NN_OPTIMIZER_RMSPROP:
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "alpha")) return err;
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "epsilon")) return err;
+            if (Value* err = nn_optimizer_copy_option(spec, options, interp, "momentum")) return err;
+    }
+    return spec;
 }
 
 fn Value* nn_train_extract_dense(Value* spec, Value* params, Interp* interp, NnTrainHead* out) {
@@ -224,6 +365,22 @@ fn Value* prim_nn_grad(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 3 && args.len != 4) return primitive_arity_raise(interp, "nn/grad", "3 or 4 arguments: model input targets [options]", args.len);
     Value* options = args.len == 4 ? args[3] : null;
     return nn_train_grad_result(args[0], args[1], args[2], options, interp, "nn/grad", 3);
+}
+
+fn Value* prim_nn_sgd(Value*[] args, Env* env, Interp* interp) {
+    return nn_optimizer_spec(args, interp, "nn/sgd", NN_OPTIMIZER_SGD);
+}
+
+fn Value* prim_nn_adam(Value*[] args, Env* env, Interp* interp) {
+    return nn_optimizer_spec(args, interp, "nn/adam", NN_OPTIMIZER_ADAM);
+}
+
+fn Value* prim_nn_adamw(Value*[] args, Env* env, Interp* interp) {
+    return nn_optimizer_spec(args, interp, "nn/adamw", NN_OPTIMIZER_ADAMW);
+}
+
+fn Value* prim_nn_rmsprop(Value*[] args, Env* env, Interp* interp) {
+    return nn_optimizer_spec(args, interp, "nn/rmsprop", NN_OPTIMIZER_RMSPROP);
 }
 
 fn Value* prim_nn_train_step(Value*[] args, Env* env, Interp* interp) {

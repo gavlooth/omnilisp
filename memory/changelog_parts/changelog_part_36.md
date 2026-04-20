@@ -405,5 +405,26 @@
     gradient/optimizer results.
   - CUDA/Vulkan backward remains fail-closed through the underlying `ml/grad`
     contract; no hidden CPU fallback or hidden mutable model state was added.
-  - `ML-VK-070-006` remains open for `nn/sgd`, `nn/adam`, `nn/adamw`, and
+  - Follow-up shipped in `ML-VK-070-006`: `nn/sgd`, `nn/adam`, `nn/adamw`, and
     `nn/rmsprop` optimizer spec constructors.
+
+## 2026-04-21 - ML-VK-070-006 Optimizer Spec Constructors
+
+- Implemented `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+  - Constructors return ordinary optimizer spec dictionaries consumable by
+    `nn/train-step` and `ml/optimizer-step`; no hidden optimizer state or
+    mutation is introduced.
+  - `learning-rate` must be finite and non-negative.
+  - Common optional fields are `weight-decay` and `clip-norm`, both finite and
+    non-negative.
+  - SGD accepts optional `momentum` in `[0, 1)`.
+  - Adam and AdamW accept optional `beta1` / `beta2` in `[0, 1)` and positive
+    finite `epsilon`.
+  - RMSProp accepts optional `alpha` and `momentum` in `[0, 1)` plus positive
+    finite `epsilon`.
+  - Unknown option keys fail closed with `nn/invalid-spec`.
+  - Validation passed: `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    constructor and invalid-range smokes, focused advanced collections
+    `pass=1831 fail=0`, compiler slice `pass=285 fail=0`, basic Lisp
+    `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

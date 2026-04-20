@@ -259,3 +259,47 @@ Signature: GPT-5 Codex
   - `ML-VK-070-006` remains open for ergonomic optimizer spec constructors.
   - Broader tape-backed autograd and CUDA/Vulkan backward kernels remain open.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-070-006 Optimizer Spec Constructors
+
+- Objective attempted: add data-first NN optimizer spec constructors for the
+  training facade.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_nn_training.c3`
+  - `src/lisp/eval_init_primitive_tables.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+  - docs, TODO, plan, and changelog surfaces for `ML-VK-070-006`.
+- Code or configuration changes made:
+  - Added `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+  - Constructors validate learning-rate, supported option keys, and
+    optimizer-specific hyperparameter ranges.
+  - Constructors return ordinary optimizer spec dictionaries consumable by
+    `nn/train-step` and `ml/optimizer-step`; no hidden state ownership or
+    mutation was introduced.
+  - Added runtime/AOT primitive registration and AOT compiler lookup coverage.
+- Commands run:
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct `build/main --eval` constructor and invalid-range smokes.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Direct constructor and invalid-range smokes returned `true`.
+  - Focused advanced collections passed with `pass=1831 fail=0`.
+  - Compiler slice passed with `pass=285 fail=0`.
+  - Basic Lisp passed with `pass=160 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
+  - Broader tape-backed autograd and fused CUDA optimizer kernels remain open.
+  - CUDA/Vulkan backward kernels remain fail-closed through `ml/grad`.
+- Signature: GPT-5 Codex

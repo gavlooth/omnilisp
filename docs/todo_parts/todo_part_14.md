@@ -721,8 +721,11 @@ Source: `TODO.md`
         output without hidden mutation.
       - shipped: CUDA/Vulkan backward remains fail-closed before hidden CPU
         fallback through the underlying `ml/grad` contract.
-    - [ ] `ML-VK-070-006` add ergonomic optimizer spec constructors
+    - [x] `ML-VK-070-006` add ergonomic optimizer spec constructors
       `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+      - shipped: constructors validate hyperparameter ranges and unknown
+        option keys, return ordinary optimizer spec dictionaries, and compose
+        directly with `nn/train-step` / `ml/optimizer-step`.
 
 - [ ] `ML-VK-080` add Vulkan ML graph capture, fusion, and memory planning
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`

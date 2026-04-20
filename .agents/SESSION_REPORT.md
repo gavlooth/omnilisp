@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (227 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (305 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -738,4 +738,19 @@ The historical content was split mechanically to keep individual files below the
     advanced collections `pass=1828 fail=0`, compiler slice `pass=284 fail=0`,
     basic Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-070-006 Optimizer Spec Constructors
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+  - Constructors validate hyperparameters and return ordinary optimizer spec
+    dictionaries for `nn/train-step` / `ml/optimizer-step`.
+  - No hidden optimizer state or mutation was introduced.
+  - Validation: `scripts/build_omni_chelpers.sh`, `c3c build`, direct eval
+    smokes, focused advanced collections `pass=1831 fail=0`, compiler slice
+    `pass=285 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
+    Stage 3 source parity, code file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex

@@ -441,11 +441,21 @@ Shipped first dense training facade:
 - CUDA/Vulkan backward remains fail-closed through the underlying `ml/grad`
   contract; no hidden CPU fallback is introduced.
 
-Remaining ergonomic follow-up:
+### `ML-VK-070-006` Optimizer Spec Constructors
 
-- optimizer constructors under `nn/*` (`nn/sgd`, `nn/adam`, `nn/adamw`,
-  `nn/rmsprop`) that produce validated optimizer spec dictionaries and delegate
-  execution to the optimizer suite.
+Shipped data constructors for optimizer specs:
+
+- `nn/sgd(learning-rate [options])` returns a validated ordinary SGD optimizer
+  spec dictionary with optional `momentum`, `weight-decay`, and `clip-norm`.
+- `nn/adam(learning-rate [options])` and
+  `nn/adamw(learning-rate [options])` return validated ordinary Adam-family
+  optimizer spec dictionaries with optional `beta1`, `beta2`, `epsilon`,
+  `weight-decay`, and `clip-norm`.
+- `nn/rmsprop(learning-rate [options])` returns a validated ordinary RMSProp
+  optimizer spec dictionary with optional `alpha`, `epsilon`, `momentum`,
+  `weight-decay`, and `clip-norm`.
+- Constructors do not execute an optimizer step or own hidden state; returned
+  dictionaries are consumed by `nn/train-step` or `ml/optimizer-step`.
 
 ## Validation
 

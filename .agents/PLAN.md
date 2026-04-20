@@ -823,5 +823,16 @@ Date: 2026-04-21 - Implemented the first data-oriented NN training facade.
   gradient/optimizer results without hidden mutation.
 - CUDA/Vulkan backward remains fail-closed through `ml/grad`; no hidden CPU
   fallback was added.
-- Remaining follow-up: `ML-VK-070-006` ergonomic optimizer constructors
-  `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+
+## Completed ML-VK-070-006 Optimizer Spec Constructors
+Date: 2026-04-21 - Added data-first NN optimizer constructors.
+
+- Added `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop`.
+- Constructors validate required non-negative finite learning rates, supported
+  option keys, and optimizer-specific hyperparameter ranges before returning
+  ordinary optimizer spec dictionaries.
+- Returned specs compose directly with `nn/train-step` and `ml/optimizer-step`;
+  constructors do not mutate or own hidden optimizer state.
+- Next checkpoint: continue broader ML suite work from remaining TODO entries,
+  with tape-backed recursive autograd and fused CUDA optimizer kernels still
+  open.

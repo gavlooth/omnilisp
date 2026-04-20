@@ -389,8 +389,9 @@ Shipped training facade slice:
   train-mode dense model data to the existing CPU `ml/grad` linear MSE/softmax
   CE contracts and `ml/optimizer-step`, returning updated model and optimizer
   data without hidden mutation.
-- Remaining `ML-VK-070` ergonomics: `nn/sgd`, `nn/adam`, `nn/adamw`, and
-  `nn/rmsprop` optimizer spec constructors.
+- `ML-VK-070-006`: `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop` now
+  construct validated ordinary optimizer spec dictionaries for use with
+  `nn/train-step` and `ml/optimizer-step`.
 
 ### `ML-VK-080` Graph Capture Fusion And Memory Planning
 

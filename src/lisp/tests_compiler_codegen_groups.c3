@@ -472,6 +472,12 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: nn/train-step", "[FAIL] Compiler: nn/train-step", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(nn/adam 0.001 (Dictionary 'beta1 0.9))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"nn/adam\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: nn/adam", "[FAIL] Compiler: nn/adam", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

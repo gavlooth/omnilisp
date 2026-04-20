@@ -280,6 +280,10 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/forward` | 2, 4-5 | Training-friendly forward execution over the same model or explicit data shapes as `nn/apply`; returns the output Tensor without requiring eval mode |
 | `nn/grad` | 3-4 | Build gradients for train-mode dense or single dense-plus-activation model data using the supported CPU `ml/grad` linear MSE and softmax cross-entropy contracts |
 | `nn/train-step` | 5-6 | Compose `nn/grad` with `ml/optimizer-step` and return updated model data, optimizer state, gradients, loss, and output without hidden mutation |
+| `nn/sgd` | 1-2 | Construct a validated ordinary SGD optimizer spec Dictionary from `learning-rate` and optional `momentum`, `weight-decay`, and `clip-norm` options |
+| `nn/adam` | 1-2 | Construct a validated ordinary Adam optimizer spec Dictionary from `learning-rate` and optional `beta1`, `beta2`, `epsilon`, `weight-decay`, and `clip-norm` options |
+| `nn/adamw` | 1-2 | Construct a validated ordinary AdamW optimizer spec Dictionary from `learning-rate` and optional `beta1`, `beta2`, `epsilon`, `weight-decay`, and `clip-norm` options |
+| `nn/rmsprop` | 1-2 | Construct a validated ordinary RMSProp optimizer spec Dictionary from `learning-rate` and optional `alpha`, `epsilon`, `momentum`, `weight-decay`, and `clip-norm` options |
 | `nn/predict` | 2 | Run inference through a model bundle in `'eval` mode only |
 | `nn/summary` | 1 | Return inspectable summary metadata from a model bundle (`kind`, `mode`, `dtype`, `device`, `layers`, `parameter-tensors`, `parameter-elements`) |
 | `nn/spec` | 1 | Extract the normalized model spec from a model bundle |
