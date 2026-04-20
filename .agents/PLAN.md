@@ -776,9 +776,24 @@ SGD execution backed by the existing CUDA elementwise map kernels.
   `ml-optimizer` remains false.
 - Runtime route is not fused: it composes existing CUDA `map` kernels for
   weight decay, momentum, learning-rate scaling, and parameter subtraction.
-- Remaining optimizer work: fused CUDA optimizer kernels beyond map-backed SGD,
-  CUDA Adam/AdamW/RMSProp, and `nn/train-step` integration after autograd is
-  sufficient.
+- Remaining optimizer work: fused CUDA optimizer kernels beyond map-backed
+  implementations and `nn/train-step` integration after autograd is sufficient.
+
+## Active ML-VK-060-012/013 CUDA Float32 Map-Backed Adam/AdamW/RMSProp Optimizer
+Date: 2026-04-20 - Implemented map-backed CUDA `Float32` optimizer execution in
+`ml/optimizer-step` and expanded mixed-device fail-closed diagnostics for Adam,
+AdamW, and RMSProp with explicit state.
+
+- Added runtime dispatch and test coverage for CUDA dense row-major `Float32`
+  map-backed:
+  - Adam with initial and continued moment state;
+  - AdamW with decoupled weight-decay state updates;
+  - RMSProp with square-average initialization and momentum continuation.
+- Kept `tensor-backends` checks updated so CUDA narrow keys for
+  `ml-optimizer-adam-float32`, `ml-optimizer-adamw-float32`, and
+  `ml-optimizer-rmsprop-float32` align with `elementwise-map-float32`.
+- `ml-optimizer` broad key remains false while fused CUDA optimizer kernels and
+  train-step integration remain open.
 
 ## Active Custom Kernel Surface Decision
 Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.

@@ -361,3 +361,29 @@
     `pass=1815 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-012/013 CUDA Map-Backed Adam AdamW RMSProp
+
+- Implemented all-CUDA dense row-major `Float32` Adam, AdamW, and RMSProp
+  support for `ml/optimizer-step(spec parameters gradients state)`.
+  - Added CUDA dispatch before Vulkan/CPU fallback for Adam/AdamW moment leaves
+    and RMSProp square-average/velocity leaves.
+  - The CUDA route is map-backed: it composes existing CUDA elementwise map
+    kernels, including `sqrt`, rather than adding fused CUDA PTX kernels.
+  - Adam and AdamW preserve explicit `first-moment`, `second-moment`, and
+    integer `step` state, including Adam coupled weight decay versus AdamW
+    decoupled weight decay.
+  - RMSProp preserves explicit `square-average`, optional `velocity`, and
+    integer `step` state, including missing-state initialization from zero.
+  - Mixed CPU/CUDA leaves, non-`Float32` CUDA leaves, non-dense layouts, empty
+    leaves, and missing CUDA backing storage fail closed before hidden CPU
+    fallback.
+  - `tensor-backends` now reports narrow `ml-optimizer-adam-float32`,
+    `ml-optimizer-adamw-float32`, and `ml-optimizer-rmsprop-float32` support
+    when CUDA `elementwise-map-float32` is available. Broad `ml-optimizer`
+    remains false.
+  - Validation passed: `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    CUDA Adam/AdamW/RMSProp smokes, focused advanced collections
+    `pass=1823 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
+    `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

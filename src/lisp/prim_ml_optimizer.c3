@@ -190,6 +190,11 @@ fn Value* ml_optimizer_step_tree(Value* params, Value* grads, Value* velocity, d
 }
 
 fn Value* ml_adam_step_tensor(Value* params_arg, Value* grads_arg, Value* first_arg, Value* second_arg, double learning_rate, double beta1, double beta2, double epsilon, double weight_decay, bool decoupled_weight_decay, long next_step, Interp* interp, Value** out_params, Value** out_first, Value** out_second) {
+    bool cuda_attempted = false;
+    Value* cuda_err = ml_adam_step_tensor_try_cuda(params_arg, grads_arg, first_arg, second_arg, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, out_params, out_first, out_second, &cuda_attempted);
+    if (cuda_err != null) return cuda_err;
+    if (cuda_attempted) return null;
+
     bool vulkan_attempted = false;
     Value* vulkan_err = ml_adam_step_tensor_try_vulkan(params_arg, grads_arg, first_arg, second_arg, learning_rate, beta1, beta2, epsilon, weight_decay, decoupled_weight_decay, next_step, interp, out_params, out_first, out_second, &vulkan_attempted);
     if (vulkan_err != null) return vulkan_err;
@@ -361,6 +366,11 @@ fn Value* ml_adam_step_tree(Value* params, Value* grads, Value* first, Value* se
 }
 
 fn Value* ml_rmsprop_step_tensor(Value* params_arg, Value* grads_arg, Value* square_arg, Value* velocity_arg, double learning_rate, double alpha, double epsilon, double momentum, double weight_decay, Interp* interp, Value** out_params, Value** out_square, Value** out_velocity) {
+    bool cuda_attempted = false;
+    Value* cuda_err = ml_rmsprop_step_tensor_try_cuda(params_arg, grads_arg, square_arg, velocity_arg, learning_rate, alpha, epsilon, momentum, weight_decay, interp, out_params, out_square, out_velocity, &cuda_attempted);
+    if (cuda_err != null) return cuda_err;
+    if (cuda_attempted) return null;
+
     bool vulkan_attempted = false;
     Value* vulkan_err = ml_rmsprop_step_tensor_try_vulkan(params_arg, grads_arg, square_arg, velocity_arg, learning_rate, alpha, epsilon, momentum, weight_decay, interp, out_params, out_square, out_velocity, &vulkan_attempted);
     if (vulkan_err != null) return vulkan_err;

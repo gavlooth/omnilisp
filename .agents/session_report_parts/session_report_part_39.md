@@ -155,7 +155,9 @@ Invalidated assumptions or failed approaches worth preserving:
 
 Unresolved issues:
 - Fused CUDA kernels for optimizer families beyond map-backed SGD remain open.
-- CUDA Adam/AdamW/RMSProp remain fail-closed.
+- At this ML-VK-060-011 checkpoint, CUDA Adam/AdamW/RMSProp remained
+  fail-closed; see the later ML-VK-060-012/013 entry below for the map-backed
+  runtime implementation.
 - `nn/train-step` integration remains out of scope until optimizer kernels and
   autograd coverage are sufficient.
 - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
@@ -166,3 +168,60 @@ Next actions:
   confirmed.
 
 Signature: GPT-5 Codex
+
+## 2026-04-20 - ML-VK-060-012/013 CUDA Map-Backed Adam AdamW RMSProp Runtime
+
+- Objective attempted: implement CUDA map-backed `ml/optimizer-step` for dense
+  row-major `Float32` Adam, AdamW, and RMSProp.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_optimizer.c3`
+  - `src/lisp/prim_ml_optimizer_cuda.c3`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `docs/LANGUAGE_SPEC.part-01b.md`
+  - `docs/reference/03-collections.part-01.md`
+  - `docs/reference/11-appendix-primitives.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - `docs/todo_parts/todo_part_14.md`
+  - `.agents/PLAN.md`
+  - `memory/changelog_parts/changelog_part_36.md`
+  - `memory/CHANGELOG.md`
+- Code or configuration changes made:
+  - Added CUDA runtime dispatch for Adam/AdamW and RMSProp tensor leaves before
+    Vulkan/CPU fallback.
+  - Implemented map-backed CUDA Adam/AdamW/RMSProp formulas by composing existing
+    CUDA elementwise map kernels, including `sqrt`, without adding fused PTX.
+  - Preserved explicit Adam/AdamW first/second moment state, RMSProp
+    square-average/velocity state, and integer step state.
+  - Added CUDA map-backed `ml/optimizer-step` tests for Adam, AdamW, and RMSProp
+    with stateful continuation and mixed-device fail-closed checks.
+  - Updated CUDA tensor-backend capability assertions so narrow optimizer keys for
+    Adam/AdamW/RMSProp align with `elementwise-map-float32`.
+  - Updated language/reference docs, roadmap, TODO, plan, and changelog entries to
+    track `ML-VK-060-012/013` as shipped map-backed CUDA optimizer scope, while
+    keeping fused CUDA kernels and `nn/train-step` open.
+- Commands run:
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct `build/main --eval` CUDA capability and Adam/AdamW/RMSProp smoke.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Direct CUDA smoke returned true for capabilities, Adam, AdamW, and RMSProp.
+  - Focused advanced collections passed with `pass=1823 fail=0`.
+  - Basic Lisp passed with `pass=160 fail=0`.
+  - Compiler slice passed with `pass=281 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+  - Broad `ml-optimizer` remains false in both changed docs and tests.
+- Unresolved issues:
+  - Fused CUDA optimizer kernels remain open, including PTX-only implementations.
+  - `nn/train-step` remains out of scope for this checkpoint.
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
+- Signature: GPT-5 Codex

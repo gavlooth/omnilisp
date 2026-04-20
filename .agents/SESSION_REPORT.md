@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (168 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (227 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -709,3 +709,16 @@ The historical content was split mechanically to keep individual files below the
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex
+
+## 2026-04-20 - CUDA Map-Backed Optimizer CUDA Scope
+
+- Updated `memory/changelog_parts/changelog_part_36.md` and `.agents/session_report_parts/session_report_part_39.md`
+  to record map-backed CUDA optimizer coverage for `adam`, `adamw`, and `rmsprop`.
+- Added corresponding docs/planning/tests edits and kept `ml-optimizer` broad false
+  while fused CUDA optimizer kernels remain intentionally deferred.
+- `docs/LANGUAGE_SPEC.part-01b.md`, `docs/reference/03-collections.part-01.md`, and
+  `docs/reference/11-appendix-primitives.md` were updated through `session_report_part_39`
+  checkpoints and now reflect CUDA map-backed optimizer progress.
+- Commands noted: `c3c build`, targeted advanced collections module slice,
+  `git diff --check`, and `scripts/check_primitive_docs_parity.sh`.
+- Signature: Codex GPT-5.4

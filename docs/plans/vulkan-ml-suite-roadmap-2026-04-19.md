@@ -332,10 +332,17 @@ false.
   parameter/gradient/velocity leaves, optional momentum/velocity state,
   mixed-device fail-closed diagnostics, and narrow `ml-optimizer-sgd-float32`
   reporting when CUDA `Float32` map kernels are available.
+- `ML-VK-060-012`: shipped CUDA dense row-major `Float32` map-backed Adam and
+  AdamW execution in `ml/optimizer-step`, with explicit state/step preservation,
+  all-CUDA placement, and mixed-device fail-closed semantics.
+- `ML-VK-060-013`: shipped CUDA dense row-major `Float32` map-backed RMSProp
+  execution in `ml/optimizer-step`, with explicit square-average/velocity state
+  initialization and continuation, all-CUDA placement, and mixed-device
+  fail-closed semantics.
 - `ML-VK-060-008`: shipped Vulkan dense row-major `Float32` Adam and AdamW
-optimizer kernels for all-Vulkan parameter/gradient/first-moment/second-moment
-leaves. Initial moment creation and moment-state continuation preserve Vulkan
-placement, explicit step state, and Adam versus AdamW weight-decay semantics.
+  optimizer kernels for all-Vulkan parameter/gradient/first-moment/second-moment
+  leaves. Initial moment creation and moment-state continuation preserve Vulkan
+  placement, explicit step state, and Adam versus AdamW weight-decay semantics.
   `tensor-backends` exposes `ml-optimizer-adam-float32` and
   `ml-optimizer-adamw-float32` while broad `ml-optimizer` remains false.
 - `ML-VK-060-009`: shipped Vulkan dense row-major `Float32` RMSProp optimizer
@@ -348,7 +355,7 @@ placement, explicit step state, and Adam versus AdamW weight-decay semantics.
   for all-vulkan `ml/clip-gradients` trees through `ml-clip-gradients-float32`,
   and optimizer-step `clip-norm` now clips before Vulkan updates through the same
   path.
-- Fused CUDA optimizer kernels beyond map-backed SGD and training-step
+- Fused CUDA optimizer kernels (non-map-backed) and `nn/train-step`
   integration remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject

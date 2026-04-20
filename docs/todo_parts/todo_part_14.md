@@ -642,8 +642,19 @@ Source: `TODO.md`
         state and mixed-device fail-closed checks.
         - shipped contract: `tensor-backends` exposes `ml-optimizer-sgd-float32` on
           CUDA when `Float32` elementwise map kernels are available; `ml-optimizer` remains false.
+  - [x] `ML-VK-060-012` add CUDA dense row-major `Float32` map-backed
+        `ml/optimizer-step` Adam and AdamW execution with first/second moment
+        state, explicit step preservation, and mixed-device fail-closed checks.
+        - shipped contract: CUDA `ml-optimizer-adam-float32` and
+          `ml-optimizer-adamw-float32` follow `elementwise-map-float32`;
+          broad `ml-optimizer` remains false.
+  - [x] `ML-VK-060-013` add CUDA dense row-major `Float32` map-backed
+        `ml/optimizer-step` RMSProp execution with square-average/velocity
+        state initialization and continuation plus mixed-device fail-closed checks.
+        - shipped contract: CUDA `ml-optimizer-rmsprop-float32` follows
+          `elementwise-map-float32`; broad `ml-optimizer` remains false.
   - remaining scope:
-    - fused CUDA optimizer kernels beyond map-backed SGD;
+    - fused CUDA optimizer kernels beyond map-backed implementations;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.
   - acceptance:

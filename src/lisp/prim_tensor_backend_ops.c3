@@ -361,6 +361,12 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-sgd-float32", cuda_map_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adam-float32", cuda_map_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adamw-float32", cuda_map_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-rmsprop-float32", cuda_map_available);
+    if (err != null) return err;
     result = make_cons_or_error(interp, cuda_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
 
