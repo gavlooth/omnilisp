@@ -407,10 +407,43 @@ activation shorthand constructors `nn/relu`, `nn/sigmoid`, `nn/tanh`,
 `nn/gelu`, and `nn/softmax` produce normalized dictionary specs, not hidden
 mutable layer objects. `nn/validate(spec)` returns the input spec when the
 dictionary satisfies the frozen DataSpec schema and raises `nn/invalid-spec`
-with a diagnostic payload otherwise. The shipped schema-validation slice does
-not allocate parameters, run inference, serialize checkpoints, or perform
-training; those are separate `nn/init`, `nn/apply`/`nn/predict`, checkpoint,
-and training-facade contracts.
+with a diagnostic payload otherwise.
+
+`nn/init(spec [options])` is the lifecycle primitive. `spec` must be a
+DataSpec. `options` is optional and may contain:
+
+- `dtype`: `Float64` or `Float32` (defaults to `Float32`)
+- `device`: `'cpu`, `'cuda`, or `'vulkan` (defaults to `'cpu`)
+- `seed`: non-negative integer (defaults to `1`)
+- `mode`: `'eval` or `'train` (defaults to `'eval`)
+
+`nn/init` returns a transparent model bundle dictionary:
+
+```lisp
+(Dictionary
+  'kind 'model
+  'spec spec
+  'params params
+  'state state
+  'mode mode
+  'dtype Float32/Float64
+  'device 'cpu/'cuda/'vulkan
+  'metadata metadata)
+```
+
+`dtype`, `device`, and `seed` are explicit and deterministic across runs when
+the same `spec` and options are supplied. `seed` is stored in `metadata` and the
+same initializer family plus placement and dtype requests always yields the same
+parameter tensor contents. `nn/init` uses each parameterized layer's
+`kernel-init` / `bias-init` dictionary family (`zeros`, `ones`, `uniform`,
+`normal`, `xavier-uniform`, `glorot-uniform`, `kaiming-uniform`,
+`kaiming-normal`) to construct concrete `Float32`/`Float64` parameter tensors
+and move them to the requested device. Current parameterized layer constructors
+are `nn/dense`, `nn/conv1d`, and `nn/conv2d`; convolution constructors accept
+the same optional `use-bias`, `activation`, `kernel-init`, and `bias-init`
+options as dense specs.
+`mode`, `dtype`, and `device` are surfaced on the returned model for downstream
+`nn/apply` and `nn/predict` behavior.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device
@@ -631,51 +664,3 @@ public output contract is pointer-backed `BigComplex`.
 Zero-size contracted axes in supported Vulkan layouts produce
 additive-identity output, matching CPU Tensor semantics.
 Backend-flavored mathematical names are not part of the normal Tensor surface.
-
-### 2.2 Truthiness
-
-Normative predicate contract:
-- Predicate positions in `if`, `when`, and `match` guards use the same
-  truthiness rules.
-- **Falsy:** `nil`, `false`
-- **Truthy:** everything else.
-
-| Predicate input | Example | Truthiness | Notes |
-|---|---|---|---|
-| `nil` | `nil` | falsy | Absence value |
-| `false` | `false` | falsy | Boolean false |
-| `Void` | `#<void>` | truthy | Command/effect completion token |
-| numbers | `0`, `-1`, `3.14` | truthy | Zero is still truthy |
-| strings | `""`, `"omni"` | truthy | Empty string is truthy |
-| collections | `'()`, `[]`, `{}` | truthy | Empty collections are truthy |
-
-### 2.3 `Void` vs `Nil` Contract
-
-Normative rule:
-- `Void` means successful command/effect completion with no payload.
-- `Nil` means absence/query-miss (or falsey result in predicate-style APIs).
-- `Void` is an operational completion token, not a data/absence sentinel.
-- APIs should not encode query-miss/optional absence using `Void`; use `Nil`.
-- `Void` is truthy under Omni truthiness rules.
-
-Contract examples:
-
-```lisp
-(type-of (block (define x 1) (set! x 2)))   ; => 'Void
-(type-of (let (d {'a 1}) (remove! d 'a)))   ; => 'Void
-(if (block (define x 1) (set! x 2)) 1 0)    ; => 1  (Void is truthy)
-
-(type-of (ref {'a 1} 'missing))             ; => 'Nil
-(type-of (has? {'a 1} 'missing))            ; => 'Nil
-```
-
-### 2.4 Equality
-
-`=` performs structural equality:
-- Integers and Float64 values: numeric comparison
-- Strings: character-by-character
-- Symbols: identity (interned)
-- Lists: recursive structural equality
-- Other types: identity
-
----

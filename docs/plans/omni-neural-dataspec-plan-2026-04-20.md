@@ -17,7 +17,8 @@ The core model is:
 - `spec`: architecture data;
 - `params`: trainable tensor tree;
 - `state`: non-trainable runtime state tree;
-- `options`: dtype, device, mode, seed, and execution policy.
+- `options`: dtype, device, mode, and seed for explicit initialization and
+  placement.
 
 `ml/*` remains the primitive Tensor math namespace. `nn/*` is the ergonomic
 model/layer namespace built from data specs and functions over those specs.
@@ -90,6 +91,7 @@ Example convolution layer:
   'padding [1 1]
   'dilation [1 1]
   'groups 1
+  'use-bias true
   'activation 'relu
   'kernel-init (Dictionary 'kind 'kaiming-uniform)
   'bias-init (Dictionary 'kind 'zeros))
@@ -280,17 +282,33 @@ Shipped baseline:
 
 ### `ML-VK-070-002` Parameter Initialization
 
-Add deterministic parameter initialization:
+`ML-VK-070-002` shipped.
 
-- zeros;
-- ones;
-- uniform;
-- normal;
-- Xavier/Glorot uniform;
-- Kaiming/He uniform or normal.
+`nn/init(spec [options])` is now the public lifecycle entrypoint for model
+initialization. It accepts:
 
-Initialization must accept dtype and device options and must use explicit
-placement.
+- mandatory `spec` (validated DataSpec)
+- optional `options` Dictionary with explicit initialization controls:
+  - `dtype`: `Float32` or `Float64`
+  - `device`: `'cpu`, `'cuda`, or `'vulkan`
+  - `seed`: non-negative integer
+  - `mode`: `'eval` or `'train`
+
+Runtime behavior:
+
+
+- deterministic init families are supported for parameterized layers
+  (`nn/dense`, `nn/conv1d`, `nn/conv2d`):
+  - `zeros`
+  - `ones`
+  - `uniform`
+  - `normal`
+  - `xavier-uniform` / `glorot-uniform`
+  - `kaiming-uniform` / `kaiming-normal`
+- return value is a transparent model bundle with `spec`, `params`, `state`,
+  `mode`, `dtype`, `device`, and `metadata`.
+- placement is explicit and deterministic: parameter/state tensors are allocated in
+  the requested dtype and device.
 
 ### `ML-VK-070-003` Inference Apply
 

@@ -501,9 +501,15 @@ Date: 2026-04-20
     data-only `nn/*` constructors are registered, `nn/validate` returns valid
     specs, and invalid specs raise `nn/invalid-spec` diagnostics before any
     parameter allocation.
-  - Next Vulkan ML work should start `ML-VK-070-002` deterministic parameter
-    initialization with explicit dtype/device placement, or separately validate
-    the Float64 exp/log policy before widening stable reductions.
+  - `ML-VK-070-002` is implemented for deterministic parameter initialization:
+    `nn/init(spec [options])` returns transparent model bundles with explicit
+    `params`, `state`, `mode`, `dtype`, `device`, and `metadata`; dense,
+    conv1d, and conv2d parameter tensors honor seeded initializer options and
+    explicit CPU/CUDA/Vulkan placement.
+  - Next Vulkan ML work should start `ML-VK-070-003` inference application
+    (`nn/apply`, `nn/predict`, `nn/summary`) over the existing `ml/*`
+    primitives, or separately validate the Float64 exp/log policy before
+    widening stable reductions.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.

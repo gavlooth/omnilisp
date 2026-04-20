@@ -646,3 +646,23 @@ Source: `memory/CHANGELOG.md`
     `ml/*`, serialize checkpoints, or expose training helpers.
   - Validation passed: `c3c build` and focused advanced collections
     `pass=1733 fail=0`.
+
+- 2026-04-20 16:32 CEST: Omni Neural DataSpec initialization checkpoint:
+  - Closed `ML-VK-070-002` as the deterministic parameter initialization
+    slice.
+  - Added `nn/init(spec [options])`, returning transparent model bundles with
+    `kind`, `spec`, `params`, `state`, `mode`, `dtype`, `device`, and
+    `metadata`.
+  - Initialization options support explicit `Float64`/`Float32` dtype,
+    `'cpu`/`'cuda`/`'vulkan` device placement, non-negative deterministic
+    seeds, and `'eval`/`'train` mode.
+  - Dense, conv1d, and conv2d specs now carry `use-bias`, `activation`,
+    `kernel-init`, and `bias-init` options; `nn/init` allocates deterministic
+    parameter tensors for those layers and empty params/state dictionaries for
+    activation, flatten, and pool layers.
+  - Supported initializer families are `zeros`, `ones`, `uniform`, `normal`,
+    `xavier-uniform`, `glorot-uniform`, `kaiming-uniform`, and
+    `kaiming-normal`.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1739 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
+    `git diff --check`, and file-size gate.

@@ -180,7 +180,12 @@ fn Value* nn_validate_conv1d(Value* spec, Interp* interp) {
     if (in_channels.int_val % groups.int_val != 0 || out_channels.int_val % groups.int_val != 0) {
         return nn_invalid(interp, "spec.groups", "groups dividing input and output channels", groups);
     }
-    return nn_validate_activation_symbol(nn_dict_get(spec, interp, "activation"), interp, "spec.activation", true);
+    Value* use_bias = nn_dict_get(spec, interp, "use-bias");
+    if (use_bias != null && !nn_is_boolean(use_bias, interp)) return nn_invalid(interp, "spec.use-bias", "boolean", use_bias);
+    if (Value* err = nn_validate_activation_symbol(nn_dict_get(spec, interp, "activation"), interp, "spec.activation", true)) return err;
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "kernel-init"), interp, "spec.kernel-init")) return err;
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "bias-init"), interp, "spec.bias-init")) return err;
+    return null;
 }
 
 fn Value* nn_validate_conv2d(Value* spec, Interp* interp) {
@@ -197,7 +202,12 @@ fn Value* nn_validate_conv2d(Value* spec, Interp* interp) {
     if (in_channels.int_val % groups.int_val != 0 || out_channels.int_val % groups.int_val != 0) {
         return nn_invalid(interp, "spec.groups", "groups dividing input and output channels", groups);
     }
-    return nn_validate_activation_symbol(nn_dict_get(spec, interp, "activation"), interp, "spec.activation", true);
+    Value* use_bias = nn_dict_get(spec, interp, "use-bias");
+    if (use_bias != null && !nn_is_boolean(use_bias, interp)) return nn_invalid(interp, "spec.use-bias", "boolean", use_bias);
+    if (Value* err = nn_validate_activation_symbol(nn_dict_get(spec, interp, "activation"), interp, "spec.activation", true)) return err;
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "kernel-init"), interp, "spec.kernel-init")) return err;
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "bias-init"), interp, "spec.bias-init")) return err;
+    return null;
 }
 
 fn Value* nn_validate_pool2d(Value* spec, Interp* interp) {
@@ -334,15 +344,7 @@ fn Value* nn_default_options_get(Value* options, Interp* interp, char[] field, V
     return value != null ? value : fallback;
 }
 
-fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "nn/dense", "2 or 3 arguments: input-features output-features [options]", args.len);
-    Value* options = args.len == 3 ? args[2] : null;
-    if (options != null && (options.tag != HASHMAP || options.hashmap_val == null)) return primitive_arg_type_raise(interp, "nn/dense", 2, "Dictionary options", options);
-    Value* spec = nn_make_dict(interp, 12);
-    if (spec == null || spec.tag == ERROR) return spec;
-    if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "dense")) return err;
-    if (Value* err = nn_dict_set(spec, interp, "input-features", args[0])) return err;
-    if (Value* err = nn_dict_set(spec, interp, "output-features", args[1])) return err;
+fn Value* nn_set_parameter_options(Value* spec, Value* options, Interp* interp) {
     Value* use_bias = nn_default_options_get(options, interp, "use-bias", make_symbol(interp, interp.sym_true));
     if (Value* err = nn_dict_set(spec, interp, "use-bias", use_bias)) return err;
     if (Value* err = nn_dict_set(spec, interp, "activation", nn_default_options_get(options, interp, "activation", make_nil(interp)))) return err;
@@ -354,6 +356,19 @@ fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
     if (bias_init == null) bias_init = nn_default_init(interp, "zeros");
     if (bias_init != null && bias_init.tag == ERROR) return bias_init;
     if (Value* err = nn_dict_set(spec, interp, "bias-init", bias_init)) return err;
+    return null;
+}
+
+fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "nn/dense", "2 or 3 arguments: input-features output-features [options]", args.len);
+    Value* options = args.len == 3 ? args[2] : null;
+    if (options != null && (options.tag != HASHMAP || options.hashmap_val == null)) return primitive_arg_type_raise(interp, "nn/dense", 2, "Dictionary options", options);
+    Value* spec = nn_make_dict(interp, 12);
+    if (spec == null || spec.tag == ERROR) return spec;
+    if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "dense")) return err;
+    if (Value* err = nn_dict_set(spec, interp, "input-features", args[0])) return err;
+    if (Value* err = nn_dict_set(spec, interp, "output-features", args[1])) return err;
+    if (Value* err = nn_set_parameter_options(spec, options, interp)) return err;
     if (Value* err = nn_validate_dataspec(spec, interp)) return err;
     return spec;
 }
@@ -430,27 +445,33 @@ fn Value* prim_nn_sequential(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_nn_conv1d(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 7) return primitive_arity_raise(interp, "nn/conv1d", "7 arguments: in-channels out-channels kernel stride padding dilation groups", args.len);
-    Value* spec = nn_make_dict(interp, 12);
+    if (args.len < 7 || args.len > 8) return primitive_arity_raise(interp, "nn/conv1d", "7 or 8 arguments: in-channels out-channels kernel stride padding dilation groups [options]", args.len);
+    Value* options = args.len == 8 ? args[7] : null;
+    if (options != null && (options.tag != HASHMAP || options.hashmap_val == null)) return primitive_arg_type_raise(interp, "nn/conv1d", 7, "Dictionary options", options);
+    Value* spec = nn_make_dict(interp, 18);
     if (spec == null || spec.tag == ERROR) return spec;
     char[][] fields = { "in-channels", "out-channels", "kernel", "stride", "padding", "dilation", "groups" };
     if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "conv1d")) return err;
     for (usz i = 0; i < fields.len; i++) {
         if (Value* err = nn_dict_set(spec, interp, fields[i], args[i])) return err;
     }
+    if (Value* err = nn_set_parameter_options(spec, options, interp)) return err;
     if (Value* err = nn_validate_dataspec(spec, interp)) return err;
     return spec;
 }
 
 fn Value* prim_nn_conv2d(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 7) return primitive_arity_raise(interp, "nn/conv2d", "7 arguments: in-channels out-channels kernel stride padding dilation groups", args.len);
-    Value* spec = nn_make_dict(interp, 12);
+    if (args.len < 7 || args.len > 8) return primitive_arity_raise(interp, "nn/conv2d", "7 or 8 arguments: in-channels out-channels kernel stride padding dilation groups [options]", args.len);
+    Value* options = args.len == 8 ? args[7] : null;
+    if (options != null && (options.tag != HASHMAP || options.hashmap_val == null)) return primitive_arg_type_raise(interp, "nn/conv2d", 7, "Dictionary options", options);
+    Value* spec = nn_make_dict(interp, 18);
     if (spec == null || spec.tag == ERROR) return spec;
     char[][] fields = { "in-channels", "out-channels", "kernel", "stride", "padding", "dilation", "groups" };
     if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "conv2d")) return err;
     for (usz i = 0; i < fields.len; i++) {
         if (Value* err = nn_dict_set(spec, interp, fields[i], args[i])) return err;
     }
+    if (Value* err = nn_set_parameter_options(spec, options, interp)) return err;
     if (Value* err = nn_validate_dataspec(spec, interp)) return err;
     return spec;
 }

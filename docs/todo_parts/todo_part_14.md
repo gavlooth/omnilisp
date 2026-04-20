@@ -628,8 +628,12 @@ Source: `TODO.md`
         conv2d, max-pool2d, avg-pool2d, flatten, and activation specs.
       - not included: parameter allocation, inference lowering, checkpoint
         round trips, and training helpers; those remain in later slices.
-    - [ ] `ML-VK-070-002` add deterministic parameter initialization for
-      CPU/Vulkan tensors with explicit dtype/device placement.
+    - [x] `ML-VK-070-002` add deterministic parameter initialization for
+      CPU/CUDA/Vulkan tensors with explicit dtype/device placement.
+      - shipped: `nn/init(spec [options])` builds explicit `params` and `state`
+        trees, stores `mode`/`dtype`/`device`/`metadata` on the transparent
+        model bundle, and uses deterministic seeded initialization and explicit
+        device placement for dense, conv1d, and conv2d parameter tensors.
     - [ ] `ML-VK-070-003` add `nn/apply`, `nn/predict`, and `nn/summary` for
       inference over `ml/*` primitives with no hidden Vulkan CPU fallback.
     - [ ] `ML-VK-070-004` add spec/model checkpoint save/load round trips for

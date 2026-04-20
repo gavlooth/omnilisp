@@ -253,10 +253,11 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/max-pool2d` | 7 | Dense NCHW 2D max pooling with explicit window/stride/padding and supported Tensor inputs |
 | `ml/avg-pool2d` | 7 | Dense NCHW 2D average pooling with explicit window/stride/padding and supported Tensor inputs |
 | `nn/validate` | 1 | Validate an Omni Neural DataSpec dictionary and return it, or raise `nn/invalid-spec` with diagnostics |
+| `nn/init` | 1-2 | Build/initialize a model bundle from a valid Omni Neural DataSpec with optional init options (`dtype`, `device`, `seed`, `mode`) and return fields `kind` (`'model`), `spec`, `params`, `state`, `mode`, `dtype`, `device`, `metadata` |
 | `nn/sequential` | variadic | Construct a normalized sequential layer spec from one or more layer specs |
 | `nn/dense` | 2-3 | Construct a normalized dense layer spec from input/output features and optional options |
-| `nn/conv1d` | 7 | Construct a normalized dense NCW convolution layer spec |
-| `nn/conv2d` | 7 | Construct a normalized dense NCHW convolution layer spec |
+| `nn/conv1d` | 7-8 | Construct a normalized dense NCW convolution layer spec with optional activation/bias/initializer options |
+| `nn/conv2d` | 7-8 | Construct a normalized dense NCHW convolution layer spec with optional activation/bias/initializer options |
 | `nn/max-pool2d` | 3 | Construct a normalized max-pooling layer spec from window/stride/padding pairs |
 | `nn/avg-pool2d` | 3 | Construct a normalized average-pooling layer spec from window/stride/padding pairs |
 | `nn/flatten` | 0-2 | Construct a normalized flatten layer spec with optional start/end axes |
