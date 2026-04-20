@@ -220,6 +220,12 @@ for dense row-major NCW input and OCK kernels. CPU supports `Float64`/`Float32`;
 Vulkan supports direct dense `Float32` with no hidden CPU fallback. Broad
 `ml-convolution` remains false until 2D convolution and pooling land.
 
+`ML-VK-030-002` shipped `ml/conv2d(input kernel stride-height stride-width
+padding-height padding-width dilation-height dilation-width groups)` for dense
+row-major NCHW input and OIHW kernels. CPU supports `Float64`/`Float32`;
+Vulkan supports direct dense `Float32` with no hidden CPU fallback. Broad
+`ml-convolution` remains false until max/average pooling lands.
+
 ### `ML-VK-040` Normalization And Attention Primitives
 
 Add Vulkan kernels for normalization and attention building blocks:

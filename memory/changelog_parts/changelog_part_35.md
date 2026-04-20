@@ -585,3 +585,19 @@ Source: `memory/CHANGELOG.md`
     collections `pass=1716 fail=0`, basic Lisp `pass=160 fail=0`,
     primitive docs parity,
     `git diff --check`, and file-size gate.
+
+- 2026-04-20 16:18 CEST: Vulkan ML 2D convolution checkpoint:
+  - Closed `ML-VK-030-002` as the dense 2D convolution lane.
+  - Added `ml/conv2d(input kernel stride-height stride-width padding-height
+    padding-width dilation-height dilation-width groups)` for dense row-major
+    NCHW input tensors and OIHW kernels.
+  - CPU supports `Float64` and `Float32`; Vulkan supports direct dense
+    `Float32` through a dedicated shader/helper and no hidden CPU fallback.
+  - Added narrow `ml-conv2d-direct-float64`/`ml-conv2d-direct-float32`
+    capability keys. Broad `ml-convolution` remains false until pooling lands.
+  - Added grouped, asymmetric stride/padding, mismatch, Vulkan placement, and
+    mixed-device fail-closed regressions.
+  - Validation passed: shader compile/`spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced
+    collections `pass=1721 fail=0`, basic Lisp `pass=160 fail=0`,
+    primitive docs parity, `git diff --check`, and file-size gate.

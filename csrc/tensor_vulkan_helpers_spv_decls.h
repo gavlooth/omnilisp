@@ -51,6 +51,8 @@ extern const uint32_t omni_tensor_vulkan_ml_cross_entropy_reduce_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_cross_entropy_reduce_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_conv1d_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_conv1d_f32_spv_size;
+extern const uint32_t omni_tensor_vulkan_ml_conv2d_f32_spv[];
+extern const size_t omni_tensor_vulkan_ml_conv2d_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_reduction_f32_spv[];
 extern const size_t omni_tensor_vulkan_ml_reduction_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_ml_reduction_f64_spv[];

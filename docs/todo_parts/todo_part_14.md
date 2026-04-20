@@ -548,6 +548,10 @@ Source: `TODO.md`
     CPU `Float64`/`Float32`, direct Vulkan `Float32`, grouped convolution,
     narrow `ml-conv1d-direct-*` capability reporting, and mixed-device
     fail-closed regressions. Broad `ml-convolution` remains false.
+  - [x] `ML-VK-030-002` ship explicit dense NCHW `ml/conv2d` with OIHW kernels,
+    CPU `Float64`/`Float32`, direct Vulkan `Float32`, grouped convolution,
+    narrow `ml-conv2d-direct-*` capability reporting, and mixed-device
+    fail-closed regressions. Broad `ml-convolution` remains false.
   - scope:
     - 1D and 2D convolution;
     - stride, padding, dilation, groups, and explicit batch/channel layout;
