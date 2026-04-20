@@ -701,3 +701,6 @@ Date: 2026-04-20 - Implemented CPU `ml/sgd-step` for data-oriented parameter tre
 
 ## Active ML-VK-060-002 Optimizer Step Checkpoint
 Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for SGD momentum state; validation passed.
+
+## Active ML-VK-060-003 Adam And AdamW Optimizer Step Checkpoint
+Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for Adam and AdamW explicit moment state; validation passed.

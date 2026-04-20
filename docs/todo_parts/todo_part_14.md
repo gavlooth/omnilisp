@@ -618,11 +618,10 @@ Source: `TODO.md`
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
   - [x] `ML-VK-060-001` add CPU `ml/sgd-step` for data-oriented parameter trees.
   - [x] `ML-VK-060-002` add CPU `ml/optimizer-step` for SGD momentum state.
+  - [x] `ML-VK-060-003` add CPU `ml/optimizer-step` for Adam and AdamW specs.
   - remaining scope:
-    - Adam and AdamW;
     - RMSProp;
     - gradient clipping;
-    - weight decay;
     - optimizer state checkpoint and restore.
   - acceptance:
     - optimizer state keeps dtype/device placement explicit;

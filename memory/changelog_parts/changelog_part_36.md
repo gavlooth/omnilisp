@@ -168,3 +168,22 @@
     collections `pass=1785 fail=0`, compiler slice `pass=278 fail=0`, basic
     Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-003 Adam And AdamW Optimizer Step
+
+- Implemented CPU `ml/optimizer-step(spec parameters gradients state)` support
+  for `adam` and `adamw` specs.
+  - Adam/AdamW state is explicit data: returned state contains
+    `first-moment`, `second-moment`, and integer `step`.
+  - Adam uses coupled weight decay; AdamW uses decoupled weight decay.
+  - Supported spec fields are `learning-rate`, optional `beta1`, optional
+    `beta2`, optional `epsilon`, and optional `weight-decay`, with range
+    validation before execution.
+  - CPU dense row-major `Float64`/`Float32` tensor leaves are supported through
+    matching array/dictionary parameter, gradient, and moment trees.
+  - CUDA/Vulkan optimizer kernels stay fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1788 fail=0`, compiler slice `pass=278 fail=0`, basic
+    Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
