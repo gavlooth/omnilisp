@@ -408,7 +408,7 @@ Vulkan keeps the broad key false while the narrow `ml-linear-direct-float64` and
 partial capabilities are true for CPU and for Vulkan when the matching dtype placement is
 available; the Vulkan route covers same-dtype input/weights with optional bias through `Tensor` `contract` plus `map`; Vulkan-only expressions may participate only when realization lowers them to dense Vulkan storage.
 `ml/linear/batched-reduce` requires rank-`>=2`; rank-1 inputs raise `tensor/shape-mismatch`, while mixed-device or unsupported-layout operands raise `tensor/backend-unsupported` before fallback.
-`ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs. `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu` are canonical `ml/*` activation surfaces for `Float32` Tensor inputs. These activations preserve dtype/device placement and report narrow capability bits while broad `ml-neural-map` remains false.
+`ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs. `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu` are canonical `ml/*` activation surfaces for `Float32` Tensor inputs; Float64 inputs fail closed. These activations preserve dtype/device placement and report narrow capability bits while broad `ml-neural-map` remains false.
 CUDA-placed dense row-major `Float64` or `Float32` tensors support binary
 elementwise `map` for `+`, `-`, `*`, `/`, `min`, and `max`;
 arithmetic/component unary `map` for unary `+`, `abs`, unary `-`, `sqrt`,

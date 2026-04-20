@@ -405,3 +405,27 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-020-005` for Float64 transcendental activation policy or
     jump to `ML-VK-020-006` for real axis reductions before softmax/loss.
+
+## Active Vulkan ML Float64 Activation Policy Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - Float64 `ml/sigmoid`, `ml/tanh`, and `ml/gelu` must not quietly inherit
+    bare scientific math or CPU fallback behavior. Prior Vulkan shader probes
+    invalidated simple GLSL double transcendental assumptions, and exact GELU
+    has no current Vulkan `erf` lowering.
+- Implemented checkpoint:
+  - closed `ML-VK-020-005` as explicit fail-closed behavior for Float64
+    sigmoid/tanh/GELU ML activations;
+  - kept the Float64 sigmoid/tanh/GELU backend capability bits false;
+  - added an explicit Vulkan Float64 execution regression for all three
+    activations so unsupported GPU inputs raise `tensor/backend-unsupported`;
+  - updated TODO, roadmap, language spec, and reference docs with the
+    fail-closed contract.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1666 fail=0`
+- Next checkpoint:
+  - continue `ML-VK-020-006`: real axis `sum`, `mean`, and `variance`
+    reductions before softmax/loss work.

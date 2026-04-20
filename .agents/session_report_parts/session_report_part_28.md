@@ -535,3 +535,40 @@ Source: `.agents/SESSION_REPORT.md`
     documented fail-closed exact-GELU surface.
   - Axis reductions, stable softmax, and losses remain open.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 02:00 CEST - Vulkan ML Float64 Activation Policy
+
+- Objective attempted:
+  - Continue `ML-VK-020-005` after the Float32 activation slice and define the
+    Float64 transcendental activation contract with reviewer-strict
+    fail-closed coverage.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - `docs/LANGUAGE_SPEC.part-01b.md`
+  - `docs/reference/03-collections.part-01.md`
+- Code or configuration changes made:
+  - Added a grouped Vulkan Float64 regression proving `ml/sigmoid`,
+    `ml/tanh`, and `ml/gelu` fail closed with `tensor/backend-unsupported`.
+  - Closed `ML-VK-020-005` as explicit fail-closed behavior.
+  - Documented that Float64 sigmoid/tanh/GELU ML activation capability bits
+    remain false until validated approximations or backend transcendental
+    kernels land.
+- Commands run:
+  - Fast subagent audits for Float64 activation policy and missing test gaps.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1666 fail=0`.
+- Current best recommendation / checkpoint:
+  - Continue `ML-VK-020-006`: axis `sum`, `mean`, and `variance` reductions
+    as a real reduction layer. Do not start softmax/loss by abusing matrix
+    `contract`.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Float64 sigmoid/tanh/GELU remain intentionally unsupported.
+  - Exact GELU still needs a real `erf` backend route or separate public
+    fail-closed exact-GELU contract.
+- Signature: Codex GPT-5.4

@@ -392,8 +392,14 @@ Source: `TODO.md`
         composed Tensor `map` kernels.
       - [x] Keep `Float64` transcendental activation policy open under
         `ML-VK-020-005` until validated or fail-closed explicitly.
-    - [ ] `ML-VK-020-005` define the Float64 transcendental activation path
-      with validated approximations or explicit fail-closed behavior.
+    - [x] `ML-VK-020-005` define the Float64 transcendental activation path
+      as explicit fail-closed behavior until validated approximations land.
+      - [x] Keep Float64 `ml/sigmoid`, `ml/tanh`, and `ml/gelu` capability
+        bits false for CPU/CUDA/Vulkan ML activation reporting.
+      - [x] Add CPU and Vulkan Float64 fail-closed regressions so unsupported
+        ML activations cannot silently run through generic math or CPU fallback.
+      - [x] Preserve the negative constraint: exact GELU still needs a real
+        `erf` backend route or a separate explicit fail-closed surface.
     - [ ] `ML-VK-020-006` add axis `sum`, `mean`, and `variance` as a real
       reduction layer instead of misusing matrix `contract`.
     - [ ] `ML-VK-020-007` add stable `logsumexp`, `softmax`, cross-entropy,

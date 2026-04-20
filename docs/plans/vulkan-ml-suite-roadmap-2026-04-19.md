@@ -143,8 +143,10 @@ reduction operations:
   These are `ml/*` activation surfaces, not aliases for bare scientific math
   primitives; they compose existing Tensor `map` kernels and preserve
   CPU/CUDA/Vulkan placement with no hidden CPU fallback.
-- `ML-VK-020-005`: define Float64 transcendental activation behavior through
-  validated approximations or explicit fail-closed diagnostics.
+- `ML-VK-020-005`: shipped the current Float64 transcendental activation
+  policy as explicit fail-closed behavior. Float64 `ml/sigmoid`, `ml/tanh`,
+  and `ml/gelu` capability bits stay false until validated approximations or
+  backend transcendental kernels land.
 - `ML-VK-020-006`: add axis `sum`, `mean`, and `variance` as a real reduction
   layer instead of reusing matrix `contract`.
 - `ML-VK-020-007`: add stable `logsumexp`, `softmax`, cross-entropy, and

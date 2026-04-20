@@ -357,8 +357,8 @@ activation surfaces, not aliases for bare scientific math names; the current
 validated ML activation route supports `Float32` Tensor inputs and preserves
 Tensor placement through composed `Tensor` map kernels. `ml/gelu` uses the
 standard tanh approximation; the `Float64` transcendental ML activation bits
-remain false until their numerical policy is validated or explicitly
-fail-closed.
+remain false and `Float64` inputs fail closed until their numerical policy is
+validated.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

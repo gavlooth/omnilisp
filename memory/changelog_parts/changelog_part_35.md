@@ -326,3 +326,15 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1665 fail=0`, file-size gate, `git diff --check`, and primitive
     docs parity.
+
+- 2026-04-20 02:00 CEST: Vulkan ML Float64 activation policy checkpoint:
+  - Closed `ML-VK-020-005` as explicit fail-closed behavior for Float64
+    `ml/sigmoid`, `ml/tanh`, and `ml/gelu`.
+  - Added a grouped Vulkan Float64 regression so all three activations return
+    `tensor/backend-unsupported` on Vulkan-placed Float64 tensors rather than
+    using generic math or hidden CPU fallback.
+  - Float64 sigmoid/tanh/GELU ML backend capability bits remain false until
+    validated approximations or backend transcendental kernels land. Exact
+    GELU still needs a real `erf` route or a separate fail-closed contract.
+  - Validation passed: `c3c build` and focused advanced collections suite
+    `pass=1666 fail=0`.
