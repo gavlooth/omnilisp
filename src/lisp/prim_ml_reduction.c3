@@ -318,19 +318,99 @@ fn Value* ml_reduction_eval_cpu(
     return ml_reduction_write_result(out, accum, interp, value_label);
 }
 
+fn Value* ml_reduction_eval_vulkan(
+    TensorVal* source,
+    usz[] result_shape,
+    usz* axes,
+    usz axis_count,
+    int op,
+    Interp* interp,
+    char[] allocation_label,
+    char[] value_label
+) {
+    if (source == null || axes == null) return tensor_runtime_raise(interp, "ml reduction: Vulkan tensor metadata is missing");
+    if (op == ML_REDUCTION_MAX) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/max: Vulkan axis maximum kernel is not implemented", null);
+    }
+    if (source.dtype != TENSOR_DTYPE_DOUBLE && source.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml reduction: Vulkan currently supports Float64 and Float32 tensors", null);
+    }
+    if (!tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "ml reduction: Vulkan tensor backing storage is missing");
+    }
+
+    TensorVal* tensor = tensor_alloc_payload_base_checked(source.dtype, result_shape, false, false, allocation_label);
+    if (tensor == null) return tensor_runtime_raise(interp, allocation_label);
+    tensor.kind = TENSOR_PAYLOAD_CONCRETE;
+    tensor.device = TENSOR_DEVICE_VULKAN;
+
+    void* out_device = null;
+    int status = OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (source.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_ml_reduction_f64(
+            source.device_handle,
+            source.byte_len,
+            source.element_count,
+            source.rank,
+            axis_count,
+            axes,
+            tensor.element_count,
+            tensor.rank,
+            source.shape,
+            source.strides,
+            tensor.shape,
+            tensor.strides,
+            (uint)op,
+            &out_device
+        );
+    } else if (source.dtype == TENSOR_DTYPE_FLOAT32) {
+        status = omni_tensor_backend_vulkan_ml_reduction_f32(
+            source.device_handle,
+            source.byte_len,
+            source.element_count,
+            source.rank,
+            axis_count,
+            axes,
+            tensor.element_count,
+            tensor.rank,
+            source.shape,
+            source.strides,
+            tensor.shape,
+            tensor.strides,
+            (uint)op,
+            &out_device
+        );
+    }
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        tensor_free_payload(tensor);
+        return tensor_vulkan_status_raise(interp, status, "ml reduction: Vulkan axis reduction kernel failed");
+    }
+    tensor.device_handle = out_device;
+    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, value_label);
+    }
+    result.tag = TENSOR;
+    result.tensor_val = tensor;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
 fn Value* ml_reduction_apply(Value*[] args, Interp* interp, int op, char[] name) {
     if (args.len != 2) return primitive_arity_raise(interp, name, "2 arguments: input axes", args.len);
     if (!is_tensor(args[0])) return tensor_type_raise(interp, "ml reduction: expected Tensor input");
 
     TensorVal* source = null;
     Value* source_value = null;
-    Value* err = tensor_expr_resolve_concrete_cpu(
+    Value* err = tensor_expr_resolve_concrete_any_device(
         args[0],
         &source,
         &source_value,
         interp,
-        "ml reduction: tensor backing storage is missing",
-        "ml reduction: backend kernel is not implemented for non-CPU tensors"
+        "ml reduction: tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_source = source_value != args[0];
@@ -338,7 +418,11 @@ fn Value* ml_reduction_apply(Value*[] args, Interp* interp, int op, char[] name)
         boundary_cleanup_materialized_value(null, source_value, interp.current_scope);
     }
 
-    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "ml reduction: tensor backing storage is missing");
+    if (source.device != TENSOR_DEVICE_CPU && source.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml reduction: backend kernel is not implemented for this tensor placement", null);
+    }
+    if (source.device == TENSOR_DEVICE_CPU && !tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "ml reduction: tensor backing storage is missing");
+    if (source.device == TENSOR_DEVICE_VULKAN && !tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) return tensor_runtime_raise(interp, "ml reduction: Vulkan tensor backing storage is missing");
     if (!ml_reduction_supported_dtype(source.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml reduction: currently supports Float64 and Float32 tensors", null);
     }
@@ -403,6 +487,10 @@ fn Value* ml_reduction_apply(Value*[] args, Interp* interp, int op, char[] name)
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    if (source.device == TENSOR_DEVICE_VULKAN) {
+        return ml_reduction_eval_vulkan(source, shape_slice, axes, axis_count, op, interp, "ml reduction: failed to allocate Vulkan result tensor metadata", "ml reduction: failed to allocate Vulkan result tensor value");
+    }
+
     Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "ml reduction: failed to allocate result tensor");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;

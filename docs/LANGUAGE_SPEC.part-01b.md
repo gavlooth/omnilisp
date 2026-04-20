@@ -359,14 +359,15 @@ validated ML activation route supports `Float32` Tensor inputs and preserves
 Tensor placement through composed `Tensor` map kernels. `ml/gelu` uses the
 standard tanh approximation; the `Float64` transcendental ML activation bits
 remain false and `Float64` inputs fail closed until their numerical policy is
-validated. `ml/sum`, `ml/mean`, population `ml/variance`, `ml/max`, and
-`ml/logsumexp` are canonical `ml/*` axis reductions for CPU `Float64` and
-`Float32` tensors. They accept a single integer axis or an array/proper list of
-axes, remove reduced axes from the result shape, preserve dtype, reject
-duplicate/out-of-range axes with Tensor diagnostics, and fail closed for
-CUDA/Vulkan until backend reduction kernels land. `ml/softmax` accepts a single
-integer axis, uses max-shifted normalization, preserves input shape and dtype,
-and rejects axis lists. `ml/mean-squared-error(predictions targets)` accepts
+validated. `ml/sum`, `ml/mean`, and population `ml/variance` are canonical
+`ml/*` axis reductions for CPU and Vulkan `Float64` and `Float32` tensors.
+`ml/max` and `ml/logsumexp` remain CPU-only until matching Vulkan maximum and
+logarithm/exponential kernels land. These reductions accept a single integer
+axis or an array/proper list of axes, remove reduced axes from the result shape,
+preserve dtype, reject duplicate/out-of-range axes with Tensor diagnostics, and
+fail closed for unsupported backends without CPU fallback. `ml/softmax` accepts
+a single integer axis, uses max-shifted normalization, preserves input shape and
+dtype, and rejects axis lists. `ml/mean-squared-error(predictions targets)` accepts
 same-shape, same-dtype CPU `Float64` or `Float32` tensors and returns a scalar
 tensor containing the population mean squared error. `ml/cross-entropy(logits
 targets axis)` accepts same-shape probability/one-hot target tensors, uses

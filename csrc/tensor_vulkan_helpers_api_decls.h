@@ -270,6 +270,38 @@ int omni_tensor_backend_vulkan_dispatch_solve_multi_typed(
     void** out_output_device_ptr,
     void** out_status_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_reduction_f64(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t input_element_count,
+    size_t input_rank,
+    size_t axis_count,
+    const size_t* axes,
+    size_t out_element_count,
+    size_t out_rank,
+    const size_t* input_shape,
+    const size_t* input_strides,
+    const size_t* out_shape,
+    const size_t* out_strides,
+    uint32_t op,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_reduction_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t input_element_count,
+    size_t input_rank,
+    size_t axis_count,
+    const size_t* axes,
+    size_t out_element_count,
+    size_t out_rank,
+    const size_t* input_shape,
+    const size_t* input_strides,
+    const size_t* out_shape,
+    const size_t* out_strides,
+    uint32_t op,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_copy_range_to_host(
     const void* device_ptr,
     size_t offset,

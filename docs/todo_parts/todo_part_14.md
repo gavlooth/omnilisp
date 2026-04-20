@@ -411,7 +411,8 @@ Source: `TODO.md`
       - [x] Add CPU oracle coverage, duplicate/empty-axis diagnostics,
         unsupported-dtype checks, and Vulkan fail-closed regression coverage.
       - [x] Add truthful `ml-reduction-float64` and `ml-reduction-float32`
-        capability bits: CPU true, CUDA/cuBLAS/Vulkan false.
+        capability bits: CPU true, CUDA/cuBLAS false, Vulkan tied to the real
+        Float64/Float32 reduction kernels.
       - [x] `AUDIT-ML-REDUCTION-DIAGNOSTIC` split Float32 reduction
         overflow/representation failures into `tensor/numeric-overflow`
         instead of reusing `tensor/backend-unsupported`.
@@ -419,13 +420,18 @@ Source: `TODO.md`
         axes and view-input materialization on the reduction path.
     - [x] `ML-VK-020-006-MAX` add canonical CPU `ml/max` as the axis maximum
       reduction needed by stable `logsumexp`/`softmax` implementations.
-    - [ ] `ML-VK-020-006-VK` add Vulkan axis-reduction kernels for
+    - [x] `ML-VK-020-006-VK` add Vulkan axis-reduction kernels for
       `ml/sum`, `ml/mean`, and `ml/variance`.
-      - blocker: current Vulkan helpers have scalar/matrix special cases and
-        `contract`, but no one-input axis-reduction substrate with preserved
-        free axes.
-      - next step: implement a real Vulkan Float32 axis-sum kernel and build
-        mean/variance on that substrate without hidden CPU fallback.
+      - [x] Add one-input Float64/Float32 Vulkan reduction shaders and helper
+        dispatch that preserve non-reduced axes without abusing `contract`.
+      - [x] add Vulkan Float64/Float32 reduction parity tests that require the
+        result tensor to stay on Vulkan and match CPU after `to-device 'cpu`.
+      - [x] keep unsupported dtypes fail-closed on Vulkan reductions while
+        `ml/logsumexp` and `ml/softmax` remain backend-unsupported on Vulkan.
+      - [x] keep `ml-reduction-float64` and `ml-reduction-float32` aligned with
+        the Vulkan `float64` and `float32` capability bits.
+      - [x] add a rank-3 middle-axis regression proving shared reduction
+        indexing for `ml/sum`, `ml/logsumexp`, and `ml/softmax`.
     - [x] `ML-VK-020-007-A` add CPU stable `ml/logsumexp(input axes)` and
       `ml/softmax(input axis)`.
       - [x] Keep `ml/logsumexp(input axes)` aligned with multi-axis reduction

@@ -64,6 +64,7 @@
 #define OMNI_VULKAN_API_VERSION_1_0 ((1u << 22) | (0u << 12) | 0u)
 #define OMNI_TENSOR_VULKAN_MAP_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_CONTRACT_LOCAL_SIZE 64u
+#define OMNI_TENSOR_VULKAN_ML_REDUCTION_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_TRANSPOSE_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_DIAGONAL_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_DIAGONAL_MATRIX_LOCAL_SIZE 64u
@@ -466,6 +467,15 @@ typedef struct OmniTensorVulkanContractPushConstants {
     uint32_t out_count;
     uint32_t out_rank;
 } OmniTensorVulkanContractPushConstants;
+
+typedef struct OmniTensorVulkanMlReductionPushConstants {
+    uint32_t input_rank;
+    uint32_t axis_count;
+    uint32_t out_count;
+    uint32_t out_rank;
+    uint32_t op;
+    uint32_t reduction_count;
+} OmniTensorVulkanMlReductionPushConstants;
 
 typedef struct OmniTensorVulkanTransposePushConstants {
     uint32_t rows;

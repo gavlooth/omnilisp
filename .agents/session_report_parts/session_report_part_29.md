@@ -1,5 +1,70 @@
 # Session Report Part 29
 
+## 2026-04-20 03:40 CEST - Vulkan ML Axis Reduction Checkpoint
+
+- Objective attempted:
+  - Continue the TODO/audit loop by implementing the open
+    `ML-VK-020-006-VK` Vulkan axis-reduction substrate and reconciling the
+    reviewer findings into TODO/test artifacts.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_reduction.c`
+  - `csrc/tensor_vulkan_ml_reduction_f32.comp`
+  - `csrc/tensor_vulkan_ml_reduction_f64.comp`
+  - `src/lisp/prim_ml_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added a real one-input Vulkan reduction helper for Float64/Float32
+    `ml/sum`, `ml/mean`, and population `ml/variance`.
+  - Added Float32/Float64 GLSL compute shaders plus generated SPIR-V C blobs
+    and build wiring.
+  - Routed Vulkan tensors through the new reduction helper without hidden CPU
+    fallback, while keeping `ml/max`, `ml/logsumexp`, and `ml/softmax`
+    backend-unsupported on Vulkan.
+  - Updated `tensor-backends` so Vulkan `ml-reduction-float64` and
+    `ml-reduction-float32` track the backend Float64/Float32 capability bits.
+  - Added rank-3 middle-axis CPU regression coverage for shared reduction
+    indexing and guarded Vulkan parity tests that assert results stay on
+    Vulkan and match CPU after explicit copy-back.
+  - Closed `ML-VK-020-006-VK` in TODO and updated the roadmap/spec/reference
+    docs.
+- Commands run:
+  - Fast explorer subagent audit for Vulkan reduction helper surface.
+  - Fast worker subagent for TODO/test planning artifact updates.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_reduction_f32.comp -o /tmp/omni_ml_reduction_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_reduction_f32.spv`
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_reduction_f64.comp -o /tmp/omni_ml_reduction_f64.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_reduction_f64.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib ./build/main < /tmp/omni-ml-reduction-check.omni`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Direct Vulkan smokes returned `true` for Float64 reductions, Float32
+    reductions, and rank-3 middle-axis CPU/stable reductions; `ml/max` on
+    Vulkan returned `tensor/backend-unsupported` as intended.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - File-size gate passed with no tracked text file over 700 lines.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The static audit claim that `ml_reduction_result_index` multiplies output
+    strides through reduced axes was false against the current code; the helper
+    skips reduced axes before advancing `result_stride`. Keep the new rank-3
+    middle-axis regression as proof instead of reworking the indexer.
+  - Do not claim Vulkan `ml/max`, `ml/logsumexp`, `ml/softmax`, or loss support
+    from the sum/mean/variance helper alone.
+- Unresolved issues:
+  - Full `advanced` host slice currently segfaults after the TCO tests before
+    reaching the ML part8 tests; this was not resolved in this slice.
+  - Full bounded-container suite was not run.
+- Next actions:
+  - Implement Vulkan `ml/max` and then exp/log-backed stable kernels before
+    enabling Vulkan `ml/logsumexp`, `ml/softmax`, or losses.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 02:45 CEST - ML Stable Reduction And Softmax Checkpoint
 
 - Objective attempted:

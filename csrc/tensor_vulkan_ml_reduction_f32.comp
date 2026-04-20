@@ -1,0 +1,103 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint input_rank;
+    uint axis_count;
+    uint out_count;
+    uint out_rank;
+    uint op;
+    uint reduction_count;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer MetadataBuffer {
+    uint meta_data[];
+};
+
+uint out_shape_base() { return 0; }
+uint out_stride_base() { return params.out_rank; }
+uint input_shape_base() { return params.out_rank * 2; }
+uint input_stride_base() { return input_shape_base() + params.input_rank; }
+uint axes_base() { return input_stride_base() + params.input_rank; }
+uint axis_at(uint axis_pos) { return meta_data[axes_base() + axis_pos]; }
+
+bool axis_is_reduced(uint axis) {
+    for (uint axis_pos = 0; axis_pos < params.axis_count; axis_pos++) {
+        if (axis_at(axis_pos) == axis) return true;
+    }
+    return false;
+}
+
+uint output_coord(uint out_index, uint out_axis) {
+    uint shape = meta_data[out_shape_base() + out_axis];
+    uint stride = meta_data[out_stride_base() + out_axis];
+    return (out_index / stride) % shape;
+}
+
+uint input_base_offset(uint out_index) {
+    uint offset = 0;
+    uint free_pos = 0;
+    for (uint axis = 0; axis < params.input_rank; axis++) {
+        if (axis_is_reduced(axis)) continue;
+        uint coord = output_coord(out_index, free_pos);
+        offset += coord * meta_data[input_stride_base() + axis];
+        free_pos++;
+    }
+    return offset;
+}
+
+uint reduction_offset(uint reduction_index) {
+    uint remaining = reduction_index;
+    uint offset = 0;
+    for (uint rev = 0; rev < params.axis_count; rev++) {
+        uint axis_pos = params.axis_count - 1 - rev;
+        uint axis = axis_at(axis_pos);
+        uint dim = meta_data[input_shape_base() + axis];
+        uint coord = remaining % dim;
+        remaining = remaining / dim;
+        offset += coord * meta_data[input_stride_base() + axis];
+    }
+    return offset;
+}
+
+float reduction_sum(uint base_offset) {
+    float sum = 0.0;
+    for (uint i = 0; i < params.reduction_count; i++) {
+        sum += input_data[base_offset + reduction_offset(i)];
+    }
+    return sum;
+}
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    if (out_index >= params.out_count) return;
+
+    uint base_offset = input_base_offset(out_index);
+    float sum = reduction_sum(base_offset);
+    if (params.op == 0u) {
+        output_data[out_index] = sum;
+        return;
+    }
+
+    float mean = sum / float(params.reduction_count);
+    if (params.op == 1u) {
+        output_data[out_index] = mean;
+        return;
+    }
+
+    float square_sum = 0.0;
+    for (uint i = 0; i < params.reduction_count; i++) {
+        float diff = input_data[base_offset + reduction_offset(i)] - mean;
+        square_sum += diff * diff;
+    }
+    output_data[out_index] = square_sum / float(params.reduction_count);
+}

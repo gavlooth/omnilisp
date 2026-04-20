@@ -401,3 +401,24 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1692 fail=0`, `git diff --check`, primitive docs parity, and the
     file-size gate.
+
+- 2026-04-20 03:40 CEST: Vulkan ML axis-reduction checkpoint:
+  - Implemented `ML-VK-020-006-VK` for Vulkan Float64/Float32 `ml/sum`,
+    `ml/mean`, and population `ml/variance`.
+  - Added a one-input Vulkan reduction helper and dtype-specific GLSL compute
+    shaders/SPIR-V blobs; the helper preserves free axes and does not reuse
+    matrix `contract`.
+  - Routed Vulkan tensors through the new helper from `prim_ml_reduction.c3`
+    without hidden CPU fallback, and updated `tensor-backends` so
+    `ml-reduction-float64`/`ml-reduction-float32` track Vulkan Float64/Float32
+    availability.
+  - Kept `ml/max`, `ml/logsumexp`, `ml/softmax`, and loss primitives
+    backend-unsupported on Vulkan; they require separate maximum and exp/log
+    kernels before claiming support.
+  - Added rank-3 middle-axis regression coverage for shared reduction indexing
+    plus guarded Vulkan parity checks for Float64/Float32 sum/mean/variance.
+  - Validation passed: shader compile/`spirv-val`, `scripts/build_omni_chelpers.sh`,
+    `c3c build`, direct Vulkan reduction smokes, basic Lisp slice
+    `pass=160 fail=0`, `git diff --check`, primitive docs parity, and the
+    file-size gate. Full host `advanced` slice still segfaults after TCO tests
+    before reaching ML part8 and remains unresolved.

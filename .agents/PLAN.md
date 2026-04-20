@@ -461,10 +461,17 @@ Date: 2026-04-20
   - keep Float32 reduction overflow under `tensor/numeric-overflow`;
   - fail closed for CUDA/Vulkan until backend-specific axis kernels exist;
   - keep `ML-VK-020-006-VK` open for the real Vulkan reduction substrate.
-- Validation path:
-  - `c3c build`
-  - focused advanced collections suite
-  - docs parity, whitespace, and file-size gates before commit/push.
+- Current test-plan delta:
+  - guarded Vulkan Float64/Float32 parity tests for `ml/sum`, `ml/mean`, and
+    `ml/variance` now assert the result stays on Vulkan and matches CPU after
+    an explicit `to-device 'cpu` check;
+  - rank-3 middle-axis coverage now checks shared reduction indexing across
+    `ml/sum`, `ml/logsumexp`, and `ml/softmax`;
+  - unsupported dtype coverage remains, while `ml/max`, `ml/logsumexp`, and
+    `ml/softmax` stay backend-unsupported on Vulkan;
+  - preserve `ml/logsumexp` and `ml/softmax` as backend-unsupported on Vulkan.
 - Next checkpoint:
-  - `ML-VK-020-007` CPU surface is now closed; implement `ML-VK-020-006-VK`
-    first if claiming Vulkan reduction/logsumexp/softmax/loss capability.
+  - `ML-VK-020-006-VK` is implemented for `ml/sum`, `ml/mean`, and
+    `ml/variance`; next Vulkan ML work should add `ml/max` and the
+    exp/log-backed stable kernels before claiming Vulkan logsumexp/softmax or
+    loss capability.
