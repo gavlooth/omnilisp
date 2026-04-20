@@ -9,15 +9,11 @@ layout(push_constant) uniform Params {
     uint aux1;
 } params;
 
-layout(set = 0, binding = 0, std430) readonly buffer PredictionsBuffer {
-    float predictions[];
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
 };
 
-layout(set = 0, binding = 1, std430) readonly buffer TargetsBuffer {
-    float targets[];
-};
-
-layout(set = 0, binding = 2, std430) buffer OutputBuffer {
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
     float output_data[];
 };
 
@@ -30,11 +26,10 @@ void main() {
 
     float total = 0.0;
     for (uint i = start; i < end; i++) {
-        float diff = predictions[i] - targets[i];
-        total += diff * diff;
+        total += input_data[i];
     }
     if (params.op == 1u) {
-        output_data[gl_GlobalInvocationID.x] = total / float(params.count);
+        output_data[gl_GlobalInvocationID.x] = total / float(params.aux1);
         return;
     }
     output_data[gl_GlobalInvocationID.x] = total;

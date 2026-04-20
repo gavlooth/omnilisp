@@ -1,5 +1,67 @@
 # Session Report Part 29
 
+## 2026-04-20 13:49 CEST - Vulkan ML Staged MSE Checkpoint
+
+- Objective attempted:
+  - Continue auditing and implementing the Vulkan ML suite by closing the
+    staged parallel MSE follow-up for large inputs.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_loss.c`
+  - `csrc/tensor_vulkan_ml_mse_f64.comp`
+  - `csrc/tensor_vulkan_ml_mse_f32.comp`
+  - `csrc/tensor_vulkan_ml_mse_reduce_f64.comp`
+  - `csrc/tensor_vulkan_ml_mse_reduce_f32.comp`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `.agents/PLAN.md`
+- Code or configuration changes made:
+  - Replaced Vulkan MSE's whole-input single invocation with chunked
+    partial-sum dispatch followed by staged two-buffer reductions.
+  - Added Float64 and Float32 reduction shaders and generated SPIR-V C wiring.
+  - Kept the final mean divide in the last reduction stage so the staged path
+    sums partial squared errors and divides exactly once by element count.
+  - Preserved Float32 non-finite scalar detection and
+    `tensor/numeric-overflow` mapping.
+  - Split oversized generated SPIR-V C files into wrapper plus
+    `*_spv_part_*.inc` chunks so the repository file-size gate stays clean.
+  - Added guarded tests for staged Float64, recursive staged Float32, and
+    staged Float32 overflow behavior.
+  - Closed `ML-VK-020-007-VK-MSE-PAR` in TODO and updated the active plan.
+- Commands run:
+  - Fast subagent audit for staged MSE helper/shader correctness.
+  - `glslangValidator -V --target-env vulkan1.0` for all four MSE shaders.
+  - `spirv-val --target-env vulkan1.0` for all four generated SPIR-V binaries.
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct `LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --eval ...`
+    staged Vulkan Float64, recursive staged Vulkan Float32, and staged
+    Float32 overflow smokes.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections passed with `pass=1704 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Direct staged Vulkan smokes returned `true`.
+  - File-size gate passed with no tracked text file above 700 LOC.
+- Invalidated assumptions or failed approaches worth preserving:
+  - The old correctness-first MSE kernel should no longer be treated as the
+    intended large-input path; staged reduction is now the implementation
+    contract for Vulkan MSE.
+- Current best recommendation / checkpoint:
+  - Commit and push the non-artifact source, shader, test, TODO, plan,
+    changelog, and session-report changes.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan Float32 staged reduction may differ in low bits from the old
+    one-invocation path because the accumulation order changed.
+  - Vulkan `ml/cross-entropy`, Float64 `ml/logsumexp`, and Float64
+    `ml/softmax` remain separate open Vulkan ML work.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 13:09 CEST - Vulkan ML Mean Squared Error Checkpoint
 
 - Objective attempted:

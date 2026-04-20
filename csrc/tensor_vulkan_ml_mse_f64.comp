@@ -1,7 +1,7 @@
 #version 450
 #extension GL_ARB_gpu_shader_fp64 : require
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform Params {
     uint count;
@@ -23,10 +23,20 @@ layout(set = 0, binding = 2, std430) buffer OutputBuffer {
 };
 
 void main() {
+    uint chunk_size = params.aux0;
+    uint start = gl_GlobalInvocationID.x * chunk_size;
+    if (chunk_size == 0u || start >= params.count) return;
+    uint end = start + chunk_size;
+    if (end > params.count) end = params.count;
+
     double total = 0.0;
-    for (uint i = 0; i < params.count; i++) {
+    for (uint i = start; i < end; i++) {
         double diff = predictions[i] - targets[i];
         total += diff * diff;
     }
-    output_data[0] = total / double(params.count);
+    if (params.op == 1u) {
+        output_data[gl_GlobalInvocationID.x] = total / double(params.count);
+        return;
+    }
+    output_data[gl_GlobalInvocationID.x] = total;
 }

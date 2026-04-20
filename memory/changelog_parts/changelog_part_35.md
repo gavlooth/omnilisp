@@ -506,3 +506,22 @@ Source: `memory/CHANGELOG.md`
     recorded `ML-VK-020-007-VK-MSE-PAR` for the remaining staged parallel
     reduction rewrite. Current Vulkan MSE remains correctness-first and
     single-invocation for small tensors.
+
+- 2026-04-20 13:49 CEST: Vulkan ML staged mean-squared-error checkpoint:
+  - Closed `ML-VK-020-007-VK-MSE-PAR`.
+  - Replaced the Vulkan MSE single-invocation scalar kernel with a staged
+    chunked partial-sum path for Float64 and Float32.
+  - Added dedicated two-buffer Float64/Float32 reduction shaders for partial
+    sums; the final reduction pass divides exactly once by the original element
+    count.
+  - Preserved the no-hidden-CPU-fallback contract and the existing Float32
+    non-finite scalar mapping to `tensor/numeric-overflow`.
+  - Split oversized generated MSE SPIR-V C embeddings into wrapper plus
+    `*_spv_part_*.inc` chunks to keep tracked text under the 700-line gate.
+  - Added guarded staged Vulkan MSE tests for a >256-element Float64 path, a
+    recursive >65k-element Float32 path, and staged Float32 overflow.
+  - Validation passed: shader compile/`spirv-val` for all four MSE shaders,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct staged MSE smokes,
+    focused advanced collections `pass=1704 fail=0`, basic Lisp slice
+    `pass=160 fail=0`, primitive docs parity, `git diff --check`, and
+    file-size gate.

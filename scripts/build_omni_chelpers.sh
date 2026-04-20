@@ -64,6 +64,8 @@ sources=(
   "csrc/tensor_vulkan_contract_f64_spv.c"
   "csrc/tensor_vulkan_ml_mse_f32_spv.c"
   "csrc/tensor_vulkan_ml_mse_f64_spv.c"
+  "csrc/tensor_vulkan_ml_mse_reduce_f32_spv.c"
+  "csrc/tensor_vulkan_ml_mse_reduce_f64_spv.c"
   "csrc/tensor_vulkan_ml_reduction_f32_spv.c"
   "csrc/tensor_vulkan_ml_reduction_f64_spv.c"
   "csrc/tensor_vulkan_ml_softmax_f32_spv.c"

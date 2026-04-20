@@ -478,19 +478,21 @@ Date: 2026-04-20
   - Vulkan Float32 `ml/mean-squared-error` now checks the device scalar for
     non-finite output and maps overflow to `tensor/numeric-overflow`, matching
     the CPU Float32 write contract instead of returning an `inf` tensor;
+  - Vulkan Float64/Float32 `ml/mean-squared-error` now stages large inputs
+    through chunked partial-sum kernels and follow-up reduction passes instead
+    of using one device invocation for the whole scalar loss;
+  - guarded staged MSE tests now cover a >256-element Float64 path, a
+    >65k-element recursive Float32 path, and staged Float32 overflow mapping;
   - `AUDIT-AOT-RUNTIME-MANIFEST-061` regenerated the manifest-backed AOT
     non-test Lisp source set into four under-700 parts and strengthened the
     Stage 3 parity checker to compare the full source set;
   - unsupported dtype coverage remains, while Vulkan Float64 `ml/logsumexp`
     and Vulkan Float64 `ml/softmax` stay backend-unsupported.
 - Next checkpoint:
-  - `ML-VK-020-007-VK-MSE` is implemented for Vulkan Float64/Float32
+  - `ML-VK-020-007-VK-MSE-PAR` is implemented for staged Vulkan Float64/Float32
     `ml/mean-squared-error`; next Vulkan ML work should add a dedicated
     Vulkan cross-entropy kernel or a validated Float64 exp/log policy before
     claiming broader stable-reduction or loss capability.
-  - `ML-VK-020-007-VK-MSE-PAR` tracks the staged parallel MSE reduction rewrite
-    for large tensors; the current Vulkan MSE helper is correctness-first and
-    single-invocation.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.
