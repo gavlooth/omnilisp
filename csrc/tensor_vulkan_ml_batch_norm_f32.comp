@@ -1,0 +1,72 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint input_rank;
+    uint out_count;
+    uint channel_axis;
+    uint channel_dim;
+    float epsilon;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer ScaleBuffer {
+    float scale_data[];
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer BiasBuffer {
+    float bias_data[];
+};
+
+layout(set = 0, binding = 3, std430) readonly buffer MeanBuffer {
+    float mean_data[];
+};
+
+layout(set = 0, binding = 4, std430) readonly buffer VarianceBuffer {
+    float variance_data[];
+};
+
+layout(set = 0, binding = 5, std430) readonly buffer MetadataBuffer {
+    uint meta_data[];
+};
+
+layout(set = 0, binding = 6, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+uint input_shape_base() { return 0; }
+uint input_stride_base() { return params.input_rank; }
+uint output_stride_base() { return params.input_rank * 2; }
+
+uint input_offset_for_output(uint out_index) {
+    uint remaining = out_index;
+    uint offset = 0;
+    for (uint axis = 0; axis < params.input_rank; axis++) {
+        uint dim = meta_data[input_shape_base() + axis];
+        uint stride = meta_data[output_stride_base() + axis];
+        uint coord = (remaining / stride) % dim;
+        offset += coord * meta_data[input_stride_base() + axis];
+    }
+    return offset;
+}
+
+uint channel_coord_for_output(uint out_index) {
+    uint stride = meta_data[output_stride_base() + params.channel_axis];
+    uint dim = meta_data[input_shape_base() + params.channel_axis];
+    return (out_index / stride) % dim;
+}
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    if (out_index >= params.out_count) return;
+
+    uint input_offset = input_offset_for_output(out_index);
+    uint channel = channel_coord_for_output(out_index);
+    float centered = input_data[input_offset] - mean_data[channel];
+    float normalized = centered / sqrt(variance_data[channel] + params.epsilon);
+    output_data[out_index] = normalized * scale_data[channel] + bias_data[channel];
+}

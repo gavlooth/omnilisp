@@ -50,3 +50,23 @@
     CPU/Vulkan eval smokes, focused advanced collections `pass=1758 fail=0`,
     basic Lisp `pass=160 fail=0`, primitive docs parity, file-size gate, and
     `git diff --check`.
+
+- 2026-04-20 18:58 CEST: Vulkan ML batch normalization:
+  - Closed `ML-VK-040-002`.
+  - Added public
+    `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`
+    with explicit rank-1 affine/stat tensors instead of hidden mutable layer
+    state.
+  - CPU supports `Float64` and `Float32`; Vulkan supports direct dense
+    row-major `Float32` with a dedicated seven-buffer helper/shader path.
+  - Added `ml-batch-normalization-float64`,
+    `ml-batch-normalization-float32`, and updated broad `ml-normalization`
+    capability reporting.
+  - Mixed CPU/Vulkan operands and Vulkan Float64 remain fail-closed before CPU
+    fallback. Training-mode/current-batch-stat batch normalization is deferred
+    to the state/autograd work.
+  - Validation passed: shader compile and `spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct CPU/Vulkan eval
+    smokes, focused advanced collections `pass=1764 fail=0`, basic Lisp
+    `pass=160 fail=0`, primitive docs parity, file-size gate, and
+    `git diff --check`.

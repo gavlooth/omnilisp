@@ -485,6 +485,14 @@ typedef struct OmniTensorVulkanMlLayerNormPushConstants {
     float epsilon;
 } OmniTensorVulkanMlLayerNormPushConstants;
 
+typedef struct OmniTensorVulkanMlBatchNormPushConstants {
+    uint32_t input_rank;
+    uint32_t out_count;
+    uint32_t channel_axis;
+    uint32_t channel_dim;
+    float epsilon;
+} OmniTensorVulkanMlBatchNormPushConstants;
+
 typedef struct OmniTensorVulkanTransposePushConstants {
     uint32_t rows;
     uint32_t cols;

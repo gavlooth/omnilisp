@@ -385,6 +385,26 @@ extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     usz* out_strides,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_layer_norm_f32");
+extern fn int omni_tensor_backend_vulkan_ml_batch_norm_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz input_element_count,
+    usz input_rank,
+    usz channel_axis,
+    float epsilon,
+    usz* input_shape,
+    usz* input_strides,
+    usz* out_strides,
+    void* scale_device_ptr,
+    usz scale_byte_len,
+    void* bias_device_ptr,
+    usz bias_byte_len,
+    void* mean_device_ptr,
+    usz mean_byte_len,
+    void* variance_device_ptr,
+    usz variance_byte_len,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_batch_norm_f32");
 extern fn int omni_tensor_backend_vulkan_contract_complex128(
     void* left_device_ptr,
     void* right_device_ptr,

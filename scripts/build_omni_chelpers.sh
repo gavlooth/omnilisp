@@ -78,6 +78,7 @@ sources=(
   "csrc/tensor_vulkan_ml_reduction_f64_spv.c"
   "csrc/tensor_vulkan_ml_softmax_f32_spv.c"
   "csrc/tensor_vulkan_ml_layer_norm_f32_spv.c"
+  "csrc/tensor_vulkan_ml_batch_norm_f32_spv.c"
   "csrc/tensor_vulkan_contract_complex128_spv.c"
   "csrc/tensor_vulkan_contract_complex64_spv.c"
   "csrc/tensor_vulkan_transpose_f32_spv.c"

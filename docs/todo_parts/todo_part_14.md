@@ -575,8 +575,16 @@ Source: `TODO.md`
     - reports `ml-layer-normalization-float64`,
       `ml-layer-normalization-float32`, and broad `ml-normalization` capability.
     - keeps unsupported CUDA/Vulkan paths fail-closed without CPU fallback.
+  - [x] `ML-VK-040-002` add canonical
+    `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`.
+    - shipped CPU `Float64`/`Float32` and direct Vulkan `Float32`.
+    - uses explicit rank-1 scale, bias, mean, and variance tensors matching the
+      channel axis, preserving DataSpec-style data paths without hidden state.
+    - reports `ml-batch-normalization-float64`,
+      `ml-batch-normalization-float32`, and broad `ml-normalization` capability.
+    - keeps mixed CPU/Vulkan and Vulkan Float64 paths fail-closed without CPU fallback.
   - scope:
-    - batch normalization;
+    - training-mode/current-batch-stat batch normalization after state/autograd;
     - stable scaled dot-product attention;
     - mask diagnostics;
     - optional fused attention kernels only after unfused oracle kernels pass.

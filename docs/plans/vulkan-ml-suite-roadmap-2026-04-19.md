@@ -244,7 +244,14 @@ Add Vulkan kernels for normalization and attention building blocks:
   shape, normalizes each explicit axis slice, reports narrow
   `ml-layer-normalization-*` capability bits, and turns broad
   `ml-normalization` true when at least one dtype route exists.
-- batch normalization;
+- `ML-VK-040-002`: shipped
+  `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`
+  for CPU `Float64`/`Float32` and direct Vulkan `Float32`. It preserves input
+  shape, requires rank-1 scale/bias/mean/variance tensors matching the channel
+  axis, reports narrow `ml-batch-normalization-*` capability bits, and keeps
+  mixed CPU/Vulkan operands fail-closed before CPU fallback.
+- training-mode/current-batch-stat batch normalization remains deferred until
+  autograd/training state contracts are ready.
 - stable scaled dot-product attention;
 - mask handling with fail-closed shape and dtype diagnostics;
 - optional fused softmax/dropout/matmul only after the unfused oracle kernels

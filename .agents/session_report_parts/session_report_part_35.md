@@ -163,3 +163,62 @@
   - If affine layer normalization is needed first, add explicit scale/bias
     tensor operands and a matching Vulkan dispatch path.
 - Signature: Codex GPT-5.4
+
+# 2026-04-20 18:58 CEST - Vulkan ML Batch Normalization
+
+- Objective attempted:
+  - Continue `ML-VK-040` by implementing explicit-stat batch normalization for
+    CPU and Vulkan ML execution.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - Vulkan ML roadmap item `ML-VK-040-002`.
+- Code or configuration changes made:
+  - Added public
+    `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`.
+  - Implemented CPU `Float64`/`Float32` and direct Vulkan dense row-major
+    `Float32` execution.
+  - Added a dedicated Vulkan C helper, GLSL compute shader, and embedded
+    SPIR-V source with seven storage-buffer bindings.
+  - Wired runtime registration, AOT primitive lookup, Vulkan externs, helper
+    declarations, and helper build input.
+  - Added `ml-batch-normalization-float64`,
+    `ml-batch-normalization-float32`, and broad `ml-normalization` capability
+    reporting.
+  - Added focused CPU/Vulkan/fail-closed tests.
+  - Updated language spec, primitive appendix, collections reference,
+    Vulkan ML roadmap, TODO, plan, and memory changelog artifacts.
+- Commands run:
+  - Fast read-only subagent implementation-surface probes.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_batch_norm_f32.comp`
+  - `spirv-val` on the generated batch-normalization SPIR-V.
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct CPU and Vulkan `--eval` smokes.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - `c3c build` passed.
+  - Direct CPU and Vulkan batch-normalization smokes returned `true`.
+  - Focused advanced collections passed with `pass=1764 fail=0`.
+  - Basic Lisp passed with `pass=160 fail=0`.
+  - Primitive docs parity, file-size gate, and whitespace checks passed.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not model the shipped batch-normalization primitive as hidden mutable
+    training state. The accepted contract is data-oriented and uses explicit
+    scale, bias, mean, and variance tensors.
+  - Do not satisfy mixed Vulkan batch-normalization operands by realizing them
+    to CPU. Unsupported placements must fail closed until a validated backend
+    path exists.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run in this
+    slice.
+  - Training-mode/current-batch-stat batch normalization remains deferred until
+    state/autograd contracts are ready.
+- Next actions:
+  - Continue `ML-VK-040` with scaled dot-product attention, or continue the
+    lower-level autograd/optimizer prerequisites needed for training-mode
+    normalization.
+- Signature: Codex GPT-5.4

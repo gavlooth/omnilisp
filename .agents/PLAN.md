@@ -586,6 +586,30 @@ Date: 2026-04-20
   - basic Lisp slice: `pass=160 fail=0`
   - primitive docs parity, file-size gate, and `git diff --check`
 - Next checkpoint:
-  - continue `ML-VK-040` with batch normalization or scaled dot-product
-    attention; affine gamma/beta layer-normalization should be a separate
-    multi-buffer Vulkan kernel slice rather than a hidden CPU fallback.
+  - continue `ML-VK-040` with explicit-stat batch normalization; affine
+    gamma/beta layer-normalization should be a separate multi-buffer Vulkan
+    kernel slice rather than a hidden CPU fallback.
+
+## Active Vulkan ML Batch Normalization Checkpoint
+
+Date: 2026-04-20
+
+- Active implementation:
+  - implementing `ML-VK-040-002` as
+    `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`;
+  - chosen contract is explicit inference/data-path batch normalization with
+    rank-1 scale, bias, mean, and variance tensors matching the channel axis;
+  - CPU route supports `Float64`/`Float32`; Vulkan route supports direct dense
+    row-major `Float32` with no hidden CPU fallback.
+- Validation so far:
+  - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
+    `csrc/tensor_vulkan_ml_batch_norm_f32.comp`;
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - direct CPU/Vulkan `--eval` smokes
+  - focused advanced collections suite: `pass=1764 fail=0`
+- Remaining before commit:
+  - finish docs/session/changelog updates;
+  - rerun helper build, `c3c build`, basic Lisp, primitive docs parity, file-size
+    gate, and `git diff --check`;
+  - record memory/Ruflo outcome, commit all non-artifacts, and push main/master.
