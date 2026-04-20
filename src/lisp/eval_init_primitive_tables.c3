@@ -84,6 +84,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         // Arrays
         { "Array", &prim_array, -1 }, // Canonical constructor/conversion surface.
         { "Tensor", &prim_tensor, -1 },
+        { "Kernel", &prim_kernel, 1 },
+        { "kernel/run", &prim_kernel_run, 3 },
         { "__tensor-map", &prim_tensor_map, -1 },
         { "nn/validate", &prim_nn_validate, 1 },
         { "nn/init", &prim_nn_init, -1 },

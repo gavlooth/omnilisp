@@ -836,3 +836,25 @@ Date: 2026-04-21 - Added data-first NN optimizer constructors.
 - Next checkpoint: continue broader ML suite work from remaining TODO entries,
   with tape-backed recursive autograd and fused CUDA optimizer kernels still
   open.
+
+## Completed ML-VK-080-001 Kernel Value Surface
+Date: 2026-04-21 - Implemented the first data-oriented custom `Kernel` value
+surface and kept execution explicit/fail-closed.
+
+- Active hypothesis validated: `Kernel` can be a real type/value without
+  becoming an opaque object. The runtime value remains a dictionary-shaped data
+  spec, while `type-of` / `is?` expose `Kernel` for introspection.
+- Current approach shipped:
+  - `Kernel(spec)` validates backend, operation, IO descriptors, optional
+    push constants, optional workgroup, and recognized keys.
+  - Constructed values normalize `kind` to `'kernel` and preserve ordinary
+    path/index/ref data access.
+  - `kernel/run(kernel inputs push)` is explicit and currently raises
+    `tensor/backend-unsupported`.
+  - Parser postfix chaining now supports `rows.[0].name` /
+    `k.inputs.[0].name` without reviving removed leading-dot accessors.
+- Validation path completed: `c3c build`, direct eval smokes, focused advanced
+  collections exit 0, compiler slice, basic slice, primitive docs parity,
+  Stage 3 source parity, code file-size gate, and `git diff --check`.
+- Next checkpoint: implement the real `Kernel` backend compiler/runner contract
+  or graph-capture command batching from the remaining `ML-VK-080` TODOs.

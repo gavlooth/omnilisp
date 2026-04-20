@@ -44,6 +44,22 @@ fn bool Lexer.scan_dot_tokens(Lexer* self, char c) {
         return true;
     }
 
+    // Postfix field access after arbitrary expressions: expr.[0].name.
+    // Emit '.' separately so the parser can decide whether this is valid
+    // postfix access or a removed leading-dot accessor.
+    if (self.pos + 1 < self.len && is_symbol_char(self.source[self.pos + 1])) {
+        if (!self.ensure_text_capacity(2)) {
+            self.set_error_text("out of memory while lexing token");
+            return true;
+        }
+        self.current.type = T_SYMBOL;
+        self.current.text[0] = '.';
+        self.current.text[1] = 0;
+        self.current.text_len = 1;
+        self.next_char();
+        return true;
+    }
+
     return false;
 }
 

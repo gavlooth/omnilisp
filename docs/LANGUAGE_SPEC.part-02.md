@@ -551,10 +551,13 @@ list.[0]            ; first element
 str.[2]             ; character code at index 2
 tensor.[i].[j]      ; chained indexing
 array.[0]           ; array indexing
+array.[0].name      ; postfix index followed by symbol-key access
 dict.['key]         ; dict key lookup
 ```
 
 `expr.[key]` means lookup/index on `expr`. It is not leading-dot syntax.
+After a postfix index, `.name` continues as a postfix symbol-key lookup on the
+indexed result; leading-dot forms remain invalid.
 
 ### 6.2 Path Notation (Field Access)
 

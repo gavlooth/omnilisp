@@ -65,10 +65,11 @@ Layer constructors return normalized data, not opaque objects.
 Custom kernels should follow the same data-oriented rule as models and
 optimizers: the user creates inspectable data, and execution is explicit.
 
-`Kernel` is the planned public type/value for user-defined backend kernels.
-It may need special runtime/compiler support for validation, compilation,
-backend cache state, and ABI checks, but it should still be constructed and
-inspected as ordinary Omni data:
+`Kernel` is the public type/value for user-defined backend kernels. The first
+shipped surface validates and normalizes the data spec, reports `type-of` /
+`is?` as `Kernel`, and still stores the value as ordinary Omni dictionary data.
+Backend compilation, cache state, ABI checks, and actual launch semantics are
+still future work:
 
 ```lisp
 (define sgd-update
@@ -98,6 +99,9 @@ surface. Kernel execution should remain explicit, for example:
   {'params params-tensor 'grads grads-tensor}
   {'learning-rate (Float32 0.1) 'weight-decay (Float32 0.0)})
 ```
+
+`kernel/run` is present as the explicit execution boundary, but currently fails
+closed with `tensor/backend-unsupported` until a backend compiler/runner exists.
 
 Declaration sugar is allowed only when it expands to canonical Omni forms. A
 future macro/declaration family such as:

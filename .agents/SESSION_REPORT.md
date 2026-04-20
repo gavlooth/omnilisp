@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (305 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (353 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -753,4 +753,21 @@ The historical content was split mechanically to keep individual files below the
     smokes, focused advanced collections `pass=1831 fail=0`, compiler slice
     `pass=285 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
     Stage 3 source parity, code file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-001 Kernel Value Surface
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented `Kernel(spec)` as a validated dictionary-backed custom kernel
+    value with `type-of` / `is?` reporting `Kernel`.
+  - Added explicit `kernel/run(kernel inputs push)`, currently fail-closed with
+    `tensor/backend-unsupported` until backend compilation/launch exists.
+  - Fixed postfix path/index chaining so `rows.[0].name` and
+    `k.inputs.[0].name` parse while leading-dot accessors remain rejected.
+  - Validation: `c3c build`, direct eval smokes, focused advanced collections
+    exit 0, compiler slice `pass=287 fail=0`, basic Lisp `pass=161 fail=0`,
+    primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.
 - Signature: GPT-5 Codex

@@ -61,6 +61,7 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "index/ref parity dict", "(= (ref {'a 1 'b 2} 'b) (let (m {'a 1 'b 2}) m.['b]))", pass, fail);
     test_truthy(interp, "index/ref parity string", "(= (ref \"xyz\" 1) (\"xyz\".[1]))", pass, fail);
     test_truthy(interp, "index/ref parity string negative", "(= (ref \"xyz\" -1) (\"xyz\".[-1]))", pass, fail);
+    test_eq(interp, "postfix index then symbol path", "(let (rows [(Dictionary 'name 44)]) rows.[0].name)", 44, pass, fail);
     test_error_contains(interp, "leading-dot int accessor removed", "(.1 (quote (10 20 30)))",
         "leading-dot accessors were removed", pass, fail);
     test_error_contains(interp, "leading-dot symbol accessor removed", "(.name {'name 91})",

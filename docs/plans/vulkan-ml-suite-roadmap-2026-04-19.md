@@ -414,6 +414,15 @@ closures, and must not overload path access, postfix indexing, or `ref` into
 kernel execution. Kernel specs should use ordinary Omni data, quoted symbol
 keys, path access such as `k.inputs.[0].name`, and explicit execution.
 
+Shipped first slice:
+
+- `ML-VK-080-001`: `Kernel(spec)` now validates a data-oriented kernel
+  dictionary, normalizes `kind` to `'kernel`, exposes `type-of` / `is?`
+  as `Kernel`, and preserves ordinary dictionary/path access. `kernel/run`
+  is public and explicit, but intentionally fails closed with
+  `tensor/backend-unsupported` until backend compilation and launch semantics
+  are implemented.
+
 ### `ML-VK-090` Validation And Benchmark Suite
 
 Add a Vulkan ML validation gate:

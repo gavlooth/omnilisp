@@ -52,7 +52,8 @@ list        = "(" { expr } ")" ;
 array_lit   = "[" { expr } "]" ;           (* equivalent to Array constructor call *)
 dict_lit    = "{" { expr expr } "}" ;      (* equivalent to Dictionary constructor call; must be even *)
 indexed     = expr ".[" expr "]" ;
-accessor    = "." expr
+postfix_field = expr "." symbol ;          (* after an already parsed expression, for example row.[0].name *)
+accessor    = "." expr                     (* removed leading-dot form; must hard-error *)
 
 datum       = literal | symbol | "(" { datum } ")" | "'" datum ;
 

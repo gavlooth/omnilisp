@@ -729,12 +729,18 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-080` add Vulkan ML graph capture, fusion, and memory planning
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - shipped:
+    - [x] `ML-VK-080-001` add the data-oriented `Kernel` value surface.
+      - shipped: `Kernel(spec)` validates recognized keys, required backend,
+        operation, IO descriptors, optional push constants, and optional
+        workgroup; normalizes `kind` to `'kernel`; reports `type-of` / `is?`
+        as `Kernel`; preserves ordinary path/index/ref data access; and adds
+        explicit fail-closed `kernel/run`.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
     - safe elementwise/reduction fusion;
-    - user-defined `Kernel` type/value specs with explicit `kernel/run`
-      execution;
+    - backend compilation and execution for user-defined `Kernel` values;
     - optional `(define [kernel] ...)` sugar only as macro/desugaring to
       `(define name (Kernel spec))`;
     - device buffer reuse and lifetime planning;

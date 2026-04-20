@@ -478,6 +478,18 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: nn/adam", "[FAIL] Compiler: nn/adam", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(Kernel (Dictionary 'backend 'vulkan 'operation 'elementwise 'inputs (Array) 'outputs (Array (Dictionary 'name 'out 'dtype 'Float32 'shape (Array 'n)))))", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"Kernel\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: Kernel", "[FAIL] Compiler: Kernel", pass, fail);
+    }
+    {
+        char[] code = compile_to_c3("(kernel/run k inputs push)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"kernel/run\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: kernel/run", "[FAIL] Compiler: kernel/run", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

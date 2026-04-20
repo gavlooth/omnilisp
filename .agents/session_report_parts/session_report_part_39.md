@@ -303,3 +303,51 @@ Signature: GPT-5 Codex
   - Broader tape-backed autograd and fused CUDA optimizer kernels remain open.
   - CUDA/Vulkan backward kernels remain fail-closed through `ml/grad`.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 01:33 CEST - ML-VK-080-001 Kernel Value Surface
+
+- Objective attempted: add the first official custom `Kernel` value surface for
+  data-oriented user-defined backend kernels.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel.c3`
+  - parser postfix path/index chaining
+  - runtime type introspection and primitive registration
+  - AOT manifest/compiler lookup tables
+  - tests, docs, TODO, plan, and changelog surfaces for `ML-VK-080-001`.
+- Code or configuration changes made:
+  - Added `Kernel(spec)` as a validated dictionary-backed type overlay.
+  - Added `kernel/run(kernel inputs push)` as an explicit execution boundary
+    that currently fails closed with `tensor/backend-unsupported`.
+  - Registered `Kernel` in type symbols, TypeIds, `type-of`, and `is?`.
+  - Wired runtime primitive registration, compiler primitive lookup, and AOT
+    runtime source manifest coverage.
+  - Fixed postfix parsing so `rows.[0].name` and `k.inputs.[0].name` work
+    without reintroducing removed leading-dot accessor forms.
+- Commands run:
+  - `c3c build`
+  - Direct `build/main --eval` smokes for Kernel type/path access, raw
+    dictionary structural guard, postfix chained access, and fail-closed
+    `kernel/run`.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/build_omni_chelpers.sh`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Direct Kernel/path/run smokes returned expected values.
+  - Focused advanced collections exited 0.
+  - Compiler slice passed with `pass=287 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
+  - `kernel/run` has no backend compiler/runner yet and intentionally fails
+    closed.
+  - Graph capture, command-buffer batching, fusion, device-buffer reuse, and
+    optional `(define [kernel] ...)` sugar remain open under `ML-VK-080`.
+- Signature: GPT-5 Codex

@@ -428,3 +428,24 @@
     `pass=1831 fail=0`, compiler slice `pass=285 fail=0`, basic Lisp
     `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-001 Kernel Value Surface
+
+- Implemented the first data-oriented custom `Kernel` surface.
+  - `Kernel(spec)` validates recognized spec keys, required backend/operation,
+    input/output descriptors, optional push constants, and optional workgroup
+    dimensions.
+  - Constructed Kernel values normalize `kind` to `'kernel`, remain ordinary
+    dictionary data for path/index/ref access, and report `type-of` / `is?`
+    as `Kernel`.
+  - Added `kernel/run(kernel inputs push)` as the explicit execution boundary;
+    it currently fails closed with `tensor/backend-unsupported` until backend
+    compilation and launch semantics exist.
+  - Fixed postfix parsing so indexed data can continue through symbol-key
+    access, for example `rows.[0].name` and `k.inputs.[0].name`, without
+    reintroducing removed leading-dot accessors.
+  - Validation passed: `c3c build`, direct eval smokes for Kernel type/path
+    access and fail-closed `kernel/run`, focused advanced collections exit 0,
+    compiler slice `pass=287 fail=0`, basic Lisp `pass=161 fail=0`, primitive
+    docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.

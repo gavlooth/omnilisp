@@ -129,6 +129,7 @@ struct Interp {
     SymbolId sym_TimePoint;
     SymbolId sym_Coroutine;
     SymbolId sym_Tensor;
+    SymbolId sym_Kernel;
 
     // Error-as-effect
     SymbolId sym_raise;
@@ -174,6 +175,7 @@ struct Interp {
     TypeId tid_TimePoint;
     TypeId tid_Coroutine;
     TypeId tid_Tensor;
+    TypeId tid_Kernel;
 
     // Type registry
     TypeRegistry types;
