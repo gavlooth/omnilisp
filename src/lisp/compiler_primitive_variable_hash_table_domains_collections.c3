@@ -49,6 +49,10 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("nn/apply"), "aot::lookup_prim(\"nn/apply\")");
     prim_hash_insert(st.intern("nn/predict"), "aot::lookup_prim(\"nn/predict\")");
     prim_hash_insert(st.intern("nn/summary"), "aot::lookup_prim(\"nn/summary\")");
+    prim_hash_insert(st.intern("nn/save-spec"), "aot::lookup_prim(\"nn/save-spec\")");
+    prim_hash_insert(st.intern("nn/load-spec"), "aot::lookup_prim(\"nn/load-spec\")");
+    prim_hash_insert(st.intern("nn/save"), "aot::lookup_prim(\"nn/save\")");
+    prim_hash_insert(st.intern("nn/load"), "aot::lookup_prim(\"nn/load\")");
     prim_hash_insert(st.intern("nn/spec"), "aot::lookup_prim(\"nn/spec\")");
     prim_hash_insert(st.intern("nn/parameters"), "aot::lookup_prim(\"nn/parameters\")");
     prim_hash_insert(st.intern("nn/state"), "aot::lookup_prim(\"nn/state\")");

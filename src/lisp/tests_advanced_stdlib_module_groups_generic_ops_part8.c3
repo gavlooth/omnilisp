@@ -66,6 +66,21 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
     test_truthy(interp, "nn/predict rejects non-eval mode",
         "(= (handle (nn/predict (Dictionary 'kind 'model 'spec (nn/dense 2 1) 'params (Dictionary 'weights (Tensor Float32 [1 2] [1 1]) 'bias (Tensor Float32 [1] [0])) 'state (Dictionary) 'mode 'train 'dtype 'Float32 'device 'cpu 'metadata (Dictionary)) (Tensor Float32 [2] [1 1])) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
         pass, fail);
+    test_truthy(interp, "nn/save-spec and nn/load-spec round trip dense spec",
+        "(let (spec (nn/load-spec (nn/save-spec (nn/dense 2 1 (Dictionary 'activation 'relu))))) (and (= (ref spec 'kind) 'dense) (= (ref spec 'input-features) 2) (= (ref spec 'output-features) 1) (= (ref spec 'activation) 'relu)))",
+        pass, fail);
+    test_truthy(interp, "nn/save and nn/load round trip model parameters",
+        "(let (model (nn/load (nn/save (nn/init (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1)))) out (nn/predict model (Tensor Float32 [2] [1 2]))) (and (= (ref model 'kind) 'model) (= (ref model 'device) 'cpu) (= (ref out [0]) (Float32 3.0))))",
+        pass, fail);
+    test_truthy(interp, "nn/save and nn/load round trip checkpoint path",
+        "(let (path \"/tmp/omni-nn-checkpoint-test.json\" model (nn/init (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1)) saved (nn/save model path) restored (nn/load path) cleanup (fs-unlink path) out (nn/predict restored (Tensor Float32 [2] [1 2]))) (and (= (ref restored 'kind) 'model) (= (ref out [0]) (Float32 3.0))))",
+        pass, fail);
+    test_truthy(interp, "nn/load-spec rejects model checkpoint payload",
+        "(= (handle (nn/load-spec (nn/save (nn/init (nn/dense 1 1) (Dictionary 'dtype 'Float32 'device 'cpu)))) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
+    test_truthy(interp, "nn/load rejects spec checkpoint payload",
+        "(= (handle (nn/load (nn/save-spec (nn/dense 1 1))) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
     test_eq_double(interp, "ml/relu Float64 CPU clamps negatives",
         "(ref (ml/relu (Tensor Float64 [4] [-2 -0.5 0 3])) [3])",
         3.0, pass, fail);

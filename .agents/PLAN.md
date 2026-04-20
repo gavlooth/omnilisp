@@ -533,5 +533,32 @@ Date: 2026-04-20
   - basic Lisp slice: `pass=160 fail=0`
   - primitive docs parity, file-size gate, and `git diff --check`
 - Next checkpoint:
-  - continue `ML-VK-070-004` for checkpoint serialization and restore of
-    transparent model bundles.
+  - Superseded by the later Omni Neural DataSpec checkpoint entry below:
+    `ML-VK-070-004` is now implemented, so the next Vulkan ML work is
+    `ML-VK-070-005` after `ML-VK-050` autograd and `ML-VK-060` optimizers, or
+    the next lower-level Vulkan ML kernel lane if training prerequisites remain
+    blocked.
+
+## Active Omni Neural DataSpec Checkpoint Round Trip
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - closed `ML-VK-070-004` as the first spec/model checkpoint slice;
+  - added `nn/save-spec`, `nn/load-spec`, `nn/save`, and `nn/load`;
+  - supported checkpoint JSON strings and explicit file paths;
+  - serialized transparent model bundle data, including `spec`, `params`,
+    `state`, `mode`, `dtype`, `device`, `metadata`, tensor dtype, tensor shape,
+    flat tensor data, and recorded tensor placement;
+  - restored non-CPU tensors through explicit `to-device` placement instead of
+    hidden fallback;
+  - made mismatched payload families and malformed checkpoint envelopes fail
+    closed with `nn/invalid-spec`.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1753 fail=0`
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, file-size gate, and `git diff --check`
+- Next checkpoint:
+  - continue Vulkan ML prerequisites for `ML-VK-050` autograd and `ML-VK-060`
+    optimizers before opening `ML-VK-070-005` training facade work.

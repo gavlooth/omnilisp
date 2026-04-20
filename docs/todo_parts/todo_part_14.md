@@ -641,8 +641,12 @@ Source: `TODO.md`
         conv1d/conv2d, pooling, activation, softmax, and CPU flatten; and
         unsupported device/layout convolution-bias paths fail closed without hidden
         CPU fallback.
-    - [ ] `ML-VK-070-004` add spec/model checkpoint save/load round trips for
+    - [x] `ML-VK-070-004` add spec/model checkpoint save/load round trips for
       spec, params, state, dtype, shape, paths, and placement metadata.
+      - shipped: `nn/save-spec`/`nn/load-spec` round-trip non-model DataSpecs
+        through checkpoint strings or paths, and `nn/save`/`nn/load` round-trip
+        transparent model bundles with tensor dtype, shape, data, and recorded
+        placement metadata restored through explicit device transfer.
     - [ ] `ML-VK-070-005` add the training facade after `ML-VK-050` autograd
       and `ML-VK-060` optimizers: `nn/forward`, `nn/grad`, and
       `nn/train-step` returning updated data values.

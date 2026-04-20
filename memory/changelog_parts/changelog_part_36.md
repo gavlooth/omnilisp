@@ -18,3 +18,18 @@
   - Validation passed: `c3c build`, focused advanced collections
     `pass=1748 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
     `git diff --check`, and file-size gate.
+
+- 2026-04-20 17:35 CEST: Omni Neural DataSpec checkpoint round-trip:
+  - Closed `ML-VK-070-004`.
+  - Added `nn/save-spec` and `nn/load-spec` for non-model DataSpec checkpoint
+    JSON strings or paths.
+  - Added `nn/save` and `nn/load` for transparent model bundles, preserving
+    `spec`, `params`, `state`, `mode`, `dtype`, `device`, `metadata`, tensor
+    dtype, tensor shape, flat tensor data, and recorded tensor placement.
+  - Non-CPU tensor restore uses explicit `to-device` placement; unsupported
+    device routes still fail through existing backend checks.
+  - Malformed checkpoint envelopes and payload-family mismatches fail closed
+    with `nn/invalid-spec`.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1753 fail=0`, basic Lisp `pass=160 fail=0`, primitive docs parity,
+    file-size gate, and `git diff --check`.

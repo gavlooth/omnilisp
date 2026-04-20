@@ -274,6 +274,10 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/parameters` | 1 | Extract the parameter tree from a model bundle |
 | `nn/state` | 1 | Extract the state tree from a model bundle |
 | `nn/mode` | 1 | Read the model mode (`'train` / `'eval`) from a model bundle |
+| `nn/save-spec` | 1-2 | Serialize a non-model Omni Neural DataSpec checkpoint to a JSON string, or write it to a path and return `Void` |
+| `nn/load-spec` | 1 | Load a non-model DataSpec checkpoint from a JSON string or path and revalidate it |
+| `nn/save` | 1-2 | Serialize a model bundle checkpoint, including spec, params, state, mode, dtype, device, metadata, tensor dtype/shape/data, and placement metadata |
+| `nn/load` | 1 | Load a model bundle checkpoint from a JSON string or path, restore parameter tensors, and revalidate the model |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

@@ -171,6 +171,19 @@ The explicit path must remain available:
 - `nn/save`
 - `nn/load`
 
+`nn/save-spec(spec [path])` serializes a non-model DataSpec to a JSON checkpoint
+string, or writes that checkpoint to `path` and returns `Void`.
+`nn/load-spec(source)` accepts either a checkpoint JSON string or a path, restores
+the DataSpec, and re-runs `nn/validate`.
+
+`nn/save(model [path])` does the same for transparent model bundles, including
+`spec`, `params`, `state`, `mode`, `dtype`, `device`, and `metadata`.
+Parameter tensors are serialized with explicit dtype, shape, original placement,
+and flat data. Non-CPU tensors are copied through explicit `to-device` routes for
+serialization and are restored to their recorded placement on load.
+Malformed checkpoint envelopes, wrong payload families, unsupported tensor dtypes,
+and invalid restored DataSpecs fail closed with `nn/invalid-spec`.
+
 ### Training
 
 Training lands after `ML-VK-050` autograd and `ML-VK-060` optimizers:
@@ -340,8 +353,10 @@ Lowering rules:
 
 ### `ML-VK-070-004` Checkpoint Round Trip
 
-Add spec/model save/load with dtype, shape, parameter paths, state paths, and
-placement metadata.
+Shipped: `nn/save-spec`, `nn/load-spec`, `nn/save`, and `nn/load` round-trip
+specs and model bundles through checkpoint strings or paths. Model checkpoints
+preserve `params`, `state`, dtype, shape, mode, metadata, and placement metadata
+with no hidden device fallback.
 
 ### `ML-VK-070-005` Training Facade
 

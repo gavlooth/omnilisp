@@ -494,6 +494,20 @@ CPU dense row-major `Float64`/`Float32`.
 
 `nn/summary` is a deterministic inspector for model metadata and parameter
 allocation size.
+`nn/save-spec(spec [path])` and `nn/load-spec(source)` are the spec-level
+checkpoint pair. `nn/save-spec` accepts a valid non-model DataSpec and returns a
+JSON checkpoint string unless `path` is supplied, in which case it writes the
+checkpoint and returns `Void`. `nn/load-spec` accepts either a checkpoint JSON
+string or a path, restores the DataSpec, and re-runs `nn/validate`.
+
+`nn/save(model [path])` and `nn/load(source)` are the model-bundle checkpoint
+pair. A model checkpoint preserves the transparent `nn/init` bundle fields
+(`spec`, `params`, `state`, `mode`, `dtype`, `device`, `metadata`) and records
+parameter tensor dtype, shape, flat data, and original placement metadata.
+Loading reconstructs the tensors and restores their recorded device through the
+explicit `to-device` path. Malformed checkpoint envelopes, payload-family
+mismatches, unsupported tensor dtypes, or invalid restored DataSpecs fail closed
+with `nn/invalid-spec`.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device
