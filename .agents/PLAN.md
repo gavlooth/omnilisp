@@ -752,6 +752,18 @@ and velocity leaves.
 - Remaining optimizer work: Vulkan clipping, CUDA optimizer kernels, and
   train-step integration after autograd is sufficient.
 
+## Active ML-VK-060-010 Vulkan Float32 Gradient Clipping
+Date: 2026-04-20 - Implemented Vulkan dense row-major `Float32`
+`ml/clip-gradients` for all-Vulkan gradient trees and optimizer `clip-norm`.
+
+- Added Vulkan sum-squares and scale kernels for clipping norm computation and
+  scaled gradient output.
+- Mixed CPU/Vulkan gradient trees and non-`Float32` Vulkan leaves fail closed.
+- `tensor-backends` now reports narrow `ml-clip-gradients-float32`; broad
+  `ml-optimizer` remains false.
+- Remaining optimizer work: CUDA optimizer kernels and `nn/train-step`
+  integration after autograd is sufficient.
+
 ## Active Custom Kernel Surface Decision
 Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.
 

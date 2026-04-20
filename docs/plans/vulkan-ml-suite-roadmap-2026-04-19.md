@@ -313,8 +313,9 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   velocity, and step state. CUDA/Vulkan optimizer kernels stay fail-closed.
 - `ML-VK-060-005`: shipped CPU `ml/clip-gradients(gradients max-norm)` and
   optional `clip-norm` on `ml/optimizer-step` specs. Gradients are max-norm
-  clipped before optimizer state updates; CUDA/Vulkan clipping and optimizer
-  kernels stay fail-closed.
+  clipped before optimizer state updates. CPU and all-Vulkan dense row-major
+  `Float32` gradient trees now share clipping support through the narrow
+  `ml-clip-gradients-float32` capability key.
 - `ML-VK-060-006`: shipped CPU `ml/save-optimizer(spec state [path])` and
   `ml/load-optimizer(source)` for explicit optimizer spec/state checkpoint
   round trips through the existing checkpoint envelope. Checkpoint load
@@ -338,8 +339,11 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   CPU explicit-state contract; output square-average and optional velocity state
   preserve Vulkan placement. `tensor-backends` exposes
   `ml-optimizer-rmsprop-float32` while broad `ml-optimizer` remains false.
-- Vulkan clipping kernels, CUDA optimizer kernels, and training-step integration
-  remain open.
+- `ML-VK-060-010`: shipped Vulkan dense row-major `Float32` gradient clipping
+  for all-vulkan `ml/clip-gradients` trees through `ml-clip-gradients-float32`,
+  and optimizer-step `clip-norm` now clips before Vulkan updates through the same
+  path.
+- CUDA optimizer kernels and training-step integration remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.

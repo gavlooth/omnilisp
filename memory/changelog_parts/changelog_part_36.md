@@ -316,3 +316,25 @@
     basic Lisp `pass=160 fail=0`, compiler slice `pass=281 fail=0`, primitive
     docs parity, Stage 3 source parity, code file-size gate, and
     `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-010 Vulkan Float32 Gradient Clipping
+
+- Implemented all-Vulkan dense row-major `Float32` gradient clipping for
+  `ml/clip-gradients(gradients max-norm)` and optimizer `clip-norm`.
+  - Added Vulkan compute shaders and C helper plumbing for sum-of-squares norm
+    accumulation and scaled gradient output.
+  - Added C3 dispatch before CPU materialization for all-Vulkan gradient trees.
+    Mixed CPU/Vulkan leaves and non-`Float32` Vulkan leaves fail closed with
+    `tensor/backend-unsupported`.
+  - `ml/optimizer-step` now applies `clip-norm` before Vulkan SGD, Adam, AdamW,
+    and RMSProp updates through the same `ml/clip-gradients` path.
+  - `tensor-backends` now reports narrow `ml-clip-gradients-float32` support
+    where Vulkan `Float32` placement is available. Broad `ml-optimizer` remains
+    false.
+  - CUDA optimizer kernels and `nn/train-step` integration remain open.
+  - Validation passed: GLSL compile and `spirv-val --target-env vulkan1.0` for
+    the clip shaders, `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    Vulkan clipping and clip-norm smokes, focused advanced collections
+    `pass=1811 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
+    `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

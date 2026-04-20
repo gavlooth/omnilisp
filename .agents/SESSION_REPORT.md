@@ -44,6 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (79 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -691,3 +692,20 @@ The historical content was split mechanically to keep individual files below the
     `gtest/gtest.h` is absent in this workspace.
   - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 23:28 CEST - Vulkan Clip-Gradients Float32 Runtime
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented Vulkan dense row-major `Float32` `ml/clip-gradients` and
+    optimizer `clip-norm` support.
+  - Added sum-squares and scale shaders/helpers, C3 dispatch, capability
+    reporting through `ml-clip-gradients-float32`, tests, docs, TODO, roadmap,
+    plan, and changelog updates.
+  - Validation passed: shader compile/`spirv-val`, helper archive rebuild,
+    `c3c build`, direct Vulkan smokes, focused advanced collections
+    `pass=1811 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
+    `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex

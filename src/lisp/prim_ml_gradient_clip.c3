@@ -111,6 +111,11 @@ fn Value* ml_clip_scale_tree(Value* gradients, double scale, Interp* interp, Val
 
 fn Value* ml_clip_gradient_tree(Value* gradients, double max_norm, Interp* interp, Value** out_gradients) {
     if (max_norm < 0.0 || !conversion_double_is_finite(max_norm)) return ml_clip_invalid(interp, "ml/clip-gradients: max-norm must be a non-negative finite number");
+    bool vulkan_attempted = false;
+    Value* vulkan_err = ml_clip_gradient_tree_try_vulkan(gradients, max_norm, interp, out_gradients, &vulkan_attempted);
+    if (vulkan_err != null) return vulkan_err;
+    if (vulkan_attempted) return null;
+
     double sum = 0.0;
     Value* err = ml_clip_accumulate_norm(gradients, interp, &sum);
     if (err != null) return err;

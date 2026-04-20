@@ -633,8 +633,11 @@ Source: `TODO.md`
   - [x] `ML-VK-060-009` add Vulkan dense row-major `Float32` RMSProp optimizer
         kernels with explicit square-average/velocity state and narrow
         `ml-optimizer-rmsprop-float32` capability reporting.
+  - [x] `ML-VK-060-010` add Vulkan dense row-major `Float32` gradient clipping
+        through `ml/clip-gradients` for all-vulkan gradient trees, with
+        `ml-clip-gradients-float32` capability reporting and `clip-norm`
+        semantics before Vulkan optimizer updates.
   - remaining scope:
-    - Vulkan clipping kernels;
     - CUDA optimizer kernels;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.

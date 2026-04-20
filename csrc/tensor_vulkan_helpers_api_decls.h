@@ -191,6 +191,19 @@ int omni_tensor_backend_vulkan_dispatch_two_buffer_f32(
     uint32_t local_size,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_clip_sum_squares_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    float* out_sum
+);
+int omni_tensor_backend_vulkan_ml_clip_scale_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    float scale,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_dispatch_three_buffer_f32(
     const void* left_device_ptr,
     size_t left_byte_len,

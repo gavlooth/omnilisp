@@ -432,6 +432,19 @@ extern fn int omni_tensor_backend_vulkan_ml_rmsprop_f32(
     void** out_square_device_ptr,
     void** out_velocity_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_rmsprop_f32");
+extern fn int omni_tensor_backend_vulkan_ml_clip_sum_squares_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    float* out_sum
+) @extern("omni_tensor_backend_vulkan_ml_clip_sum_squares_f32");
+extern fn int omni_tensor_backend_vulkan_ml_clip_scale_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    float scale,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_clip_scale_f32");
 extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     void* input_device_ptr,
     usz input_byte_len,
