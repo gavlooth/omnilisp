@@ -471,10 +471,11 @@ Date: 2026-04-20
     reduction helper and covered by device-preserving parity tests;
   - Vulkan Float32 `ml/logsumexp` now uses the same helper with a stable
     max-shifted shader and device-preserving parity tests;
+  - Vulkan Float32 `ml/softmax` now uses a dedicated same-shape
+    axis-normalization shader and keeps the result on Vulkan;
   - unsupported dtype coverage remains, while Vulkan Float64 `ml/logsumexp`
-    and all Vulkan `ml/softmax` stay backend-unsupported.
+    and Vulkan Float64 `ml/softmax` stay backend-unsupported.
 - Next checkpoint:
-  - `ML-VK-020-007-VK-LSE-F32` is implemented for Vulkan Float32
-    `ml/logsumexp`; next Vulkan ML work should add a same-shape softmax
-    normalization shader or a validated Float64 exp/log policy before claiming
-    broader stable-reduction or loss capability.
+  - `ML-VK-020-007-VK-SM-F32` is implemented for Vulkan Float32 `ml/softmax`;
+    next Vulkan ML work should add Vulkan loss kernels or a validated Float64
+    exp/log policy before claiming broader stable-reduction or loss capability.

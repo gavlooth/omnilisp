@@ -453,3 +453,18 @@ Source: `memory/CHANGELOG.md`
     `scripts/build_omni_chelpers.sh`, `c3c build`, direct Vulkan
     logsumexp/fail-closed smokes, and focused advanced collections
     `pass=1696 fail=0`.
+
+- 2026-04-20 12:52 CEST: Vulkan ML softmax Float32 checkpoint:
+  - Added and closed `ML-VK-020-007-VK-SM-F32`.
+  - Added a dedicated Vulkan Float32 same-shape softmax shader/helper instead
+    of overloading the rank-reducing ML reduction helper.
+  - Routed Vulkan Float32 `ml/softmax(input axis)` through
+    `src/lisp/prim_ml_stable_reduction.c3`, preserving Vulkan placement and
+    Float32 dtype with no hidden CPU fallback.
+  - Kept Vulkan Float64 `ml/softmax` fail-closed pending a validated Float64
+    exp/log policy.
+  - Validation passed: shader compile/`spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct Vulkan
+    softmax/fail-closed smokes, focused advanced collections
+    `pass=1699 fail=0`, basic Lisp slice `pass=160 fail=0`, primitive docs
+    parity, `git diff --check`, and file-size gate.

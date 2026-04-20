@@ -1,5 +1,51 @@
 # Session Report Part 29
 
+## 2026-04-20 12:52 CEST - Vulkan ML Softmax Float32 Checkpoint
+
+- Objective attempted:
+  - Continue the Vulkan ML suite after Float32 `ml/logsumexp` by adding a real
+    same-shape backend softmax slice with parallel audit support.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_softmax.c`
+  - `csrc/tensor_vulkan_ml_softmax_f32.comp`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added and closed `ML-VK-020-007-VK-SM-F32`.
+  - Added a dedicated Vulkan Float32 softmax helper/shader/SPIR-V object for
+    max-shifted same-shape axis normalization.
+  - Routed Vulkan Float32 `ml/softmax(input axis)` without hidden CPU fallback
+    and kept Vulkan Float64 `ml/softmax` fail-closed.
+  - Added guarded Vulkan softmax coverage for device/dtype preservation and
+    row normalization.
+  - Updated roadmap/spec/reference/TODO text for the new Float32-only Vulkan
+    `ml/softmax` contract.
+- Commands run:
+  - Fast subagent audit for Vulkan softmax implementation surface.
+  - Fast docs worker; no files changed by the worker.
+  - Medium post-design audit subagent for final-diff risks.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_softmax_f32.comp -o /tmp/omni_ml_softmax_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_softmax_f32.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct REPL smokes for Vulkan Float32 `ml/softmax` and Vulkan Float64
+    fail-closed behavior.
+- Key results:
+  - Direct smokes returned `true` for Vulkan Float32 softmax support and
+    Vulkan Float64 fail-closed behavior.
+  - Focused advanced collections passed with `pass=1699 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Primitive docs parity, `git diff --check`, and file-size gate passed.
+- Current best recommendation / checkpoint:
+  - Commit and push the non-artifact source/docs/session changes.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan Float64 stable exp/log-backed ML kernels remain unsupported.
+  - Vulkan loss kernels remain open.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 12:34 CEST - Vulkan ML Logsumexp Float32 Checkpoint
 
 - Objective attempted:

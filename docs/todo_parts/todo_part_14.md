@@ -455,8 +455,16 @@ Source: `TODO.md`
         parity tests for row and all-axis reductions.
       - [x] Keep Vulkan Float64 `ml/logsumexp` fail-closed until a validated
         Float64 exp/log policy lands.
-      - [x] Keep Vulkan `ml/softmax` fail-closed until a same-shape
-        axis-normalization shader exists.
+      - [x] Split Vulkan `ml/softmax` into a same-shape axis-normalization
+        shader item instead of overloading the rank-reducing helper.
+    - [x] `ML-VK-020-007-VK-SM-F32` add Vulkan Float32
+      `ml/softmax(input axis)`.
+      - [x] Add a dedicated same-shape axis-normalization shader/helper that
+        computes max-shifted slice denominators without hidden CPU fallback.
+      - [x] Preserve Float32 dtype and Vulkan placement, with CPU copy-back
+        parity tests for stable row normalization.
+      - [x] Keep Vulkan Float64 `ml/softmax` fail-closed until a validated
+        Float64 exp/log policy lands.
     - [x] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
       - [x] Decide targets are same-shape probability/one-hot tensors, not
         class-index tensors.

@@ -369,7 +369,8 @@ axis or an array/proper list of axes, remove reduced axes from the result shape,
 preserve dtype, reject duplicate/out-of-range axes with Tensor diagnostics, and
 fail closed for unsupported backends without CPU fallback. `ml/softmax` accepts
 a single integer axis, uses max-shifted normalization, preserves input shape and
-dtype, and rejects axis lists. `ml/mean-squared-error(predictions targets)` accepts
+dtype, rejects axis lists, and supports Vulkan Float32 while keeping Vulkan
+Float64 fail-closed. `ml/mean-squared-error(predictions targets)` accepts
 same-shape, same-dtype CPU `Float64` or `Float32` tensors and returns a scalar
 tensor containing the population mean squared error. `ml/cross-entropy(logits
 targets axis)` accepts same-shape probability/one-hot target tensors, uses

@@ -201,19 +201,68 @@ fn Value* prim_ml_logsumexp(Value*[] args, Env* env, Interp* interp) {
     return out_value;
 }
 
+fn Value* ml_softmax_eval_vulkan(
+    TensorVal* source,
+    usz axis,
+    Interp* interp
+) {
+    if (source == null) return tensor_runtime_raise(interp, "ml/softmax: Vulkan tensor metadata is missing");
+    if (source.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/softmax: Vulkan currently supports Float32 tensors", null);
+    }
+    if (!tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "ml/softmax: Vulkan tensor backing storage is missing");
+    }
+
+    usz[1] scalar_shape = { 0 };
+    usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    TensorVal* tensor = tensor_alloc_payload_base_checked(source.dtype, shape_slice, false, false, "ml/softmax: failed to allocate Vulkan result tensor metadata");
+    if (tensor == null) return tensor_runtime_raise(interp, "ml/softmax: failed to allocate Vulkan result tensor metadata");
+    tensor.kind = TENSOR_PAYLOAD_CONCRETE;
+    tensor.device = TENSOR_DEVICE_VULKAN;
+
+    void* out_device = null;
+    int status = omni_tensor_backend_vulkan_ml_softmax_f32(
+        source.device_handle,
+        source.byte_len,
+        source.element_count,
+        source.rank,
+        axis,
+        source.shape,
+        source.strides,
+        tensor.strides,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        tensor_free_payload(tensor);
+        return tensor_vulkan_status_raise(interp, status, "ml/softmax: Vulkan softmax kernel failed");
+    }
+    tensor.device_handle = out_device;
+    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+
+    Value* result = interp.alloc_value();
+    if (result == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml/softmax: failed to allocate Vulkan result tensor value");
+    }
+    result.tag = TENSOR;
+    result.tensor_val = tensor;
+    main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
+    return result;
+}
+
 fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2) return primitive_arity_raise(interp, "ml/softmax", "2 arguments: input axis", args.len);
     if (!is_tensor(args[0])) return tensor_type_raise(interp, "ml/softmax: expected Tensor input");
 
     TensorVal* source = null;
     Value* source_value = null;
-    Value* err = tensor_expr_resolve_concrete_cpu(
+    Value* err = tensor_expr_resolve_concrete_any_device(
         args[0],
         &source,
         &source_value,
         interp,
-        "ml/softmax: tensor backing storage is missing",
-        "ml/softmax: backend kernel is not implemented for non-CPU tensors"
+        "ml/softmax: tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_source = source_value != args[0];
@@ -221,9 +270,18 @@ fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
         boundary_cleanup_materialized_value(null, source_value, interp.current_scope);
     }
 
-    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "ml/softmax: tensor backing storage is missing");
+    if (source.device != TENSOR_DEVICE_CPU && source.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/softmax: backend kernel is not implemented for this tensor placement", null);
+    }
+    if (source.device == TENSOR_DEVICE_CPU && !tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "ml/softmax: tensor backing storage is missing");
+    if (source.device == TENSOR_DEVICE_VULKAN && !tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "ml/softmax: Vulkan tensor backing storage is missing");
+    }
     if (!ml_reduction_supported_dtype(source.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/softmax: currently supports Float64 and Float32 tensors", null);
+    }
+    if (source.device == TENSOR_DEVICE_VULKAN && source.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/softmax: Vulkan currently supports Float32 tensors", null);
     }
 
     usz axis = 0;
@@ -260,6 +318,10 @@ fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+    if (source.device == TENSOR_DEVICE_VULKAN) {
+        return ml_softmax_eval_vulkan(source, axis, interp);
+    }
+
     Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "ml/softmax: failed to allocate result tensor");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;
