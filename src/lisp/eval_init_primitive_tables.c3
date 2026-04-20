@@ -125,6 +125,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "ml/softmax", &prim_ml_softmax, 2 },
         { "ml/layer-normalization", &prim_ml_layer_normalization, -1 },
         { "ml/batch-normalization", &prim_ml_batch_normalization, -1 },
+        { "ml/scaled-dot-product-attention", &prim_ml_scaled_dot_product_attention, -1 },
         { "ml/cross-entropy", &prim_ml_cross_entropy, 3 },
         { "ml/mean-squared-error", &prim_ml_mean_squared_error, 2 },
         { "ml/conv1d", &prim_ml_conv1d, 6 },

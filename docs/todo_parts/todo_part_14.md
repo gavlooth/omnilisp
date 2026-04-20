@@ -583,10 +583,15 @@ Source: `TODO.md`
     - reports `ml-batch-normalization-float64`,
       `ml-batch-normalization-float32`, and broad `ml-normalization` capability.
     - keeps mixed CPU/Vulkan and Vulkan Float64 paths fail-closed without CPU fallback.
+  - [x] `ML-VK-040-003` add canonical
+    `ml/scaled-dot-product-attention(query key value [mask] [scale])`.
+    - shipped CPU `Float64`/`Float32` and direct dense Vulkan `Float32`.
+    - supports optional additive `[Q K]` or batched masks and positive finite scale.
+    - reports `ml-scaled-dot-product-attention-float64`,
+      `ml-scaled-dot-product-attention-float32`, and broad `ml-attention` capability.
+    - keeps mixed CPU/Vulkan and Vulkan Float64 paths fail-closed without CPU fallback.
   - scope:
     - training-mode/current-batch-stat batch normalization after state/autograd;
-    - stable scaled dot-product attention;
-    - mask diagnostics;
     - optional fused attention kernels only after unfused oracle kernels pass.
 
 - [ ] `ML-VK-050` implement reverse-mode Tensor autograd with explicit Vulkan semantics

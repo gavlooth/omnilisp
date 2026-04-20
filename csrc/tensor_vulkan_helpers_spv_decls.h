@@ -216,6 +216,8 @@ extern const uint32_t omni_tensor_vulkan_svd_f32_spv[];
 extern const size_t omni_tensor_vulkan_svd_f32_spv_size;
 extern const uint32_t omni_tensor_vulkan_symmetric_eigen_f64_spv[];
 extern const size_t omni_tensor_vulkan_symmetric_eigen_f64_spv_size;
+extern const uint32_t omni_tensor_vulkan_ml_attention_f32_spv[];
+extern const size_t omni_tensor_vulkan_ml_attention_f32_spv_size;
 
 
 #endif

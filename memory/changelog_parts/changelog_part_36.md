@@ -70,3 +70,25 @@
     smokes, focused advanced collections `pass=1764 fail=0`, basic Lisp
     `pass=160 fail=0`, primitive docs parity, file-size gate, and
     `git diff --check`.
+
+## 2026-04-20 - ML-VK-040-003 Scaled Dot-Product Attention
+
+- Implemented `ml/scaled-dot-product-attention(query key value [mask] [scale])`.
+  - Shape contract: query `[... Q D]`, key `[... K D]`, value `[... K V]`,
+    output `[... Q V]`, with matching batch prefixes.
+  - Optional masks are additive logits masks, either shared `[Q K]` or batched
+    `[..., Q K]`; custom scale must be positive and finite, otherwise the
+    default is `1 / sqrt(D)`.
+  - CPU supports `Float64` and `Float32` with max-shifted softmax.
+  - Vulkan supports direct dense row-major `Float32` through a dedicated
+    five-buffer helper/shader path and generated SPIR-V C embedding.
+  - Added `ml-scaled-dot-product-attention-float64`,
+    `ml-scaled-dot-product-attention-float32`, and broad `ml-attention`
+    capability reporting.
+  - Mixed CPU/Vulkan operands and Vulkan Float64 remain fail-closed before CPU
+    fallback.
+  - Validation passed: shader compile and `spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct CPU/Vulkan eval
+    smokes, focused advanced collections `pass=1769 fail=0`, basic Lisp
+    `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, file-size
+    gate, and `git diff --check`.

@@ -493,6 +493,17 @@ typedef struct OmniTensorVulkanMlBatchNormPushConstants {
     float epsilon;
 } OmniTensorVulkanMlBatchNormPushConstants;
 
+typedef struct OmniTensorVulkanMlAttentionPushConstants {
+    uint32_t batch_count;
+    uint32_t query_len;
+    uint32_t key_len;
+    uint32_t head_dim;
+    uint32_t value_dim;
+    uint32_t out_count;
+    uint32_t mask_kind;
+    float scale;
+} OmniTensorVulkanMlAttentionPushConstants;
+
 typedef struct OmniTensorVulkanTransposePushConstants {
     uint32_t rows;
     uint32_t cols;

@@ -119,7 +119,9 @@ fn Value* tensor_backend_set_ml_capability_fields(
     bool layer_norm_float64_available,
     bool layer_norm_float32_available,
     bool batch_norm_float64_available,
-    bool batch_norm_float32_available
+    bool batch_norm_float32_available,
+    bool attention_float64_available,
+    bool attention_float32_available
 ) {
     Value* err = tensor_backend_set_bool_field(interp, entry, "ml-linear", linear_available);
     if (err != null) return err;
@@ -169,11 +171,15 @@ fn Value* tensor_backend_set_ml_capability_fields(
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-batch-normalization-float32", batch_norm_float32_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-scaled-dot-product-attention-float64", attention_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, entry, "ml-scaled-dot-product-attention-float32", attention_float32_available);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-neural-map", false);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-normalization", layer_norm_float64_available || layer_norm_float32_available || batch_norm_float64_available || batch_norm_float32_available);
     if (err != null) return err;
-    err = tensor_backend_set_bool_field(interp, entry, "ml-attention", false);
+    err = tensor_backend_set_bool_field(interp, entry, "ml-attention", attention_float64_available || attention_float32_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, entry, "ml-autograd", false);
     if (err != null) return err;
@@ -251,7 +257,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "rounding-big-integer", vulkan_rounding_i64_available);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available);
+    err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available);
     if (err != null) return err;
     Value* result = make_cons_or_error(interp, vulkan_entry, make_nil(interp), "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -272,7 +278,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "stats-normal-float32", false);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cublas_entry, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
+    err = tensor_backend_set_ml_capability_fields(interp, cublas_entry, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
     if (err != null) return err;
     result = make_cons_or_error(interp, cublas_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -323,7 +329,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "rounding-big-integer", cuda_rounding_i64_available);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cuda_entry, false, false, false, cuda_map_available, cuda_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, false, false, false, false, false, false, false, false, false, false, false, false);
+    err = tensor_backend_set_ml_capability_fields(interp, cuda_entry, false, false, false, cuda_map_available, cuda_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
     if (err != null) return err;
     result = make_cons_or_error(interp, cuda_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -362,7 +368,7 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cpu_entry, "stats-normal-float32", true);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true, false, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
+    err = tensor_backend_set_ml_capability_fields(interp, cpu_entry, true, true, true, true, true, false, true, false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true);
     if (err != null) return err;
     result = make_cons_or_error(interp, cpu_entry, result, "tensor-backends: failed to allocate result list");
     return result;

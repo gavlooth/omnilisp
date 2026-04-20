@@ -340,7 +340,7 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-conv1d-direct-float32`, `ml-conv2d-direct-float64`,
 `ml-conv2d-direct-float32`, `ml-pool2d-direct-float64`,
 `ml-pool2d-direct-float32`, `ml-layer-normalization-float64`,
-`ml-layer-normalization-float32`, `ml-batch-normalization-float64`, `ml-batch-normalization-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-layer-normalization-float32`, `ml-batch-normalization-float64`, `ml-batch-normalization-float32`, `ml-scaled-dot-product-attention-float64`, `ml-scaled-dot-product-attention-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -353,7 +353,7 @@ Vulkan-only expressions may participate only when existing Tensor realization
 lowers them to concrete dense Vulkan storage of the same dtype without CPU fallback;
 `ml/linear/batched-reduce` uses the same narrow Vulkan entry. The other ML keys
 stay explicit `false` until a backend ships the named operation family, except
-`ml-normalization`, which is true when layer or batch normalization for at least one dtype is available.
+`ml-normalization` and `ml-attention`, which reflect their shipped narrow dtype keys.
 `ml/relu` applies `max(input, 0)` to `Float64` or `Float32` Tensor inputs,
 preserving dtype and Tensor placement; CPU, CUDA, and Vulkan expose the narrow
 `ml-neural-relu-float64`/`ml-neural-relu-float32` bits when that route is
@@ -376,7 +376,7 @@ fail closed for unsupported backends without CPU fallback. `ml/softmax` accepts
 a single integer axis, uses max-shifted normalization, preserves input shape and
 dtype, rejects axis lists, and supports Vulkan Float32 while keeping Vulkan
 Float64 fail-closed. `ml/layer-normalization(input axis [epsilon])` normalizes each single-axis slice in place,
-preserves input shape and dtype, requires positive finite epsilon, supports CPU `Float64`/`Float32`, and supports direct Vulkan `Float32`. `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])` applies explicit rank-1 affine/stat tensors along the channel axis and supports CPU `Float64`/`Float32` plus direct Vulkan `Float32`.
+preserves input shape and dtype, requires positive finite epsilon, supports CPU `Float64`/`Float32`, and supports direct Vulkan `Float32`. `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])` applies explicit rank-1 affine/stat tensors along the channel axis and supports CPU `Float64`/`Float32` plus direct Vulkan `Float32`. `ml/scaled-dot-product-attention(query key value [mask] [scale])` computes max-shifted attention for shapes `[... Q D]`, `[... K D]`, and `[... K V]`, accepts optional additive `[Q K]` or batched masks plus positive finite scale, supports CPU `Float64`/`Float32` and direct dense Vulkan `Float32`, and fails closed for mixed placement or Vulkan `Float64`.
 `ml/mean-squared-error(predictions targets)` accepts same-shape, same-dtype CPU or Vulkan
 `Float64`/`Float32` tensors and returns a scalar tensor containing the population mean squared error. `ml/cross-entropy(logits
 targets axis)` accepts same-shape probability/one-hot target tensors, uses

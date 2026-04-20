@@ -1,0 +1,87 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint batch_count;
+    uint query_len;
+    uint key_len;
+    uint head_dim;
+    uint value_dim;
+    uint out_count;
+    uint mask_kind;
+    float scale;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer QueryBuffer {
+    float query_data[];
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer KeyBuffer {
+    float key_data[];
+};
+
+layout(set = 0, binding = 2, std430) readonly buffer ValueBuffer {
+    float value_data[];
+};
+
+layout(set = 0, binding = 3, std430) readonly buffer MaskBuffer {
+    float mask_data[];
+};
+
+layout(set = 0, binding = 4, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+uint query_offset(uint batch, uint query_index, uint dim) {
+    return ((batch * params.query_len + query_index) * params.head_dim) + dim;
+}
+
+uint key_offset(uint batch, uint key_index, uint dim) {
+    return ((batch * params.key_len + key_index) * params.head_dim) + dim;
+}
+
+uint value_offset(uint batch, uint key_index, uint value_index) {
+    return ((batch * params.key_len + key_index) * params.value_dim) + value_index;
+}
+
+float attention_score(uint batch, uint query_index, uint key_index) {
+    float dot_value = 0.0;
+    for (uint dim = 0; dim < params.head_dim; dim++) {
+        dot_value += query_data[query_offset(batch, query_index, dim)] *
+            key_data[key_offset(batch, key_index, dim)];
+    }
+    float score = dot_value * params.scale;
+    if (params.mask_kind == 1u) {
+        score += mask_data[(query_index * params.key_len) + key_index];
+    } else if (params.mask_kind == 2u) {
+        score += mask_data[((batch * params.query_len + query_index) * params.key_len) + key_index];
+    }
+    return score;
+}
+
+void main() {
+    uint out_index = gl_GlobalInvocationID.x;
+    if (out_index >= params.out_count) return;
+
+    uint value_index = out_index % params.value_dim;
+    uint query_index = (out_index / params.value_dim) % params.query_len;
+    uint batch = out_index / (params.value_dim * params.query_len);
+
+    float max_score = attention_score(batch, query_index, 0u);
+    for (uint key_index = 1u; key_index < params.key_len; key_index++) {
+        float score = attention_score(batch, query_index, key_index);
+        if (score > max_score) {
+            max_score = score;
+        }
+    }
+
+    float exp_sum = 0.0;
+    float weighted = 0.0;
+    for (uint key_index = 0u; key_index < params.key_len; key_index++) {
+        float weight = exp(attention_score(batch, query_index, key_index) - max_score);
+        exp_sum += weight;
+        weighted += weight * value_data[value_offset(batch, key_index, value_index)];
+    }
+    output_data[out_index] = weighted / exp_sum;
+}

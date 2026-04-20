@@ -237,6 +237,24 @@ int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     size_t variance_byte_len,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_attention_f32(
+    const void* query_device_ptr,
+    size_t query_byte_len,
+    const void* key_device_ptr,
+    size_t key_byte_len,
+    const void* value_device_ptr,
+    size_t value_byte_len,
+    const void* mask_device_ptr,
+    size_t mask_byte_len,
+    size_t batch_count,
+    size_t query_len,
+    size_t key_len,
+    size_t head_dim,
+    size_t value_dim,
+    unsigned int mask_kind,
+    float scale,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_dispatch_one_input_two_outputs(
     const void* input_device_ptr,
     size_t input_byte_len,

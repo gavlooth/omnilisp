@@ -248,6 +248,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/softmax` | 2 | Stable single-axis softmax for supported Tensor inputs; preserves input shape |
 | `ml/layer-normalization` | 2-3 | Single-axis layer normalization for supported Tensor inputs; preserves input shape and accepts optional positive epsilon |
 | `ml/batch-normalization` | 6-7 | Explicit-stat batch normalization for supported Tensor inputs; preserves input shape and accepts optional positive epsilon |
+| `ml/scaled-dot-product-attention` | 3-5 | Max-shifted scaled dot-product attention for supported Tensor query/key/value inputs with optional additive mask and scale |
 | `ml/cross-entropy` | 3 | Scalar cross-entropy loss for same-shape probability/one-hot targets over an explicit class axis |
 | `ml/mean-squared-error` | 2 | Scalar mean-squared-error loss for same-shape supported Tensor inputs |
 | `ml/conv1d` | 6 | Dense NCW 1D convolution with OCK kernels, explicit stride/padding/dilation/groups, and supported Tensor inputs |

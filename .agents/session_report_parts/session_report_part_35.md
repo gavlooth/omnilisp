@@ -222,3 +222,53 @@
     lower-level autograd/optimizer prerequisites needed for training-mode
     normalization.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 - Vulkan ML Scaled Dot-Product Attention
+
+- Objective attempted:
+  - Continue `ML-VK-040` by implementing a backend-neutral scaled dot-product
+    attention primitive with direct Vulkan inference support and no hidden CPU
+    fallback for Vulkan operands.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - ML Tensor primitives, Vulkan helper/shader path, capability reporting,
+    tests, public docs, TODO, and operational plan/changelog artifacts.
+- Code or configuration changes made:
+  - Added `ml/scaled-dot-product-attention(query key value [mask] [scale])`.
+  - Implemented CPU `Float64`/`Float32` max-shifted attention with optional
+    additive `[Q K]` or batched masks and default scale `1 / sqrt(head-dim)`.
+  - Implemented direct dense Vulkan `Float32` attention through
+    `csrc/tensor_vulkan_helpers_ml_attention.c`,
+    `csrc/tensor_vulkan_ml_attention_f32.comp`, and the generated SPIR-V C
+    embedding.
+  - Wired runtime and AOT primitive registration, runtime source manifest,
+    helper build manifest, and Vulkan C ABI declarations.
+  - Added `ml-scaled-dot-product-attention-float64`,
+    `ml-scaled-dot-product-attention-float32`, and broad `ml-attention`
+    backend capability reporting.
+  - Updated tests, language/reference docs, the Vulkan ML roadmap, and TODO.
+- Commands run:
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_attention_f32.comp`
+  - `spirv-val`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - direct CPU and Vulkan `--eval` smokes with `LD_LIBRARY_PATH=build:/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1769 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - Helper build, C3 build, primitive docs parity, Stage 3 source parity,
+    file-size gate, shader validation, and diff whitespace checks passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run.
+  - Fused attention/dropout/matmul and training/backward kernels remain future
+    `ML-VK-050`/graph-fusion work, not part of the shipped primitive contract.
+- Next actions:
+  - Prefer `ML-VK-050` autograd prerequisites unless the owner wants fused
+    attention performance work first.
+- Signature: Codex GPT-5.4

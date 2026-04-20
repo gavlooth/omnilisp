@@ -405,6 +405,24 @@ extern fn int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     usz variance_byte_len,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_batch_norm_f32");
+extern fn int omni_tensor_backend_vulkan_ml_attention_f32(
+    void* query_device_ptr,
+    usz query_byte_len,
+    void* key_device_ptr,
+    usz key_byte_len,
+    void* value_device_ptr,
+    usz value_byte_len,
+    void* mask_device_ptr,
+    usz mask_byte_len,
+    usz batch_count,
+    usz query_len,
+    usz key_len,
+    usz head_dim,
+    usz value_dim,
+    uint mask_kind,
+    float scale,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_attention_f32");
 extern fn int omni_tensor_backend_vulkan_contract_complex128(
     void* left_device_ptr,
     void* right_device_ptr,

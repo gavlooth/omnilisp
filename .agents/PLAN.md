@@ -590,26 +590,54 @@ Date: 2026-04-20
     gamma/beta layer-normalization should be a separate multi-buffer Vulkan
     kernel slice rather than a hidden CPU fallback.
 
-## Active Vulkan ML Batch Normalization Checkpoint
+## Completed Vulkan ML Batch Normalization Checkpoint
 
 Date: 2026-04-20
 
-- Active implementation:
-  - implementing `ML-VK-040-002` as
+- Implemented checkpoint:
+  - closed `ML-VK-040-002` as
     `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`;
-  - chosen contract is explicit inference/data-path batch normalization with
+  - chose explicit inference/data-path batch normalization with
     rank-1 scale, bias, mean, and variance tensors matching the channel axis;
   - CPU route supports `Float64`/`Float32`; Vulkan route supports direct dense
     row-major `Float32` with no hidden CPU fallback.
-- Validation so far:
+- Validation:
   - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
     `csrc/tensor_vulkan_ml_batch_norm_f32.comp`;
   - `scripts/build_omni_chelpers.sh`
   - `c3c build`
   - direct CPU/Vulkan `--eval` smokes
   - focused advanced collections suite: `pass=1764 fail=0`
-- Remaining before commit:
-  - finish docs/session/changelog updates;
-  - rerun helper build, `c3c build`, basic Lisp, primitive docs parity, file-size
-    gate, and `git diff --check`;
-  - record memory/Ruflo outcome, commit all non-artifacts, and push main/master.
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, file-size gate, and `git diff --check`
+
+## Completed Vulkan ML Scaled Dot-Product Attention Checkpoint
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - closed `ML-VK-040-003` as
+    `ml/scaled-dot-product-attention(query key value [mask] [scale])`;
+  - CPU route supports `Float64`/`Float32`;
+  - Vulkan route supports direct dense row-major `Float32` through a dedicated
+    five-buffer helper/shader path;
+  - accepted optional additive `[Q K]` or batched masks and positive finite
+    scale, with default scale `1 / sqrt(head-dim)`;
+  - added `ml-scaled-dot-product-attention-float64`,
+    `ml-scaled-dot-product-attention-float32`, and broad `ml-attention`
+    capability reporting;
+  - kept mixed CPU/Vulkan operands and Vulkan Float64 fail-closed before CPU
+    fallback.
+- Validation:
+  - `glslangValidator -V --target-env vulkan1.0` and `spirv-val` for
+    `csrc/tensor_vulkan_ml_attention_f32.comp`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - direct CPU/Vulkan `--eval` smokes
+  - focused advanced collections suite: `pass=1769 fail=0`
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, Stage 3 source parity, file-size gate, and
+    `git diff --check`
+- Next checkpoint:
+  - continue `ML-VK-040` only for fused attention/dropout/matmul after the
+    unfused oracle remains stable, or move to `ML-VK-050` autograd prerequisites.

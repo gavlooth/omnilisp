@@ -250,10 +250,15 @@ Add Vulkan kernels for normalization and attention building blocks:
   shape, requires rank-1 scale/bias/mean/variance tensors matching the channel
   axis, reports narrow `ml-batch-normalization-*` capability bits, and keeps
   mixed CPU/Vulkan operands fail-closed before CPU fallback.
+- `ML-VK-040-003`: shipped
+  `ml/scaled-dot-product-attention(query key value [mask] [scale])` for CPU
+  `Float64`/`Float32` and direct dense Vulkan `Float32`. It computes
+  max-shifted attention over `[... Q D]`, `[... K D]`, and `[... K V]`, accepts
+  optional additive `[Q K]` or batched masks, reports narrow
+  `ml-scaled-dot-product-attention-*` capability bits, and keeps mixed
+  CPU/Vulkan and Vulkan `Float64` paths fail-closed before CPU fallback.
 - training-mode/current-batch-stat batch normalization remains deferred until
   autograd/training state contracts are ready.
-- stable scaled dot-product attention;
-- mask handling with fail-closed shape and dtype diagnostics;
 - optional fused softmax/dropout/matmul only after the unfused oracle kernels
   pass.
 
