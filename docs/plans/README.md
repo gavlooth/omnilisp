@@ -65,6 +65,13 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   model/layer serialization, graph capture/fusion/memory planning, and ML
   validation/benchmarks. The roadmap keeps public APIs backend-neutral and
   rejects hidden CPU fallback for Vulkan operands.
+- `omni-neural-dataspec-plan-2026-04-20.md`: accepted design direction for the
+  high-level `nn/*` library. Omni Neural DataSpec keeps networks, parameters,
+  state, and execution options as inspectable data while giving users
+  TensorFlow/Keras-like ergonomics through transparent model bundles. Vulkan
+  remains first-class for inference and training through explicit Tensor
+  placement, truthful capability bits, and fail-closed behavior instead of
+  hidden CPU fallback.
 - `vulkan-ml-linear-direct-float32-batched-reduction-surface-2026-04-20.md`:
   accepted decision for the narrow `ml-linear-direct-float32` capability and
   public `ml/linear/batched-reduce` surface under `ML-VK-010-004`.

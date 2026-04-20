@@ -596,6 +596,8 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-070` add backend-neutral model/layer library and serialization
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - design: `docs/plans/omni-neural-dataspec-plan-2026-04-20.md`
+  - official design name: Omni Neural DataSpec
   - scope:
     - linear, convolution, embedding, and normalization layers;
     - sequential/composition helpers;
@@ -604,6 +606,24 @@ Source: `TODO.md`
   - constraint:
     - Vulkan execution must follow Tensor placement and capability reporting;
       do not add backend-specific public layer names.
+    - `nn/*` layer constructors return validated data specs, not hidden mutable
+      objects or class instances.
+    - user-facing ergonomics may bundle spec/params/state/options in a
+      transparent model value, but advanced APIs must expose explicit
+      spec/params/state execution.
+  - slices:
+    - [ ] `ML-VK-070-001` freeze Omni Neural DataSpec schemas and add
+      `nn/validate` diagnostics for sequential, dense, activation, flatten,
+      convolution, pooling, model, parameter tree, and state tree data.
+    - [ ] `ML-VK-070-002` add deterministic parameter initialization for
+      CPU/Vulkan tensors with explicit dtype/device placement.
+    - [ ] `ML-VK-070-003` add `nn/apply`, `nn/predict`, and `nn/summary` for
+      inference over `ml/*` primitives with no hidden Vulkan CPU fallback.
+    - [ ] `ML-VK-070-004` add spec/model checkpoint save/load round trips for
+      spec, params, state, dtype, shape, paths, and placement metadata.
+    - [ ] `ML-VK-070-005` add the training facade after `ML-VK-050` autograd
+      and `ML-VK-060` optimizers: `nn/forward`, `nn/grad`, and
+      `nn/train-step` returning updated data values.
 
 - [ ] `ML-VK-080` add Vulkan ML graph capture, fusion, and memory planning
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`

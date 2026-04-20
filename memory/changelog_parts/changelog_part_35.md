@@ -601,3 +601,16 @@ Source: `memory/CHANGELOG.md`
     `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced
     collections `pass=1721 fail=0`, basic Lisp `pass=160 fail=0`,
     primitive docs parity, `git diff --check`, and file-size gate.
+
+- 2026-04-20 16:25 CEST: Omni Neural DataSpec decision:
+  - Accepted **Omni Neural DataSpec** as the official high-level `nn/*`
+    design direction.
+  - Networks, parameters, state, and execution options are inspectable data;
+    high-level model bundles are ergonomic data values, not hidden mutable
+    objects.
+  - `ml/*` remains primitive Tensor math. `nn/*` owns data-spec constructors,
+    model lifecycle helpers, checkpoint helpers, and later training helpers.
+  - Vulkan is first-class for inference and training through explicit Tensor
+    placement, no hidden CPU fallback, and truthful capability reporting.
+  - Added `docs/plans/omni-neural-dataspec-plan-2026-04-20.md` and TODO-backed
+    `ML-VK-070-001` through `ML-VK-070-005` implementation slices.

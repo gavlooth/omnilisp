@@ -280,6 +280,13 @@ Add the first complete user-facing ML layer library:
 The public layer surface should remain backend-neutral. Vulkan execution follows
 from Tensor placement and reported backend capabilities.
 
+Accepted design direction: `docs/plans/omni-neural-dataspec-plan-2026-04-20.md`
+defines this layer as **Omni Neural DataSpec**. The `nn/*` surface uses
+validated data specs, explicit parameter/state trees, and transparent model
+bundles instead of hidden mutable layer objects. Vulkan inference and training
+remain first-class through explicit Tensor placement, fail-closed unsupported
+paths, and truthful `tensor-backends` capability reporting.
+
 ### `ML-VK-080` Graph Capture Fusion And Memory Planning
 
 Add optional execution graph capture for inference and training steps:
