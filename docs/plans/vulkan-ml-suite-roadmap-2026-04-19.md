@@ -276,6 +276,10 @@ device semantics:
   It supports CPU dense row-major linear-plus-activation MSE gradients, `relu`
   backward for `Float64`/`Float32`, and `sigmoid`/`tanh`/tanh-approximation
   `gelu` backward for `Float32`. CUDA/Vulkan backward remains fail-closed.
+- `ML-VK-050-003`: shipped `linear-softmax-cross-entropy` for `ml/grad`. It
+  supports CPU dense row-major `Float64`/`Float32` linear classifier gradients
+  with stable last-axis softmax cross-entropy and validated probability targets.
+  CUDA/Vulkan backward remains fail-closed until real device kernels exist.
 - gradient tape representation and lifetime rules;
 - Tensor gradient accumulation on CPU/Vulkan without hidden transfers;
 - backward definitions for map, contract, matrix, convolution, normalization,

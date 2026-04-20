@@ -382,7 +382,7 @@ preserves input shape and dtype, requires positive finite epsilon, supports CPU 
 targets axis)` accepts same-shape probability/one-hot target tensors, uses
 max-shifted log-softmax over the explicit class axis, returns the mean loss
 over non-class positions, and supports Vulkan `Float32` while keeping Vulkan
-`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error` and `linear-activation-mean-squared-error` gradient specs; the activation spec supports `relu` backward for `Float64`/`Float32` and `sigmoid`/`tanh`/tanh-approximation `gelu` backward for `Float32`, returning ordinary dictionaries with loss, output, input-gradient, and parameter-gradients while CUDA/Vulkan backward remains fail-closed.
+`Float64` fail-closed until its exp/log policy is validated. `ml/grad` currently accepts CPU `linear-mean-squared-error`, `linear-activation-mean-squared-error`, and `linear-softmax-cross-entropy` gradient specs; these return ordinary dictionaries with loss, output, input-gradient, and parameter-gradients, validate probability targets for softmax CE, and keep CUDA/Vulkan backward fail-closed.
 `ml/conv1d(input kernel stride padding dilation groups)` is the first
 convolution surface: it requires dense row-major `input[batch channels width]`
 and `kernel[out-channels in-channels-per-group kernel-width]`, supports CPU

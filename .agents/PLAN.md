@@ -687,3 +687,12 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-050` with softmax/loss backward rules or tape-backed
     composition before exposing `nn/grad` or `nn/train-step`.
+
+## Completed ML-VK-050-003 Softmax CE Gradient Checkpoint
+Date: 2026-04-20
+- Implemented `linear-softmax-cross-entropy` for `ml/grad`.
+- Contract: CPU dense row-major `Float64`/`Float32` linear logits, last-axis
+  stable softmax cross-entropy, probability-target validation, and data output.
+- Device semantics: CUDA/Vulkan backward remains fail-closed; `ml-autograd` false.
+- Validation: build, direct smokes, focused suites, parity, source, size, and diff gates passed.
+- Next checkpoint: tape-backed composition or optimizer prerequisites before `nn/grad`.

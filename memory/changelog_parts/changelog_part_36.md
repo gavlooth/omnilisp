@@ -121,3 +121,16 @@
   - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
     collections `pass=1775 fail=0`, basic Lisp `pass=160 fail=0`, primitive
     docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-050-003 Softmax Cross-Entropy Gradient Primitive
+
+- Implemented `linear-softmax-cross-entropy` as the third `ml/grad` data spec.
+  - CPU dense row-major `Float64`/`Float32` gradients now cover dense linear
+    classifiers with stable last-axis softmax cross-entropy.
+  - Probability targets are validated as finite, non-negative, and sum-to-one
+    per class slice.
+  - CUDA/Vulkan backward stays fail-closed before CPU fallback; broad
+    `ml-autograd` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1778 fail=0`, basic Lisp `pass=160 fail=0`, primitive
+    docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.

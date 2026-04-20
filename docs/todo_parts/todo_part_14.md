@@ -603,6 +603,8 @@ Source: `TODO.md`
   - [x] `ML-VK-050-002` add CPU `linear-activation-mean-squared-error` gradients.
     - ships `relu` backward for `Float64`/`Float32` and `sigmoid`/`tanh`/`gelu` backward for `Float32`.
     - keeps CUDA/Vulkan backward fail-closed until real device kernels land.
+  - [x] `ML-VK-050-003` add CPU `linear-softmax-cross-entropy` gradients.
+    - ships stable softmax CE logits gradients for dense linear classifiers; keeps device backward fail-closed.
   - scope:
     - gradient tape representation and lifetime rules;
     - gradient accumulation on CPU/Vulkan without hidden transfers;
