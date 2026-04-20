@@ -444,6 +444,56 @@ the same optional `use-bias`, `activation`, `kernel-init`, and `bias-init`
 options as dense specs.
 `mode`, `dtype`, and `device` are surfaced on the returned model for downstream
 `nn/apply` and `nn/predict` behavior.
+
+`nn/predict` is the model convenience path:
+
+- takes `(nn/predict model input)`;
+- requires `model` to be a normalized model bundle; and
+- requires `(nn/mode model)` to be `'eval` (it does not coerce `'train` models).
+
+`nn/apply` is the explicit-data path for inference:
+
+- takes either `(nn/apply model input)` for a model bundle, or
+- `(nn/apply spec params state input [options])` using extracted model data from
+  `nn/spec`, `nn/parameters`, and `nn/state`;
+- optional `options` must currently be an empty `Dictionary`; non-empty options
+  are reserved and fail closed instead of being silently ignored.
+
+`nn/apply` and `nn/predict` lower supported specs in the first inference family:
+
+- `nn/dense` → `ml/linear`
+- `nn/conv1d` → `ml/conv1d`
+- `nn/conv2d` → `ml/conv2d`
+- `nn/max-pool2d` → `ml/max-pool2d`
+- `nn/avg-pool2d` → `ml/avg-pool2d`
+- `nn/activation` variants (`nn/relu`, `nn/sigmoid`, `nn/tanh`, `nn/gelu`,
+  `nn/softmax`) → corresponding `ml/relu`, `ml/sigmoid`, `ml/tanh`,
+  `ml/gelu`, `ml/softmax`
+- `nn/flatten` performs explicit CPU tensor flatten materialization.
+
+Unsupported mixed-device, unsupported-layout, and unsupported-backend paths for
+inference are fail-closed with `tensor/backend-unsupported`; there is no hidden
+CPU fallback in these execution paths.
+
+Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
+fail-closed as `tensor/backend-unsupported` instead of hidden fallback.
+
+Convolution bias addition in inference is currently CPU materialized and fail-closed
+through `tensor/backend-unsupported` unless the convolution output and bias are
+CPU dense row-major `Float64`/`Float32`.
+
+`nn/summary(model)` returns an inspection dictionary with:
+
+- `kind` (`summary`)
+- `mode`
+- `dtype`
+- `device`
+- `layers`
+- `parameter-tensors`
+- `parameter-elements`
+
+`nn/summary` is a deterministic inspector for model metadata and parameter
+allocation size.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device
@@ -631,36 +681,3 @@ to columns through embedded SPIR-V reduced QR kernels, returning Vulkan-placed
 complex magnitudes; complex spectral/nuclear selectors use native Vulkan
 complex singular-value helpers. These Vulkan paths read back only the scalar
 result required by the public scalar return contract.
-`matrix/singular-values` supports Vulkan-placed dense row-major rank-2
-`Float64`, `Float32`, `Complex128`, and `Complex64` inputs through embedded
-storage-backed Gram/Jacobi singular-value shaders, returning a Vulkan-placed
-rank-1 component-width real Tensor for `k = min(rows, columns)`, including
-`k > 64`, without hidden CPU/LAPACK fallback. Direct `matrix/svd` uses the same storage-backed Gram
-strategy for Vulkan-placed factor outputs and preserves the input float dtype.
-Shader non-convergence raises `tensor/no-convergence`.
-Public `contract` supports Vulkan-placed dense row-major rank-N matching
-`Float64` or `Float32` tensors with zero or more explicit contracted axis
-pairs. Output axes are ordered as free left axes followed by free right axes.
-Results are Vulkan-placed tensors and require explicit `to-device 'cpu` before
-CPU inspection.
-Unsupported Vulkan map and contract cases, including unsupported callables,
-incompatible broadcasting shapes, unsupported layouts/dtypes, and mixed
-CPU/Vulkan operands, fail closed rather than silently copying to CPU.
-Direct `matrix/svd` supports Vulkan-placed dense row-major rank-2 `Float64` or
-`Float32` inputs for `k = min(rows, columns)`, including `k > 64`, returns
-Vulkan-placed reduced `u`, `s`, and `v` factors preserving the input float
-dtype, and uses storage-backed Gram scratch without hidden CPU/LAPACK fallback.
-CPU `Float32` SVD is supported through native CPU `Float32` oracles. Direct `matrix/eigenvalues` and
-`matrix/eigenvectors` support Vulkan-placed dense row-major square symmetric
-`Float64` inputs, including `n > 64` within helper resource limits, 32-bit
-shader index guards, and the Jacobi iteration guard. They return Vulkan-placed
-values and aligned vector columns, raise `tensor/not-symmetric` for
-nonsymmetric Vulkan inputs, and map shader non-convergence to
-`tensor/no-convergence`, without hidden CPU/LAPACK fallback. Missing
-Vulkan/Float64 capability, unsupported shapes/layouts/dtypes, resource bounds,
-and stride/view-backed inputs fail closed with Tensor backend diagnostics.
-Direct `matrix/eigenpairs` remains CPU-only/fail-closed on Vulkan while its
-public output contract is pointer-backed `BigComplex`.
-Zero-size contracted axes in supported Vulkan layouts produce
-additive-identity output, matching CPU Tensor semantics.
-Backend-flavored mathematical names are not part of the normal Tensor surface.

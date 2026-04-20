@@ -506,10 +506,32 @@ Date: 2026-04-20
     `params`, `state`, `mode`, `dtype`, `device`, and `metadata`; dense,
     conv1d, and conv2d parameter tensors honor seeded initializer options and
     explicit CPU/CUDA/Vulkan placement.
-  - Next Vulkan ML work should start `ML-VK-070-003` inference application
-    (`nn/apply`, `nn/predict`, `nn/summary`) over the existing `ml/*`
-    primitives, or separately validate the Float64 exp/log policy before
-    widening stable reductions.
+  - Superseded by the later Omni Neural DataSpec inference checkpoint below:
+    `ML-VK-070-003` is now implemented, so the next Vulkan ML work is
+    `ML-VK-070-004` checkpoint serialization and restore.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.
+
+## Active Omni Neural DataSpec Inference Checkpoint
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - closed `ML-VK-070-003` as the first model-bundle inference and inspection
+    slice;
+  - added `nn/apply`, `nn/predict`, `nn/summary`, `nn/spec`,
+    `nn/parameters`, `nn/state`, and `nn/mode`;
+  - lowered sequential, dense, conv1d, conv2d, max/avg pool2d, activation,
+    softmax, and CPU flatten specs through the existing `ml/*` primitives;
+  - made non-empty explicit `nn/apply` options fail closed instead of being
+    accepted as ignored no-ops;
+  - made malformed `nn/summary` parameter trees report `nn/invalid-spec`.
+- Validation:
+  - `c3c build`
+  - focused advanced collections suite: `pass=1748 fail=0`
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, file-size gate, and `git diff --check`
+- Next checkpoint:
+  - continue `ML-VK-070-004` for checkpoint serialization and restore of
+    transparent model bundles.

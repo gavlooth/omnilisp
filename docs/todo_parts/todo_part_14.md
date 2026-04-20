@@ -634,8 +634,13 @@ Source: `TODO.md`
         trees, stores `mode`/`dtype`/`device`/`metadata` on the transparent
         model bundle, and uses deterministic seeded initialization and explicit
         device placement for dense, conv1d, and conv2d parameter tensors.
-    - [ ] `ML-VK-070-003` add `nn/apply`, `nn/predict`, and `nn/summary` for
+    - [x] `ML-VK-070-003` add `nn/apply`, `nn/predict`, and `nn/summary` for
       inference over `ml/*` primitives with no hidden Vulkan CPU fallback.
+      - shipped: `nn/apply` supports model and explicit `(spec params state)` paths;
+        `nn/predict` requires `'eval` mode; first-lane lowering covers dense,
+        conv1d/conv2d, pooling, activation, softmax, and CPU flatten; and
+        unsupported device/layout convolution-bias paths fail closed without hidden
+        CPU fallback.
     - [ ] `ML-VK-070-004` add spec/model checkpoint save/load round trips for
       spec, params, state, dtype, shape, paths, and placement metadata.
     - [ ] `ML-VK-070-005` add the training facade after `ML-VK-050` autograd

@@ -39,6 +39,33 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(= (handle (nn/init (nn/dense 2 1) (Dictionary 'dtype 'BigInteger)) (raise msg (ref msg 'code))) 'nn/invalid-spec)", pass, fail);
     test_truthy(interp, "nn/init diagnostics rejects negative seed",
         "(= (handle (nn/init (nn/dense 2 1) (Dictionary 'seed -1)) (raise msg (ref msg 'code))) 'nn/invalid-spec)", pass, fail);
+    test_truthy(interp, "nn/accessors report model components",
+        "(let (model (nn/init (nn/dense 2 3 (Dictionary 'kernel-init (Dictionary 'kind 'ones))) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1)) spec (nn/spec model) params (nn/parameters model) state (nn/state model) mode (nn/mode model)) (and (= (ref spec 'kind) 'dense) (= (ref spec 'input-features) 2) (= (length params) 2) (= (length state) 0) (= mode 'eval)))",
+        pass, fail);
+    test_truthy(interp, "nn/apply explicit spec params state dense",
+        "(let (spec (nn/dense 4 2) params (Dictionary 'weights (Tensor Float32 [2 4] [1 2 3 4 5 6 7 8]) 'bias (Tensor Float32 [2] [1 1])) state (Dictionary) input (Tensor Float32 [4] [1 1 1 1]) out (nn/apply spec params state input)) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 11.0)) (= (ref out [1]) (Float32 27.0))))",
+        pass, fail);
+    test_truthy(interp, "nn/apply explicit CPU flatten+dense sequential",
+        "(let (spec (nn/sequential (nn/flatten 1 2) (nn/dense 4 2 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros)))) params (Array (Dictionary) (Dictionary 'weights (Tensor Float32 [2 4] [1 1 1 1 1 2 3 4]) 'bias (Tensor Float32 [2] [0 0])) ) state (Array (Dictionary) (Dictionary)) input (Tensor Float32 [1 2 2] [1 2 3 4]) out (nn/apply spec params state input)) (and (= (ref (shape out) 0) 1) (= (ref (shape out) 1) 2) (= (ref out [0 0]) (Float32 10.0)) (= (ref out [0 1]) (Float32 30.0))))",
+        pass, fail);
+    test_truthy(interp, "nn/apply accepts empty reserved options",
+        "(let (spec (nn/dense 1 1) params (Dictionary 'weights (Tensor Float32 [1 1] [2]) 'bias (Tensor Float32 [1] [1])) out (nn/apply spec params (Dictionary) (Tensor Float32 [1] [3]) (Dictionary))) (= (ref out [0]) (Float32 7.0)))",
+        pass, fail);
+    test_truthy(interp, "nn/apply rejects non-empty reserved options",
+        "(= (handle (nn/apply (nn/dense 1 1) (Dictionary 'weights (Tensor Float32 [1 1] [2]) 'bias (Tensor Float32 [1] [1])) (Dictionary) (Tensor Float32 [1] [3]) (Dictionary 'training true)) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
+    test_truthy(interp, "nn/summary reports stable model counts",
+        "(let (model (nn/init (nn/dense 3 2) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1)) summary (nn/summary model)) (and (= (ref summary 'kind) 'summary) (= (ref summary 'layers) 1) (= (ref summary 'parameter-tensors) 2) (= (ref summary 'parameter-elements) 8) (= (ref summary 'mode) 'eval) (= (String (ref summary 'dtype)) \"Float32\")))",
+        pass, fail);
+    test_truthy(interp, "nn/summary rejects malformed params tree",
+        "(= (handle (nn/summary (Dictionary 'kind 'model 'spec (nn/dense 2 1) 'params 42 'state (Dictionary) 'mode 'eval 'dtype 'Float32 'device 'cpu 'metadata (Dictionary))) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
+    test_truthy(interp, "nn/predict executes dense model in eval mode",
+        "(let (model (nn/init (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (Dictionary 'dtype 'Float32 'device 'cpu 'seed 1)) out (nn/predict model (Tensor Float32 [2] [1 2]))) (and (= (String (dtype out)) \"Float32\") (= (ref out [0]) (Float32 3.0))))",
+        pass, fail);
+    test_truthy(interp, "nn/predict rejects non-eval mode",
+        "(= (handle (nn/predict (Dictionary 'kind 'model 'spec (nn/dense 2 1) 'params (Dictionary 'weights (Tensor Float32 [1 2] [1 1]) 'bias (Tensor Float32 [1] [0])) 'state (Dictionary) 'mode 'train 'dtype 'Float32 'device 'cpu 'metadata (Dictionary)) (Tensor Float32 [2] [1 1])) (raise msg (ref msg 'code))) 'nn/invalid-spec)",
+        pass, fail);
     test_eq_double(interp, "ml/relu Float64 CPU clamps negatives",
         "(ref (ml/relu (Tensor Float64 [4] [-2 -0.5 0 3])) [3])",
         3.0, pass, fail);

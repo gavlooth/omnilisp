@@ -312,7 +312,22 @@ Runtime behavior:
 
 ### `ML-VK-070-003` Inference Apply
 
-Add `nn/apply`, `nn/predict`, and `nn/summary` for the inference MVP.
+`ML-VK-070-003` shipped.
+
+`nn/apply`, `nn/predict`, and `nn/summary` are implemented for inference in the
+first public inference family:
+
+- supports explicit inference over model data via `(nn/apply model input)` and
+  `(nn/apply (nn/spec model) (nn/parameters model) (nn/state model) input)`
+- accepts only an empty reserved options dictionary on the explicit `nn/apply`
+  path, so future options cannot be silently ignored
+- exposes `nn/predict(model input)` as the explicit evaluation-mode inference path
+- lowers `dense`, `conv1d`, `conv2d`, `max-pool2d`, `avg-pool2d`,
+  `activation`, and `softmax` to the corresponding `ml/*` operations
+- lowers `nn/flatten` using explicit CPU flattening
+- returns inspection summary metadata through `nn/summary`
+- no hidden CPU fallback in supported inference paths; unsupported flatten and
+  convolution bias add paths are fail-closed through explicit backend errors
 
 Lowering rules:
 

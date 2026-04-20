@@ -267,6 +267,13 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/tanh` | 0 | Construct a tanh activation layer spec |
 | `nn/gelu` | 0 | Construct a GELU activation layer spec |
 | `nn/softmax` | 0 | Construct a softmax activation layer spec |
+| `nn/apply` | 2, 4-5 | Run inference from normalized model or explicit `(spec params state input [options])` data; optional options must currently be empty and supported layers lower to `ml/*` |
+| `nn/predict` | 2 | Run inference through a model bundle in `'eval` mode only |
+| `nn/summary` | 1 | Return inspectable summary metadata from a model bundle (`kind`, `mode`, `dtype`, `device`, `layers`, `parameter-tensors`, `parameter-elements`) |
+| `nn/spec` | 1 | Extract the normalized model spec from a model bundle |
+| `nn/parameters` | 1 | Extract the parameter tree from a model bundle |
+| `nn/state` | 1 | Extract the state tree from a model bundle |
+| `nn/mode` | 1 | Read the model mode (`'train` / `'eval`) from a model bundle |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

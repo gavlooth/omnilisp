@@ -46,6 +46,13 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("__tensor-map"), "aot::lookup_prim(\"__tensor-map\")");
     prim_hash_insert(st.intern("nn/validate"), "aot::lookup_prim(\"nn/validate\")");
     prim_hash_insert(st.intern("nn/init"), "aot::lookup_prim(\"nn/init\")");
+    prim_hash_insert(st.intern("nn/apply"), "aot::lookup_prim(\"nn/apply\")");
+    prim_hash_insert(st.intern("nn/predict"), "aot::lookup_prim(\"nn/predict\")");
+    prim_hash_insert(st.intern("nn/summary"), "aot::lookup_prim(\"nn/summary\")");
+    prim_hash_insert(st.intern("nn/spec"), "aot::lookup_prim(\"nn/spec\")");
+    prim_hash_insert(st.intern("nn/parameters"), "aot::lookup_prim(\"nn/parameters\")");
+    prim_hash_insert(st.intern("nn/state"), "aot::lookup_prim(\"nn/state\")");
+    prim_hash_insert(st.intern("nn/mode"), "aot::lookup_prim(\"nn/mode\")");
     prim_hash_insert(st.intern("nn/sequential"), "aot::lookup_prim(\"nn/sequential\")");
     prim_hash_insert(st.intern("nn/dense"), "aot::lookup_prim(\"nn/dense\")");
     prim_hash_insert(st.intern("nn/conv1d"), "aot::lookup_prim(\"nn/conv1d\")");
