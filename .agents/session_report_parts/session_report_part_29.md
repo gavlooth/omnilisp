@@ -1,5 +1,72 @@
 # Session Report Part 29
 
+## 2026-04-20 14:07 CEST - Vulkan ML Float32 Cross Entropy Checkpoint
+
+- Objective attempted:
+  - Continue auditing and implementing the Vulkan ML loss lane after staged
+    MSE by adding the next concrete loss kernel.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/prim_ml_vulkan_losses.c3`
+  - `src/lisp/tensor_vulkan_backend.c3`
+  - `csrc/tensor_vulkan_helpers_ml_loss.c`
+  - `csrc/tensor_vulkan_ml_cross_entropy_f32.comp`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added Vulkan Float32 `ml/cross-entropy(logits targets axis)` through a
+    dedicated fused loss shader/helper.
+  - Changed the primitive entrypoint to resolve logits/targets on their
+    current device and explicitly route CPU vs same-device Vulkan.
+  - Kept mixed-device operands and unsupported placements fail-closed before
+    CPU fallback.
+  - Preserved target probability diagnostics with a device-written status lane
+    next to the scalar result.
+  - Mapped invalid Vulkan targets/logits to `tensor/invalid-argument` and
+    non-finite Float32 scalar results to `tensor/numeric-overflow`.
+  - Kept Vulkan Float64 cross-entropy fail-closed until a validated Float64
+    exp/log policy lands.
+  - Added tests for stable large-logit Vulkan Float32 behavior, non-last class
+    axes, invalid targets, mixed devices, and Float64 fail-closed behavior.
+  - Updated TODO, roadmap, spec/reference docs, plan, and changelog.
+  - Recorded `ML-VK-020-007-VK-CE-PAR` as the remaining staged
+    status-preserving reduction rewrite for large Vulkan cross-entropy inputs.
+- Commands run:
+  - Fast runtime/helper audit subagent.
+  - Fast docs/tests audit subagent.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_cross_entropy_f32.comp -o /tmp/tensor_vulkan_ml_cross_entropy_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/tensor_vulkan_ml_cross_entropy_f32.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct `LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --eval ...`
+    smokes for Vulkan Float32 value parity, non-last axis support, invalid
+    targets, and Float64 fail-closed behavior.
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections passed with `pass=1707 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Direct Vulkan cross-entropy smokes returned `true`.
+  - File-size gate passed with no tracked text file above 700 LOC.
+- Invalidated assumptions or failed approaches worth preserving:
+  - Do not keep treating `ml/cross-entropy` as CPU-only: Vulkan Float32 is now
+    a shipped path. Vulkan Float64 remains intentionally unsupported.
+  - Do not implement cross-entropy by `softmax` then `log`; the fused shader
+    preserves max-shifted log-softmax stability and avoids axis-broadcast
+    traps.
+- Current best recommendation / checkpoint:
+  - Commit and push the non-artifact source, shader, generated SPIR-V, tests,
+    docs, TODO, plan, changelog, and session-report changes.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - `ML-VK-020-007-VK-CE-PAR` remains open for staged status-preserving
+    reduction on large Vulkan cross-entropy inputs.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 13:49 CEST - Vulkan ML Staged MSE Checkpoint
 
 - Objective attempted:

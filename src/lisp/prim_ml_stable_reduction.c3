@@ -482,13 +482,12 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* logits = null;
     Value* logits_value = null;
-    Value* err = tensor_expr_resolve_concrete_cpu(
+    Value* err = tensor_expr_resolve_concrete_any_device(
         args[0],
         &logits,
         &logits_value,
         interp,
-        "ml/cross-entropy: logits tensor backing storage is missing",
-        "ml/cross-entropy: backend kernel is not implemented for non-CPU tensors"
+        "ml/cross-entropy: logits tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_logits = logits_value != args[0];
@@ -498,13 +497,12 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* targets = null;
     Value* targets_value = null;
-    err = tensor_expr_resolve_concrete_cpu(
+    err = tensor_expr_resolve_concrete_any_device(
         args[1],
         &targets,
         &targets_value,
         interp,
-        "ml/cross-entropy: targets tensor backing storage is missing",
-        "ml/cross-entropy: backend kernel is not implemented for non-CPU tensors"
+        "ml/cross-entropy: targets tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_targets = targets_value != args[1];
@@ -512,8 +510,17 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
         boundary_cleanup_materialized_value(null, targets_value, interp.current_scope);
     }
 
-    if (!tensor_has_valid_storage(logits) || !tensor_has_valid_storage(targets)) {
+    if (logits.device != targets.device) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: logits and targets must be on the same device", null);
+    }
+    if (logits.device != TENSOR_DEVICE_CPU && logits.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: backend kernel is not implemented for this tensor placement", null);
+    }
+    if (logits.device == TENSOR_DEVICE_CPU && (!tensor_has_valid_storage(logits) || !tensor_has_valid_storage(targets))) {
         return tensor_runtime_raise(interp, "ml/cross-entropy: tensor backing storage is missing");
+    }
+    if (logits.device == TENSOR_DEVICE_VULKAN && (!tensor_has_valid_device_storage(logits, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN))) {
+        return tensor_runtime_raise(interp, "ml/cross-entropy: Vulkan tensor backing storage is missing");
     }
     if (!ml_reduction_supported_dtype(logits.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: currently supports Float64 and Float32 tensors", null);
@@ -563,6 +570,9 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
     usz slice_count = result_rank == 0 ? (usz)1 : logits.element_count / reduction_count;
     if (slice_count == 0) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/cross-entropy: cannot reduce empty tensors", null);
+    }
+    if (logits.device == TENSOR_DEVICE_VULKAN) {
+        return ml_cross_entropy_eval_vulkan(logits, targets, axis, interp);
     }
 
     double* maxes = null;

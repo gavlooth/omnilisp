@@ -374,8 +374,9 @@ Float64 fail-closed. `ml/mean-squared-error(predictions targets)` accepts
 same-shape, same-dtype CPU or Vulkan `Float64`/`Float32` tensors and returns a
 scalar tensor containing the population mean squared error. `ml/cross-entropy(logits
 targets axis)` accepts same-shape probability/one-hot target tensors, uses
-max-shifted log-softmax over the explicit class axis, and returns the mean loss
-over non-class positions.
+max-shifted log-softmax over the explicit class axis, returns the mean loss
+over non-class positions, and supports Vulkan `Float32` while keeping Vulkan
+`Float64` fail-closed until its exp/log policy is validated.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

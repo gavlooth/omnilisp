@@ -525,3 +525,26 @@ Source: `memory/CHANGELOG.md`
     focused advanced collections `pass=1704 fail=0`, basic Lisp slice
     `pass=160 fail=0`, primitive docs parity, `git diff --check`, and
     file-size gate.
+
+- 2026-04-20 14:07 CEST: Vulkan ML Float32 cross-entropy checkpoint:
+  - Added `ML-VK-020-007-VK-CE-F32` for Vulkan Float32
+    `ml/cross-entropy(logits targets axis)`.
+  - Routed same-device Vulkan Float32 logits/targets through a dedicated fused
+    loss shader/helper instead of composing public Tensor ops or falling back
+    to CPU.
+  - Preserved target probability diagnostics on device by writing a status lane
+    next to the scalar loss and mapping invalid target/logit inputs to
+    `tensor/invalid-argument`.
+  - Preserved Float32 non-finite scalar mapping to `tensor/numeric-overflow`;
+    Vulkan Float64 cross-entropy remains fail-closed pending a validated
+    Float64 exp/log policy.
+  - Added guarded Vulkan Float32 tests for device preservation, stable
+    large-logit behavior, non-last class axis support, invalid target
+    diagnostics, mixed-device fail-closed behavior, and Float64 fail-closed
+    behavior.
+  - Recorded `ML-VK-020-007-VK-CE-PAR` as the remaining staged
+    status-preserving cross-entropy reduction rewrite for large inputs.
+  - Validation passed: shader compile/`spirv-val`, `scripts/build_omni_chelpers.sh`,
+    `c3c build`, direct Vulkan cross-entropy smokes, focused advanced
+    collections `pass=1707 fail=0`, basic Lisp slice `pass=160 fail=0`,
+    primitive docs parity, `git diff --check`, and file-size gate.

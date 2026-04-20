@@ -291,6 +291,19 @@ extern fn int omni_tensor_backend_vulkan_ml_mse_f32(
     usz element_count,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_mse_f32");
+extern fn int omni_tensor_backend_vulkan_ml_cross_entropy_f32(
+    void* logits_device_ptr,
+    usz logits_byte_len,
+    void* targets_device_ptr,
+    usz targets_byte_len,
+    usz element_count,
+    usz input_rank,
+    usz axis,
+    usz* input_shape,
+    usz* logits_strides,
+    usz* targets_strides,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_cross_entropy_f32");
 extern fn int omni_tensor_backend_vulkan_ml_softmax_f32(
     void* input_device_ptr,
     usz input_byte_len,

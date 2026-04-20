@@ -318,6 +318,19 @@ int omni_tensor_backend_vulkan_ml_mse_f32(
     size_t element_count,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_cross_entropy_f32(
+    const void* logits_device_ptr,
+    size_t logits_byte_len,
+    const void* targets_device_ptr,
+    size_t targets_byte_len,
+    size_t element_count,
+    size_t input_rank,
+    size_t axis,
+    const size_t* input_shape,
+    const size_t* logits_strides,
+    const size_t* targets_strides,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_ml_softmax_f32(
     const void* input_device_ptr,
     size_t input_byte_len,

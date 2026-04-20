@@ -500,6 +500,20 @@ Source: `TODO.md`
         class-index tensors.
       - [x] Normalize over one explicit class axis and keep target/logit shape
         diagnostics explicit.
+    - [x] `ML-VK-020-007-VK-CE-F32` add Vulkan Float32
+      `ml/cross-entropy(logits targets axis)`.
+      - [x] Add a dedicated fused loss shader/helper instead of composing
+        softmax/log/reduction public Tensor ops or falling back to CPU.
+      - [x] Preserve Vulkan placement, target probability diagnostics, and
+        Float32 non-finite result mapping.
+      - [x] Keep Vulkan Float64 cross-entropy fail-closed until a validated
+        Float64 exp/log policy lands.
+    - [ ] `ML-VK-020-007-VK-CE-PAR` replace the direct scalar Vulkan
+      cross-entropy kernel with a staged status-preserving loss reduction.
+      - [ ] Preserve invalid-target diagnostics while reducing per-invocation
+        work for large class or batch shapes.
+      - [ ] Keep the current fused Float32 semantics and no-hidden-CPU-fallback
+        contract; do not regress the Vulkan invalid-target tests.
     - [x] `ML-VK-020-007-C` add canonical
       `ml/mean-squared-error(predictions targets)`.
       - [x] Return a scalar loss over all elements and reject shape/dtype

@@ -181,6 +181,11 @@ reduction operations:
   same-shape probability/one-hot targets. It uses max-shifted log-softmax over
   one explicit class axis, averages over non-class positions, rejects
   non-normalized target slices, and does not accept class-index tensors.
+- `ML-VK-020-007-VK-CE-F32`: shipped Vulkan Float32
+  `ml/cross-entropy(logits targets axis)` through a dedicated fused loss
+  shader that preserves Vulkan placement, target probability diagnostics, and
+  the no-hidden-CPU-fallback contract. Vulkan Float64 remains fail-closed until
+  a validated Float64 exp/log policy lands.
 - `ML-VK-020-007-C`: shipped CPU `ml/mean-squared-error(predictions targets)`
   as a scalar Tensor loss for same-shape, same-dtype Float64/Float32 tensors,
   with explicit Tensor shape/dtype diagnostics and no hidden CUDA/Vulkan
