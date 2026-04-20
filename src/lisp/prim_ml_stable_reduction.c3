@@ -94,13 +94,12 @@ fn Value* prim_ml_logsumexp(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* source = null;
     Value* source_value = null;
-    Value* err = tensor_expr_resolve_concrete_cpu(
+    Value* err = tensor_expr_resolve_concrete_any_device(
         args[0],
         &source,
         &source_value,
         interp,
-        "ml/logsumexp: tensor backing storage is missing",
-        "ml/logsumexp: backend kernel is not implemented for non-CPU tensors"
+        "ml/logsumexp: tensor backing storage is missing"
     );
     if (err != null) return err;
     bool cleanup_source = source_value != args[0];
@@ -108,9 +107,20 @@ fn Value* prim_ml_logsumexp(Value*[] args, Env* env, Interp* interp) {
         boundary_cleanup_materialized_value(null, source_value, interp.current_scope);
     }
 
-    if (!tensor_has_valid_storage(source)) return tensor_runtime_raise(interp, "ml/logsumexp: tensor backing storage is missing");
+    if (source.device != TENSOR_DEVICE_CPU && source.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/logsumexp: backend kernel is not implemented for this tensor placement", null);
+    }
+    if (source.device == TENSOR_DEVICE_CPU && !tensor_has_valid_storage(source)) {
+        return tensor_runtime_raise(interp, "ml/logsumexp: tensor backing storage is missing");
+    }
+    if (source.device == TENSOR_DEVICE_VULKAN && !tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "ml/logsumexp: Vulkan tensor backing storage is missing");
+    }
     if (!ml_reduction_supported_dtype(source.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/logsumexp: currently supports Float64 and Float32 tensors", null);
+    }
+    if (source.device == TENSOR_DEVICE_VULKAN && source.dtype != TENSOR_DTYPE_FLOAT32) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/logsumexp: Vulkan currently supports Float32 tensors", null);
     }
 
     usz* axes = null;
@@ -148,6 +158,10 @@ fn Value* prim_ml_logsumexp(Value*[] args, Env* env, Interp* interp) {
 
     usz[1] scalar_shape = { 0 };
     usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
+    if (source.device == TENSOR_DEVICE_VULKAN) {
+        return ml_reduction_eval_vulkan(source, shape_slice, axes, axis_count, ML_REDUCTION_LOGSUMEXP, interp, "ml/logsumexp: failed to allocate Vulkan result tensor metadata", "ml/logsumexp: failed to allocate Vulkan result tensor value");
+    }
+
     Value* out_value = make_tensor_uninitialized_checked(interp, source.dtype, shape_slice, "ml/logsumexp: failed to allocate result tensor");
     if (out_value == null || out_value.tag == ERROR) return out_value;
     bool keep_out = false;

@@ -1,5 +1,52 @@
 # Session Report Part 29
 
+## 2026-04-20 12:34 CEST - Vulkan ML Logsumexp Float32 Checkpoint
+
+- Objective attempted:
+  - Continue the strict audit/TODO loop after Vulkan `ml/max` by adding the
+    first exp/log-backed stable reduction slice.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_reduction.c`
+  - `csrc/tensor_vulkan_ml_reduction_f32.comp`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added and closed `ML-VK-020-007-VK-LSE-F32` in TODO after audit found
+    Vulkan stable reductions lacked a concrete follow-up item.
+  - Extended the Vulkan Float32 ML reduction shader/helper with `op == 4` for
+    max-shifted `ml/logsumexp(input axes)`.
+  - Routed Vulkan Float32 `ml/logsumexp` through the reduction helper while
+    keeping Vulkan Float64 `ml/logsumexp` fail-closed.
+  - Added guarded Vulkan Float32 row and all-axis parity coverage, and kept
+    Vulkan `ml/softmax` fail-closed until a same-shape normalization shader
+    exists.
+  - Updated roadmap/spec/reference text for the new Float32-only Vulkan
+    `ml/logsumexp` contract.
+- Commands run:
+  - Fast worker subagent for the C helper/shader/SPIR-V Float32 opcode patch.
+  - `glslangValidator -V --target-env vulkan1.0 csrc/tensor_vulkan_ml_reduction_f32.comp -o /tmp/omni_ml_reduction_f32.spv`
+  - `spirv-val --target-env vulkan1.0 /tmp/omni_ml_reduction_f32.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct REPL smoke for Vulkan Float32 `ml/logsumexp`, Vulkan Float64
+    `ml/logsumexp` fail-closed behavior, and Vulkan `ml/softmax`
+    fail-closed behavior.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Direct smokes returned `true` for the supported/unsupported boundaries.
+  - Focused advanced collections suite passed with `pass=1696 fail=0`.
+- Current best recommendation / checkpoint:
+  - Vulkan Float32 `ml/logsumexp` is implemented. Next Vulkan ML work should
+    add a same-shape `ml/softmax` axis-normalization shader or a validated
+    Float64 exp/log policy before broadening stable reductions or losses.
+- Unresolved issues:
+  - Full host `advanced` slice was not rerun because the previous checkpoint
+    reproduced an unrelated segfault after TCO tests before ML part8.
+  - Full bounded-container suite was not run.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 03:48 CEST - Vulkan ML Max Checkpoint
 
 - Objective attempted:

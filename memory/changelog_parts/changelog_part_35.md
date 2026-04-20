@@ -437,3 +437,19 @@ Source: `memory/CHANGELOG.md`
     `c3c build`, direct Vulkan max smokes, focused advanced collections
     `pass=1695 fail=0`, basic Lisp slice `pass=160 fail=0`,
     primitive docs parity, `git diff --check`, and file-size gate.
+
+- 2026-04-20 12:34 CEST: Vulkan ML logsumexp Float32 checkpoint:
+  - Added and closed `ML-VK-020-007-VK-LSE-F32` after audit found the stable
+    Vulkan follow-up needed an explicit TODO boundary.
+  - Extended the Vulkan Float32 ML reduction helper/shader with `op == 4` for
+    stable `ml/logsumexp(input axes)` using `max + log(sum(exp(input - max)))`.
+  - Routed Vulkan Float32 `ml/logsumexp` through
+    `src/lisp/prim_ml_stable_reduction.c3`, preserving Vulkan placement and
+    Float32 dtype with no hidden CPU fallback.
+  - Kept Vulkan Float64 `ml/logsumexp` fail-closed pending a validated Float64
+    exp/log policy, and kept Vulkan `ml/softmax` fail-closed pending a
+    same-shape axis-normalization shader.
+  - Validation passed: shader compile/`spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, direct Vulkan
+    logsumexp/fail-closed smokes, and focused advanced collections
+    `pass=1696 fail=0`.

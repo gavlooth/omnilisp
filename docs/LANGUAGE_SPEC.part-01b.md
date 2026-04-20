@@ -361,9 +361,10 @@ standard tanh approximation; the `Float64` transcendental ML activation bits
 remain false and `Float64` inputs fail closed until their numerical policy is
 validated. `ml/sum`, `ml/mean`, and population `ml/variance` are canonical
 `ml/*` axis reductions for CPU and Vulkan `Float64` and `Float32` tensors.
-`ml/max` also supports CPU and Vulkan `Float64`/`Float32` tensors, while
-`ml/logsumexp` remains CPU-only until matching Vulkan logarithm/exponential
-kernels land. These reductions accept a single integer
+`ml/max` also supports CPU and Vulkan `Float64`/`Float32` tensors. CPU
+`ml/logsumexp` supports Float64 and Float32; Vulkan `ml/logsumexp` supports
+Float32 and keeps Float64 fail-closed until its exp/log policy is validated.
+These reductions accept a single integer
 axis or an array/proper list of axes, remove reduced axes from the result shape,
 preserve dtype, reject duplicate/out-of-range axes with Tensor diagnostics, and
 fail closed for unsupported backends without CPU fallback. `ml/softmax` accepts

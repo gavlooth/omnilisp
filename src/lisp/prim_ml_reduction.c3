@@ -7,6 +7,7 @@ const int ML_REDUCTION_SUM = 0;
 const int ML_REDUCTION_MEAN = 1;
 const int ML_REDUCTION_VARIANCE = 2;
 const int ML_REDUCTION_MAX = 3;
+const int ML_REDUCTION_LOGSUMEXP = 4;
 
 fn bool ml_reduction_supported_dtype(TensorDType dtype) @inline {
     return dtype == TENSOR_DTYPE_DOUBLE || dtype == TENSOR_DTYPE_FLOAT32;

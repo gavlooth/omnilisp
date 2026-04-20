@@ -447,6 +447,16 @@ Source: `TODO.md`
         lists/multi-axis inputs until a product contract says otherwise.
       - [x] Preserve Float64/Float32 dtype, stable large-logit behavior, and
         CUDA/Vulkan fail-closed behavior with focused regressions.
+    - [x] `ML-VK-020-007-VK-LSE-F32` add Vulkan Float32
+      `ml/logsumexp(input axes)`.
+      - [x] Reuse the reduction helper shape contract and compute max-shifted
+        `max + log(sum(exp(input - max)))` in a real Vulkan shader.
+      - [x] Preserve Float32 dtype and Vulkan placement, with CPU copy-back
+        parity tests for row and all-axis reductions.
+      - [x] Keep Vulkan Float64 `ml/logsumexp` fail-closed until a validated
+        Float64 exp/log policy lands.
+      - [x] Keep Vulkan `ml/softmax` fail-closed until a same-shape
+        axis-normalization shader exists.
     - [x] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
       - [x] Decide targets are same-shape probability/one-hot tensors, not
         class-index tensors.

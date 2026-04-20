@@ -88,6 +88,16 @@ float reduction_max(uint base_offset) {
     return max_value;
 }
 
+float reduction_logsumexp(uint base_offset) {
+    float max_value = reduction_max(base_offset);
+    float sum = 0.0;
+    for (uint i = 0; i < params.reduction_count; i++) {
+        float value = input_data[base_offset + reduction_offset(i)];
+        sum += exp(value - max_value);
+    }
+    return max_value + log(sum);
+}
+
 void main() {
     uint out_index = gl_GlobalInvocationID.x;
     if (out_index >= params.out_count) return;
@@ -95,6 +105,10 @@ void main() {
     uint base_offset = input_base_offset(out_index);
     if (params.op == 3u) {
         output_data[out_index] = reduction_max(base_offset);
+        return;
+    }
+    if (params.op == 4u) {
+        output_data[out_index] = reduction_logsumexp(base_offset);
         return;
     }
 

@@ -35,7 +35,11 @@ static int omni_tensor_backend_vulkan_ml_reduction_typed(
     } else if (!omni_tensor_backend_vulkan_float32_available()) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
-    if (op > 3u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (require_float64) {
+        if (op > 3u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    } else if (op > 4u) {
+        return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    }
     if (axis_count == 0 || axis_count > input_rank) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (axes == NULL) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (input_rank > 0 && (input_shape == NULL || input_strides == NULL)) return OMNI_TENSOR_VULKAN_INVALID;

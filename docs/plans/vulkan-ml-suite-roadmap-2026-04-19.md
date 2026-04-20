@@ -160,12 +160,15 @@ reduction operations:
   preserves free axes.
 - `ML-VK-020-006-VK-MAX`: shipped Vulkan Float64/Float32 axis-maximum
   reductions for `ml/max` through the same reduction helper, preserving
-  Vulkan placement. `ml/logsumexp`, `ml/softmax`, and losses still need
-  separate Vulkan kernels and remain fail-closed.
+  Vulkan placement.
 - `ML-VK-020-007-A`: shipped CPU `ml/logsumexp(input axes)` and
   `ml/softmax(input axis)` with max-shifted numerics, Float64/Float32 dtype
   preservation, no hidden CUDA/Vulkan CPU fallback, and focused large-logit
   regressions.
+- `ML-VK-020-007-VK-LSE-F32`: shipped Vulkan Float32
+  `ml/logsumexp(input axes)` through the reduction helper with a stable
+  max-shifted shader. Vulkan Float64 `ml/logsumexp`, Vulkan `ml/softmax`, and
+  losses remain fail-closed until their dedicated kernels/policies land.
 - `ML-VK-020-007-B`: shipped CPU `ml/cross-entropy(logits targets axis)` for
   same-shape probability/one-hot targets. It uses max-shifted log-softmax over
   one explicit class axis, averages over non-class positions, rejects
