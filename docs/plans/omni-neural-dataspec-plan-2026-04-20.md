@@ -264,6 +264,20 @@ Freeze the normalized dictionary schemas for:
 
 Add `nn/validate` with strict diagnostics before any parameter allocation.
 
+Shipped baseline:
+
+- `nn/validate(spec)` validates normalized DataSpec dictionaries and returns
+  the input spec on success.
+- Invalid specs raise `nn/invalid-spec` with a diagnostic payload containing
+  at least `path`, `expected`, and `actual-kind`.
+- Data-only constructors are available for the frozen layer schemas:
+  `nn/sequential`, `nn/dense`, `nn/conv1d`, `nn/conv2d`, `nn/max-pool2d`,
+  `nn/avg-pool2d`, `nn/flatten`, `nn/activation`, `nn/relu`, `nn/sigmoid`,
+  `nn/tanh`, `nn/gelu`, and `nn/softmax`.
+- This baseline intentionally does not allocate parameter tensors, lower specs
+  to `ml/*`, serialize checkpoints, or expose training helpers; those remain
+  owned by `ML-VK-070-002` through `ML-VK-070-005`.
+
 ### `ML-VK-070-002` Parameter Initialization
 
 Add deterministic parameter initialization:

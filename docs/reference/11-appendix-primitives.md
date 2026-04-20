@@ -252,6 +252,20 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/conv2d` | 9 | Dense NCHW 2D convolution with OIHW kernels, explicit stride/padding/dilation/groups, and supported Tensor inputs |
 | `ml/max-pool2d` | 7 | Dense NCHW 2D max pooling with explicit window/stride/padding and supported Tensor inputs |
 | `ml/avg-pool2d` | 7 | Dense NCHW 2D average pooling with explicit window/stride/padding and supported Tensor inputs |
+| `nn/validate` | 1 | Validate an Omni Neural DataSpec dictionary and return it, or raise `nn/invalid-spec` with diagnostics |
+| `nn/sequential` | variadic | Construct a normalized sequential layer spec from one or more layer specs |
+| `nn/dense` | 2-3 | Construct a normalized dense layer spec from input/output features and optional options |
+| `nn/conv1d` | 7 | Construct a normalized dense NCW convolution layer spec |
+| `nn/conv2d` | 7 | Construct a normalized dense NCHW convolution layer spec |
+| `nn/max-pool2d` | 3 | Construct a normalized max-pooling layer spec from window/stride/padding pairs |
+| `nn/avg-pool2d` | 3 | Construct a normalized average-pooling layer spec from window/stride/padding pairs |
+| `nn/flatten` | 0-2 | Construct a normalized flatten layer spec with optional start/end axes |
+| `nn/activation` | 1 | Construct a normalized activation layer spec |
+| `nn/relu` | 0 | Construct a ReLU activation layer spec |
+| `nn/sigmoid` | 0 | Construct a sigmoid activation layer spec |
+| `nn/tanh` | 0 | Construct a tanh activation layer spec |
+| `nn/gelu` | 0 | Construct a GELU activation layer spec |
+| `nn/softmax` | 0 | Construct a softmax activation layer spec |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

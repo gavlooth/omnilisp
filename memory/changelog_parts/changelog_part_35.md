@@ -631,3 +631,18 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: shader compile/`spirv-val`,
     `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced
     collections `pass=1726 fail=0`.
+
+- 2026-04-20 17:06 CEST: Omni Neural DataSpec schema checkpoint:
+  - Closed `ML-VK-070-001` as the first data-only `nn/*` layer/model schema
+    slice.
+  - Added `nn/validate(spec)`, which returns valid DataSpec dictionaries and
+    raises `nn/invalid-spec` with `path`, `expected`, and `actual-kind`
+    diagnostics for invalid specs before parameter allocation.
+  - Added data-only constructors for normalized layer specs:
+    `nn/sequential`, `nn/dense`, `nn/conv1d`, `nn/conv2d`, `nn/max-pool2d`,
+    `nn/avg-pool2d`, `nn/flatten`, `nn/activation`, `nn/relu`,
+    `nn/sigmoid`, `nn/tanh`, `nn/gelu`, and `nn/softmax`.
+  - The slice intentionally does not allocate parameter tensors, lower specs to
+    `ml/*`, serialize checkpoints, or expose training helpers.
+  - Validation passed: `c3c build` and focused advanced collections
+    `pass=1733 fail=0`.

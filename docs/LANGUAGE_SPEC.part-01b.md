@@ -400,6 +400,17 @@ and supports direct dense Vulkan `Float32` through `ml-pool2d-direct-float32`.
 The broad `ml-convolution` key is true for CPU and for Vulkan when the direct
 Float32 convolution/pooling family is available; it does not imply arbitrary
 views, transposed layouts, or backward kernels.
+`nn/*` is the Omni Neural DataSpec namespace for inspectable neural-network
+data. `nn/sequential`, `nn/dense`, `nn/conv1d`, `nn/conv2d`,
+`nn/max-pool2d`, `nn/avg-pool2d`, `nn/flatten`, `nn/activation`, and the
+activation shorthand constructors `nn/relu`, `nn/sigmoid`, `nn/tanh`,
+`nn/gelu`, and `nn/softmax` produce normalized dictionary specs, not hidden
+mutable layer objects. `nn/validate(spec)` returns the input spec when the
+dictionary satisfies the frozen DataSpec schema and raises `nn/invalid-spec`
+with a diagnostic payload otherwise. The shipped schema-validation slice does
+not allocate parameters, run inference, serialize checkpoints, or perform
+training; those are separate `nn/init`, `nn/apply`/`nn/predict`, checkpoint,
+and training-facade contracts.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

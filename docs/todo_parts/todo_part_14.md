@@ -618,9 +618,16 @@ Source: `TODO.md`
       transparent model value, but advanced APIs must expose explicit
       spec/params/state execution.
   - slices:
-    - [ ] `ML-VK-070-001` freeze Omni Neural DataSpec schemas and add
+    - [x] `ML-VK-070-001` freeze Omni Neural DataSpec schemas and add
       `nn/validate` diagnostics for sequential, dense, activation, flatten,
       convolution, pooling, model, parameter tree, and state tree data.
+      - shipped: `nn/validate` returns valid specs and raises
+        `nn/invalid-spec` with path/expected/actual-kind diagnostics for
+        invalid specs.
+      - shipped: data-only constructors for sequential, dense, conv1d,
+        conv2d, max-pool2d, avg-pool2d, flatten, and activation specs.
+      - not included: parameter allocation, inference lowering, checkpoint
+        round trips, and training helpers; those remain in later slices.
     - [ ] `ML-VK-070-002` add deterministic parameter initialization for
       CPU/Vulkan tensors with explicit dtype/device placement.
     - [ ] `ML-VK-070-003` add `nn/apply`, `nn/predict`, and `nn/summary` for
