@@ -57,6 +57,44 @@
   - Cross-entropy and mean-squared-error remain open TODO items.
 - Signature: Codex GPT-5.4
 
+## 2026-04-20 03:02 CEST - ML Cross Entropy Checkpoint
+
+- Objective attempted:
+  - Finish the remaining `ML-VK-020-007` CPU loss primitive by recording a
+    concrete target contract instead of leaving cross-entropy ambiguous.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added CPU `ml/cross-entropy(logits targets axis)`.
+  - Froze targets as same-shape probability/one-hot tensors, not class-index
+    tensors.
+  - Implemented max-shifted log-softmax over one explicit class axis and
+    averaged losses over non-class positions.
+  - Added tests for large-logit stability, Float32 dtype preservation, non-last
+    class axes, soft targets, invalid probability sums, mismatch diagnostics,
+    and Vulkan fail-closed behavior.
+  - Closed `ML-VK-020-007-B` in TODO and docs.
+- Commands run:
+  - Fast cross-entropy subagent audit.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1692 fail=0`.
+  - File-size gate passed with no tracked text file over 700 lines.
+- Current best recommendation / checkpoint:
+  - `ML-VK-020-007` CPU surface is closed. Do not claim Vulkan support until
+    `ML-VK-020-006-VK` adds real backend reductions.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - CUDA/Vulkan cross-entropy intentionally fails closed.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 02:55 CEST - ML Mean Squared Error Checkpoint
 
 - Objective attempted:

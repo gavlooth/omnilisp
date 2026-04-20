@@ -246,6 +246,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/max` | 2 | Axis maximum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/logsumexp` | 2 | Stable max-shifted log-sum-exp reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/softmax` | 2 | Stable single-axis softmax for supported Tensor inputs; preserves input shape |
+| `ml/cross-entropy` | 3 | Scalar cross-entropy loss for same-shape probability/one-hot targets over an explicit class axis |
 | `ml/mean-squared-error` | 2 | Scalar mean-squared-error loss for same-shape supported Tensor inputs |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |

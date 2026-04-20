@@ -434,10 +434,10 @@ Source: `TODO.md`
         lists/multi-axis inputs until a product contract says otherwise.
       - [x] Preserve Float64/Float32 dtype, stable large-logit behavior, and
         CUDA/Vulkan fail-closed behavior with focused regressions.
-    - [ ] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
-      - [ ] Decide whether `ml/cross-entropy` targets are probability/one-hot
-        tensors or class-index tensors before exposing the primitive.
-      - [ ] Normalize over one explicit class axis and keep target/logit shape
+    - [x] `ML-VK-020-007-B` add canonical `ml/cross-entropy(logits targets axis)`.
+      - [x] Decide targets are same-shape probability/one-hot tensors, not
+        class-index tensors.
+      - [x] Normalize over one explicit class axis and keep target/logit shape
         diagnostics explicit.
     - [x] `ML-VK-020-007-C` add canonical
       `ml/mean-squared-error(predictions targets)`.

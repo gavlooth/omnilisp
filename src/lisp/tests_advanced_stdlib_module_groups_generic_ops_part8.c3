@@ -75,6 +75,18 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(and (= (handle (ml/mean-squared-error (Tensor Float64 [2] [1 2]) (Tensor Float64 [1 2] [1 2])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/mean-squared-error (Tensor Float64 [1] [1]) (Tensor Float32 [1] [1])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error rejects unsupported dtype and Vulkan fallback",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/mean-squared-error (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float32) (= (handle (ml/mean-squared-error (to-device (Tensor Float32 [1] [1]) 'vulkan) (to-device (Tensor Float32 [1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy Float64 rank-1 one-hot stable",
+        "(let (out (ml/cross-entropy (Tensor Float64 [2] [1000 1000]) (Tensor Float64 [2] [1 0]) 0)) (< (abs (- (ref out []) (log 2.0))) 0.000000001))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy Float32 batch averages over non-class positions",
+        "(let (out (ml/cross-entropy (Tensor Float32 [2 2] [0 0 0 0]) (Tensor Float32 [2 2] [1 0 0 1]) 1)) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out []) (log 2.0))) 0.0001)))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy supports non-last class axis",
+        "(let (out (ml/cross-entropy (Tensor Float64 [2 2] [0 0 0 0]) (Tensor Float64 [2 2] [1 0 0 1]) 0)) (< (abs (- (ref out []) (log 2.0))) 0.000000001))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy accepts soft targets",
+        "(let (out (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float64 [2] [0.25 0.75]) 0)) (< (abs (- (ref out []) (log 2.0))) 0.000000001))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy rejects invalid target probabilities",
+        "(= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float64 [2] [0.25 0.25]) 0) (raise msg (ref msg 'code))) 'tensor/invalid-argument)", pass, fail);
+    test_truthy(interp, "ml/cross-entropy rejects shape dtype and Vulkan fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float64 [1 2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float32 [2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (if (ref vulkan-backend 'float32) (= (handle (ml/cross-entropy (to-device (Tensor Float32 [2] [0 0]) 'vulkan) (to-device (Tensor Float32 [2] [1 0]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "ml reductions reject duplicate and empty axes",
         "(and (= (handle (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) [0 0]) (raise msg (ref msg 'code))) 'tensor/axis-duplicate) (= (handle (ml/mean (Tensor Float64 [2] [1 2]) []) (raise msg (ref msg 'code))) 'tensor/shape-mismatch))", pass, fail);
     test_truthy(interp, "ml reductions reject unsupported dtype and Vulkan fallback",

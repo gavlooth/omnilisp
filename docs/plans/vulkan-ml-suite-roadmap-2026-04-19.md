@@ -164,9 +164,10 @@ reduction operations:
   `ml/softmax(input axis)` with max-shifted numerics, Float64/Float32 dtype
   preservation, no hidden CUDA/Vulkan CPU fallback, and focused large-logit
   regressions.
-- `ML-VK-020-007-B`: add `ml/cross-entropy(logits targets axis)`. Lock the
-  target contract before exposing it; do not ship a primitive whose targets can
-  mean either probabilities/one-hot rows or class indices.
+- `ML-VK-020-007-B`: shipped CPU `ml/cross-entropy(logits targets axis)` for
+  same-shape probability/one-hot targets. It uses max-shifted log-softmax over
+  one explicit class axis, averages over non-class positions, rejects
+  non-normalized target slices, and does not accept class-index tensors.
 - `ML-VK-020-007-C`: shipped CPU `ml/mean-squared-error(predictions targets)`
   as a scalar Tensor loss for same-shape, same-dtype Float64/Float32 tensors,
   with explicit Tensor shape/dtype diagnostics and no hidden CUDA/Vulkan

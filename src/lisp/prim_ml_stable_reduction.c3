@@ -387,3 +387,176 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
     keep_out = true;
     return out_value;
 }
+
+fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 3) return primitive_arity_raise(interp, "ml/cross-entropy", "3 arguments: logits targets axis", args.len);
+    if (!is_tensor(args[0]) || !is_tensor(args[1])) {
+        return tensor_type_raise(interp, "ml/cross-entropy: expected Tensor logits and Tensor targets");
+    }
+
+    TensorVal* logits = null;
+    Value* logits_value = null;
+    Value* err = tensor_expr_resolve_concrete_cpu(
+        args[0],
+        &logits,
+        &logits_value,
+        interp,
+        "ml/cross-entropy: logits tensor backing storage is missing",
+        "ml/cross-entropy: backend kernel is not implemented for non-CPU tensors"
+    );
+    if (err != null) return err;
+    bool cleanup_logits = logits_value != args[0];
+    defer if (cleanup_logits) {
+        boundary_cleanup_materialized_value(null, logits_value, interp.current_scope);
+    }
+
+    TensorVal* targets = null;
+    Value* targets_value = null;
+    err = tensor_expr_resolve_concrete_cpu(
+        args[1],
+        &targets,
+        &targets_value,
+        interp,
+        "ml/cross-entropy: targets tensor backing storage is missing",
+        "ml/cross-entropy: backend kernel is not implemented for non-CPU tensors"
+    );
+    if (err != null) return err;
+    bool cleanup_targets = targets_value != args[1];
+    defer if (cleanup_targets) {
+        boundary_cleanup_materialized_value(null, targets_value, interp.current_scope);
+    }
+
+    if (!tensor_has_valid_storage(logits) || !tensor_has_valid_storage(targets)) {
+        return tensor_runtime_raise(interp, "ml/cross-entropy: tensor backing storage is missing");
+    }
+    if (!ml_reduction_supported_dtype(logits.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: currently supports Float64 and Float32 tensors", null);
+    }
+    if (logits.dtype != targets.dtype) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/cross-entropy: tensor dtype mismatch", null);
+    }
+    if (logits.element_count != targets.element_count || !tensor_same_shape(logits, targets)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/cross-entropy: logits and targets must have the same shape", null);
+    }
+
+    usz axis = 0;
+    err = ml_reduction_parse_axis_value(
+        args[2],
+        logits,
+        interp,
+        "ml/cross-entropy: axis must be an integer",
+        "ml/cross-entropy: axis out of range",
+        "ml/cross-entropy: duplicate reduction axis",
+        null,
+        0,
+        &axis
+    );
+    if (err != null) return err;
+
+    usz[1] axes = { axis };
+    usz* result_shape = null;
+    usz result_rank = 0;
+    usz reduction_count = 0;
+    err = ml_reduction_result_shape(
+        logits,
+        axes[..],
+        1,
+        interp,
+        "ml/cross-entropy: result shape is too large",
+        "ml/cross-entropy: cannot reduce an empty class axis",
+        &result_shape,
+        &result_rank,
+        &reduction_count
+    );
+    if (err != null) return err;
+    defer if (result_shape != null) mem::free(result_shape);
+
+    if (logits.element_count == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/cross-entropy: cannot reduce empty tensors", null);
+    }
+    usz slice_count = result_rank == 0 ? (usz)1 : logits.element_count / reduction_count;
+    if (slice_count == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/cross-entropy: cannot reduce empty tensors", null);
+    }
+
+    double* maxes = null;
+    double* exp_sums = null;
+    err = ml_stable_exp_stats_cpu(
+        logits,
+        axes[..],
+        1,
+        slice_count,
+        interp,
+        "ml/cross-entropy: tensor index offset is invalid",
+        &maxes,
+        &exp_sums
+    );
+    if (err != null) return err;
+    defer mem::free(maxes);
+    defer mem::free(exp_sums);
+
+    usz bytes = 0;
+    if (!tensor_checked_mul_usz(slice_count, double.sizeof, &bytes)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/cross-entropy: accumulator is too large", null);
+    }
+    double* losses = (double*)mem::malloc(bytes);
+    if (losses == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/cross-entropy: failed to allocate loss accumulator", null);
+    }
+    defer mem::free(losses);
+    double* target_sums = (double*)mem::malloc(bytes);
+    if (target_sums == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/cross-entropy: failed to allocate target accumulator", null);
+    }
+    defer mem::free(target_sums);
+    for (usz i = 0; i < slice_count; i++) {
+        losses[i] = 0.0;
+        target_sums[i] = 0.0;
+    }
+
+    double tolerance = logits.dtype == TENSOR_DTYPE_FLOAT32 ? 0.0001 : 0.000000001;
+    for (usz i = 0; i < logits.element_count; i++) {
+        usz result_index = 0;
+        double logit = 0.0;
+        double target = 0.0;
+        if (!ml_reduction_result_index(logits, i, axes[..], 1, &result_index) ||
+            !ml_reduction_read(logits, i, &logit) ||
+            !ml_reduction_read(targets, i, &target) ||
+            result_index >= slice_count) {
+            return tensor_runtime_raise(interp, "ml/cross-entropy: tensor index offset is invalid");
+        }
+        if (!conversion_double_is_finite(logit) ||
+            !conversion_double_is_finite(target) ||
+            target < -tolerance) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/cross-entropy: targets must be probability or one-hot tensors", null);
+        }
+        double log_prob = logit - maxes[result_index] - ml_c_log(exp_sums[result_index]);
+        losses[result_index] += -target * log_prob;
+        target_sums[result_index] += target;
+    }
+
+    double total = 0.0;
+    for (usz i = 0; i < slice_count; i++) {
+        if (tensor_c_fabs(target_sums[i] - 1.0) > tolerance) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/cross-entropy: target probabilities must sum to one along the class axis", null);
+        }
+        total += losses[i];
+    }
+
+    double[1] result = { total / (double)slice_count };
+    usz[1] scalar_shape = { 0 };
+    Value* out_value = make_tensor_uninitialized_checked(interp, logits.dtype, scalar_shape[0:0], "ml/cross-entropy: failed to allocate result tensor");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "ml/cross-entropy: result tensor backing storage is missing");
+    }
+
+    err = ml_reduction_write_result(out_value.tensor_val, result[..], interp, "ml/cross-entropy: Float32 result is not representable");
+    if (err != null) return err;
+    keep_out = true;
+    return out_value;
+}

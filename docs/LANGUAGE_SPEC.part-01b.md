@@ -368,7 +368,10 @@ CUDA/Vulkan until backend reduction kernels land. `ml/softmax` accepts a single
 integer axis, uses max-shifted normalization, preserves input shape and dtype,
 and rejects axis lists. `ml/mean-squared-error(predictions targets)` accepts
 same-shape, same-dtype CPU `Float64` or `Float32` tensors and returns a scalar
-tensor containing the population mean squared error.
+tensor containing the population mean squared error. `ml/cross-entropy(logits
+targets axis)` accepts same-shape probability/one-hot target tensors, uses
+max-shifted log-softmax over the explicit class axis, and returns the mean loss
+over non-class positions.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

@@ -386,3 +386,18 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1686 fail=0`, `git diff --check`, primitive docs parity, and the
     file-size gate.
+
+- 2026-04-20 03:02 CEST: ML cross-entropy checkpoint:
+  - Added canonical CPU `ml/cross-entropy(logits targets axis)`.
+  - Froze targets as same-shape probability/one-hot tensors, not class-index
+    tensors. Target slices must sum to one along the explicit class axis.
+  - The primitive uses max-shifted log-softmax over the class axis and averages
+    loss over non-class positions, so the denominator is batch/slice count, not
+    class count.
+  - Added focused regressions for large-logit stability, Float32 dtype
+    preservation, non-last class axes, soft targets, invalid probability sums,
+    mismatch diagnostics, and Vulkan fail-closed behavior.
+  - Closed `ML-VK-020-007-B`; the CPU `ML-VK-020-007` surface is now complete.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1692 fail=0`, `git diff --check`, primitive docs parity, and the
+    file-size gate.
