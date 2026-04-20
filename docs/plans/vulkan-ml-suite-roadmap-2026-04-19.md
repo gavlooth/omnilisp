@@ -167,8 +167,10 @@ reduction operations:
 - `ML-VK-020-007-B`: add `ml/cross-entropy(logits targets axis)`. Lock the
   target contract before exposing it; do not ship a primitive whose targets can
   mean either probabilities/one-hot rows or class indices.
-- `ML-VK-020-007-C`: add `ml/mean-squared-error(predictions targets)` as a
-  scalar loss with explicit Tensor shape/dtype diagnostics.
+- `ML-VK-020-007-C`: shipped CPU `ml/mean-squared-error(predictions targets)`
+  as a scalar Tensor loss for same-shape, same-dtype Float64/Float32 tensors,
+  with explicit Tensor shape/dtype diagnostics and no hidden CUDA/Vulkan
+  fallback.
 
 Scope:
 

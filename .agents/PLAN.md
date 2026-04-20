@@ -453,6 +453,8 @@ Date: 2026-04-20
   - ship CPU `ml/logsumexp(input axes)` and `ml/softmax(input axis)` with
     max-shifted numerics, while leaving loss primitives split into separate
     TODO items;
+  - ship CPU `ml/mean-squared-error(predictions targets)` as the unambiguous
+    scalar loss item before the still-underdefined cross-entropy surface;
   - keep Float32 reduction overflow under `tensor/numeric-overflow`;
   - fail closed for CUDA/Vulkan until backend-specific axis kernels exist;
   - keep `ML-VK-020-006-VK` open for the real Vulkan reduction substrate.
@@ -461,6 +463,5 @@ Date: 2026-04-20
   - focused advanced collections suite
   - docs parity, whitespace, and file-size gates before commit/push.
 - Next checkpoint:
-  - decide and implement `ML-VK-020-007-B` cross-entropy target semantics, or
-    implement `ML-VK-020-007-C` MSE; implement `ML-VK-020-006-VK` first if
-    claiming Vulkan reduction capability.
+  - decide and implement `ML-VK-020-007-B` cross-entropy target semantics;
+    implement `ML-VK-020-006-VK` first if claiming Vulkan reduction capability.

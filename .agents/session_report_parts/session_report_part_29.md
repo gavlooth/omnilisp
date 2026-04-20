@@ -56,3 +56,38 @@
   - CUDA/Vulkan reductions, logsumexp, and softmax intentionally fail closed.
   - Cross-entropy and mean-squared-error remain open TODO items.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 02:55 CEST - ML Mean Squared Error Checkpoint
+
+- Objective attempted:
+  - Continue the TODO implementation loop after the stable softmax/logsumexp
+    checkpoint by choosing the unambiguous remaining loss item.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_stable_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added CPU `ml/mean-squared-error(predictions targets)` as a scalar Tensor
+    loss for same-shape, same-dtype Float64/Float32 tensors.
+  - Registered the primitive in runtime and AOT lookup tables.
+  - Added Float64, Float32 dtype-preservation, lazy CPU input, mismatch, and
+    Vulkan fail-closed regressions.
+  - Closed `ML-VK-020-007-C` in TODO and docs.
+- Commands run:
+  - Fast MSE subagent audit.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `git diff --check`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1686 fail=0`.
+  - File-size gate passed with no tracked text file over 700 lines.
+- Current best recommendation / checkpoint:
+  - The only remaining `ML-VK-020-007` public primitive is cross-entropy.
+    Decide target semantics before implementing it.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - CUDA/Vulkan MSE intentionally fails closed.
+- Signature: Codex GPT-5.4

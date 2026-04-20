@@ -439,11 +439,11 @@ Source: `TODO.md`
         tensors or class-index tensors before exposing the primitive.
       - [ ] Normalize over one explicit class axis and keep target/logit shape
         diagnostics explicit.
-    - [ ] `ML-VK-020-007-C` add canonical
+    - [x] `ML-VK-020-007-C` add canonical
       `ml/mean-squared-error(predictions targets)`.
-      - [ ] Return a scalar loss over all elements and reject shape/dtype
+      - [x] Return a scalar loss over all elements and reject shape/dtype
         mismatches with Tensor diagnostics.
-      - [ ] Keep CUDA/Vulkan fail-closed until backend reduction kernels exist;
+      - [x] Keep CUDA/Vulkan fail-closed until backend reduction kernels exist;
         no hidden CPU fallback.
   - scope:
     - activation kernels: `relu`, `leaky-relu`, `sigmoid`, `tanh`, `gelu`;

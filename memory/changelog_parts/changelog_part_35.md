@@ -371,3 +371,18 @@ Source: `memory/CHANGELOG.md`
   - Validation passed: `c3c build`, focused advanced collections suite
     `pass=1681 fail=0`, `git diff --check`, primitive docs parity, and the
     file-size gate.
+
+- 2026-04-20 02:55 CEST: ML mean-squared-error checkpoint:
+  - Added canonical CPU `ml/mean-squared-error(predictions targets)` as a
+    scalar Tensor loss for same-shape, same-dtype Float64/Float32 tensors.
+  - The primitive computes population MSE over all elements, returns the input
+    dtype, rejects shape/dtype mismatches with Tensor diagnostics, and fails
+    closed for CUDA/Vulkan instead of silently copying to CPU.
+  - Added focused regressions for Float64 oracle values, Float32 dtype
+    preservation, lazy CPU input materialization, mismatch diagnostics, and
+    Vulkan fail-closed behavior.
+  - Closed `ML-VK-020-007-C`; cross-entropy remains open pending a target
+    contract decision.
+  - Validation passed: `c3c build`, focused advanced collections suite
+    `pass=1686 fail=0`, `git diff --check`, primitive docs parity, and the
+    file-size gate.

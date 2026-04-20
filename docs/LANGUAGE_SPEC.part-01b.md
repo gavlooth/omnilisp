@@ -366,7 +366,9 @@ axes, remove reduced axes from the result shape, preserve dtype, reject
 duplicate/out-of-range axes with Tensor diagnostics, and fail closed for
 CUDA/Vulkan until backend reduction kernels land. `ml/softmax` accepts a single
 integer axis, uses max-shifted normalization, preserves input shape and dtype,
-and rejects axis lists.
+and rejects axis lists. `ml/mean-squared-error(predictions targets)` accepts
+same-shape, same-dtype CPU `Float64` or `Float32` tensors and returns a scalar
+tensor containing the population mean squared error.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

@@ -303,3 +303,87 @@ fn Value* prim_ml_softmax(Value*[] args, Env* env, Interp* interp) {
     keep_out = true;
     return out_value;
 }
+
+fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 2) return primitive_arity_raise(interp, "ml/mean-squared-error", "2 arguments: predictions targets", args.len);
+    if (!is_tensor(args[0]) || !is_tensor(args[1])) {
+        return tensor_type_raise(interp, "ml/mean-squared-error: expected Tensor predictions and Tensor targets");
+    }
+
+    TensorVal* predictions = null;
+    Value* predictions_value = null;
+    Value* err = tensor_expr_resolve_concrete_cpu(
+        args[0],
+        &predictions,
+        &predictions_value,
+        interp,
+        "ml/mean-squared-error: predictions tensor backing storage is missing",
+        "ml/mean-squared-error: backend kernel is not implemented for non-CPU tensors"
+    );
+    if (err != null) return err;
+    bool cleanup_predictions = predictions_value != args[0];
+    defer if (cleanup_predictions) {
+        boundary_cleanup_materialized_value(null, predictions_value, interp.current_scope);
+    }
+
+    TensorVal* targets = null;
+    Value* targets_value = null;
+    err = tensor_expr_resolve_concrete_cpu(
+        args[1],
+        &targets,
+        &targets_value,
+        interp,
+        "ml/mean-squared-error: targets tensor backing storage is missing",
+        "ml/mean-squared-error: backend kernel is not implemented for non-CPU tensors"
+    );
+    if (err != null) return err;
+    bool cleanup_targets = targets_value != args[1];
+    defer if (cleanup_targets) {
+        boundary_cleanup_materialized_value(null, targets_value, interp.current_scope);
+    }
+
+    if (!tensor_has_valid_storage(predictions) || !tensor_has_valid_storage(targets)) {
+        return tensor_runtime_raise(interp, "ml/mean-squared-error: tensor backing storage is missing");
+    }
+    if (!ml_reduction_supported_dtype(predictions.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: currently supports Float64 and Float32 tensors", null);
+    }
+    if (predictions.dtype != targets.dtype) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/mean-squared-error: tensor dtype mismatch", null);
+    }
+    if (predictions.element_count != targets.element_count || !tensor_same_shape(predictions, targets)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/mean-squared-error: predictions and targets must have the same shape", null);
+    }
+    if (predictions.element_count == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/mean-squared-error: cannot reduce empty tensors", null);
+    }
+
+    double total = 0.0;
+    for (usz i = 0; i < predictions.element_count; i++) {
+        double prediction = 0.0;
+        double target = 0.0;
+        if (!ml_reduction_read(predictions, i, &prediction) ||
+            !ml_reduction_read(targets, i, &target)) {
+            return tensor_runtime_raise(interp, "ml/mean-squared-error: tensor index offset is invalid");
+        }
+        double diff = prediction - target;
+        total += diff * diff;
+    }
+
+    double[1] result = { total / (double)predictions.element_count };
+    usz[1] scalar_shape = { 0 };
+    Value* out_value = make_tensor_uninitialized_checked(interp, predictions.dtype, scalar_shape[0:0], "ml/mean-squared-error: failed to allocate result tensor");
+    if (out_value == null || out_value.tag == ERROR) return out_value;
+    bool keep_out = false;
+    defer if (!keep_out) {
+        boundary_cleanup_materialized_value(null, out_value, interp.current_scope);
+    }
+    if (out_value.tag != TENSOR || !tensor_has_valid_storage(out_value.tensor_val)) {
+        return tensor_runtime_raise(interp, "ml/mean-squared-error: result tensor backing storage is missing");
+    }
+
+    err = ml_reduction_write_result(out_value.tensor_val, result[..], interp, "ml/mean-squared-error: Float32 result is not representable");
+    if (err != null) return err;
+    keep_out = true;
+    return out_value;
+}

@@ -65,6 +65,16 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (out (ml/softmax (Tensor Float32 [2 2] [0 0 1 1]) 1)) (and (= (String (dtype out)) \"Float32\") (= (ref (shape out) 0) 2) (= (ref (shape out) 1) 2) (< (abs (- (+ (ref out [0 0]) (ref out [0 1])) 1.0)) 0.0001) (< (abs (- (+ (ref out [1 0]) (ref out [1 1])) 1.0)) 0.0001)))", pass, fail);
     test_truthy(interp, "ml/softmax rejects axis lists",
         "(= (handle (ml/softmax (Tensor Float64 [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'type/arg-mismatch)", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error Float64 scalar loss",
+        "(let (out (ml/mean-squared-error (Tensor Float64 [3] [1 2 3]) (Tensor Float64 [3] [1 1 5]))) (and (= (rank out) 0) (< (abs (- (ref out []) (/ 5.0 3.0))) 0.000000001)))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error Float32 zero preserves dtype",
+        "(let (out (ml/mean-squared-error (Tensor Float32 [2] [1 2]) (Tensor Float32 [2] [1 2]))) (and (= (String (dtype out)) \"Float32\") (= (ref out []) (Float32 0.0))))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error realizes lazy CPU input",
+        "(let (out (ml/mean-squared-error (map + (Tensor Float64 [2] [1 3]) 1.0) (Tensor Float64 [2] [1 1]))) (< (abs (- (ref out []) 5.0)) 0.000000001))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error rejects shape and dtype mismatch",
+        "(and (= (handle (ml/mean-squared-error (Tensor Float64 [2] [1 2]) (Tensor Float64 [1 2] [1 2])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/mean-squared-error (Tensor Float64 [1] [1]) (Tensor Float32 [1] [1])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error rejects unsupported dtype and Vulkan fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/mean-squared-error (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float32) (= (handle (ml/mean-squared-error (to-device (Tensor Float32 [1] [1]) 'vulkan) (to-device (Tensor Float32 [1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "ml reductions reject duplicate and empty axes",
         "(and (= (handle (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) [0 0]) (raise msg (ref msg 'code))) 'tensor/axis-duplicate) (= (handle (ml/mean (Tensor Float64 [2] [1 2]) []) (raise msg (ref msg 'code))) 'tensor/shape-mismatch))", pass, fail);
     test_truthy(interp, "ml reductions reject unsupported dtype and Vulkan fallback",
