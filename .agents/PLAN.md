@@ -429,3 +429,26 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-020-006`: real axis `sum`, `mean`, and `variance`
     reductions before softmax/loss work.
+
+## Active Vulkan ML Axis Reduction Checkpoint
+
+Date: 2026-04-20
+
+- Audit finding:
+  - `ml/sum`, `ml/mean`, and `ml/variance` must be a real ML reduction layer,
+    not a softmax/loss shortcut through matrix `contract`.
+  - The current Vulkan helper layer lacks a one-input axis reducer that
+    preserves free axes; pretending `contract` is that substrate would repeat
+    the known-bad design.
+- Current approach:
+  - ship CPU `Float64`/`Float32` axis reductions with truthful capability bits;
+  - fail closed for CUDA/Vulkan until backend-specific axis kernels exist;
+  - keep `ML-VK-020-006-VK` open for the real Vulkan reduction substrate.
+- Validation path:
+  - `c3c build`
+  - focused advanced collections suite
+  - docs parity, whitespace, and file-size gates before commit/push.
+- Next checkpoint:
+  - use the landed CPU reducer for `ML-VK-020-007` softmax/loss CPU semantics,
+    or implement `ML-VK-020-006-VK` first if claiming Vulkan reduction
+    capability.

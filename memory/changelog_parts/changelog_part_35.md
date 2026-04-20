@@ -338,3 +338,18 @@ Source: `memory/CHANGELOG.md`
     GELU still needs a real `erf` route or a separate fail-closed contract.
   - Validation passed: `c3c build` and focused advanced collections suite
     `pass=1666 fail=0`.
+
+- 2026-04-20 02:12 CEST: ML axis reduction checkpoint:
+  - Added canonical `ml/sum`, `ml/mean`, and population `ml/variance`
+    primitives for CPU `Float64` and `Float32` tensors.
+  - The reducers accept an integer axis or array/proper-list axes, drop
+    reduced axes from the result shape, preserve dtype, and reject invalid
+    axes through Tensor diagnostics.
+  - Added `ml-reduction-float64` and `ml-reduction-float32` capability bits;
+    CPU reports true, CUDA/cuBLAS/Vulkan report false until real backend
+    axis-reduction kernels land.
+  - Preserved the negative constraint: do not treat matrix `contract` as a
+    softmax/loss reduction substrate. Vulkan axis reductions need a one-input
+    kernel path that preserves free axes.
+  - Validation passed: `c3c build` and focused advanced collections suite
+    `pass=1672 fail=0`.

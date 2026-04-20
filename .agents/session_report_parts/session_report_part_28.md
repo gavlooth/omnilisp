@@ -43,6 +43,50 @@ Source: `.agents/SESSION_REPORT.md`
   - CUDA/Vulkan fixed-width complex matrix kernels remain fail-closed.
 - Signature: Codex GPT-5.4
 
+## 2026-04-20 02:12 CEST - Vulkan ML Axis Reduction Checkpoint
+
+- Objective attempted:
+  - Continue strict ML-VK-020 audit, add TODO checkboxes for findings, and
+    implement the next reduction item before softmax/loss work.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_reduction.c3`
+  - `src/lisp/prim_tensor_backend_ops.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+  - `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- Code or configuration changes made:
+  - Added canonical `ml/sum`, `ml/mean`, and population `ml/variance`
+    primitives for CPU `Float64`/`Float32` tensors.
+  - Reductions accept an integer axis or array/proper-list axes, drop reduced
+    axes from the output shape, preserve dtype, and reject invalid axes with
+    Tensor diagnostics.
+  - Added `ml-reduction-float64` and `ml-reduction-float32` capability bits:
+    CPU true, CUDA/cuBLAS/Vulkan false.
+  - Added TODO/roadmap notes that Vulkan axis reductions remain a separate
+    substrate item and must not be faked through matrix `contract`.
+- Commands run:
+  - Fast subagent audits for reduction naming, CPU tensor implementation shape,
+    and Vulkan helper feasibility.
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- Key results:
+  - Build succeeded.
+  - Focused advanced collections suite passed with `pass=1672 fail=0`.
+- Invalidated assumptions or failed approaches:
+  - Do not assume Vulkan `contract` is a valid axis-reduction substrate. It is
+    a binary contraction helper and does not provide one-input reductions with
+    preserved free axes.
+- Current best recommendation / checkpoint:
+  - Continue with `ML-VK-020-007` CPU softmax/loss semantics using the real
+    reduction layer, or implement `ML-VK-020-006-VK` before claiming Vulkan
+    reduction support.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+  - Vulkan/CUDA `ml/sum`, `ml/mean`, and `ml/variance` intentionally fail
+    closed until backend kernels land.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-18 12:13 CEST - CUDA/Vulkan Fixed-Width Complex Storage Round-Trips
 
 - Objective attempted:

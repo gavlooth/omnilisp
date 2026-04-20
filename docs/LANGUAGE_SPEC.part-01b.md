@@ -335,7 +335,8 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-neural-relu-float32`, `ml-neural-sigmoid-float64`,
 `ml-neural-sigmoid-float32`, `ml-neural-tanh-float64`,
 `ml-neural-tanh-float32`, `ml-neural-gelu-float64`,
-`ml-neural-gelu-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-neural-gelu-float32`, `ml-reduction-float64`,
+`ml-reduction-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -358,7 +359,12 @@ validated ML activation route supports `Float32` Tensor inputs and preserves
 Tensor placement through composed `Tensor` map kernels. `ml/gelu` uses the
 standard tanh approximation; the `Float64` transcendental ML activation bits
 remain false and `Float64` inputs fail closed until their numerical policy is
-validated.
+validated. `ml/sum`, `ml/mean`, and population `ml/variance` are canonical
+`ml/*` axis reductions for CPU `Float64` and `Float32` tensors. They accept a
+single integer axis or an array/proper list of axes, remove reduced axes from
+the result shape, preserve dtype, reject duplicate/out-of-range axes with
+Tensor diagnostics, and fail closed for CUDA/Vulkan until backend reduction
+kernels land.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

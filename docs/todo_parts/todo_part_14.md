@@ -400,8 +400,25 @@ Source: `TODO.md`
         ML activations cannot silently run through generic math or CPU fallback.
       - [x] Preserve the negative constraint: exact GELU still needs a real
         `erf` backend route or a separate explicit fail-closed surface.
-    - [ ] `ML-VK-020-006` add axis `sum`, `mean`, and `variance` as a real
-      reduction layer instead of misusing matrix `contract`.
+    - [x] `ML-VK-020-006` add canonical `ml/sum`, `ml/mean`, and
+      population `ml/variance` as a real CPU reduction layer instead of
+      misusing matrix `contract`.
+      - [x] Freeze the public surface as `ml/sum`, `ml/mean`, and
+        `ml/variance`; reject `tensor/reduce/*` as an unsupported namespace.
+      - [x] Support integer axes and array/proper-list multi-axis reductions,
+        dropping reduced axes from the result shape and preserving Float64 or
+        Float32 dtype.
+      - [x] Add CPU oracle coverage, duplicate/empty-axis diagnostics,
+        unsupported-dtype checks, and Vulkan fail-closed regression coverage.
+      - [x] Add truthful `ml-reduction-float64` and `ml-reduction-float32`
+        capability bits: CPU true, CUDA/cuBLAS/Vulkan false.
+    - [ ] `ML-VK-020-006-VK` add Vulkan axis-reduction kernels for
+      `ml/sum`, `ml/mean`, and `ml/variance`.
+      - blocker: current Vulkan helpers have scalar/matrix special cases and
+        `contract`, but no one-input axis-reduction substrate with preserved
+        free axes.
+      - next step: implement a real Vulkan Float32 axis-sum kernel and build
+        mean/variance on that substrate without hidden CPU fallback.
     - [ ] `ML-VK-020-007` add stable `logsumexp`, `softmax`, cross-entropy,
       and mean-squared-error after the reduction layer lands.
   - scope:
@@ -412,6 +429,9 @@ Source: `TODO.md`
   - negative constraint:
     - do not reuse invalidated GLSL double-transcendental assumptions for
       Vulkan `Float64`; use validated approximations or fail closed.
+    - do not implement softmax/loss by abusing `contract`; use the real
+      `ml/sum`/`ml/mean`/`ml/variance` reduction layer and add Vulkan kernels
+      before claiming Vulkan reduction capability.
 
 - [ ] `ML-VK-030` add Vulkan convolution, pooling, and image-tensor kernels
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`

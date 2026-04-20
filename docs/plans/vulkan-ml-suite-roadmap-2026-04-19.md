@@ -147,8 +147,15 @@ reduction operations:
   policy as explicit fail-closed behavior. Float64 `ml/sigmoid`, `ml/tanh`,
   and `ml/gelu` capability bits stay false until validated approximations or
   backend transcendental kernels land.
-- `ML-VK-020-006`: add axis `sum`, `mean`, and `variance` as a real reduction
-  layer instead of reusing matrix `contract`.
+- `ML-VK-020-006`: shipped canonical CPU `ml/sum`, `ml/mean`, and population
+  `ml/variance` axis reductions as the real backend-neutral reduction surface.
+  They accept an integer axis or array/proper-list multi-axis reductions, drop
+  reduced axes, preserve Float64/Float32 dtype, report CPU-only
+  `ml-reduction-float64`/`ml-reduction-float32`, and fail closed for
+  CUDA/Vulkan instead of copying inputs to CPU.
+- `ML-VK-020-006-VK`: add real Vulkan axis-reduction kernels for
+  `ml/sum`/`ml/mean`/`ml/variance`. Do not reuse matrix `contract`; the Vulkan
+  helper layer needs a one-input reducer that preserves free axes.
 - `ML-VK-020-007`: add stable `logsumexp`, `softmax`, cross-entropy, and
   mean-squared-error after the reduction layer lands.
 
