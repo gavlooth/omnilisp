@@ -322,15 +322,20 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   revalidates the payload family, supported optimizer spec, and state container;
   optimizer tree/device compatibility remains enforced at `ml/optimizer-step`.
 - `ML-VK-060-007`: shipped Vulkan dense row-major `Float32` SGD optimizer
-  kernels for all-Vulkan parameter/gradient/velocity leaves. Stateless SGD,
-  initial momentum velocity creation, and momentum velocity consumption preserve
-  Vulkan placement and explicit state. `tensor-backends` exposes the narrow
-  `ml-optimizer-sgd-float32` capability while broad `ml-optimizer` remains
-  false.
+kernels for all-Vulkan parameter/gradient/velocity leaves. Stateless SGD,
+initial momentum velocity creation, and momentum velocity consumption preserve
+Vulkan placement and explicit state. `tensor-backends` exposes the narrow
+`ml-optimizer-sgd-float32` capability while broad `ml-optimizer` remains
+false.
+- `ML-VK-060-011`: shipped CUDA dense row-major `Float32` SGD optimizer
+  execution backed by existing CUDA elementwise map kernels, with all-CUDA
+  parameter/gradient/velocity leaves, optional momentum/velocity state,
+  mixed-device fail-closed diagnostics, and narrow `ml-optimizer-sgd-float32`
+  reporting when CUDA `Float32` map kernels are available.
 - `ML-VK-060-008`: shipped Vulkan dense row-major `Float32` Adam and AdamW
-  optimizer kernels for all-Vulkan parameter/gradient/first-moment/second-moment
-  leaves. Initial moment creation and moment-state continuation preserve Vulkan
-  placement, explicit step state, and Adam versus AdamW weight-decay semantics.
+optimizer kernels for all-Vulkan parameter/gradient/first-moment/second-moment
+leaves. Initial moment creation and moment-state continuation preserve Vulkan
+placement, explicit step state, and Adam versus AdamW weight-decay semantics.
   `tensor-backends` exposes `ml-optimizer-adam-float32` and
   `ml-optimizer-adamw-float32` while broad `ml-optimizer` remains false.
 - `ML-VK-060-009`: shipped Vulkan dense row-major `Float32` RMSProp optimizer
@@ -343,7 +348,8 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
   for all-vulkan `ml/clip-gradients` trees through `ml-clip-gradients-float32`,
   and optimizer-step `clip-norm` now clips before Vulkan updates through the same
   path.
-- CUDA optimizer kernels and training-step integration remain open.
+- Fused CUDA optimizer kernels beyond map-backed SGD and training-step
+  integration remain open.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.

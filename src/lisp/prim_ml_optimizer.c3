@@ -41,6 +41,11 @@ fn Value* ml_optimizer_parse_spec_number(Value* spec, Interp* interp, char[] key
 }
 
 fn Value* ml_optimizer_step_tensor(Value* params_arg, Value* grads_arg, Value* velocity_arg, double learning_rate, double momentum, double weight_decay, Interp* interp, Value** out_params, Value** out_velocity) {
+    bool cuda_attempted = false;
+    Value* cuda_err = ml_optimizer_step_tensor_try_cuda(params_arg, grads_arg, velocity_arg, learning_rate, momentum, weight_decay, interp, out_params, out_velocity, &cuda_attempted);
+    if (cuda_err != null) return cuda_err;
+    if (cuda_attempted) return null;
+
     bool vulkan_attempted = false;
     Value* vulkan_err = ml_optimizer_step_tensor_try_vulkan(params_arg, grads_arg, velocity_arg, learning_rate, momentum, weight_decay, interp, out_params, out_velocity, &vulkan_attempted);
     if (vulkan_err != null) return vulkan_err;

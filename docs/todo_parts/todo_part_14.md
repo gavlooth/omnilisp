@@ -637,8 +637,13 @@ Source: `TODO.md`
         through `ml/clip-gradients` for all-vulkan gradient trees, with
         `ml-clip-gradients-float32` capability reporting and `clip-norm`
         semantics before Vulkan optimizer updates.
+  - [x] `ML-VK-060-011` add CUDA dense row-major `Float32` `ml/optimizer-step` SGD execution
+        backed by existing CUDA elementwise map kernels, with momentum/velocity
+        state and mixed-device fail-closed checks.
+        - shipped contract: `tensor-backends` exposes `ml-optimizer-sgd-float32` on
+          CUDA when `Float32` elementwise map kernels are available; `ml-optimizer` remains false.
   - remaining scope:
-    - CUDA optimizer kernels;
+    - fused CUDA optimizer kernels beyond map-backed SGD;
     - `nn/train-step` integration after the remaining autograd surface is
       sufficient.
   - acceptance:

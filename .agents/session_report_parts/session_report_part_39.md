@@ -67,13 +67,102 @@ Invalidated assumptions or failed approaches worth preserving:
   until runtime and build-link surfaces are landed together.
 
 Unresolved issues:
-- CUDA optimizer kernels remain unimplemented.
+- At that checkpoint, CUDA optimizer kernels remained unimplemented; see the
+  later ML-VK-060-011 entry below for the map-backed CUDA SGD route that has
+  since landed.
 - `nn/train-step` remains deferred until the autograd surface is sufficient.
 - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
 
 Next actions:
-- Continue `ML-VK-060` with CUDA optimizer kernels or move to the next
-  `ML-VK-070` data-oriented model/layer library item.
+- Continue `ML-VK-060` with CUDA optimizer work or move to the next `ML-VK-070`
+  data-oriented model/layer library item.
 - Commit and push all non-artifact changes from this checkpoint.
+
+Signature: GPT-5 Codex
+
+## 2026-04-20 23:46 CEST - CUDA Dense Float32 SGD Optimizer Runtime
+
+Objective attempted:
+- Implement ML-VK-060-011: CUDA dense row-major `Float32` SGD
+  `ml/optimizer-step` support, keeping the broad `ml-optimizer` capability
+  false until the optimizer family is complete.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/prim_ml_optimizer.c3`
+- `src/lisp/prim_ml_optimizer_cuda.c3`
+- `src/lisp/prim_tensor_backend_ops.c3`
+- `src/entry_build_runtime_manifest_lisp_part3.c3`
+- `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+- `docs/LANGUAGE_SPEC.part-01b.md`
+- `docs/reference/03-collections.part-01.md`
+- `docs/reference/11-appendix-primitives.md`
+- `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- `docs/todo_parts/todo_part_14.md`
+- `.agents/PLAN.md`
+
+Code or configuration changes made:
+- Added `src/lisp/prim_ml_optimizer_cuda.c3` to route all-CUDA dense row-major
+  `Float32` SGD tensor leaves before Vulkan/CPU fallback.
+- The CUDA path composes existing CUDA elementwise map kernels for weight decay,
+  optional momentum/velocity update, learning-rate scaling, and parameter
+  subtraction; it is intentionally map-backed, not a fused optimizer PTX kernel.
+- Added runtime fail-closed checks for mixed placement, non-CUDA realized
+  storage, non-`Float32` CUDA tensors, shape mismatch, empty leaves, and missing
+  CUDA backing storage.
+- Registered the CUDA optimizer file in the AOT runtime manifest.
+- Updated `tensor-backends` so CUDA reports narrow
+  `ml-optimizer-sgd-float32` when CUDA `elementwise-map-float32` is available,
+  while broad `ml-optimizer` remains false.
+- Added CUDA-dense row-major Float32 `ml/optimizer-step` coverage to the
+  advanced collections test slice for stateless SGD, momentum velocity
+  initialization, momentum continuation, and mixed-device fail-closed diagnostics.
+- Updated language/spec and reference docs with the new slice contract, including
+  optional momentum/velocity state and fail-closed mixed-device behavior.
+- Updated roadmap and TODO entries to add `ML-VK-060-011` and split out CUDA
+  fused-kernel work from the now-shipped map-backed CUDA SGD route.
+
+Commands run:
+- `scripts/build_omni_chelpers.sh`
+- `c3c build`
+- Direct `build/main --eval` CUDA capability smoke.
+- Direct `build/main --eval` CUDA optimizer smoke for stateless SGD with weight
+  decay, momentum continuation, and mixed-device fail-closed diagnostics.
+- `git diff --check`
+- `scripts/check_file_size_gate.sh`
+- `scripts/check_primitive_docs_parity.sh`
+- `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+
+Key results:
+- Helper archive rebuild passed.
+- `c3c build` linked `build/main`.
+- CUDA capability smoke reported `{cuda-sgd-float32 true cuda-float32 true
+  cuda-map-float32 true cuda-ml-optimizer false}` on this machine.
+- Direct CUDA optimizer smoke returned `true`.
+- Focused advanced collections passed with `pass=1815 fail=0`.
+- Basic Lisp passed with `pass=160 fail=0`.
+- Compiler slice passed with `pass=281 fail=0`.
+- Primitive docs parity, Stage 3 source parity, code file-size gate, and
+  `git diff --check` passed.
+
+Invalidated assumptions or failed approaches worth preserving:
+- Do not describe ML-VK-060-011 as a fused CUDA optimizer kernel. The shipped
+  contract is CUDA execution for dense row-major `Float32` SGD, implemented by
+  composing existing CUDA elementwise map kernels.
+
+Unresolved issues:
+- Fused CUDA kernels for optimizer families beyond map-backed SGD remain open.
+- CUDA Adam/AdamW/RMSProp remain fail-closed.
+- `nn/train-step` integration remains out of scope until optimizer kernels and
+  autograd coverage are sufficient.
+- Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
+
+Next actions:
+- Continue `ML-VK-060` with fused CUDA Adam/AdamW/RMSProp or the next
+  data-oriented `nn/train-step` prerequisite after autograd readiness is
+  confirmed.
 
 Signature: GPT-5 Codex

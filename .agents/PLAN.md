@@ -764,6 +764,22 @@ Date: 2026-04-20 - Implemented Vulkan dense row-major `Float32`
 - Remaining optimizer work: CUDA optimizer kernels and `nn/train-step`
   integration after autograd is sufficient.
 
+## Active ML-VK-060-011 CUDA Float32 SGD Optimizer
+Date: 2026-04-20 - Added CUDA dense row-major `Float32` `ml/optimizer-step`
+SGD execution backed by the existing CUDA elementwise map kernels.
+
+- Added runtime dispatch and behavior coverage for stateless and optional
+  momentum `ml/optimizer-step` on all-CUDA `Float32` dense row-major
+  parameter/gradient trees, including state initialization/consumption.
+- Documented that `tensor-backends` exposes narrow `ml-optimizer-sgd-float32`
+  when CUDA elementwise `Float32` map kernels are available and that broad
+  `ml-optimizer` remains false.
+- Runtime route is not fused: it composes existing CUDA `map` kernels for
+  weight decay, momentum, learning-rate scaling, and parameter subtraction.
+- Remaining optimizer work: fused CUDA optimizer kernels beyond map-backed SGD,
+  CUDA Adam/AdamW/RMSProp, and `nn/train-step` integration after autograd is
+  sufficient.
+
 ## Active Custom Kernel Surface Decision
 Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.
 

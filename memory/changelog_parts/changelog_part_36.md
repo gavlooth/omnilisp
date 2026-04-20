@@ -338,3 +338,26 @@
     `pass=1811 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-011 CUDA Float32 SGD Optimizer
+
+- Implemented all-CUDA dense row-major `Float32` SGD support for
+  `ml/optimizer-step(spec parameters gradients state)`.
+  - Added `src/lisp/prim_ml_optimizer_cuda.c3` and routed CUDA tensor leaves
+    before Vulkan/CPU fallback in `ml_optimizer_step_tensor`.
+  - The CUDA route is map-backed: it composes existing CUDA elementwise map
+    kernels for optional weight decay, optional momentum/velocity state,
+    learning-rate scaling, and parameter subtraction.
+  - Parameter and velocity outputs preserve CUDA placement; mixed CPU/CUDA
+    leaves, non-`Float32` CUDA leaves, non-dense layouts, empty leaves, and
+    missing CUDA backing storage fail closed before hidden CPU fallback.
+  - `tensor-backends` now reports narrow `ml-optimizer-sgd-float32` support
+    when CUDA `elementwise-map-float32` is available. Broad `ml-optimizer`
+    remains false until the optimizer family is complete.
+  - Fused CUDA optimizer kernels beyond map-backed SGD, CUDA Adam/AdamW/RMSProp,
+    and `nn/train-step` integration remain open.
+  - Validation passed: `scripts/build_omni_chelpers.sh`, `c3c build`, direct
+    CUDA capability and SGD smokes, focused advanced collections
+    `pass=1815 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
+    `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
