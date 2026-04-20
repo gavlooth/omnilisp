@@ -58,6 +58,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("ml/softmax"), "aot::lookup_prim(\"ml/softmax\")");
     prim_hash_insert(st.intern("ml/cross-entropy"), "aot::lookup_prim(\"ml/cross-entropy\")");
     prim_hash_insert(st.intern("ml/mean-squared-error"), "aot::lookup_prim(\"ml/mean-squared-error\")");
+    prim_hash_insert(st.intern("ml/conv1d"), "aot::lookup_prim(\"ml/conv1d\")");
     prim_hash_insert(st.intern("contract"), "aot::lookup_prim(\"contract\")");
     prim_hash_insert(st.intern("matrix/transpose"), "aot::lookup_prim(\"matrix/transpose\")");
     prim_hash_insert(st.intern("matrix/transpose-view"), "aot::lookup_prim(\"matrix/transpose-view\")");

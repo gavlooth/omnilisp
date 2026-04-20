@@ -304,6 +304,23 @@ extern fn int omni_tensor_backend_vulkan_ml_cross_entropy_f32(
     usz* targets_strides,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_cross_entropy_f32");
+extern fn int omni_tensor_backend_vulkan_ml_conv1d_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    void* kernel_device_ptr,
+    usz kernel_byte_len,
+    usz batch,
+    usz in_channels,
+    usz width,
+    usz out_channels,
+    usz kernel_width,
+    usz stride,
+    usz padding,
+    usz dilation,
+    usz groups,
+    usz out_width,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_conv1d_f32");
 extern fn int omni_tensor_backend_vulkan_ml_softmax_f32(
     void* input_device_ptr,
     usz input_byte_len,

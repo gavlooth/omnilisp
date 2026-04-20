@@ -1,0 +1,56 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint batch;
+    uint in_channels;
+    uint width;
+    uint out_channels;
+    uint kernel_width;
+    uint stride;
+    uint padding;
+    uint dilation;
+    uint groups;
+    uint out_width;
+    uint in_channels_per_group;
+    uint out_channels_per_group;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer KernelBuffer {
+    float kernel_data[];
+};
+
+layout(set = 0, binding = 2, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    uint total = params.batch * params.out_channels * params.out_width;
+    if (index >= total) return;
+
+    uint out_pos = index % params.out_width;
+    uint out_channel = (index / params.out_width) % params.out_channels;
+    uint batch = index / (params.out_width * params.out_channels);
+    uint group = out_channel / params.out_channels_per_group;
+    uint input_channel_base = group * params.in_channels_per_group;
+
+    float sum = 0.0;
+    for (uint group_channel = 0u; group_channel < params.in_channels_per_group; group_channel++) {
+        uint input_channel = input_channel_base + group_channel;
+        for (uint kernel_pos = 0u; kernel_pos < params.kernel_width; kernel_pos++) {
+            int source_pos = int(out_pos * params.stride + kernel_pos * params.dilation) - int(params.padding);
+            if (source_pos < 0 || source_pos >= int(params.width)) continue;
+            uint input_index = (batch * params.in_channels + input_channel) * params.width + uint(source_pos);
+            uint kernel_index = (out_channel * params.in_channels_per_group + group_channel) * params.kernel_width + kernel_pos;
+            sum += input_data[input_index] * kernel_data[kernel_index];
+        }
+    }
+
+    output_data[index] = sum;
+}

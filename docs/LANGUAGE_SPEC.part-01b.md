@@ -336,7 +336,8 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-neural-sigmoid-float32`, `ml-neural-tanh-float64`,
 `ml-neural-tanh-float32`, `ml-neural-gelu-float64`,
 `ml-neural-gelu-float32`, `ml-reduction-float64`,
-`ml-reduction-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-reduction-float32`, `ml-conv1d-direct-float64`,
+`ml-conv1d-direct-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -377,6 +378,13 @@ targets axis)` accepts same-shape probability/one-hot target tensors, uses
 max-shifted log-softmax over the explicit class axis, returns the mean loss
 over non-class positions, and supports Vulkan `Float32` while keeping Vulkan
 `Float64` fail-closed until its exp/log policy is validated.
+`ml/conv1d(input kernel stride padding dilation groups)` is the first
+convolution surface: it requires dense row-major `input[batch channels width]`
+and `kernel[out-channels in-channels-per-group kernel-width]`, supports CPU
+`Float64`/`Float32`, and supports direct Vulkan `Float32` through the narrow
+`ml-conv1d-direct-float32` capability. Channels must divide evenly by `groups`,
+arbitrary views/strides and mixed CPU/Vulkan operands fail closed, and broad
+`ml-convolution` remains false until the 1D/2D/pooling family is complete.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

@@ -248,6 +248,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `ml/softmax` | 2 | Stable single-axis softmax for supported Tensor inputs; preserves input shape |
 | `ml/cross-entropy` | 3 | Scalar cross-entropy loss for same-shape probability/one-hot targets over an explicit class axis |
 | `ml/mean-squared-error` | 2 | Scalar mean-squared-error loss for same-shape supported Tensor inputs |
+| `ml/conv1d` | 6 | Dense NCW 1D convolution with OCK kernels, explicit stride/padding/dilation/groups, and supported Tensor inputs |
 | `gcd` | 2 | Greatest common divisor |
 | `lcm` | 2 | Least common multiple |
 

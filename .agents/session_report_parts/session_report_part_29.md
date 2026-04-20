@@ -59,6 +59,49 @@
   - Full bounded-container suite was not run.
 - Signature: Codex GPT-5.4
 
+## 2026-04-20 14:44 CEST - Vulkan ML Conv1d Checkpoint
+
+- Objective attempted:
+  - Continue the Vulkan ML suite after staged cross-entropy by implementing the
+    first `ML-VK-030` convolution slice.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_ml_conv.c3`
+  - `csrc/tensor_vulkan_helpers_ml_conv.c`
+  - `csrc/tensor_vulkan_ml_conv1d_f32.comp`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+- Code or configuration changes made:
+  - Added `ml/conv1d(input kernel stride padding dilation groups)` for dense
+    row-major NCW input and OCK kernel tensors.
+  - Added CPU `Float64`/`Float32` evaluation and direct Vulkan `Float32`
+    helper/shader execution with mixed-device fail-closed preflight.
+  - Added narrow `ml-conv1d-direct-float64`/`ml-conv1d-direct-float32`
+    capability keys while keeping broad `ml-convolution` false.
+  - Updated runtime/AOT primitive registration, helper build wiring, tests,
+    language/reference docs, TODO, roadmap, and changelog.
+- Commands run:
+  - Fast explorer audits for TODO/roadmap and conv1d integration risk.
+  - `glslangValidator -V csrc/tensor_vulkan_ml_conv1d_f32.comp`
+  - `spirv-val build/generated/tensor_vulkan_ml_conv1d_f32.spv`
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=build:/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `git diff --check`
+  - `scripts/check_file_size_gate.sh`
+- Key results:
+  - Focused advanced collections suite passed with `pass=1716 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - Primitive docs parity, whitespace diff check, and file-size gate passed.
+  - Vulkan Float64 conv1d remains intentionally fail-closed.
+- Current best recommendation / checkpoint:
+  - Continue `ML-VK-030` with 2D convolution or pooling next; do not flip broad
+    `ml-convolution` until the family contract is complete.
+- Unresolved issues:
+  - Full bounded-container suite was not run.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 14:07 CEST - Vulkan ML Float32 Cross Entropy Checkpoint
 
 - Objective attempted:

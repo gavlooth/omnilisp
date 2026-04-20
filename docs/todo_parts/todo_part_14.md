@@ -544,6 +544,10 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-030` add Vulkan convolution, pooling, and image-tensor kernels
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - [x] `ML-VK-030-001` ship explicit dense NCW `ml/conv1d` with OCK kernels,
+    CPU `Float64`/`Float32`, direct Vulkan `Float32`, grouped convolution,
+    narrow `ml-conv1d-direct-*` capability reporting, and mixed-device
+    fail-closed regressions. Broad `ml-convolution` remains false.
   - scope:
     - 1D and 2D convolution;
     - stride, padding, dilation, groups, and explicit batch/channel layout;

@@ -215,6 +215,11 @@ Add 1D and 2D convolution plus pooling for dense tensors:
 The first accepted layout must be explicit. Do not infer support for arbitrary
 views or transposed layouts from dense row-major Tensor support.
 
+`ML-VK-030-001` shipped `ml/conv1d(input kernel stride padding dilation groups)`
+for dense row-major NCW input and OCK kernels. CPU supports `Float64`/`Float32`;
+Vulkan supports direct dense `Float32` with no hidden CPU fallback. Broad
+`ml-convolution` remains false until 2D convolution and pooling land.
+
 ### `ML-VK-040` Normalization And Attention Primitives
 
 Add Vulkan kernels for normalization and attention building blocks:
