@@ -344,6 +344,24 @@ extern fn int omni_tensor_backend_vulkan_ml_conv2d_f32(
     usz out_width,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_conv2d_f32");
+extern fn int omni_tensor_backend_vulkan_ml_pool2d_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz batch,
+    usz channels,
+    usz height,
+    usz width,
+    usz kernel_height,
+    usz kernel_width,
+    usz stride_height,
+    usz stride_width,
+    usz padding_height,
+    usz padding_width,
+    usz out_height,
+    usz out_width,
+    usz op,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_pool2d_f32");
 extern fn int omni_tensor_backend_vulkan_ml_softmax_f32(
     void* input_device_ptr,
     usz input_byte_len,

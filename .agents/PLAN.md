@@ -493,12 +493,13 @@ Date: 2026-04-20
   - unsupported dtype coverage remains, while Vulkan Float64 `ml/logsumexp`
     and Vulkan Float64 `ml/softmax` stay backend-unsupported.
 - Next checkpoint:
-  - `ML-VK-030-001` and `ML-VK-030-002` are implemented for explicit dense
-    NCW `ml/conv1d` and NCHW `ml/conv2d` with CPU `Float64`/`Float32` and
-    direct Vulkan `Float32`. Next Vulkan ML work should continue `ML-VK-030`
-    with max/average pooling before broad `ml-convolution` can become true, or
-    separately validate the Float64 exp/log policy before widening stable
-    reductions.
+  - `ML-VK-030-001` through `ML-VK-030-003` are implemented for explicit dense
+    NCW `ml/conv1d`, NCHW `ml/conv2d`, and NCHW max/average pool2d with CPU
+    `Float64`/`Float32` and direct Vulkan `Float32`. Broad `ml-convolution` is
+    now true for CPU and for Vulkan when Float32 is available. Next Vulkan ML
+    work should start Omni Neural DataSpec `ML-VK-070-001` validation/schema
+    normalization, or separately validate the Float64 exp/log policy before
+    widening stable reductions.
   - Runtime validation for helper changes should put `build` before
     `/usr/local/lib` in `LD_LIBRARY_PATH`; otherwise local smokes can load a
     stale installed `libomni_chelpers`.

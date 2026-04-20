@@ -614,3 +614,20 @@ Source: `memory/CHANGELOG.md`
     placement, no hidden CPU fallback, and truthful capability reporting.
   - Added `docs/plans/omni-neural-dataspec-plan-2026-04-20.md` and TODO-backed
     `ML-VK-070-001` through `ML-VK-070-005` implementation slices.
+
+- 2026-04-20 16:47 CEST: Vulkan ML dense 2D pooling checkpoint:
+  - Closed `ML-VK-030-003` and the first explicit dense convolution/pooling
+    inference family.
+  - Added `ml/max-pool2d(input window-height window-width stride-height
+    stride-width padding-height padding-width)` and `ml/avg-pool2d` for dense
+    row-major NCHW input tensors.
+  - CPU supports `Float64` and `Float32`; Vulkan supports direct dense
+    `Float32` through a dedicated shader/helper and no hidden CPU fallback.
+  - Average pooling excludes padding from the divisor; all-padding windows are
+    rejected during validation.
+  - Added narrow `ml-pool2d-direct-float64`/`ml-pool2d-direct-float32`
+    capability keys. Broad `ml-convolution` is now true for CPU and direct
+    Vulkan `Float32` dense convolution/pooling.
+  - Validation passed: shader compile/`spirv-val`,
+    `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced
+    collections `pass=1726 fail=0`.

@@ -542,7 +542,7 @@ Source: `TODO.md`
       `ml/sum`/`ml/mean`/`ml/variance` reduction layer and add Vulkan kernels
       before claiming Vulkan reduction capability.
 
-- [ ] `ML-VK-030` add Vulkan convolution, pooling, and image-tensor kernels
+- [x] `ML-VK-030` add Vulkan convolution, pooling, and image-tensor kernels
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
   - [x] `ML-VK-030-001` ship explicit dense NCW `ml/conv1d` with OCK kernels,
     CPU `Float64`/`Float32`, direct Vulkan `Float32`, grouped convolution,
@@ -552,11 +552,17 @@ Source: `TODO.md`
     CPU `Float64`/`Float32`, direct Vulkan `Float32`, grouped convolution,
     narrow `ml-conv2d-direct-*` capability reporting, and mixed-device
     fail-closed regressions. Broad `ml-convolution` remains false.
+  - [x] `ML-VK-030-003` ship explicit dense NCHW `ml/max-pool2d` and
+    `ml/avg-pool2d`, CPU `Float64`/`Float32`, direct Vulkan `Float32`, narrow
+    `ml-pool2d-direct-*` capability reporting, and mixed-device fail-closed
+    regressions. Broad `ml-convolution` is true for CPU and direct Vulkan
+    `Float32` dense convolution/pooling.
   - scope:
     - 1D and 2D convolution;
     - stride, padding, dilation, groups, and explicit batch/channel layout;
     - max and average pooling;
-    - backward kernels only after the autograd contract lands.
+    - backward kernels are owned by `ML-VK-050` after the autograd contract
+      lands.
   - acceptance:
     - first supported layout is explicit and capability-gated;
     - arbitrary views/strides remain fail-closed until a separate ABI lands.

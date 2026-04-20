@@ -226,6 +226,15 @@ row-major NCHW input and OIHW kernels. CPU supports `Float64`/`Float32`;
 Vulkan supports direct dense `Float32` with no hidden CPU fallback. Broad
 `ml-convolution` remains false until max/average pooling lands.
 
+`ML-VK-030-003` shipped `ml/max-pool2d(input window-height window-width
+stride-height stride-width padding-height padding-width)` and `ml/avg-pool2d`
+for dense row-major NCHW input. CPU supports `Float64`/`Float32`; Vulkan
+supports direct dense `Float32` with no hidden CPU fallback. Average pooling
+excludes padding from the divisor and all-padding windows are rejected by
+validation. Broad `ml-convolution` is now true for CPU and for Vulkan when the
+direct Float32 dense convolution/pooling family is available; it still does not
+claim arbitrary views, transposed layouts, or backward kernels.
+
 ### `ML-VK-040` Normalization And Attention Primitives
 
 Add Vulkan kernels for normalization and attention building blocks:

@@ -1,0 +1,64 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform Params {
+    uint batch;
+    uint channels;
+    uint height;
+    uint width;
+    uint kernel_height;
+    uint kernel_width;
+    uint stride_height;
+    uint stride_width;
+    uint padding_height;
+    uint padding_width;
+    uint out_height;
+    uint out_width;
+    uint op;
+} params;
+
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1, std430) buffer OutputBuffer {
+    float output_data[];
+};
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    uint total = params.batch * params.channels * params.out_height * params.out_width;
+    if (index >= total) return;
+
+    uint out_x = index % params.out_width;
+    uint out_y = (index / params.out_width) % params.out_height;
+    uint channel = (index / (params.out_width * params.out_height)) % params.channels;
+    uint batch = index / (params.out_width * params.out_height * params.channels);
+
+    float acc = 0.0;
+    uint valid_count = 0u;
+    bool have_max = false;
+    for (uint kernel_y = 0u; kernel_y < params.kernel_height; kernel_y++) {
+        int source_y = int(out_y * params.stride_height + kernel_y) - int(params.padding_height);
+        if (source_y < 0 || source_y >= int(params.height)) continue;
+        for (uint kernel_x = 0u; kernel_x < params.kernel_width; kernel_x++) {
+            int source_x = int(out_x * params.stride_width + kernel_x) - int(params.padding_width);
+            if (source_x < 0 || source_x >= int(params.width)) continue;
+            uint input_index = ((batch * params.channels + channel) * params.height + uint(source_y)) * params.width + uint(source_x);
+            float value = input_data[input_index];
+            if (params.op == 1u) {
+                acc += value;
+                valid_count++;
+            } else if (!have_max || value > acc) {
+                acc = value;
+                have_max = true;
+            }
+        }
+    }
+
+    if (params.op == 1u) {
+        acc = valid_count == 0u ? 0.0 : acc / float(valid_count);
+    }
+    output_data[index] = acc;
+}

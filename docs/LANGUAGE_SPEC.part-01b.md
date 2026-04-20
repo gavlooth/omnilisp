@@ -338,7 +338,8 @@ ML suite capability keys `ml-linear`, `ml-linear-direct-float64`,
 `ml-neural-gelu-float32`, `ml-reduction-float64`,
 `ml-reduction-float32`, `ml-conv1d-direct-float64`,
 `ml-conv1d-direct-float32`, `ml-conv2d-direct-float64`,
-`ml-conv2d-direct-float32`, `ml-convolution`, `ml-neural-map`,
+`ml-conv2d-direct-float32`, `ml-pool2d-direct-float64`,
+`ml-pool2d-direct-float32`, `ml-convolution`, `ml-neural-map`,
 `ml-normalization`, `ml-attention`, `ml-autograd`, `ml-optimizer`, and
 `ml-graph-execution`; `ml-linear` is true for complete CPU dense `Float64` and
 `Float32` Tensor execution and remains false for GPU backends until the full
@@ -384,14 +385,21 @@ convolution surface: it requires dense row-major `input[batch channels width]`
 and `kernel[out-channels in-channels-per-group kernel-width]`, supports CPU
 `Float64`/`Float32`, and supports direct Vulkan `Float32` through the narrow
 `ml-conv1d-direct-float32` capability. Channels must divide evenly by `groups`,
-arbitrary views/strides and mixed CPU/Vulkan operands fail closed, and broad
-`ml-convolution` remains false until the 1D/2D/pooling family is complete.
+and arbitrary views/strides and mixed CPU/Vulkan operands fail closed.
 `ml/conv2d(input kernel stride-height stride-width padding-height padding-width
 dilation-height dilation-width groups)` extends the same explicit convolution
 contract to dense row-major NCHW input tensors and OIHW kernels. CPU supports
 `Float64`/`Float32`, Vulkan supports direct dense `Float32` through
 `ml-conv2d-direct-float32`, groups split input/output channels evenly, and
 mixed CPU/Vulkan or unsupported-layout operands fail closed before fallback.
+`ml/max-pool2d(input window-height window-width stride-height stride-width
+padding-height padding-width)` and `ml/avg-pool2d` complete the first explicit
+dense pooling surface for row-major NCHW tensors. Pooling excludes padding from
+average divisors, rejects all-padding windows, supports CPU `Float64`/`Float32`,
+and supports direct dense Vulkan `Float32` through `ml-pool2d-direct-float32`.
+The broad `ml-convolution` key is true for CPU and for Vulkan when the direct
+Float32 convolution/pooling family is available; it does not imply arbitrary
+views, transposed layouts, or backward kernels.
 `ml/linear/batched-reduce` is a public rank-`>=2` batched projection surface
 that preserves the same dtype and output-shape semantics as `ml/linear` while
 rejecting rank-1 inputs via `tensor/shape-mismatch` and rejecting mixed-device

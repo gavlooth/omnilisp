@@ -371,6 +371,24 @@ int omni_tensor_backend_vulkan_ml_conv2d_f32(
     size_t out_width,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_pool2d_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t batch,
+    size_t channels,
+    size_t height,
+    size_t width,
+    size_t kernel_height,
+    size_t kernel_width,
+    size_t stride_height,
+    size_t stride_width,
+    size_t padding_height,
+    size_t padding_width,
+    size_t out_height,
+    size_t out_width,
+    size_t op,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_ml_softmax_f32(
     const void* input_device_ptr,
     size_t input_byte_len,

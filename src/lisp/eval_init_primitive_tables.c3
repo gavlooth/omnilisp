@@ -101,6 +101,8 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "ml/mean-squared-error", &prim_ml_mean_squared_error, 2 },
         { "ml/conv1d", &prim_ml_conv1d, 6 },
         { "ml/conv2d", &prim_ml_conv2d, 9 },
+        { "ml/max-pool2d", &prim_ml_max_pool2d, 7 },
+        { "ml/avg-pool2d", &prim_ml_avg_pool2d, 7 },
         { "contract", &prim_contract, -1 },
         { "matrix/transpose", &prim_matrix_transpose, 1 },
         { "matrix/transpose-view", &prim_matrix_transpose_view, 1 },
