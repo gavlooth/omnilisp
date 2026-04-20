@@ -523,6 +523,14 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     double learning_rate = 0.0;
     Value* err = ml_optimizer_parse_spec_number(args[0], interp, "learning-rate", true, 0.0, &learning_rate);
     if (err != null) return err;
+    Value* effective_grads = args[2];
+    Value* clip_value = nn_dict_get(args[0], interp, "clip-norm");
+    if (clip_value != null) {
+        double clip_norm = 0.0;
+        if (!try_numeric_to_double(clip_value, &clip_norm) || !conversion_double_is_finite(clip_norm) || clip_norm < 0.0) return ml_optimizer_invalid(interp, "ml/optimizer-step: clip-norm must be a non-negative finite number");
+        err = ml_clip_gradient_tree(args[2], clip_norm, interp, &effective_grads);
+        if (err != null) return err;
+    }
 
     if (nn_symbol_is(kind, interp, "sgd")) {
         double momentum = 0.0;
@@ -535,7 +543,7 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
         Value* velocity = nn_dict_get(args[3], interp, "velocity");
         Value* updated_params = null;
         Value* next_velocity = null;
-        err = ml_optimizer_step_tree(args[1], args[2], velocity, learning_rate, momentum, weight_decay, interp, &updated_params, &next_velocity);
+        err = ml_optimizer_step_tree(args[1], effective_grads, velocity, learning_rate, momentum, weight_decay, interp, &updated_params, &next_velocity);
         if (err != null) return err;
         Value* next_state = nn_make_dict(interp, 4);
         if (next_state == null || next_state.tag == ERROR) return next_state;
@@ -579,7 +587,7 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
         Value* updated_params = null;
         Value* next_square = null;
         Value* next_velocity = null;
-        err = ml_rmsprop_step_tree(args[1], args[2], nn_dict_get(args[3], interp, "square-average"), nn_dict_get(args[3], interp, "velocity"), learning_rate, alpha, epsilon, momentum, weight_decay, interp, &updated_params, &next_square, &next_velocity);
+        err = ml_rmsprop_step_tree(args[1], effective_grads, nn_dict_get(args[3], interp, "square-average"), nn_dict_get(args[3], interp, "velocity"), learning_rate, alpha, epsilon, momentum, weight_decay, interp, &updated_params, &next_square, &next_velocity);
         if (err != null) return err;
         Value* next_state = nn_make_dict(interp, 8);
         if (next_state == null || next_state.tag == ERROR) return next_state;
@@ -635,7 +643,7 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     Value* updated_params = null;
     Value* next_first = null;
     Value* next_second = null;
-    err = ml_adam_step_tree(args[1], args[2], first, second, learning_rate, beta1, beta2, epsilon, weight_decay, is_adamw, next_step, interp, &updated_params, &next_first, &next_second);
+    err = ml_adam_step_tree(args[1], effective_grads, first, second, learning_rate, beta1, beta2, epsilon, weight_decay, is_adamw, next_step, interp, &updated_params, &next_first, &next_second);
     if (err != null) return err;
     Value* next_state = nn_make_dict(interp, 8);
     if (next_state == null || next_state.tag == ERROR) return next_state;

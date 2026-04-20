@@ -208,3 +208,20 @@
     collections `pass=1791 fail=0`, compiler slice `pass=278 fail=0`, basic
     Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-005 Gradient Clipping
+
+- Implemented CPU `ml/clip-gradients(gradients max-norm)`.
+  - The primitive computes global L2 norm across explicit array/dictionary
+    gradient trees and scales dense row-major `Float64`/`Float32` tensor leaves
+    to the requested max norm.
+  - `ml/optimizer-step(spec parameters gradients state)` now accepts optional
+    `clip-norm`; clipping is applied before SGD, Adam, AdamW, or RMSProp state
+    updates.
+  - `max-norm` and `clip-norm` must be non-negative finite numbers.
+  - CUDA/Vulkan clipping and optimizer kernels stay fail-closed before CPU
+    fallback; broad `ml-optimizer` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1795 fail=0`, compiler slice `pass=279 fail=0`, basic
+    Lisp `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

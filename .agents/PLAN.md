@@ -707,3 +707,6 @@ Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for Adam and AdamW explic
 
 ## Active ML-VK-060-004 RMSProp Optimizer Step Checkpoint
 Date: 2026-04-20 - Implemented CPU `ml/optimizer-step` for RMSProp explicit square-average and optional velocity state; validation passed.
+
+## Active ML-VK-060-005 Gradient Clipping Checkpoint
+Date: 2026-04-20 - Implemented CPU `ml/clip-gradients` and optimizer `clip-norm` max-norm clipping; validation passed.

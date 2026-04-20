@@ -78,6 +78,7 @@ fn void run_advanced_collections_generic_ops_tests(Interp* interp, int* pass, in
     run_advanced_collections_generic_ops_part6(interp, pass, fail);
     run_advanced_collections_generic_ops_part7(interp, pass, fail);
     run_advanced_collections_generic_ops_part8(interp, pass, fail);
+    run_advanced_collections_generic_ops_part9(interp, pass, fail);
 }
 
 fn void run_advanced_module_qualified_cached_tests(Interp* interp, int* pass, int* fail) {

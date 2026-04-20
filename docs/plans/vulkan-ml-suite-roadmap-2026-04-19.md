@@ -311,7 +311,10 @@ Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
 - `ML-VK-060-004`: shipped CPU `ml/optimizer-step(spec parameters gradients
   state)` for `rmsprop` specs with explicit square-average, optional momentum
   velocity, and step state. CUDA/Vulkan optimizer kernels stay fail-closed.
-- gradient clipping;
+- `ML-VK-060-005`: shipped CPU `ml/clip-gradients(gradients max-norm)` and
+  optional `clip-norm` on `ml/optimizer-step` specs. Gradients are max-norm
+  clipped before optimizer state updates; CUDA/Vulkan clipping and optimizer
+  kernels stay fail-closed.
 - parameter state initialization, checkpoint, and restore.
 
 Optimizer state must keep dtype/device placement explicit and must reject

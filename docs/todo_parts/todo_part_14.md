@@ -620,8 +620,8 @@ Source: `TODO.md`
   - [x] `ML-VK-060-002` add CPU `ml/optimizer-step` for SGD momentum state.
   - [x] `ML-VK-060-003` add CPU `ml/optimizer-step` for Adam and AdamW specs.
   - [x] `ML-VK-060-004` add CPU `ml/optimizer-step` for RMSProp specs.
+  - [x] `ML-VK-060-005` add CPU `ml/clip-gradients` and optimizer `clip-norm`.
   - remaining scope:
-    - gradient clipping;
     - optimizer state checkpoint and restore.
   - acceptance:
     - optimizer state keeps dtype/device placement explicit;
