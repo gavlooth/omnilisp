@@ -665,3 +665,25 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-050` with tape-backed composition or add explicit backward
     rules for activations and softmax/loss before exposing `nn/grad`.
+
+## Completed ML-VK-050-002 Activation Gradient Checkpoint
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - extended `ml/grad` with `linear-activation-mean-squared-error`;
+  - preserved the same data-oriented spec shape as the linear MSE gradient path;
+  - added `relu` backward for CPU `Float64`/`Float32`;
+  - added `sigmoid`, `tanh`, and tanh-approximation `gelu` backward for CPU
+    `Float32`, matching the existing forward activation dtype policy;
+  - kept CUDA/Vulkan backward fail-closed before CPU fallback and did not flip
+    broad `ml-autograd`.
+- Validation path:
+  - run `c3c build`;
+  - run direct CPU `--eval` activation-gradient smokes;
+  - run focused advanced collections and basic Lisp slices;
+  - run primitive docs parity, Stage 3 source parity, file-size gate, and
+    `git diff --check`.
+- Next checkpoint:
+  - continue `ML-VK-050` with softmax/loss backward rules or tape-backed
+    composition before exposing `nn/grad` or `nn/train-step`.

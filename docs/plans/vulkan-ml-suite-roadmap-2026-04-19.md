@@ -272,6 +272,10 @@ device semantics:
   returns loss, forward output, input gradient, and weights/bias gradients as
   ordinary data, and keeps Vulkan backward fail-closed until real Vulkan
   gradient kernels exist.
+- `ML-VK-050-002`: shipped `linear-activation-mean-squared-error` for `ml/grad`.
+  It supports CPU dense row-major linear-plus-activation MSE gradients, `relu`
+  backward for `Float64`/`Float32`, and `sigmoid`/`tanh`/tanh-approximation
+  `gelu` backward for `Float32`. CUDA/Vulkan backward remains fail-closed.
 - gradient tape representation and lifetime rules;
 - Tensor gradient accumulation on CPU/Vulkan without hidden transfers;
 - backward definitions for map, contract, matrix, convolution, normalization,

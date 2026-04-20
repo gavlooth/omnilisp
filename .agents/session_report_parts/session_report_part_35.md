@@ -315,3 +315,44 @@
   - Continue `ML-VK-050` with tape-backed composition or explicit activation
     and softmax/loss backward rules before exposing the `nn/*` training facade.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 - ML-VK-050-002 Activation Gradient Primitive
+
+- Objective attempted:
+  - Continue `ML-VK-050` by adding a real activation-backed training gradient
+    spec instead of exposing a broad autograd capability.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ml/grad`, advanced collection tests, public docs, TODO, roadmap, and
+    coordination artifacts.
+- Code or configuration changes made:
+  - Added `linear-activation-mean-squared-error` to `ml/grad`.
+  - The spec composes dense linear output, one activation, and MSE loss.
+  - `relu` backward supports CPU `Float64` and `Float32`; `sigmoid`, `tanh`,
+    and tanh-approximation `gelu` backward support CPU `Float32`.
+  - Return data now includes `source`, `activation`, scalar `loss`, forward
+    `output`, `input-gradient`, and weights/bias `parameter-gradients`.
+  - CUDA/Vulkan backward paths still fail closed before CPU fallback; broad
+    `ml-autograd` remains false.
+- Commands run:
+  - `c3c build`
+  - direct CPU `--eval` activation-gradient smokes with
+    `LD_LIBRARY_PATH=build:/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1775 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - C3 build, primitive docs parity, Stage 3 source parity, file-size gate, and
+    diff whitespace checks passed.
+- Unresolved issues:
+  - Tape-backed reverse-mode composition, Vulkan backward kernels, optimizers,
+    and `nn/grad`/`nn/train-step` remain open.
+- Next actions:
+  - Continue `ML-VK-050` with softmax/loss backward rules or tape-backed
+    composition before exposing `nn/grad`.
+- Signature: Codex GPT-5.4

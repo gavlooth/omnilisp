@@ -600,6 +600,9 @@ Source: `TODO.md`
     - ships CPU `Float64`/`Float32` `linear-mean-squared-error` gradients.
     - returns loss, output, input gradient, and weights/bias gradients as data.
     - keeps Vulkan backward fail-closed until real Vulkan gradient kernels land.
+  - [x] `ML-VK-050-002` add CPU `linear-activation-mean-squared-error` gradients.
+    - ships `relu` backward for `Float64`/`Float32` and `sigmoid`/`tanh`/`gelu` backward for `Float32`.
+    - keeps CUDA/Vulkan backward fail-closed until real device kernels land.
   - scope:
     - gradient tape representation and lifetime rules;
     - gradient accumulation on CPU/Vulkan without hidden transfers;

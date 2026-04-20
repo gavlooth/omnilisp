@@ -107,3 +107,17 @@
   - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
     collections `pass=1772 fail=0`, basic Lisp `pass=160 fail=0`, primitive
     docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-050-002 Activation Gradient Primitive
+
+- Implemented `linear-activation-mean-squared-error` as the second `ml/grad`
+  data spec.
+  - CPU dense row-major gradients now cover linear-plus-activation MSE.
+  - `relu` backward supports `Float64`/`Float32`.
+  - `sigmoid`, `tanh`, and tanh-approximation `gelu` backward support `Float32`,
+    matching the existing forward activation dtype policy.
+  - CUDA/Vulkan backward stays fail-closed before CPU fallback; broad
+    `ml-autograd` remains false.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1775 fail=0`, basic Lisp `pass=160 fail=0`, primitive
+    docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.

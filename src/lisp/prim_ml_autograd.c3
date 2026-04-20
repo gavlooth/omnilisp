@@ -2,6 +2,9 @@ module lisp;
 
 import std::core::mem;
 
+extern fn double ml_grad_c_exp(double x) @extern("exp");
+extern fn double ml_grad_c_tanh(double x) @extern("tanh");
+
 fn Value* ml_grad_invalid(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", message, null);
 }
@@ -37,7 +40,51 @@ fn Value* ml_grad_make_tensor(Interp* interp, TensorDType dtype, usz[] shape, ch
     return out;
 }
 
-fn Value* ml_grad_linear_mse(Value* spec, Interp* interp) {
+fn bool ml_grad_activation_supported(SymbolId activation, Interp* interp) @inline {
+    return nn_symbol_name_is(activation, interp, "relu") ||
+        nn_symbol_name_is(activation, interp, "sigmoid") ||
+        nn_symbol_name_is(activation, interp, "tanh") ||
+        nn_symbol_name_is(activation, interp, "gelu");
+}
+
+fn bool ml_grad_activation_accepts_dtype(SymbolId activation, TensorDType dtype, Interp* interp) @inline {
+    if (nn_symbol_name_is(activation, interp, "relu")) return dtype == TENSOR_DTYPE_DOUBLE || dtype == TENSOR_DTYPE_FLOAT32;
+    return dtype == TENSOR_DTYPE_FLOAT32;
+}
+
+fn bool ml_grad_activation_eval(SymbolId activation, Interp* interp, double x, double* out_value, double* out_derivative) {
+    if (out_value == null || out_derivative == null) return false;
+    if (nn_symbol_name_is(activation, interp, "relu")) {
+        *out_value = x > 0.0 ? x : 0.0;
+        *out_derivative = x > 0.0 ? 1.0 : 0.0;
+        return true;
+    }
+    if (nn_symbol_name_is(activation, interp, "sigmoid")) {
+        double y = 1.0 / (1.0 + ml_grad_c_exp(-x));
+        *out_value = y;
+        *out_derivative = y * (1.0 - y);
+        return true;
+    }
+    if (nn_symbol_name_is(activation, interp, "tanh")) {
+        double y = ml_grad_c_tanh(x);
+        *out_value = y;
+        *out_derivative = 1.0 - (y * y);
+        return true;
+    }
+    if (nn_symbol_name_is(activation, interp, "gelu")) {
+        double c = 0.7978845608028654;
+        double k = 0.044715;
+        double x2 = x * x;
+        double inner = c * (x + (k * x * x2));
+        double t = ml_grad_c_tanh(inner);
+        *out_value = 0.5 * x * (1.0 + t);
+        *out_derivative = (0.5 * (1.0 + t)) + (0.5 * x * (1.0 - (t * t)) * c * (1.0 + (3.0 * k * x2)));
+        return true;
+    }
+    return false;
+}
+
+fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) {
     Value* input_arg = ml_grad_required_tensor(spec, interp, "input");
     if (input_arg == null || input_arg.tag == ERROR) return input_arg;
     Value* weights_arg = ml_grad_required_tensor(spec, interp, "weights");
@@ -47,6 +94,13 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp) {
     Value* bias_arg = nn_dict_get(spec, interp, "bias");
     bool has_bias = bias_arg != null && !is_nil(bias_arg);
     if (has_bias && !is_tensor(bias_arg)) return ml_grad_invalid(interp, "ml/grad: bias must be a Tensor when present");
+    SymbolId activation = INVALID_SYMBOL_ID;
+    if (with_activation) {
+        Value* activation_arg = nn_dict_get(spec, interp, "activation");
+        if (activation_arg == null || activation_arg.tag != SYMBOL) return ml_grad_invalid(interp, "ml/grad: activation spec requires an activation symbol");
+        activation = activation_arg.sym_val;
+        if (!ml_grad_activation_supported(activation, interp)) return ml_grad_invalid(interp, "ml/grad: unsupported activation backward rule");
+    }
 
     TensorVal* input = null;
     TensorVal* weights = null;
@@ -81,6 +135,9 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp) {
     }
     if (targets.dtype != input.dtype) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/grad: target dtype is incompatible", null);
+    }
+    if (with_activation && !ml_grad_activation_accepts_dtype(activation, input.dtype, interp)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: activation backward dtype is not implemented", null);
     }
     if (targets.rank != input.rank || targets.shape[targets.rank - 1] != out_features) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: target shape must match linear output shape", null);
@@ -138,10 +195,15 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp) {
             }
             double target_value = 0.0;
             if (!ml_reduction_read(targets, output_base + out_axis, &target_value)) return tensor_runtime_raise(interp, "ml/grad: target tensor index is invalid");
-            output_values[output_base + out_axis] = sum;
-            double diff = sum - target_value;
+            double output_value_read = sum;
+            double activation_derivative = 1.0;
+            if (with_activation && !ml_grad_activation_eval(activation, interp, sum, &output_value_read, &activation_derivative)) {
+                return ml_grad_invalid(interp, "ml/grad: unsupported activation backward rule");
+            }
+            output_values[output_base + out_axis] = output_value_read;
+            double diff = output_value_read - target_value;
             loss += diff * diff;
-            double upstream = 2.0 * diff * inv_count;
+            double upstream = 2.0 * diff * inv_count * activation_derivative;
             bias_grad_values[out_axis] += upstream;
             for (usz in_axis = 0; in_axis < in_features; in_axis++) {
                 double input_value_read = 0.0;
@@ -192,8 +254,12 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp) {
     if (result == null || result.tag == ERROR) return result;
     err = nn_dict_set_symbol(result, interp, "kind", "gradients");
     if (err != null) return err;
-    err = nn_dict_set_symbol(result, interp, "source", "linear-mean-squared-error");
+    err = nn_dict_set_symbol(result, interp, "source", with_activation ? "linear-activation-mean-squared-error" : "linear-mean-squared-error");
     if (err != null) return err;
+    if (with_activation) {
+        err = nn_dict_set(result, interp, "activation", make_symbol(interp, activation));
+        if (err != null) return err;
+    }
     err = nn_dict_set(result, interp, "loss", loss_value);
     if (err != null) return err;
     err = nn_dict_set(result, interp, "output", output_value);
@@ -211,6 +277,7 @@ fn Value* prim_ml_grad(Value*[] args, Env* env, Interp* interp) {
         return primitive_arg_type_raise(interp, "ml/grad", 0, "Dictionary gradient spec", args[0]);
     }
     Value* kind = nn_dict_get(args[0], interp, "kind");
-    if (nn_symbol_is(kind, interp, "linear-mean-squared-error")) return ml_grad_linear_mse(args[0], interp);
+    if (nn_symbol_is(kind, interp, "linear-mean-squared-error")) return ml_grad_linear_mse(args[0], interp, false);
+    if (nn_symbol_is(kind, interp, "linear-activation-mean-squared-error")) return ml_grad_linear_mse(args[0], interp, true);
     return ml_grad_invalid(interp, "ml/grad: unsupported gradient spec kind");
 }
