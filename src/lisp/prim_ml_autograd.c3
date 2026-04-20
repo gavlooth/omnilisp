@@ -41,6 +41,128 @@ fn Value* ml_grad_make_tensor(Interp* interp, TensorDType dtype, usz[] shape, ch
     return out;
 }
 
+fn Value* ml_sgd_invalid(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", message, null);
+}
+
+fn Value* ml_sgd_shape_mismatch(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", message, null);
+}
+
+fn bool ml_sgd_tensor_shapes_match(TensorVal* left, TensorVal* right) {
+    if (left == null || right == null || left.rank != right.rank || left.element_count != right.element_count) return false;
+    for (usz axis = 0; axis < left.rank; axis++) {
+        if (left.shape[axis] != right.shape[axis]) return false;
+    }
+    return true;
+}
+
+fn Value* ml_sgd_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
+    if (ml_grad_touches_vulkan(value)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/sgd-step: Vulkan optimizer kernels are not implemented", null);
+    }
+    return tensor_expr_resolve_concrete_cpu(
+        value,
+        out_tensor,
+        out_value,
+        interp,
+        label,
+        "ml/sgd-step: backend kernel is not implemented for non-CPU tensors"
+    );
+}
+
+fn Value* ml_sgd_step_tensor(Value* params_arg, Value* grads_arg, double learning_rate, Interp* interp) {
+    TensorVal* params = null;
+    TensorVal* grads = null;
+    Value* params_value = null;
+    Value* grads_value = null;
+    Value* err = ml_sgd_resolve_cpu(params_arg, &params, &params_value, interp, "ml/sgd-step: parameter tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
+    err = ml_sgd_resolve_cpu(grads_arg, &grads, &grads_value, interp, "ml/sgd-step: gradient tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
+
+    if (params.dtype != grads.dtype) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/sgd-step: parameter and gradient dtypes must match", null);
+    }
+    if (!ml_reduction_supported_dtype(params.dtype)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/sgd-step: only Float64 and Float32 tensors are supported", null);
+    }
+    if (!ml_sgd_tensor_shapes_match(params, grads)) return ml_sgd_shape_mismatch(interp, "ml/sgd-step: parameter and gradient shapes must match");
+    if (params.element_count == 0) return ml_sgd_shape_mismatch(interp, "ml/sgd-step: empty parameter tensors are not supported");
+    if (!tensor_dense_row_major(params) || !tensor_dense_row_major(grads)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/sgd-step: currently supports dense row-major tensors", null);
+    }
+    if (params.element_count > usz.max / double.sizeof) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/sgd-step: parameter tensor is too large", null);
+    }
+
+    double* values = (double*)mem::malloc(params.element_count * double.sizeof);
+    if (values == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/sgd-step: failed to allocate update buffer", null);
+    }
+    defer mem::free(values);
+    for (usz i = 0; i < params.element_count; i++) {
+        double param_value = 0.0;
+        double grad_value = 0.0;
+        if (!ml_reduction_read(params, i, &param_value) || !ml_reduction_read(grads, i, &grad_value)) {
+            return tensor_runtime_raise(interp, "ml/sgd-step: tensor index is invalid");
+        }
+        values[i] = param_value - (learning_rate * grad_value);
+    }
+
+    Value* out = ml_grad_make_tensor(interp, params.dtype, params.shape[0:params.rank], "ml/sgd-step: failed to allocate updated tensor");
+    if (out == null || out.tag == ERROR) return out;
+    err = ml_reduction_write_result(out.tensor_val, values, interp, "ml/sgd-step: Float32 parameter update is not representable");
+    if (err != null) return err;
+    return out;
+}
+
+fn Value* ml_sgd_step_array(Value* params, Value* grads, double learning_rate, Interp* interp) {
+    if (grads == null || grads.tag != ARRAY || grads.array_val == null) return ml_sgd_invalid(interp, "ml/sgd-step: parameter and gradient trees must have matching structure");
+    if (params.array_val.length != grads.array_val.length) return ml_sgd_shape_mismatch(interp, "ml/sgd-step: parameter and gradient arrays must have the same length");
+    Value* out = make_array_checked(interp, params.array_val.length, "ml/sgd-step: out of memory");
+    if (out == null || out.tag == ERROR) return out;
+    for (usz i = 0; i < params.array_val.length; i++) {
+        Value* updated = ml_sgd_step_tree(params.array_val.items[i], grads.array_val.items[i], learning_rate, interp);
+        if (updated == null || updated.tag == ERROR) return updated;
+        out.array_val.items[i] = updated;
+        out.array_val.length++;
+    }
+    return out;
+}
+
+fn Value* ml_sgd_step_dict(Value* params, Value* grads, double learning_rate, Interp* interp) {
+    if (grads == null || grads.tag != HASHMAP || grads.hashmap_val == null) return ml_sgd_invalid(interp, "ml/sgd-step: parameter and gradient trees must have matching structure");
+    if (params.hashmap_val.count != grads.hashmap_val.count) return ml_sgd_shape_mismatch(interp, "ml/sgd-step: parameter and gradient dictionaries must have the same keys");
+    Value* out = nn_make_dict(interp, params.hashmap_val.count == 0 ? 2 : params.hashmap_val.count * 2);
+    if (out == null || out.tag == ERROR) return out;
+    for (uint i = 0; i < params.hashmap_val.capacity; i++) {
+        HashEntry* entry = &params.hashmap_val.entries[i];
+        if (entry.key == null) continue;
+        Value* grad_leaf = hashmap_get(grads.hashmap_val, entry.key);
+        if (grad_leaf == null) return ml_sgd_shape_mismatch(interp, "ml/sgd-step: parameter and gradient dictionaries must have the same keys");
+        Value* updated = ml_sgd_step_tree(entry.value, grad_leaf, learning_rate, interp);
+        if (updated == null || updated.tag == ERROR) return updated;
+        if (!hashmap_set_checked(out.hashmap_val, entry.key, updated, interp)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/sgd-step: failed to allocate result dictionary", null);
+        }
+    }
+    return out;
+}
+
+fn Value* ml_sgd_step_tree(Value* params, Value* grads, double learning_rate, Interp* interp) {
+    if (params == null || grads == null) return ml_sgd_invalid(interp, "ml/sgd-step: parameter and gradient trees are required");
+    if (is_tensor(params)) {
+        if (!is_tensor(grads)) return ml_sgd_invalid(interp, "ml/sgd-step: gradient leaves must be tensors");
+        return ml_sgd_step_tensor(params, grads, learning_rate, interp);
+    }
+    if (params.tag == ARRAY && params.array_val != null) return ml_sgd_step_array(params, grads, learning_rate, interp);
+    if (params.tag == HASHMAP && params.hashmap_val != null) return ml_sgd_step_dict(params, grads, learning_rate, interp);
+    return ml_sgd_invalid(interp, "ml/sgd-step: parameter tree leaves must be tensors");
+}
+
 fn bool ml_grad_activation_supported(SymbolId activation, Interp* interp) @inline {
     return nn_symbol_name_is(activation, interp, "relu") ||
         nn_symbol_name_is(activation, interp, "sigmoid") ||
@@ -484,4 +606,13 @@ fn Value* prim_ml_grad(Value*[] args, Env* env, Interp* interp) {
     if (nn_symbol_is(kind, interp, "linear-activation-mean-squared-error")) return ml_grad_linear_mse(args[0], interp, true);
     if (nn_symbol_is(kind, interp, "linear-softmax-cross-entropy")) return ml_grad_linear_softmax_cross_entropy(args[0], interp);
     return ml_grad_invalid(interp, "ml/grad: unsupported gradient spec kind");
+}
+
+fn Value* prim_ml_sgd_step(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 3) return primitive_arity_raise(interp, "ml/sgd-step", "3 arguments: parameters gradients learning-rate", args.len);
+    double learning_rate = 0.0;
+    if (!try_numeric_to_double(args[2], &learning_rate) || !conversion_double_is_finite(learning_rate) || learning_rate < 0.0) {
+        return primitive_arg_type_raise(interp, "ml/sgd-step", 2, "non-negative finite number", args[2]);
+    }
+    return ml_sgd_step_tree(args[0], args[1], learning_rate, interp);
 }

@@ -696,3 +696,5 @@ Date: 2026-04-20
 - Device semantics: CUDA/Vulkan backward remains fail-closed; `ml-autograd` false.
 - Validation: build, direct smokes, focused suites, parity, source, size, and diff gates passed.
 - Next checkpoint: tape-backed composition or optimizer prerequisites before `nn/grad`.
+## Active ML-VK-060-001 SGD Step Checkpoint
+Date: 2026-04-20 - Implemented CPU `ml/sgd-step` for data-oriented parameter trees; validation passed.

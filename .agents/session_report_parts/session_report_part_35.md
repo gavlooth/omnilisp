@@ -257,6 +257,7 @@
   - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
   - `scripts/check_primitive_docs_parity.sh`
   - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `bash -n scripts/check_file_size_gate.sh`
   - `scripts/check_file_size_gate.sh`
   - `git diff --check`
 - Key results:
@@ -395,4 +396,46 @@
 - Next actions:
   - Continue `ML-VK-050` with tape-backed composition or optimizer prerequisites
     before exposing `nn/grad`.
+- Signature: Codex GPT-5.4
+
+## 2026-04-20 - ML-VK-060-001 CPU SGD Step Primitive
+
+- Objective attempted:
+  - Start `ML-VK-060` with a data-oriented optimizer primitive that composes
+    with existing `nn/init` parameter trees and `ml/grad` parameter gradients.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `ml/sgd-step`, advanced collection tests, public docs, TODO, roadmap, and
+    coordination artifacts.
+- Code or configuration changes made:
+  - Added `ml/sgd-step(parameters gradients learning-rate)`.
+  - The primitive recurses through matching arrays and dictionaries and returns
+    fresh parameter trees.
+  - CPU dense row-major `Float64`/`Float32` tensor leaves are updated with
+    `param - learning-rate * gradient`.
+  - CUDA/Vulkan optimizer kernels remain fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+  - Applied the owner rule update that the hard 700 LOC gate now applies only
+    to code files, not docs or operational artifacts.
+- Commands run:
+  - `c3c build`
+  - direct CPU `--eval` SGD dictionary/tree/diagnostic smokes with
+    `LD_LIBRARY_PATH=/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1781 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - C3 build, direct smokes, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and diff whitespace checks passed.
+- Unresolved issues:
+  - Momentum, Adam/AdamW, RMSProp, clipping, weight decay, optimizer state,
+    Vulkan kernels, and train-step integration remain open.
+- Next actions:
+  - Continue `ML-VK-060` with explicit optimizer state specs or Vulkan
+    parameter-update kernels.
 - Signature: Codex GPT-5.4

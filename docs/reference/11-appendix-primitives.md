@@ -241,6 +241,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
 | `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
 | `ml/grad` | 1 | Data-oriented gradient spec evaluator; currently supports CPU linear MSE, linear-activation MSE, and linear softmax cross-entropy gradients |
+| `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU Float64/Float32 Tensor leaves: parameters, gradients, learning-rate |
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/mean` | 2 | Axis mean reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/variance` | 2 | Axis population-variance reduction for supported Tensor inputs; drops reduced axes from the result shape |

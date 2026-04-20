@@ -298,6 +298,11 @@ If asked to audit:
 ## Refactoring
 
 - File slitting
+  - The hard 700 LOC split/gate rule applies only to code files from
+    2026-04-20 onward.
+  - Documentation, plans, changelogs, session reports, and other
+    agent-operational artifacts are not subject to the hard 700 LOC rule,
+    though they should stay readable and locally discoverable.
   - Always split files top-down.
   - Always split the largest files first, regardless of how hard it seems.
   - Do this before splitting or reorganizing smaller files.

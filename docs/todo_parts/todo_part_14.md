@@ -616,8 +616,8 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-060` add Vulkan-capable optimizer suite
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
-  - scope:
-    - SGD with momentum;
+  - [x] `ML-VK-060-001` add CPU `ml/sgd-step` for data-oriented parameter trees.
+  - remaining scope: SGD with momentum;
     - Adam and AdamW;
     - RMSProp;
     - gradient clipping;

@@ -294,6 +294,11 @@ separate per-Tensor ownership system.
 
 Add backend-neutral optimizer surfaces with Vulkan parameter-update kernels:
 
+- `ML-VK-060-001`: shipped CPU `ml/sgd-step(parameters gradients learning-rate)`
+  for immutable data-oriented parameter trees. It recurses through arrays and
+  dictionaries, updates dense row-major `Float64`/`Float32` tensor leaves, keeps
+  CUDA/Vulkan optimizer kernels fail-closed, and leaves broad `ml-optimizer`
+  false until optimizer state and device kernels exist.
 - SGD with momentum;
 - Adam and AdamW;
 - RMSProp;

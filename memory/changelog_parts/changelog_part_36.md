@@ -134,3 +134,20 @@
   - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
     collections `pass=1778 fail=0`, basic Lisp `pass=160 fail=0`, primitive
     docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-060-001 CPU SGD Step Primitive
+
+- Implemented `ml/sgd-step(parameters gradients learning-rate)`.
+  - The primitive returns immutable updated parameter trees and recurses through
+    matching arrays and dictionaries.
+  - Tensor leaves require dense row-major CPU `Float64` or `Float32`, matching
+    dtype and shape, and a non-negative finite learning rate.
+  - CUDA/Vulkan optimizer kernels stay fail-closed before CPU fallback; broad
+    `ml-optimizer` remains false.
+  - Owner rule update: the hard 700 LOC split/gate now applies only to code
+    files; docs and operational artifacts are no longer hard-failed by the
+    gate.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1781 fail=0`, basic Lisp `pass=160 fail=0`, primitive
+    docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.
