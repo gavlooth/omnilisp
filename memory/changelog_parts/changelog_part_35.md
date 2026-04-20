@@ -422,3 +422,18 @@ Source: `memory/CHANGELOG.md`
     `pass=160 fail=0`, `git diff --check`, primitive docs parity, and the
     file-size gate. Full host `advanced` slice still segfaults after TCO tests
     before reaching ML part8 and remains unresolved.
+
+- 2026-04-20 03:48 CEST: Vulkan ML max checkpoint:
+  - Added and closed `ML-VK-020-006-VK-MAX` after strict audit found the
+    Vulkan `ml/max` follow-up was only implicit in TODO/docs.
+  - Extended the existing one-input Vulkan ML reduction helper and Float64/
+    Float32 shaders with `op == 3` axis maximum support.
+  - Routed Vulkan `ml/max` through `prim_ml_reduction.c3`, preserving
+    Float64/Float32 dtype and Vulkan placement with no hidden CPU fallback.
+  - Added guarded Vulkan parity tests for `ml/max` and kept Vulkan
+    `ml/logsumexp`/`ml/softmax` backend-unsupported until exp/log-backed
+    stable kernels land.
+  - Validation passed: shader compile/`spirv-val`, `scripts/build_omni_chelpers.sh`,
+    `c3c build`, direct Vulkan max smokes, focused advanced collections
+    `pass=1695 fail=0`, basic Lisp slice `pass=160 fail=0`,
+    primitive docs parity, `git diff --check`, and file-size gate.

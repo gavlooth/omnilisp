@@ -1,5 +1,60 @@
 # Session Report Part 29
 
+## 2026-04-20 03:48 CEST - Vulkan ML Max Checkpoint
+
+- Objective attempted:
+  - Continue the strict audit/TODO loop after Vulkan `ml/sum`/`ml/mean`/
+    `ml/variance` by adding the next concrete Vulkan stable-reduction
+    prerequisite.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `csrc/tensor_vulkan_helpers_ml_reduction.c`
+  - `csrc/tensor_vulkan_ml_reduction_f32.comp`
+  - `csrc/tensor_vulkan_ml_reduction_f64.comp`
+  - `src/lisp/prim_ml_reduction.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part8.c3`
+  - `docs/todo_parts/todo_part_14.md`
+- Code or configuration changes made:
+  - Added and closed `ML-VK-020-006-VK-MAX` in TODO after audit found the
+    Vulkan `ml/max` follow-up was implicit instead of concrete.
+  - Extended the existing Vulkan ML reduction helper/shaders with `op == 3`
+    for axis maximum.
+  - Routed Vulkan `ml/max` through the helper from `prim_ml_reduction.c3`,
+    preserving Float64/Float32 dtype and Vulkan placement.
+  - Added guarded Vulkan parity coverage for Float64/Float32 `ml/max` and kept
+    Vulkan `ml/logsumexp`/`ml/softmax` fail-closed.
+  - Updated roadmap/spec/reference text so current Vulkan `ml/max` support is
+    no longer documented as CPU-only.
+- Commands run:
+  - Fast audit subagents for reduction implementation and TODO/docs/tests.
+  - Fast worker subagent for the initial C helper/shader max opcode patch.
+  - `glslangValidator` and `spirv-val` for both updated reduction shaders.
+  - `scripts/build_omni_chelpers.sh`
+  - `c3c build`
+  - Direct REPL smoke for Vulkan Float64/Float32 `ml/max` and Vulkan
+    `ml/logsumexp` fail-closed behavior.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_TEST_QUIET=1 OMNI_LISP_TEST_SLICE=basic ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Direct smokes returned `true` for Vulkan Float64 max, Vulkan Float32 max,
+    and preserved Vulkan logsumexp fail-closed behavior.
+  - Focused advanced collections suite passed with `pass=1695 fail=0`.
+  - Basic Lisp slice passed with `pass=160 fail=0`.
+  - File-size gate passed with no tracked text file over 700 lines.
+- Current best recommendation / checkpoint:
+  - Vulkan `ml/max` is now implemented. The next Vulkan ML work should add
+    exp/log-backed stable kernels before claiming Vulkan `ml/logsumexp`,
+    `ml/softmax`, cross-entropy, or MSE.
+- Unresolved issues:
+  - Full host `advanced` slice was not rerun in this pass because the previous
+    checkpoint reproduced an unrelated segfault after TCO tests before ML
+    part8.
+  - Full bounded-container suite was not run.
+- Signature: Codex GPT-5.4
+
 ## 2026-04-20 03:40 CEST - Vulkan ML Axis Reduction Checkpoint
 
 - Objective attempted:

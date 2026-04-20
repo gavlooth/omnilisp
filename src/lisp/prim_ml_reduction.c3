@@ -329,9 +329,6 @@ fn Value* ml_reduction_eval_vulkan(
     char[] value_label
 ) {
     if (source == null || axes == null) return tensor_runtime_raise(interp, "ml reduction: Vulkan tensor metadata is missing");
-    if (op == ML_REDUCTION_MAX) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/max: Vulkan axis maximum kernel is not implemented", null);
-    }
     if (source.dtype != TENSOR_DTYPE_DOUBLE && source.dtype != TENSOR_DTYPE_FLOAT32) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml reduction: Vulkan currently supports Float64 and Float32 tensors", null);
     }

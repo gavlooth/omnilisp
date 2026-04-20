@@ -153,12 +153,15 @@ reduction operations:
   reduced axes, and preserve Float64/Float32 dtype.
 - `ML-VK-020-006-MAX`: shipped canonical CPU `ml/max` as the axis maximum
   reducer needed by stable `logsumexp`/`softmax` max-shift paths. It shares
-  the same axis parsing, result-shape, dtype preservation, and CUDA/Vulkan
+  the same axis parsing, result-shape, dtype preservation, and CUDA
   fail-closed contract as the other CPU reductions.
 - `ML-VK-020-006-VK`: shipped real Vulkan Float64/Float32 axis-reduction
   kernels for `ml/sum`/`ml/mean`/`ml/variance` using a one-input reducer that
-  preserves free axes. `ml/max`, `ml/logsumexp`, `ml/softmax`, and losses still
-  need separate Vulkan kernels and remain fail-closed.
+  preserves free axes.
+- `ML-VK-020-006-VK-MAX`: shipped Vulkan Float64/Float32 axis-maximum
+  reductions for `ml/max` through the same reduction helper, preserving
+  Vulkan placement. `ml/logsumexp`, `ml/softmax`, and losses still need
+  separate Vulkan kernels and remain fail-closed.
 - `ML-VK-020-007-A`: shipped CPU `ml/logsumexp(input axes)` and
   `ml/softmax(input axis)` with max-shifted numerics, Float64/Float32 dtype
   preservation, no hidden CUDA/Vulkan CPU fallback, and focused large-logit

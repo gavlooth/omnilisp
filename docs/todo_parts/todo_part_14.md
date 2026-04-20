@@ -432,6 +432,13 @@ Source: `TODO.md`
         the Vulkan `float64` and `float32` capability bits.
       - [x] add a rank-3 middle-axis regression proving shared reduction
         indexing for `ml/sum`, `ml/logsumexp`, and `ml/softmax`.
+    - [x] `ML-VK-020-006-VK-MAX` add Vulkan axis maximum kernels for
+      `ml/max`.
+      - [x] Preserve Float64/Float32 dtype and device placement on Vulkan.
+      - [x] Add parity tests that stay on Vulkan and match CPU after
+        `to-device 'cpu`.
+      - [x] Keep unsupported dtypes and mixed-device operands fail closed while
+        `ml/logsumexp` and `ml/softmax` remain backend-unsupported on Vulkan.
     - [x] `ML-VK-020-007-A` add CPU stable `ml/logsumexp(input axes)` and
       `ml/softmax(input axis)`.
       - [x] Keep `ml/logsumexp(input axes)` aligned with multi-axis reduction

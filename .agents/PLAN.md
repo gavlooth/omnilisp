@@ -467,11 +467,12 @@ Date: 2026-04-20
     an explicit `to-device 'cpu` check;
   - rank-3 middle-axis coverage now checks shared reduction indexing across
     `ml/sum`, `ml/logsumexp`, and `ml/softmax`;
-  - unsupported dtype coverage remains, while `ml/max`, `ml/logsumexp`, and
-    `ml/softmax` stay backend-unsupported on Vulkan;
+  - Vulkan Float64/Float32 `ml/max` is now routed through the same axis
+    reduction helper and covered by device-preserving parity tests;
+  - unsupported dtype coverage remains, while `ml/logsumexp` and `ml/softmax`
+    stay backend-unsupported on Vulkan;
   - preserve `ml/logsumexp` and `ml/softmax` as backend-unsupported on Vulkan.
 - Next checkpoint:
-  - `ML-VK-020-006-VK` is implemented for `ml/sum`, `ml/mean`, and
-    `ml/variance`; next Vulkan ML work should add `ml/max` and the
-    exp/log-backed stable kernels before claiming Vulkan logsumexp/softmax or
-    loss capability.
+  - `ML-VK-020-006-VK-MAX` is implemented for Vulkan `ml/max`; next Vulkan ML
+    work should add exp/log-backed stable kernels before claiming Vulkan
+    logsumexp/softmax or loss capability.
