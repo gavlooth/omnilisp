@@ -267,6 +267,11 @@ Add Vulkan kernels for normalization and attention building blocks:
 Define and implement reverse-mode autodiff over Tensor operations with explicit
 device semantics:
 
+- `ML-VK-050-001`: shipped `ml/grad` for the first data-oriented gradient
+  spec, `linear-mean-squared-error`. It supports CPU `Float64`/`Float32`,
+  returns loss, forward output, input gradient, and weights/bias gradients as
+  ordinary data, and keeps Vulkan backward fail-closed until real Vulkan
+  gradient kernels exist.
 - gradient tape representation and lifetime rules;
 - Tensor gradient accumulation on CPU/Vulkan without hidden transfers;
 - backward definitions for map, contract, matrix, convolution, normalization,

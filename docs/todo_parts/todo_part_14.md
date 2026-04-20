@@ -596,6 +596,10 @@ Source: `TODO.md`
 
 - [ ] `ML-VK-050` implement reverse-mode Tensor autograd with explicit Vulkan semantics
   - plan: `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+  - [x] `ML-VK-050-001` add canonical `ml/grad` data gradient spec evaluator.
+    - ships CPU `Float64`/`Float32` `linear-mean-squared-error` gradients.
+    - returns loss, output, input gradient, and weights/bias gradients as data.
+    - keeps Vulkan backward fail-closed until real Vulkan gradient kernels land.
   - scope:
     - gradient tape representation and lifetime rules;
     - gradient accumulation on CPU/Vulkan without hidden transfers;

@@ -641,3 +641,27 @@ Date: 2026-04-20
 - Next checkpoint:
   - continue `ML-VK-040` only for fused attention/dropout/matmul after the
     unfused oracle remains stable, or move to `ML-VK-050` autograd prerequisites.
+
+## Completed ML-VK-050-001 Data Gradient Checkpoint
+
+Date: 2026-04-20
+
+- Implemented checkpoint:
+  - added canonical `ml/grad` as a data-oriented gradient spec evaluator;
+  - first supported spec kind is `linear-mean-squared-error`;
+  - CPU route supports `Float64`/`Float32` dense row-major tensors;
+  - returns ordinary data: scalar loss tensor, forward output tensor,
+    input-gradient tensor, and `parameter-gradients` with weights/bias tensors;
+  - keeps Vulkan backward fail-closed until real Vulkan gradient kernels land;
+  - keeps broad `ml-autograd` false because tape-backed reverse-mode over the
+    full supported training path is still open.
+- Validation:
+  - `c3c build`
+  - direct CPU `--eval` gradient smokes
+  - focused advanced collections suite: `pass=1772 fail=0`
+  - basic Lisp slice: `pass=160 fail=0`
+  - primitive docs parity, Stage 3 source parity, file-size gate, and
+    `git diff --check`
+- Next checkpoint:
+  - continue `ML-VK-050` with tape-backed composition or add explicit backward
+    rules for activations and softmax/loss before exposing `nn/grad`.

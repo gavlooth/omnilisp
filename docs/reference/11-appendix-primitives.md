@@ -240,6 +240,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `math/erfc` | 1 | Complementary error function; applies elementwise to supported Tensor inputs |
 | `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
 | `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
+| `ml/grad` | 1 | Data-oriented gradient spec evaluator; currently supports CPU linear mean-squared-error gradients |
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/mean` | 2 | Axis mean reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/variance` | 2 | Axis population-variance reduction for supported Tensor inputs; drops reduced axes from the result shape |

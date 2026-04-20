@@ -92,3 +92,18 @@
     smokes, focused advanced collections `pass=1769 fail=0`, basic Lisp
     `pass=160 fail=0`, primitive docs parity, Stage 3 source parity, file-size
     gate, and `git diff --check`.
+
+## 2026-04-20 - ML-VK-050-001 Data Gradient Primitive
+
+- Implemented `ml/grad` as the first data-oriented gradient spec evaluator.
+  - Supported spec kind: `linear-mean-squared-error`.
+  - CPU supports dense row-major `Float64` and `Float32` tensors.
+  - Return value is a Dictionary with `kind`, `source`, scalar `loss`, forward
+    `output`, `input-gradient`, and `parameter-gradients` containing weights
+    and bias gradient tensors.
+  - Vulkan backward remains fail-closed before CPU fallback; broad
+    `ml-autograd` stays false until tape-backed reverse-mode gradients cover
+    the supported training path.
+  - Validation passed: `c3c build`, direct CPU eval smokes, focused advanced
+    collections `pass=1772 fail=0`, basic Lisp `pass=160 fail=0`, primitive
+    docs parity, Stage 3 source parity, file-size gate, and `git diff --check`.

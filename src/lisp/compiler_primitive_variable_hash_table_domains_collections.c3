@@ -72,6 +72,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("nn/softmax"), "aot::lookup_prim(\"nn/softmax\")");
     prim_hash_insert(st.intern("ml/linear"), "aot::lookup_prim(\"ml/linear\")");
     prim_hash_insert(st.intern("ml/linear/batched-reduce"), "aot::lookup_prim(\"ml/linear/batched-reduce\")");
+    prim_hash_insert(st.intern("ml/grad"), "aot::lookup_prim(\"ml/grad\")");
     prim_hash_insert(st.intern("ml/relu"), "aot::lookup_prim(\"ml/relu\")");
     prim_hash_insert(st.intern("ml/sigmoid"), "aot::lookup_prim(\"ml/sigmoid\")");
     prim_hash_insert(st.intern("ml/tanh"), "aot::lookup_prim(\"ml/tanh\")");

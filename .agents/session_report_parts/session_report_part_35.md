@@ -272,3 +272,46 @@
   - Prefer `ML-VK-050` autograd prerequisites unless the owner wants fused
     attention performance work first.
 - Signature: Codex GPT-5.4
+
+## 2026-04-20 - ML-VK-050-001 Data Gradient Primitive
+
+- Objective attempted:
+  - Start `ML-VK-050` with a real data-oriented gradient primitive instead of
+    a placeholder autograd flag or training facade.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - ML Tensor primitive registration, AOT source manifest, advanced collection
+    tests, public language/reference docs, Vulkan ML roadmap, TODO, and
+    coordination artifacts.
+- Code or configuration changes made:
+  - Added `ml/grad`.
+  - Supported first gradient spec kind: `linear-mean-squared-error`.
+  - CPU `Float64`/`Float32` route computes forward dense linear output,
+    scalar MSE loss, input gradients, weights gradients, and bias gradients.
+  - Return value is an ordinary Dictionary with `loss`, `output`,
+    `input-gradient`, and `parameter-gradients`.
+  - Vulkan backward paths fail closed before CPU fallback; broad `ml-autograd`
+    remains false until tape-backed reverse-mode covers the supported training
+    path.
+- Commands run:
+  - `c3c build`
+  - direct CPU `--eval` gradient smokes with `LD_LIBRARY_PATH=build:/usr/local/lib`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 LD_LIBRARY_PATH=build:/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Focused advanced collections passed: `pass=1772 fail=0`.
+  - Basic Lisp slice passed: `pass=160 fail=0`.
+  - C3 build, primitive docs parity, Stage 3 source parity, file-size gate, and
+    diff whitespace checks passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run.
+  - Tape-backed reverse-mode composition, Vulkan backward kernels, optimizer
+    state, and `nn/grad`/`nn/train-step` remain open.
+- Next actions:
+  - Continue `ML-VK-050` with tape-backed composition or explicit activation
+    and softmax/loss backward rules before exposing the `nn/*` training facade.
+- Signature: Codex GPT-5.4
