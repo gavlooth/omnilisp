@@ -579,3 +579,22 @@
     `pass=1846 fail=0`, compiler slice `pass=288 fail=0`, basic Lisp
     `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-008 Vulkan Tensor Map Graph Capture
+
+- Added `tensor/capture(source)` for Vulkan Tensor graph planning.
+  - Supported graphs are all-Vulkan `Float32` concrete/map Tensor expression
+    graphs.
+  - Capture returns ordinary `tensor-graph` data with source/map nodes, node
+    ids, input edges, scalar operands, output node id, shape, dtype/device,
+    backend, family `map-expression`, and invalidation key.
+  - Explicit `to-device 'vulkan` now preserves supported CPU lazy `Float32` map
+    expressions as Vulkan Tensor expressions so capture can inspect real
+    multi-node map DAGs without launching them.
+  - Contract/view graph capture, command-buffer batching, fusion, arbitrary
+    source compilation, buffer reuse/lifetime planning, and broader
+    invalidation remain open.
+  - Validation passed: `c3c build`, direct capture smoke, focused advanced
+    collections `pass=1848 fail=0`, compiler slice `pass=289 fail=0`, basic
+    Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

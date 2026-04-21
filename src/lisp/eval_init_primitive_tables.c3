@@ -173,6 +173,7 @@ fn bool register_regular_primitives_collections(Interp* interp) {
         { "dtype", &prim_dtype, 1 },
         { "device", &prim_device, 1 },
         { "tensor-layout", &prim_tensor_layout, 1 },
+        { "tensor/capture", &prim_tensor_capture, 1 },
         { "tensor-backends", &prim_tensor_backends, 0 },
         { "to-device", &prim_to_device, 2 },
         { "shape", &prim_shape, 1 },

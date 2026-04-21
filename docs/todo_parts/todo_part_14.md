@@ -775,6 +775,12 @@ Source: `TODO.md`
         dtype, device, direct-helper execution, input/output names, concrete
         runtime shape, push data, node data, and invalidation key. It does not
         launch the kernel.
+    - [x] `ML-VK-080-008` add Vulkan Float32 Tensor map graph capture.
+      - shipped: `tensor/capture(source)` returns a non-executing
+        `tensor-graph` for all-Vulkan Float32 concrete/map Tensor expressions,
+        including source/map nodes, scalar operands, output id, shape, and
+        invalidation metadata. Explicit `to-device 'vulkan` preserves supported
+        CPU lazy Float32 map graphs as Vulkan expressions for capture.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

@@ -984,3 +984,27 @@ Date: 2026-04-21 - Added the first checked Kernel graph-capture surface.
 - Next checkpoint: commit and push this single-node capture slice, then continue
   toward multi-node Tensor expression DAG capture, command-buffer batching,
   fusion, or device-buffer lifetime planning.
+
+## Active ML-VK-080-008 Vulkan Tensor Map Graph Capture
+Date: 2026-04-21 - Added the first multi-node Tensor graph-capture boundary.
+
+- Shipped `tensor/capture(source)` for supported all-Vulkan `Float32`
+  concrete/map Tensor expression graphs.
+- Contract:
+  - accepts one Tensor source;
+  - requires `Float32` dtype and all leaves/device references to be Vulkan;
+  - supports concrete source nodes and map nodes only;
+  - records source/map nodes, node ids, input edges, scalar operands, output
+    node id, shape, dtype/device/backend, family `map-expression`, and an
+    invalidation key;
+  - does not launch or realize the graph.
+- Added explicit graph preservation for supported CPU lazy `Float32` map
+  expressions under `to-device 'vulkan`, so user code can build a capturable
+  Vulkan map DAG without changing direct Vulkan map execution.
+- Still open under `ML-VK-080`: contract/view graph capture, command-buffer
+  batching, fusion, source compilation, buffer reuse/lifetime planning, and
+  broader invalidation/capability planning.
+- Validation completed: `c3c build`, direct capture smoke, focused advanced
+  collections `pass=1848 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
+  `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`.

@@ -288,7 +288,11 @@ require zero-offset dense row-major inputs and destinations unless a later
 kernel explicitly says otherwise. Device placement is explicit:
 `device` reports the
 current Tensor placement, ordinary CPU tensors report `'cpu`, and `to-device`
-with target `'cpu` realizes to CPU Tensor storage. Destination-form
+with target `'cpu` realizes to CPU Tensor storage. `to-device` with target
+`'vulkan` may preserve supported lazy `Float32` map expression structure as a
+Vulkan Tensor expression when the operation family is capturable; unsupported
+lazy expressions continue through the ordinary concrete realization/copy route
+or fail closed with Tensor backend diagnostics. Destination-form
 `(realize expr out)` writes into an existing CPU Tensor destination, or into
 an existing dense row-major CUDA or Vulkan `Float64`, `Float32`, `Complex128`,
 or `Complex64` destination when that backend is usable and supports the
@@ -508,8 +512,12 @@ are checked Vulkan `scale-f32`; binary `add-f32`, `sub-f32`, `mul-f32`,
 `normal-cdf-f32` over dense row-major `Float32` tensors. `kernel/capture`
 validates those checked direct-helper Vulkan families against runtime inputs
 and push data and returns a single-node `kernel-graph` launch plan without
-executing the kernel. Arbitrary backend source compilation and fusion remain
-fail-closed.
+executing the kernel. `tensor/capture(source)` returns a non-executing
+`tensor-graph` plan for supported all-Vulkan `Float32` concrete/map Tensor
+expression graphs, including source/map nodes, scalar operands, output id,
+shape, and invalidation metadata. Contract/view graphs, mixed-device graphs,
+unsupported map callables, and unsupported dtypes fail closed. Arbitrary
+backend source compilation and fusion remain fail-closed.
 
 Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
 fail-closed as `tensor/backend-unsupported` instead of hidden fallback.
@@ -622,7 +630,9 @@ explicit GPU backend direction: `tensor-backends` reports a structured
 `vulkan` entry with explicit `Float64` and `Float32` kernel capability.
 `to-device` with target `'vulkan` copies concrete zero-offset dense row-major
 `Float64`, `Float32`, `Complex128`, or `Complex64` CPU Tensor storage into
-opaque Vulkan storage when runtime-loaded Vulkan support is usable, and
+opaque Vulkan storage when runtime-loaded Vulkan support is usable, preserves
+supported lazy `Float32` map graphs as Vulkan Tensor expressions when that
+structure is needed for graph capture, and
 `to-device` with target `'cpu` copies Vulkan storage back to native CPU Tensor
 storage.
 Missing or unusable Vulkan fails closed with a Tensor backend diagnostic;

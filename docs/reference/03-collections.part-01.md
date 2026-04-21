@@ -442,7 +442,9 @@ storage; fake or invalid CUDA handles remain fail-closed. Vulkan is
 reported as a portable explicit GPU backend through `tensor-backends` with
 explicit `Float64` and `Float32` kernel capability bits.
 `to-device 'vulkan` copies concrete `Float64` or eligible `Float32` CPU Tensor
-storage into opaque Vulkan storage when runtime-loaded Vulkan support is usable, and
+storage into opaque Vulkan storage when runtime-loaded Vulkan support is usable,
+can preserve supported lazy `Float32` map expression graphs as Vulkan Tensor
+expressions for later `tensor/capture`, and
 `to-device 'cpu` copies Vulkan storage back to native CPU storage. Vulkan
 destination-form `realize` can write matching dense row-major `Float64` or
 `Float32` CPU or Vulkan sources, lazy Vulkan results, and scalar fills into an existing
@@ -462,7 +464,10 @@ Tensor/scalar, scalar/Tensor, exact-shape Tensor/Tensor inputs, and
 right-aligned singleton-axis Tensor/Tensor broadcasting through embedded
 SPIR-V compute shaders, returning Vulkan-placed tensors. Direct `min` and
 `max` also support matching dense row-major Vulkan `Float64` or `Float32`
-operands. Vulkan
+operands. `tensor/capture(source)` returns ordinary `tensor-graph` data for
+all-Vulkan `Float32` concrete/map expression graphs without executing the
+graph; contract/view graphs, mixed placement, unsupported map callables, and
+unsupported dtypes fail closed. Vulkan
 `Float32` serial factor/solve operations and staged parallel `Float32`
 `matrix/solve` are supported for eligible dense row-major operands; CPU
 `Float32` SVD/factor oracles are supported.

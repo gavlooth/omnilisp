@@ -452,6 +452,11 @@ Shipped first slice:
   operation, family, dtype, device, direct-helper execution, input/output names,
   concrete runtime shape, push data, node data, and an invalidation key without
   launching the kernel.
+- `ML-VK-080-008`: `tensor/capture(source)` now returns a non-executing
+  `tensor-graph` plan for all-Vulkan `Float32` concrete/map Tensor expression
+  graphs. Explicit `to-device 'vulkan` preserves supported CPU lazy `Float32`
+  map graphs as Vulkan Tensor expressions so capture can record multi-node
+  source/map DAG data without launching the graph.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

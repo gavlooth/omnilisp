@@ -678,3 +678,66 @@ Signature: GPT-5 Codex
   - Commit and push this slice, then continue `ML-VK-080` with graph/DAG
     capture or another real backend execution boundary.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 06:13 CEST - ML-VK-080-008 Vulkan Tensor Map Graph Capture
+
+- Objective attempted: continue `ML-VK-080` by adding the first multi-node
+  Tensor expression graph capture surface for Vulkan ML planning, without
+  launching the graph or introducing `(define [kernel] ...)` sugar.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_capture.c3`
+  - `src/lisp/prim_tensor_device_copy.c3`
+  - `src/lisp/eval_init_primitive_tables.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+  - `src/entry_build_runtime_manifest_lisp_part3.c3`
+  - advanced/compiler tests, language/reference docs, Vulkan ML roadmap, TODO,
+    plan, and changelog artifacts.
+- Code or configuration changes made:
+  - Added `tensor/capture(source)` for supported all-Vulkan `Float32`
+    concrete/map Tensor expression graphs.
+  - Capture returns ordinary `tensor-graph` data with source/map nodes, node ids,
+    input edges, scalar operands, output node id, shape, dtype/device/backend,
+    family `map-expression`, and invalidation key.
+  - Added explicit graph preservation for supported CPU lazy `Float32` map
+    expressions under `to-device 'vulkan`, so capture can inspect a real Vulkan
+    map DAG instead of only a materialized Tensor.
+  - Registered the primitive, added AOT compiler lookup, and wired
+    `src/lisp/prim_tensor_capture.c3` into the AOT runtime manifest.
+  - Documented the new Tensor graph capture surface and closed
+    `ML-VK-080-008` in the live TODO/roadmap.
+- Commands run:
+  - `c3c build`
+  - direct eval smoke for `to-device` graph preservation plus `tensor/capture`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct capture smoke returned a three-node `tensor-graph`.
+  - Focused advanced collections passed with `pass=1848 fail=0`.
+  - Compiler slice passed with `pass=289 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - Ordinary Vulkan `map` materializes immediately, so it cannot by itself leave
+    a multi-node graph for `tensor/capture`; the useful explicit path is now
+    CPU lazy map expression plus `to-device 'vulkan` graph preservation.
+  - Returning the captured Tensor source inside the plan caused boundary
+    promotion faults for graph-preserved expressions, so `tensor-graph` records
+    graph metadata and nodes rather than embedding the source Tensor value.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Contract/view graph capture, command-buffer batching, fusion, arbitrary
+    source compilation, buffer reuse/lifetime planning, and broader
+    deterministic invalidation remain open.
+- Next actions:
+  - Continue `ML-VK-080` with contract/view capture or command-buffer
+    batching/fusion now that map DAG data exists.
+- Signature: GPT-5 Codex
