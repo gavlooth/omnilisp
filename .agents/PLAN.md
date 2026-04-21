@@ -810,6 +810,24 @@ Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with s
 - Do not make `Kernel` pretend to be `Lambda`; do not overload ordinary calls,
   path access, postfix indexing, or `ref` into kernel execution.
 
+## Active ML-VK-080-002 Checked Vulkan Kernel Runner
+Date: 2026-04-21 - Implemented the first real `kernel/run` backend route.
+
+- Shipped operation: `operation 'scale-f32` with `backend 'vulkan`.
+- Contract:
+  - one input descriptor and one output descriptor;
+  - both descriptors must declare `dtype 'Float32`;
+  - descriptor shapes must match the realized tensor shape, with symbol
+    dimensions accepted as wildcards;
+  - `push` must include `scale` representable as `Float32`;
+  - input storage must be dense row-major Vulkan `Float32`.
+- The runner uses the existing checked Vulkan Float32 scale helper and returns
+  an ordinary dictionary keyed by the output descriptor name.
+- Still open under `ML-VK-080`: arbitrary user source compilation, graph capture,
+  command-buffer batching, fusion, device-buffer reuse/lifetime planning, and
+  deterministic invalidation.
+- Negative constraint remains active: do not implement `(define [kernel] ...)`.
+
 ## Completed ML-VK-070-005 Dense Training Facade Checkpoint
 Date: 2026-04-21 - Implemented the first data-oriented NN training facade.
 

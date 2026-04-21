@@ -735,7 +735,13 @@ Source: `TODO.md`
         operation, IO descriptors, optional push constants, and optional
         workgroup; normalizes `kind` to `'kernel`; reports `type-of` / `is?`
         as `Kernel`; preserves ordinary path/index/ref data access; and adds
-        explicit fail-closed `kernel/run`.
+        explicit `kernel/run`.
+    - [x] `ML-VK-080-002` add the first checked Vulkan `kernel/run` execution
+      route.
+      - shipped: `operation 'scale-f32` launches the existing Vulkan Float32
+        scale helper for one dense row-major Vulkan tensor input, one matching
+        output descriptor, and a `scale` Float32 push constant; unsupported
+        custom compilation/fusion routes remain fail-closed.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

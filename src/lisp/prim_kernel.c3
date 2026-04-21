@@ -165,6 +165,133 @@ fn Value* kernel_normalize(Value* spec, Interp* interp) {
     return out;
 }
 
+fn Value* kernel_run_invalid(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", message, null);
+}
+
+fn Value* kernel_run_unsupported(Interp* interp, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", message, null);
+}
+
+fn bool kernel_dtype_is(Value* descriptor, Interp* interp, char[] dtype_name) @inline {
+    Value* dtype = nn_dict_get(descriptor, interp, "dtype");
+    return dtype != null && dtype.tag == SYMBOL && nn_symbol_is(dtype, interp, dtype_name);
+}
+
+fn Value* kernel_descriptor_name(Value* descriptor, Interp* interp, char[] label) {
+    Value* name = nn_dict_get(descriptor, interp, "name");
+    if (name == null || name.tag != SYMBOL) return kernel_run_invalid(interp, label);
+    return name;
+}
+
+fn bool kernel_shape_matches_tensor(Value* shape, TensorVal* tensor) {
+    if (shape == null || shape.tag != ARRAY || shape.array_val == null || tensor == null) return false;
+    if (shape.array_val.length != tensor.rank) return false;
+    for (usz i = 0; i < shape.array_val.length; i++) {
+        Value* dim = shape.array_val.items[i];
+        if (dim == null) return false;
+        if (dim.tag == INT) {
+            if (dim.int_val < 0 || (ulong)dim.int_val != (ulong)tensor.shape[i]) return false;
+        } else if (dim.tag != SYMBOL) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn Value* kernel_run_validate_scale_f32_spec(Value* kernel, Interp* interp, Value** out_input_descriptor, Value** out_output_descriptor) {
+    Value* inputs = nn_dict_get(kernel, interp, "inputs");
+    Value* outputs = nn_dict_get(kernel, interp, "outputs");
+    if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null || inputs.array_val.length != 1) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 expects exactly one input descriptor");
+    }
+    if (outputs == null || outputs.tag != ARRAY || outputs.array_val == null || outputs.array_val.length != 1) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 expects exactly one output descriptor");
+    }
+    Value* input_descriptor = inputs.array_val.items[0];
+    Value* output_descriptor = outputs.array_val.items[0];
+    if (!kernel_dtype_is(input_descriptor, interp, "Float32") || !kernel_dtype_is(output_descriptor, interp, "Float32")) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 currently supports Float32 inputs and outputs");
+    }
+    Value* push_spec = nn_dict_get(kernel, interp, "push");
+    if (push_spec == null || push_spec.tag != HASHMAP || push_spec.hashmap_val == null ||
+        !nn_symbol_is(nn_dict_get(push_spec, interp, "scale"), interp, "Float32")) {
+        return kernel_run_invalid(interp, "kernel/run: scale-f32 requires push Dictionary with scale Float32");
+    }
+    *out_input_descriptor = input_descriptor;
+    *out_output_descriptor = output_descriptor;
+    return null;
+}
+
+fn Value* kernel_run_scale_f32(Value* kernel, Value* inputs, Value* push, Interp* interp) {
+    Value* input_descriptor = null;
+    Value* output_descriptor = null;
+    if (Value* err = kernel_run_validate_scale_f32_spec(kernel, interp, &input_descriptor, &output_descriptor)) return err;
+
+    Value* input_name = kernel_descriptor_name(input_descriptor, interp, "kernel/run: scale-f32 input descriptor name is invalid");
+    if (input_name == null || input_name.tag == ERROR) return input_name;
+    Value* output_name = kernel_descriptor_name(output_descriptor, interp, "kernel/run: scale-f32 output descriptor name is invalid");
+    if (output_name == null || output_name.tag == ERROR) return output_name;
+
+    Value* input_value = hashmap_get(inputs.hashmap_val, input_name);
+    if (input_value == null) return kernel_run_invalid(interp, "kernel/run: scale-f32 input is missing");
+    Value* scale_value = nn_dict_get(push, interp, "scale");
+    float scale = 0.0;
+    if (scale_value == null || !tensor_value_to_float32(scale_value, &scale)) {
+        return kernel_run_invalid(interp, "kernel/run: scale-f32 push scale must be representable as Float32");
+    }
+    if (!is_tensor(input_value)) return kernel_run_invalid(interp, "kernel/run: scale-f32 input must be a Tensor");
+    if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) || tensor_expr_has_non_vulkan_device(input_value)) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 input must remain fully Vulkan-placed");
+    }
+
+    TensorVal* input_tensor = null;
+    Value* materialized = null;
+    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input_tensor, &materialized, interp, "kernel/run: scale-f32 tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (materialized != null && materialized != input_value) boundary_cleanup_materialized_value(null, materialized, interp.current_scope);
+
+    if (input_tensor == null || input_tensor.device != TENSOR_DEVICE_VULKAN) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 input must realize to Vulkan storage");
+    }
+    if (input_tensor.dtype != TENSOR_DTYPE_FLOAT32) {
+        return kernel_run_unsupported(interp, "kernel/run: scale-f32 currently supports Float32 tensor storage");
+    }
+    if (input_tensor.element_count == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: scale-f32 empty tensors are not supported", null);
+    }
+    if (!tensor_has_valid_device_storage(input_tensor, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "kernel/run: scale-f32 Vulkan tensor backing storage is missing");
+    }
+    if (!kernel_shape_matches_tensor(nn_dict_get(input_descriptor, interp, "shape"), input_tensor) ||
+        !kernel_shape_matches_tensor(nn_dict_get(output_descriptor, interp, "shape"), input_tensor)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: scale-f32 descriptor shape does not match input tensor", null);
+    }
+
+    void* out_device = null;
+    int status = omni_tensor_backend_vulkan_ml_clip_scale_f32(
+        input_tensor.device_handle,
+        input_tensor.byte_len,
+        input_tensor.element_count,
+        scale,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        if (out_device != null) omni_tensor_backend_vulkan_free(out_device);
+        return tensor_vulkan_status_raise(interp, status, "kernel/run: Vulkan scale-f32 kernel failed");
+    }
+
+    Value* output_value = ml_optimizer_vulkan_tensor_value(input_tensor, out_device, interp, "kernel/run: failed to allocate Vulkan output tensor metadata", "kernel/run: failed to allocate Vulkan output tensor value");
+    if (output_value == null || output_value.tag == ERROR) return output_value;
+
+    Value* result = nn_make_dict(interp, 2);
+    if (result == null || result.tag == ERROR) return result;
+    if (!hashmap_set_checked(result.hashmap_val, output_name, output_value, interp)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "kernel/run: failed to allocate output dictionary", null);
+    }
+    return result;
+}
+
 fn Value* prim_kernel(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "Kernel", "1 argument: spec Dictionary", args.len);
     if (Value* err = kernel_validate_spec(args[0], interp)) return err;
@@ -182,5 +309,11 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     if (args[2].tag != HASHMAP || args[2].hashmap_val == null) {
         return primitive_arg_type_raise(interp, "kernel/run", 2, "Dictionary of push constants", args[2]);
     }
-    return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "kernel/run: custom kernel execution is not implemented for any backend yet", null);
+    if (!nn_symbol_is(nn_dict_get(args[0], interp, "backend"), interp, "vulkan")) {
+        return kernel_run_unsupported(interp, "kernel/run: only Vulkan Kernel execution is currently supported");
+    }
+    if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "scale-f32")) {
+        return kernel_run_scale_f32(args[0], args[1], args[2], interp);
+    }
+    return kernel_run_unsupported(interp, "kernel/run: unsupported Kernel operation for Vulkan backend");
 }

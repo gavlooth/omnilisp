@@ -419,9 +419,12 @@ Shipped first slice:
 - `ML-VK-080-001`: `Kernel(spec)` now validates a data-oriented kernel
   dictionary, normalizes `kind` to `'kernel`, exposes `type-of` / `is?`
   as `Kernel`, and preserves ordinary dictionary/path access. `kernel/run`
-  is public and explicit, but intentionally fails closed with
-  `tensor/backend-unsupported` until backend compilation and launch semantics
-  are implemented.
+  is public and explicit.
+- `ML-VK-080-002`: `kernel/run` now executes checked helper-backed Vulkan
+  `scale-f32` kernels over dense row-major `Float32` tensors. Specs must use
+  one input descriptor, one output descriptor, matching shapes, and a `scale`
+  `Float32` push constant; CPU, mixed-device, unsupported dtype, missing push,
+  and unsupported operation paths fail closed.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

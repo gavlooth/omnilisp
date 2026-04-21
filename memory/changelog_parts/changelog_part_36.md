@@ -449,3 +449,23 @@
     compiler slice `pass=287 fail=0`, basic Lisp `pass=161 fail=0`, primitive
     docs parity, Stage 3 source parity, code file-size gate, and
     `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-002 Checked Vulkan Kernel Runner
+
+- Implemented the first real `kernel/run` execution route.
+  - Supported spec: `backend 'vulkan`, `operation 'scale-f32`.
+  - Contract: one input descriptor, one output descriptor, `Float32` descriptor
+    dtypes, matching descriptor shapes, dense row-major Vulkan `Float32`
+    runtime storage, and push key `scale` representable as `Float32`.
+  - Execution uses the existing checked Vulkan Float32 scale helper and returns
+    an ordinary dictionary keyed by the output descriptor name.
+  - CPU placement, mixed placement, unsupported dtype, empty tensor, shape
+    mismatch, missing push data, and unsupported operations fail closed without
+    hidden CPU fallback.
+  - Arbitrary user source compilation, graph capture, command-buffer batching,
+    fusion, device-buffer reuse/lifetime planning, deterministic invalidation,
+    and `(define [kernel] ...)` sugar remain out of scope.
+  - Validation passed: `c3c build`, direct eval smokes, focused advanced
+    collections `pass=1837 fail=0`, basic Lisp `pass=161 fail=0`, compiler
+    slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.
