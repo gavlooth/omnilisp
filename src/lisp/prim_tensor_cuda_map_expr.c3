@@ -14,6 +14,9 @@ fn Value* tensor_map_try_vulkan_value(TensorVal* source, Interp* interp) {
     Value* preflight_err = tensor_map_vulkan_callable_op_or_raise(source.map_func, source.map_is_binary, source.dtype, &op, interp);
     if (preflight_err != null) return preflight_err;
 
+    Value* batch_result = tensor_map_try_vulkan_chain2_scalar_value(source, op, interp);
+    if (batch_result != null) return batch_result;
+
     return tensor_map_try_vulkan_value_checked(source, op, interp);
 }
 

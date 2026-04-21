@@ -81,6 +81,72 @@ Next actions:
 
 Signature: GPT-5 Codex
 
+## 2026-04-21 08:05 CEST - ML-VK-080-015 Vulkan Map Chain Command-Buffer Batch
+
+Objective attempted:
+- Implement `ML-VK-080-015` as the first executable Tensor command-buffer
+  batching slice for Vulkan `Float32` map expressions.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `csrc/tensor_vulkan_helpers_dispatch_batch.c`
+- `src/lisp/prim_tensor_vulkan_map_batch.c3`
+- `src/lisp/prim_tensor_cuda_map_expr.c3`
+- `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+- `docs/todo_parts/todo_part_14.md`
+- `.agents/PLAN.md`
+
+Code or configuration changes made:
+- Added a native Vulkan helper for two scalar Float32 map dispatches recorded
+  into one command buffer with one intermediate shader-write/read barrier and
+  one queue submission.
+- Added C3 extern wiring and a runtime map-chain detector used by
+  `tensor_map_try_vulkan_value` before the older one-helper-per-op path.
+- Added build-manifest entries for the new C helper and C3 runtime files.
+- Added focused coverage that checks numeric correctness and asserts the new
+  chain dispatch counter increments when Vulkan Float32 is available.
+- Closed `ML-VK-080-015` and split general captured graph execution into
+  `ML-VK-080-018`.
+
+Commands run:
+- `scripts/build_omni_chelpers.sh`
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `scripts/check_primitive_docs_parity.sh`
+- `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Focused advanced collections passed with `pass=1854 fail=0`.
+- Compiler slice passed with `pass=289 fail=0`.
+- Basic Lisp passed with `pass=161 fail=0`.
+- Primitive docs parity, Stage 3 source parity, code file-size gate, and
+  whitespace checks passed.
+
+Invalidated assumptions or failed approaches worth preserving:
+- Starting from an already concrete Vulkan tensor does not preserve a two-map
+  expression for batching; existing `map` direct dispatch eagerly materializes
+  one operation at a time. The executable batching path is an explicit
+  CPU-expression to `to-device 'vulkan` graph route followed by `realize`.
+
+Unresolved issues:
+- `tensor/capture` graph dictionaries remain metadata-only and are not
+  executable.
+- General captured Tensor graph execution is now tracked as `ML-VK-080-018`.
+- Source-backed custom Kernel compilation/dispatch and contracted runtime
+  buffer reuse remain open.
+
+Next actions:
+- Continue `ML-VK-080-018` if the next priority is arbitrary captured graph
+  execution, or `ML-VK-080-016` if source-backed custom Kernel compilation is
+  the priority.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-21 07:46 CEST - ML-VK-080-014 Tensor Fusion Eligibility Metadata
 
 Objective attempted:

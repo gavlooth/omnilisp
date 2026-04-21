@@ -1,6 +1,6 @@
 module main;
 
-const String[218] AOT_RUNTIME_LISP_SOURCES_PART3 = {
+const String[220] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_math_arithmetic.c3",
     "src/lisp/prim_math_core.c3",
     "src/lisp/prim_ml_activation.c3",
@@ -79,6 +79,7 @@ const String[218] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_tensor_storage.c3",
     "src/lisp/prim_tensor_unary_math.c3",
     "src/lisp/prim_tensor_validation.c3",
+    "src/lisp/prim_tensor_vulkan_map_batch.c3",
     "src/lisp/prim_tensor_vulkan_map_direct.c3",
     "src/lisp/prim_ui_ftxui.c3",
     "src/lisp/prim_ui_ftxui_helpers.c3",
@@ -164,6 +165,7 @@ const String[218] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/tensor_cuda_backend.c3",
     "src/lisp/tensor_lapack_backend.c3",
     "src/lisp/tensor_vulkan_backend.c3",
+    "src/lisp/tensor_vulkan_backend_batch.c3",
     "src/lisp/tensor_vulkan_backend_factorization.c3",
     "src/lisp/threads.c3",
     "src/lisp/tls.c3",

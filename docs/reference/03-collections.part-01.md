@@ -479,10 +479,12 @@ policy without allocating, retaining handles, or reusing runtime buffers. The
 nested fusion plan records eligibility-only direct map-chain candidates and
 contract/view barriers without compiling fused shaders or executing fused
 dispatch. Captured graphs are not executed, and capture does not allocate,
-record, submit, or execute Vulkan command buffers. Arbitrary strided view
-graphs, mixed placement, unsupported map callables, unsupported dtypes,
-executable command batching, fused dispatch, and runtime buffer reuse remain
-fail closed. Vulkan
+record, submit, or execute Vulkan command buffers. Executable command batching
+belongs to the narrow Vulkan `Float32` two-scalar-map ML-VK-080-015 slice, not
+arbitrary captured graph execution, and it still fails closed without hidden
+CPU fallback or `(define [kernel] ...)`. Arbitrary strided view graphs, mixed
+placement, unsupported map callables, unsupported dtypes, fused dispatch, and
+runtime buffer reuse remain fail closed. Vulkan
 `Float32` serial factor/solve operations and staged parallel `Float32`
 `matrix/solve` are supported for eligible dense row-major operands; CPU
 `Float32` SVD/factor oracles are supported.

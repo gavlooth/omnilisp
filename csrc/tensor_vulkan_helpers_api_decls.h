@@ -35,6 +35,22 @@ int omni_tensor_vulkan_record_submit_single_dispatch(
     uint32_t push_size,
     uint32_t group_count
 );
+int omni_tensor_backend_vulkan_map_chain2_scalar_f32(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t element_count,
+    float first_scalar,
+    uint32_t first_mode,
+    uint32_t first_op,
+    float second_scalar,
+    uint32_t second_mode,
+    uint32_t second_op,
+    size_t rank,
+    const size_t* shape,
+    const size_t* strides,
+    void** out_device_ptr
+);
+long omni_tensor_backend_vulkan_map_chain2_dispatch_call_count(void);
 int omni_tensor_backend_vulkan_tail_status_from_payload_f64(double status_payload);
 int omni_tensor_backend_vulkan_tail_status_from_payload_f32(float status_payload);
 int omni_tensor_backend_vulkan_read_status_code_u32(void* status_device);

@@ -1087,18 +1087,27 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   chains, and barrier records for contract/view nodes. Top-level `fusion`
   remains `none`; this does not compile fused shaders, record command buffers,
   execute fused dispatch, or reuse runtime buffers.
+- `ML-VK-080-015`: `realize` now executes supported Vulkan `Float32`
+  two-scalar-map expression chains as one native command-buffer batch. The
+  executor copies the CPU expression source into Vulkan through the existing
+  explicit `to-device 'vulkan` graph route, records two map dispatches into one
+  command buffer, inserts one shader write/read barrier between the intermediate
+  and output dispatch, and submits once. This is not arbitrary
+  `tensor/capture` dictionary execution.
 - Contract:
-  - scheduling metadata is descriptive only;
+  - `tensor/capture` scheduling metadata is still descriptive only;
   - `direct-helper` means an existing helper-backed node would require a launch
-    in a future executor, not that capture launches it;
-  - no command-buffer batching, fused execution, source compilation, or runtime
-    buffer reuse is implemented in this slice.
+    in a future graph executor, not that capture launches it;
+  - the only executable command-buffer batch currently implemented is the
+    narrow Vulkan `Float32` two-scalar-map `realize` path;
+  - no fused execution, source compilation, arbitrary captured-graph execution,
+    or runtime buffer reuse is implemented in this slice.
 - Still open under `ML-VK-080`:
-  - `ML-VK-080-015` executable Tensor command-buffer batching;
   - `ML-VK-080-016` source-backed custom `Kernel` compilation/dispatch;
   - `ML-VK-080-017` contracted buffer reuse/lifetime planning;
+  - `ML-VK-080-018` general captured Tensor graph execution;
   - broader invalidation/capability planning.
-- Validation completed: `c3c build`, direct schedule eval smoke, focused
-  advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
-  basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
-  code file-size gate, and `git diff --check`.
+- Validation completed: `scripts/build_omni_chelpers.sh`, `c3c build`,
+  focused advanced collections `pass=1854 fail=0`, compiler slice
+  `pass=289 fail=0`, basic Lisp `pass=161 fail=0`, primitive docs parity,
+  Stage 3 source parity, code file-size gate, and `git diff --check`.

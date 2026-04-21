@@ -118,8 +118,10 @@ direct-helper Kernel families against runtime inputs and push data and returns a
 single-node `kernel-graph` launch plan with backend, operation, family, dtype,
 device, direct-helper execution, input/output names, concrete runtime shape,
 push data, node data, and an invalidation key without executing the kernel.
-Arbitrary user source compilation, graph fusion, and command-buffer planning
-still fail closed until their backend runner exists.
+That capture surface is not arbitrary graph execution: the current
+ML-VK-080-015 work item is a narrow executable Vulkan `Float32` two-scalar-map
+command-buffer batching slice, and it still must fail closed without hidden CPU
+fallback or `(define [kernel] ...)` sugar.
 
 Do not add `(define [kernel] ...)` declaration sugar. Named kernels should use
 ordinary Omni binding over the value constructor:

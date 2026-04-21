@@ -37,6 +37,7 @@
                 "csrc/tensor_vulkan_helpers.c",
                 "csrc/tensor_vulkan_helpers_dispatch_basic.c",
                 "csrc/tensor_vulkan_helpers_dispatch_storage.c",
+                "csrc/tensor_vulkan_helpers_dispatch_batch.c",
                 "csrc/tensor_vulkan_helpers_dispatch_multi_output.c",
                 "csrc/tensor_vulkan_helpers_dispatch_solve_multi.c",
                 "csrc/tensor_vulkan_helpers_matrix_ops_status.c",

@@ -1,5 +1,7 @@
 module lisp;
 
+import std::io;
+
 fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "nn/forward runs train-mode dense model without hidden state mutation",
         "(let (model (nn/init (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (Dictionary 'dtype 'Float32 'device 'cpu 'mode 'train 'seed 1)) out (nn/forward model (Tensor Float32 [2] [1 2]))) (and (= (ref out [0]) (Float32 3.0)) (= (nn/mode model) 'train)))", pass, fail);
@@ -52,6 +54,22 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(and (= (handle (tensor/capture (map + (Tensor Float32 [1] [1]) (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (contract (Tensor Float32 [1] [1]) (Tensor Float32 [1] [2]) [0 0])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (matrix/transpose-view (Tensor Float32 [2 2] [1 2 3 4]))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (Tensor Float64 [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported))", pass, fail);
     test_truthy(interp, "tensor/capture returns ordinary metadata-only dict for Float32 tensor memory-plan graphs",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map sqrt (map + x (Float32 3.0))) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batches (ref g 'command-batches) batch (ref batches 0) dispatches (ref batch 'dispatches) mem (ref g 'memory-plan) src-node (ref nodes 0) add-node (ref nodes 1) last (ref nodes 2) key (ref g 'invalidation-key)) (and (= (type-of g) 'Dictionary) (= (ref g 'kind) 'tensor-graph) (= (ref mem 'kind) 'tensor-memory-plan) (= (ref mem 'version) 1) (= (ref mem 'backend) 'vulkan) (= (ref mem 'dtype) 'Float32) (= (ref mem 'policy) 'metadata-only) (not (ref mem 'allocates)) (not (ref mem 'retains-handles)) (= (ref mem 'external-bytes) 8) (= (ref mem 'transient-bytes) 16) (= (length (ref mem 'node-memory)) 3) (= (ref g 'family) 'map-expression) (= (ref g 'execution) 'not-launched) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (length batches) 1) (= (ref (ref schedule 0) 'execution) 'external-buffer) (= (ref (ref schedule 1) 'execution) 'direct-helper) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref src-node 'kind) 'tensor-source) (= (ref src-node 'allocation) 'external) (= (ref src-node 'owner) 'self) (= (ref src-node 'storage-bytes) 8) (= (ref add-node 'kind) 'tensor-map) (= (ref add-node 'allocation) 'transient) (= (ref add-node 'owner) 'planned-transient) (= (ref add-node 'write-policy) 'planned-write-once) (= (ref add-node 'byte-length) 8) (= (ref last 'kind) 'tensor-map) (= (ref last 'allocation) 'transient) (= (ref last 'byte-length) 8) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'operation) 'sqrt) (= (ref key 0) 'vulkan) (= (ref key 1) 'Float32))) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain2_calls_before = omni_tensor_backend_vulkan_map_chain2_dispatch_call_count();
+        test_truthy(interp, "realize executes Vulkan Float32 two-scalar-map chain as one command-buffer batch",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) expr-a (to-device (map * (map + x (Float32 3.0)) (Float32 2.0)) 'vulkan) expr-b (to-device (map - (Float32 20.0) (map - (Float32 5.0) x)) 'vulkan) a (realize expr-a) b (realize expr-b) acpu (to-device a 'cpu) bcpu (to-device b 'cpu)) (and (= (device a) 'vulkan) (= (device b) 'vulkan) (< (abs (- (ref acpu [0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref acpu [1]) (Float32 10.0))) (Float32 0.000001)) (< (abs (- (ref bcpu [0]) (Float32 16.0))) (Float32 0.000001)) (< (abs (- (ref bcpu [1]) (Float32 17.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain2_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_chain2_dispatch_call_count() > chain2_calls_before;
+        if (chain2_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan Float32 two-scalar-map chain used command-buffer batch"
+                : "[PASS] tensor Vulkan Float32 two-scalar-map chain command-buffer batch unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor Vulkan Float32 two-scalar-map chain used command-buffer batch");
+            (*fail)++;
+        }
+    }
     test_truthy(interp, "tensor-layout reports exact Float32 byte lengths and ownership for small Vulkan tensors",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (src (to-device (Tensor Float32 [2 2] [1 2 3 4]) 'vulkan) view (matrix/transpose-view (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan)) src-layout (tensor-layout src) view-layout (tensor-layout view)) (and (= (ref src-layout 'payload) 'concrete) (= (ref src-layout 'owner) 'self) (= (ref src-layout 'owns-storage) true) (= (ref src-layout 'byte-length) 16) (= (ref src-layout 'storage-bytes) 16) (= (ref view-layout 'payload) 'view) (= (ref view-layout 'owner) 'view-source) (= (ref view-layout 'owns-storage) false) (= (ref view-layout 'is-view) true) (= (ref view-layout 'byte-length) 24) (= (ref view-layout 'storage-bytes) 24) (= (ref view-layout 'write-policy) 'read-only-view))) true))", pass, fail);
     test_truthy(interp, "kernel/run add-f32 validates arity push and shapes",

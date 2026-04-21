@@ -825,11 +825,14 @@ Source: `TODO.md`
       - contract: top-level `fusion` remains `none`; no fused shader
         compilation, no command-buffer recording, no fused dispatch, and no
         runtime buffer reuse.
-    - [ ] `ML-VK-080-015` implement executable Tensor command-buffer batching.
-      - blocker: requires a new native/runtime executor bridge that consumes
-        captured schedule/command-batch metadata and records/submits Vulkan
-        command buffers instead of relying on the current one-helper-per-op
-        dispatch path.
+    - [x] `ML-VK-080-015` implement executable Vulkan Float32 two-scalar-map
+      command-buffer batching.
+      - shipped: `realize` now executes supported Vulkan `Float32`
+        two-scalar-map expression chains as one recorded command buffer with an
+        intermediate shader-write/read barrier and one queue submission.
+      - contract: this consumes the narrow expression-materialization path, not
+        arbitrary `tensor/capture` graph dictionaries; no hidden CPU fallback
+        and no `(define [kernel] ...)` sugar were added.
     - [ ] `ML-VK-080-016` implement source-backed custom `Kernel`
       compilation/dispatch.
       - blocker: `Kernel` already accepts `source` and `entry` data, but the
@@ -838,6 +841,11 @@ Source: `TODO.md`
       - blocker: current `memory-plan` is descriptive only; a real reuse
         contract must move together with Tensor ownership/finalizer and backend
         allocation semantics.
+    - [ ] `ML-VK-080-018` implement general captured Tensor graph execution.
+      - blocker: the new executor handles only the narrow Vulkan `Float32`
+        two-scalar-map materialization path; arbitrary captured graph
+        dictionaries still need a runtime graph executor that consumes schedule,
+        dependency, command-batch, and invalidation metadata directly.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
