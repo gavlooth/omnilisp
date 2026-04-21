@@ -741,3 +741,58 @@ Signature: GPT-5 Codex
   - Continue `ML-VK-080` with contract/view capture or command-buffer
     batching/fusion now that map DAG data exists.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 06:23 CEST - ML-VK-080-009 Vulkan Tensor Contract Graph Capture
+
+- Objective attempted: continue `ML-VK-080` by extending Tensor expression graph
+  capture from map DAGs to contract DAGs without launching the graph or adding
+  kernel declaration sugar.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_device_copy.c3`
+  - `src/lisp/prim_tensor_capture.c3`
+  - advanced tests, language/reference docs, Vulkan ML roadmap, TODO, plan, and
+    changelog artifacts.
+- Code or configuration changes made:
+  - Generalized Vulkan expression-preserving `to-device` copying so supported
+    CPU lazy `Float32` contract expressions become Vulkan Tensor expressions.
+  - Extended `tensor/capture(source)` to count and append contract expression
+    nodes.
+  - Contract graph nodes record input ids, left/right axes, axis count, output
+    shape, dtype/device/backend, and family `contract-f32`.
+  - Kept capture metadata-only; the returned plan still does not embed the
+    source Tensor or launch/realize the graph.
+- Commands run:
+  - `c3c build`
+  - direct eval smoke for `to-device` contract graph preservation plus
+    `tensor/capture`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct contract capture smoke returned
+    `[tensor-graph contract-expression 3 tensor-contract 1 0]`.
+  - Focused advanced collections passed with `pass=1849 fail=0`.
+  - Compiler slice passed with `pass=289 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - None new. The prior constraint still holds: build capturable DAGs through
+    CPU lazy expressions plus explicit `to-device 'vulkan` graph preservation,
+    not by assuming direct Vulkan execution leaves an expression graph.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - View graph capture, command-buffer batching, fusion, arbitrary source
+    compilation, buffer reuse/lifetime planning, and broader deterministic
+    invalidation remain open.
+- Next actions:
+  - Commit and push the slice, then continue `ML-VK-080` with view capture or
+    command-buffer batching/fusion.
+- Signature: GPT-5 Codex

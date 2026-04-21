@@ -781,6 +781,12 @@ Source: `TODO.md`
         including source/map nodes, scalar operands, output id, shape, and
         invalidation metadata. Explicit `to-device 'vulkan` preserves supported
         CPU lazy Float32 map graphs as Vulkan expressions for capture.
+    - [x] `ML-VK-080-009` add Vulkan Float32 Tensor contract graph capture.
+      - shipped: `tensor/capture(source)` records all-Vulkan Float32
+        concrete/map/contract Tensor expression graphs; contract nodes include
+        input ids, left/right axes, axis count, output shape, dtype/device, and
+        backend metadata. Explicit `to-device 'vulkan` preserves supported CPU
+        lazy Float32 contract graphs as Vulkan expressions for capture.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

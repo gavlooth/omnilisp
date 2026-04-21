@@ -118,7 +118,7 @@ fn Value* tensor_copy_cpu_to_cuda_value(Value* source_value, Interp* interp) {
     return result;
 }
 
-fn Value* tensor_copy_map_expr_to_vulkan_graph_value(Value* source_value, Interp* interp) {
+fn Value* tensor_copy_expr_to_vulkan_graph_value(Value* source_value, Interp* interp) {
     if (!is_tensor(source_value) || source_value.tensor_val == null) return null;
     TensorVal* source = source_value.tensor_val;
     if (source.kind == TENSOR_PAYLOAD_CONCRETE) {
@@ -126,7 +126,29 @@ fn Value* tensor_copy_map_expr_to_vulkan_graph_value(Value* source_value, Interp
         if (source.device != TENSOR_DEVICE_CPU || source.dtype != TENSOR_DTYPE_FLOAT32) return null;
         return tensor_copy_cpu_to_vulkan_value(source_value, interp);
     }
-    if (source.kind != TENSOR_PAYLOAD_MAP || source.dtype != TENSOR_DTYPE_FLOAT32) return null;
+    if (source.dtype != TENSOR_DTYPE_FLOAT32) return null;
+    if (source.kind == TENSOR_PAYLOAD_CONTRACT) {
+        Value* left_value = tensor_copy_expr_to_vulkan_graph_value(source.contract_left, interp);
+        if (left_value == null || left_value.tag == ERROR) return left_value;
+        Value* right_value = tensor_copy_expr_to_vulkan_graph_value(source.contract_right, interp);
+        if (right_value == null || right_value.tag == ERROR) return right_value;
+
+        usz[1] scalar_shape = { 0 };
+        usz[] shape_slice = source.rank == 0 ? scalar_shape[0:0] : source.shape[0:source.rank];
+        Value* result = make_tensor_contract_expr(
+            left_value,
+            right_value,
+            source.contract_left_axes,
+            source.contract_right_axes,
+            source.contract_axis_count,
+            shape_slice,
+            interp
+        );
+        if (result == null || result.tag == ERROR) return result;
+        result.tensor_val.device = TENSOR_DEVICE_VULKAN;
+        return result;
+    }
+    if (source.kind != TENSOR_PAYLOAD_MAP) return null;
 
     uint op = 0;
     bool supported = source.map_is_binary
@@ -139,7 +161,7 @@ fn Value* tensor_copy_map_expr_to_vulkan_graph_value(Value* source_value, Interp
     Value* right_value = null;
     TensorVal* right_tensor = null;
     if (source.map_left != null) {
-        left_value = tensor_copy_map_expr_to_vulkan_graph_value(source.map_left, interp);
+        left_value = tensor_copy_expr_to_vulkan_graph_value(source.map_left, interp);
         if (left_value == null || left_value.tag == ERROR) return left_value;
         left_tensor = left_value.tensor_val;
     } else {
@@ -148,7 +170,7 @@ fn Value* tensor_copy_map_expr_to_vulkan_graph_value(Value* source_value, Interp
     }
     if (source.map_is_binary) {
         if (source.map_right != null) {
-            right_value = tensor_copy_map_expr_to_vulkan_graph_value(source.map_right, interp);
+            right_value = tensor_copy_expr_to_vulkan_graph_value(source.map_right, interp);
             if (right_value == null || right_value.tag == ERROR) return right_value;
             right_tensor = right_value.tensor_val;
         } else {
@@ -179,8 +201,8 @@ fn Value* tensor_copy_cpu_to_vulkan_value(Value* source_value, Interp* interp) {
     if (!is_tensor(source_value) || source_value.tensor_val == null) return tensor_type_raise(interp, "to-device: expected Tensor");
     TensorVal* source_meta = source_value.tensor_val;
     if (!tensor_has_valid_metadata(source_meta)) return tensor_runtime_raise(interp, "to-device: source tensor metadata is missing");
-    if (source_meta.kind == TENSOR_PAYLOAD_MAP && source_meta.dtype == TENSOR_DTYPE_FLOAT32) {
-        Value* graph_value = tensor_copy_map_expr_to_vulkan_graph_value(source_value, interp);
+    if ((source_meta.kind == TENSOR_PAYLOAD_MAP || source_meta.kind == TENSOR_PAYLOAD_CONTRACT) && source_meta.dtype == TENSOR_DTYPE_FLOAT32) {
+        Value* graph_value = tensor_copy_expr_to_vulkan_graph_value(source_value, interp);
         if (graph_value != null) return graph_value;
     }
     bool source_is_view = source_meta.kind == TENSOR_PAYLOAD_VIEW || source_meta.is_view;

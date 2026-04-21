@@ -1008,3 +1008,27 @@ Date: 2026-04-21 - Added the first multi-node Tensor graph-capture boundary.
   collections `pass=1848 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
   `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
   file-size gate, and `git diff --check`.
+
+## Active ML-VK-080-009 Vulkan Tensor Contract Graph Capture
+Date: 2026-04-21 - Extends Tensor graph capture from map DAGs to contract DAGs.
+
+- Shipped in this slice:
+  - `to-device 'vulkan` preserves supported CPU lazy `Float32` contract
+    expressions as Vulkan Tensor expressions;
+  - `tensor/capture(source)` counts and records all-Vulkan `Float32` contract
+    expression nodes;
+  - contract nodes record input ids, left/right axes, axis count, output shape,
+    dtype/device/backend, and family `contract-f32`.
+- Contract:
+  - accepts one Tensor source;
+  - requires `Float32` dtype and all leaves/device references to be Vulkan;
+  - supports concrete source, map, and contract nodes;
+  - does not launch, fuse, batch commands, or embed the source Tensor in the
+    returned plan.
+- Still open under `ML-VK-080`: view graph capture, command-buffer batching,
+  fusion, source compilation, buffer reuse/lifetime planning, and broader
+  invalidation/capability planning.
+- Validation completed: `c3c build`, direct contract-capture eval smoke,
+  focused advanced collections `pass=1849 fail=0`, compiler slice
+  `pass=289 fail=0`, basic Lisp `pass=161 fail=0`, primitive docs parity,
+  Stage 3 source parity, code file-size gate, and `git diff --check`.

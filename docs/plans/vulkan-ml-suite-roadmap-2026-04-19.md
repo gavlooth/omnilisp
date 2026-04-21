@@ -457,6 +457,12 @@ Shipped first slice:
   graphs. Explicit `to-device 'vulkan` preserves supported CPU lazy `Float32`
   map graphs as Vulkan Tensor expressions so capture can record multi-node
   source/map DAG data without launching the graph.
+- `ML-VK-080-009`: `tensor/capture(source)` now also records all-Vulkan
+  `Float32` contract Tensor expression graphs. Explicit `to-device 'vulkan`
+  preserves supported CPU lazy `Float32` contract graphs as Vulkan Tensor
+  expressions, and contract nodes record input ids, left/right axes, output
+  shape, dtype/device/backend, and invalidation data without launching the
+  graph.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

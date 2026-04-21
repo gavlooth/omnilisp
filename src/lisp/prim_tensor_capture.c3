@@ -49,6 +49,11 @@ fn bool tensor_capture_count_nodes(Value* value, int* out_count) {
             if (tensor.map_is_binary && tensor.map_right != null && !tensor_capture_count_nodes(tensor.map_right, out_count)) return false;
             *out_count += 1;
             return true;
+        case TENSOR_PAYLOAD_CONTRACT:
+            if (!tensor_capture_count_nodes(tensor.contract_left, out_count)) return false;
+            if (!tensor_capture_count_nodes(tensor.contract_right, out_count)) return false;
+            *out_count += 1;
+            return true;
         default:
             return false;
     }
@@ -69,6 +74,18 @@ fn Value* tensor_capture_ids_array(Interp* interp, int left_id, int right_id, bo
         out.array_val.items[1] = make_int(interp, (long)right_id);
         if (out.array_val.items[1] == null) return nn_oom(interp);
         out.array_val.length = 2;
+    }
+    return out;
+}
+
+fn Value* tensor_capture_axis_array(Interp* interp, usz* axes, usz axis_count) {
+    Value* out = make_array_checked(interp, axis_count, "tensor/capture: out of memory");
+    if (out == null || out.tag == ERROR) return out;
+    if (out.array_val == null) return nn_oom(interp);
+    for (usz i = 0; i < axis_count; i++) {
+        out.array_val.items[i] = make_int(interp, (long)axes[i]);
+        if (out.array_val.items[i] == null) return nn_oom(interp);
+        out.array_val.length++;
     }
     return out;
 }
@@ -132,6 +149,29 @@ fn Value* tensor_capture_map_node(TensorVal* tensor, int left_id, int right_id, 
     return node;
 }
 
+fn Value* tensor_capture_contract_node(TensorVal* tensor, int left_id, int right_id, Interp* interp) {
+    Value* node = nn_make_dict(interp, 18);
+    if (node == null || node.tag == ERROR) return node;
+    Value* inputs = tensor_capture_ids_array(interp, left_id, right_id, true);
+    if (inputs == null || inputs.tag == ERROR) return inputs;
+    Value* left_axes = tensor_capture_axis_array(interp, tensor.contract_left_axes, tensor.contract_axis_count);
+    if (left_axes == null || left_axes.tag == ERROR) return left_axes;
+    Value* right_axes = tensor_capture_axis_array(interp, tensor.contract_right_axes, tensor.contract_axis_count);
+    if (right_axes == null || right_axes.tag == ERROR) return right_axes;
+    if (Value* err = nn_dict_set_symbol(node, interp, "kind", "tensor-contract")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "backend", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "dtype", "Float32")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "family", "contract-f32")) return err;
+    if (Value* err = nn_dict_set(node, interp, "arity", make_int(interp, 2))) return err;
+    if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
+    if (Value* err = nn_dict_set(node, interp, "left-axes", left_axes)) return err;
+    if (Value* err = nn_dict_set(node, interp, "right-axes", right_axes)) return err;
+    if (Value* err = nn_dict_set(node, interp, "axis-count", make_int(interp, (long)tensor.contract_axis_count))) return err;
+    if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
+    return node;
+}
+
 fn Value* tensor_capture_append_graph(Value* value, Value* nodes, int* next_id, int* out_id, Interp* interp) {
     if (!is_tensor(value) || value.tensor_val == null) return primitive_arg_type_raise(interp, "tensor/capture", 0, "Tensor", value);
     TensorVal* tensor = value.tensor_val;
@@ -171,8 +211,25 @@ fn Value* tensor_capture_append_graph(Value* value, Value* nodes, int* next_id, 
             if (node == null || node.tag == ERROR) return node;
             return tensor_capture_append(nodes, node, next_id, out_id, interp);
         }
+        case TENSOR_PAYLOAD_CONTRACT: {
+            int left_id = -1;
+            int right_id = -1;
+            if (Value* err = tensor_capture_append_graph(tensor.contract_left, nodes, next_id, &left_id, interp)) return err;
+            if (Value* err = tensor_capture_append_graph(tensor.contract_right, nodes, next_id, &right_id, interp)) return err;
+            Value* node = tensor_capture_contract_node(tensor, left_id, right_id, interp);
+            if (node == null || node.tag == ERROR) return node;
+            return tensor_capture_append(nodes, node, next_id, out_id, interp);
+        }
         default:
-            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete and map Tensor graphs", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, and contract Tensor graphs", null);
+    }
+}
+
+fn char[] tensor_capture_plan_family(TensorPayloadKind kind) {
+    switch (kind) {
+        case TENSOR_PAYLOAD_MAP: return "map-expression";
+        case TENSOR_PAYLOAD_CONTRACT: return "contract-expression";
+        default: return "tensor-expression";
     }
 }
 
@@ -199,7 +256,7 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     if (Value* err = nn_dict_set_symbol(plan, interp, "backend", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "dtype", "Float32")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "device", "vulkan")) return err;
-    if (Value* err = nn_dict_set_symbol(plan, interp, "family", "map-expression")) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "family", tensor_capture_plan_family(tensor.kind))) return err;
     if (Value* err = nn_dict_set(plan, interp, "node-count", make_int(interp, (long)nodes.array_val.length))) return err;
     if (Value* err = nn_dict_set(plan, interp, "output", make_int(interp, (long)output_id))) return err;
     if (Value* err = nn_dict_set(plan, interp, "nodes", nodes)) return err;
@@ -223,7 +280,7 @@ fn Value* prim_tensor_capture(Value*[] args, Env* env, Interp* interp) {
 
     int count = 0;
     if (!tensor_capture_count_nodes(args[0], &count) || count <= 0) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete and map Tensor graphs", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, and contract Tensor graphs", null);
     }
     Value* nodes = make_array_checked(interp, (usz)count, "tensor/capture: out of memory");
     if (nodes == null || nodes.tag == ERROR) return nodes;
