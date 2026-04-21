@@ -440,6 +440,12 @@ Shipped first slice:
   `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`,
   `min-scalar-f32`, and `max-scalar-f32`; scalar-left noncommutative operations
   are `scalar-sub-f32` and `scalar-div-f32`.
+- `ML-VK-080-006`: `kernel/run` now executes checked helper-backed unary
+  `Float32` kernels with one dense row-major Vulkan tensor input, one matching
+  output descriptor, and no push constants. Operations are `abs-f32`,
+  `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`,
+  `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`,
+  `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, and `normal-cdf-f32`.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

@@ -938,3 +938,27 @@ Date: 2026-04-21 - Added scalar helper-backed Kernel execution.
   file-size gate, and `git diff --check`.
 - Next checkpoint: commit and push this scalar family slice, then continue
   toward graph/DAG capture or another real backend execution boundary.
+
+## Active ML-VK-080-006 Checked Vulkan Unary Float32 Kernel Family
+Date: 2026-04-21 - Added unary helper-backed Kernel execution.
+
+- Shipped unary operations: `abs-f32`, `neg-f32`, `sqrt-f32`,
+  `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`,
+  `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`,
+  `log-f32`, `log10-f32`, and `normal-cdf-f32`.
+- Contract:
+  - one input descriptor and one output descriptor;
+  - both descriptors must declare `dtype 'Float32`;
+  - descriptor and tensor shapes must match;
+  - the Kernel spec push dictionary must be absent, nil, or empty;
+  - runtime push must be empty;
+  - runtime input must be dense row-major Vulkan `Float32`.
+- The runner uses the existing Vulkan Float32 unary map helper and returns an
+  ordinary dictionary keyed by the output descriptor name.
+- Validation completed: `c3c build`, focused advanced collections
+  `pass=1844 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
+  `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`.
+- Next checkpoint: commit and push this unary family slice, then continue
+  toward graph/DAG capture, source compilation, command-buffer batching, fusion,
+  or device-buffer lifetime planning.

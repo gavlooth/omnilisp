@@ -108,7 +108,11 @@ for two same-shape dense row-major `Float32` tensor inputs, plus scalar
 `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`,
 `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, and `scalar-div-f32`
 for one dense row-major `Float32` tensor input and one `scalar` `Float32` push
-constant.
+constant, plus unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`,
+`zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`,
+`atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`,
+`log10-f32`, and `normal-cdf-f32` for one dense row-major `Float32` tensor
+input and no push constants.
 Arbitrary user source compilation, graph fusion, and command-buffer planning
 still fail closed until their backend runner exists.
 

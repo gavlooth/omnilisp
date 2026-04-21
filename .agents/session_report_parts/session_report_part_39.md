@@ -515,6 +515,66 @@ Signature: GPT-5 Codex
     capture or another real backend execution boundary.
 - Signature: GPT-5 Codex
 
+## 2026-04-21 05:39 CEST - ML-VK-080-006 Checked Vulkan Unary Float32 Kernel Family
+
+- Objective attempted: continue `ML-VK-080` by adding real checked unary
+  Kernel execution on top of the existing Vulkan Float32 unary map helper,
+  without adding `(define [kernel] ...)` sugar or custom source compilation.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel.c3`
+  - `src/lisp/prim_kernel_unary.c3`
+  - `src/entry_build_runtime_manifest_lisp_part3.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - language/reference docs, Vulkan ML roadmap, TODO, plan, changelog, and
+    session-report artifacts.
+- Code or configuration changes made:
+  - Added unary `kernel/run` operations `abs-f32`, `neg-f32`, `sqrt-f32`,
+    `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`,
+    `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`,
+    `log-f32`, `log10-f32`, and `normal-cdf-f32`.
+  - Split the unary dispatch/validation/execution logic into
+    `src/lisp/prim_kernel_unary.c3` to keep `prim_kernel.c3` below the code
+    file-size gate.
+  - Added the new source file to the AOT runtime source manifest after Stage 3
+    source parity caught the missing entry.
+  - The unary runner validates one input descriptor, one output descriptor,
+    `Float32` descriptor dtypes, matching descriptor/runtime tensor shapes,
+    empty spec/runtime push dictionaries, and dense row-major Vulkan Float32
+    input storage.
+  - Unsupported backend source compilation, graph capture, batching, fusion,
+    and buffer reuse planning remain fail-closed.
+- Commands run:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Focused advanced collections passed with `pass=1844 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Compiler slice passed with `pass=287 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - The new split source file was not automatically covered by the AOT runtime
+    manifest; Stage 3 source parity failed until
+    `src/entry_build_runtime_manifest_lisp_part3.c3` was updated.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Arbitrary user kernel source compilation, graph capture, batching, fusion,
+    buffer reuse/lifetime planning, and deterministic invalidation remain open.
+- Next actions:
+  - Commit and push this slice, then continue `ML-VK-080` with graph/DAG
+    capture, source compilation, command-buffer batching, fusion, or
+    device-buffer lifetime planning.
+- Signature: GPT-5 Codex
+
 ## 2026-04-21 06:17 CEST - ML-VK-080-005 Checked Vulkan Scalar Float32 Kernel Family
 
 - Objective attempted: continue `ML-VK-080` by adding real checked scalar

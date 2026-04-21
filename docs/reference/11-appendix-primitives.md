@@ -355,7 +355,7 @@ for complex operands.
 |------|-------|-------------|
 | `Tensor` | 1-3 | Construct native CPU `Float64`, `Float32`, `Complex128`, `Complex64`, `BigInteger`, `BigFloat`, or `BigComplex` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor iterator)`, `(Tensor iterator dtype)`, `(Tensor dtype shape data-or-scalar)`, or `(Tensor dtype shape iterator)` |
 | `Kernel` | 1 | Construct a validated data-oriented custom backend kernel spec as a typed `Kernel` dictionary; path access and `ref` remain ordinary data access |
-| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, and scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32` `Float32` tensor kernels and fails closed for unsupported backend compilation/execution |
+| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `normal-cdf-f32` `Float32` tensor kernels and fails closed for unsupported backend compilation/execution |
 | `tensor?` | 1 | Predicate for native tensor values |
 | `length` | 1 | Tensor element count |
 | `dtype` | 1 | Tensor dtype symbol |

@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (566 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (626 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -708,6 +708,24 @@ The historical content was split mechanically to keep individual files below the
     `pass=1811 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-006 Checked Vulkan Unary Float32 Kernel Family
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented checked Vulkan unary `Float32` `kernel/run` operations:
+    `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`,
+    `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`,
+    `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, and
+    `normal-cdf-f32`.
+  - Split the unary runner into `src/lisp/prim_kernel_unary.c3` and added it
+    to the AOT runtime source manifest.
+  - Validation: `c3c build`, focused advanced collections `pass=1844 fail=0`,
+    basic Lisp `pass=161 fail=0`, compiler slice `pass=287 fail=0`,
+    primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.
 - Signature: GPT-5 Codex
 
 ## 2026-04-20 - CUDA Map-Backed Optimizer CUDA Scope

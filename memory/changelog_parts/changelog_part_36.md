@@ -533,3 +533,26 @@
     `pass=1842 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
     `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-006 Checked Vulkan Unary Float32 Kernel Family
+
+- Added checked Vulkan `kernel/run` unary Float32 execution.
+  - Supported specs now include `operation 'abs-f32`, `neg-f32`, `sqrt-f32`,
+    `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`,
+    `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`,
+    `log-f32`, `log10-f32`, and `normal-cdf-f32`.
+  - Contract: one input descriptor, one output descriptor, `Float32`
+    descriptor dtypes, empty spec/runtime push dictionaries, matching
+    descriptor shape and runtime tensor shape, and dense row-major Vulkan
+    `Float32` runtime input storage.
+  - Execution uses the existing checked Vulkan Float32 unary map helper and
+    returns an ordinary dictionary keyed by the output descriptor name.
+  - Added `src/lisp/prim_kernel_unary.c3` and wired it into the AOT runtime
+    source manifest after Stage 3 source parity caught the missing source entry.
+  - Arbitrary user source compilation, graph capture, command-buffer batching,
+    fusion, device-buffer reuse/lifetime planning, deterministic invalidation,
+    and `(define [kernel] ...)` sugar remain out of scope.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1844 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
+    `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

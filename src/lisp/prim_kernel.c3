@@ -586,5 +586,9 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     if (kernel_scalar_f32_operation(nn_dict_get(args[0], interp, "operation"), interp, &scalar_op, &scalar_mode)) {
         return kernel_run_scalar_f32(args[0], args[1], args[2], interp, scalar_op, scalar_mode);
     }
+    uint unary_op = 0;
+    if (kernel_unary_f32_operation(nn_dict_get(args[0], interp, "operation"), interp, &unary_op)) {
+        return kernel_run_unary_f32(args[0], args[1], args[2], interp, unary_op);
+    }
     return kernel_run_unsupported(interp, "kernel/run: unsupported Kernel operation for Vulkan backend");
 }

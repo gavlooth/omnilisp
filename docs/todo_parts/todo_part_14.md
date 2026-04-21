@@ -760,6 +760,14 @@ Source: `TODO.md`
         `max-scalar-f32`, plus scalar-left `scalar-sub-f32` and
         `scalar-div-f32`; all require one dense row-major Vulkan Float32 tensor
         input and one `scalar` Float32 push constant.
+    - [x] `ML-VK-080-006` add checked Vulkan unary Float32 `kernel/run`
+      execution.
+      - shipped: unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`,
+        `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`,
+        `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`,
+        `log-f32`, `log10-f32`, and `normal-cdf-f32`; all require one dense
+        row-major Vulkan Float32 tensor input, one matching output descriptor,
+        and no push constants.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
