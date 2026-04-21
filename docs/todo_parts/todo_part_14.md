@@ -794,6 +794,11 @@ Source: `TODO.md`
         storage, including input id, output shape, strides, storage offset,
         dtype/device, and backend metadata. Arbitrary strided views remain
         fail-closed.
+    - [x] `ML-VK-080-011` add non-executing Tensor graph schedule metadata.
+      - shipped: captured Tensor graphs now include topological schedule
+        entries, per-node execution classes, launch booleans, graph
+        `launch-count`, `command-batching 'none`, and `fusion 'none`.
+        Scheduling is descriptive only and does not launch, batch, or fuse.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

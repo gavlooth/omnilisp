@@ -468,9 +468,11 @@ operands. `tensor/capture(source)` returns ordinary `tensor-graph` data for
 all-Vulkan `Float32` concrete/map/contract/direct-transpose-view expression
 graphs without executing the graph; contract nodes record input ids, output
 shape, and left/right contract axes, and direct transpose-view nodes record
-input id, output shape, and strides. Arbitrary strided view graphs, mixed
-placement, unsupported map callables, unsupported dtypes, command batching, and
-fusion remain fail closed. Vulkan
+input id, output shape, and strides. Captured graphs include descriptive
+topological schedule entries, per-node execution class, `launch-count`,
+`command-batching 'none`, and `fusion 'none`; they are not executed. Arbitrary
+strided view graphs, mixed placement, unsupported map callables, unsupported
+dtypes, command batching, and fusion remain fail closed. Vulkan
 `Float32` serial factor/solve operations and staged parallel `Float32`
 `matrix/solve` are supported for eligible dense row-major operands; CPU
 `Float32` SVD/factor oracles are supported.

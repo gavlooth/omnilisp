@@ -129,6 +129,7 @@ fn Value* tensor_capture_leaf_node(TensorVal* tensor, Interp* interp) {
     if (Value* err = nn_dict_set_symbol(node, interp, "backend", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "dtype", "Float32")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "execution", "external-buffer")) return err;
     if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
     return node;
 }
@@ -145,6 +146,7 @@ fn Value* tensor_capture_map_node(TensorVal* tensor, int left_id, int right_id, 
     if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "family", tensor.map_is_binary ? "binary-map-f32" : "unary-map-f32")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "operation", op_name)) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "execution", "direct-helper")) return err;
     if (Value* err = nn_dict_set(node, interp, "arity", make_int(interp, tensor.map_is_binary ? 2 : 1))) return err;
     if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
     if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
@@ -171,6 +173,7 @@ fn Value* tensor_capture_contract_node(TensorVal* tensor, int left_id, int right
     if (Value* err = nn_dict_set_symbol(node, interp, "dtype", "Float32")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "family", "contract-f32")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "execution", "direct-helper")) return err;
     if (Value* err = nn_dict_set(node, interp, "arity", make_int(interp, 2))) return err;
     if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
     if (Value* err = nn_dict_set(node, interp, "left-axes", left_axes)) return err;
@@ -210,6 +213,7 @@ fn Value* tensor_capture_view_node(TensorVal* tensor, int source_id, Interp* int
     if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "family", "transpose-view-f32")) return err;
     if (Value* err = nn_dict_set_symbol(node, interp, "operation", "transpose-view")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "execution", "metadata-only")) return err;
     if (Value* err = nn_dict_set(node, interp, "arity", make_int(interp, 1))) return err;
     if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
     if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
@@ -287,6 +291,55 @@ fn char[] tensor_capture_plan_family(TensorPayloadKind kind) {
     }
 }
 
+fn bool tensor_capture_node_launches(Value* node, Interp* interp) {
+    Value* execution = nn_dict_get(node, interp, "execution");
+    return nn_symbol_is(execution, interp, "direct-helper");
+}
+
+fn Value* tensor_capture_empty_ids(Interp* interp) {
+    return make_array_checked(interp, 0, "tensor/capture: out of memory");
+}
+
+fn Value* tensor_capture_schedule_entry(Value* node, usz step, bool launch, Interp* interp) {
+    if (node == null || node.tag != HASHMAP) return nn_oom(interp);
+    Value* entry = nn_make_dict(interp, 10);
+    if (entry == null || entry.tag == ERROR) return entry;
+    Value* id = nn_dict_get(node, interp, "id");
+    Value* kind = nn_dict_get(node, interp, "kind");
+    Value* execution = nn_dict_get(node, interp, "execution");
+    Value* inputs = nn_dict_get(node, interp, "inputs");
+    if (id == null || kind == null || execution == null) return tensor_runtime_raise(interp, "tensor/capture: graph schedule metadata is missing");
+    if (inputs == null) {
+        inputs = tensor_capture_empty_ids(interp);
+        if (inputs == null || inputs.tag == ERROR) return inputs;
+    }
+    if (Value* err = nn_dict_set(entry, interp, "step", make_int(interp, (long)step))) return err;
+    if (Value* err = nn_dict_set(entry, interp, "node", id)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "kind", kind)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "execution", execution)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "depends-on", inputs)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "launch", make_bool_value(interp, launch))) return err;
+    return entry;
+}
+
+fn Value* tensor_capture_schedule(Value* nodes, Interp* interp, int* out_launch_count) {
+    if (nodes == null || nodes.tag != ARRAY || nodes.array_val == null || out_launch_count == null) return nn_oom(interp);
+    *out_launch_count = 0;
+    Value* schedule = make_array_checked(interp, nodes.array_val.length, "tensor/capture: out of memory");
+    if (schedule == null || schedule.tag == ERROR) return schedule;
+    if (schedule.array_val == null) return nn_oom(interp);
+    for (usz i = 0; i < nodes.array_val.length; i++) {
+        Value* node = nodes.array_val.items[i];
+        bool launch = tensor_capture_node_launches(node, interp);
+        if (launch) *out_launch_count += 1;
+        Value* entry = tensor_capture_schedule_entry(node, i, launch, interp);
+        if (entry == null || entry.tag == ERROR) return entry;
+        schedule.array_val.items[i] = entry;
+        schedule.array_val.length++;
+    }
+    return schedule;
+}
+
 fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp* interp) {
     TensorVal* tensor = source.tensor_val;
     Value* shape = tensor_capture_shape(tensor, interp);
@@ -303,8 +356,11 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
         if (key.array_val.items[i] == null || key.array_val.items[i].tag == ERROR) return key.array_val.items[i];
     }
     key.array_val.length = 5;
+    int launch_count = 0;
+    Value* schedule = tensor_capture_schedule(nodes, interp, &launch_count);
+    if (schedule == null || schedule.tag == ERROR) return schedule;
 
-    Value* plan = nn_make_dict(interp, 18);
+    Value* plan = nn_make_dict(interp, 24);
     if (plan == null || plan.tag == ERROR) return plan;
     if (Value* err = nn_dict_set_symbol(plan, interp, "kind", "tensor-graph")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "backend", "vulkan")) return err;
@@ -314,6 +370,11 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     if (Value* err = nn_dict_set(plan, interp, "node-count", make_int(interp, (long)nodes.array_val.length))) return err;
     if (Value* err = nn_dict_set(plan, interp, "output", make_int(interp, (long)output_id))) return err;
     if (Value* err = nn_dict_set(plan, interp, "nodes", nodes)) return err;
+    if (Value* err = nn_dict_set(plan, interp, "schedule", schedule)) return err;
+    if (Value* err = nn_dict_set(plan, interp, "launch-count", make_int(interp, (long)launch_count))) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "execution", "not-launched")) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "command-batching", "none")) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "fusion", "none")) return err;
     if (Value* err = nn_dict_set(plan, interp, "shape", shape)) return err;
     if (Value* err = nn_dict_set(plan, interp, "invalidation-key", key)) return err;
     return plan;

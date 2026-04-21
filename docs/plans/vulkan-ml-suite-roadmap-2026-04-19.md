@@ -467,6 +467,10 @@ Shipped first slice:
   `Float32` transpose-view graph nodes. This is limited to the existing
   rank-2 `matrix/transpose-view` boundary over concrete dense Vulkan `Float32`
   storage; arbitrary strided views, batching, and fusion remain fail-closed.
+- `ML-VK-080-011`: `tensor/capture(source)` now includes descriptive
+  topological schedule metadata, per-node execution classes, graph
+  `launch-count`, `command-batching 'none`, and `fusion 'none`. This is
+  planning metadata only; it does not launch, batch, or fuse graph nodes.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

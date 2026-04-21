@@ -847,3 +847,53 @@ Signature: GPT-5 Codex
   - Commit and push the slice, then continue `ML-VK-080` with command-buffer
     batching/fusion or broader view planning.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 06:46 CEST - ML-VK-080-011 Tensor Graph Schedule Metadata
+
+- Objective attempted: continue `ML-VK-080` by adding non-executing schedule
+  metadata to captured Tensor graphs as a bridge toward command planning.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_capture.c3`
+  - advanced tests, language/reference docs, Vulkan ML roadmap, TODO, plan, and
+    changelog artifacts.
+- Code or configuration changes made:
+  - Added per-node execution classes to captured Tensor nodes:
+    `external-buffer`, `direct-helper`, and `metadata-only`.
+  - Added a topological graph `schedule` array with step, node id, kind,
+    execution class, dependencies, and launch flag.
+  - Added graph-level `launch-count`, `execution 'not-launched`,
+    `command-batching 'none`, and `fusion 'none`.
+  - Kept capture non-executing and metadata-only.
+- Commands run:
+  - `c3c build`
+  - direct eval smoke for schedule metadata on a captured Vulkan map graph
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct schedule smoke returned
+    `[2 not-launched external-buffer true true]`.
+  - Focused advanced collections passed with `pass=1850 fail=0`.
+  - Compiler slice passed with `pass=289 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - None new. `direct-helper` is descriptive planner metadata and does not
+    mean capture launches any helper.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Command-buffer batching, fusion, execution, arbitrary source compilation,
+    buffer reuse/lifetime planning, and broader deterministic invalidation
+    remain open.
+- Next actions:
+  - Commit and push the slice, then continue `ML-VK-080` with command-buffer
+    batching/fusion or buffer planning.
+- Signature: GPT-5 Codex

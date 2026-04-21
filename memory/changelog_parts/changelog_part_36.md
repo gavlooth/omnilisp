@@ -638,3 +638,20 @@
     advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
     basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-011 Tensor Graph Schedule Metadata
+
+- Added non-executing schedule metadata to `tensor/capture(source)` plans.
+  - Captured Tensor nodes now record execution classes:
+    `external-buffer` for source nodes, `direct-helper` for map/contract nodes,
+    and `metadata-only` for direct transpose-view nodes.
+  - Graph plans now include a topological `schedule` array with step, node id,
+    kind, execution class, dependencies, and launch flag.
+  - Graph plans now report `launch-count`, `execution 'not-launched`,
+    `command-batching 'none`, and `fusion 'none`.
+  - Command-buffer batching, fusion, execution, arbitrary source compilation,
+    buffer reuse/lifetime planning, and broader invalidation remain open.
+  - Validation passed: `c3c build`, direct schedule eval smoke, focused
+    advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
+    basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.

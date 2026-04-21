@@ -1056,3 +1056,27 @@ Date: 2026-04-21 - Extends Tensor graph capture to the existing transpose-view b
   advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
   basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
   code file-size gate, and `git diff --check`.
+
+## Active ML-VK-080-011 Tensor Graph Schedule Metadata
+Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graphs.
+
+- Shipped in this slice:
+  - every captured Tensor node now records an execution class:
+    `external-buffer`, `direct-helper`, or `metadata-only`;
+  - `tensor/capture(source)` now returns a topological `schedule` array with
+    step, node id, kind, execution class, dependencies, and launch flag;
+  - graph plans now report `launch-count`, `execution 'not-launched`,
+    `command-batching 'none`, and `fusion 'none`.
+- Contract:
+  - scheduling metadata is descriptive only;
+  - `direct-helper` means an existing helper-backed node would require a launch
+    in a future executor, not that capture launches it;
+  - no command-buffer batching, fusion, source compilation, or buffer reuse is
+    implemented in this slice.
+- Still open under `ML-VK-080`: command-buffer batching, fusion, source
+  compilation, buffer reuse/lifetime planning, and broader
+  invalidation/capability planning.
+- Validation completed: `c3c build`, direct schedule eval smoke, focused
+  advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
+  basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
+  code file-size gate, and `git diff --check`.
