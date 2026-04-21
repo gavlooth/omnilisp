@@ -869,8 +869,8 @@ surface and kept execution explicit.
   - Constructed values normalize `kind` to `'kernel` and preserve ordinary
     path/index/ref data access.
   - `kernel/run(kernel inputs push)` is explicit. The initial value-surface
-    slice failed closed; later `ML-VK-080-002` and `ML-VK-080-003` added checked
-    Vulkan `scale-f32` and `add-f32` execution.
+    slice failed closed; later checked runners added Vulkan `scale-f32` and the
+    binary `Float32` family.
   - Parser postfix chaining now supports `rows.[0].name` /
     `k.inputs.[0].name` without reviving removed leading-dot accessors.
 - Validation path completed: `c3c build`, direct eval smokes, focused advanced
@@ -895,3 +895,23 @@ Date: 2026-04-21 - Implemented the second real `kernel/run` backend route.
   command-buffer batching, fusion, device-buffer reuse/lifetime planning, and
   deterministic invalidation.
 - Negative constraint remains active: do not implement `(define [kernel] ...)`.
+
+## Active ML-VK-080-004 Checked Vulkan Binary Float32 Kernel Family
+Date: 2026-04-21 - Generalized the helper-backed binary Kernel runner.
+
+- Shipped operations: `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`,
+  and `max-f32` with `backend 'vulkan`.
+- Contract:
+  - two input descriptors and one output descriptor;
+  - all descriptors must declare `dtype 'Float32`;
+  - input tensors and output descriptor shape must match;
+  - `push` must be empty and `push` specs must be absent or empty;
+  - runtime inputs must be dense row-major Vulkan `Float32`.
+- The runner uses the existing Vulkan Float32 map helper opcodes and returns an
+  ordinary dictionary keyed by the output descriptor name.
+- Validation completed: `c3c build`, direct `mul-f32` smoke, focused advanced
+  collections `pass=1840 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
+  `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`.
+- Next checkpoint: commit and push this checked binary family slice, then
+  continue toward graph/DAG capture or another real backend execution boundary.

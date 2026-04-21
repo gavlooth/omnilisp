@@ -355,7 +355,7 @@ for complex operands.
 |------|-------|-------------|
 | `Tensor` | 1-3 | Construct native CPU `Float64`, `Float32`, `Complex128`, `Complex64`, `BigInteger`, `BigFloat`, or `BigComplex` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor iterator)`, `(Tensor iterator dtype)`, `(Tensor dtype shape data-or-scalar)`, or `(Tensor dtype shape iterator)` |
 | `Kernel` | 1 | Construct a validated data-oriented custom backend kernel spec as a typed `Kernel` dictionary; path access and `ref` remain ordinary data access |
-| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32` and `add-f32` `Float32` tensor kernels and fails closed for unsupported backend compilation/execution |
+| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32` and binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32` `Float32` tensor kernels and fails closed for unsupported backend compilation/execution |
 | `tensor?` | 1 | Predicate for native tensor values |
 | `length` | 1 | Tensor element count |
 | `dtype` | 1 | Tensor dtype symbol |

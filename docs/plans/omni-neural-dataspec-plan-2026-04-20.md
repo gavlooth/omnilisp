@@ -103,7 +103,8 @@ surface. Kernel execution should remain explicit, for example:
 `kernel/run` is present as the explicit execution boundary. It now supports
 checked helper-backed Vulkan runners: `operation 'scale-f32` for one dense
 row-major `Float32` tensor input and a `scale` `Float32` push constant, plus
-`operation 'add-f32` for two same-shape dense row-major `Float32` tensor inputs.
+binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, and `max-f32`
+for two same-shape dense row-major `Float32` tensor inputs.
 Arbitrary user source compilation, graph fusion, and command-buffer planning
 still fail closed until their backend runner exists.
 

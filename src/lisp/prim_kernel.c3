@@ -310,14 +310,43 @@ fn Value* kernel_run_scale_f32(Value* kernel, Value* inputs, Value* push, Interp
     return kernel_output_dict(output_name, output_value, interp);
 }
 
-fn Value* kernel_run_validate_add_f32_spec(Value* kernel, Interp* interp, Value** out_left_descriptor, Value** out_right_descriptor, Value** out_output_descriptor) {
+fn bool kernel_binary_f32_operation(Value* operation, Interp* interp, uint* out_op) {
+    if (operation == null || out_op == null) return false;
+    if (nn_symbol_is(operation, interp, "add-f32")) {
+        *out_op = 0;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "sub-f32")) {
+        *out_op = 1;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "mul-f32")) {
+        *out_op = 2;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "div-f32")) {
+        *out_op = 3;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "min-f32")) {
+        *out_op = 4;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "max-f32")) {
+        *out_op = 5;
+        return true;
+    }
+    return false;
+}
+
+fn Value* kernel_run_validate_binary_f32_spec(Value* kernel, Interp* interp, Value** out_left_descriptor, Value** out_right_descriptor, Value** out_output_descriptor) {
     Value* inputs = nn_dict_get(kernel, interp, "inputs");
     Value* outputs = nn_dict_get(kernel, interp, "outputs");
     if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null || inputs.array_val.length != 2) {
-        return kernel_run_unsupported(interp, "kernel/run: add-f32 expects exactly two input descriptors");
+        return kernel_run_unsupported(interp, "kernel/run: binary Float32 kernels expect exactly two input descriptors");
     }
     if (outputs == null || outputs.tag != ARRAY || outputs.array_val == null || outputs.array_val.length != 1) {
-        return kernel_run_unsupported(interp, "kernel/run: add-f32 expects exactly one output descriptor");
+        return kernel_run_unsupported(interp, "kernel/run: binary Float32 kernels expect exactly one output descriptor");
     }
     Value* left_descriptor = inputs.array_val.items[0];
     Value* right_descriptor = inputs.array_val.items[1];
@@ -325,11 +354,11 @@ fn Value* kernel_run_validate_add_f32_spec(Value* kernel, Interp* interp, Value*
     if (!kernel_dtype_is(left_descriptor, interp, "Float32") ||
         !kernel_dtype_is(right_descriptor, interp, "Float32") ||
         !kernel_dtype_is(output_descriptor, interp, "Float32")) {
-        return kernel_run_unsupported(interp, "kernel/run: add-f32 currently supports Float32 inputs and outputs");
+        return kernel_run_unsupported(interp, "kernel/run: binary kernels currently support Float32 inputs and outputs");
     }
     Value* push_spec = nn_dict_get(kernel, interp, "push");
     if (push_spec != null && push_spec.tag != NIL && (push_spec.tag != HASHMAP || push_spec.hashmap_val == null || push_spec.hashmap_val.count != 0)) {
-        return kernel_run_invalid(interp, "kernel/run: add-f32 does not accept push constants");
+        return kernel_run_invalid(interp, "kernel/run: binary Float32 kernels do not accept push constants");
     }
     *out_left_descriptor = left_descriptor;
     *out_right_descriptor = right_descriptor;
@@ -337,39 +366,39 @@ fn Value* kernel_run_validate_add_f32_spec(Value* kernel, Interp* interp, Value*
     return null;
 }
 
-fn Value* kernel_run_add_f32(Value* kernel, Value* inputs, Value* push, Interp* interp) {
-    if (push.hashmap_val.count != 0) return kernel_run_invalid(interp, "kernel/run: add-f32 does not accept push constants");
+fn Value* kernel_run_binary_f32(Value* kernel, Value* inputs, Value* push, Interp* interp, uint op) {
+    if (push.hashmap_val.count != 0) return kernel_run_invalid(interp, "kernel/run: binary Float32 kernels do not accept push constants");
 
     Value* left_descriptor = null;
     Value* right_descriptor = null;
     Value* output_descriptor = null;
-    if (Value* err = kernel_run_validate_add_f32_spec(kernel, interp, &left_descriptor, &right_descriptor, &output_descriptor)) return err;
+    if (Value* err = kernel_run_validate_binary_f32_spec(kernel, interp, &left_descriptor, &right_descriptor, &output_descriptor)) return err;
 
-    Value* left_value = kernel_input_by_descriptor(inputs, left_descriptor, interp, "kernel/run: add-f32 left input descriptor name is invalid", "kernel/run: add-f32 left input is missing");
+    Value* left_value = kernel_input_by_descriptor(inputs, left_descriptor, interp, "kernel/run: binary Float32 left input descriptor name is invalid", "kernel/run: binary Float32 left input is missing");
     if (left_value == null || left_value.tag == ERROR) return left_value;
-    Value* right_value = kernel_input_by_descriptor(inputs, right_descriptor, interp, "kernel/run: add-f32 right input descriptor name is invalid", "kernel/run: add-f32 right input is missing");
+    Value* right_value = kernel_input_by_descriptor(inputs, right_descriptor, interp, "kernel/run: binary Float32 right input descriptor name is invalid", "kernel/run: binary Float32 right input is missing");
     if (right_value == null || right_value.tag == ERROR) return right_value;
-    Value* output_name = kernel_descriptor_name(output_descriptor, interp, "kernel/run: add-f32 output descriptor name is invalid");
+    Value* output_name = kernel_descriptor_name(output_descriptor, interp, "kernel/run: binary Float32 output descriptor name is invalid");
     if (output_name == null || output_name.tag == ERROR) return output_name;
 
     TensorVal* left_tensor = null;
     TensorVal* right_tensor = null;
     Value* left_materialized = null;
     Value* right_materialized = null;
-    Value* err = kernel_resolve_vulkan_f32_input(left_value, &left_tensor, &left_materialized, interp, "kernel/run: add-f32 left tensor backing storage is missing");
+    Value* err = kernel_resolve_vulkan_f32_input(left_value, &left_tensor, &left_materialized, interp, "kernel/run: binary Float32 left tensor backing storage is missing");
     if (err != null) return err;
     defer if (left_materialized != null && left_materialized != left_value) boundary_cleanup_materialized_value(null, left_materialized, interp.current_scope);
-    err = kernel_resolve_vulkan_f32_input(right_value, &right_tensor, &right_materialized, interp, "kernel/run: add-f32 right tensor backing storage is missing");
+    err = kernel_resolve_vulkan_f32_input(right_value, &right_tensor, &right_materialized, interp, "kernel/run: binary Float32 right tensor backing storage is missing");
     if (err != null) return err;
     defer if (right_materialized != null && right_materialized != right_value) boundary_cleanup_materialized_value(null, right_materialized, interp.current_scope);
 
     if (!ml_sgd_tensor_shapes_match(left_tensor, right_tensor)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: add-f32 input tensor shapes must match", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: binary Float32 input tensor shapes must match", null);
     }
     if (!kernel_shape_matches_tensor(nn_dict_get(left_descriptor, interp, "shape"), left_tensor) ||
         !kernel_shape_matches_tensor(nn_dict_get(right_descriptor, interp, "shape"), right_tensor) ||
         !kernel_shape_matches_tensor(nn_dict_get(output_descriptor, interp, "shape"), left_tensor)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: add-f32 descriptor shape does not match input tensors", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: binary Float32 descriptor shape does not match input tensors", null);
     }
 
     void* out_device = null;
@@ -380,7 +409,7 @@ fn Value* kernel_run_add_f32(Value* kernel, Value* inputs, Value* push, Interp* 
         left_tensor.element_count,
         0.0,
         2,
-        0,
+        op,
         left_tensor.rank,
         left_tensor.rank,
         right_tensor.rank,
@@ -394,7 +423,7 @@ fn Value* kernel_run_add_f32(Value* kernel, Value* inputs, Value* push, Interp* 
     );
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         if (out_device != null) omni_tensor_backend_vulkan_free(out_device);
-        return tensor_vulkan_status_raise(interp, status, "kernel/run: Vulkan add-f32 kernel failed");
+        return tensor_vulkan_status_raise(interp, status, "kernel/run: Vulkan binary Float32 kernel failed");
     }
 
     Value* output_value = ml_optimizer_vulkan_tensor_value(left_tensor, out_device, interp, "kernel/run: failed to allocate Vulkan output tensor metadata", "kernel/run: failed to allocate Vulkan output tensor value");
@@ -425,8 +454,9 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "scale-f32")) {
         return kernel_run_scale_f32(args[0], args[1], args[2], interp);
     }
-    if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "add-f32")) {
-        return kernel_run_add_f32(args[0], args[1], args[2], interp);
+    uint binary_op = 0;
+    if (kernel_binary_f32_operation(nn_dict_get(args[0], interp, "operation"), interp, &binary_op)) {
+        return kernel_run_binary_f32(args[0], args[1], args[2], interp, binary_op);
     }
     return kernel_run_unsupported(interp, "kernel/run: unsupported Kernel operation for Vulkan backend");
 }

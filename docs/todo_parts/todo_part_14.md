@@ -747,6 +747,12 @@ Source: `TODO.md`
         helper for two same-shape dense row-major Vulkan tensor inputs and one
         matching output descriptor; push constants are rejected and unsupported
         custom compilation/fusion routes remain fail-closed.
+    - [x] `ML-VK-080-004` expand checked Vulkan binary Float32 `kernel/run`
+      execution.
+      - shipped: `operation 'sub-f32`, `mul-f32`, `div-f32`, `min-f32`, and
+        `max-f32` share the same two-input dense row-major Vulkan Float32
+        contract as `add-f32`; all reject push constants and preserve Vulkan
+        output placement.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

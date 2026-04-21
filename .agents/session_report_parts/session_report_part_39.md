@@ -465,3 +465,52 @@ Signature: GPT-5 Codex
   - Continue `ML-VK-080` with graph/DAG capture or another checked
     helper-backed runner.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 05:52 CEST - ML-VK-080-004 Checked Vulkan Binary Float32 Kernel Family
+
+- Objective attempted: continue `ML-VK-080` by expanding checked helper-backed
+  Kernel execution from single `add-f32` coverage to the full Vulkan Float32
+  binary map opcode family without adding `(define [kernel] ...)` sugar.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - language/reference docs, Vulkan ML roadmap, TODO, plan, changelog, and
+    session-report artifacts.
+- Code or configuration changes made:
+  - Generalized the checked binary Float32 Kernel runner over existing Vulkan
+    map opcodes.
+  - Added `kernel/run` support for `operation 'sub-f32`, `mul-f32`, `div-f32`,
+    `min-f32`, and `max-f32`; `add-f32` now uses the same shared path.
+  - Preserved the strict contract: two Float32 input descriptors, one Float32
+    output descriptor, matching shapes, empty spec/runtime push dictionaries,
+    and dense row-major Vulkan Float32 runtime inputs.
+  - Unsupported backend source compilation, graph capture, batching, fusion,
+    and buffer reuse planning remain fail-closed.
+- Commands run:
+  - `c3c build`
+  - Direct `build/main --eval` smoke for Vulkan-gated `mul-f32` execution.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct smoke returned `true`.
+  - Focused advanced collections passed with `pass=1840 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Compiler slice passed with `pass=287 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Arbitrary user kernel source compilation, graph capture, batching, fusion,
+    buffer reuse/lifetime planning, and deterministic invalidation remain open.
+- Next actions:
+  - Commit and push this slice, then continue `ML-VK-080` with graph/DAG
+    capture or another real backend execution boundary.
+- Signature: GPT-5 Codex

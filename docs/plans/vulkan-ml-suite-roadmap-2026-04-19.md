@@ -430,6 +430,10 @@ Shipped first slice:
   Specs must use two input descriptors, one output descriptor, matching shapes,
   and no push constants; CPU, mixed-device, unsupported dtype, unexpected push,
   and shape-mismatch paths fail closed.
+- `ML-VK-080-004`: the checked helper-backed binary `Float32` Kernel family now
+  includes `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, and `max-f32` in addition
+  to `add-f32`, all with two same-shape dense row-major Vulkan tensor inputs,
+  one matching output descriptor, and no push constants.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

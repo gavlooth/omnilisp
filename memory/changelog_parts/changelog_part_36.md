@@ -491,3 +491,22 @@
     collections `pass=1839 fail=0`, basic Lisp `pass=161 fail=0`, compiler
     slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-004 Checked Vulkan Binary Float32 Kernel Family
+
+- Generalized checked Vulkan `kernel/run` binary Float32 execution.
+  - Supported specs now include `operation 'add-f32`, `sub-f32`, `mul-f32`,
+    `div-f32`, `min-f32`, and `max-f32`.
+  - Contract: two input descriptors, one output descriptor, `Float32`
+    descriptor dtypes, empty spec/runtime push dictionaries, matching
+    descriptor shapes, same-shape runtime tensors, and dense row-major Vulkan
+    `Float32` storage for both inputs.
+  - Execution uses the existing checked Vulkan Float32 map helper opcodes and
+    returns an ordinary dictionary keyed by the output descriptor name.
+  - Arbitrary user source compilation, graph capture, command-buffer batching,
+    fusion, device-buffer reuse/lifetime planning, deterministic invalidation,
+    and `(define [kernel] ...)` sugar remain out of scope.
+  - Validation passed: `c3c build`, direct `mul-f32` smoke, focused advanced
+    collections `pass=1840 fail=0`, basic Lisp `pass=161 fail=0`, compiler
+    slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.
