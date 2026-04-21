@@ -797,8 +797,16 @@ Source: `TODO.md`
     - [x] `ML-VK-080-011` add non-executing Tensor graph schedule metadata.
       - shipped: captured Tensor graphs now include topological schedule
         entries, per-node execution classes, launch booleans, graph
-        `launch-count`, `command-batching 'none`, and `fusion 'none`.
-        Scheduling is descriptive only and does not launch, batch, or fuse.
+        `launch-count`, and `fusion 'none`. Scheduling is descriptive only and
+        does not launch graph nodes.
+    - [x] `ML-VK-080-012` add non-executing Tensor command-batch planning
+      metadata.
+      - shipped: captured Tensor graphs now record non-executing command-batch
+        planning metadata for launchable `direct-helper` schedule steps.
+        Launchable graphs report `command-batching 'metadata` with one serial
+        `command-buffer-candidate` batch descriptor; non-launching graphs report
+        `command-batching 'none`. Capture does not allocate, record, submit, or
+        execute Vulkan command buffers, and it does not fuse graph nodes.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

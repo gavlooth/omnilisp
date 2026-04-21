@@ -1066,7 +1066,13 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   - `tensor/capture(source)` now returns a topological `schedule` array with
     step, node id, kind, execution class, dependencies, and launch flag;
   - graph plans now report `launch-count`, `execution 'not-launched`,
-    `command-batching 'none`, and `fusion 'none`.
+    and `fusion 'none`.
+- `ML-VK-080-012`: `tensor/capture(source)` now records `command-batching
+  'metadata` plus a serial `command-buffer-candidate` descriptor when the graph
+  contains launchable `direct-helper` nodes; non-launching graphs keep
+  `command-batching 'none`. This is descriptive only; it does not allocate,
+  record, submit, or execute Vulkan command buffers, and it does not fuse graph
+  nodes.
 - Contract:
   - scheduling metadata is descriptive only;
   - `direct-helper` means an existing helper-backed node would require a launch

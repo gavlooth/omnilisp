@@ -67,13 +67,19 @@ fn Value* tensor_capture_shape(TensorVal* tensor, Interp* interp) {
     return kernel_capture_tensor_shape(tensor, interp);
 }
 
+fn Value* tensor_capture_usz_value(Interp* interp, usz value, char[] label) {
+    if (value > (usz)long.max) return tensor_runtime_raise(interp, label);
+    return make_int(interp, (long)value);
+}
+
 fn Value* tensor_capture_usz_array(Interp* interp, usz* items, usz count) {
     Value* out = make_array_checked(interp, count, "tensor/capture: out of memory");
     if (out == null || out.tag == ERROR) return out;
     if (out.array_val == null) return nn_oom(interp);
     for (usz i = 0; i < count; i++) {
-        out.array_val.items[i] = make_int(interp, (long)items[i]);
-        if (out.array_val.items[i] == null) return nn_oom(interp);
+        Value* item = tensor_capture_usz_value(interp, items[i], "tensor/capture: tensor metadata value is too large");
+        if (item == null || item.tag == ERROR) return item;
+        out.array_val.items[i] = item;
         out.array_val.length++;
     }
     return out;
@@ -162,6 +168,9 @@ fn Value* tensor_capture_map_node(TensorVal* tensor, int left_id, int right_id, 
 fn Value* tensor_capture_contract_node(TensorVal* tensor, int left_id, int right_id, Interp* interp) {
     Value* node = nn_make_dict(interp, 18);
     if (node == null || node.tag == ERROR) return node;
+    if (tensor.contract_axis_count > 0 && (tensor.contract_left_axes == null || tensor.contract_right_axes == null)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: contract axes are missing", null);
+    }
     Value* inputs = tensor_capture_ids_array(interp, left_id, right_id, true);
     if (inputs == null || inputs.tag == ERROR) return inputs;
     Value* left_axes = tensor_capture_axis_array(interp, tensor.contract_left_axes, tensor.contract_axis_count);
@@ -178,7 +187,7 @@ fn Value* tensor_capture_contract_node(TensorVal* tensor, int left_id, int right
     if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
     if (Value* err = nn_dict_set(node, interp, "left-axes", left_axes)) return err;
     if (Value* err = nn_dict_set(node, interp, "right-axes", right_axes)) return err;
-    if (Value* err = nn_dict_set(node, interp, "axis-count", make_int(interp, (long)tensor.contract_axis_count))) return err;
+    if (Value* err = nn_dict_set(node, interp, "axis-count", tensor_capture_usz_value(interp, tensor.contract_axis_count, "tensor/capture: contract axis-count is too large"))) return err;
     if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
     return node;
 }
@@ -218,7 +227,7 @@ fn Value* tensor_capture_view_node(TensorVal* tensor, int source_id, Interp* int
     if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
     if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
     if (Value* err = nn_dict_set(node, interp, "strides", strides)) return err;
-    if (Value* err = nn_dict_set(node, interp, "storage-offset", make_int(interp, (long)tensor.storage_offset))) return err;
+    if (Value* err = nn_dict_set(node, interp, "storage-offset", tensor_capture_usz_value(interp, tensor.storage_offset, "tensor/capture: storage offset is too large"))) return err;
     return node;
 }
 
@@ -313,13 +322,139 @@ fn Value* tensor_capture_schedule_entry(Value* node, usz step, bool launch, Inte
         inputs = tensor_capture_empty_ids(interp);
         if (inputs == null || inputs.tag == ERROR) return inputs;
     }
-    if (Value* err = nn_dict_set(entry, interp, "step", make_int(interp, (long)step))) return err;
+    if (Value* err = nn_dict_set(entry, interp, "step", tensor_capture_usz_value(interp, step, "tensor/capture: schedule step is too large"))) return err;
     if (Value* err = nn_dict_set(entry, interp, "node", id)) return err;
     if (Value* err = nn_dict_set(entry, interp, "kind", kind)) return err;
     if (Value* err = nn_dict_set(entry, interp, "execution", execution)) return err;
     if (Value* err = nn_dict_set(entry, interp, "depends-on", inputs)) return err;
     if (Value* err = nn_dict_set(entry, interp, "launch", make_bool_value(interp, launch))) return err;
     return entry;
+}
+
+fn Value* tensor_capture_array_push(Value* array, Value* value, Interp* interp) {
+    if (array == null || array.tag != ARRAY || array.array_val == null) return nn_oom(interp);
+    if (value == null) return nn_oom(interp);
+    if (value.tag == ERROR) return value;
+    if (array.array_val.length >= array.array_val.capacity) return nn_oom(interp);
+    array.array_val.items[array.array_val.length] = value;
+    array.array_val.length++;
+    return null;
+}
+
+fn bool tensor_capture_int_array_contains(Value* array, long value) {
+    if (array == null || array.tag != ARRAY || array.array_val == null) return false;
+    for (usz i = 0; i < array.array_val.length; i++) {
+        Value* item = array.array_val.items[i];
+        if (item != null && item.tag == INT && item.int_val == value) return true;
+    }
+    return false;
+}
+
+fn Value* tensor_capture_command_dispatch(Value* node, usz index, Interp* interp) {
+    if (node == null || node.tag != HASHMAP) return nn_oom(interp);
+    Value* entry = nn_make_dict(interp, 16);
+    if (entry == null || entry.tag == ERROR) return entry;
+    Value* id = nn_dict_get(node, interp, "id");
+    Value* kind = nn_dict_get(node, interp, "kind");
+    Value* family = nn_dict_get(node, interp, "family");
+    Value* operation = nn_dict_get(node, interp, "operation");
+    Value* execution = nn_dict_get(node, interp, "execution");
+    Value* inputs = nn_dict_get(node, interp, "inputs");
+    Value* shape = nn_dict_get(node, interp, "shape");
+    if (id == null || kind == null || execution == null) return tensor_runtime_raise(interp, "tensor/capture: graph command-batch metadata is missing");
+    if (inputs == null) {
+        inputs = tensor_capture_empty_ids(interp);
+        if (inputs == null || inputs.tag == ERROR) return inputs;
+    }
+    if (Value* err = nn_dict_set(entry, interp, "index", tensor_capture_usz_value(interp, index, "tensor/capture: dispatch index is too large"))) return err;
+    if (Value* err = nn_dict_set(entry, interp, "node", id)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "kind", kind)) return err;
+    if (family != null) {
+        if (Value* err = nn_dict_set(entry, interp, "family", family)) return err;
+    }
+    if (operation != null) {
+        if (Value* err = nn_dict_set(entry, interp, "operation", operation)) return err;
+    }
+    if (Value* err = nn_dict_set(entry, interp, "execution", execution)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "inputs", inputs)) return err;
+    if (Value* err = nn_dict_set(entry, interp, "output", id)) return err;
+    if (shape != null) {
+        if (Value* err = nn_dict_set(entry, interp, "shape", shape)) return err;
+    }
+    if (Value* err = nn_dict_set_symbol(entry, interp, "source-runtime", "direct-helper")) return err;
+    if (Value* err = nn_dict_set_symbol(entry, interp, "recording-support", "not-implemented")) return err;
+    return entry;
+}
+
+fn Value* tensor_capture_command_batches(Value* nodes, Interp* interp, int* out_batch_count) {
+    if (nodes == null || nodes.tag != ARRAY || nodes.array_val == null || out_batch_count == null) return nn_oom(interp);
+    usz launch_count = 0;
+    for (usz i = 0; i < nodes.array_val.length; i++) {
+        if (tensor_capture_node_launches(nodes.array_val.items[i], interp)) launch_count++;
+    }
+    *out_batch_count = launch_count > 0 ? 1 : 0;
+    Value* batches = make_array_checked(interp, launch_count > 0 ? 1 : 0, "tensor/capture: out of memory");
+    if (batches == null || batches.tag == ERROR) return batches;
+    if (batches.array_val == null) return nn_oom(interp);
+    if (launch_count == 0) return batches;
+
+    Value* batch = nn_make_dict(interp, 20);
+    if (batch == null || batch.tag == ERROR) return batch;
+    Value* batch_nodes = make_array_checked(interp, launch_count, "tensor/capture: out of memory");
+    Value* schedule_steps = make_array_checked(interp, launch_count, "tensor/capture: out of memory");
+    Value* dispatches = make_array_checked(interp, launch_count, "tensor/capture: out of memory");
+    Value* depends_on = make_array_checked(interp, nodes.array_val.length, "tensor/capture: out of memory");
+    if (batch_nodes == null || batch_nodes.tag == ERROR) return batch_nodes;
+    if (schedule_steps == null || schedule_steps.tag == ERROR) return schedule_steps;
+    if (dispatches == null || dispatches.tag == ERROR) return dispatches;
+    if (depends_on == null || depends_on.tag == ERROR) return depends_on;
+    if (batch_nodes.array_val == null || schedule_steps.array_val == null || dispatches.array_val == null || depends_on.array_val == null) return nn_oom(interp);
+
+    usz dispatch_index = 0;
+    for (usz i = 0; i < nodes.array_val.length; i++) {
+        Value* node = nodes.array_val.items[i];
+        if (!tensor_capture_node_launches(node, interp)) continue;
+        Value* id = nn_dict_get(node, interp, "id");
+        if (id == null || id.tag != INT) return tensor_runtime_raise(interp, "tensor/capture: command-batch node id is missing");
+        if (Value* err = tensor_capture_array_push(batch_nodes, id, interp)) return err;
+        if (Value* err = tensor_capture_array_push(schedule_steps, tensor_capture_usz_value(interp, i, "tensor/capture: command-batch schedule step is too large"), interp)) return err;
+        Value* dispatch = tensor_capture_command_dispatch(node, dispatch_index, interp);
+        if (dispatch == null || dispatch.tag == ERROR) return dispatch;
+        if (Value* err = tensor_capture_array_push(dispatches, dispatch, interp)) return err;
+        dispatch_index++;
+    }
+
+    for (usz i = 0; i < nodes.array_val.length; i++) {
+        Value* node = nodes.array_val.items[i];
+        if (!tensor_capture_node_launches(node, interp)) continue;
+        Value* inputs = nn_dict_get(node, interp, "inputs");
+        if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null) continue;
+        for (usz j = 0; j < inputs.array_val.length; j++) {
+            Value* dep = inputs.array_val.items[j];
+            if (dep == null || dep.tag != INT) continue;
+            if (tensor_capture_int_array_contains(batch_nodes, dep.int_val)) continue;
+            if (tensor_capture_int_array_contains(depends_on, dep.int_val)) continue;
+            if (Value* err = tensor_capture_array_push(depends_on, dep, interp)) return err;
+        }
+    }
+
+    if (Value* err = nn_dict_set(batch, interp, "id", make_int(interp, 0))) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "backend", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "device", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "dtype", "Float32")) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "execution", "command-buffer-candidate")) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "submission", "not-submitted")) return err;
+    if (Value* err = nn_dict_set(batch, interp, "nodes", batch_nodes)) return err;
+    if (Value* err = nn_dict_set(batch, interp, "schedule-steps", schedule_steps)) return err;
+    if (Value* err = nn_dict_set(batch, interp, "depends-on", depends_on)) return err;
+    if (Value* err = nn_dict_set(batch, interp, "dispatches", dispatches)) return err;
+    if (Value* err = nn_dict_set(batch, interp, "launch-count", tensor_capture_usz_value(interp, launch_count, "tensor/capture: command-batch launch-count is too large"))) return err;
+    if (Value* err = nn_dict_set(batch, interp, "dispatch-count", tensor_capture_usz_value(interp, launch_count, "tensor/capture: command-batch dispatch-count is too large"))) return err;
+    if (Value* err = nn_dict_set(batch, interp, "barrier-count", tensor_capture_usz_value(interp, launch_count > 0 ? launch_count - 1 : 0, "tensor/capture: command-batch barrier-count is too large"))) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "barrier-policy", "shader-write-to-shader-read-between-dispatches")) return err;
+    if (Value* err = nn_dict_set_symbol(batch, interp, "fusion", "none")) return err;
+    if (Value* err = tensor_capture_array_push(batches, batch, interp)) return err;
+    return batches;
 }
 
 fn Value* tensor_capture_schedule(Value* nodes, Interp* interp, int* out_launch_count) {
@@ -350,7 +485,7 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     key.array_val.items[0] = kernel_capture_symbol(interp, "vulkan");
     key.array_val.items[1] = kernel_capture_symbol(interp, "Float32");
     key.array_val.items[2] = shape;
-    key.array_val.items[3] = make_int(interp, (long)nodes.array_val.length);
+    key.array_val.items[3] = tensor_capture_usz_value(interp, nodes.array_val.length, "tensor/capture: invalidation node-count is too large");
     key.array_val.items[4] = make_int(interp, (long)output_id);
     for (usz i = 0; i < 5; i++) {
         if (key.array_val.items[i] == null || key.array_val.items[i].tag == ERROR) return key.array_val.items[i];
@@ -359,21 +494,31 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     int launch_count = 0;
     Value* schedule = tensor_capture_schedule(nodes, interp, &launch_count);
     if (schedule == null || schedule.tag == ERROR) return schedule;
+    int command_batch_count = 0;
+    Value* command_batches = tensor_capture_command_batches(nodes, interp, &command_batch_count);
+    if (command_batches == null || command_batches.tag == ERROR) return command_batches;
 
-    Value* plan = nn_make_dict(interp, 24);
+    Value* plan = nn_make_dict(interp, 32);
     if (plan == null || plan.tag == ERROR) return plan;
     if (Value* err = nn_dict_set_symbol(plan, interp, "kind", "tensor-graph")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "backend", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "dtype", "Float32")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "device", "vulkan")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "family", tensor_capture_plan_family(tensor.kind))) return err;
-    if (Value* err = nn_dict_set(plan, interp, "node-count", make_int(interp, (long)nodes.array_val.length))) return err;
+    if (Value* err = nn_dict_set(plan, interp, "node-count", tensor_capture_usz_value(interp, nodes.array_val.length, "tensor/capture: node-count is too large"))) return err;
     if (Value* err = nn_dict_set(plan, interp, "output", make_int(interp, (long)output_id))) return err;
     if (Value* err = nn_dict_set(plan, interp, "nodes", nodes)) return err;
     if (Value* err = nn_dict_set(plan, interp, "schedule", schedule)) return err;
-    if (Value* err = nn_dict_set(plan, interp, "launch-count", make_int(interp, (long)launch_count))) return err;
+    if (Value* err = nn_dict_set(plan, interp, "launch-count", tensor_capture_usz_value(interp, (usz)launch_count, "tensor/capture: launch-count is too large"))) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "execution", "not-launched")) return err;
-    if (Value* err = nn_dict_set_symbol(plan, interp, "command-batching", "none")) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "command-batching", command_batch_count > 0 ? "metadata" : "none")) return err;
+    if (Value* err = nn_dict_set(plan, interp, "command-batch-count", tensor_capture_usz_value(interp, (usz)command_batch_count, "tensor/capture: command-batch-count is too large"))) return err;
+    if (Value* err = nn_dict_set(plan, interp, "command-batches", command_batches)) return err;
+    if (Value* err = nn_dict_set(plan, interp, "dispatch-count", tensor_capture_usz_value(interp, (usz)launch_count, "tensor/capture: dispatch-count is too large"))) return err;
+    if (Value* err = nn_dict_set(plan, interp, "barrier-count", tensor_capture_usz_value(interp, launch_count > 0 ? (usz)(launch_count - 1) : 0, "tensor/capture: barrier-count is too large"))) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "batching-policy", command_batch_count > 0 ? "serial-single-command-buffer-candidate" : "none")) return err;
+    if (Value* err = nn_dict_set_symbol(plan, interp, "submission", "not-submitted")) return err;
+    if (Value* err = nn_dict_set(plan, interp, "requires-runtime-support", make_bool_value(interp, command_batch_count > 0))) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "fusion", "none")) return err;
     if (Value* err = nn_dict_set(plan, interp, "shape", shape)) return err;
     if (Value* err = nn_dict_set(plan, interp, "invalidation-key", key)) return err;

@@ -517,11 +517,15 @@ executing the kernel. `tensor/capture(source)` returns a non-executing
 `tensor-graph` plan for supported all-Vulkan `Float32`
 concrete/map/contract/direct-transpose-view Tensor expression graphs, including
 source/map/contract/view nodes, scalar operands, contract axes, view strides,
-output id, shape, topological schedule entries, launch-count metadata, and
-invalidation metadata. Schedule metadata is descriptive only: arbitrary strided
-view graphs, mixed-device graphs, unsupported map callables, unsupported dtypes,
-arbitrary backend source compilation, command batching, execution, and fusion
-remain fail-closed.
+output id, shape, topological schedule entries, launch-count metadata,
+command-batch planning metadata, and invalidation metadata. Launchable graphs
+record `command-batching 'metadata` and a single serial
+`command-buffer-candidate` batch descriptor; non-launching graphs record
+`command-batching 'none`. Schedule and command-batch metadata are descriptive
+only: no Vulkan command buffers are allocated, recorded, submitted, or executed,
+and arbitrary strided view graphs, mixed-device graphs, unsupported map
+callables, unsupported dtypes, arbitrary backend source compilation, execution,
+and fusion remain fail-closed.
 
 Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
 fail-closed as `tensor/backend-unsupported` instead of hidden fallback.

@@ -469,8 +469,14 @@ Shipped first slice:
   storage; arbitrary strided views, batching, and fusion remain fail-closed.
 - `ML-VK-080-011`: `tensor/capture(source)` now includes descriptive
   topological schedule metadata, per-node execution classes, graph
-  `launch-count`, `command-batching 'none`, and `fusion 'none`. This is
-  planning metadata only; it does not launch, batch, or fuse graph nodes.
+  `launch-count`, and `fusion 'none`. This is planning metadata only; it does
+  not launch graph nodes.
+- `ML-VK-080-012`: `tensor/capture(source)` now includes non-executing
+  command-batch planning metadata for launchable `direct-helper` schedule
+  steps. Launchable graphs record `command-batching 'metadata` with one serial
+  `command-buffer-candidate` batch descriptor; non-launching graphs record
+  `command-batching 'none`. This does not allocate, record, submit, or execute
+  Vulkan command buffers, and it does not fuse graph nodes.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

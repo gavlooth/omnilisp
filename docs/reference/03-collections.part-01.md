@@ -470,9 +470,13 @@ graphs without executing the graph; contract nodes record input ids, output
 shape, and left/right contract axes, and direct transpose-view nodes record
 input id, output shape, and strides. Captured graphs include descriptive
 topological schedule entries, per-node execution class, `launch-count`,
-`command-batching 'none`, and `fusion 'none`; they are not executed. Arbitrary
-strided view graphs, mixed placement, unsupported map callables, unsupported
-dtypes, command batching, and fusion remain fail closed. Vulkan
+command-batch planning metadata, and `fusion 'none`. Launchable graphs record
+`command-batching 'metadata` with one serial `command-buffer-candidate` batch
+descriptor; non-launching graphs record `command-batching 'none`. They are not
+executed, and capture does not allocate, record, submit, or execute Vulkan
+command buffers. Arbitrary strided view graphs, mixed placement, unsupported
+map callables, unsupported dtypes, executable command batching, and fusion
+remain fail closed. Vulkan
 `Float32` serial factor/solve operations and staged parallel `Float32`
 `matrix/solve` are supported for eligible dense row-major operands; CPU
 `Float32` SVD/factor oracles are supported.

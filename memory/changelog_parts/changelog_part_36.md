@@ -655,3 +655,25 @@
     advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
     basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-012 Tensor Command-Batch Planning Metadata
+
+- Added non-executing command-batch planning metadata to
+  `tensor/capture(source)` plans.
+  - Launchable captured Tensor graphs now report `command-batching 'metadata`,
+    one serial `command-buffer-candidate` batch descriptor, `command-batches`,
+    `command-batch-count`, `dispatch-count`, `barrier-count`,
+    `batching-policy`, `submission`, and `requires-runtime-support`.
+  - Non-launching graphs keep `command-batching 'none` and an empty
+    `command-batches` array.
+  - Command-batch descriptors record launch node ids, schedule steps, external
+    dependencies, dispatch metadata, barrier policy, and non-submitted status.
+  - Hardened capture metadata with checked `usz` to `Integer` conversion and a
+    fail-closed contract-axis pointer guard.
+  - No Vulkan command buffers are allocated, recorded, submitted, or executed;
+    fusion, executable batching, source compilation, and buffer reuse/lifetime
+    planning remain open.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1850 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
+    `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

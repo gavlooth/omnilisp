@@ -897,3 +897,26 @@ The historical content was split mechanically to keep individual files below the
     Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-012 Tensor Command-Batch Planning Metadata
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Added non-executing command-batch planning metadata to
+    `tensor/capture(source)`.
+  - Launchable Tensor graphs now report `command-batching 'metadata`,
+    `command-batch-count`, `command-batches`, `dispatch-count`,
+    `barrier-count`, `batching-policy`, `submission`, and
+    `requires-runtime-support`; non-launching graphs keep
+    `command-batching 'none`.
+  - Hardened capture metadata generation with checked `usz` to `Integer`
+    conversion and a fail-closed contract-axis guard.
+  - This keeps command batching in the planning lane only; command-buffer
+    allocation/record/submit/execute, fusion, source compilation, and buffer
+    reuse remain open.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1850 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
+    `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
