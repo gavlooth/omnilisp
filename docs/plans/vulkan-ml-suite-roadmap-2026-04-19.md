@@ -485,6 +485,16 @@ Shipped first slice:
   `storage-bytes`, `allocation`, `owner`, and `write-policy`. This slice is
   descriptive only; it does not allocate, retain handles, or reuse runtime
   buffers, and the top-level capture result remains a `tensor-graph`.
+- `ML-VK-080-014`: `tensor/capture(source)` now records a nested
+  metadata-only `fusion-plan` dictionary with kind `tensor-fusion-plan`,
+  policy `eligibility-only`, candidate metadata for direct Vulkan Float32 map
+  chains, and barrier metadata for contract/view boundaries. The top-level
+  `fusion` field remains `none`; this does not compile fused shaders, record
+  command buffers, execute fused dispatch, or reuse runtime buffers.
+- Next runtime boundaries are executable Tensor command-buffer batching,
+  source-backed custom `Kernel` compilation/dispatch, and contracted buffer
+  reuse/lifetime planning. Each requires new native/runtime execution plumbing,
+  so they remain separate from the metadata-only capture slices.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

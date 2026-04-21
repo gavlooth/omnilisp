@@ -1081,15 +1081,23 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   `storage-bytes`, `allocation`, `owner`, and `write-policy`. This slice is
   descriptive only; it does not allocate, retain handles, or reuse runtime
   buffers, and the top-level capture result remains a `tensor-graph`.
+- `ML-VK-080-014`: `tensor/capture(source)` now records a nested
+  metadata-only `fusion-plan` dictionary with kind `tensor-fusion-plan`, policy
+  `eligibility-only`, map-chain candidates for direct Vulkan Float32 map
+  chains, and barrier records for contract/view nodes. Top-level `fusion`
+  remains `none`; this does not compile fused shaders, record command buffers,
+  execute fused dispatch, or reuse runtime buffers.
 - Contract:
   - scheduling metadata is descriptive only;
   - `direct-helper` means an existing helper-backed node would require a launch
     in a future executor, not that capture launches it;
-  - no command-buffer batching, fusion, source compilation, or runtime buffer
-    reuse is implemented in this slice.
-- Still open under `ML-VK-080`: command-buffer batching, fusion, source
-  compilation, buffer reuse/lifetime planning, and broader
-  invalidation/capability planning.
+  - no command-buffer batching, fused execution, source compilation, or runtime
+    buffer reuse is implemented in this slice.
+- Still open under `ML-VK-080`:
+  - `ML-VK-080-015` executable Tensor command-buffer batching;
+  - `ML-VK-080-016` source-backed custom `Kernel` compilation/dispatch;
+  - `ML-VK-080-017` contracted buffer reuse/lifetime planning;
+  - broader invalidation/capability planning.
 - Validation completed: `c3c build`, direct schedule eval smoke, focused
   advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
   basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,

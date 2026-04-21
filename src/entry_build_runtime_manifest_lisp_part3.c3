@@ -1,6 +1,6 @@
 module main;
 
-const String[217] AOT_RUNTIME_LISP_SOURCES_PART3 = {
+const String[218] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_math_arithmetic.c3",
     "src/lisp/prim_math_core.c3",
     "src/lisp/prim_ml_activation.c3",
@@ -45,6 +45,7 @@ const String[217] AOT_RUNTIME_LISP_SOURCES_PART3 = {
     "src/lisp/prim_tensor_contract_backend.c3",
     "src/lisp/prim_tensor_copy_cpu.c3",
     "src/lisp/prim_tensor_capture.c3",
+    "src/lisp/prim_tensor_capture_fusion.c3",
     "src/lisp/prim_tensor_cuda_map_expr.c3",
     "src/lisp/prim_tensor_device_copy.c3",
     "src/lisp/prim_tensor_expr.c3",

@@ -518,16 +518,19 @@ executing the kernel. `tensor/capture(source)` returns a non-executing
 concrete/map/contract/direct-transpose-view Tensor expression graphs, including
 source/map/contract/view nodes, scalar operands, contract axes, view strides,
 output id, shape, topological schedule entries, launch-count metadata,
-command-batch planning metadata, nested metadata-only `memory-plan` data, and
-invalidation metadata. Launchable graphs record `command-batching 'metadata`
-and a single serial `command-buffer-candidate` batch descriptor; non-launching
-graphs record `command-batching 'none`. The nested `memory-plan` has kind
-`tensor-memory-plan`, records external/transient byte totals and per-node
-allocation policy, and is descriptive only. Schedule, command-batch, and memory
-metadata do not allocate, retain handles, record, submit, or execute Vulkan
-work, and arbitrary strided view graphs, mixed-device graphs, unsupported map
-callables, unsupported dtypes, arbitrary backend source compilation, execution,
-and fusion remain fail-closed.
+command-batch planning metadata, nested metadata-only `memory-plan` and
+`fusion-plan` data, and invalidation metadata. Launchable graphs record
+`command-batching 'metadata` and a single serial `command-buffer-candidate`
+batch descriptor; non-launching graphs record `command-batching 'none`. The
+nested `memory-plan` has kind `tensor-memory-plan`, records external/transient
+byte totals and per-node allocation policy, and is descriptive only. The nested
+`fusion-plan` has kind `tensor-fusion-plan`, records eligibility-only map-chain
+candidates and contract/view fusion barriers, and is also descriptive only.
+Schedule, command-batch, memory, and fusion metadata do not allocate, retain
+handles, record, submit, compile fused shaders, reuse buffers, or execute
+Vulkan work. Arbitrary strided view graphs, mixed-device graphs, unsupported
+map callables, unsupported dtypes, arbitrary backend source compilation,
+execution, and fused dispatch remain fail-closed.
 
 Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
 fail-closed as `tensor/backend-unsupported` instead of hidden fallback.

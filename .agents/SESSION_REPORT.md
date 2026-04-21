@@ -45,6 +45,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
 - Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (899 lines)
+- Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (224 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -937,6 +938,26 @@ The historical content was split mechanically to keep individual files below the
   - This keeps memory planning descriptive only; runtime buffer allocation,
     retention, reuse, executable command batching, fusion, and source
     compilation remain open.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1852 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
+    `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-014 Tensor Fusion Eligibility Metadata
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Added nested metadata-only `fusion-plan` data to
+    `tensor/capture(source)` graph plans.
+  - The top-level capture result remains `kind 'tensor-graph`, and top-level
+    `fusion` remains `none`.
+  - Direct Vulkan Float32 map chains now report eligibility-only `map-chain`
+    candidates, while contract and direct transpose-view nodes report hard
+    fusion barriers.
+  - This does not compile fused shaders, record command buffers, execute fused
+    dispatch, allocate buffers, or reuse runtime buffers.
   - Validation passed: `c3c build`, focused advanced collections
     `pass=1852 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
     `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code

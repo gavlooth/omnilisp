@@ -817,6 +817,27 @@ Source: `TODO.md`
         `write-policy`; the top-level capture result remains a `tensor-graph`.
       - contract: metadata only; no allocations, no handle retention, and no
         runtime buffer reuse.
+    - [x] `ML-VK-080-014` add metadata-only Tensor fusion eligibility records.
+      - shipped: captured Tensor graphs now record a nested metadata-only
+        `fusion-plan` dictionary with kind `tensor-fusion-plan`, policy
+        `eligibility-only`, map-chain candidates for direct Vulkan Float32 map
+        chains, and barrier records for contract/view nodes.
+      - contract: top-level `fusion` remains `none`; no fused shader
+        compilation, no command-buffer recording, no fused dispatch, and no
+        runtime buffer reuse.
+    - [ ] `ML-VK-080-015` implement executable Tensor command-buffer batching.
+      - blocker: requires a new native/runtime executor bridge that consumes
+        captured schedule/command-batch metadata and records/submits Vulkan
+        command buffers instead of relying on the current one-helper-per-op
+        dispatch path.
+    - [ ] `ML-VK-080-016` implement source-backed custom `Kernel`
+      compilation/dispatch.
+      - blocker: `Kernel` already accepts `source` and `entry` data, but the
+        Vulkan backend bridge has no public compile/pipeline entrypoint yet.
+    - [ ] `ML-VK-080-017` implement contracted buffer reuse/lifetime planning.
+      - blocker: current `memory-plan` is descriptive only; a real reuse
+        contract must move together with Tensor ownership/finalizer and backend
+        allocation semantics.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

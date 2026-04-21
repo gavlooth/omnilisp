@@ -81,6 +81,81 @@ Next actions:
 
 Signature: GPT-5 Codex
 
+## 2026-04-21 07:46 CEST - ML-VK-080-014 Tensor Fusion Eligibility Metadata
+
+Objective attempted:
+- Implement `ML-VK-080-014` as metadata-only fusion eligibility planning for
+  captured Tensor graphs, without claiming fused execution.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `src/lisp/prim_tensor_capture.c3`
+- `src/lisp/prim_tensor_capture_fusion.c3`
+- `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+- `.agents/PLAN.md`
+- `.agents/SESSION_REPORT.md`
+- `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- `docs/todo_parts/todo_part_14.md`
+- `docs/LANGUAGE_SPEC.part-01b.md`
+- `docs/reference/03-collections.part-01.md`
+- `docs/reference/11-appendix-primitives.md`
+
+Code or configuration changes made:
+- Added `prim_tensor_capture_fusion.c3` to classify captured Tensor graph fusion
+  eligibility without growing `prim_tensor_capture.c3` past the code-size gate.
+- Added nested metadata-only `fusion-plan` dictionaries to
+  `tensor/capture(source)` graph plans.
+- Marked direct Vulkan Float32 map chains as eligibility-only `map-chain`
+  candidates when all launchable nodes are map nodes.
+- Marked contract and direct transpose-view nodes as hard fusion barriers with
+  `contract-boundary` and `view-boundary` reasons.
+- Updated focused capture tests and ML-VK-080 roadmap/TODO/spec/reference docs.
+
+Commands run:
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `scripts/check_primitive_docs_parity.sh`
+- `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Focused advanced collections passed with `pass=1852 fail=0`.
+- Compiler slice passed with `pass=289 fail=0`.
+- Basic Lisp passed with `pass=161 fail=0`.
+- Primitive docs parity, Stage 3 source parity, code file-size gate, and
+  whitespace checks passed.
+- `prim_tensor_capture.c3` is 668 LOC and the new
+  `prim_tensor_capture_fusion.c3` is 110 LOC, keeping the code-only 700-line
+  rule intact.
+
+Invalidated assumptions or failed approaches worth preserving:
+- Do not present fusion metadata as fused execution. The current Vulkan helper
+  layer still dispatches one helper-backed op at a time; fused shaders and
+  fused dispatch need a new runtime lowering path.
+- Executable Tensor command-buffer batching is not available from capture
+  metadata alone; it needs a native/runtime executor bridge that consumes
+  schedule/command-batch records.
+- Source-backed custom Kernel compilation remains blocked on a backend compile
+  and pipeline entrypoint.
+- The current memory plan is descriptive only; real buffer reuse must move
+  together with Tensor ownership/finalizer and backend allocation semantics.
+
+Unresolved issues:
+- Runtime fused execution, executable command-buffer batching, source-backed
+  Kernel compilation/dispatch, and contracted buffer reuse/lifetime planning
+  remain open.
+
+Next actions:
+- Continue the remaining `ML-VK-080` runtime work from the roadmap: executable
+  Tensor command-buffer batching, source-backed custom Kernel compilation,
+  runtime fused dispatch, and contracted buffer reuse/lifetime planning.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-21 07:30 CEST - ML-VK-080-013 Tensor Memory-Plan Metadata
 
 Objective attempted:

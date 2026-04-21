@@ -607,8 +607,10 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     if (Value* err = tensor_capture_memory_plan_bytes(nodes, interp, &external_bytes, &transient_bytes)) return err;
     Value* memory_plan = tensor_capture_memory_plan(nodes, external_bytes, transient_bytes, interp);
     if (memory_plan == null || memory_plan.tag == ERROR) return memory_plan;
+    Value* fusion_plan = tensor_capture_fusion_plan(nodes, interp);
+    if (fusion_plan == null || fusion_plan.tag == ERROR) return fusion_plan;
 
-    Value* plan = nn_make_dict(interp, 28);
+    Value* plan = nn_make_dict(interp, 30);
     if (plan == null || plan.tag == ERROR) return plan;
     if (Value* err = nn_dict_set_symbol(plan, interp, "kind", "tensor-graph")) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "backend", "vulkan")) return err;
@@ -630,6 +632,7 @@ fn Value* tensor_capture_plan(Value* source, Value* nodes, int output_id, Interp
     if (Value* err = nn_dict_set_symbol(plan, interp, "submission", "not-submitted")) return err;
     if (Value* err = nn_dict_set(plan, interp, "requires-runtime-support", make_bool_value(interp, command_batch_count > 0))) return err;
     if (Value* err = nn_dict_set_symbol(plan, interp, "fusion", "none")) return err;
+    if (Value* err = nn_dict_set(plan, interp, "fusion-plan", fusion_plan)) return err;
     if (Value* err = nn_dict_set(plan, interp, "memory-plan", memory_plan)) return err;
     if (Value* err = nn_dict_set(plan, interp, "shape", shape)) return err;
     if (Value* err = nn_dict_set(plan, interp, "invalidation-key", key)) return err;
