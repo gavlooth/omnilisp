@@ -920,3 +920,25 @@ The historical content was split mechanically to keep individual files below the
     `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex
+## 2026-04-21 - ML-VK-080-013 Tensor Memory-Plan Metadata
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Added nested metadata-only `memory-plan` data to
+    `tensor/capture(source)` graph plans.
+  - The top-level capture result remains `kind 'tensor-graph`; the nested
+    memory plan has `kind 'tensor-memory-plan`, version/backend/dtype/policy
+    fields, external/transient byte totals, node-memory, and no allocation or
+    handle-retention authority.
+  - Captured Tensor nodes now include layout/allocation metadata:
+    `element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+    `storage-bytes`, `allocation`, `owner`, and `write-policy`.
+  - This keeps memory planning descriptive only; runtime buffer allocation,
+    retention, reuse, executable command batching, fusion, and source
+    compilation remain open.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1852 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
+    `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex

@@ -477,6 +477,14 @@ Shipped first slice:
   `command-buffer-candidate` batch descriptor; non-launching graphs record
   `command-batching 'none`. This does not allocate, record, submit, or execute
   Vulkan command buffers, and it does not fuse graph nodes.
+- `ML-VK-080-013`: `tensor/capture(source)` now records a nested
+  metadata-only `memory-plan` dictionary with kind `tensor-memory-plan`,
+  `version`, `backend`, `dtype`, `policy`, `allocates`, `retains-handles`,
+  `external-bytes`, `transient-bytes`, and `node-memory`. Capture nodes record
+  `element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+  `storage-bytes`, `allocation`, `owner`, and `write-policy`. This slice is
+  descriptive only; it does not allocate, retain handles, or reuse runtime
+  buffers, and the top-level capture result remains a `tensor-graph`.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

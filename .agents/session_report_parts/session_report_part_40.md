@@ -80,3 +80,70 @@ Next actions:
   runtime work once the planning docs are consumed.
 
 Signature: GPT-5 Codex
+
+## 2026-04-21 07:30 CEST - ML-VK-080-013 Tensor Memory-Plan Metadata
+
+Objective attempted:
+- Implement `ML-VK-080-013` as metadata-only memory planning for captured
+  Tensor graphs without changing the top-level `tensor-graph` capture contract.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `.agents/PLAN.md`
+- `.agents/SESSION_REPORT.md`
+- `docs/plans/vulkan-ml-suite-roadmap-2026-04-19.md`
+- `docs/todo_parts/todo_part_14.md`
+- `docs/LANGUAGE_SPEC.part-01b.md`
+- `docs/reference/03-collections.part-01.md`
+- `docs/reference/11-appendix-primitives.md`
+
+Code or configuration changes made:
+- Added per-node layout/allocation metadata to captured Tensor graph nodes:
+  `element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+  `storage-bytes`, `allocation`, `owner`, and `write-policy`.
+- Added a nested metadata-only `memory-plan` dictionary to
+  `tensor/capture(source)` graph plans. The nested plan has kind
+  `tensor-memory-plan`, version/backend/dtype/policy fields, external and
+  transient byte totals, and `node-memory`.
+- Preserved the existing top-level `tensor-graph` plan fields: schedule,
+  command-batch planning, execution state, fusion metadata, shape, and
+  invalidation key.
+- Updated focused tests, language spec, reference docs, roadmap, TODO, active
+  plan, and session summary for the nested `memory-plan` contract.
+
+Commands run:
+- `c3c build`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+- `scripts/check_primitive_docs_parity.sh`
+- `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+- `scripts/check_file_size_gate.sh`
+- `git diff --check`
+
+Key results:
+- Build passed.
+- Focused advanced collections passed with `pass=1852 fail=0`.
+- Compiler slice passed with `pass=289 fail=0`.
+- Basic Lisp passed with `pass=161 fail=0`.
+- Primitive docs parity, Stage 3 source parity, code file-size gate, and
+  whitespace checks passed.
+- `prim_tensor_capture.c3` is 665 LOC, below the code-only 700-line limit.
+
+Invalidated assumptions or failed approaches worth preserving:
+- Do not make `tensor/capture(source)` return top-level
+  `kind 'tensor-memory-plan`; that regresses the graph contract and drops
+  schedule/command-batch metadata. Memory planning belongs under nested
+  `memory-plan` while the top-level result remains `kind 'tensor-graph`.
+
+Unresolved issues:
+- Runtime buffer allocation, handle retention, buffer reuse, executable command
+  batching, fusion, source compilation, and broader invalidation/capability
+  planning remain open.
+
+Next actions:
+- Continue the remaining `ML-VK-080` runtime work from the roadmap: executable
+  command buffers, fusion, source compilation, buffer reuse/lifetime planning,
+  and broader invalidation/capability planning.
+
+Signature: GPT-5 Codex

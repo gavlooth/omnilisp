@@ -1073,12 +1073,20 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   `command-batching 'none`. This is descriptive only; it does not allocate,
   record, submit, or execute Vulkan command buffers, and it does not fuse graph
   nodes.
+- `ML-VK-080-013`: `tensor/capture(source)` now records a nested
+  metadata-only `memory-plan` dictionary with kind `tensor-memory-plan`,
+  `version`, `backend`, `dtype`, `policy`, `allocates`, `retains-handles`,
+  `external-bytes`, `transient-bytes`, and `node-memory`. Capture nodes record
+  `element-count`, `byte-length`, `storage-offset`, `storage-elements`,
+  `storage-bytes`, `allocation`, `owner`, and `write-policy`. This slice is
+  descriptive only; it does not allocate, retain handles, or reuse runtime
+  buffers, and the top-level capture result remains a `tensor-graph`.
 - Contract:
   - scheduling metadata is descriptive only;
   - `direct-helper` means an existing helper-backed node would require a launch
     in a future executor, not that capture launches it;
-  - no command-buffer batching, fusion, source compilation, or buffer reuse is
-    implemented in this slice.
+  - no command-buffer batching, fusion, source compilation, or runtime buffer
+    reuse is implemented in this slice.
 - Still open under `ML-VK-080`: command-buffer batching, fusion, source
   compilation, buffer reuse/lifetime planning, and broader
   invalidation/capability planning.

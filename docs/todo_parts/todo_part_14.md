@@ -807,6 +807,16 @@ Source: `TODO.md`
         `command-buffer-candidate` batch descriptor; non-launching graphs report
         `command-batching 'none`. Capture does not allocate, record, submit, or
         execute Vulkan command buffers, and it does not fuse graph nodes.
+    - [x] `ML-VK-080-013` add metadata-only Tensor memory-plan records.
+      - shipped: captured Tensor graphs now record a nested metadata-only
+        `memory-plan` dictionary with kind `tensor-memory-plan`, `version`,
+        `backend`, `dtype`, `policy`, `allocates`, `retains-handles`,
+        `external-bytes`, `transient-bytes`, and `node-memory`. Capture nodes
+        record `element-count`, `byte-length`, `storage-offset`,
+        `storage-elements`, `storage-bytes`, `allocation`, `owner`, and
+        `write-policy`; the top-level capture result remains a `tensor-graph`.
+      - contract: metadata only; no allocations, no handle retention, and no
+        runtime buffer reuse.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
