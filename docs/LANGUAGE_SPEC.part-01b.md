@@ -514,12 +514,12 @@ are checked Vulkan `scale-f32`; binary `add-f32`, `sub-f32`, `mul-f32`,
 validates those checked direct-helper Vulkan families against runtime inputs
 and push data and returns a single-node `kernel-graph` launch plan without
 executing the kernel. `tensor/capture(source)` returns a non-executing
-`tensor-graph` plan for supported all-Vulkan `Float32` concrete/map/contract
-Tensor expression graphs, including source/map/contract nodes, scalar
-operands, contract axes, output id, shape, and invalidation metadata. View
-graphs, mixed-device graphs, unsupported map callables, unsupported dtypes,
-arbitrary backend source compilation, command batching, and fusion remain
-fail-closed.
+`tensor-graph` plan for supported all-Vulkan `Float32`
+concrete/map/contract/direct-transpose-view Tensor expression graphs, including
+source/map/contract/view nodes, scalar operands, contract axes, view strides,
+output id, shape, and invalidation metadata. Arbitrary strided view graphs,
+mixed-device graphs, unsupported map callables, unsupported dtypes, arbitrary
+backend source compilation, command batching, and fusion remain fail-closed.
 
 Unsupported `nn/flatten` paths (non-CPU input/device/layout combination) are
 fail-closed as `tensor/backend-unsupported` instead of hidden fallback.

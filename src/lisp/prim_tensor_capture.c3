@@ -54,6 +54,10 @@ fn bool tensor_capture_count_nodes(Value* value, int* out_count) {
             if (!tensor_capture_count_nodes(tensor.contract_right, out_count)) return false;
             *out_count += 1;
             return true;
+        case TENSOR_PAYLOAD_VIEW:
+            if (!tensor_capture_count_nodes(tensor.view_source, out_count)) return false;
+            *out_count += 1;
+            return true;
         default:
             return false;
     }
@@ -61,6 +65,18 @@ fn bool tensor_capture_count_nodes(Value* value, int* out_count) {
 
 fn Value* tensor_capture_shape(TensorVal* tensor, Interp* interp) {
     return kernel_capture_tensor_shape(tensor, interp);
+}
+
+fn Value* tensor_capture_usz_array(Interp* interp, usz* items, usz count) {
+    Value* out = make_array_checked(interp, count, "tensor/capture: out of memory");
+    if (out == null || out.tag == ERROR) return out;
+    if (out.array_val == null) return nn_oom(interp);
+    for (usz i = 0; i < count; i++) {
+        out.array_val.items[i] = make_int(interp, (long)items[i]);
+        if (out.array_val.items[i] == null) return nn_oom(interp);
+        out.array_val.length++;
+    }
+    return out;
 }
 
 fn Value* tensor_capture_ids_array(Interp* interp, int left_id, int right_id, bool has_right) {
@@ -79,15 +95,7 @@ fn Value* tensor_capture_ids_array(Interp* interp, int left_id, int right_id, bo
 }
 
 fn Value* tensor_capture_axis_array(Interp* interp, usz* axes, usz axis_count) {
-    Value* out = make_array_checked(interp, axis_count, "tensor/capture: out of memory");
-    if (out == null || out.tag == ERROR) return out;
-    if (out.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < axis_count; i++) {
-        out.array_val.items[i] = make_int(interp, (long)axes[i]);
-        if (out.array_val.items[i] == null) return nn_oom(interp);
-        out.array_val.length++;
-    }
-    return out;
+    return tensor_capture_usz_array(interp, axes, axis_count);
 }
 
 fn Value* tensor_capture_set_scalar(Value* node, Interp* interp, char[] key, double scalar) {
@@ -172,6 +180,44 @@ fn Value* tensor_capture_contract_node(TensorVal* tensor, int left_id, int right
     return node;
 }
 
+fn bool tensor_capture_is_transpose_view(TensorVal* view) {
+    if (view == null || view.kind != TENSOR_PAYLOAD_VIEW || !view.is_view || view.device != TENSOR_DEVICE_VULKAN) return false;
+    if (view.dtype != TENSOR_DTYPE_FLOAT32 || view.rank != 2 || view.shape == null || view.strides == null) return false;
+    if (view.storage_offset != 0 || view.view_source == null || !is_tensor(view.view_source)) return false;
+    TensorVal* source = view.view_source.tensor_val;
+    if (source == null || source.kind != TENSOR_PAYLOAD_CONCRETE || source.device != TENSOR_DEVICE_VULKAN) return false;
+    if (source.dtype != TENSOR_DTYPE_FLOAT32 || source.rank != 2 || source.shape == null || source.strides == null) return false;
+    if (!tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) return false;
+    if (view.device_handle != source.device_handle) return false;
+    if (view.shape[0] != source.shape[1] || view.shape[1] != source.shape[0]) return false;
+    if (view.strides[0] != source.strides[1] || view.strides[1] != source.strides[0]) return false;
+    return true;
+}
+
+fn Value* tensor_capture_view_node(TensorVal* tensor, int source_id, Interp* interp) {
+    if (!tensor_capture_is_transpose_view(tensor)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports direct Vulkan Float32 transpose views", null);
+    }
+    Value* node = nn_make_dict(interp, 18);
+    if (node == null || node.tag == ERROR) return node;
+    Value* inputs = tensor_capture_ids_array(interp, source_id, -1, false);
+    if (inputs == null || inputs.tag == ERROR) return inputs;
+    Value* strides = tensor_capture_usz_array(interp, tensor.strides, tensor.rank);
+    if (strides == null || strides.tag == ERROR) return strides;
+    if (Value* err = nn_dict_set_symbol(node, interp, "kind", "tensor-view")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "backend", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "dtype", "Float32")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "device", "vulkan")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "family", "transpose-view-f32")) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "operation", "transpose-view")) return err;
+    if (Value* err = nn_dict_set(node, interp, "arity", make_int(interp, 1))) return err;
+    if (Value* err = nn_dict_set(node, interp, "inputs", inputs)) return err;
+    if (Value* err = nn_dict_set(node, interp, "shape", tensor_capture_shape(tensor, interp))) return err;
+    if (Value* err = nn_dict_set(node, interp, "strides", strides)) return err;
+    if (Value* err = nn_dict_set(node, interp, "storage-offset", make_int(interp, (long)tensor.storage_offset))) return err;
+    return node;
+}
+
 fn Value* tensor_capture_append_graph(Value* value, Value* nodes, int* next_id, int* out_id, Interp* interp) {
     if (!is_tensor(value) || value.tensor_val == null) return primitive_arg_type_raise(interp, "tensor/capture", 0, "Tensor", value);
     TensorVal* tensor = value.tensor_val;
@@ -220,8 +266,15 @@ fn Value* tensor_capture_append_graph(Value* value, Value* nodes, int* next_id, 
             if (node == null || node.tag == ERROR) return node;
             return tensor_capture_append(nodes, node, next_id, out_id, interp);
         }
+        case TENSOR_PAYLOAD_VIEW: {
+            int source_id = -1;
+            if (Value* err = tensor_capture_append_graph(tensor.view_source, nodes, next_id, &source_id, interp)) return err;
+            Value* node = tensor_capture_view_node(tensor, source_id, interp);
+            if (node == null || node.tag == ERROR) return node;
+            return tensor_capture_append(nodes, node, next_id, out_id, interp);
+        }
         default:
-            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, and contract Tensor graphs", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, contract, and direct transpose-view Tensor graphs", null);
     }
 }
 
@@ -229,6 +282,7 @@ fn char[] tensor_capture_plan_family(TensorPayloadKind kind) {
     switch (kind) {
         case TENSOR_PAYLOAD_MAP: return "map-expression";
         case TENSOR_PAYLOAD_CONTRACT: return "contract-expression";
+        case TENSOR_PAYLOAD_VIEW: return "view-expression";
         default: return "tensor-expression";
     }
 }
@@ -280,7 +334,7 @@ fn Value* prim_tensor_capture(Value*[] args, Env* env, Interp* interp) {
 
     int count = 0;
     if (!tensor_capture_count_nodes(args[0], &count) || count <= 0) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, and contract Tensor graphs", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/capture: currently supports concrete, map, contract, and direct transpose-view Tensor graphs", null);
     }
     Value* nodes = make_array_checked(interp, (usz)count, "tensor/capture: out of memory");
     if (nodes == null || nodes.tag == ERROR) return nodes;

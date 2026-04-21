@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (798 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (849 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -860,4 +860,23 @@ The historical content was split mechanically to keep individual files below the
     advanced collections `pass=1849 fail=0`, compiler slice `pass=289 fail=0`,
     basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-010 Vulkan Tensor Direct View Graph Capture
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Extended `tensor/capture(source)` to return all-Vulkan `Float32`
+    direct-transpose-view graph data.
+  - Added `tensor-view` graph nodes for direct rank-2 `matrix/transpose-view`
+    values over concrete dense Vulkan `Float32` storage, recording input id,
+    output shape, strides, storage offset, dtype/device/backend, operation, and
+    invalidation metadata.
+  - Arbitrary strided view graphs, batching, fusion, source compilation, and
+    buffer reuse remain open.
+  - Validation: `c3c build`, direct view-capture eval smoke, focused advanced
+    collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`, basic
+    Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex

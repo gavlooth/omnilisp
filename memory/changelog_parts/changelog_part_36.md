@@ -618,3 +618,23 @@
     focused advanced collections `pass=1849 fail=0`, compiler slice
     `pass=289 fail=0`, basic Lisp `pass=161 fail=0`, primitive docs parity,
     Stage 3 source parity, code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-010 Vulkan Tensor Direct View Graph Capture
+
+- Extended `tensor/capture(source)` for the existing Vulkan transpose-view
+  boundary.
+  - Supported graphs are now all-Vulkan `Float32`
+    concrete/map/contract/direct-transpose-view Tensor expression graphs.
+  - Capture returns ordinary `tensor-graph` data with `tensor-view` nodes for
+    direct rank-2 `matrix/transpose-view` values over concrete dense Vulkan
+    `Float32` storage.
+  - View nodes record input id, output shape, strides, storage offset,
+    dtype/device/backend, operation `transpose-view`, and family
+    `transpose-view-f32`.
+  - Arbitrary strided view graphs, command-buffer batching, fusion, arbitrary
+    source compilation, buffer reuse/lifetime planning, and broader
+    invalidation remain open.
+  - Validation passed: `c3c build`, direct view-capture eval smoke, focused
+    advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
+    basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.

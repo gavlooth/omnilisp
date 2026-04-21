@@ -796,3 +796,54 @@ Signature: GPT-5 Codex
   - Commit and push the slice, then continue `ML-VK-080` with view capture or
     command-buffer batching/fusion.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 06:35 CEST - ML-VK-080-010 Vulkan Tensor Direct View Graph Capture
+
+- Objective attempted: continue `ML-VK-080` by extending Tensor expression graph
+  capture to the existing direct Vulkan transpose-view boundary without
+  claiming arbitrary strided view execution.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_tensor_capture.c3`
+  - advanced tests, language/reference docs, Vulkan ML roadmap, TODO, plan, and
+    changelog artifacts.
+- Code or configuration changes made:
+  - Extended `tensor/capture(source)` to count and append direct rank-2
+    `matrix/transpose-view` nodes over concrete dense Vulkan `Float32` backing
+    tensors.
+  - View graph nodes record input id, output shape, strides, storage offset,
+    dtype/device/backend, operation `transpose-view`, and family
+    `transpose-view-f32`.
+  - Kept arbitrary strided views fail-closed and kept capture metadata-only.
+- Commands run:
+  - `c3c build`
+  - direct eval smoke for Vulkan `matrix/transpose-view` plus `tensor/capture`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct view capture smoke returned
+    `[tensor-graph view-expression 2 tensor-view transpose-view 1 3]`.
+  - Focused advanced collections passed with `pass=1850 fail=0`.
+  - Compiler slice passed with `pass=289 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Invalidated assumptions or failed approaches:
+  - None new. Arbitrary strided GPU view execution remains unsupported; this
+    slice captures only the existing direct transpose-view representation.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Arbitrary view graph capture, command-buffer batching, fusion, arbitrary
+    source compilation, buffer reuse/lifetime planning, and broader
+    deterministic invalidation remain open.
+- Next actions:
+  - Commit and push the slice, then continue `ML-VK-080` with command-buffer
+    batching/fusion or broader view planning.
+- Signature: GPT-5 Codex

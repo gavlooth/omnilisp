@@ -463,6 +463,10 @@ Shipped first slice:
   expressions, and contract nodes record input ids, left/right axes, output
   shape, dtype/device/backend, and invalidation data without launching the
   graph.
+- `ML-VK-080-010`: `tensor/capture(source)` now records direct all-Vulkan
+  `Float32` transpose-view graph nodes. This is limited to the existing
+  rank-2 `matrix/transpose-view` boundary over concrete dense Vulkan `Float32`
+  storage; arbitrary strided views, batching, and fusion remain fail-closed.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

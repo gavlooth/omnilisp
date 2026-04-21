@@ -465,10 +465,12 @@ right-aligned singleton-axis Tensor/Tensor broadcasting through embedded
 SPIR-V compute shaders, returning Vulkan-placed tensors. Direct `min` and
 `max` also support matching dense row-major Vulkan `Float64` or `Float32`
 operands. `tensor/capture(source)` returns ordinary `tensor-graph` data for
-all-Vulkan `Float32` concrete/map/contract expression graphs without executing
-the graph; contract nodes record input ids, output shape, and left/right
-contract axes. View graphs, mixed placement, unsupported map callables,
-unsupported dtypes, command batching, and fusion remain fail closed. Vulkan
+all-Vulkan `Float32` concrete/map/contract/direct-transpose-view expression
+graphs without executing the graph; contract nodes record input ids, output
+shape, and left/right contract axes, and direct transpose-view nodes record
+input id, output shape, and strides. Arbitrary strided view graphs, mixed
+placement, unsupported map callables, unsupported dtypes, command batching, and
+fusion remain fail closed. Vulkan
 `Float32` serial factor/solve operations and staged parallel `Float32`
 `matrix/solve` are supported for eligible dense row-major operands; CPU
 `Float32` SVD/factor oracles are supported.

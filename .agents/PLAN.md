@@ -1032,3 +1032,27 @@ Date: 2026-04-21 - Extends Tensor graph capture from map DAGs to contract DAGs.
   focused advanced collections `pass=1849 fail=0`, compiler slice
   `pass=289 fail=0`, basic Lisp `pass=161 fail=0`, primitive docs parity,
   Stage 3 source parity, code file-size gate, and `git diff --check`.
+
+## Active ML-VK-080-010 Vulkan Tensor Direct View Graph Capture
+Date: 2026-04-21 - Extends Tensor graph capture to the existing transpose-view boundary.
+
+- Shipped in this slice:
+  - `tensor/capture(source)` counts and records direct all-Vulkan `Float32`
+    rank-2 `matrix/transpose-view` nodes over concrete dense Vulkan backing
+    tensors;
+  - view nodes record input id, output shape, strides, storage offset,
+    dtype/device/backend, operation `transpose-view`, and family
+    `transpose-view-f32`.
+- Contract:
+  - accepts one Tensor source;
+  - requires `Float32` dtype and all leaves/device references to be Vulkan;
+  - supports concrete source, map, contract, and direct transpose-view nodes;
+  - does not launch, fuse, batch commands, consume arbitrary strided views, or
+    embed the source Tensor in the returned plan.
+- Still open under `ML-VK-080`: arbitrary view graph capture, command-buffer
+  batching, fusion, source compilation, buffer reuse/lifetime planning, and
+  broader invalidation/capability planning.
+- Validation completed: `c3c build`, direct view-capture eval smoke, focused
+  advanced collections `pass=1850 fail=0`, compiler slice `pass=289 fail=0`,
+  basic Lisp `pass=161 fail=0`, primitive docs parity, Stage 3 source parity,
+  code file-size gate, and `git diff --check`.

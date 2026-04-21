@@ -787,6 +787,13 @@ Source: `TODO.md`
         input ids, left/right axes, axis count, output shape, dtype/device, and
         backend metadata. Explicit `to-device 'vulkan` preserves supported CPU
         lazy Float32 contract graphs as Vulkan expressions for capture.
+    - [x] `ML-VK-080-010` add Vulkan Float32 direct transpose-view graph
+      capture.
+      - shipped: `tensor/capture(source)` records direct rank-2
+        `matrix/transpose-view` nodes over concrete dense Vulkan Float32
+        storage, including input id, output shape, strides, storage offset,
+        dtype/device, and backend metadata. Arbitrary strided views remain
+        fail-closed.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
