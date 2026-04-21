@@ -1,6 +1,6 @@
 module main;
 
-const String[198] AOT_RUNTIME_LISP_SOURCES_PART0 = {
+const String[199] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/aot.c3",
     "src/lisp/aot_runtime_bridge.c3",
     "src/lisp/aot_runtime_bridge_closure.c3",
@@ -14,6 +14,7 @@ const String[198] AOT_RUNTIME_LISP_SOURCES_PART0 = {
     "src/lisp/aot_type_spec_helpers.c3",
     "src/lisp/ast_arena.c3",
     "src/lisp/async.c3",
+    "src/lisp/async_io_shared.c3",
     "src/lisp/async_process_lifecycle.c3",
     "src/lisp/async_process_signal_dns.c3",
     "src/lisp/async_process_signal_dns_process.c3",

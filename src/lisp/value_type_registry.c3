@@ -1,9 +1,83 @@
 module lisp;
 
-bool g_type_registry_force_types_alloc_fail = false;
-bool g_type_registry_force_hash_alloc_fail = false;
-bool g_type_registry_force_grow_types_alloc_fail = false;
-bool g_type_registry_force_grow_hash_alloc_fail = false;
+// Test-only allocation fault injection. These globals are compiled out of
+// normal builds and are intentionally driven by single-threaded test code.
+bool g_type_registry_force_types_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_type_registry_force_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_type_registry_force_grow_types_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_type_registry_force_grow_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+
+fn bool type_registry_fault_injection_enabled() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return true;
+    $else
+        return false;
+    $endif
+}
+
+fn void type_registry_force_types_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_type_registry_force_types_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void type_registry_force_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_type_registry_force_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void type_registry_force_grow_types_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_type_registry_force_grow_types_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void type_registry_force_grow_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_type_registry_force_grow_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn bool type_registry_force_types_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_type_registry_force_types_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool type_registry_force_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_type_registry_force_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool type_registry_force_grow_types_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_type_registry_force_grow_types_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool type_registry_force_grow_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_type_registry_force_grow_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
 
 fn void type_registry_destroy_union_variants(UnionVariant* variants, usz count) {
     if (variants == null) return;
@@ -65,12 +139,12 @@ fn bool TypeRegistry.init(TypeRegistry* self) {
     usz initial_hash_capacity = TYPE_INITIAL_CAPACITY * 2;
     if (initial_hash_capacity == 0 || initial_hash_capacity > usz.max / TypeId.sizeof) return false;
 
-    TypeInfo* types = g_type_registry_force_types_alloc_fail
+    TypeInfo* types = type_registry_force_types_alloc_fail_active()
         ? null
         : (TypeInfo*)mem::malloc(TypeInfo.sizeof * TYPE_INITIAL_CAPACITY);
     if (types == null) return false;
 
-    TypeId* type_hash_index = g_type_registry_force_hash_alloc_fail
+    TypeId* type_hash_index = type_registry_force_hash_alloc_fail_active()
         ? null
         : (TypeId*)mem::malloc(TypeId.sizeof * initial_hash_capacity);
     if (type_hash_index == null) {
@@ -98,11 +172,11 @@ fn bool TypeRegistry.grow(TypeRegistry* self, SymbolTable* syms) {
     if (new_hash_cap > usz.max / TypeId.sizeof) return false;
     if (new_cap >= (usz)TypeId.max) return false;
 
-    TypeInfo* new_types = g_type_registry_force_grow_types_alloc_fail
+    TypeInfo* new_types = type_registry_force_grow_types_alloc_fail_active()
         ? null
         : (TypeInfo*)mem::malloc(TypeInfo.sizeof * new_cap);
     if (new_types == null) return false;
-    TypeId* new_hash = g_type_registry_force_grow_hash_alloc_fail
+    TypeId* new_hash = type_registry_force_grow_hash_alloc_fail_active()
         ? null
         : (TypeId*)mem::malloc(TypeId.sizeof * new_hash_cap);
     if (new_hash == null) {

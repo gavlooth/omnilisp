@@ -227,7 +227,14 @@ fn TypeId infer_value_type(Value* v, Interp* interp) {
         case INSTANCE:
             if (v.instance_val != null && interp.types.get(v.instance_val.type_id) != null) return v.instance_val.type_id;
             return INVALID_TYPE_ID;
-        default:
+        case NIL:
+        case CONTINUATION:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case METHOD_TABLE:
+        case MODULE:
             return INVALID_TYPE_ID;
     }
 }
@@ -273,7 +280,14 @@ fn SymbolId value_type_name(Value* v, Interp* interp) {
                 if (ti != null) return ti.name;
             }
             return interp.sym_Any;
-        default:
+        case NIL:
+        case CONTINUATION:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case METHOD_TABLE:
+        case MODULE:
             return interp.sym_Any;
     }
 }

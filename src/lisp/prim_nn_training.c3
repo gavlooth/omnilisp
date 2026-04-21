@@ -269,7 +269,7 @@ fn Value* nn_train_build_ml_grad_spec(NnTrainHead* head, Value* input, Value* ta
         if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "linear-softmax-cross-entropy")) return err;
     } else if (head.activation != null) {
         if (head.activation.tag != SYMBOL || !ml_grad_activation_supported(head.activation.sym_val, interp)) {
-            return nn_train_invalid(interp, "model.spec.activation", "relu, sigmoid, tanh, or gelu for MSE training", head.activation);
+            return nn_train_invalid(interp, "model.spec.activation", "relu, leaky-relu, sigmoid, tanh, or gelu for MSE training", head.activation);
         }
         if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "linear-activation-mean-squared-error")) return err;
         if (Value* err = nn_dict_set(spec, interp, "activation", head.activation)) return err;
@@ -358,7 +358,7 @@ fn Value* prim_nn_forward(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 2 && args.len != 4 && args.len != 5) {
         return primitive_arity_raise(interp, "nn/forward", "2 arguments: model input, or 4/5 arguments: spec params state input [options]", args.len);
     }
-    return prim_nn_apply(args, env, interp);
+    return nn_forward_execute(args, interp);
 }
 
 fn Value* prim_nn_grad(Value*[] args, Env* env, Interp* interp) {

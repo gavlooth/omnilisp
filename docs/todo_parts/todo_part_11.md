@@ -6,10 +6,10 @@ Source: `TODO.md`
   construction and iterative apply fail closed on malformed arg-list state
   instead of degrading to partial success
   - closure evidence:
-    - `src/lisp/jit_jit_apply_runtime.c3`
+    - `src/lisp/jit_apply_runtime.c3`
       now rejects `make_cons(...)` failure while constructing continuation-safe
       multi-arg call lists instead of passing malformed arg lists downstream.
-    - `src/lisp/jit_jit_apply_multi_prims.c3`
+    - `src/lisp/jit_apply_multi_prims.c3`
       now makes `jit_apply_multi_args_iterative(...)` return
       `"arg list too short"` when the arg list breaks before all required args
       are consumed, instead of breaking and returning the partial result.
@@ -31,7 +31,7 @@ Source: `TODO.md`
       now makes `(shell cmd true)` fail closed with
       `"shell: failed to construct result list"` if the final two-item result
       list cannot be built.
-    - `src/lisp/jit_jit_runtime_effects_handle.c3`
+    - `src/lisp/jit_runtime_effects_handle.c3`
       now routes both pending-raise and normal effect-handler arg-pair
       construction through the same checked helper, so constructor failure
       propagates before handler call-through.
@@ -90,10 +90,10 @@ Source: `TODO.md`
     - `src/lisp/value_constructors.c3`
       now rejects `boundary_promote_to_root(...)` null/error results before
       publishing pending raise payload state.
-    - `src/lisp/jit_jit_runtime_effects_handle.c3`
+    - `src/lisp/jit_runtime_effects_handle.c3`
       now rejects raise fallback `make_string(...)` and arg-pair
       `make_cons(...)` failure before handler call-through.
-    - `src/lisp/jit_jit_handle_signal_handle.c3`
+    - `src/lisp/jit_handle_signal_handle.c3`
       now rejects raise fallback string materialization failure before clause
       env extension.
     - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
@@ -254,7 +254,7 @@ Source: `TODO.md`
       wrapper is null, wrongly tagged, missing `prim_val`, or missing
       `prim_val.func`, and rejects partial-application state when
       `first_arg == null`.
-    - `src/lisp/jit_jit_apply_helpers.c3`
+    - `src/lisp/jit_apply_helpers.c3`
       now makes `jit_apply_value_primitive(...)` reject malformed primitive
       wrappers before any function-pointer call-through.
     - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`

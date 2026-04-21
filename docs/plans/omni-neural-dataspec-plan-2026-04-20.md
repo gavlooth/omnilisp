@@ -216,6 +216,7 @@ The explicit path must remain available:
 - `nn/flatten`
 - `nn/activation`
 - `nn/relu`
+- `nn/leaky-relu`
 - `nn/sigmoid`
 - `nn/tanh`
 - `nn/gelu`
@@ -370,8 +371,8 @@ Shipped baseline:
   at least `path`, `expected`, and `actual-kind`.
 - Data-only constructors are available for the frozen layer schemas:
   `nn/sequential`, `nn/dense`, `nn/conv1d`, `nn/conv2d`, `nn/max-pool2d`,
-  `nn/avg-pool2d`, `nn/flatten`, `nn/activation`, `nn/relu`, `nn/sigmoid`,
-  `nn/tanh`, `nn/gelu`, and `nn/softmax`.
+  `nn/avg-pool2d`, `nn/flatten`, `nn/activation`, `nn/relu`,
+  `nn/leaky-relu`, `nn/sigmoid`, `nn/tanh`, `nn/gelu`, and `nn/softmax`.
 - This baseline intentionally does not allocate parameter tensors, lower specs
   to `ml/*`, serialize checkpoints, or expose training helpers; those remain
   owned by `ML-VK-070-002` through `ML-VK-070-005`.
@@ -418,8 +419,9 @@ first public inference family:
 - accepts only an empty reserved options dictionary on the explicit `nn/apply`
   path, so future options cannot be silently ignored
 - exposes `nn/predict(model input)` as the explicit evaluation-mode inference path
-- lowers `dense`, `conv1d`, `conv2d`, `max-pool2d`, `avg-pool2d`,
-  `activation`, and `softmax` to the corresponding `ml/*` operations
+- lowers `dense`, `batch-normalization`, `conv1d`, `conv2d`, `max-pool2d`,
+  `avg-pool2d`, `activation`, and `softmax` to the corresponding `ml/*`
+  operations
 - lowers `nn/flatten` using explicit CPU flattening
 - returns inspection summary metadata through `nn/summary`
 - no hidden CPU fallback in supported inference paths; unsupported flatten and
@@ -448,6 +450,11 @@ Shipped first dense training facade:
 
 - `nn/forward` runs the same model or explicit `(spec params state input
   [options])` data shapes as `nn/apply` without requiring eval mode.
+- train-mode `nn/batch-normalization` computes current-batch CPU dense
+  row-major statistics, returns ordinary `nn-forward` data with updated running
+  state/model, and leaves the original model immutable; explicit forward
+  options accept `(Dictionary 'mode 'train)` for state threading without hidden
+  mutation.
 - `nn/grad(model input targets [options])` requires a train-mode model and
   builds gradients for direct dense specs or sequential dense-plus-activation
   specs by lowering to the existing CPU `ml/grad` linear MSE and linear

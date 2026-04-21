@@ -59,7 +59,7 @@ if [[ "${OMNI_HARD_MEM_CAP_METHOD}" == "docker" ]]; then
   : "${OMNI_C3_HARD_CAP_ENABLED:=1}"
 fi
 
-runtime_ld_library_path="/usr/local/lib"
+runtime_ld_library_path="${OMNI_RUNTIME_TOOLCHAIN_LIB_PATH:-/usr/local/lib}"
 if [[ "${OMNI_HARD_MEM_CAP_METHOD}" == "docker" && -n "${OMNI_DOCKER_TOOLCHAIN_ROOT:-}" ]]; then
   runtime_ld_library_path="/opt/omni-host-toolchain/lib"
 fi
@@ -92,7 +92,7 @@ omni_run_with_hard_cap ./scripts/check_e2e_baseline_policy.sh --stage3-source-pa
 omni_c3 compile \
   ${stage3_compile_sources[@]} \
   -o build/e2e_test \
-  -L build -L /usr/local/lib -L deps/lib \
+  -L build -L "${runtime_ld_library_path}" -L deps/lib \
   -l omni_chelpers -l lightning -l ffi -l dl -l m -l replxx -l stdc++ \
   -l utf8proc -l deflate -l yyjson -l uv -l bearssl -l lmdb
 

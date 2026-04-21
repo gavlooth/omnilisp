@@ -18,6 +18,22 @@ echo "=== FTXUI smoke: module_effect_smoke ==="
 run_example examples/libraries/ftxui/module_effect_smoke.omni
 
 echo ""
+echo "=== FTXUI smoke: module_direct_smoke ==="
+run_example examples/libraries/ftxui/module_direct_smoke.omni
+
+echo ""
+echo "=== FTXUI smoke: module_backend_smoke ==="
+run_example examples/libraries/ftxui/module_backend_smoke.omni
+
+echo ""
+echo "=== FTXUI smoke: module_session_smoke ==="
+run_example examples/libraries/ftxui/module_session_smoke.omni
+
+echo ""
+echo "=== FTXUI smoke: module_interactive_loop_smoke ==="
+printf q | LD_LIBRARY_PATH="$runtime_ld_library_path" ./build/main examples/libraries/ftxui/module_interactive_loop_smoke.omni
+
+echo ""
 echo "=== FTXUI smoke: smoke.omni ==="
 run_example examples/libraries/ftxui/smoke.omni
 

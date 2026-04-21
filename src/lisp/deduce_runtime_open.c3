@@ -8,7 +8,7 @@ import std::core::mem;
 struct Relation {
     SymbolId     name;
     SymbolId*    columns;
-    Value**      column_key_values;
+    SymbolId*    column_key_values;
     usz          col_count;
     usz          col_capacity;
     MdbDbi       dbi;           // LMDB database handle for this relation

@@ -583,8 +583,8 @@ If `GhostTable` in main.c3 was its only consumer, this file is also dead. Grep t
 7. Read `src/entry.c3` for the --build pipeline
 
 ### Function name verification checklist:
-- [x] JIT single-arg apply: `jit_apply_value(Value* func, Value* arg, Interp* interp)` (`src/lisp/jit_jit_apply_runtime.c3`).
-- [x] JIT multi-arg apply: `jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count)` (`src/lisp/jit_jit_apply_multi_prims.c3`).
+- [x] JIT single-arg apply: `jit_apply_value(Value* func, Value* arg, Interp* interp)` (`src/lisp/jit_apply_runtime.c3`).
+- [x] JIT multi-arg apply: `jit_apply_multi_args(Interp* interp, Value* func, Value* arg_list, usz arg_count)` (`src/lisp/jit_apply_multi_prims.c3`).
 - [x] Env lookup is a method: `Env.lookup(Env* self, SymbolId name)` (`src/lisp/value_environment.c3`).
 - [x] Env define is a method: `Env.define(Env* self, SymbolId name, Value* value)` plus boundary wrapper `env_define_with_barrier(...)` for cross-scope safety.
 - [x] Env set is a method: `Env.set(Env* self, SymbolId name, Value* value)` plus boundary wrapper `env_set_with_barrier(...)`.

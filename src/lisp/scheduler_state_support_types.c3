@@ -129,10 +129,12 @@ enum OffloadOp : char {
 }
 
 alias OffloadCustomFn = fn OffloadCompletion*(OffloadWork);
+alias OffloadCustomFreeFn = fn void(void*);
 
 enum OffloadResultKind : char {
     OFFLOAD_RES_NIL,
     OFFLOAD_RES_INT,
+    OFFLOAD_RES_DOUBLE,
     OFFLOAD_RES_BYTES,
     OFFLOAD_RES_ERROR
 }
@@ -147,6 +149,7 @@ struct OffloadWork {
     SharedHandle* shared;
     OffloadCustomFn custom_fn;
     void* custom_ctx;
+    OffloadCustomFreeFn custom_free;
 }
 
 // OffloadWork pointer payloads currently share the long scalar lane.
@@ -155,6 +158,7 @@ $assert(long.sizeof >= uptr.sizeof);
 struct OffloadCompletion {
     OffloadResultKind kind;
     long int_result;
+    double double_result;
     SharedHandle* shared;
     char* error_msg;
     usz error_len;

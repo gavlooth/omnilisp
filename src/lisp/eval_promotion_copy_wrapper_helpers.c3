@@ -125,6 +125,7 @@ fn bool copy_parent_clone_closure_payload(
     }
     *result.closure_val = *src.closure_val;
     result.closure_val.scope_gen = interp.current_scope.generation;
+    result.closure_val.env_scope = null;
 
     if (src.closure_val.param_count > 0) {
         if (src.closure_val.param_count > usz.max / SymbolId.sizeof) {
@@ -180,10 +181,11 @@ fn bool copy_parent_clone_closure_payload(
         return true;
     }
 
-    if (closure_env_scope_is_root_owned(result, interp)) {
+    if (closure_env_scope_is_root_owned(src, interp)) {
         result.closure_val.env_scope = null;
-    } else if (result.closure_val.env_scope != null) {
-        main::scope_retain(result.closure_val.env_scope);
+    } else if (src.closure_val.env_scope != null) {
+        main::scope_retain(src.closure_val.env_scope);
+        result.closure_val.env_scope = src.closure_val.env_scope;
     }
     return true;
 }
@@ -197,7 +199,10 @@ fn Value* copy_closure_to_parent(
     Value* result = g_boundary_force_copy_closure_wrapper_alloc_fail
         ? null
         : interp.alloc_value();
-    if (!copy_parent_clone_closure_payload(result, v, interp, fault_out)) return null;
+    if (!copy_parent_clone_closure_payload(result, v, interp, fault_out)) {
+        boundary_cleanup_materialized_value(v, result, interp.current_scope);
+        return null;
+    }
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_closure);
     return result;
 }

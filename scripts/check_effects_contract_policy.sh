@@ -192,10 +192,10 @@ check_migrated_surfaces_no_legacy_failure_constructors() {
   local files=(
     "src/lisp/tls_primitives.c3"
     "src/lisp/tls_handle_lifecycle.c3"
-    "src/lisp/jit_jit_handle_signal.c3"
-    "src/lisp/jit_jit_runtime_effects.c3"
-    "src/lisp/jit_jit_reset_shift.c3"
-    "src/lisp/jit_jit_compile_effects_modules.c3"
+    "src/lisp/jit_handle_signal.c3"
+    "src/lisp/jit_runtime_effects.c3"
+    "src/lisp/jit_reset_shift.c3"
+    "src/lisp/jit_compile_effects_modules.c3"
   )
 
   local violations=0

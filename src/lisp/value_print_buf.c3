@@ -14,8 +14,9 @@ struct PrintBuf {
 
 fn void PrintBuf.append_str(PrintBuf* self, char[] s) {
     if (self == null || self.buf == null || self.capacity == 0) return;
-    for (usz i = 0; i < s.len && self.pos < self.capacity - 1; i++) {
-        self.buf[self.pos++] = s[i];
+    foreach (c : s) {
+        if (self.pos >= self.capacity - 1) break;
+        self.buf[self.pos++] = c;
     }
 }
 
@@ -77,12 +78,12 @@ fn void print_hashmap_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         return;
     }
     uint hprinted = 0;
-    for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
-        if (v.hashmap_val.entries[hi].key != null) {
+    foreach (entry : v.hashmap_val.entries[0:v.hashmap_val.capacity]) {
+        if (entry.key != null) {
             if (hprinted > 0) pb.append_char(' ');
-            print_value_buf(v.hashmap_val.entries[hi].key, syms, pb);
+            print_value_buf(entry.key, syms, pb);
             pb.append_char(' ');
-            print_value_buf(v.hashmap_val.entries[hi].value, syms, pb);
+            print_value_buf(entry.value, syms, pb);
             hprinted++;
         }
     }
@@ -95,10 +96,10 @@ fn void print_set_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
         pb.append_char(')');
         return;
     }
-    for (uint hi = 0; hi < v.hashmap_val.capacity; hi++) {
-        if (v.hashmap_val.entries[hi].key != null) {
+    foreach (entry : v.hashmap_val.entries[0:v.hashmap_val.capacity]) {
+        if (entry.key != null) {
             pb.append_char(' ');
-            print_value_buf(v.hashmap_val.entries[hi].key, syms, pb);
+            print_value_buf(entry.key, syms, pb);
         }
     }
     pb.append_char(')');
@@ -128,7 +129,7 @@ fn void print_tensor_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) {
     for (usz i = 0; i < tensor.rank; i++) {
         if (i > 0) pb.append_char(' ');
         char[48] dim_buf;
-        if (try rendered_dim = io::bprintf(&dim_buf, "%d", (long)tensor.shape[i])) {
+        if (try rendered_dim = io::bprintf(&dim_buf, "%d", tensor.shape[i])) {
             pb.append_str(rendered_dim);
         } else {
             pb.append_str("0");
@@ -182,7 +183,7 @@ fn void print_method_table_value_buf(Value* v, SymbolTable* syms, PrintBuf* pb) 
     pb.append_str(syms.get_name(v.method_table_val.name));
     if (v.method_table_val.entry_count > 0) {
         char[48] cbuf;
-        if (try rendered_count = io::bprintf(&cbuf, "%d", (int)v.method_table_val.entry_count)) {
+        if (try rendered_count = io::bprintf(&cbuf, "%d", v.method_table_val.entry_count)) {
             pb.append_char(' ');
             pb.append_str(rendered_count);
         } else {

@@ -2,7 +2,7 @@
 
 `.agents/PLAN.md` remains the operational plan entrypoint; read the indexed part files for the full plan state.
 
-The historical content was split mechanically to keep individual files below the 700-line repository limit. Content order is preserved in the part files.
+The historical content was split mechanically to keep individual files below the former 700-line repository limit. Content order is preserved in the part files. Current code-file split threshold is 1000 LOC from 2026-04-21 onward.
 
 ## Parts
 
@@ -10,7 +10,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 02: [.agents/plan_parts/plan_part_02.md](plan_parts/plan_part_02.md) (624 lines)
 - Part 03: [.agents/plan_parts/plan_part_03.md](plan_parts/plan_part_03.md) (353 lines)
 - Part 04: [.agents/plan_parts/plan_part_04.md](plan_parts/plan_part_04.md) (395 lines)
-- Part 05: [.agents/plan_parts/plan_part_05.md](plan_parts/plan_part_05.md) (55 lines)
+- Part 05: [.agents/plan_parts/plan_part_05.md](plan_parts/plan_part_05.md) (682 lines)
 
 ## Current Checkpoint
 
@@ -1094,20 +1094,153 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   command buffer, inserts one shader write/read barrier between the intermediate
   and output dispatch, and submits once. This is not arbitrary
   `tensor/capture` dictionary execution.
+- `ML-VK-080-016`: `kernel/run` now has an executable registered-source path
+  for Vulkan `Float32` `source-scale-f32` kernels. `Kernel.source` accepts the
+  registered source `ml-clip-scale-f32`, `entry` must be `main`, and execution
+  goes through the generic Vulkan shader-module dispatch helper. Arbitrary text
+  compilation remains split into `ML-VK-080-022`.
+- `ML-VK-080-017`: nested Tensor capture `memory-plan` is now version 2 and
+  records metadata-only transient reuse groups, reuse policy, runtime
+  ownership, and `executes-reuse false`. This does not alias, allocate, retain,
+  transfer ownership, or reuse runtime buffers; real runtime reuse is split
+  into `ML-VK-080-020`.
+- `ML-VK-080-018`: added `tensor/run(graph)` for captured all-Vulkan `Float32`
+  source/map graph dictionaries. The executor consumes captured source-node
+  tensors and map nodes and replays them through existing Vulkan map helpers.
+- `ML-VK-080-019`: `Kernel.source` now accepts checked direct SPIR-V source
+  dictionaries as data. The validator accepts unsigned 32-bit word arrays with
+  a valid SPIR-V header, registered-source dictionaries, and the
+  `ml-clip-scale-f32` symbol form; direct SPIR-V runtime execution fails closed
+  until a backend compile/pipeline entrypoint exists.
+- `ML-VK-080-021`: `tensor/run(graph)` now also replays captured all-Vulkan
+  `Float32` contract nodes and direct `matrix/transpose-view` nodes through
+  existing Vulkan helpers. Fused dispatch and command-buffer lowering are split
+  into `ML-VK-080-023`.
+- `ML-VK-080-020`: `tensor/run(graph)` now detects the captured all-Vulkan
+  `Float32` source -> scalar map -> scalar map graph shape and executes it via
+  the native Vulkan command-buffer batch helper. This is the first
+  runtime reuse/ownership boundary for captured graph execution: scratch
+  ownership stays native and one final output handle is transferred to a fresh
+  Tensor.
+- `ML-VK-080-024`: the runtime reuse path now handles captured linear
+  all-Vulkan `Float32` scalar-map chains with two or more map nodes. C3
+  validates source -> scalar-map* graph shape and passes scalar/op/mode arrays
+  to a native Vulkan scalar-chain executor that owns intermediates and returns
+  one final output handle.
+- `ML-VK-080-023`: the scalar-chain route now validates captured
+  `command-buffer-candidate` metadata before lowering to the native executor.
+  Invalid or missing command-batch metadata falls back to serial helper replay,
+  so command-buffer execution is no longer inferred from node shape alone for
+  this path.
+- `ML-VK-080-025`: selected-region runtime reuse now extends beyond linear
+  scalar-map chains for captured all-Vulkan `Float32` tensor/tensor map ->
+  scalar-map* regions with two dense same-shape concrete source tensors. C3
+  validates graph shape plus `command-buffer-candidate` metadata and passes the
+  source handles, scalar/op/mode arrays, shape, and strides to a native Vulkan
+  selected-region executor that owns intermediates and returns one final output
+  handle.
+- `ML-VK-080-026`: command-buffer lowering beyond scalar-map metadata is now
+  closed for the same dense tensor/tensor map -> scalar-map* selected-region
+  boundary. The route validates captured source dependencies, dispatch ids,
+  operations, and batch shape before recording the native command buffer.
+- Follow-up refactor: `tensor/run` chain detection and selected-region native
+  routing helpers were split from `prim_tensor_graph_run.c3` into
+  `prim_tensor_graph_run_chains.c3`, leaving the main graph runner at 533 LOC
+  and the chain helper module at 146 LOC. This keeps the next runtime-reuse
+  slice below the hard code-file gate.
+- `ML-VK-080-022`: direct SPIR-V word-array Kernel sources are now executable
+  for the checked Vulkan `source-scale-f32` ABI. `kernel/run` copies validated
+  `Kernel.source.words` into native scratch and the backend creates a compute
+  pipeline from those words for the two-buffer scale dispatch.
+- `ML-VK-080-029`: direct SPIR-V source dictionaries now carry an explicit
+  checked ABI contract. `source-scale-f32-v1` is accepted for the scale source
+  ABI, omitted ABI remains compatible with that scale ABI, and unsupported
+  direct-SPIR-V ABI names fail closed during `Kernel` validation.
+- `ML-VK-080-030`: source-backed unary `Float32` kernels now execute through
+  checked registered and direct word-array `source-unary-f32-v1` SPIR-V
+  sources. Registered source uses `name 'map-unary-f32`; direct source must
+  declare `abi 'source-unary-f32-v1`.
+- `ML-VK-080-033`: direct SPIR-V source dictionaries now support a checked
+  binary `Float32` ABI, `source-binary-f32-v1`, for storage2-output1 shaders.
+  `kernel/run` validates entry, ABI, optional `storage2-output1-f32-v1`
+  metadata, input placement, input/output shapes, and empty push dictionaries
+  before dispatching supplied SPIR-V words through the native Vulkan helper.
+- `ML-VK-080-034`: selected-region runtime reuse now handles the concrete mixed
+  source -> transpose-view plus dense source -> tensor-map -> scalar-map* graph
+  family. Native execution owns intermediates and returns one final dense
+  Vulkan output handle.
+- `ML-VK-080-035`: captured command-batch metadata for that same mixed
+  transpose-view/dense-source graph family is now validated before native
+  command-buffer lowering; invalid metadata falls back to serial graph replay.
 - Contract:
   - `tensor/capture` scheduling metadata is still descriptive only;
   - `direct-helper` means an existing helper-backed node would require a launch
     in a future graph executor, not that capture launches it;
-  - the only executable command-buffer batch currently implemented is the
-    narrow Vulkan `Float32` two-scalar-map `realize` path;
-  - no fused execution, source compilation, arbitrary captured-graph execution,
-    or runtime buffer reuse is implemented in this slice.
-- Still open under `ML-VK-080`:
-  - `ML-VK-080-016` source-backed custom `Kernel` compilation/dispatch;
-  - `ML-VK-080-017` contracted buffer reuse/lifetime planning;
-  - `ML-VK-080-018` general captured Tensor graph execution;
-  - broader invalidation/capability planning.
-- Validation completed: `scripts/build_omni_chelpers.sh`, `c3c build`,
-  focused advanced collections `pass=1854 fail=0`, compiler slice
-  `pass=289 fail=0`, basic Lisp `pass=161 fail=0`, primitive docs parity,
-  Stage 3 source parity, code file-size gate, and `git diff --check`.
+  - executable command-buffer batching currently exists for the narrow Vulkan
+    `Float32` two-scalar-map `realize` path and captured `tensor/run` linear
+    scalar-map graph paths, dense tensor/tensor map -> scalar-map* graph
+    paths, contract -> scalar-map* graph paths, direct transpose-view ->
+    scalar-map* graph paths, and the concrete transpose-view/dense-source
+    mixed graph path;
+  - no fused execution, arbitrary source-language compilation, arbitrary
+    direct-SPIR-V descriptor layouts beyond the checked scale/unary/binary
+    ABIs, broader mixed DAG region reuse, memory-plan-backed runtime reuse, or
+    broad runtime buffer reuse is implemented in this slice.
+- Churn correction:
+  - the source/custom Kernel lane, selected-region runtime reuse lane, and
+    command-buffer lowering lane accumulated repeated case-specific slices while
+    preserving the same broader capability as a residual. The case-by-case
+    recognizer/ABI/lowering approach is no longer the neutral next step.
+- Closed under `ML-VK-080` in this continuation:
+  - `ML-VK-080-036` now defines the shared Kernel source/layout contract and
+    selected-region planner output that command lowering consumes.
+  - Checked direct scale/unary/binary SPIR-V Kernel sources share a
+    `kernel-source-layout` metadata dictionary contract with ABI, descriptor
+    layout, dtype, input/output count, and optional push-layout validation.
+  - `tensor/capture(source)` records a top-level `selected-region-plan` for the
+    native scalar-map, tensor-map, direct-view, contract, and concrete mixed
+    view/dense-source regions. `tensor/run(graph)` requires a matching
+    selected-region candidate and command-batch metadata before entering native
+    selected-region executors.
+- Future capability boundaries, not active `ML-VK-080` residual children:
+  - broader invalidation/capability planning;
+  - source-language parsing/compilation, reflection, arbitrary direct-SPIR-V
+    descriptor schemas beyond checked scale/unary/binary ABIs,
+    memory-plan-backed runtime reuse, arbitrary mixed schedules, and fused
+    dispatch execution.
+- Negative memory:
+  - Do not inline large source-binary direct-SPIR-V execution fixtures in the
+    long advanced collections harness. A standalone `--eval` probe for the
+    optimized binary-add shader returned `[vulkan 9.0 16.0]`, but putting that
+    runtime fixture after the direct scale/unary SPIR-V tests corrupted the
+    long harness. Keep constructor/fail-closed suite coverage and use a
+    standalone probe or future non-variadic fixture builder for runtime
+    source-binary validation.
+- Validation completed after the parallel continuation:
+  `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced collections
+  `pass=1869 fail=0`, compiler slice `pass=290 fail=0`, basic Lisp slice
+  `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`. After the graph-run split, `c3c
+  build`, focused advanced collections `pass=1869 fail=0`, code file-size gate,
+  and `git diff --check` also passed. After direct-SPIR-V execution,
+  `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced collections
+  `pass=1870 fail=0`, compiler slice `pass=290 fail=0`, basic Lisp slice
+  `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check` passed. After the checked unary
+  source ABI, `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced
+  collections module `pass=1875 fail=0`, compiler slice `pass=290 fail=0`,
+  basic Lisp slice `pass=161 fail=0`, primitive docs parity, Stage 3 source
+  parity, code file-size gate, and `git diff --check` passed. After the
+  direct-view scalar-chain runtime/lowering slice,
+  `scripts/build_omni_chelpers.sh`, `c3c build`, focused advanced collections
+  module `pass=1879 fail=0`, compiler slice `pass=290 fail=0`, basic Lisp
+  slice `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check` passed. After the source-binary ABI
+  and concrete mixed DAG runtime/lowering slice, `scripts/build_omni_chelpers.sh`,
+  `c3c build`, focused advanced collections module `pass=1886 fail=0`, and a
+  standalone source-binary direct-SPIR-V `--eval` probe returning
+  `[vulkan 9.0 16.0]` passed. After the `ML-VK-080-036` shared source-layout
+  and selected-region planner closure, `c3c build`, focused advanced
+  collections module `pass=1892 fail=0`, primitive docs parity, Stage 3 source
+  parity, code file-size gate, `git diff --check`, and the open
+  `ML-VK-080-0xx` TODO scan passed with no unchecked child items.

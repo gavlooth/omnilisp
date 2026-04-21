@@ -114,8 +114,8 @@ Primary files:
 - `src/lisp/compiler_native_effect_compilation_flat_style.c3`
 - `src/lisp/compiler_native_effect_compilation_flat_style_helpers.c3`
 - `src/lisp/aot_runtime_bridge.c3`
-- `src/lisp/jit_jit_runtime_effects_handle.c3`
-- `src/lisp/jit_jit_apply_helpers.c3`
+- `src/lisp/jit_runtime_effects_handle.c3`
+- `src/lisp/jit_apply_helpers.c3`
 
 Implementation notes:
 

@@ -64,7 +64,7 @@ fn void run_memory_lifetime_copy_parent_closure_env_scope_retain_test(Interp* in
 
         interp.current_scope = target;
         interp.releasing_scope = source;
-        Value* copied = setup_ok ? copy_to_parent(closure, interp) : null;
+        Value* copied = setup_ok ? test_copy_to_parent(closure, interp) : null;
         interp.releasing_scope = saved_releasing_scope;
 
         bool copied_ok = copied != null &&
@@ -152,7 +152,7 @@ fn void run_memory_lifetime_copy_parent_closure_env_scope_parent_detach_test(Int
 
         interp.current_scope = target;
         interp.releasing_scope = source;
-        Value* copied = setup_ok ? copy_to_parent(closure, interp) : null;
+        Value* copied = setup_ok ? test_copy_to_parent(closure, interp) : null;
         interp.releasing_scope = saved_releasing_scope;
 
         bool copied_ok = copied != null &&
@@ -234,12 +234,14 @@ fn void run_memory_lifetime_copy_parent_closure_wrapper_alloc_fail_test(Interp* 
         interp.releasing_scope = source;
         bool saved_force = g_boundary_force_copy_closure_wrapper_alloc_fail;
         g_boundary_force_copy_closure_wrapper_alloc_fail = true;
-        Value* copied = setup_ok ? copy_to_parent(closure, interp) : null;
+        BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+        Value* copied = setup_ok ? copy_to_parent_with_fault(closure, interp, &copy_fault) : null;
         g_boundary_force_copy_closure_wrapper_alloc_fail = saved_force;
         interp.releasing_scope = saved_releasing_scope;
 
         int rc_after_fail = closure_env_scope != null ? (int)closure_env_scope.refcount : -1;
-        bool fault_ok = copied == null;
+        bool fault_ok = copied == null &&
+                        copy_fault == BOUNDARY_COPY_FAULT_NULL_RESULT;
         bool rollback_ok = rc_after_fail == 1 &&
                            closure_env_lookup_int(closure, payload_sym, 179);
 

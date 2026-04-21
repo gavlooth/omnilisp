@@ -82,6 +82,9 @@ fn BoundaryEnvCopyResult copy_env_to_scope_inner_checked(
     if (env.is_root_persistent_box()) {
         return copy_env_rewrite_persistent_parent(env, interp, depth, active_ctx);
     }
+    if (copy_env_can_reuse_existing_frame(env, interp)) {
+        return boundary_env_copy_ok(env, depth);
+    }
     return copy_env_materialize_frame(env, interp, depth, active_ctx);
 }
 

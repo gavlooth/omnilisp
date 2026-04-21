@@ -254,8 +254,8 @@ Source: `.agents/SESSION_REPORT.md`
   - `/home/christos/Omni`
   - `src/lisp/prim_tensor.c3`
   - `src/lisp/value_constructors.c3`
-  - `src/lisp/jit_jit_apply_runtime.c3`
-  - `src/lisp/jit_jit_apply_multi_prims.c3`
+  - `src/lisp/jit_apply_runtime.c3`
+  - `src/lisp/jit_apply_multi_prims.c3`
   - `src/stack_engine_region.c3`
   - `src/lisp/tests_advanced_stdlib_module_groups.c3`
 - Code or configuration changes made:

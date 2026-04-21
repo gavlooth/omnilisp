@@ -93,6 +93,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("variadic-no-fallback", &run_jit_policy_variadic_no_fallback_test, interp, pass, fail);
         run_jit_policy_case("match-binding-growth-failure", &run_jit_policy_match_binding_growth_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-binding-growth-failure", &run_jit_policy_multi_arg_binding_growth_failure_test, interp, pass, fail);
+        run_jit_policy_case("tail-constructor-escape-opcode", &run_jit_policy_tail_constructor_escape_opcode_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-primitive-buffer-failure", &run_jit_policy_multi_arg_primitive_buffer_failure_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-method-table-buffer-failure", &run_jit_policy_multi_arg_method_table_buffer_failure_test, interp, pass, fail);
         run_jit_policy_case("match-guard-binding-growth-failure", &run_jit_policy_match_guard_binding_growth_failure_test, interp, pass, fail);

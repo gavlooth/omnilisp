@@ -5,10 +5,16 @@ import std::io;
 const char[] NN_CKPT_TAG = "omni-nn-checkpoint";
 const long NN_CKPT_VERSION = 1;
 
+<*
+@require interp != null : "nn_ckpt_invalid: null interp"
+*>
 fn Value* nn_ckpt_invalid(Interp* interp, char[] path, char[] expected, Value* actual) @inline {
     return nn_invalid(interp, path, expected, actual);
 }
 
+<*
+@require interp != null : "nn_ckpt_io_error: null interp"
+*>
 fn Value* nn_ckpt_io_error(Interp* interp, char[] message) @inline {
     return raise_error_with_payload_names(interp, "nn", "nn/checkpoint-io", message, null);
 }
@@ -17,11 +23,17 @@ fn bool nn_ckpt_string_is(Value* value, char[] expected) @inline {
     return value != null && value.tag == STRING && ffi_char_slice_equals(value.str_chars[:value.str_len], expected);
 }
 
+<*
+@require interp != null : "nn_ckpt_string_field: null interp"
+*>
 fn Value* nn_ckpt_string_field(Value* dict, Interp* interp, char[] key) {
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return null;
     return hashmap_get(dict.hashmap_val, make_string(interp, key));
 }
 
+<*
+@require interp != null : "nn_ckpt_set: null interp"
+*>
 fn Value* nn_ckpt_set(Value* dict, Interp* interp, char[] key, Value* value) {
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) return nn_oom(interp);
     Value* key_value = make_string(interp, key);
@@ -31,6 +43,9 @@ fn Value* nn_ckpt_set(Value* dict, Interp* interp, char[] key, Value* value) {
     return null;
 }
 
+<*
+@require interp != null : "nn_ckpt_obj: null interp"
+*>
 fn Value* nn_ckpt_obj(Interp* interp, char[] tag, uint capacity) {
     Value* obj = nn_make_dict(interp, capacity);
     if (obj == null || obj.tag == ERROR) return obj;
@@ -38,6 +53,11 @@ fn Value* nn_ckpt_obj(Interp* interp, char[] tag, uint capacity) {
     return obj;
 }
 
+<*
+@require interp != null : "nn_ckpt_pair: null interp"
+@require key != null : "nn_ckpt_pair: null key"
+@require value != null : "nn_ckpt_pair: null value"
+*>
 fn Value* nn_ckpt_pair(Interp* interp, Value* key, Value* value) {
     Value* pair = make_array_checked(interp, 2, "nn/checkpoint: out of memory");
     if (pair == null || pair.tag == ERROR) return pair;
@@ -48,15 +68,20 @@ fn Value* nn_ckpt_pair(Interp* interp, Value* key, Value* value) {
     return pair;
 }
 
+<*
+@require value != null : "nn_ckpt_encode_array: null value"
+@require value.tag == ARRAY : "nn_ckpt_encode_array: value must be Array"
+@require value.array_val != null : "nn_ckpt_encode_array: missing array payload"
+@require interp != null : "nn_ckpt_encode_array: null interp"
+*>
 fn Value* nn_ckpt_encode_array(Value* value, Interp* interp) {
     Value* items = make_array_checked(interp, value.array_val.length, "nn/checkpoint: out of memory");
     if (items == null || items.tag == ERROR) return items;
     if (items.tag != ARRAY || items.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < value.array_val.length; i++) {
-        Value* encoded = nn_ckpt_encode_value(value.array_val.items[i], interp);
+    foreach (item : value.array_val.items[0:value.array_val.length]) {
+        Value* encoded = nn_ckpt_encode_value(item, interp);
         if (encoded == null || encoded.tag == ERROR) return encoded;
-        items.array_val.items[i] = encoded;
-        items.array_val.length++;
+        items.array_val.items[items.array_val.length++] = encoded;
     }
     Value* obj = nn_ckpt_obj(interp, "array", 4);
     if (obj == null || obj.tag == ERROR) return obj;
@@ -64,6 +89,11 @@ fn Value* nn_ckpt_encode_array(Value* value, Interp* interp) {
     return obj;
 }
 
+<*
+@require value != null : "nn_ckpt_encode_list: null value"
+@require value.tag == CONS : "nn_ckpt_encode_list: value must be Cons"
+@require interp != null : "nn_ckpt_encode_list: null interp"
+*>
 fn Value* nn_ckpt_encode_list(Value* value, Interp* interp) {
     usz count = 0;
     Value* scan = value;
@@ -90,13 +120,18 @@ fn Value* nn_ckpt_encode_list(Value* value, Interp* interp) {
     return obj;
 }
 
+<*
+@require value != null : "nn_ckpt_encode_dict: null value"
+@require value.tag == HASHMAP : "nn_ckpt_encode_dict: value must be Dictionary"
+@require value.hashmap_val != null : "nn_ckpt_encode_dict: missing dictionary payload"
+@require interp != null : "nn_ckpt_encode_dict: null interp"
+*>
 fn Value* nn_ckpt_encode_dict(Value* value, Interp* interp) {
     HashMap* hm = value.hashmap_val;
     Value* entries = make_array_checked(interp, hm.capacity, "nn/checkpoint: out of memory");
     if (entries == null || entries.tag == ERROR) return entries;
     if (entries.tag != ARRAY || entries.array_val == null) return nn_oom(interp);
-    for (uint i = 0; i < hm.capacity; i++) {
-        HashEntry* entry = &hm.entries[i];
+    foreach (entry : hm.entries[0:hm.capacity]) {
         if (entry.key == null) continue;
         Value* key = nn_ckpt_encode_value(entry.key, interp);
         if (key == null || key.tag == ERROR) return key;
@@ -112,6 +147,11 @@ fn Value* nn_ckpt_encode_dict(Value* value, Interp* interp) {
     return obj;
 }
 
+<*
+@require value != null : "nn_ckpt_encode_tensor: null value"
+@require value.tag == TENSOR : "nn_ckpt_encode_tensor: value must be Tensor"
+@require interp != null : "nn_ckpt_encode_tensor: null interp"
+*>
 fn Value* nn_ckpt_encode_tensor(Value* value, Interp* interp) {
     TensorVal* tensor = value.tensor_val;
     if (tensor == null || !tensor_has_valid_metadata(tensor)) return nn_ckpt_invalid(interp, "checkpoint.tensor", "valid Tensor", value);
@@ -140,6 +180,9 @@ fn Value* nn_ckpt_encode_tensor(Value* value, Interp* interp) {
     return obj;
 }
 
+<*
+@require interp != null : "nn_ckpt_encode_value: null interp"
+*>
 fn Value* nn_ckpt_encode_value(Value* value, Interp* interp) {
     if (value == null || value.tag == NIL) return nn_ckpt_obj(interp, "nil", 2);
     Value* obj = null;
@@ -179,7 +222,28 @@ fn Value* nn_ckpt_encode_value(Value* value, Interp* interp) {
             return nn_ckpt_encode_dict(value, interp);
         case TENSOR:
             return nn_ckpt_encode_tensor(value, interp);
-        default:
+        case NIL:
+            return nn_ckpt_obj(interp, "nil", 2);
+        case VOID:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case CLOSURE:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case SET:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TIME_POINT:
             return nn_ckpt_invalid(interp, "checkpoint.value", "serializable DataSpec value", value);
     }
 }
@@ -201,6 +265,9 @@ fn bool nn_ckpt_number_to_double(Value* value, double* out) {
     return false;
 }
 
+<*
+@require interp != null : "nn_ckpt_decode_items_array: null interp"
+*>
 fn Value* nn_ckpt_decode_items_array(Value* encoded, Interp* interp, char[] field_name) {
     Value* items = nn_ckpt_string_field(encoded, interp, field_name);
     if (items == null || items.tag != ARRAY || items.array_val == null) {
@@ -209,15 +276,17 @@ fn Value* nn_ckpt_decode_items_array(Value* encoded, Interp* interp, char[] fiel
     Value* out = make_array_checked(interp, items.array_val.length, "nn/checkpoint: out of memory");
     if (out == null || out.tag == ERROR) return out;
     if (out.tag != ARRAY || out.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < items.array_val.length; i++) {
-        Value* decoded = nn_ckpt_decode_value(items.array_val.items[i], interp);
+    foreach (item : items.array_val.items[0:items.array_val.length]) {
+        Value* decoded = nn_ckpt_decode_value(item, interp);
         if (decoded == null || decoded.tag == ERROR) return decoded;
-        out.array_val.items[i] = decoded;
-        out.array_val.length++;
+        out.array_val.items[out.array_val.length++] = decoded;
     }
     return out;
 }
 
+<*
+@require interp != null : "nn_ckpt_decode_dict: null interp"
+*>
 fn Value* nn_ckpt_decode_dict(Value* encoded, Interp* interp) {
     Value* entries = nn_ckpt_string_field(encoded, interp, "entries");
     if (entries == null || entries.tag != ARRAY || entries.array_val == null) {
@@ -239,6 +308,9 @@ fn Value* nn_ckpt_decode_dict(Value* encoded, Interp* interp) {
     return out;
 }
 
+<*
+@require interp != null : "nn_ckpt_decode_list: null interp"
+*>
 fn Value* nn_ckpt_decode_list(Value* encoded, Interp* interp) {
     Value* items = nn_ckpt_decode_items_array(encoded, interp, "items");
     if (items == null || items.tag == ERROR) return items;
@@ -250,6 +322,9 @@ fn Value* nn_ckpt_decode_list(Value* encoded, Interp* interp) {
     return list;
 }
 
+<*
+@require interp != null : "nn_ckpt_decode_tensor: null interp"
+*>
 fn Value* nn_ckpt_decode_tensor(Value* encoded, Interp* interp) {
     Value* dtype = nn_ckpt_string_field(encoded, interp, "dtype");
     Value* device = nn_ckpt_string_field(encoded, interp, "device");
@@ -275,6 +350,9 @@ fn Value* nn_ckpt_decode_tensor(Value* encoded, Interp* interp) {
     return prim_to_device(to_device_args[0:2], null, interp);
 }
 
+<*
+@require interp != null : "nn_ckpt_decode_value: null interp"
+*>
 fn Value* nn_ckpt_decode_value(Value* encoded, Interp* interp) {
     if (encoded == null || encoded.tag != HASHMAP || encoded.hashmap_val == null) {
         return nn_ckpt_invalid(interp, "checkpoint.value", "encoded checkpoint object", encoded);
@@ -316,6 +394,9 @@ fn Value* nn_ckpt_decode_value(Value* encoded, Interp* interp) {
     return nn_ckpt_invalid(interp, "checkpoint.tag", "known checkpoint tag", tag);
 }
 
+<*
+@require interp != null : "nn_ckpt_wrap: null interp"
+*>
 fn Value* nn_ckpt_wrap(Value* payload, Interp* interp, char[] kind) {
     Value* encoded = nn_ckpt_encode_value(payload, interp);
     if (encoded == null || encoded.tag == ERROR) return encoded;
@@ -331,14 +412,16 @@ fn Value* nn_ckpt_wrap(Value* payload, Interp* interp, char[] kind) {
 
 fn bool nn_ckpt_source_is_json(Value* source) {
     if (source == null || source.tag != STRING) return false;
-    for (usz i = 0; i < source.str_len; i++) {
-        char c = source.str_chars[i];
+    foreach (c : source.str_chars[0:source.str_len]) {
         if (c == ' ' || c == '\n' || c == '\r' || c == '\t') continue;
         return c == '{';
     }
     return false;
 }
 
+<*
+@require interp != null : "nn_ckpt_load_source: null interp"
+*>
 fn Value* nn_ckpt_load_source(Value* source, Interp* interp) {
     if (source == null || source.tag != STRING) return primitive_arg_type_raise(interp, "nn/load", 0, "JSON checkpoint string or path", source);
     if (nn_ckpt_source_is_json(source)) return source;
@@ -347,6 +430,9 @@ fn Value* nn_ckpt_load_source(Value* source, Interp* interp) {
     return nn_ckpt_io_error(interp, "nn/load: failed to read checkpoint path");
 }
 
+<*
+@require interp != null : "nn_ckpt_parse_root: null interp"
+*>
 fn Value* nn_ckpt_parse_root(Value* source, Interp* interp, char[] expected_kind) {
     Value* text = nn_ckpt_load_source(source, interp);
     if (text == null || text.tag == ERROR) return text;
@@ -368,6 +454,9 @@ fn Value* nn_ckpt_parse_root(Value* source, Interp* interp, char[] expected_kind
     return nn_ckpt_string_field(root, interp, "payload");
 }
 
+<*
+@require interp != null : "nn_ckpt_save_text_or_path: null interp"
+*>
 fn Value* nn_ckpt_save_text_or_path(Value* json, Value*[] args, Interp* interp, char[] prim_name) {
     if (json == null || json.tag == ERROR) return json;
     if (args.len == 1) return json;

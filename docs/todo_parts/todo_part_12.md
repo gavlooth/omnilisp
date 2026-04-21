@@ -208,7 +208,7 @@ Source: `TODO.md`
       ambiguous-dispatch payload dictionaries as optional under OOM: the
       primary typed error still returns even if payload-map construction or
       insertion fails.
-    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now applies
+    - `src/lisp/jit_handle_signal_helpers_runtime_effects.c3` now applies
       the same optional-payload contract to unhandled-effect error payloads.
     - `src/lisp/primitives_meta_types_ctor_helpers.c3` now makes
       `ctor_mismatch_data(...)` fail closed by returning `null` instead of

@@ -1,5 +1,6 @@
 ;; ui/style.omni — internal style helpers for the public `ui` facade
 
+(import "nodes.omni")
 (import ui.nodes)
 
 (module ui.style

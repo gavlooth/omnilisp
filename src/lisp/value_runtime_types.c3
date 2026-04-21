@@ -21,6 +21,10 @@ struct SymbolTable {
     usz hash_capacity;      // hash_index array capacity (power of 2)
 }
 
+// ABI/interop guard: symbol table snapshots are inspected by runtime helpers.
+// Update helper bindings and this assertion together when the layout changes.
+$assert(SymbolTable.sizeof == 40);
+
 /**
  * Cons — Pair/list cell.
  */
@@ -49,6 +53,10 @@ struct Closure {
     SymbolId  name;           // Bound name (set by define), 0 if anonymous
 }
 
+// ABI/interop guard: closure payloads are copied across scope/JIT boundaries.
+// Update helper bindings and this assertion together when the layout changes.
+$assert(Closure.sizeof == 88);
+
 /**
  * Continuation — Delimited continuation backed by a coroutine (StackCtx).
  *
@@ -76,6 +84,10 @@ struct Primitive {
     int tag;             // Extra data (e.g., TypeId for constructors)
     void* user_data;     // Optional data pointer for closure-like primitives
 }
+
+// ABI/interop guard: primitive payloads are wrapped by runtime helper code.
+// Update helper bindings and this assertion together when the layout changes.
+$assert(Primitive.sizeof == 88);
 
 /**
  * PartialPrim — Partially applied primitive (curried).
@@ -114,6 +126,10 @@ struct HashMap {
     uint count;
     uint mask;           // capacity - 1
 }
+
+// ABI/interop guard: dictionary payloads cross value-copy and helper boundaries.
+// Update helper bindings and this assertion together when the layout changes.
+$assert(HashMap.sizeof == 24);
 
 /**
  * MacroClause — Single clause in a pattern-based macro definition.
@@ -183,6 +199,10 @@ struct Array {
     usz capacity;
 }
 
+// ABI/interop guard: array payloads cross value-copy and helper boundaries.
+// Update helper bindings and this assertion together when the layout changes.
+$assert(Array.sizeof == 24);
+
 /**
  * TensorDType — Native storage dtype for Tensor payloads.
  */
@@ -236,6 +256,7 @@ struct TensorVal {
     usz storage_offset;
     usz storage_element_count;
     usz storage_byte_len;
+    void* alias_origin;
     void* data;
     void* device_handle;
     TensorDeviceFinalizer device_finalizer;
@@ -264,3 +285,7 @@ struct TensorVal {
     usz contract_axis_count;
     Value* view_source;
 }
+
+// ABI/interop guard: tensor payloads are shared with backend helper contracts.
+// Update backend bindings and this assertion together when the layout changes.
+$assert(TensorVal.sizeof == 304);

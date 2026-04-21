@@ -241,6 +241,33 @@ Execution mode contract:
   and later runtime adapters.
 - `foreign-describe` covers both C ABI handles and FFI-bound C ABI callables.
 - Explicit `foreign-release` is available for releasable foreign resources.
+- `ffi-callback` creates C-callable closures from Omni lambdas.
+
+### Callbacks
+
+Omni can create C-callable callbacks from lambdas using `ffi-callback`:
+
+```lisp
+;; List/array form
+(define cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer))
+
+;; Variadic form (same meaning)
+(define cb2 (ffi-callback (lambda (a b) (+ a b)) 'Integer 'Integer 'Integer))
+```
+
+`ffi-callback` takes:
+1. A callable (lambda, primitive, or partial application)
+2. Parameter type symbols (as a list/array, or as individual arguments)
+3. A return type symbol
+
+Supported type symbols: `'Integer`, `'Double`, `'String`, `'ForeignHandle`,
+`'Boolean`, `'Void`, `'Float32`, `'Int32`, `'Int64`, `'UInt32`, `'UInt64`,
+`'Buffer`, `'Struct`.
+
+The result is a `ForeignHandle` wrapping a C function pointer. When C code
+invokes it, libffi marshals arguments into Omni values, calls the lambda, and
+converts the result back to C. The callback's lifetime is tied to the owning
+scope; the closure and context are freed when the handle is released.
 
 ### Grouped Modules
 

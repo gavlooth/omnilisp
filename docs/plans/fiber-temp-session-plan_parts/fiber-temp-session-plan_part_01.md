@@ -34,9 +34,9 @@ Completed in subsequent session:
   - `stack_ctx_pin_scope(...)` removed
   - `stack_ctx_unpin_scope(...)` removed
 - Migrated suspend sites to defer-backed boundary guard usage (`suspend_with_scope_guard(...)`) in:
-  - `src/lisp/jit_jit_runtime_effects.c3`
-  - `src/lisp/jit_jit_handle_signal.c3`
-  - `src/lisp/jit_jit_reset_shift.c3`
+  - `src/lisp/jit_runtime_effects.c3`
+  - `src/lisp/jit_handle_signal.c3`
+  - `src/lisp/jit_reset_shift.c3`
   - `src/lisp/primitives_iter_coroutine.c3`
 
 Validation for follow-up:

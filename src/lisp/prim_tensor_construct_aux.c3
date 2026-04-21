@@ -84,7 +84,11 @@ fn Value* tensor_construct_inferred(Value* data_arg, TensorDType dtype, Interp* 
 }
 
 fn Value* tensor_construct_inferred_auto(Value* data_arg, Interp* interp) {
-    return tensor_construct_inferred(data_arg, tensor_default_inferred_dtype(data_arg), interp);
+    TensorDType dtype = TENSOR_DTYPE_DOUBLE;
+    if (!tensor_default_inferred_dtype(data_arg, &dtype)) {
+        return tensor_type_raise(interp, "Tensor: inferred data must be numeric or nested arrays/lists of numbers");
+    }
+    return tensor_construct_inferred(data_arg, dtype, interp);
 }
 
 fn Value* tensor_construct_from_iterator(Value* iterator_value, TensorDType dtype, Interp* interp) {

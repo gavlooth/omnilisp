@@ -9,7 +9,7 @@ fn void Compiler.collect_lambda_own_bound(Compiler* self, ExprLambda* lambda, Li
         for (usz pi = 0; pi < lambda.param_count; pi++) {
             own_bound.push(lambda.params[pi]);
         }
-    } else if ((uint)lambda.param != 0xFFFFFFFF) {
+    } else if (lambda.param != INVALID_SYMBOL_ID) {
         own_bound.push(lambda.param);
     }
     // Keep existing behavior: variadic lambdas append fixed params and rest param.
@@ -31,7 +31,7 @@ fn void Compiler.collect_lambda_nested_bound(Compiler* self, ExprLambda* lambda,
         for (usz pi = 0; pi < lambda.param_count; pi++) {
             out.push(lambda.params[pi]);
         }
-    } else if ((uint)lambda.param != 0xFFFFFFFF) {
+    } else if (lambda.param != INVALID_SYMBOL_ID) {
         out.push(lambda.param);
     }
     if (lambda.has_rest && (uint)lambda.rest_param != 0) {

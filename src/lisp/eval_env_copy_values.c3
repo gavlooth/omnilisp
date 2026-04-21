@@ -113,8 +113,12 @@ fn Value* copy_env_value_fast(Value* v, Interp* interp, PromotionContext* ctx = 
             if (!boundary_copy_result_ok(copied)) return null;
             return copied.value;
         }
-        default:
-        {
+        case CLOSURE:
+        case CONTINUATION:
+        case PARTIAL_PRIM:
+        case CONS:
+        case ITERATOR:
+        case COROUTINE: {
             BoundaryCopyResult copied = copy_env_copy_by_boundary_policy(v, interp, ctx);
             if (!boundary_copy_result_ok(copied)) return null;
             return copied.value;
@@ -144,8 +148,8 @@ fn bool copy_env_closure_env_self_references(Value* val, Interp* interp) {
     while (env != null && env != interp.global_env) {
         if (depth++ >= 256) return false;
         if (env.owner_scope != interp.releasing_scope) return false;
-        for (usz i = 0; i < env.binding_count; i++) {
-            if (env.bindings[i].value == val) return true;
+        foreach (binding : env.bindings[0:env.binding_count]) {
+            if (binding.value == val) return true;
         }
         env = env.parent;
     }

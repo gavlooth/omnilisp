@@ -2,6 +2,15 @@ module lisp;
 
 import main;
 
+fn Value* boundary_destination_cons_abort_original(
+    Value* original,
+    Value* head,
+    main::ScopeRegion* build_scope
+) @inline {
+    boundary_cleanup_materialized_value(original, head, build_scope, true);
+    return original;
+}
+
 <*
 @require list != null : "boundary_build_destination_cons_escape: null list"
 @require interp != null : "boundary_build_destination_cons_escape: null interp"
@@ -43,12 +52,18 @@ fn Value* boundary_build_destination_cons_escape(
 
     while (true) {
         Value* old_car = current_old.cons_val.car;
-        Value* routed_car = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult car_copy = boundary_copy_to_parent_site_ctx_checked(
             old_car,
             interp,
             COPY_SITE_CONS_BARRIER_CAR,
             ctx
         );
+        Value* routed_car = null;
+        if (!boundary_copy_result_ok(car_copy)) {
+            routed_car = raise_error(interp, boundary_copy_fault_message(car_copy.fault_code));
+        } else {
+            routed_car = car_copy.value;
+        }
         current_new.cons_val.car = boundary_destination_promote_routed_escape(
             routed_car,
             interp,
@@ -66,7 +81,9 @@ fn Value* boundary_build_destination_cons_escape(
         if (car_fault != null) {
             return car_fault;
         }
-        if (ctx != null && ctx.aborted) return list;
+        if (ctx != null && ctx.aborted) {
+            return boundary_destination_cons_abort_original(list, head, build_scope);
+        }
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.car, build_scope),
             "boundary destination-cons: ESCAPE car must not point into target TEMP lane"
@@ -77,9 +94,13 @@ fn Value* boundary_build_destination_cons_escape(
             old_cdr.tag == CONS &&
             boundary_ptr_in_scope((void*)old_cdr, releasing_scope);
         if (extend_spine) {
-            if (ctx != null && ctx.aborted) return list;
+            if (ctx != null && ctx.aborted) {
+                return boundary_destination_cons_abort_original(list, head, build_scope);
+            }
             Value* next_new = boundary_alloc_value_in_current_escape(interp);
-            if (next_new == null) return list;
+            if (next_new == null) {
+                return boundary_destination_cons_abort_original(list, head, build_scope);
+            }
             next_new.tag = CONS;
             next_new.cons_val.car = null;
             next_new.cons_val.cdr = null;
@@ -89,12 +110,18 @@ fn Value* boundary_build_destination_cons_escape(
             continue;
         }
 
-        Value* routed_cdr = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult cdr_copy = boundary_copy_to_parent_site_ctx_checked(
             old_cdr,
             interp,
             COPY_SITE_CONS_BARRIER_CDR,
             ctx
         );
+        Value* routed_cdr = null;
+        if (!boundary_copy_result_ok(cdr_copy)) {
+            routed_cdr = raise_error(interp, boundary_copy_fault_message(cdr_copy.fault_code));
+        } else {
+            routed_cdr = cdr_copy.value;
+        }
         current_new.cons_val.cdr = boundary_destination_promote_routed_escape(
             routed_cdr,
             interp,
@@ -112,7 +139,9 @@ fn Value* boundary_build_destination_cons_escape(
         if (cdr_fault != null) {
             return cdr_fault;
         }
-        if (ctx != null && ctx.aborted) return list;
+        if (ctx != null && ctx.aborted) {
+            return boundary_destination_cons_abort_original(list, head, build_scope);
+        }
         assert(
             boundary_cons_escape_child_edge_safe(current_new.cons_val.cdr, build_scope),
             "boundary destination-cons: ESCAPE cdr must not point into target TEMP lane"

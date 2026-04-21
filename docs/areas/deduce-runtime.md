@@ -39,7 +39,7 @@ When this page disagrees with another Deduce doc, resolve in this order:
   - current result: crash (`exit=-1`)
   - representative gdb signature:
     - `lisp.jit_apply_value_impl(...)` receives corrupted `func` pointer
-      (`src/lisp/jit_jit_apply_runtime.c3:89`) with corrupted JIT stack frames.
+      (`src/lisp/jit_apply_runtime.c3:89`) with corrupted JIT stack frames.
 - Current mitigation shipped:
   - JIT helper entry points resolve `Interp*` via active-runtime fallback
     (`jit_resolve_interp(...)`).

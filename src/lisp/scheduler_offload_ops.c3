@@ -81,7 +81,7 @@ fn bool scheduler_build_atomic_temp_path(
         scheduler_set_offload_error(completion, "offload write-file: temp path id overflow");
         return false;
     }
-    if (try char[] formatted = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), (long)unique_id)) {
+    if (try char[] formatted = io::bprintf(&suffix_buf, ".tmp.%d.%x", c_getpid(), unique_id)) {
         suffix = formatted;
     } else {
         scheduler_set_offload_error(completion, "offload write-file: temp path formatting failed");

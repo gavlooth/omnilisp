@@ -306,12 +306,15 @@ fn void run_memory_lifetime_boundary_commit_escape_destination_fault_tests(Inter
                 interp.current_scope = build_scope;
                 interp.releasing_scope = target_scope;
                 boundary_promotion_context_begin(interp, &ctx, PROMOTION_CTX_BUDGET_RETURN);
-                detached_direct = boundary_copy_to_parent_site_ctx(
+                BoundaryCopyResult detached_direct_result = boundary_copy_to_parent_site_ctx_checked(
                     shared_closure,
                     interp,
                     COPY_SITE_GENERIC,
                     &ctx
                 );
+                if (boundary_copy_result_ok(detached_direct_result)) {
+                    detached_direct = detached_direct_result.value;
+                }
                 detached_again = boundary_destination_detach_iterator_inner(
                     shared_closure,
                     interp,

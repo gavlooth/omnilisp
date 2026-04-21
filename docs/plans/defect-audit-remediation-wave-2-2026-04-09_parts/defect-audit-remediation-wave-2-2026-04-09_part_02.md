@@ -35,7 +35,7 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
 - No live backlog items remain from this audit wave.
 - The temporary `jit-policy` follow-up lane is now closed:
   - the remaining full-slice crash was traced to
-    `src/lisp/jit_jit_eval_scope_chain_helpers.c3`, where the TCO recycle
+    `src/lisp/jit_eval_scope_chain_helpers.c3`, where the TCO recycle
     TEMP-graph scanner was allocating four `4096`-entry pointer arrays on the
     runtime stack.
   - the scanner now uses one heap-backed `JitTempGraphScan`, and the bounded
@@ -153,8 +153,8 @@ Defects:
 
 Primary files:
 
-- `src/lisp/jit_jit_apply_multi_prims.c3`
-- `src/lisp/jit_jit_apply_multi_prims_tail.c3`
+- `src/lisp/jit_apply_multi_prims.c3`
+- `src/lisp/jit_apply_multi_prims_tail.c3`
 - `src/lisp/aot_runtime_bridge_trampoline.c3`
 - `src/lisp/compiler_code_emission_lambda_defs.c3`
 - `src/lisp/compiler_native_call_compilation_flat_style.c3`
@@ -171,8 +171,8 @@ Required closure:
 Progress update (2026-04-09):
 
 - shipped in the working tree:
-  - `src/lisp/jit_jit_apply_multi_prims.c3` and
-    `src/lisp/jit_jit_apply_multi_prims_tail.c3` now null-guard multi-arg
+  - `src/lisp/jit_apply_multi_prims.c3` and
+    `src/lisp/jit_apply_multi_prims_tail.c3` now null-guard multi-arg
     argument-buffer allocation for primitive and method-table dispatch, with a
     dedicated test seam for fail-closed OOM coverage.
   - `src/lisp/parser_top_level_parse.c3` and
@@ -300,9 +300,9 @@ Progress update (2026-04-09):
 
 - landed the JIT helper arg-construction fail-closed follow-up:
   - `src/lisp/value_constructors.c3`
-  - `src/lisp/jit_jit_apply_helpers.c3`
-  - `src/lisp/jit_jit_apply_runtime.c3`
-  - `src/lisp/jit_jit_dispatch_helpers.c3`
+  - `src/lisp/jit_apply_helpers.c3`
+  - `src/lisp/jit_apply_runtime.c3`
+  - `src/lisp/jit_dispatch_helpers.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
 - shipped behavior:
   - one checked `make_list1_or_error(...)` helper now covers variadic rest-list
@@ -320,7 +320,7 @@ Progress update (2026-04-09):
   - actionable backlog remains `0`
 
 - landed the JIT quasiquote pair-construction fail-closed follow-up:
-  - `src/lisp/jit_jit_quasiquote_macros.c3`
+  - `src/lisp/jit_quasiquote_macros.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
 - shipped behavior:
   - internal JIT quasiquote pair construction now goes through one checked
@@ -398,7 +398,7 @@ Progress update (2026-04-09):
   - `AUDIT-STRING-BUILDER-OOM-007`
 
 - landed focused JIT/boundary alias-safety hardening on top of the closed wave:
-  - `src/lisp/jit_jit_eval_scope_chain_helpers.c3` now treats target-chain
+  - `src/lisp/jit_eval_scope_chain_helpers.c3` now treats target-chain
     `CONS` bindings with releasing-scope scalar edges as copy-required in the
     TCO env-copy lane.
   - `src/lisp/eval_promotion_copy_wrapper_helpers.c3` now makes the shared
@@ -511,7 +511,7 @@ Progress update (2026-04-09):
 
 - landed the malformed apply/JIT primitive dispatch follow-up:
   - `src/lisp/eval_apply.c3`
-  - `src/lisp/jit_jit_apply_helpers.c3`
+  - `src/lisp/jit_apply_helpers.c3`
   - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
 - shipped behavior:
@@ -618,7 +618,7 @@ Progress update (2026-04-09):
 - landed the shared two-arg list materialization follow-up:
   - `src/lisp/value_constructors.c3`
   - `src/lisp/prim_system.c3`
-  - `src/lisp/jit_jit_runtime_effects_handle.c3`
+  - `src/lisp/jit_runtime_effects_handle.c3`
   - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
 - shipped behavior:

@@ -52,7 +52,7 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
         case E_LAMBDA:
             // Check if this lambda captures name as a free variable
             List{SymbolId} bound;
-            if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+            if (expr.lambda.param != INVALID_SYMBOL_ID) {
                 bound.push(expr.lambda.param);
             }
             List{SymbolId} free;

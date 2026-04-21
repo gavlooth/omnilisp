@@ -305,9 +305,9 @@ Source: `TODO.md`
   - closure evidence:
     - `src/lisp/eval_init_primitive_registration.c3` now rejects failed `nil`
       symbol interning before defining the constant.
-    - `src/lisp/jit_jit_closure_runtime.c3` now treats failed promise env-tag
+    - `src/lisp/jit_closure_runtime.c3` now treats failed promise env-tag
       interning as a non-match.
-    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now uses
+    - `src/lisp/jit_handle_signal_helpers_runtime_effects.c3` now uses
       non-raising dictionary allocation for unhandled-effect payloads and
       checks payload-key interning before publication.
   - validation:

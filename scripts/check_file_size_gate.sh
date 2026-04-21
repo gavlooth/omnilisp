@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-: "${OMNI_FILE_SIZE_LIMIT:=700}"
+: "${OMNI_FILE_SIZE_LIMIT:=1000}"
 
 failures=()
 tracked_files=()

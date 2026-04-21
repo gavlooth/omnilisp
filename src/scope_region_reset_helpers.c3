@@ -49,6 +49,7 @@ fn void scope_reset(ScopeRegion* scope) {
     ScopeChunk* ec = scope.escape_chunks;
     while (ec != null) {
         ScopeChunk* next = ec.next;
+        scope_telemetry_note_escape_chunk_release(ec);
         mem::free(ec);
         ec = next;
     }

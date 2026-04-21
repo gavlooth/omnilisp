@@ -115,7 +115,7 @@ fn void? jit_compile_expr_group_core(void* s, Expr* expr, Interp* interp,
     *handled = true;
     switch (expr.tag) {
         case E_LIT:
-            jit_compile_lit(s, expr, interp, locals)!;
+            jit_compile_lit(s, expr, interp, locals, is_tail)!;
         case E_VAR:
             jit_compile_var(s, expr, interp, locals)!;
         case E_IF:

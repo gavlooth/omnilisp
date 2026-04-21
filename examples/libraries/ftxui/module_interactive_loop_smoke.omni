@@ -1,0 +1,44 @@
+;; module_interactive_loop_smoke.omni — verifies ui.ftxui blocking effect loop
+;; Run: printf q | LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_interactive_loop_smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(define loop-view
+  (ui.window
+    "Loop"
+    (ui.vbox
+      (list
+        (ui.text "interactive-loop")
+        (ui.text "Press q to exit the blocking loop.")))))
+
+(define loop-effects
+  (ui.open_tree {'backend 'ftxui}
+    (ui.render_tree {'node loop-view})
+    (ui.invalidate_tree {'reason 'loop-smoke})))
+
+(define close-effects
+  (ui.open_tree {'backend 'ftxui}
+    (ui.render_tree {'node loop-view})
+    (ui.close_tree {'code 'ok})))
+
+(define read-event-error
+  (handle
+    (ui.ftxui.loop
+      (ui.open_tree {'backend 'ftxui}
+        (ui.render_tree {'node loop-view})
+        (ui.read_event_tree {})))
+    (raise msg (String msg))))
+
+(define double-render-error
+  (handle
+    (ui.ftxui.loop
+      (ui.open_tree {'backend 'ftxui}
+        (ui.render_tree {'node loop-view})
+        (ui.render_tree {'node loop-view})))
+    (raise msg (String msg))))
+
+(and (= (ui.loop loop-effects) true)
+     (= (ui.ftxui.loop close-effects) true)
+     (= read-event-error "ui-ftxui.loop: read_event is not supported by the blocking FTXUI loop")
+     (= double-render-error "ui-ftxui.loop: open tree requires exactly one render child"))

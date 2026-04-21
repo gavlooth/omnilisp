@@ -42,6 +42,9 @@ fn lisp::Interp* create_runtime_interp() {
 
 fn void destroy_runtime_interp(lisp::Interp* interp) {
     destroy_plain_interp(interp);
+    if (mem_telemetry_enabled()) {
+        lisp::runtime_memory_print_telemetry();
+    }
     thread_registry_shutdown();
 }
 

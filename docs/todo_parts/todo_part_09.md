@@ -67,8 +67,8 @@ Source: `TODO.md`
       `src/lisp/value_environment.c3`, and
       `src/lisp/value_environment_barrier.c3` now reject invalid symbol IDs
       before hash probing or binding mutation.
-    - `src/lisp/jit_jit_module_setup_helpers.c3`,
-      `src/lisp/jit_jit_module_import_setup.c3`,
+    - `src/lisp/jit_module_setup_helpers.c3`,
+      `src/lisp/jit_module_import_setup.c3`,
       `src/lisp/macros_expansion.c3`, and
       `src/lisp/value_interp_lifecycle.c3` now roll back newly published
       modules on body/path/top-level load failure, rebuild module hash state,
@@ -183,7 +183,7 @@ Source: `TODO.md`
       annotation, method-signature parameter, and method-constraint allocation
       sizes before allocation and delays count publication until staging
       succeeds.
-    - `src/lisp/jit_jit_closure_support.c3` now guards lambda method-signature
+    - `src/lisp/jit_closure_support.c3` now guards lambda method-signature
       constraint counting and parameter/constraint staging on both scope and
       heap copies.
     - `src/lisp/eval_type_declarations.c3` now checks derived type-info
@@ -208,9 +208,9 @@ Source: `TODO.md`
 - [x] `AUDIT-JIT-DEDUCE-ALLOC-BOUNDS-054` harden JIT effect and deduce
   aggregate/materialization allocation arithmetic
   - closure evidence:
-    - `src/lisp/jit_jit_handle_signal_handle.c3`,
-      `src/lisp/jit_jit_runtime_effects_signal.c3`, and
-      `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now reject
+    - `src/lisp/jit_handle_signal_handle.c3`,
+      `src/lisp/jit_runtime_effects_signal.c3`, and
+      `src/lisp/jit_handle_signal_helpers_runtime_effects.c3` now reject
       overflowing effect clause and signal argument buffer sizes before
       allocation.
     - `src/lisp/deduce_rule_eval_exec_aggregate_groups.c3`,

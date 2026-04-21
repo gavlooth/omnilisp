@@ -12,6 +12,10 @@ allow copy_to_parent src/lisp/eval_promotion_copy.c3
 allow copy_to_parent src/lisp/eval_promotion_copy_route_helpers.c3
 allow copy_to_parent src/lisp/eval_promotion_copy_wrapper_helpers.c3
 
+allow copy_to_parent_by_route src/lisp/eval_promotion_copy.c3
+
+allow boundary_ptr_in_scope_chain_with_hint src/lisp/eval_boundary_scope_chain.c3
+
 allow promote_to_escape src/lisp/eval_promotion_escape.c3
 allow promote_to_escape src/lisp/eval_boundary_api.c3
 allow promote_to_escape src/lisp/eval_promotion_escape_leaf.c3

@@ -204,12 +204,12 @@ fn void run_memory_lifetime_target_chain_shared_wrapper_payload_alias_test(Inter
 
         interp.releasing_scope = releasing;
 
-        Value* array_copied = copy_to_parent(array_src, interp);
-        Value* hashmap_copied = copy_to_parent(hashmap_src, interp);
-        Value* set_copied = copy_to_parent(set_src, interp);
-        Value* mt_copied = copy_to_parent(mt_src, interp);
-        Value* partial_copied = copy_to_parent(partial_src, interp);
-        Value* iter_copied = copy_to_parent(iter_src, interp);
+        Value* array_copied = test_copy_to_parent(array_src, interp);
+        Value* hashmap_copied = test_copy_to_parent(hashmap_src, interp);
+        Value* set_copied = test_copy_to_parent(set_src, interp);
+        Value* mt_copied = test_copy_to_parent(mt_src, interp);
+        Value* partial_copied = test_copy_to_parent(partial_src, interp);
+        Value* iter_copied = test_copy_to_parent(iter_src, interp);
         Value* array_escaped = promote_to_escape(array_src, interp);
         Value* hashmap_escaped = promote_to_escape(hashmap_src, interp);
         Value* set_escaped = promote_to_escape(set_src, interp);

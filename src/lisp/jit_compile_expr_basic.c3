@@ -54,14 +54,19 @@ fn Value* jit_eval_staged_or_chain(Interp* interp, Expr* expr, Env* env) {
     return jit_eval(cur, env, interp);
 }
 
-fn void? jit_compile_lit(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+fn void? jit_compile_lit(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail = false) {
     Value* lit = expr.lit.value;
     if (lit == null || lit.tag == NIL) {
-        emit_call_1(s, locals, (void*)&jit_make_nil);
+        void* nil_fn = is_tail ? (void*)&jit_make_nil_escape : (void*)&jit_make_nil;
+        emit_call_1(s, locals, nil_fn);
         return;
     }
     if (lit.tag == INT) {
         emit_call_2i(s, locals, (void*)&jit_make_int, JIT_V0, lit.int_val);
+        return;
+    }
+    if (is_tail && lit.tag == STRING) {
+        emit_call_2i(s, locals, (void*)&jit_make_string_literal_escape, JIT_V0, (long)lit);
         return;
     }
     // For other literal types, use the literal value directly

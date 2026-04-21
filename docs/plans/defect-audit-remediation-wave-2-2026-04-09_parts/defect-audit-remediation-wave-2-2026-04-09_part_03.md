@@ -18,8 +18,8 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
   - actionable backlog remains `0`
 
 - landed the JIT multi-arg list fail-closed follow-up:
-  - `src/lisp/jit_jit_apply_runtime.c3`
-  - `src/lisp/jit_jit_apply_multi_prims.c3`
+  - `src/lisp/jit_apply_runtime.c3`
+  - `src/lisp/jit_apply_multi_prims.c3`
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
 - shipped behavior:
   - continuation-safe multi-arg call-list assembly now rejects
@@ -82,8 +82,8 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
   - `src/lisp/value_environment_storage.c3`
   - `src/lisp/value_environment.c3`
   - `src/lisp/value_environment_barrier.c3`
-  - `src/lisp/jit_jit_module_setup_helpers.c3`
-  - `src/lisp/jit_jit_module_import_setup.c3`
+  - `src/lisp/jit_module_setup_helpers.c3`
+  - `src/lisp/jit_module_import_setup.c3`
   - `src/lisp/macros_expansion.c3`
   - `src/lisp/value_interp_lifecycle.c3`
   - `src/lisp/deduce_db_storage_open.c3`
@@ -126,7 +126,7 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
   - `src/lisp/primitives_coroutine.c3`
   - `src/lisp/eval_init_primitives.c3`
   - `src/lisp/eval_dispatch_types.c3`
-  - `src/lisp/jit_jit_module_import.c3`
+  - `src/lisp/jit_module_import.c3`
   - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
 - shipped behavior:
   - boundary alloc helpers no longer register dtors on null wrapper targets
@@ -330,9 +330,9 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
 - backlog shaping after this slice:
   - actionable backlog remains `0`
 - Closed JIT effect / deduce allocation-size drift:
-  - `src/lisp/jit_jit_handle_signal_handle.c3`
-  - `src/lisp/jit_jit_runtime_effects_signal.c3`
-  - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+  - `src/lisp/jit_handle_signal_handle.c3`
+  - `src/lisp/jit_runtime_effects_signal.c3`
+  - `src/lisp/jit_handle_signal_helpers_runtime_effects.c3`
   - `src/lisp/deduce_rule_eval_exec_aggregate_groups.c3`
   - `src/lisp/deduce_rule_eval_exec_aggregate_helpers.c3`
   - `src/lisp/deduce_rule_ir_helpers.c3`
@@ -353,7 +353,7 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
   - actionable backlog remains `0`
 - Closed AOT/JIT type-dispatch signature allocation and publication drift:
   - `src/lisp/aot_type_spec_helpers.c3`
-  - `src/lisp/jit_jit_closure_support.c3`
+  - `src/lisp/jit_closure_support.c3`
   - `src/lisp/eval_type_declarations.c3`
   - `src/lisp/value_type_registry.c3`
   - `src/lisp/eval_dispatch_match.c3`

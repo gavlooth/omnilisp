@@ -14,6 +14,9 @@ enum StackBackendKind : char {
     STACK_BACKEND_UNSUPPORTED,
 }
 
+const uint STACK_BACKEND_X86_MXCSR_DEFAULT = 0x1F80;
+const uint STACK_BACKEND_X86_X87_CONTROL_WORD_DEFAULT = 0x037F;
+
 extern fn int stack_backend_has_aarch64() @extern("stack_backend_has_aarch64");
 
 fn StackBackendKind stack_backend_kind() @inline @if(env::X86_64) {
@@ -50,8 +53,8 @@ fn void stack_backend_init_context(StackContext* ctx, usz initial_rsp, ulong ent
     ctx.r13 = 0;
     ctx.r14 = 0;
     ctx.r15 = 0;
-    ctx.mxcsr = 0x1F80;  // SSE control/status: all exceptions masked
-    ctx.x87cw = 0x037F;  // x87 control word: double precision, all masked
+    ctx.mxcsr = STACK_BACKEND_X86_MXCSR_DEFAULT;  // SSE control/status: all exceptions masked
+    ctx.x87cw = STACK_BACKEND_X86_X87_CONTROL_WORD_DEFAULT;  // x87 control word: double precision, all masked
 }
 
 fn void stack_backend_init_context(StackContext* ctx, usz initial_rsp, ulong entry_rip) @inline @if(!env::X86_64) {

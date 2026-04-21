@@ -2,6 +2,12 @@ module lisp;
 
 import std::io;
 
+extern fn int omni_addrinfo_connect_fd(void* result) @extern("omni_addrinfo_connect_fd");
+extern fn int omni_addrinfo_render_ip(void* result, char* dst, uint dst_size) @extern("omni_addrinfo_render_ip");
+
+const int OMNI_ADDRINFO_RENDER_OK = 0;
+const int OMNI_ADDRINFO_RENDER_UNSUPPORTED_FAMILY = 1;
+
 fn bool is_localhost_name(char[] host) @inline {
     return host.len == 9 &&
            host[0] == 'l' &&
@@ -50,20 +56,7 @@ fn bool resolve_host_and_port(char[] host, int port, void** out_result) {
 }
 
 fn int connect_fd_from_addrinfo(void* result) {
-    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
-    int ai_family = *((int*)((char*)result + 4));
-    int ai_socktype = *((int*)((char*)result + 8));
-    int ai_protocol = *((int*)((char*)result + 12));
-    uint ai_addrlen = *((uint*)((char*)result + 16));
-    void* ai_addr = *((void**)((char*)result + 24));
-
-    int fd = c_socket(ai_family, ai_socktype, ai_protocol);
-    if (fd < 0) return -1;
-    if (c_connect(fd, ai_addr, ai_addrlen) < 0) {
-        c_close_fd(fd);
-        return -1;
-    }
-    return fd;
+    return omni_addrinfo_connect_fd(result);
 }
 
 fn int listen_fd_from_host(char[] host, int port, int backlog) {
@@ -71,7 +64,10 @@ fn int listen_fd_from_host(char[] host, int port, int backlog) {
     if (fd < 0) return -1;
 
     int reuse = 1;
-    (void)c_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, 4);
+    if (c_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, 4) < 0) {
+        c_close_fd(fd);
+        return -1;
+    }
 
     SockaddrIn addr = {};
     if (!fill_sockaddr_ipv4(host, port, &addr)) {
@@ -95,13 +91,13 @@ fn int tcp_accept_fd(int listener_fd) {
 }
 
 fn Value* parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms, Interp* interp) {
-    *max_bytes = 4096;
+    *max_bytes = ASYNC_IO_TCP_READ_DEFAULT_MAX_BYTES;
     if (args.len >= 2 && is_int(args[1])) {
         if (args[1].int_val <= 0) {
             return io_raise(interp, "io/tcp-read-max-bytes-invalid", "tcp-read: max-bytes must be > 0");
         }
         *max_bytes = (usz)args[1].int_val;
-        if (*max_bytes > 65536) *max_bytes = 65536;
+        if (*max_bytes > ASYNC_IO_TCP_READ_HARD_MAX_BYTES) *max_bytes = ASYNC_IO_TCP_READ_HARD_MAX_BYTES;
     }
     *timeout_ms = -1;
     if (args.len >= 3 && is_int(args[2])) {
@@ -112,25 +108,12 @@ fn Value* parse_tcp_read_options(Value*[] args, usz* max_bytes, long* timeout_ms
 }
 
 fn Value* dns_result_to_ip_string(Interp* interp, void* result) {
-    // struct addrinfo offsets (x86_64 glibc): flags=0, family=4, socktype=8, protocol=12, addrlen=16, addr=24
-    int ai_family = *((int*)((char*)result + 4));
-    void* ai_addr = *((void**)((char*)result + 24));
-
     char[64] ip_buf;  // buffer: C-interop (keep) — output buffer for c_inet_ntop
-    char* rendered = null;
-    if (ai_family == AF_INET) {
-        // sockaddr_in: sin_addr is at offset 4 (after sin_family + sin_port)
-        void* sin_addr = (char*)ai_addr + 4;
-        rendered = c_inet_ntop(AF_INET, sin_addr, &ip_buf, 64);
-    } else if (ai_family == AF_INET6) {
-        // sockaddr_in6: sin6_addr is at offset 8 (family + port + flowinfo)
-        void* sin6_addr = (char*)ai_addr + 8;
-        rendered = c_inet_ntop(AF_INET6, sin6_addr, &ip_buf, 64);
-    } else {
+    int render_status = omni_addrinfo_render_ip(result, &ip_buf, 64);
+    if (render_status == OMNI_ADDRINFO_RENDER_UNSUPPORTED_FAMILY) {
         return io_raise(interp, "io/dns-resolve-unsupported-family", "dns-resolve: unsupported address family");
     }
-
-    if (rendered == null) {
+    if (render_status != OMNI_ADDRINFO_RENDER_OK) {
         return io_raise(interp, "io/dns-resolve-render-failed", "dns-resolve: failed to format resolved address");
     }
 
@@ -140,17 +123,9 @@ fn Value* dns_result_to_ip_string(Interp* interp, void* result) {
 }
 
 fn Value* tcp_raise_fiber_required(Interp* interp, char[] op_name, char[] code) {
-    char[96] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)) {
-        return io_raise(interp, code, msg);
-    }
-    return io_raise(interp, code, "tcp op: requires running fiber context");
+    return async_io_raise_fiber_required(interp, op_name, code, "tcp op: requires running fiber context");
 }
 
 fn Value* tcp_raise_loop_unavailable(Interp* interp, char[] op_name, char[] code) {
-    char[96] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)) {
-        return io_raise(interp, code, msg);
-    }
-    return io_raise(interp, code, "tcp op: libuv loop unavailable");
+    return async_io_raise_loop_unavailable(interp, op_name, code, "tcp op: libuv loop unavailable");
 }

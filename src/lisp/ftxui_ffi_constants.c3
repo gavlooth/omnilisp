@@ -8,6 +8,7 @@ alias OmniFtxuiStatus = int;
 alias OmniFtxuiContext = void;
 alias OmniFtxuiApp = void;
 alias OmniFtxuiScreen = void;
+alias OmniFtxuiSession = void;
 alias OmniFtxuiEventHandle = void;
 alias OmniFtxuiElement = void;
 alias OmniFtxuiComponent = void;

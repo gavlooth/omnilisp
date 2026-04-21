@@ -1,0 +1,63 @@
+;; module_direct_smoke.omni — verifies default dotted module import paths
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_direct_smoke.omni
+
+(import ui.nodes)
+(import ui.layout)
+(import ui.style)
+(import ui.effects)
+(import ui.runtime)
+(import ui.ftxui)
+
+(import ui.nodes (text kind props children))
+(import ui.layout (vbox stack spacer))
+(import ui.style (border width))
+(import ui.effects (open render close open_tree render_tree close_tree effect_tag effect_children))
+(import ui.runtime (dispatch))
+(import ui.ftxui (open_session render_session close_session))
+
+(define direct-view
+  (border
+    (width
+      20
+      (vbox
+        (list
+          (text "direct")
+          (stack (list (text "one") (text "two")))
+          (spacer))))))
+
+(define direct-effects
+  (open_tree {'backend 'ftxui}
+    (render_tree {'node direct-view})
+    (close_tree {'code 'ok})))
+
+(define (capture-dispatch tree)
+  (let (events nil)
+    (handle
+      (block
+        (dispatch tree)
+        (reverse events))
+      (open spec
+        (set! events (cons {'tag 'open 'arg spec} events))
+        (resolve nil))
+      (render view
+        (set! events (cons {'tag 'render 'arg view} events))
+        (resolve nil))
+      (close request
+        (set! events (cons {'tag 'close 'arg request} events))
+        (resolve nil)))))
+
+(define direct-events (capture-dispatch direct-effects))
+
+(and (= (kind direct-view) 'border)
+     (= (kind (ref (children direct-view) 0)) 'width)
+     (= (ref (props (ref (children direct-view) 0)) 'value) 20)
+     (= (kind (ref (children (ref (children direct-view) 0)) 0)) 'vbox)
+     (= (effect_tag direct-effects) 'open)
+     (= (effect_tag (ref (effect_children direct-effects) 0)) 'render)
+     (= (effect_tag (ref (effect_children direct-effects) 1)) 'close)
+     (= (ref (ref direct-events 0) 'tag) 'open)
+     (= (ref (ref direct-events 1) 'tag) 'render)
+     (= (ref (ref direct-events 2) 'tag) 'close)
+     (procedure? open_session)
+     (procedure? render_session)
+     (procedure? close_session))

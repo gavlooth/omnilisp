@@ -32,6 +32,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
         ? scope_chunk_alloc_temp(new_cap)
         : scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    scope_telemetry_note_temp_chunk_alloc(chunk);
     chunk.next = self.chunks;
     self.chunks = chunk;
 
@@ -40,6 +41,7 @@ fn void* ScopeRegion.alloc_slow(ScopeRegion* self, usz aligned_size) {
     self.limit = data + chunk.capacity;
     self.alloc_bytes += aligned_size;
     self.alloc_count++;
+    scope_telemetry_note_temp_alloc(aligned_size);
     return (void*)data;
 }
 
@@ -60,6 +62,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
 
     ScopeChunk* chunk = scope_chunk_alloc_raw(new_cap);
     if (chunk == null) return null;
+    scope_telemetry_note_escape_chunk_alloc(chunk);
     ScopeChunk* previous_head = self.escape_chunks;
     chunk.next = previous_head;
     self.escape_chunks = chunk;
@@ -72,6 +75,7 @@ fn void* ScopeRegion.alloc_escape_slow(ScopeRegion* self, usz aligned_size) {
     self.escape_limit = data + chunk.capacity;
     self.alloc_bytes += aligned_size;
     self.alloc_count++;
+    scope_telemetry_note_escape_alloc(aligned_size);
     scope_assert_escape_tail_consistency(self);
     return (void*)data;
 }
@@ -93,6 +97,7 @@ fn void* ScopeRegion.alloc(ScopeRegion* self, usz size) @inline {
         self.bump = new_bump;
         self.alloc_bytes += aligned;
         self.alloc_count++;
+        scope_telemetry_note_temp_alloc(aligned);
         return (void*)result;
     }
     return self.alloc_slow(aligned);
@@ -115,6 +120,7 @@ fn void* ScopeRegion.alloc_escape(ScopeRegion* self, usz size) @inline {
             self.escape_bump = new_bump;
             self.alloc_bytes += aligned;
             self.alloc_count++;
+            scope_telemetry_note_escape_alloc(aligned);
             return (void*)result;
         }
     }

@@ -66,8 +66,12 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
     if (COPY_SITE_ENV_PROMOTE_FOR_TARGET < COPY_SITE_COUNT) {
         g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]++;
     }
-    CopyParentRoute route = copy_parent_route_for_tag(value.tag);
-    return copy_to_parent_by_route(value, interp, route);
+    BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+    Value* copied = copy_to_parent_with_fault(value, interp, &copy_fault);
+    if (copy_fault != BOUNDARY_COPY_FAULT_NONE) {
+        return raise_error(interp, boundary_copy_fault_message(copy_fault));
+    }
+    return copied;
 }
 
 fn bool env_barrier_promote_failed(Value* original, Value* stored) @inline {

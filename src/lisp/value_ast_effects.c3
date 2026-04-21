@@ -5,7 +5,8 @@ module lisp;
 // =============================================================================
 
 // FFI type tag — must stay in sync with csrc/ffi_helpers.c OMNI_FFI_* enum
-// Values: VOID=0, INT=1, DOUBLE=2, PTR=3, BOOL=4, STRING=5
+// Values: VOID=0, INT=1, DOUBLE=2, PTR=3, BOOL=4, STRING=5, FLOAT32=6,
+//         INT32=7, INT64=8, UINT32=9, UINT64=10, BUFFER=11, STRUCT=12
 enum FfiTypeTag : char {
     FFI_TYPE_VOID,
     FFI_TYPE_INT,
@@ -13,6 +14,13 @@ enum FfiTypeTag : char {
     FFI_TYPE_PTR,
     FFI_TYPE_BOOL,
     FFI_TYPE_STRING,
+    FFI_TYPE_FLOAT32,
+    FFI_TYPE_INT32,
+    FFI_TYPE_INT64,
+    FFI_TYPE_UINT32,
+    FFI_TYPE_UINT64,
+    FFI_TYPE_BUFFER,
+    FFI_TYPE_STRUCT,
 }
 
 enum FfiHandleOwnership : char {
@@ -92,6 +100,7 @@ struct FfiBoundFn {
     char* c_name;           // heap-allocated C symbol name for lazy dlsym, NUL-terminated
     usz c_name_len;
     usz param_count;
+    usz fixed_param_count;  // for variadic: number of non-variadic params
     FfiTypeTag* param_types;
     FfiHandlePolicy* param_handle_policies;
     FfiTypeTag return_type;

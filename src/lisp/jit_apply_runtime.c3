@@ -76,10 +76,14 @@ fn Value* jit_eval_call_cont_safe_common(Interp* interp, Expr* expr, Env* env, b
         argv[i] = arg;
     }
 
-    Value* arg_list = boundary_promote_to_escape(make_nil(interp), interp);
+    Value* arg_list = is_tail
+        ? jit_make_nil_escape(interp)
+        : boundary_promote_to_escape(make_nil(interp), interp);
     if (arg_list != null && arg_list.tag == ERROR) return arg_list;
     for (usz i = argc; i > 0; i--) {
-        Value* next = make_cons(interp, argv[i - 1], arg_list);
+        Value* next = is_tail
+            ? jit_cons_escape(interp, argv[i - 1], arg_list)
+            : make_cons(interp, argv[i - 1], arg_list);
         if (next == null) {
             return raise_error(interp, "jit: failed to construct call arg list");
         }

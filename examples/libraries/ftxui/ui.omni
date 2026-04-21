@@ -5,19 +5,19 @@
 ;; - runtime operations are modelled as effects
 ;; - a future FTXUI interpreter will lower this data to the C ABI shim
 
-(import "ui_nodes.omni")
-(import "ui_effects.omni")
-(import "ui_layout.omni")
-(import "ui_style.omni")
-(import "ui_runtime.omni")
-(import "ui_ftxui.omni")
+(import "lib/ui/nodes.omni")
+(import "lib/ui/effects.omni")
+(import "lib/ui/layout.omni")
+(import "lib/ui/style.omni")
+(import "lib/ui/runtime.omni")
+(import "lib/ui/ftxui.omni")
 
-(import ui-nodes)
-(import ui-effects)
-(import ui-layout)
-(import ui-style)
-(import ui-runtime)
-(import ui-ftxui)
+(import ui.nodes)
+(import ui.effects)
+(import ui.layout)
+(import ui.style)
+(import ui.runtime)
+(import ui.ftxui)
 
 (module ui
   (export node
@@ -57,7 +57,15 @@
           close_tree
           post_event_tree
           dispatch
+          loop
           run
+          open_session
+          update_session
+          render_session
+          read_event_session
+          invalidate_session
+          post_event_session
+          close_session
           open
           render
           read_event
@@ -65,7 +73,7 @@
           close
           post_event))
 
-(import ui-nodes (node
+(import ui.nodes (node
                   kind
                   props
                   children
@@ -81,20 +89,20 @@
                   window
                   graph))
 
-(import ui-layout (hbox
+(import ui.layout (hbox
                    vbox
                    stack
                    spacer
                    layout))
 
-(import ui-style (border
+(import ui.style (border
                   frame
                   flex
                   width
                   height
                   style))
 
-(import ui-effects (open
+(import ui.effects (open
                     effect_node
                     effect_tag
                     effect_attrs
@@ -112,9 +120,17 @@
                     close
                     post_event))
 
-(import ui-runtime (dispatch
+(import ui.runtime (dispatch
                     dispatch_one
                     dispatch_children))
 
-(import ui-ftxui (run
+(import ui.ftxui (run
+                  loop
+                  open_session
+                  update_session
+                  render_session
+                  read_event_session
+                  invalidate_session
+                  post_event_session
+                  close_session
                   ftxui))

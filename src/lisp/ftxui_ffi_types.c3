@@ -23,6 +23,14 @@ struct OmniFtxuiEventSpec {
     char* text;
 }
 
+struct OmniFtxuiEventReadResult {
+    uint size;
+    uint abi_version;
+    bool has_event;
+    int kind;
+    char[256] text;
+}
+
 alias OmniFtxuiGraphCallbackFn = fn OmniFtxuiStatus(
     void* user_data,
     OmniFtxuiContext* context,
@@ -45,7 +53,7 @@ struct OmniFtxuiElementCreateOptions {
     usz table_rows;
     usz table_cols;
     void* graph_user_data;
-    OmniFtxuiGraphCallbackFn* graph_cb;
+    OmniFtxuiGraphCallbackFn graph_cb;
 }
 
 struct OmniFtxuiDecoratorOptions {
@@ -125,7 +133,7 @@ struct OmniFtxuiCallbackOptions {
     uint size;
     uint abi_version;
     void* user_data;
-    OmniFtxuiRenderCallbackFn* render_cb;
-    OmniFtxuiEventCallbackFn* event_cb;
-    OmniFtxuiActionCallbackFn* action_cb;
+    OmniFtxuiRenderCallbackFn render_cb;
+    OmniFtxuiEventCallbackFn event_cb;
+    OmniFtxuiActionCallbackFn action_cb;
 }

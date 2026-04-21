@@ -73,18 +73,18 @@ for future concurrency ownership evolution.
 
 - JIT helper arg construction now fails closed in the remaining helper-owned
   list-materialization paths:
-  - `src/lisp/jit_jit_apply_helpers.c3` and
-    `src/lisp/jit_jit_apply_runtime.c3`
+  - `src/lisp/jit_apply_helpers.c3` and
+    `src/lisp/jit_apply_runtime.c3`
     now reject variadic zero-fixed-arg rest-list construction failure before
     binding the rest parameter environment.
-  - `src/lisp/jit_jit_dispatch_helpers.c3`
+  - `src/lisp/jit_dispatch_helpers.c3`
     now routes instance `ref` dispatch arg-list materialization through the
     shared checked helper instead of nested raw `make_cons(...)`.
 - Latest bounded evidence for that lane:
   - focused `jit-policy` (`variadic-rest-list-alloc-failure`): `pass=1 fail=0`
 
 - JIT quasiquote expansion now fails closed on pair-construction faults:
-  - `src/lisp/jit_jit_quasiquote_macros.c3`
+  - `src/lisp/jit_quasiquote_macros.c3`
     routes internal quasiquote pair construction through one checked helper
     instead of letting `make_cons(...)` faults leak through `eval_ok(...)` as
     successful quasiquote values.

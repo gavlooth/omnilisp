@@ -30,7 +30,25 @@ fn Value* test_copy_from_releasing_scope(Value* v, Interp* interp, main::ScopeRe
     BoundarySession session = boundary_session_begin(interp);
     defer boundary_session_end(interp, &session);
     interp.releasing_scope = releasing_scope;
-    return boundary_copy_to_parent_site_ctx(v, interp, site, interp.active_promotion_ctx);
+    BoundaryCopyResult copied = boundary_copy_to_parent_site_ctx_checked(
+        v,
+        interp,
+        site,
+        interp.active_promotion_ctx
+    );
+    if (!boundary_copy_result_ok(copied)) {
+        return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+    }
+    return copied.value;
+}
+
+fn Value* test_copy_to_parent(Value* v, Interp* interp) {
+    BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
+    Value* copied = copy_to_parent_with_fault(v, interp, &copy_fault);
+    if (copy_fault != BOUNDARY_COPY_FAULT_NONE) {
+        return raise_error(interp, boundary_copy_fault_message(copy_fault));
+    }
+    return copied;
 }
 
 fn void print_jit_failure_debug(Interp* interp, char[] name, char[] stage, Value* value) {

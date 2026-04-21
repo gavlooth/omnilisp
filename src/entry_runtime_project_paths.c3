@@ -6,18 +6,24 @@ extern fn char* repl_getcwd(char* buf, usz size) @extern("getcwd");
 const int REPL_PROJECT_PATH_EXISTS = 0;
 const usz REPL_PROJECT_PATH_BUFFER_CAP = 4096;
 
-fn usz repl_cstr_len(char* text) @inline {
-    if (text == null) return 0;
-    usz len = 0;
-    while (text[len] != 0) len++;
-    return len;
+fn bool repl_cstr_len_bounded(char* text, usz max_len, usz* out_len) @inline {
+    *out_len = 0;
+    if (text == null) return true;
+    for (usz len = 0; len < max_len; len++) {
+        if (text[len] == 0) {
+            *out_len = len;
+            return true;
+        }
+    }
+    return false;
 }
 
 fn bool repl_copy_project_root(char* project_dir, char[] root_buf, usz* root_len_out) {
     if (project_dir == null) {
         char* cwd = repl_getcwd(&root_buf[0], root_buf.len);
         if (cwd == null) return false;
-        usz root_len = repl_cstr_len(cwd);
+        usz root_len = 0;
+        if (!repl_cstr_len_bounded(cwd, root_buf.len, &root_len)) return false;
         while (root_len > 1 && root_buf[root_len - 1] == '/') {
             root_len--;
         }
@@ -27,10 +33,10 @@ fn bool repl_copy_project_root(char* project_dir, char[] root_buf, usz* root_len
     }
 
     usz root_len = 0;
-    while (project_dir[root_len] != 0) {
-        if (root_len >= root_buf.len - 1) return false;
-        root_buf[root_len] = project_dir[root_len];
-        root_len++;
+    if (!repl_cstr_len_bounded(project_dir, root_buf.len, &root_len)) return false;
+    if (root_len >= root_buf.len) return false;
+    for (usz i = 0; i < root_len; i++) {
+        root_buf[i] = project_dir[i];
     }
     while (root_len > 1 && root_buf[root_len - 1] == '/') {
         root_len--;

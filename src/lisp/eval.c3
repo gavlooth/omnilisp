@@ -31,6 +31,7 @@ struct CopyToParentStats {
     usz total_calls;
     usz fast_reuse_hits;
     usz defensive_copies;
+    usz copy_bytes;
 
     usz nil_calls;
     usz int_calls;
@@ -48,6 +49,7 @@ struct CopyToParentStats {
 }
 
 CopyToParentStats g_copy_to_parent_stats;
+uint g_copy_to_parent_telemetry_depth = 0;
 
 fn bool promotion_stats_quiet_requested() @inline {
     ZString quiet = main::getenv("OMNI_TEST_QUIET");
@@ -76,7 +78,28 @@ fn void copy_to_parent_note_tag(ValueTag tag) @inline {
             g_copy_to_parent_stats.cons_calls++;
         case CLOSURE:
             g_copy_to_parent_stats.closure_calls++;
-        default:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case HASHMAP:
+        case SET:
+        case FFI_HANDLE:
+        case ARRAY:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TIME_POINT:
+        case TENSOR:
+        case VOID:
             g_copy_to_parent_stats.other_calls++;
     }
 }
@@ -101,44 +124,58 @@ fn void copy_to_parent_note_cons_spine(Value* v) @inline {
     }
 }
 
+fn usz copy_to_parent_current_scope_alloc_bytes(Interp* interp) @inline {
+    if (interp == null || interp.current_scope == null) return 0;
+    return interp.current_scope.alloc_bytes;
+}
+
+fn void copy_to_parent_note_scope_bytes(usz before, Interp* interp) @inline {
+    if (interp == null || interp.current_scope == null) return;
+    usz after = interp.current_scope.alloc_bytes;
+    if (after >= before) {
+        g_copy_to_parent_stats.copy_bytes += after - before;
+    }
+}
+
 fn void print_memory_promotion_stats() {
     if (promotion_stats_quiet_requested()) return;
     io::printn("=== copy_to_parent Stats ===");
-    io::printfn("copy_to_parent calls: %d", (long)g_copy_to_parent_stats.total_calls);
-    io::printfn("copy_to_parent fast reuse hits: %d", (long)g_copy_to_parent_stats.fast_reuse_hits);
-    io::printfn("copy_to_parent defensive copies: %d", (long)g_copy_to_parent_stats.defensive_copies);
+    io::printfn("copy_to_parent calls: %d", g_copy_to_parent_stats.total_calls);
+    io::printfn("copy_to_parent fast reuse hits: %d", g_copy_to_parent_stats.fast_reuse_hits);
+    io::printfn("copy_to_parent defensive copies: %d", g_copy_to_parent_stats.defensive_copies);
+    io::printfn("copy_to_parent allocated bytes: %d", g_copy_to_parent_stats.copy_bytes);
     io::printfn("copy_to_parent by tag: nil=%d int=%d double=%d string=%d symbol=%d cons=%d closure=%d other=%d",
-        (long)g_copy_to_parent_stats.nil_calls,
-        (long)g_copy_to_parent_stats.int_calls,
-        (long)g_copy_to_parent_stats.double_calls,
-        (long)g_copy_to_parent_stats.string_calls,
-        (long)g_copy_to_parent_stats.symbol_calls,
-        (long)g_copy_to_parent_stats.cons_calls,
-        (long)g_copy_to_parent_stats.closure_calls,
-        (long)g_copy_to_parent_stats.other_calls);
+        g_copy_to_parent_stats.nil_calls,
+        g_copy_to_parent_stats.int_calls,
+        g_copy_to_parent_stats.double_calls,
+        g_copy_to_parent_stats.string_calls,
+        g_copy_to_parent_stats.symbol_calls,
+        g_copy_to_parent_stats.cons_calls,
+        g_copy_to_parent_stats.closure_calls,
+        g_copy_to_parent_stats.other_calls);
     io::printfn("copy_to_parent by site: promote_to_root=%d copy_env=%d run_jit=%d repl=%d prim_resume=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_PROMOTE_TO_ROOT],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_COPY_ENV_TO_SCOPE],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_RUN_JIT_RESULT],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_REPL_LINE_RESULT],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_PRIM_RESUME]);
+        g_copy_to_parent_stats.site_calls[COPY_SITE_PROMOTE_TO_ROOT],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_COPY_ENV_TO_SCOPE],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_RUN_JIT_RESULT],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_REPL_LINE_RESULT],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_PRIM_RESUME]);
     io::printfn("copy_to_parent by site: cons_barrier_car=%d cons_barrier_cdr=%d env_promote=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CAR],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CDR],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]);
+        g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CAR],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_CONS_BARRIER_CDR],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_ENV_PROMOTE_FOR_TARGET]);
     io::printfn("copy_to_parent by site: jit_single=%d jit_call_step2=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_SINGLE_SCOPE_RETURN],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_CALL_SCOPE_STEP2]);
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_SINGLE_SCOPE_RETURN],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_CALL_SCOPE_STEP2]);
     io::printfn("copy_to_parent by site: jit_tco_frame=%d jit_set=%d jit_define=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_TCO_FRAME_COPY],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_SET],
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_DEFINE]);
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_TCO_FRAME_COPY],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_SET],
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_EVAL_DEFINE]);
     io::printfn("copy_to_parent by site: jit_env_extend_root=%d",
-        (long)g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_ENV_EXTEND_ROOT]);
+        g_copy_to_parent_stats.site_calls[COPY_SITE_JIT_ENV_EXTEND_ROOT]);
     io::printfn("copy_to_parent cons-spine copied: samples=%d total_len=%d peak_len=%d",
-        (long)g_copy_to_parent_stats.cons_spine_copy_samples,
-        (long)g_copy_to_parent_stats.cons_spine_copy_total_len,
-        (long)g_copy_to_parent_stats.cons_spine_copy_peak_len);
+        g_copy_to_parent_stats.cons_spine_copy_samples,
+        g_copy_to_parent_stats.cons_spine_copy_total_len,
+        g_copy_to_parent_stats.cons_spine_copy_peak_len);
 }
 
 fn void reset_memory_promotion_stats() {
@@ -184,12 +221,12 @@ fn EvalResult eval_ok(Value* v) @inline {
     return { .value = v, .error = { .has_error = false } };
 }
 
-fn EvalResult eval_error(char[] msg) {
+fn EvalResult eval_error_with_location(char[] msg, usz line, usz column) {
     EvalResult r;
     r.value = null;
     r.error.has_error = true;
-    r.error.line = 0;
-    r.error.column = 0;
+    r.error.line = line;
+    r.error.column = column;
     usz len = msg.len;
     if (len > 255) len = 255;
     for (usz i = 0; i < len; i++) {
@@ -199,27 +236,16 @@ fn EvalResult eval_error(char[] msg) {
     return r;
 }
 
+fn EvalResult eval_error(char[] msg) {
+    return eval_error_with_location(msg, 0, 0);
+}
+
 /**
  * Create an error with source location from an expression.
  */
 fn EvalResult eval_error_expr(char[] msg, Expr* expr) {
-    EvalResult r;
-    r.value = null;
-    r.error.has_error = true;
-    if (expr != null) {
-        r.error.line = expr.loc_line;
-        r.error.column = expr.loc_column;
-    } else {
-        r.error.line = 0;
-        r.error.column = 0;
-    }
-    usz len = msg.len;
-    if (len > 255) len = 255;
-    for (usz i = 0; i < len; i++) {
-        r.error.message[i] = msg[i];
-    }
-    r.error.message[len] = 0;
-    return r;
+    if (expr == null) return eval_error(msg);
+    return eval_error_with_location(msg, expr.loc_line, expr.loc_column);
 }
 
 // Expression evaluation — all handled by JIT (jit.c3)
@@ -231,6 +257,9 @@ fn EvalResult eval_error_expr(char[] msg, Expr* expr) {
 /**
  * Check if a value is falsy (nil or false symbol).
  */
+<*
+@require interp != null : "is_falsy: null interp"
+*>
 fn bool is_falsy(Value* v, Interp* interp) {
     if (v == null) return true;
     if (v.tag == NIL) return true;

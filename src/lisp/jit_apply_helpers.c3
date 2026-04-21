@@ -1,5 +1,6 @@
 module lisp;
 
+import std::core::mem;
 import std::io;
 import std::collections::list;
 import main;
@@ -7,6 +8,23 @@ import main;
 // =============================================================================
 // SECTION 3: JIT HELPER FUNCTIONS (apply/eval core)
 // =============================================================================
+struct JitEscapeAllocationStats {
+    usz nil_calls;
+    usz cons_calls;
+    usz array_calls;
+    usz string_calls;
+}
+
+JitEscapeAllocationStats g_jit_escape_allocation_stats;
+
+fn void jit_escape_allocation_stats_reset() {
+    g_jit_escape_allocation_stats = {};
+}
+
+fn JitEscapeAllocationStats jit_escape_allocation_stats_snapshot() @inline {
+    return g_jit_escape_allocation_stats;
+}
+
 fn bool zeroarg_closure_trace_enabled() @inline {
     return boundary_c_getenv("OMNI_TRACE_ZEROARG_CLOSURE") != null;
 }
@@ -21,6 +39,135 @@ fn Value* jit_make_nil(Interp* interp) {
     interp = jit_resolve_interp(interp);
     if (interp == null) return null;
     return make_nil(interp);
+}
+
+fn Value* jit_make_nil_escape(Interp* interp) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    Value* v = boundary_alloc_value_in_current_escape(interp);
+    if (v == null) return raise_error(interp, "jit: failed to allocate escape nil");
+    v.tag = NIL;
+    g_jit_escape_allocation_stats.nil_calls++;
+    return v;
+}
+
+fn Value* jit_cons_escape(Interp* interp, Value* car, Value* cdr) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    Value* promoted_car =
+        car != null && car.scope_gen == interp.current_scope.escape_generation
+        ? car
+        : boundary_promote_to_escape(car, interp);
+    if (car != null && promoted_car == null) return promoted_car;
+    if (car != null && promoted_car.tag == ERROR && !make_cons_promoted_error_value_ok(interp, car, promoted_car)) return promoted_car;
+
+    Value* promoted_cdr =
+        cdr != null && cdr.scope_gen == interp.current_scope.escape_generation
+        ? cdr
+        : boundary_promote_to_escape(cdr, interp);
+    if (cdr != null && (promoted_cdr == null || promoted_cdr.tag == ERROR)) {
+        boundary_cleanup_materialized_value(car, promoted_car, interp.current_scope, true);
+        return promoted_cdr;
+    }
+
+    Value* v = boundary_alloc_value_in_current_escape(interp);
+    if (v == null) {
+        boundary_cleanup_materialized_value(car, promoted_car, interp.current_scope, true);
+        boundary_cleanup_materialized_value(cdr, promoted_cdr, interp.current_scope, true);
+        return raise_error(interp, "jit: failed to allocate escape cons");
+    }
+    v.tag = CONS;
+    v.cons_val.car = promoted_car;
+    v.cons_val.cdr = promoted_cdr;
+    g_jit_escape_allocation_stats.cons_calls++;
+    return v;
+}
+
+fn Value* jit_make_array_escape(Interp* interp, usz capacity) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    Array* arr = (Array*)mem::malloc(Array.sizeof);
+    if (arr == null) return raise_error(interp, "jit: failed to allocate escape array");
+    arr.capacity = capacity < 4 ? 4 : capacity;
+    arr.length = 0;
+    if (arr.capacity > usz.max / Value*.sizeof) {
+        mem::free(arr);
+        return raise_error(interp, "jit: failed to allocate escape array");
+    }
+    arr.items = (Value**)mem::malloc(Value*.sizeof * arr.capacity);
+    if (arr.items == null) {
+        mem::free(arr);
+        return raise_error(interp, "jit: failed to allocate escape array");
+    }
+
+    Value* v = boundary_alloc_value_in_current_escape(interp, true);
+    if (v == null) {
+        mem::free(arr.items);
+        mem::free(arr);
+        return raise_error(interp, "jit: failed to allocate escape array");
+    }
+    v.tag = ARRAY;
+    v.array_val = arr;
+    g_jit_escape_allocation_stats.array_calls++;
+    return v;
+}
+
+fn Value* jit_make_string_escape(Interp* interp, char* chars, usz len) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    if (chars == null) return raise_error(interp, "jit: failed to allocate escape string");
+    if (len == usz.max) return raise_error(interp, "jit: failed to allocate escape string");
+    usz cap = len + 1;
+    if (cap < 32) cap = 32;
+    char* owned = (char*)mem::malloc(cap);
+    if (owned == null) return raise_error(interp, "jit: failed to allocate escape string");
+    for (usz i = 0; i < len; i++) {
+        owned[i] = chars[i];
+    }
+    owned[len] = 0;
+
+    Value* v = boundary_alloc_value_in_current_escape(interp, true);
+    if (v == null) {
+        mem::free(owned);
+        return raise_error(interp, "jit: failed to allocate escape string");
+    }
+    v.tag = STRING;
+    v.str_chars = owned;
+    v.str_len = len;
+    v.string_heap_owned = true;
+    g_jit_escape_allocation_stats.string_calls++;
+    return v;
+}
+
+fn Value* jit_make_string_literal_escape(Interp* interp, Value* literal) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    if (literal == null || literal.tag != STRING || literal.str_chars == null) {
+        return raise_error(interp, "jit: expected string literal for escape allocation");
+    }
+    return jit_make_string_escape(interp, literal.str_chars, literal.str_len);
+}
+
+fn Value* jit_array_escape_set(Interp* interp, Value* array, long index, Value* value) {
+    interp = jit_resolve_interp(interp);
+    if (interp == null) return null;
+    if (array == null) return raise_error(interp, "jit: missing escape array");
+    if (array.tag == ERROR) return array;
+    if (array.tag != ARRAY || array.array_val == null) {
+        return raise_error(interp, "jit: invalid escape array");
+    }
+    if (index < 0 || (usz)index >= array.array_val.capacity) {
+        return raise_error(interp, "jit: escape array index out of bounds");
+    }
+
+    Value* promoted =
+        value != null && value.scope_gen == interp.current_scope.escape_generation
+        ? value
+        : boundary_promote_to_escape(value, interp);
+    if (value != null && (promoted == null || promoted.tag == ERROR)) return promoted;
+    array.array_val.items[(usz)index] = promoted;
+    if ((usz)index >= array.array_val.length) array.array_val.length = (usz)index + 1;
+    return array;
 }
 
 fn Value* jit_make_void(Interp* interp) {

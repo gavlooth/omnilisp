@@ -502,6 +502,12 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: tensor/capture", "[FAIL] Compiler: tensor/capture", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(tensor/run graph)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"tensor/run\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: tensor/run", "[FAIL] Compiler: tensor/run", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

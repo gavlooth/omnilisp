@@ -224,6 +224,10 @@ fn Value* tensor_map_try_vulkan_direct(
     bool touches_vulkan = (left_source_tensor != null && tensor_expr_has_device(left_source, TENSOR_DEVICE_VULKAN)) ||
         (is_binary && right_source_tensor != null && tensor_expr_has_device(right_source, TENSOR_DEVICE_VULKAN));
     if (!touches_vulkan) return null;
+    if ((left_source_tensor != null && left_source_tensor.kind != TENSOR_PAYLOAD_CONCRETE) ||
+        (is_binary && right_source_tensor != null && right_source_tensor.kind != TENSOR_PAYLOAD_CONCRETE)) {
+        return null;
+    }
 
     uint op = 0;
     Value* preflight_err = tensor_map_vulkan_callable_op_or_raise(func, is_binary, dtype, &op, interp);

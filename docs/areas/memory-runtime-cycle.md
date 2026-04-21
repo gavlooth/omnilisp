@@ -7,7 +7,7 @@ runtime lifecycle, aligned to:
 
 - `src/scope_region.c3`
 - `src/lisp/eval_boundary_api.c3`
-- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/jit_eval_scopes.c3`
 - `src/lisp/eval_promotion_escape.c3`
 - `src/lisp/value_interp_state.c3`
 

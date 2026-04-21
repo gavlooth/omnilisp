@@ -6,6 +6,8 @@ import main;
 fn bool tensor_value_storage_aliases(Value* source_value, TensorVal* dest) {
     if (source_value == null || dest == null || dest.data == null || !is_tensor(source_value)) return false;
     TensorVal* source = source_value.tensor_val;
+    if (source == null) return false;
+    if (source.alias_origin != null && dest.alias_origin != null && source.alias_origin == dest.alias_origin) return true;
     return tensor_has_valid_storage(source) && source.byte_len > 0 && source.data == dest.data;
 }
 

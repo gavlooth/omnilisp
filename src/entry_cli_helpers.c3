@@ -7,6 +7,11 @@ fn bool mem_stats_enabled() {
     return raw != null && raw[0] != 0 && raw[0] != '0';
 }
 
+fn bool mem_telemetry_enabled() {
+    char* raw = c_getenv("OMNI_MEM_TELEMETRY");
+    return raw != null && raw[0] != 0 && raw[0] != '0';
+}
+
 fn usz cstr_len(char* s) @inline {
     usz n = 0;
     while (s[n] != 0) n++;

@@ -1,6 +1,9 @@
 module lisp;
 
 const double NN_INIT_PI = 3.14159265358979323846;
+const uint NN_INIT_LCG_MULTIPLIER = 1664525;
+const uint NN_INIT_LCG_INCREMENT = 1013904223;
+const double NN_INIT_UINT32_SCALE = 4294967296.0;
 
 struct NnInitContext {
     TensorDType dtype;
@@ -20,12 +23,12 @@ fn Value* nn_init_invalid(Interp* interp, char[] path, char[] expected, Value* a
 }
 
 fn uint nn_rng_next(NnInitContext* ctx) @inline {
-    ctx.rng_state = ctx.rng_state * (uint)1664525 + (uint)1013904223;
+    ctx.rng_state = ctx.rng_state * NN_INIT_LCG_MULTIPLIER + NN_INIT_LCG_INCREMENT;
     return ctx.rng_state;
 }
 
 fn double nn_rng_uniform01(NnInitContext* ctx) @inline {
-    return ((double)nn_rng_next(ctx) + 0.5) / 4294967296.0;
+    return ((double)nn_rng_next(ctx) + 0.5) / NN_INIT_UINT32_SCALE;
 }
 
 fn double nn_rng_uniform(NnInitContext* ctx, double low, double high) @inline {
@@ -198,6 +201,34 @@ fn Value* nn_init_dense(Value* spec, Interp* interp, NnInitContext* ctx, NnLayer
     return null;
 }
 
+fn Value* nn_init_batch_normalization(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
+    usz channels = (usz)nn_dict_get(spec, interp, "channels").int_val;
+    usz[1] shape = { channels };
+    Value* scale = nn_init_tensor(interp, ctx, shape[0:1], nn_dict_get(spec, interp, "scale-init"), (double)channels, (double)channels);
+    if (scale == null || scale.tag == ERROR) return scale;
+    Value* bias = nn_init_tensor(interp, ctx, shape[0:1], nn_dict_get(spec, interp, "bias-init"), (double)channels, (double)channels);
+    if (bias == null || bias.tag == ERROR) return bias;
+    Value* zeros = nn_default_init(interp, "zeros");
+    if (zeros == null || zeros.tag == ERROR) return zeros;
+    Value* ones = nn_default_init(interp, "ones");
+    if (ones == null || ones.tag == ERROR) return ones;
+    Value* running_mean = nn_init_tensor(interp, ctx, shape[0:1], zeros, (double)channels, (double)channels);
+    if (running_mean == null || running_mean.tag == ERROR) return running_mean;
+    Value* running_variance = nn_init_tensor(interp, ctx, shape[0:1], ones, (double)channels, (double)channels);
+    if (running_variance == null || running_variance.tag == ERROR) return running_variance;
+
+    out.params = nn_make_dict(interp, 4);
+    if (out.params == null || out.params.tag == ERROR) return out.params;
+    if (Value* err = nn_dict_set(out.params, interp, "scale", scale)) return err;
+    if (Value* err = nn_dict_set(out.params, interp, "bias", bias)) return err;
+
+    out.state = nn_make_dict(interp, 4);
+    if (out.state == null || out.state.tag == ERROR) return out.state;
+    if (Value* err = nn_dict_set(out.state, interp, "running-mean", running_mean)) return err;
+    if (Value* err = nn_dict_set(out.state, interp, "running-variance", running_variance)) return err;
+    return null;
+}
+
 fn Value* nn_init_conv1d(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
     usz in_channels = (usz)nn_dict_get(spec, interp, "in-channels").int_val;
     usz out_channels = (usz)nn_dict_get(spec, interp, "out-channels").int_val;
@@ -255,6 +286,7 @@ fn Value* nn_init_conv2d(Value* spec, Interp* interp, NnInitContext* ctx, NnLaye
 fn Value* nn_init_layer(Value* spec, Interp* interp, NnInitContext* ctx, NnLayerInit* out) {
     *out = {};
     if (nn_kind_is(spec, interp, "dense")) return nn_init_dense(spec, interp, ctx, out);
+    if (nn_kind_is(spec, interp, "batch-normalization")) return nn_init_batch_normalization(spec, interp, ctx, out);
     if (nn_kind_is(spec, interp, "conv1d")) return nn_init_conv1d(spec, interp, ctx, out);
     if (nn_kind_is(spec, interp, "conv2d")) return nn_init_conv2d(spec, interp, ctx, out);
     if (nn_kind_is(spec, interp, "sequential")) {

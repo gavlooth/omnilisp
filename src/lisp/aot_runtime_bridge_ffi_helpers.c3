@@ -38,6 +38,27 @@ fn bool aot_ffi_type_tag_from_int(int raw_tag, lisp::FfiTypeTag* out_tag) @inlin
         case 5:
             *out_tag = (lisp::FfiTypeTag)5;
             return true;
+        case 6:
+            *out_tag = (lisp::FfiTypeTag)6;
+            return true;
+        case 7:
+            *out_tag = (lisp::FfiTypeTag)7;
+            return true;
+        case 8:
+            *out_tag = (lisp::FfiTypeTag)8;
+            return true;
+        case 9:
+            *out_tag = (lisp::FfiTypeTag)9;
+            return true;
+        case 10:
+            *out_tag = (lisp::FfiTypeTag)10;
+            return true;
+        case 11:
+            *out_tag = (lisp::FfiTypeTag)11;
+            return true;
+        case 12:
+            *out_tag = (lisp::FfiTypeTag)12;
+            return true;
         default:
             return false;
     }

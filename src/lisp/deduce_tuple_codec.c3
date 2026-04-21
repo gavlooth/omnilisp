@@ -20,6 +20,33 @@ fn int read_i32_le(char* buf, usz pos) {
         (((int)(uint)(char)buf[pos + 3]) << 24);
 }
 
+fn usz? deduce_tuple_encoded_size(Value*[] vals) {
+    usz total = 0;
+    for (usz i = 0; i < vals.len; i++) {
+        Value* v = vals[i];
+        usz increment = 0;
+        if (v == null || v.tag == NIL) {
+            increment = 1;
+        } else if (v.tag == INT || v.tag == DOUBLE) {
+            increment = 9;
+        } else if (v.tag == FLOAT32) {
+            increment = 5;
+        } else if (v.tag == STRING) {
+            usz slen = v.str_len;
+            if (slen > 0xFFFF) slen = 0xFFFF;
+            if (!deduce_checked_add_usz(3, slen, &increment)) return WRITE_FAILED~;
+        } else if (v.tag == SYMBOL) {
+            increment = 5;
+        } else if (v.tag == TIME_POINT) {
+            increment = 34;
+        } else {
+            return WRITE_FAILED~;
+        }
+        if (!deduce_checked_add_inplace(&total, increment)) return WRITE_FAILED~;
+    }
+    return total;
+}
+
 fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
     usz pos = 0;
     for (usz i = 0; i < vals.len; i++) {

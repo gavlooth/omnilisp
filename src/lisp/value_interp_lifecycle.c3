@@ -4,16 +4,186 @@ import std::collections::list;
 import std::io;
 import main;
 
-bool g_interp_force_macro_table_alloc_fail = false;
-bool g_interp_force_macro_hash_alloc_fail = false;
-bool g_interp_force_grow_macro_table_alloc_fail = false;
-bool g_interp_force_grow_macro_hash_alloc_fail = false;
-bool g_interp_force_module_table_alloc_fail = false;
-bool g_interp_force_module_hash_alloc_fail = false;
-bool g_interp_force_grow_module_table_alloc_fail = false;
-bool g_interp_force_grow_module_hash_alloc_fail = false;
-bool g_interp_force_handler_stack_alloc_fail = false;
-bool g_interp_force_grow_handler_stack_alloc_fail = false;
+// Test-only allocation fault injection. These globals are compiled out of
+// normal builds and are intentionally driven by single-threaded test code.
+bool g_interp_force_macro_table_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_macro_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_grow_macro_table_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_grow_macro_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_module_table_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_module_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_grow_module_table_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_grow_module_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_handler_stack_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_interp_force_grow_handler_stack_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+
+fn bool interp_fault_injection_enabled() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return true;
+    $else
+        return false;
+    $endif
+}
+
+fn void interp_force_macro_table_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_macro_table_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_macro_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_macro_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_grow_macro_table_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_grow_macro_table_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_grow_macro_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_grow_macro_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_module_table_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_module_table_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_module_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_module_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_grow_module_table_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_grow_module_table_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_grow_module_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_grow_module_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_handler_stack_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_handler_stack_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void interp_force_grow_handler_stack_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_interp_force_grow_handler_stack_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn bool interp_force_macro_table_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_macro_table_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_macro_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_macro_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_grow_macro_table_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_grow_macro_table_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_grow_macro_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_grow_macro_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_module_table_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_module_table_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_module_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_module_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_grow_module_table_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_grow_module_table_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_grow_module_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_grow_module_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_handler_stack_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_handler_stack_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool interp_force_grow_handler_stack_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_interp_force_grow_handler_stack_alloc_fail;
+    $else
+        return false;
+    $endif
+}
 
 fn usz interp_capacity_for_need(usz current, usz initial, usz needed) @inline {
     usz cap = current > 0 ? current : initial;
@@ -42,13 +212,13 @@ fn bool Interp.ensure_macro_capacity(Interp* self, usz needed) {
 
     bool growing = self.macro_table != null || self.macro_hash_index != null || self.macro_capacity > 0;
     MacroDef* new_table =
-        (growing ? g_interp_force_grow_macro_table_alloc_fail : g_interp_force_macro_table_alloc_fail)
+        (growing ? interp_force_grow_macro_table_alloc_fail_active() : interp_force_macro_table_alloc_fail_active())
             ? null
             : (MacroDef*)mem::malloc(MacroDef.sizeof * new_cap);
     if (new_table == null) return false;
 
     usz* new_hash =
-        (growing ? g_interp_force_grow_macro_hash_alloc_fail : g_interp_force_macro_hash_alloc_fail)
+        (growing ? interp_force_grow_macro_hash_alloc_fail_active() : interp_force_macro_hash_alloc_fail_active())
             ? null
             : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
     if (new_hash == null) {
@@ -97,13 +267,13 @@ fn bool Interp.ensure_module_capacity(Interp* self, usz needed) {
 
     bool growing = self.modules != null || self.module_hash_index != null || self.module_capacity > 0;
     Module* new_modules =
-        (growing ? g_interp_force_grow_module_table_alloc_fail : g_interp_force_module_table_alloc_fail)
+        (growing ? interp_force_grow_module_table_alloc_fail_active() : interp_force_module_table_alloc_fail_active())
             ? null
             : (Module*)mem::malloc(Module.sizeof * new_cap);
     if (new_modules == null) return false;
 
     usz* new_hash =
-        (growing ? g_interp_force_grow_module_hash_alloc_fail : g_interp_force_module_hash_alloc_fail)
+        (growing ? interp_force_grow_module_hash_alloc_fail_active() : interp_force_module_hash_alloc_fail_active())
             ? null
             : (usz*)mem::malloc(usz.sizeof * new_hash_cap);
     if (new_hash == null) {
@@ -145,7 +315,7 @@ fn bool Interp.ensure_handler_capacity(Interp* self, usz needed) {
 
     bool growing = self.handler_stack != null || self.handler_capacity > 0;
     EffectHandler* new_stack =
-        (growing ? g_interp_force_grow_handler_stack_alloc_fail : g_interp_force_handler_stack_alloc_fail)
+        (growing ? interp_force_grow_handler_stack_alloc_fail_active() : interp_force_handler_stack_alloc_fail_active())
             ? null
             : (EffectHandler*)mem::malloc(EffectHandler.sizeof * new_cap);
     if (new_stack == null) return false;

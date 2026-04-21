@@ -9,9 +9,9 @@ const String[3] AOT_HELPER_COMMAND = { "/usr/bin/env", "bash", "./scripts/build_
 const String AOT_HELPER_SCRIPT_PATH = "./scripts/build_omni_chelpers.sh";
 const String AOT_ENV_BIN_PATH = "/usr/bin/env";
 const String AOT_C3C_FALLBACK = "c3c";
-const String[32] AOT_LINK_FLAGS = {
-    "-L", "build",
-    "-L", "/usr/local/lib",
+const String AOT_LINK_LIBRARY_ENV = "OMNI_AOT_LINK_LIBRARY_PATH";
+const String AOT_LINK_LIBRARY_FALLBACK = "/usr/local/lib";
+const String[28] AOT_LINK_FLAGS = {
     "-L", "deps/lib",
     "-l", "omni_chelpers",
     "-l", "lightning",
@@ -60,6 +60,12 @@ fn bool append_aot_runtime_sources(List { String }* out_sources) {
         append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART2[..], "AOT runtime lisp source") &&
         append_manifest_sources(out_sources, AOT_RUNTIME_LISP_SOURCES_PART3[..], "AOT runtime lisp source") &&
         append_manifest_sources(out_sources, AOT_RUNTIME_PIKA_SOURCES[..], "AOT runtime pika source");
+}
+
+fn String resolve_aot_link_library_path() {
+    char* env_path = c_getenv(AOT_LINK_LIBRARY_ENV);
+    if (env_path != null && env_path[0] != 0) return ((ZString)env_path).str_view();
+    return AOT_LINK_LIBRARY_FALLBACK;
 }
 
 fn int run_spawned_command(String[] command_line, bool search_user_path = false) {
@@ -138,6 +144,10 @@ fn int run_aot_backend_compile(char* temp_c3_path, char* output_binary) {
     command.push(c3c_path);
     command.push("compile");
     command.push_all(sources.array_view());
+    command.push("-L");
+    command.push("build");
+    command.push("-L");
+    command.push(resolve_aot_link_library_path());
     command.push_all(AOT_LINK_FLAGS[..]);
     command.push("-o");
     command.push(((ZString)output_binary).str_view());

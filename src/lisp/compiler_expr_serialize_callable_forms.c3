@@ -8,7 +8,7 @@ import main;
 fn void Compiler.serialize_lambda_to_buf(Compiler* self, Expr* expr, List{char}* buf) {
     self.buf_append(buf, "(lambda (");
     usz fixed_count = expr.lambda.param_count;
-    if (fixed_count == 0 && (uint)expr.lambda.param != 0xFFFFFFFF) {
+    if (fixed_count == 0 && expr.lambda.param != INVALID_SYMBOL_ID) {
         fixed_count = 1;
     }
 

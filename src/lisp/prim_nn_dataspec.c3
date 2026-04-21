@@ -54,6 +54,20 @@ fn bool nn_is_positive_int(Value* value) @inline {
     return value != null && value.tag == INT && value.int_val > 0;
 }
 
+fn bool nn_is_integer(Value* value) @inline {
+    return value != null && value.tag == INT;
+}
+
+fn bool nn_is_positive_finite_number(Value* value) @inline {
+    double out = 0.0;
+    return try_numeric_to_double(value, &out) && conversion_double_is_finite(out) && out > 0.0;
+}
+
+fn bool nn_is_unit_interval_finite_number(Value* value) @inline {
+    double out = 0.0;
+    return try_numeric_to_double(value, &out) && conversion_double_is_finite(out) && out >= 0.0 && out <= 1.0;
+}
+
 fn Value* nn_invalid(Interp* interp, char[] path, char[] expected, Value* actual) {
     Value* payload = nn_make_dict(interp, 8);
     if (payload == null || payload.tag == ERROR) return payload;
@@ -103,13 +117,14 @@ fn Value* nn_validate_activation_symbol(Value* value, Interp* interp, char[] pat
     if (allow_nil && (value == null || value.tag == NIL)) return null;
     if (value == null || value.tag != SYMBOL) return nn_invalid(interp, path, "activation symbol", value);
     if (nn_symbol_is(value, interp, "relu") ||
+        nn_symbol_is(value, interp, "leaky-relu") ||
         nn_symbol_is(value, interp, "sigmoid") ||
         nn_symbol_is(value, interp, "tanh") ||
         nn_symbol_is(value, interp, "gelu") ||
         nn_symbol_is(value, interp, "softmax")) {
         return null;
     }
-    return nn_invalid(interp, path, "relu, sigmoid, tanh, gelu, or softmax", value);
+    return nn_invalid(interp, path, "relu, leaky-relu, sigmoid, tanh, gelu, or softmax", value);
 }
 
 fn Value* nn_validate_pair(Value* value, Interp* interp, char[] path, bool nonnegative) {
@@ -145,6 +160,22 @@ fn Value* nn_validate_dense(Value* spec, Interp* interp) {
     if (use_bias != null && !nn_is_boolean(use_bias, interp)) return nn_invalid(interp, "spec.use-bias", "boolean", use_bias);
     if (Value* err = nn_validate_activation_symbol(nn_dict_get(spec, interp, "activation"), interp, "spec.activation", true)) return err;
     if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "kernel-init"), interp, "spec.kernel-init")) return err;
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "bias-init"), interp, "spec.bias-init")) return err;
+    return null;
+}
+
+fn Value* nn_validate_batch_normalization(Value* spec, Interp* interp) {
+    if (Value* err = nn_validate_positive_field(spec, interp, "channels", "spec.channels")) return err;
+    Value* channel_axis = nn_required_field(spec, interp, "channel-axis", "spec.channel-axis", "integer channel axis");
+    if (channel_axis != null && channel_axis.tag == ERROR) return channel_axis;
+    if (!nn_is_integer(channel_axis)) return nn_invalid(interp, "spec.channel-axis", "integer channel axis", channel_axis);
+    Value* epsilon = nn_required_field(spec, interp, "epsilon", "spec.epsilon", "positive finite number");
+    if (epsilon != null && epsilon.tag == ERROR) return epsilon;
+    if (!nn_is_positive_finite_number(epsilon)) return nn_invalid(interp, "spec.epsilon", "positive finite number", epsilon);
+    Value* momentum = nn_required_field(spec, interp, "momentum", "spec.momentum", "finite number in [0, 1]");
+    if (momentum != null && momentum.tag == ERROR) return momentum;
+    if (!nn_is_unit_interval_finite_number(momentum)) return nn_invalid(interp, "spec.momentum", "finite number in [0, 1]", momentum);
+    if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "scale-init"), interp, "spec.scale-init")) return err;
     if (Value* err = nn_validate_init_spec(nn_dict_get(spec, interp, "bias-init"), interp, "spec.bias-init")) return err;
     return null;
 }
@@ -242,6 +273,7 @@ fn Value* nn_validate_layer_spec(Value* spec, Interp* interp) {
         return null;
     }
     if (nn_symbol_is(kind, interp, "dense")) return nn_validate_dense(spec, interp);
+    if (nn_symbol_is(kind, interp, "batch-normalization")) return nn_validate_batch_normalization(spec, interp);
     if (nn_symbol_is(kind, interp, "activation")) return nn_validate_activation(spec, interp);
     if (nn_symbol_is(kind, interp, "flatten")) return nn_validate_flatten(spec, interp);
     if (nn_symbol_is(kind, interp, "conv1d")) return nn_validate_conv1d(spec, interp);
@@ -373,6 +405,29 @@ fn Value* prim_nn_dense(Value*[] args, Env* env, Interp* interp) {
     return spec;
 }
 
+fn Value* prim_nn_batch_normalization(Value*[] args, Env* env, Interp* interp) {
+    if (args.len < 2 || args.len > 3) return primitive_arity_raise(interp, "nn/batch-normalization", "2 or 3 arguments: channels channel-axis [options]", args.len);
+    Value* options = args.len == 3 ? args[2] : null;
+    if (options != null && (options.tag != HASHMAP || options.hashmap_val == null)) return primitive_arg_type_raise(interp, "nn/batch-normalization", 2, "Dictionary options", options);
+    Value* spec = nn_make_dict(interp, 14);
+    if (spec == null || spec.tag == ERROR) return spec;
+    if (Value* err = nn_dict_set_symbol(spec, interp, "kind", "batch-normalization")) return err;
+    if (Value* err = nn_dict_set(spec, interp, "channels", args[0])) return err;
+    if (Value* err = nn_dict_set(spec, interp, "channel-axis", args[1])) return err;
+    if (Value* err = nn_dict_set(spec, interp, "epsilon", nn_default_options_get(options, interp, "epsilon", make_double(interp, 0.00001)))) return err;
+    if (Value* err = nn_dict_set(spec, interp, "momentum", nn_default_options_get(options, interp, "momentum", make_double(interp, 0.1)))) return err;
+    Value* scale_init = nn_dict_get(options, interp, "scale-init");
+    if (scale_init == null) scale_init = nn_default_init(interp, "ones");
+    if (scale_init != null && scale_init.tag == ERROR) return scale_init;
+    if (Value* err = nn_dict_set(spec, interp, "scale-init", scale_init)) return err;
+    Value* bias_init = nn_dict_get(options, interp, "bias-init");
+    if (bias_init == null) bias_init = nn_default_init(interp, "zeros");
+    if (bias_init != null && bias_init.tag == ERROR) return bias_init;
+    if (Value* err = nn_dict_set(spec, interp, "bias-init", bias_init)) return err;
+    if (Value* err = nn_validate_dataspec(spec, interp)) return err;
+    return spec;
+}
+
 fn Value* prim_nn_activation(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "nn/activation", "1 argument: activation", args.len);
     Value* spec = nn_make_dict(interp, 4);
@@ -394,6 +449,11 @@ fn Value* nn_activation_ctor(Interp* interp, char[] activation) {
 fn Value* prim_nn_relu(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 0) return primitive_arity_raise(interp, "nn/relu", "0 arguments", args.len);
     return nn_activation_ctor(interp, "relu");
+}
+
+fn Value* prim_nn_leaky_relu(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 0) return primitive_arity_raise(interp, "nn/leaky-relu", "0 arguments", args.len);
+    return nn_activation_ctor(interp, "leaky-relu");
 }
 
 fn Value* prim_nn_sigmoid(Value*[] args, Env* env, Interp* interp) {

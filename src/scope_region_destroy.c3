@@ -22,6 +22,7 @@ fn void scope_run_escape_dtors(ScopeRegion* scope) {
  @require scope.refcount == 0 : "scope_destroy: refcount not zero"
 *>
 fn void scope_destroy(ScopeRegion* scope) {
+    g_scope_memory_telemetry_stats.scope_destroy_count++;
     scope_guard_owner(scope, "scope_destroy");
     scope_assert_escape_tail_consistency(scope);
     // 1. Run destructors (reverse order — LIFO) for both lanes
@@ -46,6 +47,7 @@ fn void scope_destroy(ScopeRegion* scope) {
     c = scope.escape_chunks;
     while (c != null) {
         ScopeChunk* next = c.next;
+        scope_telemetry_note_escape_chunk_release(c);
         mem::free(c);
         c = next;
     }
@@ -72,6 +74,7 @@ fn void scope_destroy(ScopeRegion* scope) {
     }
     scope_global_lock();
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
+        g_scope_memory_telemetry_stats.scope_recycle_count++;
         scope.pool_next = g_scope_freelist;
         g_scope_freelist = scope;
         g_scope_freelist_count++;

@@ -29,16 +29,6 @@ fn char[] foreign_runtime_kind_name(ForeignRuntimeKind kind) {
             return "native";
         case FOREIGN_RUNTIME_C_ABI:
             return "c-abi";
-        case FOREIGN_RUNTIME_PYTHON:
-            return "python";
-        case FOREIGN_RUNTIME_JULIA:
-            return "julia";
-        case FOREIGN_RUNTIME_CUDA:
-            return "cuda";
-        case FOREIGN_RUNTIME_CPP:
-            return "cpp";
-        case FOREIGN_RUNTIME_POLYGLOT:
-            return "polyglot";
         default:
             return "unknown";
     }
@@ -124,6 +114,20 @@ fn char[] foreign_ffi_abi_type_name(FfiTypeTag tag) {
             return "bool";
         case FFI_TYPE_STRING:
             return "string";
+        case FFI_TYPE_FLOAT32:
+            return "float32";
+        case FFI_TYPE_INT32:
+            return "int32";
+        case FFI_TYPE_INT64:
+            return "int64";
+        case FFI_TYPE_UINT32:
+            return "uint32";
+        case FFI_TYPE_UINT64:
+            return "uint64";
+        case FFI_TYPE_BUFFER:
+            return "buffer";
+        case FFI_TYPE_STRUCT:
+            return "struct";
         default:
             return "unknown";
     }
@@ -134,9 +138,15 @@ fn char[] foreign_ffi_surface_type_name(FfiTypeTag tag, FfiHandlePolicy* policy)
         case FFI_TYPE_VOID:
             return "Void";
         case FFI_TYPE_INT:
+        case FFI_TYPE_INT32:
+        case FFI_TYPE_INT64:
+        case FFI_TYPE_UINT32:
+        case FFI_TYPE_UINT64:
             return "Integer";
         case FFI_TYPE_DOUBLE:
             return "Float64";
+        case FFI_TYPE_FLOAT32:
+            return "Float32";
         case FFI_TYPE_PTR:
             if (policy != null && policy.is_foreign_handle) return "ForeignHandle";
             return "ForeignHandle";
@@ -144,6 +154,10 @@ fn char[] foreign_ffi_surface_type_name(FfiTypeTag tag, FfiHandlePolicy* policy)
             return "Boolean";
         case FFI_TYPE_STRING:
             return "String";
+        case FFI_TYPE_BUFFER:
+            return "Buffer";
+        case FFI_TYPE_STRUCT:
+            return "Struct";
         default:
             return "Unknown";
     }
@@ -385,11 +399,6 @@ fn bool foreign_runtime_adapter_for_kind(ForeignRuntimeKind kind, ForeignRuntime
             out.call_bound = &foreign_runtime_call_c_abi_bound;
             return true;
         case FOREIGN_RUNTIME_NATIVE:
-        case FOREIGN_RUNTIME_PYTHON:
-        case FOREIGN_RUNTIME_JULIA:
-        case FOREIGN_RUNTIME_CUDA:
-        case FOREIGN_RUNTIME_CPP:
-        case FOREIGN_RUNTIME_POLYGLOT:
             return true;
         default:
             *out = {};

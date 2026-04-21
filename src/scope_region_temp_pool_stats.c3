@@ -12,6 +12,21 @@ struct ScopeTransferStats {
 
 ScopeTransferStats g_scope_transfer_stats;
 
+struct ScopeMemoryTelemetryStats {
+    usz total_temp_bytes_allocated;
+    usz total_escape_bytes_allocated;
+    usz temp_chunk_bytes_allocated;
+    usz escape_chunk_bytes_allocated;
+    usz temp_bytes_freed;
+    usz escape_bytes_freed;
+    usz scope_create_count;
+    usz scope_release_count;
+    usz scope_destroy_count;
+    usz scope_recycle_count;
+}
+
+ScopeMemoryTelemetryStats g_scope_memory_telemetry_stats;
+
 struct FiberTempPoolStats {
     usz take_hits;
     usz take_misses;
@@ -89,12 +104,36 @@ fn usz scope_dtor_count(ScopeDtor* dtor) @inline {
     return total;
 }
 
+fn void scope_telemetry_note_temp_alloc(usz aligned_size) @inline {
+    g_scope_memory_telemetry_stats.total_temp_bytes_allocated += aligned_size;
+}
+
+fn void scope_telemetry_note_escape_alloc(usz aligned_size) @inline {
+    g_scope_memory_telemetry_stats.total_escape_bytes_allocated += aligned_size;
+}
+
+fn void scope_telemetry_note_temp_chunk_alloc(ScopeChunk* chunk) @inline {
+    if (chunk != null) g_scope_memory_telemetry_stats.temp_chunk_bytes_allocated += chunk.capacity;
+}
+
+fn void scope_telemetry_note_escape_chunk_alloc(ScopeChunk* chunk) @inline {
+    if (chunk != null) g_scope_memory_telemetry_stats.escape_chunk_bytes_allocated += chunk.capacity;
+}
+
+fn void scope_telemetry_note_temp_chunk_release(ScopeChunk* chunk) @inline {
+    if (chunk != null) g_scope_memory_telemetry_stats.temp_bytes_freed += chunk.capacity;
+}
+
+fn void scope_telemetry_note_escape_chunk_release(ScopeChunk* chunk) @inline {
+    if (chunk != null) g_scope_memory_telemetry_stats.escape_bytes_freed += chunk.capacity;
+}
+
 fn void scope_print_memory_stats() {
     if (scope_test_quiet_requested()) return;
     io::printn("=== Scope Transfer Stats ===");
-    io::printfn("scope_splice_escapes calls: %d", (long)g_scope_transfer_stats.splice_calls);
-    io::printfn("scope_splice escape bytes moved: %d", (long)g_scope_transfer_stats.splice_escape_chunk_bytes);
-    io::printfn("scope_splice temp bytes freed: %d", (long)g_scope_transfer_stats.splice_temp_chunk_bytes_freed);
-    io::printfn("scope_splice temp dtors run: %d", (long)g_scope_transfer_stats.splice_temp_dtors_run);
-    io::printfn("scope_splice escape dtors moved: %d", (long)g_scope_transfer_stats.splice_escape_dtors_transferred);
+    io::printfn("scope_splice_escapes calls: %d", g_scope_transfer_stats.splice_calls);
+    io::printfn("scope_splice escape bytes moved: %d", g_scope_transfer_stats.splice_escape_chunk_bytes);
+    io::printfn("scope_splice temp bytes freed: %d", g_scope_transfer_stats.splice_temp_chunk_bytes_freed);
+    io::printfn("scope_splice temp dtors run: %d", g_scope_transfer_stats.splice_temp_dtors_run);
+    io::printfn("scope_splice escape dtors moved: %d", g_scope_transfer_stats.splice_escape_dtors_transferred);
 }

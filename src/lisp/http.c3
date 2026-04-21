@@ -8,19 +8,11 @@ import main;
 // HTTP/1.1 Client primitives
 // ============================================================
 fn Value* http_raise_fiber_required(Interp* interp, char[] op_name, char[] code) {
-    char[96] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "%s: requires running fiber context", (ZString)op_name)) {
-        return io_raise(interp, code, msg);
-    }
-    return io_raise(interp, code, "http op: requires running fiber context");
+    return async_io_raise_fiber_required(interp, op_name, code, "http op: requires running fiber context");
 }
 
 fn Value* http_raise_loop_unavailable(Interp* interp, char[] op_name, char[] code) {
-    char[96] ebuf;
-    if (try char[] msg = io::bprintf(&ebuf, "%s: libuv loop unavailable", (ZString)op_name)) {
-        return io_raise(interp, code, msg);
-    }
-    return io_raise(interp, code, "http op: libuv loop unavailable");
+    return async_io_raise_loop_unavailable(interp, op_name, code, "http op: libuv loop unavailable");
 }
 
 // ============================================================
@@ -54,8 +46,8 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     if (conn == null || conn.tag == ERROR) return conn;
     defer http_close_connection(conn, tcp, parsed.is_https, interp);
 
-    char[4096] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
-    usz? req_len = build_request("GET", &parsed, "", "", &req_buf, 4096);
+    char[ASYNC_IO_HTTP_GET_REQUEST_BUFFER_BYTES] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
+    usz? req_len = build_request("GET", &parsed, "", "", &req_buf, ASYNC_IO_HTTP_GET_REQUEST_BUFFER_BYTES);
     if (catch err = req_len) {
         return raise_error(interp, "http-get: request too large for buffer");
     }
@@ -66,11 +58,11 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     if (write_result != null && write_result.tag == ERROR) return write_result;
 
     // Heap-allocate: 65KB on stack overflows a 64KB StackCtx when called from a handle body.
-    char* resp_buf = (char*)mem::malloc(65536);
+    char* resp_buf = (char*)mem::malloc(ASYNC_IO_HTTP_RESPONSE_BUFFER_BYTES);
     if (resp_buf == null) return raise_error(interp, "http-get: out of memory for response buffer");
     defer mem::free(resp_buf);
     usz resp_len = 0;
-    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, 65000, &resp_len, interp);
+    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES, &resp_len, interp);
     if (read_result != null && read_result.tag == ERROR) return read_result;
 
     return parse_response(resp_buf[:resp_len], interp);
@@ -141,8 +133,8 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     defer http_close_connection(conn, tcp, parsed.is_https, interp);
 
     // Send request
-    char[8192] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
-    usz? req_len = build_request(method, &parsed, headers, body, &req_buf, 8192);
+    char[ASYNC_IO_HTTP_REQUEST_BUFFER_BYTES] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
+    usz? req_len = build_request(method, &parsed, headers, body, &req_buf, ASYNC_IO_HTTP_REQUEST_BUFFER_BYTES);
     if (catch err = req_len) {
         return raise_error(interp, "http-request: request too large for buffer");
     }
@@ -152,11 +144,11 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     if (write_result != null && write_result.tag == ERROR) return write_result;
 
     // Read response — heap-allocate to avoid StackCtx stack overflow.
-    char* resp_buf = (char*)mem::malloc(65536);
+    char* resp_buf = (char*)mem::malloc(ASYNC_IO_HTTP_RESPONSE_BUFFER_BYTES);
     if (resp_buf == null) return raise_error(interp, "http-request: out of memory for response buffer");
     defer mem::free(resp_buf);
     usz resp_len = 0;
-    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, 65000, &resp_len, interp);
+    Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES, &resp_len, interp);
     if (read_result != null && read_result.tag == ERROR) return read_result;
 
     return parse_response(resp_buf[:resp_len], interp);

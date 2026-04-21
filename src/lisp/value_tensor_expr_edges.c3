@@ -121,7 +121,7 @@ fn Value* tensor_promote_expr_child_to_escape(Value* child, Interp* interp, char
         child.scope_gen == interp.current_scope.escape_generation) {
         return child;
     }
-    Value* promoted = promote_to_escape(child, interp);
+    Value* promoted = boundary_promote_to_escape(child, interp);
     if (child != null && (promoted == null || is_error(promoted))) {
         return promoted == null ? raise_error(interp, message) : promoted;
     }

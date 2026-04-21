@@ -15,7 +15,16 @@ fn Value* root_store_direct_promote_to_scope(
     PromotionContext copy_ctx = {};
     boundary_promotion_context_begin(interp, &copy_ctx);
     defer boundary_promotion_context_end(interp, &copy_ctx);
-    return boundary_copy_to_parent_site_ctx(v, interp, COPY_SITE_PROMOTE_TO_ROOT, &copy_ctx);
+    BoundaryCopyResult copy_result = boundary_copy_to_parent_site_ctx_checked(
+        v,
+        interp,
+        COPY_SITE_PROMOTE_TO_ROOT,
+        &copy_ctx
+    );
+    if (!boundary_copy_result_ok(copy_result)) {
+        return raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+    }
+    return copy_result.value;
 }
 
 fn Value* root_store_route_to_scope(

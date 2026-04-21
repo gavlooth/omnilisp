@@ -127,6 +127,13 @@ fn Value* tensor_copy_expr_to_vulkan_graph_value(Value* source_value, Interp* in
         return tensor_copy_cpu_to_vulkan_value(source_value, interp);
     }
     if (source.dtype != TENSOR_DTYPE_FLOAT32) return null;
+    if (source.kind == TENSOR_PAYLOAD_VIEW) {
+        if (source.device != TENSOR_DEVICE_VULKAN || source.view_source == null) return null;
+        Value* view_source = tensor_copy_expr_to_vulkan_graph_value(source.view_source, interp);
+        if (view_source == null || view_source.tag == ERROR) return view_source;
+        if (!is_tensor(view_source) || view_source.tensor_val == null) return null;
+        return matrix_transpose_view_value(view_source, view_source.tensor_val, interp, "to-device: failed to preserve Vulkan transpose-view graph");
+    }
     if (source.kind == TENSOR_PAYLOAD_CONTRACT) {
         Value* left_value = tensor_copy_expr_to_vulkan_graph_value(source.contract_left, interp);
         if (left_value == null || left_value.tag == ERROR) return left_value;

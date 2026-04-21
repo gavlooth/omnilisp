@@ -106,7 +106,11 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
     // Create continuation wrapping the suspended context
     Continuation* k = interp.alloc_lisp_continuation();
     if (k == null) {
-        return make_error(interp, "handle: failed to allocate continuation");
+        return runtime_effect_raise(
+            interp,
+            "runtime/handle-continuation-allocation-failed",
+            "handle: failed to allocate continuation"
+        );
     }
     k.ctx = ctx;
     k.is_coroutine_based = true;

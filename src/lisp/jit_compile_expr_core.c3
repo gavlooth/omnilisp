@@ -48,6 +48,105 @@ fn bool jit_is_simple_expr(Expr* expr) {
     return expr.tag == E_LIT || expr.tag == E_VAR;
 }
 
+enum JitTailConstructorKind : char {
+    JIT_TAIL_CTOR_NONE,
+    JIT_TAIL_CTOR_CONS,
+    JIT_TAIL_CTOR_LIST,
+    JIT_TAIL_CTOR_ARRAY,
+}
+
+fn bool jit_symbol_matches_global_primitive(Interp* interp, SymbolId name, char[] expected) {
+    if (!ffi_char_slice_equals(interp.symbols.get_name(name), expected)) return false;
+    Value* val = interp.global_env.lookup(name);
+    return primitive_name_equals(val, expected);
+}
+
+fn JitTailConstructorKind jit_tail_constructor_kind(Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
+    if (!is_tail || expr == null || expr.call.func.tag != E_VAR) return JIT_TAIL_CTOR_NONE;
+    SymbolId fn_name = expr.call.func.var_expr.name;
+    if (jit_locals_shadow_symbol(locals, fn_name)) return JIT_TAIL_CTOR_NONE;
+    if (jit_symbol_matches_global_primitive(interp, fn_name, "cons")) return JIT_TAIL_CTOR_CONS;
+    if (jit_symbol_matches_global_primitive(interp, fn_name, "List") ||
+        jit_symbol_matches_global_primitive(interp, fn_name, "list")) return JIT_TAIL_CTOR_LIST;
+    if (jit_symbol_matches_global_primitive(interp, fn_name, "Array")) return JIT_TAIL_CTOR_ARRAY;
+    return JIT_TAIL_CTOR_NONE;
+}
+
+fn void? jit_compile_tail_cons_escape(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    if (expr.call.arg_count != 2) {
+        jit_compile_multi_arg(s, expr, interp, locals, true)!;
+        return;
+    }
+
+    int car_slot = _jit_allocai(s, 8);
+    jit_compile_expr(s, expr.call.args[0], interp, locals)!;
+    _jit_new_node_www(s, CODE_STXI_L, (long)car_slot, (long)JIT_FP, (long)JIT_R0);
+
+    jit_compile_expr(s, expr.call.args[1], interp, locals)!;
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+    _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)car_slot);
+    emit_call_3(s, locals, (void*)&jit_cons_escape, JIT_V0, JIT_V1, JIT_V2);
+}
+
+fn void? jit_compile_tail_list_escape(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    usz argc = expr.call.arg_count;
+    int* arg_slots = argc > 0
+        ? (int*)mem::malloc(int.sizeof * argc)
+        : null;
+    defer if (arg_slots != null) mem::free(arg_slots);
+    for (usz i = 0; i < argc; i++) {
+        arg_slots[i] = _jit_allocai(s, 8);
+        jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
+    }
+
+    emit_call_1(s, locals, (void*)&jit_make_nil_escape);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+
+    for (usz i = argc; i > 0; i--) {
+        _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)arg_slots[i - 1]);
+        emit_call_3(s, locals, (void*)&jit_cons_escape, JIT_V0, JIT_V1, JIT_V2);
+        _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+    }
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V2);
+}
+
+fn void? jit_compile_tail_array_escape(void* s, Expr* expr, Interp* interp, JitLocals* locals) {
+    usz argc = expr.call.arg_count;
+    int* arg_slots = argc > 0
+        ? (int*)mem::malloc(int.sizeof * argc)
+        : null;
+    defer if (arg_slots != null) mem::free(arg_slots);
+    for (usz i = 0; i < argc; i++) {
+        arg_slots[i] = _jit_allocai(s, 8);
+        jit_compile_expr(s, expr.call.args[i], interp, locals)!;
+        _jit_new_node_www(s, CODE_STXI_L, (long)arg_slots[i], (long)JIT_FP, (long)JIT_R0);
+    }
+
+    emit_call_2i(s, locals, (void*)&jit_make_array_escape, JIT_V0, (long)argc);
+    _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+
+    for (usz i = 0; i < argc; i++) {
+        _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)arg_slots[i]);
+        emit_call_4_rrir(s, locals, (void*)&jit_array_escape_set, JIT_V0, JIT_V2, (long)i, JIT_V1);
+        _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
+    }
+    _jit_new_node_ww(s, CODE_MOVR, JIT_R0, JIT_V2);
+}
+
+fn void? jit_compile_tail_constructor_escape(void* s, Expr* expr, Interp* interp, JitLocals* locals, JitTailConstructorKind kind) {
+    switch (kind) {
+        case JIT_TAIL_CTOR_CONS:
+            jit_compile_tail_cons_escape(s, expr, interp, locals)!;
+        case JIT_TAIL_CTOR_LIST:
+            jit_compile_tail_list_escape(s, expr, interp, locals)!;
+        case JIT_TAIL_CTOR_ARRAY:
+            jit_compile_tail_array_escape(s, expr, interp, locals)!;
+        case JIT_TAIL_CTOR_NONE:
+            jit_compile_multi_arg(s, expr, interp, locals, true)!;
+    }
+}
+
 fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals, bool is_tail) {
     // Check for macro expansion at compile time
     EvalResult macro_result;
@@ -67,6 +166,12 @@ fn void? jit_compile_call(void* s, Expr* expr, Interp* interp, JitLocals* locals
         if (!has_env) emit_load_env(s, locals, JIT_V2);
         void* helper = is_tail ? (void*)&jit_eval_call_cont_safe_tail : (void*)&jit_eval_call_cont_safe;
         emit_call_3i(s, locals, helper, JIT_V0, (long)expr, JIT_V2);
+        return;
+    }
+
+    JitTailConstructorKind tail_ctor = jit_tail_constructor_kind(expr, interp, locals, is_tail);
+    if (tail_ctor != JIT_TAIL_CTOR_NONE) {
+        jit_compile_tail_constructor_escape(s, expr, interp, locals, tail_ctor)!;
         return;
     }
 
@@ -187,12 +292,14 @@ fn void? jit_compile_multi_arg_many(void* s, Expr* expr, Interp* interp, JitLoca
     jit_compile_expr(s, expr.call.func, interp, locals)!;
     _jit_new_node_www(s, CODE_STXI_L, (long)func_slot, (long)JIT_FP, (long)JIT_R0);
 
-    emit_call_1(s, locals, (void*)&jit_make_nil);
+    void* nil_fn = is_tail ? (void*)&jit_make_nil_escape : (void*)&jit_make_nil;
+    emit_call_1(s, locals, nil_fn);
     _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
 
+    void* cons_fn = is_tail ? (void*)&jit_cons_escape : (void*)&jit_cons;
     for (usz i = argc; i > 0; i--) {
         _jit_new_node_www(s, CODE_LDXI_L, (long)JIT_V1, (long)JIT_FP, (long)arg_slots[i - 1]);
-        emit_call_3(s, locals, (void*)&jit_cons, JIT_V0, JIT_V1, JIT_V2);
+        emit_call_3(s, locals, cons_fn, JIT_V0, JIT_V1, JIT_V2);
         _jit_new_node_ww(s, CODE_MOVR, JIT_V2, JIT_R0);
     }
 

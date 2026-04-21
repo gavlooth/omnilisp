@@ -10,7 +10,33 @@ fn bool jit_val_literals_equal(ValueLiteralKey* a, ValueLiteralKey* b) @inline {
         case SYMBOL:
         case STRING:
             return (uint)a.sym_value == (uint)b.sym_value;
-        default:
+        case NIL:
+        case VOID:
+        case DOUBLE:
+        case FLOAT32:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case CONS:
+        case CLOSURE:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case HASHMAP:
+        case SET:
+        case FFI_HANDLE:
+        case ARRAY:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
+        case TIME_POINT:
+        case TENSOR:
             return a.int_value == b.int_value && (uint)a.sym_value == (uint)b.sym_value;
     }
 }

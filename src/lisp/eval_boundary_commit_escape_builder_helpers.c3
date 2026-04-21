@@ -138,7 +138,16 @@ fn Value* boundary_destination_detach_iterator_inner(
     main::ScopeRegion* saved_releasing_scope = interp.releasing_scope;
     interp.releasing_scope = target_scope;
     defer interp.releasing_scope = saved_releasing_scope;
-    return boundary_copy_to_parent_site_ctx(inner, interp, COPY_SITE_GENERIC, ctx);
+    BoundaryCopyResult copy_result = boundary_copy_to_parent_site_ctx_checked(
+        inner,
+        interp,
+        COPY_SITE_GENERIC,
+        ctx
+    );
+    if (!boundary_copy_result_ok(copy_result)) {
+        return raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+    }
+    return copy_result.value;
 }
 
 fn main::ScopeRegion* boundary_destination_build_scope_begin(

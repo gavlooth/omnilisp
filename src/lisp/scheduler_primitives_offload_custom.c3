@@ -3,11 +3,21 @@ import main;
 import std::core::mem;
 
 fn Value* scheduler_execute_custom_offload_job(OffloadCustomFn custom_fn, void* custom_ctx, Interp* interp) {
+    return scheduler_execute_custom_offload_job_owned(custom_fn, custom_ctx, null, interp);
+}
+
+fn Value* scheduler_execute_custom_offload_job_owned(
+    OffloadCustomFn custom_fn,
+    void* custom_ctx,
+    OffloadCustomFreeFn custom_free,
+    Interp* interp
+) {
     scheduler_init();
 
     OffloadWork work = {};
     work.custom_fn = custom_fn;
     work.custom_ctx = custom_ctx;
+    work.custom_free = custom_free;
     work.task_id = NO_TASK;
     return scheduler_execute_offload_work(&work, interp);
 }

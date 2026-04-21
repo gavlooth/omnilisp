@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 declare -a hotpath_files=(
   "src/lisp/eval_boundary_commit_flow.c3"
-  "src/lisp/jit_jit_eval_scopes.c3"
+  "src/lisp/jit_eval_scopes.c3"
   "src/lisp/eval_env_copy.c3"
   "src/lisp/eval_boundary_api.c3"
 )

@@ -1,5 +1,6 @@
 ;; ui/layout.omni — internal layout helpers for the public `ui` facade
 
+(import "nodes.omni")
 (import ui.nodes)
 
 (module ui.layout

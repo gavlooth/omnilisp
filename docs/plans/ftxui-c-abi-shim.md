@@ -1,6 +1,6 @@
 # FTXUI C ABI Shim Plan (Omni)
 
-Status: `active`
+Status: `closed for generic-builder-first ABI contract`
 Owner: Codex workflow
 Date: 2026-03-27
 
@@ -37,6 +37,30 @@ fragile one-to-one C++ mirror.
      forward-compatible extension.
 6. Error model:
    - integer status codes plus context-local last error string.
+7. String ownership:
+   - inbound `const char*` fields are borrowed only for the duration of the ABI
+     call,
+   - the shim must eagerly copy strings into C++ owned storage whenever FTXUI
+     state can retain them after the call returns,
+   - Omni-side lowering may free temporary C strings immediately after a
+     successful or failed call,
+   - `omni_ftxui_status_name(...)` returns static storage,
+   - `omni_ftxui_context_last_error_message(...)` returns context-owned storage
+     valid only until the next context error mutation, context clear, or context
+     destroy.
+8. Coverage target:
+   - the C ABI remains generic-builder-first for DOM, decorators, components,
+     canvas, table, events, and screen/app lifecycle,
+   - dedicated wrapper entry points are added only where a generic builder
+     cannot express the lifetime, callback, or state contract without leaking
+     C++ details,
+   - one-function-per-upstream-overload parity is explicitly not the target.
+9. Custom event payloads:
+   - `OMNI_FTXUI_EVENT_CUSTOM` is payload-free in the C ABI,
+   - text payloads remain limited to `CHARACTER` and `SPECIAL` events,
+   - richer user payloads must flow through callback `user_data` or the
+     Omni-facing effect/runtime layer, not through opaque event payload
+     ownership.
 
 ## Implementation Artifacts
 
@@ -78,7 +102,7 @@ one-to-one parity for every FTXUI feature family.
 | DOM core (`text`, `vtext`, `paragraph`, `separator`, `spinner`, `gauge`, layout boxes, `window`, `canvas`, `table`, `graph`) | Generic element builder | `omni_ftxui_element_create` | Implemented through versioned options, including graph callbacks |
 | Decorators / style chain | Generic decorator apply | `omni_ftxui_element_apply_decorator` | Implemented for current decorator enum set, including hyperlink and color-based selection decorators |
 | Component core widgets and containers | Generic component builder | `omni_ftxui_component_create` | Implemented for container/widget/window/modal/collapsible/hoverable/resizable-split families currently encoded in the enum set |
-| Callback wrappers | Wrapper helpers | `omni_ftxui_component_wrap_renderer`, `..._wrap_event_handler`, `..._wrap_maybe` | Implemented; callback exceptions are caught locally and mapped through the context error channel |
+| Callback wrappers | Wrapper helpers | `omni_ftxui_component_wrap_renderer`, `..._wrap_event_handler`, `..._wrap_action`, `..._handle_event`, `..._wrap_maybe` | Implemented; callback exceptions are caught locally and mapped through the context error channel; `handle_event` gives tests and runtime helpers a deterministic non-loop dispatch path |
 | Static element-to-component bridge | Wrapper helper | `omni_ftxui_component_from_element` | Implemented for the first `ui.run` slice |
 | Built-in quit wrapper | Wrapper helper | `omni_ftxui_component_wrap_quit_keys` | Implemented so the first live demo can exit with `q` / `Esc` without C callbacks; the wrapper retains the screen loop object until the wrapped component is destroyed |
 | Table / canvas helpers | Opaque handles + render ops | `omni_ftxui_table_*`, `omni_ftxui_canvas_*` | Implemented |
@@ -112,9 +136,11 @@ Current runner contract:
    at render time instead of exposing the raw callback-shaped graph ABI through
    the public `ui` surface.
 
-## Deferred Wrapper List (Explicit)
+## Frozen Non-Goal Wrapper List (Explicit)
 
 These are known areas still outside the currently implemented shim surface.
+They are intentionally outside the current ABI contract unless a concrete
+Omni-facing surface later requires them.
 
 1. Advanced DOM families:
    - arbitrary selection-style pixel callbacks,
@@ -132,7 +158,7 @@ These are known areas still outside the currently implemented shim surface.
    - styled separators/borders beyond the current enum coverage,
    - one-function-per-overload entry points where Omni callsites benefit from them.
 
-## 100% Coverage Roadmap
+## Contract Coverage Roadmap
 
 Treat "100% coverage" here as 100% of the chosen wrapper contract, not a
 byte-for-byte mirror of upstream FTXUI internals.
@@ -147,7 +173,7 @@ The completion rule is simple:
 4. no shipped call path may silently fall back when the contract says it should
    be supported.
 
-Execution order:
+Historical execution order:
 
 1. Lock the family matrix:
    - `screen` / loop / event control,
@@ -175,20 +201,28 @@ Execution order:
 
 Exit criterion for this plan:
 
-- the deferred wrapper list is empty for the chosen contract, and any remaining
-  gaps are explicitly frozen as non-goals instead of being left implicit.
+- the chosen generic-builder-first wrapper contract is implemented and
+  validated, and remaining upstream parity gaps are explicitly frozen as
+  non-goals instead of being left implicit.
 
-## Open Interface Questions
+Current result:
+
+- Exit criterion is met for the chosen ABI contract. Advanced upstream parity
+  families are intentionally frozen as non-goals, not pending hidden work.
+
+## Resolved Interface Questions
 
 1. String ownership semantics:
-   - keep eager C++ copies for inbound strings everywhere,
-   - or add explicit borrow/copy flags once Omni-side callsites exist?
+   - decision: keep eager C++ copies for retained inbound strings everywhere;
+   - no borrow/copy flags are exposed in the current ABI.
 2. Coverage target:
-   - continue with a generic-builder-first ABI,
-   - or add dedicated entry points for every major FTXUI family.
+   - decision: continue with a generic-builder-first ABI;
+   - add dedicated entry points only for families where generic builders cannot
+     preserve the correct lifetime, callback, or state semantics.
 3. Event/custom payload design:
-   - keep custom events payload-free,
-   - or add explicit payload ownership to the ABI.
+   - decision: keep custom events payload-free;
+   - do not add explicit event payload ownership until a concrete public
+     Omni-facing event contract requires it.
 
 ## Acceptance Criteria
 
@@ -204,16 +238,69 @@ Exit criterion for this plan:
 
 ## Next Actions
 
-1. Add focused integration tests for:
-   - context/screen lifecycle,
-   - event loop + post-event behavior,
-   - widget callback delivery,
-   - table/canvas element conversion.
-2. Land the first runnable examples under `examples/libraries/ftxui/`:
-   - richer widget/layout parity cases,
-   - decorator/style smoke cases,
-   - effect-driven runtime loop on top of the live `ui.run` substrate.
-3. Add the next missing feature family intentionally:
-   - advanced widget callbacks/options,
-   - arbitrary selection-style pixel callbacks / gradient decorators,
-   - or captured-mouse/selection runtime APIs.
+1. Continue through the Omni-facing UI runtime, not raw upstream parity:
+   `UI-LIB-RUNTIME-INTERACTIVE-LOOP-001` owns the next interactive
+   read/update/render surface.
+2. Reopen an ABI wrapper family only when a concrete Omni-facing feature cannot
+   be expressed through the existing generic builders or callback wrappers.
+
+## Coverage Checkpoints
+
+### 2026-04-21 Focused ABI Regression Slice
+
+Shipped focused ABI regressions for:
+
+1. context creation, last-error capture/clear, screen lifecycle, animation
+   request, event creation, post-event, and exit;
+2. table creation, selection helpers, table render-to-element conversion;
+3. canvas creation, point/line drawing, canvas render-to-element conversion;
+4. widget event callback delivery through `omni_ftxui_component_handle_event`;
+5. generic action callback delivery through `omni_ftxui_component_wrap_action`
+   plus Return-key dispatch.
+
+The slice added `omni_ftxui_component_handle_event(...)` as a public control
+helper instead of relying on an interactive loop for callback regression
+coverage. It also landed the previously documented-but-missing action callback
+wrapper and tightened event dispatch so callback failures are not cleared after
+`OnEvent`.
+
+Validation:
+
+- `scripts/build_omni_chelpers.sh`
+- `c3c build --obj-out obj`
+- bounded `advanced-ffi-system-surface` group:
+  `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface`
+  -> `pass=102 fail=0`
+- `scripts/run_ftxui_smoke.sh`
+
+### 2026-04-21 Wrapper Family Freeze
+
+Closed `FTXUI-C-ABI-WRAPPERS-001` by freezing the remaining upstream parity
+families as explicit non-goals for the current C ABI contract:
+
+1. arbitrary selection-style pixel callbacks,
+2. gradient-specific decorators,
+3. animated and richer widget option parity,
+4. active-screen access,
+5. captured-mouse exposure,
+6. `WithRestoredIO`,
+7. selection API callbacks,
+8. one-function-per-upstream-overload entry points.
+
+The implemented contract remains generic-builder-first. Dedicated wrappers are
+only added when a generic builder cannot preserve lifetime, callback, or state
+semantics. Added focused fail-closed regression coverage for the unsupported
+piped-input screen path so the runtime-helper non-goal is observable:
+`screen_create(... handle_piped_input=true ...)` and
+`screen_set_handle_piped_input(... true ...)` return
+`OMNI_FTXUI_STATUS_NOT_SUPPORTED`.
+
+Validation:
+
+- `c3c build --obj-out obj`
+- bounded `advanced-ffi-system-surface` group:
+  `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface`
+  -> `pass=105 fail=0`
+- `scripts/run_ftxui_smoke.sh`
+- targeted `git diff --check`
+- `scripts/check_file_size_gate.sh`

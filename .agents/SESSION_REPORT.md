@@ -45,7 +45,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
 - Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (899 lines)
-- Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (290 lines)
+- Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (4392 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -711,6 +711,79 @@ The historical content was split mechanically to keep individual files below the
     file-size gate, and `git diff --check`.
 - Signature: GPT-5 Codex
 
+## 2026-04-21 - Audit and Memory Proposal TODO Backfill
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Read `AUDIT_REPORT_2026-04-21.md`,
+    `memory/MEMORY_IMPROVEMENTS_PROPOSAL.md`, and `AGENTS.md`.
+  - Added [docs/todo_parts/todo_part_15.md](todo_parts/todo_part_15.md) and
+    indexed it from `TODO.md`.
+  - Populated 29 open checkbox items: 21 audit remediation items and 8 memory
+    architecture improvement items.
+  - Deduplicated overlapping audit/proposal items for multi-resource `defer`
+    cleanup, struct-size `$assert`s, and `scope_splice_escapes` reachability
+    validation.
+  - Validation: `git diff --check` passed.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-036 Shared Source Layout and Selected-Region Planner
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Closed the consolidated high-churn `ML-VK-080-036` boundary by adding a
+    shared `kernel-source-layout` metadata dictionary contract for checked
+    direct scale/unary/binary SPIR-V Kernel sources.
+  - Added top-level `selected-region-plan` metadata to `tensor/capture(source)`
+    for native scalar-map, tensor-map, direct-view, contract, and concrete
+    mixed view/dense-source lowering candidates.
+  - Updated `tensor/run(graph)` so native selected-region executors require a
+    matching selected-region candidate plus validated command-batch metadata;
+    corrupted selected-region plans fall back to serial Vulkan graph replay.
+  - Validation passed: `c3c build`, advanced collections `pass=1892 fail=0`,
+    primitive docs parity, Stage 3 source parity, code file-size gate,
+    `git diff --check`, and an open `ML-VK-080-0xx` TODO scan with no
+    unchecked child items.
+  - Future source-language compilation, arbitrary direct-SPIR-V descriptor
+    schemas beyond checked scale/unary/binary ABIs, memory-plan-backed runtime
+    reuse, arbitrary mixed schedules, and fused dispatch execution are future
+    capability boundaries, not active `ML-VK-080` residual children.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-033/034/035 Source-Binary ABI and Mixed DAG Lowering
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Added checked direct SPIR-V `source-binary-f32-v1` Kernel source validation
+    and runtime dispatch for storage2-output1 Vulkan `Float32` binary shaders.
+  - Added native runtime reuse for the concrete mixed graph family:
+    source -> transpose-view plus dense source -> tensor-map -> scalar-map*.
+  - Added command-batch metadata validation/lowering for that same mixed graph
+    family, with invalid metadata falling back to serial graph replay.
+  - Closed `ML-VK-080-033`, `ML-VK-080-034`, and `ML-VK-080-035`.
+    Follow-up review identified high churn in the residual handling, so the
+    remaining source-language/arbitrary-layout, broader mixed reuse, and broader
+    mixed/fused lowering work is consolidated under `ML-VK-080-036` as one
+    planner/source-contract closure boundary.
+  - Negative memory: do not inline the large source-binary positive execution
+    fixture in the long advanced collections harness. Keep the suite coverage
+    to constructor/fail-closed cases and use the standalone runtime probe or a
+    future non-variadic fixture builder.
+  - Validation so far: helper build, `c3c build`, focused advanced collections
+    `pass=1886 fail=0`, and standalone source-binary direct-SPIR-V `--eval`
+    probe returning `[vulkan 9.0 16.0]`.
+  - 13:07 CEST addendum: added the hard churn recognition rule in `AGENTS.md`
+    and consolidated the remaining `ML-VK-080` child work to one open item,
+    `ML-VK-080-036`. Former `ML-VK-080-037` and `ML-VK-080-038` are absorbed
+    as sub-boundaries. Post-correction checks: only `ML-VK-080-036` remains
+    open under `ML-VK-080`, and `git diff --check` passed. A final `c3c build`
+    was interrupted by owner redirect before completion; no code was changed by
+    the churn-consolidation addendum.
+- Signature: GPT-5 Codex
+
 ## 2026-04-21 - ML-VK-080-007 Checked Vulkan Single-Node Kernel Capture
 
 - Canonical report entry:
@@ -962,4 +1035,50 @@ The historical content was split mechanically to keep individual files below the
     `pass=1852 fail=0`, compiler slice `pass=289 fail=0`, basic Lisp
     `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - Audit and Memory Remediation Wave 1
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Closed `AUDIT-2026-C1-ADDRINFO-ABI` with typed C addrinfo/sockaddr helper
+    access and real resolver rendering coverage.
+  - Closed `AUDIT-2026-C2-RELATION-VALUE-LIFETIME` by replacing relation
+    column-key `Value*` caches with `SymbolId` caches and row-time root-backed
+    dictionary key construction.
+  - Closed `AUDIT-2026-H1-FORMAT-STRINGS` across the audit-listed files using
+    C3-supported `%d`/`%x` forms after `%ld`, `%zu`, and `%u` were rejected by
+    the compiler.
+  - Closed `AUDIT-2026-L1-INVALID-SYMBOL-ID` for the audit-listed compiler/JIT
+    sentinel sites.
+  - Closed `MEMORY-P0-PROMOTION-LEAKS` for closure clone/promotion, cons
+    promotion, destination cons escape, and env-scope failure cleanup paths.
+  - Validation passed: helper rebuild, async fallback policy, `c3c build`,
+    compiler `pass=290 fail=0`, deduce query `pass=214 fail=0`, async
+    `pass=65 fail=0`, bounded container memory-lifetime smoke
+    `pass=231 fail=0`, code file-size gate, and `git diff --check`.
+  - ASAN was not run; the other 25 items in part 15 remain open.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - Audit and Memory Remediation Wave 2
+
+- Canonical report entry:
+  - See Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md).
+- Summary:
+  - Closed `AUDIT-2026-H3-IGNORED-RETURNS`, `AUDIT-2026-H6-BOUNDED-CSTR`,
+    `AUDIT-2026-H7-OPTIONAL-UNWRAP`, and
+    `AUDIT-MEM-P1-STRUCT-SIZE-ASSERTS`.
+  - Ignored returns now either fail closed, log cleanup failure, or document a
+    valid fallback path.
+  - Project-path and REPL-server C string scans are bounded by fixed
+    buffer/line limits.
+  - Global scope mutex init now has an explicit invariant failure instead of
+    `!!`.
+  - ABI/interop struct sizes are compile-time asserted.
+  - Validation passed: `c3c build`, basic `pass=161 fail=0`, async
+    `pass=65 fail=0`, compiler `pass=290 fail=0`, focused advanced
+    collections `pass=1892 fail=0`, project-path smoke, REPL-server stdio
+    smoke, code file-size gate, and `git diff --check`.
+  - ASAN and synthetic unterminated-pointer fixtures were not run/added.
 - Signature: GPT-5 Codex

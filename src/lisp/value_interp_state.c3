@@ -255,6 +255,10 @@ struct Interp {
 
 }
 
+// ABI/interop guard: interpreter state is allocated and inspected by entry,
+// JIT, and runtime bridge code. Update bindings and this assertion together.
+$assert(Interp.sizeof == 2288);
+
 fn void Interp.init(Interp* self) {
     runtime_attach_interp(self);
     interp_init_runtime_state(self);

@@ -1,6 +1,7 @@
 module lisp;
 
 import std::io;
+import main;
 
 fn void run_advanced_process_wait_event_driven_test_impl(Interp* interp, int* pass, int* fail) {
     omni_uv_process_debug_reset_counters();
@@ -508,6 +509,108 @@ fn void run_advanced_uv_timer_callback_scope_release_test_impl(Interp* interp, i
             (int)root_after_create,
             (int)root_after_unhandle,
             cleanup_ok
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_advanced_uv_timer_callback_wrapper_failure_scope_release_test_impl(Interp* interp, int* pass, int* fail) {
+    bool ok = interp != null && interp.root_scope != null;
+    uint root_before = ok ? interp.root_scope.refcount : 0;
+    uint root_after_box_failure = 0;
+    uint root_after_value_failure = 0;
+    Value* box_failure = null;
+    Value* value_failure = null;
+
+    Value* callback = ok ? build_signal_noop_callback_impl(interp) : null;
+    ok = ok && callback != null && uv_timer_callback_callable(callback);
+
+    if (ok) {
+        Value*[1] create_args;
+        create_args[0] = callback;
+
+        int saved_box_force = g_value_force_make_ffi_box_alloc_fail_nth;
+        g_value_force_make_ffi_box_alloc_fail_nth = 1;
+        box_failure = prim_uv_timer_callback_handle(create_args[..], null, interp);
+        g_value_force_make_ffi_box_alloc_fail_nth = saved_box_force;
+        root_after_box_failure = interp.root_scope.refcount;
+
+        int saved_value_force = g_boundary_force_alloc_value_fail_nth;
+        g_boundary_force_alloc_value_fail_nth = 1;
+        value_failure = prim_uv_timer_callback_handle(create_args[..], null, interp);
+        g_boundary_force_alloc_value_fail_nth = saved_value_force;
+        root_after_value_failure = interp.root_scope.refcount;
+
+        ok = box_failure != null && box_failure.tag == ERROR &&
+            value_failure != null && value_failure.tag == ERROR &&
+            root_after_box_failure == root_before &&
+            root_after_value_failure == root_before;
+    }
+
+    if (ok) {
+        emit_pass("uv timer callback shim releases retained scope on wrapper allocation failure");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] uv timer callback shim releases retained scope on wrapper allocation failure (root_before=%d root_after_box_failure=%d root_after_value_failure=%d box_tag=%d value_tag=%d)",
+            (int)root_before,
+            (int)root_after_box_failure,
+            (int)root_after_value_failure,
+            box_failure != null ? (int)box_failure.tag : -1,
+            value_failure != null ? (int)value_failure.tag : -1
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_advanced_uv_timer_callback_finalizer_scope_release_test_impl(Interp* interp, int* pass, int* fail) {
+    bool ok = interp != null && interp.root_scope != null && interp.current_scope != null;
+    uint root_before = ok ? interp.root_scope.refcount : 0;
+    uint root_after_create = 0;
+    uint root_after_release = 0;
+    Value* handle = null;
+    main::ScopeRegion* saved_scope = ok ? interp.current_scope : null;
+    main::ScopeRegion* wrapper_scope = null;
+
+    Value* callback = ok ? build_signal_noop_callback_impl(interp) : null;
+    ok = ok && callback != null && uv_timer_callback_callable(callback);
+
+    if (ok) {
+        wrapper_scope = main::scope_create(saved_scope);
+        ok = wrapper_scope != null;
+    }
+
+    if (ok) {
+        interp.current_scope = wrapper_scope;
+        Value*[1] create_args;
+        create_args[0] = callback;
+        handle = prim_uv_timer_callback_handle(create_args[..], null, interp);
+        root_after_create = interp.root_scope.refcount;
+        interp.current_scope = saved_scope;
+
+        ok = handle != null && handle.tag != ERROR &&
+            root_after_create == root_before + 2;
+    }
+
+    if (wrapper_scope != null) {
+        interp.current_scope = saved_scope;
+        main::scope_release(wrapper_scope);
+        root_after_release = interp.root_scope.refcount;
+        wrapper_scope = null;
+    }
+
+    ok = ok && root_after_release == root_before;
+
+    if (ok) {
+        emit_pass("uv timer callback shim finalizer releases retained callback owner scope");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] uv timer callback shim finalizer releases retained callback owner scope (root_before=%d root_after_create=%d root_after_release=%d handle_tag=%d)",
+            (int)root_before,
+            (int)root_after_create,
+            (int)root_after_release,
+            handle != null ? (int)handle.tag : -1
         );
         (*fail)++;
     }

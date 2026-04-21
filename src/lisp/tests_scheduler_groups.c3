@@ -51,7 +51,7 @@ fn void run_scheduler_spawn_error_tests(Interp* interp, int* pass, int* fail) {
             emit_pass_literal("[PASS] scheduler_add_fiber rejects invalid coroutine deterministically");
             (*pass)++;
         } else {
-            io::printfn("[FAIL] scheduler_add_fiber invalid coroutine path (id=%d promo_failed=%s)", (long)id, promo_failed ? "yes" : "no");
+            io::printfn("[FAIL] scheduler_add_fiber invalid coroutine path (id=%d promo_failed=%s)", id, promo_failed ? "yes" : "no");
             (*fail)++;
         }
     }
@@ -206,7 +206,7 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
 
         if (cross_owner_ok) {
             char[96] buf;
-            if (try char[] src = io::bprintf(&buf, "(await %d)", (long)foreign_id)) {
+            if (try char[] src = io::bprintf(&buf, "(await %d)", foreign_id)) {
                 EvalResult local_wait = run(src, interp);
                 cross_owner_ok = (local_wait.error.has_error &&
                                   scheduler_test_str_contains(
@@ -227,7 +227,7 @@ fn void run_scheduler_await_structure_tests(Interp* interp, int* pass, int* fail
         if (foreign != null) {
             if (foreign_id != usz.max) {
                 char[96] cleanup_buf;
-                if (try char[] cleanup_src = io::bprintf(&cleanup_buf, "(await %d)", (long)foreign_id)) {
+                if (try char[] cleanup_src = io::bprintf(&cleanup_buf, "(await %d)", foreign_id)) {
                     (void)run(cleanup_src, foreign);
                 }
             }

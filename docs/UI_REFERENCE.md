@@ -23,6 +23,21 @@ values so callers can use:
 - `ui.runtime.*`
 - `ui.ftxui.*`
 
+Advanced callers may also import the dotted helper modules directly from the
+example subtree:
+
+```lisp
+(import ui.nodes)
+(import ui.layout)
+(import ui.style)
+(import ui.effects)
+(import ui.runtime)
+(import ui.ftxui)
+```
+
+Use selective imports from those modules when you do not also import the public
+`ui` facade namespace.
+
 ## Current Surface
 
 ### Isolated Static Evaluation
@@ -61,8 +76,6 @@ Available helpers:
 - `ui.nodes.menu`
 - `ui.nodes.hbox`
 - `ui.nodes.vbox`
-- `ui.nodes.stack`
-- `ui.nodes.spacer`
 - `ui.nodes.window`
 - `ui.nodes.graph`
 
@@ -161,15 +174,25 @@ Example:
 ```
 
 Effect trees are preserved as symbol-tagged Omni data and then normalized by
-`ui.runtime` before they are bridged into Omni's existing `signal` machinery.
+`ui.runtime` before they are bridged into Omni's existing `signal` machinery or
+handed to a concrete backend.
 
 ### Runtime
 
 Runtime helpers interpret normalized effect trees:
 
 - `ui.runtime.dispatch`
+- `ui.runtime.dispatch_to`
 - `ui.runtime.dispatch_one`
 - `ui.runtime.dispatch_children`
+- `ui.runtime.loop_to`
+- `ui.runtime.open_session_to`
+- `ui.runtime.update_session_to`
+- `ui.runtime.render_session_to`
+- `ui.runtime.read_event_session_to`
+- `ui.runtime.invalidate_session_to`
+- `ui.runtime.post_event_session_to`
+- `ui.runtime.close_session_to`
 
 Example:
 
@@ -182,14 +205,65 @@ Example:
 The backend bridge is shipped as:
 
 - `ui.ftxui.run`
+- `ui.ftxui.dispatch`
+- `ui.ftxui.loop`
+- `ui.ftxui.open_session`
+- `ui.ftxui.update_session`
+- `ui.ftxui.render_session`
+- `ui.ftxui.read_event_session`
+- `ui.ftxui.invalidate_session`
+- `ui.ftxui.post_event_session`
+- `ui.ftxui.close_session`
 
-`ui.run` is the public convenience entrypoint and delegates through the backend
-bridge.
+`ui.run` is the public node-tree convenience entrypoint and delegates through
+the backend bridge. `ui.loop` is the public effect-tree convenience entrypoint
+for the blocking FTXUI loop.
+
+`ui.ftxui.dispatch` consumes a declarative effect tree through
+`ui.runtime.dispatch_to` and executes a non-interactive FTXUI lifecycle:
+
+- root `open_tree` with `{'backend 'ftxui}`,
+- one or more `render_tree` children,
+- optional `invalidate_tree`,
+- optional `post_event_tree`,
+- optional `close_tree`.
+
+`read_event_tree` is intentionally not supported by this non-interactive
+dispatcher. Incremental UI state is handled through explicit session helpers.
+
+`ui.ftxui.loop` consumes a root `open_tree` with `{'backend 'ftxui}` and exactly
+one `render_tree` child, lowers it into a real FTXUI app, applies optional
+`invalidate_tree` / `post_event_tree` / `close_tree` effects, and then enters the
+blocking app loop. `close_tree` requests a pre-loop close and returns without
+blocking. `read_event_tree` remains fail-closed in this one-shot blocking helper;
+session-owned state is available through the explicit session API.
+
+Session helpers own one `ui-ftxui-session` foreign handle that wraps the FTXUI
+custom loop lifecycle. `ui.open_session` consumes a root `open_tree` with
+backend `ftxui` and exactly one `render_tree`. `ui.update_session` applies
+incremental `invalidate_tree`, `post_event_tree`, and `close_tree` effects.
+`ui.render_session` runs one non-blocking loop iteration and returns `true`
+while the session remains live. `ui.close_session` releases the handle and is
+idempotent. `ui.read_event_session` runs one blocking loop step and returns
+`nil` when no event was captured, or a dictionary with `kind` and optional
+`text` fields for the captured event. Character events use
+`{'kind 'character 'text "..."}`; known special keys use symbolic kinds such as
+`'arrow-left`, `'return`, or `'escape`; FTXUI payload-free custom events use
+`{'kind 'custom}`.
 
 Example:
 
 ```lisp
 (ui.run view)
+(ui.ftxui.dispatch effect-tree)
+(ui.loop effect-tree)
+
+(define session (ui.open_session effect-tree))
+(ui.update_session session update-tree)
+(ui.render_session session)
+(ui.post_event_session session {'kind 'character 'text "x"})
+(ui.read_event_session session)
+(ui.close_session session)
 ```
 
 ## Shipped Example Surface
@@ -203,6 +277,9 @@ Useful examples:
 - `smoke.omni` - node, layout, style, effect-shape, and dispatch smoke
 - `module_value_smoke.omni` - public namespace and dot-access smoke
 - `module_effect_smoke.omni` - module-owned effect smoke
+- `module_direct_smoke.omni` - direct dotted module import smoke
+- `module_backend_smoke.omni` - non-interactive backend lifecycle smoke
+- `module_session_smoke.omni` - session-owned update/render lifecycle smoke
 - `demo.omni` - live FTXUI-backed runner demo
 
 Validation gate:

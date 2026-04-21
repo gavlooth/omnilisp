@@ -90,6 +90,10 @@ struct ScopeRegion {
     ScopeRegion* pool_next;     // Freelist link (only used when in freelist)
 }
 
+// ABI/interop guard: scope regions are retained and inspected across runtime
+// boundary helpers. Update bindings and this assertion together on layout change.
+$assert(ScopeRegion.sizeof == 144);
+
 // =============================================================================
 // Constants
 // =============================================================================

@@ -28,7 +28,7 @@ Execution policy:
 
 - Extended invariant-hook call-site coverage into top-level run/JIT high-risk transitions:
   - `run_promote_result(...)` and `run(...)` in `src/lisp/eval_run_pipeline.c3`
-  - `jit_finalize_scoped_result(...)`, `jit_eval_in_single_scope(...)`, `jit_eval_in_call_scope(...)` in `src/lisp/jit_jit_eval_scopes.c3`
+  - `jit_finalize_scoped_result(...)`, `jit_eval_in_single_scope(...)`, `jit_eval_in_call_scope(...)` in `src/lisp/jit_eval_scopes.c3`
 - Added focused regression `run_memory_lifetime_boundary_scope_interleaving_test(...)` in `src/lisp/tests_tests.c3`:
   - exercises nested `boundary_enter_scope`/`boundary_leave_scope` interleaved with `boundary_push_child_scope`/`boundary_pop_child_scope`,
   - validates exact restoration of `current_scope` + `releasing_scope`,
@@ -50,7 +50,7 @@ Execution policy:
 ### Session 180 Follow-up (2026-03-05): TCO Env-Copy Boundary Restore Consolidation
 
 - Consolidated manual boundary-state save/restore in:
-  - `jit_copy_tco_env_chain_for_recycle(...)` (`src/lisp/jit_jit_eval_scopes.c3`)
+  - `jit_copy_tco_env_chain_for_recycle(...)` (`src/lisp/jit_eval_scopes.c3`)
 - Migration:
   - replaced ad-hoc `releasing_scope` save/restore with
     `boundary_save_interp_state(...)` + `defer boundary_restore_interp_state(...)`.
@@ -64,7 +64,7 @@ Execution policy:
 ### Session 181 Follow-up (2026-03-05): TCO Recycle Error-Path Rollback Consolidation
 
 - Refactored duplicated rollback/error branches in `jit_prepare_tco_recycle(...)`:
-  - added `jit_tco_recycle_restore_on_error(...)` in `src/lisp/jit_jit_eval_scopes.c3`.
+  - added `jit_tco_recycle_restore_on_error(...)` in `src/lisp/jit_eval_scopes.c3`.
 - Unified rollback guarantees now flow through one helper:
   - restore `current_scope` + `tco_recycle_scope`,
   - release fresh scope,
@@ -88,7 +88,7 @@ Execution policy:
 
 ### Session 183 Follow-up (2026-03-05): JIT TCO Runtime-State Helper Consolidation
 
-- Consolidated remaining distributed TCO call-state transitions in `src/lisp/jit_jit_eval_scopes.c3`:
+- Consolidated remaining distributed TCO call-state transitions in `src/lisp/jit_eval_scopes.c3`:
   - added `JitCallScopeState` save/restore helpers,
   - added recycle-scope set/activate helpers,
   - routed single/call-scope defer registration failure cleanup through `boundary_pop_child_scope(...)`.

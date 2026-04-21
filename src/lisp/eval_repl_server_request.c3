@@ -52,12 +52,7 @@ fn bool repl_server_handle_request(ReplServerConnection* conn, ReplServerRequest
         if (repl_server_worker_busy(worker)) {
             return repl_server_send_protocol_error(output, id, "protocol/server-busy", "repl server is busy");
         }
-        ReplServerSession* session = repl_server_new_session(conn);
-        if (session == null) {
-            return repl_server_send_protocol_error(output, id, "runtime/session-create-failed", "failed to create session");
-        }
-        if (!repl_server_worker_submit(worker, REPL_SERVER_CMD_CLONE, session, id)) {
-            repl_server_close_session(session);
+        if (!repl_server_worker_submit(worker, REPL_SERVER_CMD_CLONE, null, id)) {
             return repl_server_send_protocol_error(output, id, "protocol/server-busy", "repl server is busy");
         }
         return true;

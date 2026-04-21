@@ -329,6 +329,33 @@ fn bool copy_env_is_terminal_frame(Env* env, Interp* interp, usz depth) @inline 
     return depth >= 256;
 }
 
+fn bool copy_env_frame_in_target_or_root_scope(Env* env, Interp* interp) @inline {
+    if (env == null || interp == null) return false;
+    if (interp.root_scope != null && main::is_in_scope((void*)env, interp.root_scope)) return true;
+    return boundary_ptr_in_target_scope_chain_with_hint((void*)env, interp, env.scope_gen);
+}
+
+fn bool copy_env_parent_reusable_without_rewrite(Env* parent, Interp* interp) @inline {
+    if (parent == null || parent == interp.global_env) return true;
+    return copy_env_frame_in_target_or_root_scope(parent, interp);
+}
+
+fn bool copy_env_bindings_reusable_without_copy(Env* env, Interp* interp) @inline {
+    if (env == null) return false;
+    for (usz i = 0; i < env.binding_count; i++) {
+        Value* v = env.bindings[i].value;
+        if (v != null && !copy_env_should_reuse_value(v, interp)) return false;
+    }
+    return true;
+}
+
+fn bool copy_env_can_reuse_existing_frame(Env* env, Interp* interp) @inline {
+    if (env == null || env.is_root_persistent_box()) return false;
+    return copy_env_frame_in_target_or_root_scope(env, interp) &&
+           copy_env_parent_reusable_without_rewrite(env.parent, interp) &&
+           copy_env_bindings_reusable_without_copy(env, interp);
+}
+
 fn bool copy_env_parent_needs_rewrite(
     Env* parent,
     main::ScopeRegion* releasing_scope,

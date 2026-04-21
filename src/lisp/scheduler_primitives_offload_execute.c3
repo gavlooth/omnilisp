@@ -12,6 +12,7 @@ fn usz scheduler_max_rounds() @inline {
 fn Value* scheduler_run_offload_via_queue_work(OffloadWork* work, Interp* interp) {
     if (!g_scheduler.thread_task_mu_ready) {
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(
             interp,
             "scheduler/offload-task-mutex-unavailable",
@@ -20,6 +21,7 @@ fn Value* scheduler_run_offload_via_queue_work(OffloadWork* work, Interp* interp
     }
     if (!g_scheduler.thread_task_cv_ready) {
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(
             interp,
             "scheduler/offload-task-condition-unavailable",
@@ -28,6 +30,7 @@ fn Value* scheduler_run_offload_via_queue_work(OffloadWork* work, Interp* interp
     }
     if (!g_scheduler.uv_loop_ready || g_scheduler.uv_loop == null) {
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(
             interp,
             "scheduler/offload-backend-unavailable",
@@ -117,6 +120,7 @@ fn Value* scheduler_execute_offload_job_batch(Value* jobs, bool allow_internal_i
         if (parse_err != null) {
             for (usz j = 0; j <= i; j++) {
                 scheduler_release_shared(works[j].shared);
+                scheduler_release_custom_ctx(&works[j]);
             }
             return parse_err;
         }
@@ -127,6 +131,7 @@ fn Value* scheduler_execute_offload_job_batch(Value* jobs, bool allow_internal_i
     if (results.ptr == null) {
         for (usz i = 0; i < job_count; i++) {
             scheduler_release_shared(works[i].shared);
+            scheduler_release_custom_ctx(&works[i]);
         }
         return scheduler_raise(interp, "scheduler/offload-out-of-memory", "offload: out of memory");
     }
@@ -136,6 +141,7 @@ fn Value* scheduler_execute_offload_job_batch(Value* jobs, bool allow_internal_i
     if (handles.ptr == null) {
         for (usz i = 0; i < job_count; i++) {
             scheduler_release_shared(works[i].shared);
+            scheduler_release_custom_ctx(&works[i]);
         }
         return scheduler_raise(interp, "scheduler/offload-task-table-full", "offload: task table full");
     }

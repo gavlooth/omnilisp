@@ -98,7 +98,8 @@ fn void interp_init_module_state(Interp* self) {
     self.modules = null;
     self.module_hash_capacity = 0;
     self.module_hash_index = null;
-    (void)self.ensure_module_capacity(MODULE_INITIAL_CAPACITY);
+    bool module_ready = self.ensure_module_capacity(MODULE_INITIAL_CAPACITY);
+    if (!module_ready) return; // Leave module storage empty; later ensure calls can recover.
 }
 
 fn void interp_init_runtime_flags(Interp* self) {
@@ -134,5 +135,6 @@ fn void interp_init_macro_state(Interp* self) {
     self.gensym_counter = 0;
     self.macro_hash_capacity = 0;
     self.macro_hash_index = null;
-    (void)self.ensure_macro_capacity(MACRO_INITIAL_CAPACITY);
+    bool macro_ready = self.ensure_macro_capacity(MACRO_INITIAL_CAPACITY);
+    if (!macro_ready) return; // Leave macro storage empty; later ensure calls can recover.
 }

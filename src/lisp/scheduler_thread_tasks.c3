@@ -67,10 +67,12 @@ fn void scheduler_os_thread_entry(void* ctx_ptr) {
 
         if (!scheduler_try_begin_os_thread(thread_id, generation)) {
             scheduler_release_shared(work.shared);
+            scheduler_release_custom_ctx(&work);
             return;
         }
 
         OffloadCompletion* completion = scheduler_execute_offload(work);
+        scheduler_release_custom_ctx(&work);
         scheduler_complete_os_thread(thread_id, generation, completion);
         return;
     };

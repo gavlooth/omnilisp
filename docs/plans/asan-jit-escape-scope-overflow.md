@@ -33,8 +33,8 @@ Relevant test location:
 
 The same stack chain repeats across runs:
 
-1. `lisp.jit_apply_multi_args` (`src/lisp/jit_jit_helper_functions.c3`, around 2490/2525)
-2. `lisp.jit_eval_in_single_scope` (`src/lisp/jit_jit_helper_functions.c3`, around 507)
+1. `lisp.jit_apply_multi_args` (`src/lisp/jit_helper_functions.c3`, around 2490/2525)
+2. `lisp.jit_eval_in_single_scope` (`src/lisp/jit_helper_functions.c3`, around 507)
 3. `main.scope_create` / `scope_chunk_alloc` (`src/scope_region.c3`, around 256/209)
 4. `std.core.mem.malloc` (where corruption becomes visible)
 

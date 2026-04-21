@@ -88,7 +88,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
                 classification_io.provenance == BOUNDARY_RETURN_OWNED_BY_RELEASING_ESCAPE) {
                 if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
                     BoundaryScopeTransferResult splice_result =
-                        boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
+                        boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, result, interp.global_env);
                     if (splice_result.allowed) {
                         committed.value = result;
                         committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;
@@ -121,7 +121,7 @@ fn void boundary_commit_escape_handle_releasing_scope(
             boundary_should_promote(result, active_ctx, releasing_scope)) {
             if (boundary_commit_can_splice_escape_root(result, releasing_scope)) {
                 BoundaryScopeTransferResult splice_result =
-                    boundary_try_scope_splice_escapes_result(target_scope, releasing_scope);
+                    boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, result, interp.global_env);
                 if (splice_result.allowed) {
                     committed.value = result;
                     committed.outcome = BOUNDARY_COMMIT_SPLICED_RELEASING_SCOPE;

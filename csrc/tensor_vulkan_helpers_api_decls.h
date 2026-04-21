@@ -51,6 +51,80 @@ int omni_tensor_backend_vulkan_map_chain2_scalar_f32(
     void** out_device_ptr
 );
 long omni_tensor_backend_vulkan_map_chain2_dispatch_call_count(void);
+int omni_tensor_backend_vulkan_map_scalar_chain_f32(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t element_count,
+    size_t op_count,
+    const float* scalars,
+    const uint32_t* modes,
+    const uint32_t* ops,
+    size_t rank,
+    const size_t* shape,
+    const size_t* strides,
+    void** out_device_ptr
+);
+long omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count(void);
+int omni_tensor_backend_vulkan_map_view_scalar_chain_f32(const void* input_device_ptr, size_t input_byte_len, size_t element_count, size_t op_count, const float* scalars, const uint32_t* modes, const uint32_t* ops, size_t rank, const size_t* shape, const size_t* view_strides, void** out_device_ptr);
+long omni_tensor_backend_vulkan_map_view_scalar_chain_dispatch_call_count(void);
+int omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_f32(const void* view_device_ptr, const void* right_device_ptr, size_t view_byte_len, size_t right_byte_len, size_t element_count, uint32_t first_op, size_t scalar_op_count, const float* scalars, const uint32_t* modes, const uint32_t* ops, size_t rank, const size_t* shape, const size_t* view_strides, const size_t* right_strides, void** out_device_ptr);
+long omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count(void);
+int omni_tensor_backend_vulkan_map_tensor_scalar_chain_f32(
+    const void* left_device_ptr,
+    const void* right_device_ptr,
+    size_t byte_len,
+    size_t element_count,
+    size_t op_count,
+    const float* scalars,
+    const uint32_t* modes,
+    const uint32_t* ops,
+    size_t rank,
+    const size_t* shape,
+    const size_t* strides,
+    void** out_device_ptr
+);
+long omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count(void);
+int omni_tensor_backend_vulkan_contract_f32(
+    const void* left_device_ptr,
+    const void* right_device_ptr,
+    size_t left_rank,
+    size_t right_rank,
+    size_t axis_count,
+    const size_t* left_axes,
+    const size_t* right_axes,
+    size_t out_element_count,
+    size_t out_rank,
+    const size_t* left_shape,
+    const size_t* left_strides,
+    const size_t* right_shape,
+    const size_t* right_strides,
+    const size_t* out_shape,
+    const size_t* out_strides,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
+    const void* left_device_ptr,
+    const void* right_device_ptr,
+    size_t left_rank,
+    size_t right_rank,
+    size_t axis_count,
+    const size_t* left_axes,
+    const size_t* right_axes,
+    size_t out_element_count,
+    size_t out_rank,
+    const size_t* left_shape,
+    const size_t* left_strides,
+    const size_t* right_shape,
+    const size_t* right_strides,
+    const size_t* out_shape,
+    const size_t* out_strides,
+    size_t scalar_op_count,
+    const float* scalars,
+    const uint32_t* modes,
+    const uint32_t* ops,
+    void** out_device_ptr
+);
+long omni_tensor_backend_vulkan_contract_scalar_chain_dispatch_call_count(void);
 int omni_tensor_backend_vulkan_tail_status_from_payload_f64(double status_payload);
 int omni_tensor_backend_vulkan_tail_status_from_payload_f32(float status_payload);
 int omni_tensor_backend_vulkan_read_status_code_u32(void* status_device);
@@ -220,6 +294,43 @@ int omni_tensor_backend_vulkan_ml_clip_scale_f32(
     float scale,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_kernel_source_scale_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    float scale,
+    uint32_t local_size,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_kernel_source_scale_f32_spirv(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    float scale,
+    uint32_t local_size,
+    const uint32_t* shader_words,
+    size_t shader_word_count,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_kernel_source_unary_f32(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    uint32_t op,
+    uint32_t local_size,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_kernel_source_unary_f32_spirv(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t element_count,
+    uint32_t op,
+    uint32_t local_size,
+    const uint32_t* shader_words,
+    size_t shader_word_count,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_kernel_source_binary_f32_spirv(const void* left_device_ptr, size_t left_byte_len, const void* right_device_ptr, size_t right_byte_len, size_t element_count, uint32_t local_size, const uint32_t* shader_words, size_t shader_word_count, void** out_device_ptr);
 int omni_tensor_backend_vulkan_dispatch_three_buffer_f32(
     const void* left_device_ptr,
     size_t left_byte_len,

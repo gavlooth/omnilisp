@@ -213,7 +213,7 @@ fn void print_tensor_value(Value* v, SymbolTable* syms) {
     );
     for (usz i = 0; i < tensor.rank; i++) {
         if (i > 0) io::print(" ");
-        io::printf("%d", (long)tensor.shape[i]);
+        io::printf("%d", tensor.shape[i]);
     }
     io::print("]>");
 }

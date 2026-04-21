@@ -14,7 +14,7 @@ fn void Compiler.emit_prelude(Compiler* self) {
 }
 
 fn bool Compiler.is_zero_arg_lambda(Compiler* self, LambdaDef* def) @inline {
-    return (uint)def.param == 0xFFFFFFFF;
+    return def.param == INVALID_SYMBOL_ID;
 }
 
 fn void Compiler.emit_lambda_capture_struct(Compiler* self, LambdaDef* def) {

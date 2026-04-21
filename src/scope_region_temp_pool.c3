@@ -76,6 +76,7 @@ fn void scope_chunk_reclaim_temp(ScopeChunk* chunk) {
 }
 
 fn void scope_temp_chunk_release(ScopeRegion* scope, ScopeChunk* chunk) @inline {
+    scope_telemetry_note_temp_chunk_release(chunk);
     if (scope != null && scope.fiber_temp_eligible) {
         scope_chunk_reclaim_temp(chunk);
         return;

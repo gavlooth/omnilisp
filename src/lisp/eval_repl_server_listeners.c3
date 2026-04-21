@@ -1,13 +1,107 @@
 module lisp;
 
+import std::core::mem;
 import std::io;
 import main;
+
+struct ReplServerClientThreadCtx {
+    int client_fd;
+    bool preload_project;
+    char* preload_project_dir;
+    bool auth_required;
+    char* auth_token;
+    bool tcp_transport;
+}
 
 fn bool repl_server_tcp_host_is_loopback(char[] host) {
     if (host.len == 0) return false;
     return is_localhost_name(host) ||
         json_repl_str_eq(host, "127.0.0.1") ||
         json_repl_str_eq(host, "::1");
+}
+
+fn void repl_server_client_thread_entry(void* ctx_ptr) {
+    ReplServerClientThreadCtx* ctx = (ReplServerClientThreadCtx*)ctx_ptr;
+    if (ctx == null) return;
+
+    @pool_init(mem, 65536)
+    {
+        main::thread_registry_init();
+        defer main::thread_registry_shutdown();
+
+        int client_fd = ctx.client_fd;
+        bool preload_project = ctx.preload_project;
+        char* preload_project_dir = ctx.preload_project_dir;
+        bool auth_required = ctx.auth_required;
+        char* auth_token = ctx.auth_token;
+        bool tcp_transport = ctx.tcp_transport;
+        mem::free(ctx);
+
+        repl_server_handle_stream(
+            client_fd,
+            client_fd,
+            true,
+            tcp_transport ? "tcp" : "unix",
+            preload_project,
+            preload_project_dir,
+            auth_required,
+            auth_token
+        );
+        c_close_fd(client_fd);
+    };
+}
+
+fn bool repl_server_start_client_thread(
+    int client_fd,
+    bool tcp_transport,
+    bool preload_project = false,
+    char* preload_project_dir = null,
+    bool auth_required = false,
+    char* auth_token = null
+) {
+    if (client_fd < 0) return false;
+    ReplServerClientThreadCtx* ctx = (ReplServerClientThreadCtx*)mem::malloc(ReplServerClientThreadCtx.sizeof);
+    if (ctx == null) return false;
+    *ctx = {
+        .client_fd = client_fd,
+        .preload_project = preload_project,
+        .preload_project_dir = preload_project_dir,
+        .auth_required = auth_required,
+        .auth_token = auth_token,
+        .tcp_transport = tcp_transport,
+    };
+
+    void* thread_handle = omni_uv_thread_new();
+    if (thread_handle == null) {
+        mem::free(ctx);
+        return false;
+    }
+    if (omni_uv_thread_start(thread_handle, &repl_server_client_thread_entry, ctx) != 0) {
+        omni_uv_thread_free(thread_handle);
+        mem::free(ctx);
+        return false;
+    }
+
+    int detach_status = omni_uv_thread_detach_handle(thread_handle);
+    if (detach_status == 0) {
+        omni_uv_thread_free(thread_handle);
+    } else {
+        io::eprintfn("WARNING: REPL server client handler detach failed; thread handle retained by OS until exit");
+    }
+    return true;
+}
+
+fn void repl_server_reject_client_start_failure(int client_fd, bool socket_write) {
+    if (client_fd < 0) return;
+    ReplServerOutput output = {};
+    repl_server_output_init(&output, client_fd, socket_write);
+    defer repl_server_output_destroy(&output);
+    (void)repl_server_send_protocol_error(
+        &output,
+        "",
+        "runtime/client-handler-start-failed",
+        "failed to start repl client handler"
+    );
 }
 
 fn int repl_server_socket(char* socket_path, bool preload_project = false, char* preload_project_dir = null) {
@@ -45,8 +139,15 @@ fn int repl_server_socket(char* socket_path, bool preload_project = false, char*
             }
             return 1;
         }
-        repl_server_handle_stream(client_fd, client_fd, true, "unix", preload_project, preload_project_dir);
-        c_close_fd(client_fd);
+        if (!repl_server_start_client_thread(
+            client_fd,
+            false,
+            preload_project,
+            preload_project_dir
+        )) {
+            repl_server_reject_client_start_failure(client_fd, true);
+            c_close_fd(client_fd);
+        }
     }
 
     return 0;
@@ -106,17 +207,17 @@ fn int repl_server_tcp(char* host, int port, bool preload_project = false, char*
             }
             return 1;
         }
-        repl_server_handle_stream(
-            client_fd,
+        if (!repl_server_start_client_thread(
             client_fd,
             true,
-            "tcp",
             preload_project,
             preload_project_dir,
             true,
             auth_token
-        );
-        c_close_fd(client_fd);
+        )) {
+            repl_server_reject_client_start_failure(client_fd, true);
+            c_close_fd(client_fd);
+        }
     }
 
     return 0;

@@ -54,3 +54,46 @@ fn void boundary_debug_graph_audit_committed_escape_root(
         );
     }
 }
+
+fn bool boundary_debug_graph_audit_pre_splice_escape_root(
+    Value* root,
+    main::ScopeRegion* target_scope,
+    main::ScopeRegion* releasing_scope,
+    Env* global_env = null
+) @noinline {
+    if (!boundary_graph_audit_enabled()) return true;
+    if (root == null || target_scope == null || releasing_scope == null) return true;
+
+    boundary_telemetry_inc_graph_audit_invoked();
+
+    usz rate = boundary_graph_audit_rate();
+    usz max_roots = boundary_graph_audit_max_roots();
+    usz audit_index = g_boundary_decision_stats.graph_audit_invoked;
+
+    if (rate == 0) {
+        boundary_telemetry_inc_graph_audit_skipped_rate();
+        return true;
+    }
+
+    if (max_roots > 0 && audit_index > max_roots) {
+        boundary_telemetry_inc_graph_audit_skipped_max_roots();
+        return true;
+    }
+
+    if (rate > 1 && (audit_index - 1) % rate != 0) {
+        boundary_telemetry_inc_graph_audit_skipped_rate();
+        return true;
+    }
+
+    BoundaryGraphAuditResult audit =
+        boundary_graph_audit_escape_reachability_result(root, target_scope, true, releasing_scope, global_env);
+    if (audit.ok) return true;
+
+    io::eprintfn(
+        "[boundary][graph-audit] pre-splice escape root reachability violation reason=%s root_tag=%d violating_edge_tag=%d",
+        (ZString)boundary_graph_audit_reason_name(audit.reason),
+        (long)audit.root_tag,
+        (long)audit.violating_edge_tag
+    );
+    return false;
+}

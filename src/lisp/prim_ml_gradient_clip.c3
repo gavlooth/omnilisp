@@ -9,7 +9,7 @@ fn Value* ml_clip_invalid(Interp* interp, char[] message) @inline {
 }
 
 fn Value* ml_clip_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
-    if (ml_grad_touches_vulkan(value)) return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/clip-gradients: Vulkan gradient clipping kernels are not implemented", null);
+    if (ml_grad_touches_vulkan(value)) return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/clip-gradients: mixed or unsupported Vulkan gradient clipping contract", null);
     return tensor_expr_resolve_concrete_cpu(value, out_tensor, out_value, interp, label, "ml/clip-gradients: backend kernel is not implemented for non-CPU tensors");
 }
 

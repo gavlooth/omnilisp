@@ -135,7 +135,11 @@ fn Value* kernel_validate_spec(Value* spec, Interp* interp) {
     if (outputs == null || outputs.tag == ERROR) return outputs;
     if (Value* err = kernel_validate_io_array(outputs, interp, "kernel.outputs", false)) return err;
     if (Value* err = kernel_validate_push(nn_dict_get(spec, interp, "push"), interp)) return err;
-    return kernel_validate_workgroup(nn_dict_get(spec, interp, "workgroup"), interp);
+    if (Value* err = kernel_validate_workgroup(nn_dict_get(spec, interp, "workgroup"), interp)) return err;
+    if (kernel_has_source(spec, interp) && !kernel_source_entry_is_main(nn_dict_get(spec, interp, "entry"), interp)) {
+        return kernel_invalid(interp, "kernel.entry", "main", nn_dict_get(spec, interp, "entry"));
+    }
+    return kernel_validate_source(nn_dict_get(spec, interp, "source"), interp);
 }
 
 fn Value* kernel_copy_optional(Value* out, Value* spec, Interp* interp, char[] key) {
@@ -573,6 +577,9 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     }
     if (!nn_symbol_is(nn_dict_get(args[0], interp, "backend"), interp, "vulkan")) {
         return kernel_run_unsupported(interp, "kernel/run: only Vulkan Kernel execution is currently supported");
+    }
+    if (kernel_has_source(args[0], interp)) {
+        return kernel_run_source_f32(args[0], args[1], args[2], interp);
     }
     if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "scale-f32")) {
         return kernel_run_scale_f32(args[0], args[1], args[2], interp);

@@ -12,6 +12,9 @@ fn void repl_server_worker_run_command(ReplServerWorker* worker, ReplServerComma
 
     switch (command.kind) {
         case REPL_SERVER_CMD_CLONE: {
+            if (session == null && worker.conn != null) {
+                session = repl_server_new_session(worker.conn);
+            }
             if (session == null) {
                 (void)repl_server_send_protocol_error(output, command.id_ptr[:command.id_len], "runtime/session-create-failed", "failed to create session");
                 return;
@@ -84,17 +87,20 @@ fn void repl_server_worker_thread_entry(void* ctx_ptr) {
 
         while (true) {
             worker.mu.lock();
-            while (!worker.command_pending && !worker.stop_requested) {
+            while (worker.command_queue_count == 0 && !worker.stop_requested) {
                 (void)worker.cv.wait(&worker.mu);
             }
-            if (worker.stop_requested && !worker.command_pending) {
+            if (worker.stop_requested && worker.command_queue_count == 0) {
                 worker.mu.unlock();
                 break;
             }
 
-            ReplServerCommand command = worker.pending_command;
-            worker.pending_command = {};
-            worker.command_pending = false;
+            ReplServerCommand command = worker.command_queue[worker.command_queue_head];
+            worker.command_queue[worker.command_queue_head] = {};
+            worker.command_queue_head = (worker.command_queue_head + 1) %
+                REPL_SERVER_WORKER_QUEUE_CAPACITY;
+            worker.command_queue_count--;
+            worker.command_pending = worker.command_queue_count > 0;
             worker.busy = true;
             worker.active_kind = command.kind;
             worker.active_session = command.session;

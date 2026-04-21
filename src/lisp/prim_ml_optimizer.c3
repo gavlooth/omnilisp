@@ -15,7 +15,7 @@ fn Value* ml_optimizer_shape_mismatch(Interp* interp, char[] message) @inline {
 
 fn Value* ml_optimizer_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
     if (ml_grad_touches_vulkan(value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan optimizer kernels are not implemented", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: mixed or unsupported Vulkan optimizer contract", null);
     }
     return tensor_expr_resolve_concrete_cpu(
         value,
@@ -595,13 +595,13 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (nn_symbol_is(kind, interp, "rmsprop")) {
-        double alpha = 0.99;
-        double epsilon = 0.00000001;
+        double alpha = ML_OPTIMIZER_DEFAULT_RMSPROP_ALPHA;
+        double epsilon = ML_OPTIMIZER_DEFAULT_EPSILON;
         double momentum = 0.0;
         double weight_decay = 0.0;
-        err = ml_optimizer_parse_spec_number(args[0], interp, "alpha", false, 0.99, &alpha);
+        err = ml_optimizer_parse_spec_number(args[0], interp, "alpha", false, ML_OPTIMIZER_DEFAULT_RMSPROP_ALPHA, &alpha);
         if (err != null) return err;
-        err = ml_optimizer_parse_spec_number(args[0], interp, "epsilon", false, 0.00000001, &epsilon);
+        err = ml_optimizer_parse_spec_number(args[0], interp, "epsilon", false, ML_OPTIMIZER_DEFAULT_EPSILON, &epsilon);
         if (err != null) return err;
         err = ml_optimizer_parse_spec_number(args[0], interp, "momentum", false, 0.0, &momentum);
         if (err != null) return err;
@@ -645,15 +645,15 @@ fn Value* prim_ml_optimizer_step(Value*[] args, Env* env, Interp* interp) {
     bool is_adam = nn_symbol_is(kind, interp, "adam");
     bool is_adamw = nn_symbol_is(kind, interp, "adamw");
     if (!is_adam && !is_adamw) return ml_optimizer_invalid(interp, "ml/optimizer-step: unsupported optimizer kind");
-    double beta1 = 0.9;
-    double beta2 = 0.999;
-    double epsilon = 0.00000001;
+    double beta1 = ML_OPTIMIZER_DEFAULT_ADAM_BETA1;
+    double beta2 = ML_OPTIMIZER_DEFAULT_ADAM_BETA2;
+    double epsilon = ML_OPTIMIZER_DEFAULT_EPSILON;
     double weight_decay = 0.0;
-    err = ml_optimizer_parse_spec_number(args[0], interp, "beta1", false, 0.9, &beta1);
+    err = ml_optimizer_parse_spec_number(args[0], interp, "beta1", false, ML_OPTIMIZER_DEFAULT_ADAM_BETA1, &beta1);
     if (err != null) return err;
-    err = ml_optimizer_parse_spec_number(args[0], interp, "beta2", false, 0.999, &beta2);
+    err = ml_optimizer_parse_spec_number(args[0], interp, "beta2", false, ML_OPTIMIZER_DEFAULT_ADAM_BETA2, &beta2);
     if (err != null) return err;
-    err = ml_optimizer_parse_spec_number(args[0], interp, "epsilon", false, 0.00000001, &epsilon);
+    err = ml_optimizer_parse_spec_number(args[0], interp, "epsilon", false, ML_OPTIMIZER_DEFAULT_EPSILON, &epsilon);
     if (err != null) return err;
     err = ml_optimizer_parse_spec_number(args[0], interp, "weight-decay", false, 0.0, &weight_decay);
     if (err != null) return err;

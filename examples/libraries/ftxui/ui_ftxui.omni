@@ -1,10 +1,67 @@
 ;; ui_ftxui.omni — concrete FTXUI backend bridge for the public `ui` facade
 
+(import "ui_runtime.omni")
+
 (module ui-ftxui
   (export run
+          dispatch
+          loop
+          open_session
+          update_session
+          render_session
+          read_event_session
+          invalidate_session
+          post_event_session
+          close_session
           ftxui))
+
+(import ui-runtime (dispatch_to
+                    loop_to
+                    open_session_to
+                    update_session_to
+                    render_session_to
+                    read_event_session_to
+                    invalidate_session_to
+                    post_event_session_to
+                    close_session_to))
 
 (define (run view)
   (__ui-ftxui-run view))
 
-(define ftxui {'run run})
+(define (dispatch tree)
+  (dispatch_to __ui-ftxui-dispatch tree))
+
+(define (loop tree)
+  (loop_to __ui-ftxui-loop tree))
+
+(define (open_session tree)
+  (open_session_to __ui-ftxui-session-open tree))
+
+(define (update_session session tree)
+  (update_session_to __ui-ftxui-session-update session tree))
+
+(define (render_session session)
+  (render_session_to __ui-ftxui-session-render session))
+
+(define (read_event_session session)
+  (read_event_session_to __ui-ftxui-session-read-event session))
+
+(define (invalidate_session session)
+  (invalidate_session_to __ui-ftxui-session-invalidate session))
+
+(define (post_event_session session attrs)
+  (post_event_session_to __ui-ftxui-session-post-event session attrs))
+
+(define (close_session session)
+  (close_session_to __ui-ftxui-session-close session))
+
+(define ftxui {'run run
+               'dispatch dispatch
+               'loop loop
+               'open_session open_session
+               'update_session update_session
+               'render_session render_session
+               'read_event_session read_event_session
+               'invalidate_session invalidate_session
+               'post_event_session post_event_session
+               'close_session close_session})

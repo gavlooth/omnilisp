@@ -123,15 +123,15 @@ Source: `TODO.md`
 - [x] `AUDIT-JIT-MUTABLE-LOCAL-NULL-BOX-073` make JIT mutable-local helper
   paths fail closed when a root-box env allocation is missing
   - closure evidence:
-    - `src/lisp/jit_jit_apply_multi_prims_tail.c3` now makes
+    - `src/lisp/jit_apply_multi_prims_tail.c3` now makes
       `jit_env_lookup_local(...)` return an explicit
       `jit: missing mutable local binding` error when the helper receives a
       null env or cannot find the requested binding.
     - `jit_env_reparent(...)` now returns the effective env and treats a null
       source env as a no-op reparent to the requested parent, so compiled env
       capture does not reload a known-null helper result.
-    - `src/lisp/jit_jit_compile_expr_basic.c3` and
-      `src/lisp/jit_jit_emit_helpers.c3` now use the checked helper contracts.
+    - `src/lisp/jit_compile_expr_basic.c3` and
+      `src/lisp/jit_emit_helpers.c3` now use the checked helper contracts.
     - `src/lisp/tests_runtime_feature_jit_groups_more.c3` covers both helper
       contracts directly in the `jit-policy` slice.
   - validation:
@@ -167,7 +167,7 @@ Source: `TODO.md`
 - [x] `AUDIT-TCO-ENV-COPY-FAIL-CLOSED-071` make TCO env-chain copy reject
   boundary-copy failures before binding copied env frames
   - closure evidence:
-    - `src/lisp/jit_jit_eval_scope_copy.c3` now uses checked boundary-copy
+    - `src/lisp/jit_eval_scope_copy.c3` now uses checked boundary-copy
       results for TCO env-frame binding copy and aborts the copied frame when
       copy returns a fault, null value, or `ERROR`.
     - Parent rewrites for root-persistent env boxes now also fail closed when a
@@ -228,10 +228,10 @@ Source: `TODO.md`
 - [x] `AUDIT-JIT-MUTATION-PROMOTION-NULL-GUARDS-070` harden mutation/define
   paths against null promotion results
   - closure evidence:
-    - `src/lisp/jit_jit_closure_let_set_helpers.c3` now treats null cons-field
+    - `src/lisp/jit_closure_let_set_helpers.c3` now treats null cons-field
       promotion and null instance-field boundary-copy results as errors before
       mutating storage.
-    - `src/lisp/jit_jit_define_method_table.c3` now rejects null typed method
+    - `src/lisp/jit_define_method_table.c3` now rejects null typed method
       implementations and null global define promotion results before
       appending method table entries or replacing fallbacks.
     - `src/lisp/aot_type_definitions.c3` now rejects null AOT typed-method

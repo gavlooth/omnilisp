@@ -105,7 +105,7 @@ fn void print_check_result_text(char[] path, lisp::EvalResult result) {
     char[] message = check_error_message(result);
     io::printf("Check failed: %s", (ZString)path);
     if (result.error.line > 0) {
-        io::printf(" (%d:%d)", (int)result.error.line, (int)result.error.column);
+        io::printf(" (%d:%d)", result.error.line, result.error.column);
     }
     io::print(": ");
     for (usz i = 0; i < message.len; i++) {
@@ -131,13 +131,13 @@ fn void print_check_result_json(char[] path, lisp::EvalResult result, char[] cod
         io::print(",\"message\":");
         print_json_escaped_string(message);
         io::print(",\"range\":{\"start\":{\"line\":");
-        io::printf("%d", (int)line);
+        io::printf("%d", line);
         io::print(",\"character\":");
-        io::printf("%d", (int)column);
+        io::printf("%d", column);
         io::print("},\"end\":{\"line\":");
-        io::printf("%d", (int)line);
+        io::printf("%d", line);
         io::print(",\"character\":");
-        io::printf("%d", (int)(column + 1));
+        io::printf("%d", column + 1);
         io::print("}}}");
     }
     io::print("]}\n");

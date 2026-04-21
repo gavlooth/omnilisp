@@ -38,6 +38,9 @@ usz g_jit_interp_refcount = 0;
  * Compiled function type: takes Interp*, returns Value*
  */
 alias JitFn = fn Value*(Interp*);
+// JIT runtime globals are process-wide, but not free-threaded. Every mutating
+// access must pass through jit_require_owner_thread; cross-thread use is a hard
+// invariant violation rather than a data race tolerated by atomics.
 bool g_jit_pool_warned = false;
 bool g_jit_gc_needed = false;  // signals that GC should run between evals
 usz g_jit_exec_depth = 0;      // active generated JIT frame depth

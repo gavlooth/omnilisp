@@ -32,7 +32,7 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_nested_cons_wra
 
         interp.current_scope = target;
         interp.releasing_scope = releasing;
-        Value* copied_cons = setup_ok ? copy_to_parent(outer_cons, interp) : null;
+        Value* copied_cons = setup_ok ? test_copy_to_parent(outer_cons, interp) : null;
         Value* escaped_cons = setup_ok ? promote_to_escape(outer_cons, interp) : null;
 
         bool copy_ok = copied_cons != null &&
@@ -185,8 +185,8 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_primitive_wrapp
         interp.current_scope = target;
         interp.releasing_scope = releasing;
 
-        Value* reused = copy_to_parent(reusable, interp);
-        Value* copied = copy_to_parent(disjoint, interp);
+        Value* reused = test_copy_to_parent(reusable, interp);
+        Value* copied = test_copy_to_parent(disjoint, interp);
         BoundaryCopyResult rejected = boundary_copy_to_parent_site_ctx_checked(
             opaque,
             interp,

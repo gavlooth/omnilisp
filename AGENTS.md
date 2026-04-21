@@ -131,6 +131,7 @@ Follow `docs/C3_STYLE.md`. Especially:
 - Keep edits small and locally coherent
 - Do not silently defer known work; record it in `docs/plans/` with concrete next steps
 - Any deferred or blocked work must also add/update a concrete item in `TODO.md` so the next agent TODO scan can pick it up immediately
+- **Plans must be tracked with checkboxes in TODO parts:** Every plan document under `docs/plans/` that contains open or in-flight work must have corresponding line items in `docs/todo_parts/` using `- [ ]` (open) or `- [x]` (complete) checkboxes. Each item must have a unique task ID (e.g., `PHASE-001`, `AUDIT-042`), a one-sentence description, and a file/link reference to the plan it tracks. Do not leave plan documents without checkbox entries in TODO parts. When a plan phase ships or is abandoned, update its checkbox state immediately.
 - If behavior changes, update `memory/CHANGELOG.md` first, then update relevant area/spec docs
 - When committing, include all non-artifact changes from current and previous
   agent work that are still present in the workspace: source, tests, docs,
@@ -245,6 +246,24 @@ umbrella themes.
   - completed behavior belongs under closed/completed slices,
   - only genuinely unshipped behavior stays under the open item,
   - avoid status text that makes completed work look perpetually partial.
+- Churn recognition and consolidation rule:
+  - before creating a new residual item under an active parent, count the
+    recently closed child slices and open residuals for the same semantic
+    capability;
+  - churn is present when three or more landed slices close one implementation
+    case while preserving the same broader residual class, or when two or more
+    open residuals differ mainly by mechanism but depend on the same missing
+    contract, planner, ownership model, lowering abstraction, or execution
+    boundary;
+  - when churn is present, do not create another narrow numbered residual or
+    continue with another case-specific implementation as the neutral next
+    step;
+  - immediately name the repeated capability, demote the case-by-case approach
+    in the active plan, and consolidate the remaining work into one semantic
+    closure boundary with explicit sub-boundaries;
+  - the next implementation must target the shared abstraction or prove a
+    concrete blocker that prevents it. If blocked, record the blocker and the
+    required evidence in TODO, the active plan, the session report, and memory.
 - When work is blocked on a missing language-facing naming or surface-contract
   choice, do not respond only by splitting the backlog:
   - either record an explicit current decision that the surface stays frozen as-is,
@@ -298,10 +317,10 @@ If asked to audit:
 ## Refactoring
 
 - File slitting
-  - The hard 700 LOC split/gate rule applies only to code files from
-    2026-04-20 onward.
+  - The hard LOC split/gate rule applies only to code files and is now 1000
+    LOC from 2026-04-21 onward.
   - Documentation, plans, changelogs, session reports, and other
-    agent-operational artifacts are not subject to the hard 700 LOC rule,
+    agent-operational artifacts are not subject to the hard LOC rule,
     though they should stay readable and locally discoverable.
   - Always split files top-down.
   - Always split the largest files first, regardless of how hard it seems.

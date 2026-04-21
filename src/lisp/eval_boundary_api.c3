@@ -19,7 +19,7 @@ fn void boundary_mark_active_promotion_ctx_aborted(Interp* interp, PromotionCont
 }
 
 <*
-@require interp != null : "boundary_copy_to_parent_site_ctx: null interp"
+@require interp != null : "boundary_copy_to_parent_site_ctx_checked: null interp"
 *>
 fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
     Value* v,
@@ -61,18 +61,6 @@ fn BoundaryCopyResult boundary_copy_to_parent_site_ctx_checked(
         promotion_context_remember(ctx, v, copied, interp);
     }
     return boundary_copy_ok(copied);
-}
-
-<*
-@require interp != null : "boundary_copy_to_parent_site_ctx: null interp"
-*>
-fn Value* boundary_copy_to_parent_site_ctx(Value* v, Interp* interp, uint site, PromotionContext* ctx) @nodiscard @inline {
-    BoundaryCopyResult copy_result =
-        boundary_copy_to_parent_site_ctx_checked(v, interp, site, ctx);
-    if (!boundary_copy_result_ok(copy_result)) {
-        return raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
-    }
-    return copy_result.value;
 }
 
 <*

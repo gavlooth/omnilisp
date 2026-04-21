@@ -23,7 +23,7 @@ Recently Closed is retained below as a short audit trail.
 
 ## Live Queue
 
-- [ ] `OWNERSHIP-HARDENING-001` codify and harden the completed
+- [x] `OWNERSHIP-HARDENING-001` codify and harden the completed
   TEMP/ESCAPE ownership model
   - objective: treat the scope/region dual-lane model as architecturally
     complete, then reduce future drift by making the contract easier to find,
@@ -35,7 +35,7 @@ Recently Closed is retained below as a short audit trail.
     for ordinary language values, generalized root pinning, or a pure static
     escape-analysis correctness model while working this parent.
   - deferred TODOs under this parent:
-    - [ ] Add a concise accepted memory-model ADR to `docs/ARCHITECTURE.md`.
+    - [x] Add a concise accepted memory-model ADR to `docs/ARCHITECTURE.md`.
       - blocker/defer reason: the current truth is distributed across
         `memory/DESTINATION_ARENA_PLAN.md`, `memory/CHANGELOG.md`,
         `docs/LANGUAGE_SPEC.md`, tests, and implementation files; future
@@ -49,7 +49,7 @@ Recently Closed is retained below as a short audit trail.
         foreign-resource handles are the narrow exception.
       - validation: `git diff --check -- docs/ARCHITECTURE.md`; if wording
         changes public contracts, also run docs/spec parity checks.
-    - [ ] Add an ownership-boundary checklist to `docs/C3_STYLE.md`.
+    - [x] Add an ownership-boundary checklist to `docs/C3_STYLE.md`.
       - blocker/defer reason: new graph-carrying tags, wrappers, Tensor
         payloads, iterators, closures, and FFI objects can accidentally bypass
         copy/promotion/destruction/audit rules unless review has a concrete
@@ -60,7 +60,7 @@ Recently Closed is retained below as a short audit trail.
         or opaque exclusion, destructor authority, rollback behavior, and
         return/env/capture/destruction regression coverage.
       - validation: `git diff --check -- docs/C3_STYLE.md`.
-    - [ ] Expose or print first-class memory boundary statistics for debug
+    - [x] Expose or print first-class memory boundary statistics for debug
       builds.
       - blocker/defer reason: correctness is tested, but performance drift can
         silently convert O(1) return paths into fallback copies without a
@@ -72,7 +72,7 @@ Recently Closed is retained below as a short audit trail.
         graph-audit rejection count, and fiber-TEMP eligible/bypass counts.
       - validation: targeted memory-lifetime stats tests, `c3c build`, focused
         memory-lifetime suite, and `git diff --check`.
-    - [ ] Codify the durable-graph rule: temporary graphs may be cyclic;
+    - [x] Codify the durable-graph rule: temporary graphs may be cyclic;
       durable published forms should trend tree/DAG plus interned atoms.
       - blocker/defer reason: the root discussion captured this useful design
         rule, but it is not yet a documented project-facing review constraint
@@ -83,7 +83,7 @@ Recently Closed is retained below as a short audit trail.
         indices, handles, arrays, compact records, interned symbols/shapes, or
         immutable atoms when practical.
       - validation: `git diff --check` on the touched docs.
-    - [ ] Prefer handles/IDs at durable subsystem API boundaries and document
+    - [x] Prefer handles/IDs at durable subsystem API boundaries and document
       the policy.
       - blocker/defer reason: the core runtime should not be rewritten around
         handles, but durable subsystem APIs still need a consistent policy for
@@ -95,7 +95,7 @@ Recently Closed is retained below as a short audit trail.
         release/finalizer authority.
       - validation: docs `git diff --check`; for any implementation slice,
         add handle lifetime/finalizer regression coverage.
-    - [ ] Require boundary regression tests for every new graph-carrying
+    - [x] Require boundary regression tests for every new graph-carrying
       `ValueTag` or owned-edge wrapper.
       - blocker/defer reason: the biggest remaining ownership risk is future
         drift from new tags or wrappers that are not covered by return,
@@ -108,7 +108,7 @@ Recently Closed is retained below as a short audit trail.
         destructor safety, and audit traversal/opaque exclusion.
       - validation: focused memory-lifetime tests for the template/example,
         `c3c build`, and `git diff --check`.
-    - [ ] Keep static allocation routing as an optimization layer, not the
+    - [x] Keep static allocation routing as an optimization layer, not the
       correctness foundation.
       - blocker/defer reason: compile-time escape analysis can reduce
         promotion work, but Omni's dynamic Lisp surfaces, continuations,
@@ -120,7 +120,7 @@ Recently Closed is retained below as a short audit trail.
       - validation: docs `git diff --check`; for implementation slices,
         compare copy-site/commit counters before and after plus focused
         memory-lifetime tests.
-    - [ ] Normalize boundary vocabulary in docs without broad symbol churn.
+    - [x] Normalize boundary vocabulary in docs without broad symbol churn.
       - blocker/defer reason: names such as copy, promotion, destination,
         escape, commit, and splice still carry historical baggage even though
         the implemented model is coherent.
@@ -130,7 +130,7 @@ Recently Closed is retained below as a short audit trail.
         mixed/uncertain provenance.
       - validation: docs `git diff --check`; avoid renaming code symbols unless
         a separate implementation task proves it is worth the churn.
-    - [ ] Make opaque-payload ownership policy explicit.
+    - [x] Make opaque-payload ownership policy explicit.
       - blocker/defer reason: opaque wrappers are safe only when they either
         own no Omni values, expose explicit traversal/copy/promotion/destructor
         hooks, or fail closed at boundary promotion.
@@ -139,7 +139,7 @@ Recently Closed is retained below as a short audit trail.
         payloads, and Tensor backend payloads) against it.
       - validation: docs `git diff --check`; for any audit fixes, focused
         boundary/root-store/promotion tests plus `c3c build`.
-    - [ ] Add ownership-model examples for common runtime shapes.
+    - [x] Add ownership-model examples for common runtime shapes.
       - blocker/defer reason: abstract invariants are present, but future
         implementation work would benefit from concrete examples showing where
         allocation happens and what boundary commit must prove.
@@ -149,6 +149,21 @@ Recently Closed is retained below as a short audit trail.
         update, and failure during ESCAPE publication.
       - validation: docs `git diff --check`; link examples from the new ADR or
         `docs/C3_STYLE.md` checklist.
+  - completed 2026-04-21:
+    - Added accepted ADR `ADR-2026-04-21-A: Scope/Region Ownership Contract` to
+      `docs/ARCHITECTURE.md`.
+    - Added the ownership-boundary checklist, durable graph/handle policy, and
+      static allocation-routing rule to `docs/C3_STYLE.md`.
+    - ADR covers `ScopeRegion` as owner, TEMP/ESCAPE lanes, the committed
+      ESCAPE no-TEMP-edge invariant, shared boundary promotion context,
+      retired `scope_adopt` return flow, ordinary-value no-per-type-RC policy,
+      opaque payload exceptions, durable graph policy, handle/ID policy,
+      static allocation as optimization, glossary, and examples.
+    - Stats visibility is satisfied by the landed `runtime-memory-stats`
+      primitive and `OMNI_MEM_TELEMETRY=1` teardown JSON from the memory
+      telemetry wave.
+  - validation: `git diff --check -- docs/ARCHITECTURE.md docs/C3_STYLE.md
+    docs/todo_parts/todo_part_01.md TODO.md`; no runtime semantics changed.
 - [ ] `TENSOR-100F` continue the Vulkan math library baseline
   - objective: grow the current correctness-first Vulkan backend into an
     Omni-owned portable math library while preserving the existing

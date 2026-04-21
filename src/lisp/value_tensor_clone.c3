@@ -37,24 +37,24 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
     tensor.contract_left_axes = null;
     tensor.contract_right_axes = null;
     tensor.view_source = null;
+    bool tensor_committed = false;
+    defer {
+        if (!tensor_committed) tensor_free_payload(tensor);
+    }
 
     if (src.rank > 0) {
         if (src.shape == null || src.strides == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         if (src.rank > usz.max / usz.sizeof) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.shape = (usz*)mem::malloc(usz.sizeof * src.rank);
         if (tensor.shape == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.strides = (usz*)mem::malloc(usz.sizeof * src.rank);
         if (tensor.strides == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         mem::copy(tensor.shape, src.shape, usz.sizeof * src.rank);
@@ -67,55 +67,51 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         tensor.device_finalizer = null;
         tensor.is_view = true;
         tensor.mutable = false;
+        tensor_committed = true;
         return tensor;
     }
 
     if (clone_vulkan_device_payload) {
         if (src.byte_len > 0 && src.device_handle == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.device_handle = omni_tensor_backend_vulkan_retain(src.device_handle);
         if (src.byte_len > 0 && tensor.device_handle == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.device_finalizer = tensor.device_handle != null ? &tensor_vulkan_device_finalizer : null;
+        tensor_committed = true;
         return tensor;
     }
 
     if (clone_cuda_device_payload) {
         if (src.byte_len > 0 && src.device_handle == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         if (src.byte_len > 0) {
             void* device_handle = null;
             int status = omni_tensor_backend_cuda_alloc(src.byte_len, &device_handle);
             if (status != OMNI_TENSOR_CUDA_SUCCESS || device_handle == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
             status = omni_tensor_backend_cuda_copy_device_to_existing_device(src.device_handle, src.byte_len, device_handle);
             if (status != OMNI_TENSOR_CUDA_SUCCESS) {
                 omni_tensor_backend_cuda_free(device_handle);
-                tensor_free_payload(tensor);
                 return null;
             }
             tensor.device_handle = device_handle;
         }
         tensor.device_finalizer = tensor.device_handle != null ? &tensor_cuda_device_finalizer : null;
+        tensor_committed = true;
         return tensor;
     }
 
     if (src.kind == TENSOR_PAYLOAD_CONCRETE && src.byte_len > 0) {
         if (src.data == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.data = mem::malloc(src.byte_len);
         if (tensor.data == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         switch (src.dtype) {
@@ -128,7 +124,6 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
                 void** values = (void**)tensor.data;
                 for (usz i = 0; i < src.element_count; i++) values[i] = null;
                 if (!tensor_clone_big_integer_data(tensor, src)) {
-                    tensor_free_payload(tensor);
                     return null;
                 }
             }
@@ -136,7 +131,6 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
                 void** values = (void**)tensor.data;
                 for (usz i = 0; i < src.element_count; i++) values[i] = null;
                 if (!tensor_clone_big_float_data(tensor, src)) {
-                    tensor_free_payload(tensor);
                     return null;
                 }
             }
@@ -144,7 +138,6 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
                 void** values = (void**)tensor.data;
                 for (usz i = 0; i < src.element_count; i++) values[i] = null;
                 if (!tensor_clone_big_complex_data(tensor, src)) {
-                    tensor_free_payload(tensor);
                     return null;
                 }
             }
@@ -154,14 +147,12 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         if (src.map_left_big_integer_scalar != null) {
             tensor.map_left_big_integer_scalar = omni_big_integer_clone(src.map_left_big_integer_scalar);
             if (tensor.map_left_big_integer_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
         if (src.map_right_big_integer_scalar != null) {
             tensor.map_right_big_integer_scalar = omni_big_integer_clone(src.map_right_big_integer_scalar);
             if (tensor.map_right_big_integer_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
@@ -170,14 +161,12 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         if (src.map_left_big_float_scalar != null) {
             tensor.map_left_big_float_scalar = omni_big_float_clone(src.map_left_big_float_scalar);
             if (tensor.map_left_big_float_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
         if (src.map_right_big_float_scalar != null) {
             tensor.map_right_big_float_scalar = omni_big_float_clone(src.map_right_big_float_scalar);
             if (tensor.map_right_big_float_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
@@ -186,14 +175,12 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         if (src.map_left_big_complex_scalar != null) {
             tensor.map_left_big_complex_scalar = omni_big_complex_clone(src.map_left_big_complex_scalar);
             if (tensor.map_left_big_complex_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
         if (src.map_right_big_complex_scalar != null) {
             tensor.map_right_big_complex_scalar = omni_big_complex_clone(src.map_right_big_complex_scalar);
             if (tensor.map_right_big_complex_scalar == null) {
-                tensor_free_payload(tensor);
                 return null;
             }
         }
@@ -202,21 +189,19 @@ fn TensorVal* tensor_clone_payload(TensorVal* src) {
         if (src.contract_axis_count > usz.max / usz.sizeof ||
             src.contract_left_axes == null ||
             src.contract_right_axes == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.contract_left_axes = (usz*)mem::malloc(usz.sizeof * src.contract_axis_count);
         if (tensor.contract_left_axes == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         tensor.contract_right_axes = (usz*)mem::malloc(usz.sizeof * src.contract_axis_count);
         if (tensor.contract_right_axes == null) {
-            tensor_free_payload(tensor);
             return null;
         }
         mem::copy(tensor.contract_left_axes, src.contract_left_axes, usz.sizeof * src.contract_axis_count);
         mem::copy(tensor.contract_right_axes, src.contract_right_axes, usz.sizeof * src.contract_axis_count);
     }
+    tensor_committed = true;
     return tensor;
 }

@@ -199,7 +199,17 @@ fn void ffi_handle_release(FfiHandle* box) {
         return;
     }
 
-    (void)ffi_handle_release_payload(box);
+    bool released = ffi_handle_release_payload(box);
+    if (!released && box.handle_kind == FOREIGN_HANDLE_LIBRARY && box.lib_handle != null) {
+        // Library handles are managed by the shared dlopen registry;
+        // release the registry reference when the box is freed.
+        ffi_dlopen_registry_release(box.lib_name[:box.name_len]);
+        box.lib_handle = null;
+        released = true;
+    }
+    if (!released && ffi_handle_can_release_payload(box)) {
+        io::eprintfn("WARNING: FFI handle payload release failed for handle kind %d", (int)box.handle_kind);
+    }
     mem::free(box);
 }
 

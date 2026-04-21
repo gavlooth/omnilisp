@@ -37,9 +37,7 @@ fn bool jit_track_compiled_state(void* s, void* code_ptr, Interp* owner_interp, 
     if (compile_nonce_out != null) *compile_nonce_out = 0;
     if (owner_interp == null || compile_nonce_out == null) return false;
     if (!jit_attached_interp_serial(owner_interp, &owner_serial)) return false;
-    g_jit_compile_nonce_counter++;
-    if (g_jit_compile_nonce_counter == 0) g_jit_compile_nonce_counter = 1;
-    ulong compile_nonce = g_jit_compile_nonce_counter;
+    ulong compile_nonce = runtime_backend_next_compile_nonce();
     if (g_jit_state_count < JIT_STATE_POOL_SIZE) {
         g_jit_states[g_jit_state_count].state = s;
         g_jit_states[g_jit_state_count].code = code_ptr;

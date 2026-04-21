@@ -5,7 +5,10 @@ import std::io;
 
 // Scheduler core: state, pooled-work admission, initialization.
 // ============================================================
-// Global scheduler (single-threaded)
+// Global scheduler: fiber and uv-loop state is single-runtime-thread state.
+// Worker/offload completion crosses threads only through the scheduler's
+// mutex/condition-variable and wakeup queues; direct fiber-table mutation is
+// confined to the scheduler owner thread.
 Scheduler g_scheduler;
 SchedulerDomain g_scheduler_primary_domain;
 bool g_scheduler_initialized = false;

@@ -2,11 +2,101 @@ module lisp;
 
 const SYMBOL_MAX_NAME_LEN = 8192;
 
-bool g_symbol_table_force_entries_alloc_fail = false;
-bool g_symbol_table_force_hash_alloc_fail = false;
-bool g_symbol_table_force_grow_entries_alloc_fail = false;
-bool g_symbol_table_force_grow_hash_alloc_fail = false;
-bool g_symbol_table_force_name_alloc_fail = false;
+// Test-only allocation fault injection. These globals are compiled out of
+// normal builds and are intentionally driven by single-threaded test code.
+bool g_symbol_table_force_entries_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_symbol_table_force_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_symbol_table_force_grow_entries_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_symbol_table_force_grow_hash_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+bool g_symbol_table_force_name_alloc_fail @if($feature(OMNI_TEST_FAULT_INJECTION)) = false;
+
+fn bool symbol_table_fault_injection_enabled() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return true;
+    $else
+        return false;
+    $endif
+}
+
+fn void symbol_table_force_entries_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_symbol_table_force_entries_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void symbol_table_force_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_symbol_table_force_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void symbol_table_force_grow_entries_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_symbol_table_force_grow_entries_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void symbol_table_force_grow_hash_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_symbol_table_force_grow_hash_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn void symbol_table_force_name_alloc_fail_for_test(bool enabled) {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        g_symbol_table_force_name_alloc_fail = enabled;
+    $else
+        (void)enabled;
+    $endif
+}
+
+fn bool symbol_table_force_entries_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_symbol_table_force_entries_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool symbol_table_force_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_symbol_table_force_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool symbol_table_force_grow_entries_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_symbol_table_force_grow_entries_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool symbol_table_force_grow_hash_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_symbol_table_force_grow_hash_alloc_fail;
+    $else
+        return false;
+    $endif
+}
+
+fn bool symbol_table_force_name_alloc_fail_active() @inline {
+    $if $feature(OMNI_TEST_FAULT_INJECTION):
+        return g_symbol_table_force_name_alloc_fail;
+    $else
+        return false;
+    $endif
+}
 
 fn void SymbolTable.init(SymbolTable* self) {
     self.count = 0;
@@ -15,12 +105,12 @@ fn void SymbolTable.init(SymbolTable* self) {
     self.entries = null;
     self.hash_index = null;
 
-    SymbolEntry* entries = g_symbol_table_force_entries_alloc_fail
+    SymbolEntry* entries = symbol_table_force_entries_alloc_fail_active()
         ? null
         : (SymbolEntry*)mem::malloc(SymbolEntry.sizeof * SYMBOL_INITIAL_CAPACITY);
     if (entries == null) return;
 
-    SymbolId* hash_index = g_symbol_table_force_hash_alloc_fail
+    SymbolId* hash_index = symbol_table_force_hash_alloc_fail_active()
         ? null
         : (SymbolId*)mem::malloc(SymbolId.sizeof * SYMBOL_HASH_INITIAL_CAPACITY);
     if (hash_index == null) {
@@ -61,12 +151,12 @@ fn bool SymbolTable.grow(SymbolTable* self) {
     usz new_cap = self.capacity * 2;
     usz new_hash_cap = self.hash_capacity * 2;
 
-    SymbolEntry* new_entries = g_symbol_table_force_grow_entries_alloc_fail
+    SymbolEntry* new_entries = symbol_table_force_grow_entries_alloc_fail_active()
         ? null
         : (SymbolEntry*)mem::malloc(SymbolEntry.sizeof * new_cap);
     if (new_entries == null) return false;
 
-    SymbolId* new_hash_index = g_symbol_table_force_grow_hash_alloc_fail
+    SymbolId* new_hash_index = symbol_table_force_grow_hash_alloc_fail_active()
         ? null
         : (SymbolId*)mem::malloc(SymbolId.sizeof * new_hash_cap);
     if (new_hash_index == null) {
@@ -169,7 +259,7 @@ fn SymbolId SymbolTable.intern(SymbolTable* self, char[] name) {
     // Insert new symbol
     SymbolId id = (SymbolId)self.count;
     // Heap-allocate symbol name
-    char* heap_name = g_symbol_table_force_name_alloc_fail
+    char* heap_name = symbol_table_force_name_alloc_fail_active()
         ? null
         : (char*)mem::malloc(len + 1);
     if (heap_name == null) return INVALID_SYMBOL_ID;

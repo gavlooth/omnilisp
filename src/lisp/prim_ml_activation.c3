@@ -57,6 +57,46 @@ fn Value* prim_ml_relu(Value*[] args, Env* env, Interp* interp) {
     return ml_activation_map_binary(max_func, args[0], zero, env, interp);
 }
 
+fn Value* prim_ml_leaky_relu(Value*[] args, Env* env, Interp* interp) {
+    if (args.len != 1 && args.len != 2) return primitive_arity_raise(interp, "ml/leaky-relu", "1 or 2 arguments: input [negative-slope]", args.len);
+    TensorVal* source = null;
+    Value* err = ml_activation_validate_input(args[0], &source, interp, true, "ml/leaky-relu: currently supports Float64 and Float32 Tensor inputs");
+    if (err != null) return err;
+
+    double slope = 0.01;
+    if (args.len == 2) {
+        if (!try_numeric_to_double(args[1], &slope) || !conversion_double_is_finite(slope) || slope < 0.0) {
+            return primitive_arg_type_raise(interp, "ml/leaky-relu", 1, "non-negative finite number", args[1]);
+        }
+    }
+    float slope_f32 = 0.0f;
+    if (source.dtype == TENSOR_DTYPE_FLOAT32 && !tensor_double_to_float32(slope, &slope_f32)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/leaky-relu: negative-slope must be representable as Float32", null);
+    }
+
+    Value* max_func = ml_activation_lookup_primitive(interp, "max", "ml/leaky-relu: max primitive is unavailable");
+    if (max_func == null || max_func.tag == ERROR) return max_func;
+    Value* min_func = ml_activation_lookup_primitive(interp, "min", "ml/leaky-relu: min primitive is unavailable");
+    if (min_func == null || min_func.tag == ERROR) return min_func;
+    Value* mul_func = ml_activation_lookup_primitive(interp, "*", "ml/leaky-relu: multiplication primitive is unavailable");
+    if (mul_func == null || mul_func.tag == ERROR) return mul_func;
+    Value* add_func = ml_activation_lookup_primitive(interp, "+", "ml/leaky-relu: addition primitive is unavailable");
+    if (add_func == null || add_func.tag == ERROR) return add_func;
+
+    Value* zero = ml_activation_scalar_for_dtype(source.dtype, interp, 0.0, 0.0f, "ml/leaky-relu: currently supports Float64 and Float32 Tensor inputs");
+    if (zero == null || zero.tag == ERROR) return zero;
+    Value* slope_value = ml_activation_scalar_for_dtype(source.dtype, interp, slope, slope_f32, "ml/leaky-relu: currently supports Float64 and Float32 Tensor inputs");
+    if (slope_value == null || slope_value.tag == ERROR) return slope_value;
+
+    Value* positive = ml_activation_map_binary(max_func, args[0], zero, env, interp);
+    if (positive == null || positive.tag == ERROR) return positive;
+    Value* negative = ml_activation_map_binary(min_func, args[0], zero, env, interp);
+    if (negative == null || negative.tag == ERROR) return negative;
+    Value* scaled_negative = ml_activation_map_binary(mul_func, negative, slope_value, env, interp);
+    if (scaled_negative == null || scaled_negative.tag == ERROR) return scaled_negative;
+    return ml_activation_map_binary(add_func, positive, scaled_negative, env, interp);
+}
+
 fn Value* prim_ml_sigmoid(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "ml/sigmoid", "1 argument: input", args.len);
     TensorVal* source = null;
@@ -111,9 +151,9 @@ fn Value* prim_ml_gelu(Value*[] args, Env* env, Interp* interp) {
     if (one == null || one.tag == ERROR) return one;
     Value* half = ml_activation_scalar_for_dtype(source.dtype, interp, 0.5, 0.5f, "ml/gelu: currently supports Float32 Tensor inputs");
     if (half == null || half.tag == ERROR) return half;
-    Value* cube_scale = ml_activation_scalar_for_dtype(source.dtype, interp, 0.044715, 0.044715f, "ml/gelu: currently supports Float32 Tensor inputs");
+    Value* cube_scale = ml_activation_scalar_for_dtype(source.dtype, interp, ML_GELU_CUBE_SCALE, ML_GELU_CUBE_SCALE_F32, "ml/gelu: currently supports Float32 Tensor inputs");
     if (cube_scale == null || cube_scale.tag == ERROR) return cube_scale;
-    Value* sqrt_two_over_pi = ml_activation_scalar_for_dtype(source.dtype, interp, 0.7978845608028654, 0.7978846f, "ml/gelu: currently supports Float32 Tensor inputs");
+    Value* sqrt_two_over_pi = ml_activation_scalar_for_dtype(source.dtype, interp, ML_GELU_SQRT_TWO_OVER_PI, ML_GELU_SQRT_TWO_OVER_PI_F32, "ml/gelu: currently supports Float32 Tensor inputs");
     if (sqrt_two_over_pi == null || sqrt_two_over_pi.tag == ERROR) return sqrt_two_over_pi;
 
     Value* x_squared = ml_activation_map_binary(mul_func, args[0], args[0], env, interp);

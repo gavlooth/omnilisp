@@ -36,20 +36,27 @@ fn Value* boundary_build_destination_partial_escape(
     Value* escaped_first = partial.partial_val.first_arg;
     if (escaped_first != null &&
         !boundary_ptr_in_scope((void*)escaped_first, releasing_scope) &&
-        boundary_ptr_in_scope_chain_with_hint(
+        boundary_ptr_in_scope_chain_with_hint_cached(
             (void*)escaped_first,
+            interp,
             target_scope,
             escaped_first.scope_gen
         )) {
         // Preserve pointer identity for payloads already routed into the target
         // chain. The destination wrapper is still rebuilt below.
     } else {
-        Value* routed_first = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult first_copy = boundary_copy_to_parent_site_ctx_checked(
             partial.partial_val.first_arg,
             interp,
             COPY_SITE_GENERIC,
             ctx
         );
+        Value* routed_first = null;
+        if (!boundary_copy_result_ok(first_copy)) {
+            routed_first = raise_error(interp, boundary_copy_fault_message(first_copy.fault_code));
+        } else {
+            routed_first = first_copy.value;
+        }
         escaped_first = boundary_destination_promote_routed_escape(
             routed_first,
             interp,
@@ -82,20 +89,27 @@ fn Value* boundary_build_destination_partial_escape(
     Value* escaped_second = partial.partial_val.second_arg;
     if (escaped_second != null &&
         !boundary_ptr_in_scope((void*)escaped_second, releasing_scope) &&
-        boundary_ptr_in_scope_chain_with_hint(
+        boundary_ptr_in_scope_chain_with_hint_cached(
             (void*)escaped_second,
+            interp,
             target_scope,
             escaped_second.scope_gen
         )) {
         // Preserve pointer identity for payloads already routed into the target
         // chain. The destination wrapper is still rebuilt below.
     } else {
-        Value* routed_second = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult second_copy = boundary_copy_to_parent_site_ctx_checked(
             partial.partial_val.second_arg,
             interp,
             COPY_SITE_GENERIC,
             ctx
         );
+        Value* routed_second = null;
+        if (!boundary_copy_result_ok(second_copy)) {
+            routed_second = raise_error(interp, boundary_copy_fault_message(second_copy.fault_code));
+        } else {
+            routed_second = second_copy.value;
+        }
         escaped_second = boundary_destination_promote_routed_escape(
             routed_second,
             interp,
@@ -170,12 +184,18 @@ fn Value* boundary_build_destination_iterator_escape(
     defer boundary_destination_build_scope_abort(&build_scope);
     if (ctx != null && ctx.aborted) return iterator;
 
-    Value* routed_inner = boundary_copy_to_parent_site_ctx(
+    BoundaryCopyResult inner_copy = boundary_copy_to_parent_site_ctx_checked(
         iterator.iterator_val,
         interp,
         COPY_SITE_GENERIC,
         ctx
     );
+    Value* routed_inner = null;
+    if (!boundary_copy_result_ok(inner_copy)) {
+        routed_inner = raise_error(interp, boundary_copy_fault_message(inner_copy.fault_code));
+    } else {
+        routed_inner = inner_copy.value;
+    }
     routed_inner = boundary_destination_detach_iterator_inner(
         routed_inner,
         interp,

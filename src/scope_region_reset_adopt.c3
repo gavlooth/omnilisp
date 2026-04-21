@@ -89,6 +89,7 @@ fn void scope_splice_escapes(ScopeRegion* parent, ScopeRegion* child) {
     }
     scope_global_lock();
     if (g_scope_freelist_count < SCOPE_FREELIST_MAX) {
+        g_scope_memory_telemetry_stats.scope_recycle_count++;
         child.pool_next = g_scope_freelist;
         g_scope_freelist = child;
         g_scope_freelist_count++;

@@ -37,25 +37,25 @@ fn Value* ml_optimizer_checkpoint_validate_spec(Value* spec, Interp* interp) {
         return null;
     }
     if (nn_symbol_is(kind, interp, "adam") || nn_symbol_is(kind, interp, "adamw")) {
-        double beta1 = 0.9;
-        double beta2 = 0.999;
-        double epsilon = 0.00000001;
-        err = ml_optimizer_checkpoint_parse_number(spec, interp, "beta1", false, 0.9, &beta1);
+        double beta1 = ML_OPTIMIZER_DEFAULT_ADAM_BETA1;
+        double beta2 = ML_OPTIMIZER_DEFAULT_ADAM_BETA2;
+        double epsilon = ML_OPTIMIZER_DEFAULT_EPSILON;
+        err = ml_optimizer_checkpoint_parse_number(spec, interp, "beta1", false, ML_OPTIMIZER_DEFAULT_ADAM_BETA1, &beta1);
         if (err != null) return err;
-        err = ml_optimizer_checkpoint_parse_number(spec, interp, "beta2", false, 0.999, &beta2);
+        err = ml_optimizer_checkpoint_parse_number(spec, interp, "beta2", false, ML_OPTIMIZER_DEFAULT_ADAM_BETA2, &beta2);
         if (err != null) return err;
-        err = ml_optimizer_checkpoint_parse_number(spec, interp, "epsilon", false, 0.00000001, &epsilon);
+        err = ml_optimizer_checkpoint_parse_number(spec, interp, "epsilon", false, ML_OPTIMIZER_DEFAULT_EPSILON, &epsilon);
         if (err != null) return err;
         if (beta1 < 0.0 || beta1 >= 1.0 || beta2 < 0.0 || beta2 >= 1.0 || epsilon <= 0.0) return ml_optimizer_checkpoint_invalid(interp, "ml/save-optimizer: Adam beta values must be in [0, 1) and epsilon must be positive");
         return null;
     }
     if (nn_symbol_is(kind, interp, "rmsprop")) {
-        double alpha = 0.99;
-        double epsilon = 0.00000001;
+        double alpha = ML_OPTIMIZER_DEFAULT_RMSPROP_ALPHA;
+        double epsilon = ML_OPTIMIZER_DEFAULT_EPSILON;
         double momentum = 0.0;
-        err = ml_optimizer_checkpoint_parse_number(spec, interp, "alpha", false, 0.99, &alpha);
+        err = ml_optimizer_checkpoint_parse_number(spec, interp, "alpha", false, ML_OPTIMIZER_DEFAULT_RMSPROP_ALPHA, &alpha);
         if (err != null) return err;
-        err = ml_optimizer_checkpoint_parse_number(spec, interp, "epsilon", false, 0.00000001, &epsilon);
+        err = ml_optimizer_checkpoint_parse_number(spec, interp, "epsilon", false, ML_OPTIMIZER_DEFAULT_EPSILON, &epsilon);
         if (err != null) return err;
         err = ml_optimizer_checkpoint_parse_number(spec, interp, "momentum", false, 0.0, &momentum);
         if (err != null) return err;

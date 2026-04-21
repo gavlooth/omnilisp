@@ -1,9 +1,9 @@
 ;; ui/evaluate.omni — static tree evaluator for the public `ui` facade
 
-(import "ui_nodes.omni")
-(import "ui_layout.omni")
-(import "ui_style.omni")
-(import "ui_effects.omni")
+(import "nodes.omni")
+(import "layout.omni")
+(import "style.omni")
+(import "effects.omni")
 
 (import ui.nodes (text
                   paragraph
@@ -134,7 +134,7 @@
                                                                                                             (effect_node 'post_event
                                                                                                                          (ui-evaluate (car args))
                                                                                                                          (ui-evaluate-children (cdr args)))
-                                                                                                            (assert! false (cons 'unknown-ui-static-tag tag))))))))))))))))))))))))))))
+                                                                                                            (assert! false (cons 'unknown-ui-static-tag tag))))))))))))))))))))))))))))))
 
 (define (ui-evaluate form)
   (if (array? form)

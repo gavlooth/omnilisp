@@ -101,6 +101,10 @@ struct Env {
     Binding[4]            inline_bindings;
 }
 
+// ABI/interop guard: Env frames are captured and copied across runtime/JIT
+// boundaries. Update helper bindings and this assertion together on layout change.
+$assert(Env.sizeof == 136);
+
 fn bool Env.is_root_persistent_box(Env* self) @inline {
     return self != null && self.lifetime_kind == ENV_LIFETIME_ROOT_PERSISTENT_MUTABLE_BOX;
 }

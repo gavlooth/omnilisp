@@ -33,8 +33,7 @@ fn Value* deduce_relation_materialize_row_dict(
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
     }
     for (usz i = 0; i < rel.col_count && i < vals.len; i++) {
-        Value* k = rel.column_key_values[i];
-        if (!hashmap_set_checked(dict.hashmap_val, k, vals[i], interp)) {
+        if (!hashmap_set_symbol_checked(dict.hashmap_val, rel.column_key_values[i], vals[i], interp)) {
             return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-scan-range: out of memory");
         }
     }
@@ -57,26 +56,19 @@ fn Value* deduce_relation_ensure_column_key_values(Relation* rel, Interp* interp
     if (rel.col_count == 0) return null;
     if (rel.column_key_values != null) return null;
 
-    if (rel.col_count > usz.max / Value*.sizeof) {
+    if (rel.col_count > usz.max / SymbolId.sizeof) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
     if (g_deduce_force_column_key_values_oom || boundary_c_getenv("OMNI_DEDUCE_FORCE_COLUMN_KEY_VALUES_OOM") != null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
-    Value** key_values = (Value**)mem::malloc(Value*.sizeof * rel.col_count);
+    SymbolId* key_values = (SymbolId*)mem::malloc(SymbolId.sizeof * rel.col_count);
     if (key_values == null) {
         return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
     }
 
     for (usz i = 0; i < rel.col_count; i++) {
-        Value* key = boundary_alloc_value_in_root(interp);
-        if (key == null) {
-            mem::free(key_values);
-            return deduce_raise(interp, "deduce/query-out-of-memory", "deduce-query: out of memory");
-        }
-        key.tag = SYMBOL;
-        key.sym_val = rel.columns[i];
-        key_values[i] = key;
+        key_values[i] = rel.columns[i];
     }
 
     rel.column_key_values = key_values;

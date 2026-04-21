@@ -51,6 +51,10 @@ fn Env* copy_tco_env_chain(Env* src, Interp* interp) {
         return src;
     }
 
+    if (copy_env_can_reuse_existing_frame(src, interp)) {
+        return src;
+    }
+
     // Recursive: copy parent chain first (bottom-up)
     Env* parent_copy = copy_tco_env_chain(src.parent, interp);
     if (src.parent != null && src.parent != interp.global_env && parent_copy == null) return null;

@@ -1,0 +1,51 @@
+;; module_session_smoke.omni — verifies session-owned FTXUI runtime lifecycle
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_session_smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(define session-view
+  (ui.window
+    "Session"
+    (ui.vbox
+      (list
+        (ui.text "session-runtime")
+        (ui.text "incremental render/update smoke")))))
+
+(define session-effects
+  (ui.open_tree {'backend 'ftxui}
+    (ui.render_tree {'node session-view})))
+
+(define update-effects
+  (ui.open_tree {'backend 'ftxui}
+    (ui.invalidate_tree {'reason 'session-smoke})))
+
+(define session (ui.open_session session-effects))
+(define meta-before-close (foreign-describe session))
+(define updated (ui.update_session session update-effects))
+(define invalidated (ui.invalidate_session session))
+(define rendered (ui.render_session session))
+(define posted (ui.post_event_session session {'kind 'character 'text "x"}))
+(define read-event (ui.read_event_session session))
+
+(define closed (ui.close_session session))
+(define close-again (ui.close_session session))
+(define meta-after-close (foreign-describe session))
+
+(define render-after-close-error
+  (handle
+    (ui.render_session session)
+    (raise msg (String msg))))
+
+(and (= (ref meta-before-close 'name) 'ui-ftxui-session)
+     (= (ref meta-before-close 'live) true)
+     (= updated session)
+     (= invalidated session)
+     (= posted session)
+     (= rendered true)
+     (= (ref read-event 'kind) 'character)
+     (= (ref read-event 'text) "x")
+     (= closed true)
+     (= close-again true)
+     (= (ref meta-after-close 'live) nil)
+     (= render-after-close-error "ui-ftxui.session: session handle is closed"))

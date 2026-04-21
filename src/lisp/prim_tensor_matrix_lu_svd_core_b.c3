@@ -332,6 +332,7 @@ fn Value* matrix_transpose_view_value(Value* source_value, TensorVal* matrix, In
     tensor.storage_offset = matrix.storage_offset;
     tensor.storage_element_count = matrix.storage_element_count;
     tensor.storage_byte_len = matrix.storage_byte_len;
+    tensor.alias_origin = matrix.alias_origin != null ? matrix.alias_origin : (void*)matrix;
     tensor.data = matrix.device == TENSOR_DEVICE_CPU ? matrix.data : null;
     tensor.device_handle = matrix.device == TENSOR_DEVICE_VULKAN ? matrix.device_handle : null;
     tensor.device_finalizer = null;

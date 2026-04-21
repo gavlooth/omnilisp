@@ -20,7 +20,11 @@ thread::OnceFlag g_scope_global_once;
 tlocal char g_scope_thread_marker;
 
 fn void scope_global_mu_init_once() {
-    g_scope_global_mu.init()!!;
+    if (catch err = g_scope_global_mu.init()) {
+        // The global scope lock guards shared region state; continuing without it
+        // would make scope freelist/generation ownership invariants unsound.
+        unreachable("scope global mutex init failed");
+    }
 }
 
 fn void scope_global_lock() @inline {

@@ -6,7 +6,7 @@ Source: `TODO.md`
   - closure evidence:
     - the crash was isolated to the `stale-raise-scrub` JIT policy case, but
       the actual fault site was the TCO recycle TEMP-graph scan in
-      `src/lisp/jit_jit_eval_scope_chain_helpers.c3`, not stale raise state.
+      `src/lisp/jit_eval_scope_chain_helpers.c3`, not stale raise state.
     - `jit_graph_binding_reaches_temp_scope(...)` no longer allocates four
       `4096`-entry pointer arrays on the runtime stack; it now uses one
       heap-backed `JitTempGraphScan`, closing the entry-time stack-overflow
@@ -100,7 +100,7 @@ Source: `TODO.md`
 
 - [x] `AUDIT-COMPILER-DIAGNOSTIC-PARITY-003` unify remaining JIT/AOT diagnostic drift and cover prelude-remapped parser coordinates
   - closure evidence:
-    - `src/lisp/jit_jit_apply_multi_prims.c3` now emits the same canonical under-arity text as the tail/AOT helpers for both fixed multi-arg closures and variadic multi-arg closure application.
+    - `src/lisp/jit_apply_multi_prims.c3` now emits the same canonical under-arity text as the tail/AOT helpers for both fixed multi-arg closures and variadic multi-arg closure application.
     - `src/lisp/tests_compiler_core_groups_fail_closed.c3` now directly asserts that compile-time parser failures report user-source coordinates after the stdlib prelude offset is stripped.
     - validation:
       - `rm -rf build/obj/linux-x64 build/main && c3c build` -> pass
@@ -109,7 +109,7 @@ Source: `TODO.md`
 
 - [x] `AUDIT-BOUNDARY-METHOD-TABLE-FAILURE-TEST-003` add deterministic coverage for method-table partial-cleanup abort lanes
   - closure evidence:
-    - `src/lisp/eval_promotion_root_clones.c3` now exposes narrow abort-cleanup telemetry for partial method-table reclamation, and `src/lisp/jit_jit_closure_support.c3` now exposes a targeted heap-signature copy failure seam.
+    - `src/lisp/eval_promotion_root_clones.c3` now exposes narrow abort-cleanup telemetry for partial method-table reclamation, and `src/lisp/jit_closure_support.c3` now exposes a targeted heap-signature copy failure seam.
     - `src/lisp/tests_memory_lifetime_boundary_groups.c3` now drives both copy-to-parent and escape-promotion abort paths through that seam and proves partially copied heap signatures are reclaimed instead of leaked.
     - `src/lisp/tests_memory_lifetime_smoke_suite_groups.c3` now includes that regression in the bounded smoke lane.
     - validation:
@@ -159,7 +159,7 @@ Source: `TODO.md`
 
 - [x] `AUDIT-COMPILER-PARITY-002` harden JIT multi-arg allocation failures and restore AOT/JIT parity
   - closure evidence:
-    - `src/lisp/jit_jit_apply_multi_prims.c3` and `src/lisp/jit_jit_apply_multi_prims_tail.c3` now null-guard multi-arg argument-buffer allocation for primitive and method-table dispatch, with a focused test seam that fails closed instead of dereferencing `null`.
+    - `src/lisp/jit_apply_multi_prims.c3` and `src/lisp/jit_apply_multi_prims_tail.c3` now null-guard multi-arg argument-buffer allocation for primitive and method-table dispatch, with a focused test seam that fails closed instead of dereferencing `null`.
     - `src/lisp/parser_top_level_parse.c3` and `src/lisp/compiler_program_pipeline_helpers.c3` now fail closed on malformed trailing forms; they no longer return a silently truncated prefix program after parser error.
     - `src/lisp/aot.c3` now exposes shared AOT arg-list counting and arity-error helpers, and `src/lisp/compiler_code_emission_lambda_defs.c3` uses them so generated multi-arg lambdas reject under-application, preserve JIT-style over-application chaining through `aot::apply_multi(...)`, and reject malformed arg lists explicitly.
     - `src/lisp/compiler_native_call_compilation_flat_style.c3` now guards generated closure-capture allocation in flat expression lowering without emitting invalid raw `return` statements into non-`Value*` contexts.
@@ -238,7 +238,7 @@ Source: `TODO.md`
   - closure evidence:
     - removed the remaining non-test `!!` sites from runtime/compiler paths, including:
       - `src/lisp/parser_callable_helpers_params.c3`
-      - `src/lisp/jit_jit_compile_let_set_helpers.c3`
+      - `src/lisp/jit_compile_let_set_helpers.c3`
       - `src/lisp/aot_runtime_bridge_helpers.c3`
       - `src/lisp/eval_dispatch_types.c3`
       - `src/lisp/prim_ui_ftxui_helpers.c3`

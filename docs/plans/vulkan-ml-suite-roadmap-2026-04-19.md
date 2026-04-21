@@ -85,6 +85,11 @@ Initial public operation names and capability inventory:
   before any implicit CPU materialization, except for the narrow
   `ml-linear-direct-float64`/`ml-linear-direct-float32` direct path above.
 
+`ML-VK-001` is closed for the backend-neutral capability matrix and contract
+freeze. New operation families should add truthful narrow capability keys and
+fail-closed diagnostics under their own semantic items instead of reopening this
+contract umbrella.
+
 ### `ML-VK-010` Batched Linear Algebra Foundation
 
 Add the ML-scale dense linear algebra layer: batched matmul, batched bias add,
@@ -138,6 +143,11 @@ reduction operations:
   elementwise surface. It uses existing Tensor `map max x 0`, reports narrow
   `ml-neural-relu-float64`/`ml-neural-relu-float32` capability bits, preserves
   dtype/device placement, and keeps broad `ml-neural-map` false.
+- `ML-VK-020-003-LR`: shipped `ml/leaky-relu(input [negative-slope])` through
+  composed `Tensor` map kernels using `max(input, 0) + slope * min(input, 0)`.
+  It supports `Float64` and `Float32`, preserves CPU/CUDA/Vulkan placement, and
+  reports narrow `ml-neural-leaky-relu-float64`/`ml-neural-leaky-relu-float32`
+  capability bits.
 - `ML-VK-020-004`: shipped the remaining Float32 activation surfaces:
   canonical `ml/sigmoid`, `ml/tanh`, and tanh-approximation `ml/gelu`.
   These are `ml/*` activation surfaces, not aliases for bare scientific math
@@ -202,6 +212,9 @@ Scope:
 This lane must not reuse invalidated GLSL double-transcendental assumptions.
 Float64 transcendental support needs a validated approximation or a separate
 shader capability path. Float32 may land first when its shader path validates.
+`ML-VK-020` is closed for the current scoped neural elementwise, reduction,
+softmax, and loss kernel contract. Future activation or loss expansion should
+be opened as a new operation-specific item instead of keeping this parent open.
 
 ### `ML-VK-030` Convolution Pooling And Image Tensor Kernels
 
@@ -257,10 +270,17 @@ Add Vulkan kernels for normalization and attention building blocks:
   optional additive `[Q K]` or batched masks, reports narrow
   `ml-scaled-dot-product-attention-*` capability bits, and keeps mixed
   CPU/Vulkan and Vulkan `Float64` paths fail-closed before CPU fallback.
-- training-mode/current-batch-stat batch normalization remains deferred until
-  autograd/training state contracts are ready.
-- optional fused softmax/dropout/matmul only after the unfused oracle kernels
-  pass.
+- `ML-VK-040-TRAIN-BN-001`: shipped `nn/batch-normalization(channels
+  channel-axis [options])` as the explicit stateful training layer. `nn/init`
+  creates `scale`/`bias` params plus `running-mean`/`running-variance` state,
+  `nn/apply` uses running stats for inference/eval lowering through
+  `ml/batch-normalization`, and train-mode `nn/forward` computes current-batch
+  CPU dense row-major stats while returning updated ordinary state/model data
+  without hidden mutation. CUDA/Vulkan/current-batch training remains
+  fail-closed until native backward/state kernels are implemented.
+- optional fused softmax/dropout/matmul is now split to
+  `ML-VK-040-FUSED-ATTENTION-001`; the shipped `ML-VK-040` primitive boundary
+  is closed around unfused oracle-preserving inference/eval semantics.
 
 ### `ML-VK-050` Autograd Core
 
@@ -274,18 +294,45 @@ device semantics:
   gradient kernels exist.
 - `ML-VK-050-002`: shipped `linear-activation-mean-squared-error` for `ml/grad`.
   It supports CPU dense row-major linear-plus-activation MSE gradients, `relu`
-  backward for `Float64`/`Float32`, and `sigmoid`/`tanh`/tanh-approximation
-  `gelu` backward for `Float32`. CUDA/Vulkan backward remains fail-closed.
+  and `leaky-relu` backward for `Float64`/`Float32`, and
+  `sigmoid`/`tanh`/tanh-approximation `gelu` backward for `Float32`.
+  `leaky-relu` accepts optional `negative-slope` in the gradient spec and
+  defaults to `0.01`. CUDA/Vulkan backward remains fail-closed.
 - `ML-VK-050-003`: shipped `linear-softmax-cross-entropy` for `ml/grad`. It
   supports CPU dense row-major `Float64`/`Float32` linear classifier gradients
   with stable last-axis softmax cross-entropy and validated probability targets.
   CUDA/Vulkan backward remains fail-closed until real device kernels exist.
-- gradient tape representation and lifetime rules;
-- Tensor gradient accumulation on CPU/Vulkan without hidden transfers;
-- backward definitions for map, contract, matrix, convolution, normalization,
-  softmax, and loss operations;
-- clear fail-closed behavior when a forward Vulkan op lacks a Vulkan backward
-  kernel.
+- `ML-VK-050-005`: shipped the reusable gradient tape representation and
+  lifetime contract for current `ml/grad` results. The returned `tape` is a
+  versioned ordinary dictionary with `kind 'gradient-tape`,
+  `policy 'metadata-only`, `owner 'scope-region`, false `retains-handles`,
+  dtype/source metadata, optional activation metadata, and an ordinary `nodes`
+  array. It does not retain native handles or execute generic accumulation.
+- `ML-VK-050-006`: shipped CPU generic Tensor gradient accumulation for dense
+  row-major `Float64`/`Float32` expression graphs under `ml/grad`
+  `tensor-mean-squared-error` and `tensor-softmax-cross-entropy` specs.
+  Reverse accumulation walks supported `map` and `contract` nodes, computes
+  MSE and softmax-cross-entropy upstream gradients, rejects unsupported map
+  backward rules, and requires a single unambiguous `wrt` leaf match.
+- `ML-VK-050-007`: shipped explicit device-backward availability semantics.
+  Tensor-expression `ml/grad` preflights non-CPU operands before `wrt` leaf
+  matching so shipped Vulkan forward tensors without matching backward kernels
+  fail closed under `tensor/backend-unsupported`. Broad backend `ml-autograd`
+  remains false until a complete backend autograd family exists.
+- `ML-VK-050-VK-BWD-001`: shipped the first native Vulkan backward kernel.
+  `tensor-mean-squared-error` now supports dense row-major `Float32` Vulkan
+  tensors when `wrt` is the concrete prediction tensor. Loss and
+  input-gradient stay on Vulkan, the gradient is computed as
+  `(prediction - targets) * (2 / element-count)` through native Vulkan map
+  kernels, and the metadata-only tape records `device 'vulkan`.
+
+Future native device backward work is split into operation-specific items.
+`ML-VK-050-VK-MAP-BWD-001` owns graph-preserving Vulkan map-expression backward
+for `map +`/`map *` under MSE. Current Vulkan `map` eagerly materializes direct
+concrete device tensors and drops expression edges, so that residual requires
+an explicit autograd capture/tape mode or a graph-preserving `ml/grad` map path;
+do not globally make Vulkan `map` lazy. Every Vulkan op without a matching
+backward kernel must continue to fail closed.
 
 Autograd must preserve the runtime memory model and must not introduce a
 separate per-Tensor ownership system.
@@ -355,8 +402,16 @@ false.
   for all-vulkan `ml/clip-gradients` trees through `ml-clip-gradients-float32`,
   and optimizer-step `clip-norm` now clips before Vulkan updates through the same
   path.
-- Fused CUDA optimizer kernels (non-map-backed) and `nn/train-step`
-  integration remain open.
+- `ML-VK-060-014`: `ml/sgd-step(parameters gradients learning-rate)` now
+  reuses the existing stateless CUDA/Vulkan dense row-major `Float32` SGD
+  kernels for all-device parameter and gradient leaves. The primitive preserves
+  CUDA/Vulkan placement when `ml-optimizer-sgd-float32` is available and keeps
+  mixed CPU/device leaves fail-closed instead of silently transferring tensors.
+- `ML-VK-060` is closed for the explicit-state optimizer suite: CPU, Vulkan
+  dense row-major `Float32`, map-backed CUDA dense row-major `Float32`,
+  checkpoint helpers, gradient clipping, and `nn/train-step` integration are
+  shipped. Native fused CUDA optimizer kernels are split to
+  `ML-VK-060-FUSED-CUDA-001` as a benchmark-backed performance boundary.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.
@@ -392,6 +447,13 @@ Shipped training facade slice:
 - `ML-VK-070-006`: `nn/sgd`, `nn/adam`, `nn/adamw`, and `nn/rmsprop` now
   construct validated ordinary optimizer spec dictionaries for use with
   `nn/train-step` and `ml/optimizer-step`.
+- `ML-VK-070-007`: `nn/leaky-relu` now constructs a default-slope
+  `leaky-relu` activation DataSpec, `nn/validate` accepts it, and
+  `nn/apply`/`nn/predict` lower it through `ml/leaky-relu`.
+
+`ML-VK-070` is closed for the current backend-neutral model/layer library and
+serialization contract. Future layer families should be added as their own
+operation-specific items instead of reopening this umbrella.
 
 ### `ML-VK-080` Graph Capture Fusion And Memory Planning
 
@@ -413,6 +475,13 @@ Tensor semantics, must not turn `Kernel` values into ordinary `Lambda`
 closures, and must not overload path access, postfix indexing, or `ref` into
 kernel execution. Kernel specs should use ordinary Omni data, quoted symbol
 keys, path access such as `k.inputs.[0].name`, and explicit execution.
+
+`ML-VK-080` is closed for the checked graph capture, direct-SPIR-V ABI,
+selected-region planning, and native selected-region execution boundary shipped
+through `ML-VK-080-036`. Source-language parsing/compilation, arbitrary
+descriptor schemas, memory-plan-backed runtime reuse, arbitrary mixed schedules,
+and fused dispatch execution are future capability boundaries and should be
+tracked as new semantic items, not residual children of this umbrella.
 
 Shipped first slice:
 
@@ -507,6 +576,38 @@ Add a Vulkan ML validation gate:
 - bounded container slices for ML workloads;
 - benchmark fixtures for inference throughput, training step time, and memory
   reuse.
+
+Progress:
+
+- `ML-VK-090-001` adds CPU finite-difference regressions for the shipped
+  `ml/grad` contracts. The focused tests perturb public losses through
+  `ml/linear` plus `ml/mean-squared-error` or `ml/cross-entropy`, then compare
+  the central numeric gradient with analytic `ml/grad` input/weight gradients.
+- `ML-VK-090-002` adds no-hidden-CPU-fallback diagnostic probes for mixed
+  Vulkan ML trees. The focused tests assert that mixed Vulkan/CPU
+  `ml/clip-gradients` and `ml/optimizer-step` failures expose the relevant
+  all-Vulkan placement contract in the error message instead of collapsing to a
+  generic backend failure.
+- `ML-VK-090-003` adds the bounded ML validation entrypoint and the first ML
+  benchmark fixture. `scripts/run_ml_validation_slice.sh` runs the focused
+  advanced collections ML/Tensor group through the Docker validation path, and
+  `OMNI_ML_BENCH=1` emits `ml_inference_oracle` and
+  `ml_training_step_oracle` summaries with inference, optimizer-step, and
+  runtime memory reuse counters.
+- `ML-VK-090-004` adds the explicit ML Vulkan operation-family
+  availability-gate regression. Vulkan-visible hosts must keep Float32 ML
+  capability bits tied to actual Float32 placement across linear, activation,
+  reduction, normalization, attention, convolution/pooling, optimizer, and
+  gradient clipping families, and run a device-resident `ml/linear` smoke.
+  Vulkan-unavailable hosts must report false ML Vulkan capability bits and
+  fail closed with `tensor/backend-unavailable` for `to-device 'vulkan`.
+
+`ML-VK-090` is closed for the current Vulkan ML validation gate: CPU oracle
+coverage, shipped-gradient finite differences, no-hidden-CPU-fallback probes,
+Vulkan visible/unavailable host gates, bounded focused validation, and the
+first benchmark fixture are all in place. Future broader validation expansion
+should be tracked as a new item for the specific operation family or benchmark
+dimension it adds, not as a residual under `ML-VK-090`.
 
 ## Ordering
 

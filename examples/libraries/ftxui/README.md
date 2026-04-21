@@ -20,7 +20,8 @@ separate.
 Current contents:
 
 - `ui.omni` — canonical public `ui.*` facade with the first `ui.run`
-  convenience wrapper over the FTXUI backend.
+  node-tree convenience wrapper and `ui.loop` effect-tree loop wrapper over the
+  FTXUI backend.
 - `lib/ui/nodes.omni` — internal node/data helper module used by the public
   `ui` facade.
 - `lib/ui/effects.omni` — internal effect helper module used by the public
@@ -39,6 +40,15 @@ Current contents:
   access.
 - `module_effect_smoke.omni` — verifies real module-owned effects resolve
   through `signal ui.open` and `handle (ui.open ...)`.
+- `module_direct_smoke.omni` — verifies default dotted module imports for
+  `ui.nodes`, `ui.layout`, `ui.style`, `ui.effects`, `ui.runtime`, and
+  `ui.ftxui`.
+- `module_backend_smoke.omni` — verifies `ui.runtime.dispatch_to` ->
+  `ui.ftxui.dispatch` non-interactive backend lifecycle execution plus
+  fail-closed unsupported effect shapes.
+- `module_interactive_loop_smoke.omni` — verifies `ui.loop` ->
+  `ui.ftxui.loop` blocking app-loop execution plus explicit fail-closed
+  unsupported effect shapes.
 - `demo.omni` — first live FTXUI-backed runner demo. Press `q` or `Esc` to
   exit.
 - `yahoo_stock_tui.omni` — terminal-only live Yahoo Finance stock chart viewer rendered with `ui.graph`
@@ -63,11 +73,12 @@ Current live runner coverage:
 - `ui.flex`
 - `ui.width`
 - `ui.height`
+- `ui.loop`
 
 Next likely additions:
 
-- direct dotted import support for true `ui.nodes` / `ui.effects` helper-module
-  ownership,
+- session-owned read/update/render loop support on top of the blocking
+  effect-tree loop,
 - richer widget/container composition examples,
 - selection-style demos and richer decorator coverage,
 - focused smoke coverage for ABI additions.

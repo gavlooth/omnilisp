@@ -1,10 +1,102 @@
 module lisp;
 
 import std::io;
+import main;
+
+const usz ML_VALIDATION_BENCH_INFERENCE_ITERS = 128;
+const usz ML_VALIDATION_BENCH_TRAIN_ITERS = 64;
+
+fn bool ml_validation_bench_enabled() @inline {
+    return test_c_getenv("OMNI_ML_BENCH") != null;
+}
+
+fn long ml_validation_bench_now_ms() @inline {
+    long now_ms = scheduler_monotonic_ms();
+    if (now_ms > 0) return now_ms;
+    return 0;
+}
+
+fn long ml_validation_bench_ok_count(EvalResult result) @inline {
+    if (result.error.has_error || result.value == null || !is_int(result.value)) return -1;
+    return result.value.int_val;
+}
+
+fn void run_ml_validation_benchmarks(Interp* interp) {
+    if (!ml_validation_bench_enabled()) return;
+    if (interp == null) return;
+
+    emit_test_section_banner("ML Validation Benchmarks");
+
+    usz recycle_before = main::g_scope_memory_telemetry_stats.scope_recycle_count;
+    CopyToParentStats copy_before = copy_to_parent_stats_snapshot();
+
+    long inference_start_ms = ml_validation_bench_now_ms();
+    EvalResult inference_result = run(
+        "(let loop (i 0 ok 0) "
+        "  (if (= i 128) ok "
+        "      (let (out (ml/linear (Tensor Float32 [2 2] [1 2 3 4]) "
+        "                            (Tensor Float32 [2 2] [1 0 0 1]) "
+        "                            (Tensor Float32 [2] [0.5 -0.5]))) "
+        "        (loop (+ i 1) (+ ok 1)))))",
+        interp
+    );
+    long inference_done_ms = ml_validation_bench_now_ms();
+
+    EvalResult training_result = run(
+        "(let loop (i 0 params (Dictionary 'w (Tensor Float32 [2] [1 2])) state (Dictionary) ok 0) "
+        "  (if (= i 64) ok "
+        "      (let (r (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 0.01 'momentum 0.9) "
+        "                                  params "
+        "                                  (Dictionary 'w (Tensor Float32 [2] [0.5 -0.25])) "
+        "                                  state)) "
+        "        (loop (+ i 1) (ref r 'parameters) (ref r 'state) (+ ok 1)))))",
+        interp
+    );
+    long training_done_ms = ml_validation_bench_now_ms();
+
+    usz recycle_after = main::g_scope_memory_telemetry_stats.scope_recycle_count;
+    CopyToParentStats copy_after = copy_to_parent_stats_snapshot();
+
+    long inference_ok = ml_validation_bench_ok_count(inference_result);
+    long training_ok = ml_validation_bench_ok_count(training_result);
+    long inference_ms = inference_done_ms > inference_start_ms ? inference_done_ms - inference_start_ms : 0;
+    long training_ms = training_done_ms > inference_done_ms ? training_done_ms - inference_done_ms : 0;
+    usz recycle_delta = recycle_after >= recycle_before ? recycle_after - recycle_before : 0;
+    usz copy_total_delta = copy_after.total_calls >= copy_before.total_calls
+        ? copy_after.total_calls - copy_before.total_calls
+        : 0;
+    usz copy_reuse_delta = copy_after.fast_reuse_hits >= copy_before.fast_reuse_hits
+        ? copy_after.fast_reuse_hits - copy_before.fast_reuse_hits
+        : 0;
+
+    io::printfn(
+        "OMNI_BENCH_SUMMARY suite=ml_inference_oracle iters=%d inference_ms=%d inference_ok=%d",
+        (long)ML_VALIDATION_BENCH_INFERENCE_ITERS,
+        inference_ms,
+        inference_ok
+    );
+    io::printfn(
+        "OMNI_BENCH_SUMMARY suite=ml_training_step_oracle iters=%d train_ms=%d train_ok=%d scope_recycle_delta=%d copy_total_delta=%d copy_reuse_delta=%d",
+        (long)ML_VALIDATION_BENCH_TRAIN_ITERS,
+        training_ms,
+        training_ok,
+        (long)recycle_delta,
+        (long)copy_total_delta,
+        (long)copy_reuse_delta
+    );
+}
 
 fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "nn/forward runs train-mode dense model without hidden state mutation",
         "(let (model (nn/init (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (Dictionary 'dtype 'Float32 'device 'cpu 'mode 'train 'seed 1)) out (nn/forward model (Tensor Float32 [2] [1 2]))) (and (= (ref out [0]) (Float32 3.0)) (= (nn/mode model) 'train)))", pass, fail);
+    test_truthy(interp, "nn/batch-normalization initializes explicit affine params and running state",
+        "(let (model (nn/init (nn/batch-normalization 2 1) (Dictionary 'dtype 'Float64 'device 'cpu 'mode 'eval 'seed 1)) params (nn/parameters model) state (nn/state model)) (and (= (ref (nn/spec model) 'kind) 'batch-normalization) (= (ref (ref params 'scale) [0]) 1.0) (= (ref (ref params 'bias) [1]) 0.0) (= (ref (ref state 'running-mean) [0]) 0.0) (= (ref (ref state 'running-variance) [1]) 1.0)))", pass, fail);
+    test_truthy(interp, "nn/forward batch-normalization returns updated model state without mutating original",
+        "(let (model (nn/init (nn/batch-normalization 2 1 (Dictionary 'epsilon 1.0 'momentum 1.0)) (Dictionary 'dtype 'Float64 'device 'cpu 'mode 'train 'seed 1)) res (nn/forward model (Tensor Float64 [2 2] [1 2 3 6])) out (ref res 'output) next (ref res 'model) st (nn/state next) orig (nn/state model)) (and (= (ref res 'kind) 'nn-forward) (< (abs (+ (ref out [0 0]) 0.7071067811865475)) 0.000000001) (< (abs (- (ref out [1 1]) 0.8944271909999159)) 0.000000001) (= (ref (ref st 'running-mean) [0]) 2.0) (= (ref (ref st 'running-mean) [1]) 4.0) (= (ref (ref st 'running-variance) [0]) 1.0) (= (ref (ref st 'running-variance) [1]) 4.0) (= (ref (ref orig 'running-mean) [0]) 0.0)))", pass, fail);
+    test_truthy(interp, "nn/forward explicit batch-normalization train mode threads state through sequential specs",
+        "(let (spec (nn/sequential (nn/batch-normalization 2 1 (Dictionary 'epsilon 1.0 'momentum 1.0))) model (nn/init spec (Dictionary 'dtype 'Float64 'device 'cpu 'mode 'eval 'seed 1)) res (nn/forward (nn/spec model) (nn/parameters model) (nn/state model) (Tensor Float64 [2 2] [1 2 3 6]) (Dictionary 'mode 'train)) st (ref res 'state) layer-state (ref st 0)) (and (= (ref res 'kind) 'nn-forward) (= (ref (ref layer-state 'running-mean) [0]) 2.0) (= (ref (ref layer-state 'running-variance) [1]) 4.0)))", pass, fail);
+    test_truthy(interp, "nn/batch-normalization rejects invalid options and train-mode device fallback",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (nn/batch-normalization 2 1 (Dictionary 'momentum 1.1)) (raise msg (ref msg 'code))) 'nn/invalid-spec) (if (ref vulkan-backend 'float32) (= (handle (nn/forward (nn/init (nn/batch-normalization 1 0) (Dictionary 'dtype 'Float32 'device 'vulkan 'mode 'train)) (to-device (Tensor Float32 [1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "nn/grad lifts dense activation gradients into sequential parameter tree",
         "(let (model (nn/init (nn/sequential (nn/dense 2 1 (Dictionary 'kernel-init (Dictionary 'kind 'ones) 'bias-init (Dictionary 'kind 'zeros))) (nn/relu)) (Dictionary 'dtype 'Float64 'device 'cpu 'mode 'train 'seed 1)) g (nn/grad model (Tensor Float64 [2] [1 2]) (Tensor Float64 [1] [4])) tree (ref g 'parameter-gradients) dense (ref tree 0) act (ref tree 1)) (and (= (ref g 'kind) 'nn-gradients) (= (ref g 'loss-kind) 'mean-squared-error) (= (length act) 0) (= (ref (ref dense 'weights) [0 0]) -2.0) (= (ref (ref dense 'weights) [0 1]) -4.0) (= (ref (ref dense 'bias) [0]) -2.0)))", pass, fail);
     test_truthy(interp, "nn/grad defaults softmax output layer to cross entropy",
@@ -23,10 +115,34 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(and (= (type-of (Dictionary 'kind 'kernel)) 'Dictionary) (not (is? (Dictionary 'kind 'kernel) 'Kernel)))", pass, fail);
     test_truthy(interp, "Kernel validates keys output descriptors and workgroup",
         "(and (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'elementwise 'inputs (Array) 'outputs (Array))) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'elementwise 'inputs (Array) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'unknown true)) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'elementwise 'inputs (Array) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'workgroup (Array 64 0 1))) (raise msg (ref msg 'code))) 'nn/invalid-spec))", pass, fail);
+    test_truthy(interp, "Kernel validates registered and direct SPIR-V source data",
+        "(let (valid (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32)))) (and (is? valid 'Kernel) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'words (Array 0 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'builtin-spirv 'name 'unknown) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) (raise msg (ref msg 'code))) 'nn/invalid-spec) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'words (Array 119734787 65536 0 1 1)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) (raise msg (ref msg 'code))) 'nn/invalid-spec)))", pass, fail);
+    test_truthy(interp, "Kernel rejects non-main source entries at construction",
+        "(= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source 'ml-clip-scale-f32 'entry 'worker 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) (raise msg (ref msg 'code))) 'nn/invalid-spec)", pass, fail);
+    test_truthy(interp, "Kernel direct SPIR-V validates explicit ABI contract",
+        "(let (scale (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'abi 'source-scale-f32-v1 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) unary (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'source (Dictionary 'format 'spirv 'abi 'source-unary-f32-v1 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n)))))) (and (is? scale 'Kernel) (is? unary 'Kernel) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'abi 'custom-f32-v1 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) (raise msg (ref msg 'code))) 'nn/invalid-spec)))", pass, fail);
+    test_truthy(interp, "Kernel direct SPIR-V validates source-binary-f32-v1 ABI contract",
+        "(let (binary (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) binary-meta (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'metadata 'storage2-output1-f32-v1 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n)))))) (and (is? binary 'Kernel) (is? binary-meta 'Kernel) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'metadata 'custom-layout 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) (raise msg (ref msg 'code))) 'nn/invalid-spec)))", pass, fail);
+    test_truthy(interp, "Kernel direct SPIR-V validates shared source layout metadata dictionaries",
+        "(let (binary-layout (Dictionary 'kind 'kernel-source-layout 'version 1 'abi 'source-binary-f32-v1 'descriptor-layout 'storage2-output1-f32-v1 'dtype 'Float32 'inputs 2 'outputs 1 'push-layout 'count-only-f32-v1) scale-layout (Dictionary 'kind 'kernel-source-layout 'version 1 'abi 'source-scale-f32-v1 'descriptor-layout 'storage1-output1-push-scale-f32-v1 'dtype 'Float32 'inputs 1 'outputs 1 'push-layout 'count-scale-f32-v1) bad-layout (Dictionary 'kind 'kernel-source-layout 'version 1 'abi 'source-binary-f32-v1 'descriptor-layout 'storage2-output1-f32-v1 'dtype 'Float32 'inputs 1 'outputs 1) binary (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'metadata binary-layout 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) scale (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'abi 'source-scale-f32-v1 'metadata scale-layout 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32)))) (and (is? binary 'Kernel) (is? scale 'Kernel) (= (handle (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'metadata bad-layout 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) (raise msg (ref msg 'code))) 'nn/invalid-spec)))", pass, fail);
     test_truthy(interp, "kernel/run executes checked Vulkan scale-f32 kernels",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'scale-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [3 4]) 'vulkan)) (Dictionary 'scale (Float32 0.5))) y (to-device (ref r 'y) 'cpu)) (and (= (device (ref r 'y)) 'vulkan) (< (abs (- (ref y [0]) (Float32 1.5))) (Float32 0.000001)) (< (abs (- (ref y [1]) (Float32 2.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run executes source-backed Vulkan scale-f32 kernels",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source 'ml-clip-scale-f32 'entry 'main 'workgroup (Array 32 1 1) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [3 4]) 'vulkan)) (Dictionary 'scale (Float32 2.0))) y (to-device (ref r 'y) 'cpu)) (and (= (device (ref r 'y)) 'vulkan) (< (abs (- (ref y [0]) (Float32 6.0))) (Float32 0.000001)) (< (abs (- (ref y [1]) (Float32 8.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run executes registered source-backed Vulkan unary Float32 kernels",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (source (Dictionary 'format 'builtin-spirv 'name 'map-unary-f32 'abi 'source-unary-f32-v1) k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'source source 'entry 'main 'workgroup (Array 64 1 1) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [4 9]) 'vulkan)) (Dictionary)) z (to-device (ref r 'z) 'cpu)) (and (= (device (ref r 'z)) 'vulkan) (< (abs (- (ref z [0]) (Float32 2.0))) (Float32 0.000001)) (< (abs (- (ref z [1]) (Float32 3.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run accepts registered symbolic source-backed Vulkan unary Float32 kernels",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'source 'map-unary-f32 'entry 'main 'workgroup (Array 64 1 1) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [4 9]) 'vulkan)) (Dictionary)) z (to-device (ref r 'z) 'cpu)) (and (= (device (ref r 'z)) 'vulkan) (< (abs (- (ref z [0]) (Float32 2.0))) (Float32 0.000001)) (< (abs (- (ref z [1]) (Float32 3.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run executes direct SPIR-V source-scale-f32 kernels",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (source (Dictionary 'format 'spirv 'words [119734787 65536 524299 52 0 131089 1 393227 1 1280527431 1685353262 808793134 0 196622 0 1 393231 5 4 1852399981 0 11 393232 4 17 64 1 1 196611 2 450 262149 4 1852399981 0 524293 11 1197436007 1633841004 1986939244 1952539503 1231974249 68 262149 18 1752397136 0 327686 18 0 1853189987 116 327686 18 1 1818321779 101 262149 20 1752397168 0 196613 31 7632207 327686 31 0 1970037110 29541 262149 33 1601467759 6714722 196613 36 28233 327686 36 0 1970037110 29541 262149 38 1650421353 26229 262215 11 11 28 196679 18 2 327752 18 0 35 0 327752 18 1 35 4 262215 30 6 4 196679 31 3 262216 31 0 25 327752 31 0 35 0 196679 33 25 262215 33 33 1 262215 33 34 0 262215 35 6 4 196679 36 3 262216 36 0 24 327752 36 0 35 0 196679 38 24 262215 38 33 0 262215 38 34 0 262215 51 11 25 131091 2 196641 3 2 262165 6 32 0 262167 9 6 3 262176 10 1 9 262203 10 11 1 262187 6 12 0 262176 13 1 6 196630 17 32 262174 18 6 17 262176 19 9 18 262203 19 20 9 262165 21 32 1 262187 21 22 0 262176 23 9 6 131092 26 196637 30 17 196638 31 30 262176 32 2 31 262203 32 33 2 196637 35 17 196638 36 35 262176 37 2 36 262203 37 38 2 262176 40 2 17 262187 21 43 1 262176 44 9 17 262187 6 49 64 262187 6 50 1 393260 9 51 49 50 50 327734 2 4 0 3 131320 5 327745 13 14 11 12 262205 6 15 14 327745 23 24 20 22 262205 6 25 24 327856 26 27 15 25 196855 29 0 262394 27 28 29 131320 28 393281 40 41 38 22 15 262205 17 42 41 327745 44 45 20 43 262205 17 46 45 327813 17 47 42 46 393281 40 48 33 22 15 196670 48 47 131321 29 131320 29 65789 65592]) k (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source source 'entry 'main 'workgroup (Array 64 1 1) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [5 7]) 'vulkan)) (Dictionary 'scale (Float32 3.0))) y (to-device (ref r 'y) 'cpu)) (and (= (device (ref r 'y)) 'vulkan) (< (abs (- (ref y [0]) (Float32 15.0))) (Float32 0.000001)) (< (abs (- (ref y [1]) (Float32 21.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run executes direct SPIR-V source-unary-f32 kernels",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (source (Dictionary 'format 'spirv 'abi 'source-unary-f32-v1 'words [119734787 65536 524299 48 0 131089 1 393227 1 1280527431 1685353262 808793134 0 196622 0 1 393231 5 4 1852399981 0 11 393232 4 17 64 1 1 196611 2 450 262149 4 1852399981 0 524293 11 1197436007 1633841004 1986939244 1952539503 1231974249 68 262149 17 1752397136 0 327686 17 0 1853189987 116 262149 19 1752397168 0 196613 31 7632207 327686 31 0 1970037110 29541 262149 33 1601467759 6714722 196613 36 28233 327686 36 0 1970037110 29541 262149 38 1650421353 26229 262215 11 11 28 196679 17 2 327752 17 0 35 0 262215 30 6 4 196679 31 3 262216 31 0 25 327752 31 0 35 0 196679 33 25 262215 33 33 1 262215 33 34 0 262215 35 6 4 196679 36 3 262216 36 0 24 327752 36 0 35 0 196679 38 24 262215 38 33 0 262215 38 34 0 262215 47 11 25 131091 2 196641 3 2 262165 6 32 0 262167 9 6 3 262176 10 1 9 262203 10 11 1 262187 6 12 0 262176 13 1 6 196638 17 6 262176 18 9 17 262203 18 19 9 262165 20 32 1 262187 20 21 0 262176 22 9 6 131092 25 196630 29 32 196637 30 29 196638 31 30 262176 32 2 31 262203 32 33 2 196637 35 29 196638 36 35 262176 37 2 36 262203 37 38 2 262176 40 2 29 262187 6 45 64 262187 6 46 1 393260 9 47 45 46 46 327734 2 4 0 3 131320 5 327745 13 14 11 12 262205 6 15 14 327745 22 23 19 21 262205 6 24 23 327856 25 26 15 24 196855 28 0 262394 26 27 28 131320 27 393281 40 41 38 21 15 262205 29 42 41 393228 29 43 1 31 42 393281 40 44 33 21 15 196670 44 43 131321 28 131320 28 65789 65592]) k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'source source 'entry 'main 'workgroup (Array 64 1 1) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [4 9]) 'vulkan)) (Dictionary)) z (to-device (ref r 'z) 'cpu)) (and (= (device (ref r 'z)) 'vulkan) (< (abs (- (ref z [0]) (Float32 2.0))) (Float32 0.000001)) (< (abs (- (ref z [1]) (Float32 3.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "kernel/run source-binary-f32 direct SPIR-V validates ABI placement and shapes",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (source (Dictionary 'format 'spirv 'abi 'source-binary-f32-v1 'words (Array 119734787 65536 0 1 0)) wrong-source (Dictionary 'format 'spirv 'abi 'source-unary-f32-v1 'words (Array 119734787 65536 0 1 0)) k (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source source 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) wrong (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'source wrong-source 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n)))))) (and (= (handle (kernel/run wrong (Dictionary 'x (to-device (Tensor Float32 [1] [1]) 'vulkan) 'y (to-device (Tensor Float32 [1] [2]) 'vulkan)) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (kernel/run k (Dictionary 'x (Tensor Float32 [1] [1]) 'y (Tensor Float32 [1] [2])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [1] [1]) 'vulkan) 'y (to-device (Tensor Float32 [1] [2]) 'vulkan)) (Dictionary 'scale (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [1] [1]) 'vulkan) 'y (to-device (Tensor Float32 [2] [2 3]) 'vulkan)) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/shape-mismatch))) true))", pass, fail);
     test_truthy(interp, "kernel/run scale-f32 validates placement and push data",
         "(let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'scale-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32)))) (and (= (handle (kernel/run k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary 'scale (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (kernel/run k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument)))", pass, fail);
+    test_truthy(interp, "kernel/run direct SPIR-V sources validate placement before execution",
+        "(let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'source-scale-f32 'source (Dictionary 'format 'spirv 'words (Array 119734787 65536 0 1 0)) 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'push (Dictionary 'scale 'Float32)))) (= (handle (kernel/run k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary 'scale (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported))", pass, fail);
     test_truthy(interp, "kernel/run executes checked Vulkan add-f32 kernels",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'add-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n)) (Dictionary 'name 'y 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n))))) r (kernel/run k (Dictionary 'x (to-device (Tensor Float32 [2] [3 4]) 'vulkan) 'y (to-device (Tensor Float32 [2] [0.5 1.25]) 'vulkan)) (Dictionary)) z (to-device (ref r 'z) 'cpu)) (and (= (device (ref r 'z)) 'vulkan) (< (abs (- (ref z [0]) (Float32 3.5))) (Float32 0.000001)) (< (abs (- (ref z [1]) (Float32 5.25))) (Float32 0.000001)))) true))", pass, fail);
     test_truthy(interp, "kernel/run executes checked Vulkan binary Float32 kernels",
@@ -45,6 +161,196 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (k (Kernel (Dictionary 'backend 'vulkan 'operation 'sqrt-f32 'inputs (Array (Dictionary 'name 'x 'dtype 'Float32 'shape (Array 'n))) 'outputs (Array (Dictionary 'name 'z 'dtype 'Float32 'shape (Array 'n)))))) (and (= (handle (kernel/capture k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (kernel/capture k (Dictionary 'x (Tensor Float32 [1] [1])) (Dictionary 'scalar (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/invalid-argument)))", pass, fail);
     test_truthy(interp, "tensor/capture returns Vulkan Float32 map command-batch planning metadata",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map sqrt (map + x (Float32 3.0))) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batches (ref g 'command-batches) batch (ref batches 0) dispatches (ref batch 'dispatches) fplan (ref g 'fusion-plan) fgroup (ref (ref fplan 'candidates) 0) add-node (ref nodes 1) last (ref nodes 2) key (ref g 'invalidation-key)) (and (= (device y) 'vulkan) (= (ref g 'kind) 'tensor-graph) (= (ref g 'family) 'map-expression) (= (ref g 'node-count) 3) (= (ref g 'output) 2) (= (ref g 'launch-count) 2) (= (ref g 'dispatch-count) 2) (= (ref g 'barrier-count) 1) (= (ref g 'execution) 'not-launched) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (ref g 'batching-policy) 'serial-single-command-buffer-candidate) (= (ref g 'submission) 'not-submitted) (ref g 'requires-runtime-support) (= (ref g 'fusion) 'none) (= (ref fplan 'kind) 'tensor-fusion-plan) (= (ref fplan 'policy) 'eligibility-only) (ref fplan 'eligible) (= (ref fplan 'candidate-count) 1) (= (ref fplan 'barrier-count) 0) (not (ref fplan 'fused)) (= (ref fgroup 'kind) 'map-chain) (= (ref fgroup 'operation-count) 2) (= (ref (ref fgroup 'nodes) 0) 1) (= (ref (ref fgroup 'nodes) 1) 2) (not (ref fgroup 'fused)) (= (length batches) 1) (= (ref batch 'execution) 'command-buffer-candidate) (= (ref batch 'submission) 'not-submitted) (= (ref batch 'launch-count) 2) (= (ref batch 'dispatch-count) 2) (= (ref batch 'barrier-count) 1) (= (ref batch 'barrier-policy) 'shader-write-to-shader-read-between-dispatches) (= (ref (ref batch 'nodes) 0) 1) (= (ref (ref batch 'nodes) 1) 2) (= (ref (ref batch 'schedule-steps) 0) 1) (= (ref (ref batch 'schedule-steps) 1) 2) (= (ref (ref batch 'depends-on) 0) 0) (= (ref (ref dispatches 0) 'node) 1) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'node) 2) (= (ref (ref dispatches 1) 'operation) 'sqrt) (= (ref (ref schedule 0) 'node) 0) (= (ref (ref schedule 0) 'execution) 'external-buffer) (= (length (ref (ref schedule 0) 'depends-on)) 0) (= (ref (ref schedule 1) 'node) 1) (= (ref (ref schedule 1) 'execution) 'direct-helper) (= (ref (ref (ref schedule 1) 'depends-on) 0) 0) (ref (ref schedule 1) 'launch) (= (ref (ref schedule 2) 'node) 2) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref (ref (ref schedule 2) 'depends-on) 0) 1) (ref (ref schedule 2) 'launch) (= (ref (ref nodes 0) 'kind) 'tensor-source) (= (ref add-node 'kind) 'tensor-map) (= (ref add-node 'operation) 'add) (= (ref add-node 'right-scalar) (Float32 3.0)) (= (ref last 'kind) 'tensor-map) (= (ref last 'operation) 'sqrt) (= (ref (ref g 'shape) 0) 2) (= (ref key 0) 'vulkan))) true))", pass, fail);
+    test_truthy(interp, "tensor/capture returns selected-region-plan for scalar native chain",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map * (map + x (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) splan (ref g 'selected-region-plan) candidate (ref (ref splan 'candidates) 0)) (and (= (ref splan 'kind) 'tensor-selected-region-plan) (= (ref splan 'version) 1) (= (ref splan 'policy) 'selected-region-command-plan) (= (ref splan 'planner) 'capture-selected-region-v1) (= (ref splan 'candidate-count) 1) (not (ref splan 'executes)) (ref splan 'consumes-command-batches) (not (ref splan 'consumes-memory-plan)) (= (ref candidate 'kind) 'selected-region) (= (ref candidate 'family) 'scalar-map-chain) (= (ref candidate 'lowering) 'command-buffer-candidate) (= (ref candidate 'runtime-support) 'native-selected-region-executor) (= (ref candidate 'command-batch) 0) (= (ref candidate 'node-count) 3) (= (ref candidate 'launch-count) 2) (= (ref candidate 'dispatch-count) 2) (= (ref candidate 'barrier-count) 1) (= (ref (ref candidate 'nodes) 0) 1) (= (ref (ref candidate 'nodes) 1) 2) (= (ref (ref candidate 'depends-on) 0) 0) (= (ref (ref (ref candidate 'dispatches) 0) 'node) 1) (= (ref (ref (ref candidate 'dispatches) 1) 'node) 2))) true))", pass, fail);
+    test_truthy(interp, "tensor/run executes captured Vulkan Float32 graph source",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map * (map + x (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (ref g 'kind) 'tensor-graph) (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 10.0))) (Float32 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "tensor/run rejects binary map nodes with both scalar sides",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map + x (Float32 3.0)) 'vulkan) g (tensor/capture y) node (ref (ref g 'nodes) 1) changed-left (set! node 'left-scalar (Float32 1.0)) changed-right (set! node 'right-scalar (Float32 2.0))) (= (handle (tensor/run g) (raise msg (ref msg 'code))) 'tensor/invalid-argument)) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 two-scalar-map graph through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map * (map + x (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu) source (to-device x 'cpu)) (and (= (ref g 'kind) 'tensor-graph) (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 10.0))) (Float32 0.000001)) (< (abs (- (ref source [0]) (Float32 1.0))) (Float32 0.000001)) (< (abs (- (ref source [1]) (Float32 2.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 two-scalar-map graph used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 two-scalar-map graph native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 two-scalar-map graph used native reuse path");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 longer scalar-map graph through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map - (map * (map + x (Float32 3.0)) (Float32 2.0)) (Float32 1.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu) src (to-device (ref (ref (ref g 'nodes) 0) 'source-value) 'cpu)) (and (= (ref g 'node-count) 4) (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 7.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 9.0))) (Float32 0.000001)) (< (abs (- (ref src [0]) (Float32 1.0))) (Float32 0.000001)) (< (abs (- (ref src [1]) (Float32 2.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 longer scalar-map graph used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 longer scalar-map graph native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 longer scalar-map graph used native reuse path");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run requires command-batch metadata for native scalar-chain lowering",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map - (map * (map + x (Float32 3.0)) (Float32 2.0)) (Float32 1.0)) 'vulkan) g (tensor/capture y) batch (ref (ref g 'command-batches) 0) changed (set! batch 'execution 'metadata-only) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 7.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 9.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_skipped = !vulkan_available || omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count() == chain_calls_before;
+        if (chain_path_skipped) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run skipped native scalar-chain path when command-batch metadata was invalid"
+                : "[PASS] tensor/run command-batch metadata lowering unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run skipped native scalar-chain path when command-batch metadata was invalid");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run requires selected-region-plan metadata for native scalar-chain lowering",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map - (map * (map + x (Float32 3.0)) (Float32 2.0)) (Float32 1.0)) 'vulkan) g (tensor/capture y) changed (set! g 'selected-region-plan (Dictionary 'kind 'tensor-selected-region-plan 'version 999)) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 7.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 9.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_skipped = !vulkan_available || omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count() == chain_calls_before;
+        if (chain_path_skipped) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run skipped native scalar-chain path when selected-region-plan metadata was invalid"
+                : "[PASS] tensor/run selected-region-plan scalar-chain lowering unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run skipped native scalar-chain path when selected-region-plan metadata was invalid");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 tensor/scalar map region through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) z (Tensor Float32 [2] [10 20]) y (to-device (map - (map * (map + x z) (Float32 2.0)) (Float32 1.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu) sx (to-device (ref (ref (ref g 'nodes) 0) 'source-value) 'cpu) sz (to-device (ref (ref (ref g 'nodes) 1) 'source-value) 'cpu)) (and (= (ref g 'node-count) 5) (= (device out) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 21.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1]) (Float32 43.0))) (Float32 0.000001)) (< (abs (- (ref sx [0]) (Float32 1.0))) (Float32 0.000001)) (< (abs (- (ref sz [1]) (Float32 20.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 tensor/scalar map region used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 tensor/scalar map region native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 tensor/scalar map region used native reuse path");
+            (*fail)++;
+        }
+    }
+    test_truthy(interp, "tensor/run executes captured Vulkan Float32 contract graph",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2 2] [1 2 3 4]) w (Tensor Float32 [2 2] [10 20 30 40]) y (to-device (contract x w [1 0]) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 70.0))) (Float32 0.000001)) (< (abs (- (ref cpu [0 1]) (Float32 100.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1 0]) (Float32 150.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1 1]) (Float32 220.0))) (Float32 0.000001)))) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_contract_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 contract/scalar region through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2 2] [1 2 3 4]) w (Tensor Float32 [2 2] [10 20 30 40]) y (to-device (map * (contract x w [1 0]) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (ref g 'node-count) 4) (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 140.0))) (Float32 0.000001)) (< (abs (- (ref cpu [0 1]) (Float32 200.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1 0]) (Float32 300.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1 1]) (Float32 440.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_contract_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 contract/scalar region used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 contract/scalar region native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 contract/scalar region used native reuse path");
+            (*fail)++;
+        }
+    }
+    test_truthy(interp, "tensor/run executes captured Vulkan Float32 transpose-view graph",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) view (matrix/transpose-view x) g (tensor/capture view) out (tensor/run g) cpu (to-device out 'cpu) layout (tensor-layout out)) (and (= (device out) 'vulkan) (= (ref layout 'payload) 'view) (ref layout 'is-view) (< (abs (- (ref cpu [0 0]) (Float32 1.0))) (Float32 0.000001)) (< (abs (- (ref cpu [0 1]) (Float32 4.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 6.0))) (Float32 0.000001)))) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_view_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 transpose-view/scalar region through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu) src (to-device x 'cpu)) (and (= (ref g 'node-count) 4) (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref cpu [0 1]) (Float32 14.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 18.0))) (Float32 0.000001)) (< (abs (- (ref src [0 0]) (Float32 1.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_view_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 transpose-view/scalar region used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 transpose-view/scalar region native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 transpose-view/scalar region used native reuse path");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_view_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run requires command-batch metadata for native transpose-view/scalar lowering",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view (Float32 3.0)) (Float32 2.0)) 'vulkan) g (tensor/capture y) batch (ref (ref g 'command-batches) 0) changed (set! batch 'execution 'metadata-only) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 8.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 18.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_skipped = !vulkan_available || omni_tensor_backend_vulkan_map_view_scalar_chain_dispatch_call_count() == chain_calls_before;
+        if (chain_path_skipped) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run skipped native transpose-view/scalar path when command-batch metadata was invalid"
+                : "[PASS] tensor/run transpose-view/scalar command-batch lowering unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run skipped native transpose-view/scalar path when command-batch metadata was invalid");
+            (*fail)++;
+        }
+    }
+    test_truthy(interp, "tensor/capture returns Vulkan Float32 transpose-view/tensor scalar-tail mixed DAG metadata",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) b (to-device (Tensor Float32 [3 2] [10 20 30 40 50 60]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view b) (Float32 2.0)) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batch (ref (ref g 'command-batches) 0) dispatches (ref batch 'dispatches) fplan (ref g 'fusion-plan) fbarrier (ref (ref fplan 'barriers) 0) splan (ref g 'selected-region-plan) candidate (ref (ref splan 'candidates) 0)) (and (= (ref g 'kind) 'tensor-graph) (= (ref g 'family) 'map-expression) (= (ref g 'node-count) 5) (= (ref g 'output) 4) (= (ref g 'launch-count) 2) (= (ref g 'dispatch-count) 2) (= (ref g 'barrier-count) 1) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (ref splan 'kind) 'tensor-selected-region-plan) (= (ref splan 'candidate-count) 1) (= (ref candidate 'family) 'view-tensor-scalar-map-chain) (= (ref candidate 'node-count) 5) (= (ref (ref candidate 'nodes) 0) 3) (= (ref (ref candidate 'nodes) 1) 4) (= (ref (ref candidate 'depends-on) 0) 1) (= (ref (ref candidate 'depends-on) 1) 2) (not (ref fplan 'eligible)) (= (ref fplan 'candidate-count) 0) (= (ref fplan 'barrier-count) 1) (= (ref fbarrier 'node) 1) (= (ref fbarrier 'reason) 'view-boundary) (= (ref (ref nodes 0) 'kind) 'tensor-source) (= (ref (ref nodes 1) 'kind) 'tensor-view) (= (ref (ref nodes 1) 'execution) 'metadata-only) (= (ref (ref nodes 2) 'kind) 'tensor-source) (= (ref (ref nodes 3) 'kind) 'tensor-map) (= (ref (ref nodes 3) 'operation) 'add) (= (ref (ref (ref nodes 3) 'inputs) 0) 1) (= (ref (ref (ref nodes 3) 'inputs) 1) 2) (= (ref (ref nodes 4) 'operation) 'mul) (= (ref (ref (ref nodes 4) 'inputs) 0) 3) (= (ref (ref batch 'nodes) 0) 3) (= (ref (ref batch 'nodes) 1) 4) (= (ref (ref batch 'depends-on) 0) 1) (= (ref (ref batch 'depends-on) 1) 2) (= (ref (ref dispatches 0) 'node) 3) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'node) 4) (= (ref (ref dispatches 1) 'operation) 'mul) (= (ref (ref schedule 1) 'execution) 'metadata-only) (= (ref (ref schedule 3) 'execution) 'direct-helper) (= (ref (ref schedule 4) 'execution) 'direct-helper))) true))", pass, fail);
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run executes captured Vulkan Float32 transpose-view/tensor scalar-tail mixed DAG through native reuse path",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) b (to-device (Tensor Float32 [3 2] [10 20 30 40 50 60]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view b) (Float32 2.0)) 'vulkan) g (tensor/capture y) out (tensor/run g) cpu (to-device out 'cpu) src (to-device x 'cpu)) (and (= (ref g 'node-count) 5) (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 22.0))) (Float32 0.000001)) (< (abs (- (ref cpu [1 1]) (Float32 90.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 132.0))) (Float32 0.000001)) (< (abs (- (ref src [0 0]) (Float32 1.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_ok = !vulkan_available || omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count() > chain_calls_before;
+        if (chain_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run Vulkan Float32 transpose-view/tensor scalar-tail mixed DAG used native reuse path"
+                : "[PASS] tensor/run Vulkan Float32 transpose-view/tensor scalar-tail mixed DAG native reuse path unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan Float32 transpose-view/tensor scalar-tail mixed DAG used native reuse path");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run requires command-batch metadata for native transpose-view/tensor mixed DAG lowering",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) b (to-device (Tensor Float32 [3 2] [10 20 30 40 50 60]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view b) (Float32 2.0)) 'vulkan) g (tensor/capture y) batch (ref (ref g 'command-batches) 0) changed (set! batch 'execution 'metadata-only) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 22.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 132.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_skipped = !vulkan_available || omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count() == chain_calls_before;
+        if (chain_path_skipped) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run skipped native transpose-view/tensor mixed DAG path when command-batch metadata was invalid"
+                : "[PASS] tensor/run transpose-view/tensor mixed DAG lowering unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run skipped native transpose-view/tensor mixed DAG path when command-batch metadata was invalid");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long chain_calls_before = omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count();
+        test_truthy(interp, "tensor/run requires selected-region-plan metadata for native transpose-view/tensor mixed DAG lowering",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan) b (to-device (Tensor Float32 [3 2] [10 20 30 40 50 60]) 'vulkan) view (matrix/transpose-view x) y (to-device (map * (map + view b) (Float32 2.0)) 'vulkan) g (tensor/capture y) changed (set! g 'selected-region-plan (Dictionary 'kind 'tensor-selected-region-plan 'candidate-count 0)) out (tensor/run g) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu [0 0]) (Float32 22.0))) (Float32 0.000001)) (< (abs (- (ref cpu [2 1]) (Float32 132.0))) (Float32 0.000001)))) true))", pass, fail);
+        bool chain_path_skipped = !vulkan_available || omni_tensor_backend_vulkan_map_view_tensor_scalar_chain_dispatch_call_count() == chain_calls_before;
+        if (chain_path_skipped) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor/run skipped native transpose-view/tensor mixed DAG path when selected-region-plan metadata was invalid"
+                : "[PASS] tensor/run transpose-view/tensor mixed DAG selected-region-plan lowering unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run skipped native transpose-view/tensor mixed DAG path when selected-region-plan metadata was invalid");
+            (*fail)++;
+        }
+    }
+    test_truthy(interp, "tensor/run fails closed for non-executable graph dictionaries",
+        "(= (handle (tensor/run (Dictionary 'kind 'tensor-graph 'backend 'vulkan 'dtype 'Float32 'nodes (Array) 'schedule (Array) 'command-batches (Array))) (raise msg (ref msg 'code))) 'tensor/invalid-argument)", pass, fail);
     test_truthy(interp, "tensor/capture returns Vulkan Float32 contract expression graph data",
 
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2 2] [1 2 3 4]) w (Tensor Float32 [2 2] [10 20 30 40]) y (to-device (contract x w [1 0]) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batch (ref (ref g 'command-batches) 0) fplan (ref g 'fusion-plan) fbarrier (ref (ref fplan 'barriers) 0) node (ref nodes 2) key (ref g 'invalidation-key)) (and (= (device y) 'vulkan) (= (ref g 'kind) 'tensor-graph) (= (ref g 'family) 'contract-expression) (= (ref g 'node-count) 3) (= (ref g 'output) 2) (= (ref g 'launch-count) 1) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (ref g 'barrier-count) 0) (not (ref fplan 'eligible)) (= (ref fplan 'candidate-count) 0) (= (ref fplan 'barrier-count) 1) (= (ref fbarrier 'node) 2) (= (ref fbarrier 'reason) 'contract-boundary) (= (ref batch 'dispatch-count) 1) (= (ref (ref batch 'nodes) 0) 2) (= (ref (ref batch 'depends-on) 0) 0) (= (ref (ref batch 'depends-on) 1) 1) (= (ref (ref schedule 2) 'node) 2) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref (ref nodes 0) 'kind) 'tensor-source) (= (ref (ref nodes 1) 'kind) 'tensor-source) (= (ref node 'kind) 'tensor-contract) (= (ref node 'family) 'contract-f32) (= (ref (ref node 'inputs) 0) 0) (= (ref (ref node 'inputs) 1) 1) (= (ref (ref node 'left-axes) 0) 1) (= (ref (ref node 'right-axes) 0) 0) (= (ref node 'axis-count) 1) (= (ref (ref g 'shape) 0) 2) (= (ref (ref g 'shape) 1) 2) (= (ref key 0) 'vulkan))) true))", pass, fail);
@@ -53,7 +359,7 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
     test_truthy(interp, "tensor/capture fails closed for CPU and unsupported expression graphs",
         "(and (= (handle (tensor/capture (map + (Tensor Float32 [1] [1]) (Float32 1.0))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (contract (Tensor Float32 [1] [1]) (Tensor Float32 [1] [2]) [0 0])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (matrix/transpose-view (Tensor Float32 [2 2] [1 2 3 4]))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (tensor/capture (Tensor Float64 [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported))", pass, fail);
     test_truthy(interp, "tensor/capture returns ordinary metadata-only dict for Float32 tensor memory-plan graphs",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map sqrt (map + x (Float32 3.0))) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batches (ref g 'command-batches) batch (ref batches 0) dispatches (ref batch 'dispatches) mem (ref g 'memory-plan) src-node (ref nodes 0) add-node (ref nodes 1) last (ref nodes 2) key (ref g 'invalidation-key)) (and (= (type-of g) 'Dictionary) (= (ref g 'kind) 'tensor-graph) (= (ref mem 'kind) 'tensor-memory-plan) (= (ref mem 'version) 1) (= (ref mem 'backend) 'vulkan) (= (ref mem 'dtype) 'Float32) (= (ref mem 'policy) 'metadata-only) (not (ref mem 'allocates)) (not (ref mem 'retains-handles)) (= (ref mem 'external-bytes) 8) (= (ref mem 'transient-bytes) 16) (= (length (ref mem 'node-memory)) 3) (= (ref g 'family) 'map-expression) (= (ref g 'execution) 'not-launched) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (length batches) 1) (= (ref (ref schedule 0) 'execution) 'external-buffer) (= (ref (ref schedule 1) 'execution) 'direct-helper) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref src-node 'kind) 'tensor-source) (= (ref src-node 'allocation) 'external) (= (ref src-node 'owner) 'self) (= (ref src-node 'storage-bytes) 8) (= (ref add-node 'kind) 'tensor-map) (= (ref add-node 'allocation) 'transient) (= (ref add-node 'owner) 'planned-transient) (= (ref add-node 'write-policy) 'planned-write-once) (= (ref add-node 'byte-length) 8) (= (ref last 'kind) 'tensor-map) (= (ref last 'allocation) 'transient) (= (ref last 'byte-length) 8) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'operation) 'sqrt) (= (ref key 0) 'vulkan) (= (ref key 1) 'Float32))) true))", pass, fail);
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map sqrt (map + x (Float32 3.0))) 'vulkan) g (tensor/capture y) nodes (ref g 'nodes) schedule (ref g 'schedule) batches (ref g 'command-batches) batch (ref batches 0) dispatches (ref batch 'dispatches) mem (ref g 'memory-plan) reuse (ref (ref mem 'reuse-groups) 0) src-node (ref nodes 0) add-node (ref nodes 1) last (ref nodes 2) key (ref g 'invalidation-key)) (and (= (type-of g) 'Dictionary) (= (ref g 'kind) 'tensor-graph) (= (ref mem 'kind) 'tensor-memory-plan) (= (ref mem 'version) 2) (= (ref mem 'backend) 'vulkan) (= (ref mem 'dtype) 'Float32) (= (ref mem 'policy) 'metadata-only) (= (ref mem 'reuse-policy) 'single-slot-sequential) (= (ref mem 'runtime-ownership) 'tensor-payload-owned) (not (ref mem 'allocates)) (not (ref mem 'retains-handles)) (not (ref mem 'executes-reuse)) (= (ref mem 'reuse-group-count) 1) (= (ref reuse 'kind) 'transient-reuse-group) (= (ref reuse 'candidate-count) 2) (= (ref reuse 'slot-bytes) 8) (not (ref reuse 'allocates)) (not (ref reuse 'retains-handles)) (= (ref mem 'external-bytes) 8) (= (ref mem 'transient-bytes) 16) (= (length (ref mem 'node-memory)) 3) (= (ref g 'family) 'map-expression) (= (ref g 'execution) 'not-launched) (= (ref g 'command-batching) 'metadata) (= (ref g 'command-batch-count) 1) (= (length batches) 1) (= (ref (ref schedule 0) 'execution) 'external-buffer) (= (ref (ref schedule 1) 'execution) 'direct-helper) (= (ref (ref schedule 2) 'execution) 'direct-helper) (= (ref src-node 'kind) 'tensor-source) (= (ref src-node 'allocation) 'external) (= (ref src-node 'owner) 'self) (= (ref src-node 'storage-bytes) 8) (= (ref add-node 'kind) 'tensor-map) (= (ref add-node 'allocation) 'transient) (= (ref add-node 'owner) 'planned-transient) (= (ref add-node 'write-policy) 'planned-write-once) (= (ref add-node 'byte-length) 8) (= (ref last 'kind) 'tensor-map) (= (ref last 'allocation) 'transient) (= (ref last 'byte-length) 8) (= (ref (ref dispatches 0) 'operation) 'add) (= (ref (ref dispatches 1) 'operation) 'sqrt) (= (ref key 0) 'vulkan) (= (ref key 1) 'Float32))) true))", pass, fail);
     {
         bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
         long chain2_calls_before = omni_tensor_backend_vulkan_map_chain2_dispatch_call_count();
@@ -88,6 +394,8 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (r (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 1.0 'clip-norm 1.0) (Dictionary 'w (Tensor Float64 [2] [10 10])) (Dictionary 'w (Tensor Float64 [2] [3 4])) (Dictionary)) p (ref (ref r 'parameters) 'w)) (and (< (abs (- (ref p [0]) 9.4)) 0.000000001) (< (abs (- (ref p [1]) 9.2)) 0.000000001)))", pass, fail);
     test_truthy(interp, "ml/clip-gradients validates max norm and Vulkan fallback",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/clip-gradients (Dictionary 'w (Tensor Float64 [1] [1])) -1.0) (raise msg (ref msg 'code))) 'type/arg-mismatch) (= (handle (ml/clip-gradients (Dictionary 'w 1) 1.0) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (if (ref vulkan-backend 'float32) (= (handle (ml/clip-gradients (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan) 'b (Tensor Float32 [1] [0.2])) 1.0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float64) (= (handle (ml/clip-gradients (Dictionary 'w (to-device (Tensor Float64 [1] [1]) 'vulkan)) 1.0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml Vulkan fallback diagnostics expose no-hidden-CPU-fallback contracts",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (clip (handle (ml/clip-gradients (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan) 'b (Tensor Float32 [1] [0.2])) 1.0) (raise msg msg)) opt (handle (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 0.1) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [0.5])) (Dictionary)) (raise msg msg))) (and (= (ref clip 'code) 'tensor/backend-unsupported) (string-contains? (ref clip 'message) \"Vulkan gradient trees must remain fully Vulkan-placed\") (= (ref opt 'code) 'tensor/backend-unsupported) (string-contains? (ref opt 'message) \"Vulkan SGD operands must remain Vulkan-placed\"))) true))", pass, fail);
     test_truthy(interp, "ml/optimizer-step Vulkan Float32 applies clip-norm before step",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (and (ref vulkan-backend 'ml-clip-gradients-float32) (ref vulkan-backend 'ml-optimizer-sgd-float32)) (let (r (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 1.0 'clip-norm 1.0) (Dictionary 'w (to-device (Tensor Float32 [2] [10 10]) 'vulkan)) (Dictionary 'w (to-device (Tensor Float32 [2] [4 3]) 'vulkan)) (Dictionary)) p (to-device (ref (ref r 'parameters) 'w) 'cpu)) (and (= (device (ref (ref r 'parameters) 'w)) 'vulkan) (< (abs (- (ref p [0]) (Float32 9.2))) (Float32 0.000001)) (< (abs (- (ref p [1]) (Float32 9.4))) (Float32 0.000001)))) true))", pass, fail);
     test_truthy(interp, "ml/save-optimizer and ml/load-optimizer round trip Adam state",
@@ -142,4 +450,5 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-optimizer-rmsprop-float32) (let (r (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (to-device (Tensor Float32 [1] [0.5]) 'vulkan)) (Dictionary)) st (ref r 'state) p (ref (ref r 'parameters) 'w) s (ref (ref st 'square-average) 'w) pcpu (to-device p 'cpu) scpu (to-device s 'cpu)) (and (= (ref r 'optimizer) 'rmsprop) (= (ref st 'step) 1) (= (device p) 'vulkan) (= (device s) 'vulkan) (< (abs (- (ref pcpu [0]) (Float32 0.9))) (Float32 0.0001)) (< (abs (- (ref scpu [0]) (Float32 0.25))) (Float32 0.0001)))) true))", pass, fail);
     test_truthy(interp, "ml/optimizer-step RMSProp Vulkan Float32 consumes momentum state",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-optimizer-rmsprop-float32) (let (r1 (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0 'momentum 0.9) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (to-device (Tensor Float32 [1] [0.5]) 'vulkan)) (Dictionary)) r2 (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0 'momentum 0.9) (ref r1 'parameters) (Dictionary 'w (to-device (Tensor Float32 [1] [0.5]) 'vulkan)) (ref r1 'state)) st2 (ref r2 'state) p2 (ref (ref r2 'parameters) 'w) v2 (ref (ref st2 'velocity) 'w) pcpu (to-device p2 'cpu) vcpu (to-device v2 'cpu)) (and (= (ref st2 'step) 2) (= (device p2) 'vulkan) (= (device v2) 'vulkan) (< (abs (- (ref pcpu [0]) (Float32 0.71))) (Float32 0.0001)) (< (abs (- (ref vcpu [0]) (Float32 0.19))) (Float32 0.0001)))) true))", pass, fail);
+    run_ml_validation_benchmarks(interp);
 }

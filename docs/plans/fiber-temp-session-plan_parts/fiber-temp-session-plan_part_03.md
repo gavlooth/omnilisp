@@ -50,8 +50,8 @@ Goal:
 
 Likely files:
 - `src/stack_engine.c3`
-- `src/lisp/jit_jit_compiler.c3`
-- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/jit_compiler.c3`
+- `src/lisp/jit_eval_scopes.c3`
 
 Work:
 - Add counters/bench hooks.

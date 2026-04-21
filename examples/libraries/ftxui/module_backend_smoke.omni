@@ -1,0 +1,38 @@
+;; module_backend_smoke.omni — verifies ui.runtime -> ui.ftxui effect dispatch
+;; Run: LD_LIBRARY_PATH=/usr/local/lib ./build/main examples/libraries/ftxui/module_backend_smoke.omni
+
+(import "ui.omni")
+(import ui)
+
+(define backend-view
+  (ui.window
+    "Backend"
+    (ui.vbox
+      (list
+        (ui.text "backend-dispatch")
+        (ui.graph [0 1 1 2 3])))))
+
+(define backend-effects
+  (ui.open_tree {'backend 'ftxui}
+    (ui.render_tree {'node backend-view})
+    (ui.invalidate_tree {'reason 'smoke})
+    (ui.post_event_tree {'kind 'custom})
+    (ui.close_tree {'code 'ok})))
+
+(define read-event-error
+  (handle
+    (ui.ftxui.dispatch
+      (ui.open_tree {'backend 'ftxui}
+        (ui.read_event_tree {})))
+    (raise msg (String msg))))
+
+(define no-render-error
+  (handle
+    (ui.ftxui.dispatch
+      (ui.open_tree {'backend 'ftxui}
+        (ui.close_tree {'code 'ok})))
+    (raise msg (String msg))))
+
+(and (= (ui.ftxui.dispatch backend-effects) true)
+     (= read-event-error "ui-ftxui.dispatch: read_event is not supported by the non-interactive backend dispatcher")
+     (= no-render-error "ui-ftxui.dispatch: open tree requires at least one render child"))

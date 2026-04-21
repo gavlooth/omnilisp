@@ -26,7 +26,7 @@ Source of truth: `memory/DESTINATION_ARENA_PLAN.md` Section 20 (Clean Consolidat
 ## Phase 0: Baseline & Instrumentation Gates
 Files:
 - `src/lisp/eval.c3`
-- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_helper_functions.c3`
 - `src/scope_region.c3`
 
 Tasks:
@@ -80,7 +80,7 @@ Exit criteria:
 Files:
 - `src/lisp/value.c3`
 - `src/lisp/prim_collection.c3`
-- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_helper_functions.c3`
 
 Tasks:
 1. Update `make_cons` to enforce TEMP->ESCAPE barrier before storing fields when allocating ESCAPE conses.
@@ -98,7 +98,7 @@ Exit criteria:
 ## Phase 4: Scope Exit Fast Path (O(1) ESCAPE splice)
 Files:
 - `src/scope_region.c3`
-- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_helper_functions.c3`
 
 Tasks:
 1. Implement `scope_splice_escapes(parent, child)`.
@@ -114,7 +114,7 @@ Exit criteria:
 ## Phase 5: TCO Temp-Lane Reuse
 Files:
 - `src/scope_region.c3`
-- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_helper_functions.c3`
 
 Tasks:
 1. Add `scope_reset_temp_lane` (escape lane untouched).
@@ -130,7 +130,7 @@ Exit criteria:
 ## Phase 6: Controlled Deletion / Simplification
 Files:
 - `src/lisp/value.c3`
-- `src/lisp/jit_jit_helper_functions.c3`
+- `src/lisp/jit_helper_functions.c3`
 - `src/lisp/eval.c3`
 
 Tasks:

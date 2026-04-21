@@ -153,17 +153,18 @@ fn void run_deduce_scan_range_tests(Interp* interp, int* pass, int* fail) {
         Value* key_alloc_fail = deduce_relation_ensure_column_key_values(scan_oom_rel, interp, &created);
         g_boundary_force_alloc_value_fail_nth = saved_force_alloc;
 
-        bool ok = key_alloc_fail != null &&
-            key_alloc_fail.tag == ERROR &&
-            key_alloc_fail.str_chars != null &&
-            str_starts_with(key_alloc_fail.str_chars[:key_alloc_fail.str_len], "deduce-query: out of memory") &&
-            created == 0 &&
-            scan_oom_rel.column_key_values == null;
+        bool ok = key_alloc_fail == null &&
+            created == scan_oom_rel.col_count &&
+            scan_oom_rel.column_key_values != null &&
+            scan_oom_rel.col_count == 3 &&
+            scan_oom_rel.column_key_values[0] == scan_oom_rel.columns[0] &&
+            scan_oom_rel.column_key_values[1] == scan_oom_rel.columns[1] &&
+            scan_oom_rel.column_key_values[2] == scan_oom_rel.columns[2];
         if (ok) {
-            emit_pass_literal("[PASS] deduce 'scan column-key symbol alloc fails closed");
+            emit_pass_literal("[PASS] deduce 'scan column-key cache avoids long-lived Value pointers");
             (*pass)++;
         } else {
-            io::printn("[FAIL] deduce 'scan column-key symbol alloc fails closed");
+            io::printn("[FAIL] deduce 'scan column-key cache avoids long-lived Value pointers");
             (*fail)++;
         }
     }

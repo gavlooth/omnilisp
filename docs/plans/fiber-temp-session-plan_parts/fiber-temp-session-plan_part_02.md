@@ -285,7 +285,7 @@ Goal:
 - Use defer substrate for scope teardown safety in core boundary paths.
 
 Likely files:
-- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/jit_eval_scopes.c3`
 - `src/lisp/eval_boundary_api.c3`
 
 Work:

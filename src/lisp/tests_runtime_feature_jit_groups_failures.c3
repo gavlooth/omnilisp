@@ -243,6 +243,83 @@ fn void run_jit_policy_multi_arg_binding_growth_failure_test(Interp* interp, int
     }
 }
 
+fn bool jit_policy_list_value_is_1_2_3(Value* value) {
+    return value != null &&
+           value.tag == CONS &&
+           value.cons_val.car != null &&
+           value.cons_val.car.tag == INT &&
+           value.cons_val.car.int_val == 1 &&
+           value.cons_val.cdr != null &&
+           value.cons_val.cdr.tag == CONS &&
+           value.cons_val.cdr.cons_val.car != null &&
+           value.cons_val.cdr.cons_val.car.tag == INT &&
+           value.cons_val.cdr.cons_val.car.int_val == 2 &&
+           value.cons_val.cdr.cons_val.cdr != null &&
+           value.cons_val.cdr.cons_val.cdr.tag == CONS &&
+           value.cons_val.cdr.cons_val.cdr.cons_val.car != null &&
+           value.cons_val.cdr.cons_val.cdr.cons_val.car.tag == INT &&
+           value.cons_val.cdr.cons_val.cdr.cons_val.car.int_val == 3 &&
+           value.cons_val.cdr.cons_val.cdr.cons_val.cdr != null &&
+           value.cons_val.cdr.cons_val.cdr.cons_val.cdr.tag == NIL;
+}
+
+fn void run_jit_policy_tail_constructor_escape_opcode_test(Interp* interp, int* pass, int* fail) {
+    if (!jit_checks_enabled()) {
+        emit_pass_literal("[PASS] jit policy: tail constructor escape opcode skipped when jit disabled");
+        (*pass)++;
+        return;
+    }
+
+    jit_escape_allocation_stats_reset();
+    JitTopLevelEval list_eval = eval_jit_top_level(interp, "(List 1 2 3)");
+    JitTopLevelEval array_eval = eval_jit_top_level(interp, "(Array 4 5)");
+    JitTopLevelEval string_eval = eval_jit_top_level(interp, "\"jit-tail\"");
+    JitEscapeAllocationStats stats = jit_escape_allocation_stats_snapshot();
+
+    bool list_ok = list_eval.ok && jit_policy_list_value_is_1_2_3(list_eval.value);
+    bool array_ok = array_eval.ok &&
+                    array_eval.value != null &&
+                    array_eval.value.tag == ARRAY &&
+                    array_eval.value.array_val != null &&
+                    array_eval.value.array_val.length == 2 &&
+                    array_eval.value.array_val.items[0] != null &&
+                    array_eval.value.array_val.items[0].tag == INT &&
+                    array_eval.value.array_val.items[0].int_val == 4 &&
+                    array_eval.value.array_val.items[1] != null &&
+                    array_eval.value.array_val.items[1].tag == INT &&
+                    array_eval.value.array_val.items[1].int_val == 5;
+    bool string_ok = string_eval.ok &&
+                     string_eval.value != null &&
+                     string_eval.value.tag == STRING &&
+                     string_eval.value.str_len == 8 &&
+                     jit_policy_str_contains(string_eval.value.str_chars[:string_eval.value.str_len], "jit-tail");
+    bool escape_ok = stats.nil_calls >= 1 &&
+                     stats.cons_calls >= 3 &&
+                     stats.array_calls >= 1 &&
+                     stats.string_calls >= 1;
+
+    if (list_ok && array_ok && string_ok && escape_ok) {
+        emit_pass_literal("[PASS] jit policy: tail constructor escape opcode uses ESCAPE helpers");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: tail constructor escape opcode uses ESCAPE helpers (list_ok=%s array_ok=%s string_ok=%s escape_ok=%s nil=%d cons=%d array=%d string=%d)",
+            list_ok ? "yes" : "no",
+            array_ok ? "yes" : "no",
+            string_ok ? "yes" : "no",
+            escape_ok ? "yes" : "no",
+            (int)stats.nil_calls,
+            (int)stats.cons_calls,
+            (int)stats.array_calls,
+            (int)stats.string_calls
+        );
+        if (!list_ok) print_jit_failure_debug(interp, "jit tail constructor escape list", list_eval.stage, list_eval.value);
+        if (!array_ok) print_jit_failure_debug(interp, "jit tail constructor escape array", array_eval.stage, array_eval.value);
+        if (!string_ok) print_jit_failure_debug(interp, "jit tail constructor escape string", string_eval.stage, string_eval.value);
+        (*fail)++;
+    }
+}
+
 fn void run_jit_policy_multi_arg_primitive_buffer_failure_test(Interp* interp, int* pass, int* fail) {
     if (!jit_checks_enabled()) {
         emit_pass_literal("[PASS] jit policy: multi-arg primitive buffer failure skipped when jit disabled");

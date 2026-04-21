@@ -118,3 +118,10 @@ fn void runtime_backend_set_owner_thread_token(void* token) @inline {
 fn bool runtime_backend_owner_thread_token_matches(void* token) @inline {
     return g_jit_owner_thread_token == token;
 }
+
+fn ulong runtime_backend_next_compile_nonce() @inline {
+    jit_require_owner_thread("runtime_backend_next_compile_nonce");
+    g_jit_compile_nonce_counter++;
+    if (g_jit_compile_nonce_counter == 0) g_jit_compile_nonce_counter = 1;
+    return g_jit_compile_nonce_counter;
+}

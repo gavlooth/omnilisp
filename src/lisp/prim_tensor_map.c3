@@ -212,6 +212,8 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
     usz[] shape_slice = result_rank == 0 ? scalar_shape[0:0] : result_shape[0:result_rank];
     bool touches_cuda = (left_tensor != null && tensor_expr_has_device(args[1], TENSOR_DEVICE_CUDA)) ||
         (args.len == 3 && right_tensor != null && tensor_expr_has_device(args[2], TENSOR_DEVICE_CUDA));
+    bool touches_vulkan = (left_tensor != null && tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN)) ||
+        (args.len == 3 && right_tensor != null && tensor_expr_has_device(args[2], TENSOR_DEVICE_VULKAN));
     if (touches_cuda) {
         uint cuda_op = 0;
         Value* preflight_err = tensor_map_cuda_callable_op_or_raise(func, args.len == 3, result_dtype, &cuda_op, interp);
@@ -226,6 +228,22 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
         if ((left_tensor != null && left_tensor.dtype != result_dtype) ||
             (args.len == 3 && right_tensor != null && right_tensor.dtype != result_dtype)) {
             return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: CUDA tensor dtype mismatch", null);
+        }
+    }
+    if (touches_vulkan) {
+        uint vulkan_op = 0;
+        Value* preflight_err = tensor_map_vulkan_callable_op_or_raise(func, args.len == 3, result_dtype, &vulkan_op, interp);
+        if (preflight_err != null) return preflight_err;
+        if ((left_tensor != null && tensor_expr_has_non_vulkan_device(args[1])) ||
+            (args.len == 3 && right_tensor != null && tensor_expr_has_non_vulkan_device(args[2]))) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan operands must remain Vulkan-placed", null);
+        }
+        if (!tensor_dtype_is_vulkan_real(result_dtype) && !tensor_dtype_is_fixed_complex(result_dtype)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports Float64, Float32, Complex128, and Complex64 Tensor storage", null);
+        }
+        if ((left_tensor != null && left_tensor.dtype != result_dtype) ||
+            (args.len == 3 && right_tensor != null && right_tensor.dtype != result_dtype)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
         }
     }
     Value* vulkan_result = tensor_map_try_vulkan_direct(
@@ -252,6 +270,9 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
         interp
     );
     if (cuda_result != null) return cuda_result;
+    if (touches_vulkan) {
+        return make_tensor_map_expr(func, args[1], left_tensor, args.len == 3 ? args[2] : null, right_tensor, args.len == 3, result_dtype, shape_slice, interp);
+    }
     if ((left_tensor != null && left_tensor.device != TENSOR_DEVICE_CPU) ||
         (right_tensor != null && right_tensor.device != TENSOR_DEVICE_CPU)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: unsupported device operands", null);

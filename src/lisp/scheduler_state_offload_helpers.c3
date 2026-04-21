@@ -66,6 +66,13 @@ fn void scheduler_free_offload_completion(void* raw_completion) {
     mem::free(completion);
 }
 
+fn void scheduler_release_custom_ctx(OffloadWork* work) {
+    if (work == null || work.custom_ctx == null || work.custom_free == null) return;
+    work.custom_free(work.custom_ctx);
+    work.custom_ctx = null;
+    work.custom_free = null;
+}
+
 fn void scheduler_set_offload_error(OffloadCompletion* completion, char[] message) {
     completion.kind = OFFLOAD_RES_ERROR;
     completion.error_len = message.len;
@@ -126,6 +133,7 @@ fn Value* scheduler_build_offload_work(Value* job, OffloadWork* work, Interp* in
     work.shared = null;
     work.custom_fn = null;
     work.custom_ctx = null;
+    work.custom_free = null;
 
     if (scheduler_str_eq(op_name, "sleep-ms")) {
         if (!is_cons(arg_list) || !is_int(arg_list.cons_val.car)) {

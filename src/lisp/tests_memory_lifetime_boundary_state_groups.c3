@@ -84,34 +84,28 @@ fn void run_memory_lifetime_boundary_copy_fault_tests(Interp* interp, int* pass,
             COPY_SITE_GENERIC,
             null
         );
-        Value* fault_result = boundary_copy_to_parent_site_ctx(
-            src,
-            interp,
-            COPY_SITE_GENERIC,
-            null
-        );
+        BoundaryCopyFault direct_fault = BOUNDARY_COPY_FAULT_NONE;
+        Value* direct_checked = copy_to_parent_with_fault(src, interp, &direct_fault);
 
         interp.releasing_scope = saved_releasing;
 
         bool ok = !boundary_copy_result_ok(checked) &&
                   checked.value == null &&
                   checked.fault_code == BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE &&
-                  fault_result != null &&
-                  fault_result.tag == ERROR &&
-                  str_starts_with(
-                      fault_result.str_chars[:fault_result.str_len],
-                      "boundary: copy_to_parent_site_ctx requires target/releasing scope provenance"
-                  );
+                  direct_checked == null &&
+                  direct_fault == BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE;
 
         if (ok) {
             emit_pass_literal("[PASS] lifetime: boundary copy fault classification");
             (*pass)++;
         } else {
             io::printfn(
-                "[FAIL] lifetime: boundary copy fault classification (ok_checked=%s checked_fault=%s result_tag=%d)",
+                "[FAIL] lifetime: boundary copy fault classification (ok_checked=%s checked_fault=%s direct_fault=%s direct_null=%s result_tag=%d)",
                 (!boundary_copy_result_ok(checked) && checked.fault_code == BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE) ? "yes" : "no",
                 (ZString)boundary_copy_fault_name(checked.fault_code),
-                fault_result != null ? (int)fault_result.tag : -1
+                (ZString)boundary_copy_fault_name(direct_fault),
+                direct_checked == null ? "yes" : "no",
+                checked.value != null ? (int)checked.value.tag : -1
             );
             (*fail)++;
         }
@@ -134,6 +128,186 @@ fn void run_memory_lifetime_boundary_invariant_policy_tests(Interp* interp, int*
                 "[FAIL] lifetime: boundary invariant policy defaults (env_disabled=%s enabled=%s)",
                 disabled_via_env ? "yes" : "no",
                 enabled ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_boundary_scope_scan_budget_tests(Interp* interp, int* pass, int* fail) {
+    // Invariant: one logical hinted scope-chain lookup consumes the scan budget once.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* parent = main::scope_create(saved_scope);
+        main::ScopeRegion* child = parent != null ? main::scope_create(parent) : null;
+        if (parent == null || child == null) {
+            if (child != null) main::scope_release(child);
+            if (parent != null) main::scope_release(parent);
+            io::printn("[FAIL] lifetime: boundary scope scan budget applies per lookup");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = parent;
+        Value* target_owned = make_int(interp, 9182);
+        interp.current_scope = saved_scope;
+
+        BoundaryRuntimePolicy saved_policy = g_boundary_runtime_policy;
+        BoundaryDecisionStats saved_stats = boundary_decision_stats_snapshot();
+        g_boundary_runtime_policy.initialized = true;
+        g_boundary_runtime_policy.scope_chain_scan_bypass = false;
+        g_boundary_runtime_policy.scope_chain_scan_budget = 1;
+        boundary_reset_decision_stats();
+
+        bool found = boundary_ptr_in_scope_chain_with_hint(
+            (void*)target_owned,
+            child,
+            0
+        );
+        BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
+
+        boundary_restore_decision_stats(saved_stats);
+        g_boundary_runtime_policy = saved_policy;
+        main::scope_release(child);
+        main::scope_release(parent);
+
+        bool telemetry_ok = !boundary_telemetry_enabled() ||
+            (stats.scope_chain_scan_total == 1 &&
+             stats.scope_chain_scan_fallback == 1 &&
+             stats.scope_chain_scan_suppressed == 0);
+        bool ok = found && telemetry_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary scope scan budget applies per lookup");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary scope scan budget applies per lookup (found=%s total=%d fallback=%d suppressed=%d)",
+                found ? "yes" : "no",
+                (long)stats.scope_chain_scan_total,
+                (long)stats.scope_chain_scan_fallback,
+                (long)stats.scope_chain_scan_suppressed
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_boundary_zero_hint_scope_cache_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: zero-generation hinted lookups participate in the same route cache.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* parent = main::scope_create(saved_scope);
+        main::ScopeRegion* child = parent != null ? main::scope_create(parent) : null;
+        if (parent == null || child == null) {
+            if (child != null) main::scope_release(child);
+            if (parent != null) main::scope_release(parent);
+            io::printn("[FAIL] lifetime: boundary zero-hint scope cache");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = parent;
+        Value* parent_value = make_int(interp, 17701);
+        interp.current_scope = child;
+
+        PromotionContext ctx = {};
+        promotion_context_begin(interp, &ctx, usz.max);
+        boundary_reset_decision_stats();
+
+        bool all_found = true;
+        for (usz i = 0; i < 128; i++) {
+            if (!boundary_ptr_in_target_scope_chain_with_hint((void*)parent_value, interp, 0)) {
+                all_found = false;
+                break;
+            }
+        }
+
+        BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
+        promotion_context_end(interp, &ctx);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(child);
+        main::scope_release(parent);
+
+        bool telemetry_ok = !boundary_telemetry_enabled() ||
+            (stats.scope_chain_scan_total == 1 &&
+             stats.scope_chain_scan_fallback == 1 &&
+             stats.scope_chain_scan_suppressed == 0);
+        bool ok = all_found &&
+                  interp.active_promotion_ctx == null &&
+                  telemetry_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary zero-hint scope cache");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary zero-hint scope cache (found=%s active_ctx=%s total=%d fallback=%d suppressed=%d)",
+                all_found ? "yes" : "no",
+                interp.active_promotion_ctx == null ? "yes" : "no",
+                (long)stats.scope_chain_scan_total,
+                (long)stats.scope_chain_scan_fallback,
+                (long)stats.scope_chain_scan_suppressed
+            );
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_boundary_explicit_target_scope_cache_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: explicit target-scope lookups use the active promotion-context route cache.
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        main::ScopeRegion* current = main::scope_create(saved_scope);
+        if (target == null || current == null) {
+            if (current != null) main::scope_release(current);
+            if (target != null) main::scope_release(target);
+            io::printn("[FAIL] lifetime: boundary explicit-target scope cache");
+            (*fail)++;
+            return;
+        }
+
+        interp.current_scope = target;
+        Value* target_value = make_int(interp, 17702);
+        interp.current_scope = current;
+
+        PromotionContext ctx = {};
+        promotion_context_begin(interp, &ctx, usz.max);
+        boundary_reset_decision_stats();
+
+        bool all_found = true;
+        for (usz i = 0; i < 128; i++) {
+            if (!boundary_ptr_in_scope_chain_with_hint_cached((void*)target_value, interp, target, 0)) {
+                all_found = false;
+                break;
+            }
+        }
+
+        BoundaryDecisionStats stats = boundary_decision_stats_snapshot();
+        promotion_context_end(interp, &ctx);
+
+        interp.current_scope = saved_scope;
+        main::scope_release(current);
+        main::scope_release(target);
+
+        bool telemetry_ok = !boundary_telemetry_enabled() ||
+            (stats.scope_chain_scan_total == 1 &&
+             stats.scope_chain_scan_fallback == 1 &&
+             stats.scope_chain_scan_suppressed == 0);
+        bool ok = all_found &&
+                  interp.active_promotion_ctx == null &&
+                  telemetry_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: boundary explicit-target scope cache");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: boundary explicit-target scope cache (found=%s active_ctx=%s total=%d fallback=%d suppressed=%d)",
+                all_found ? "yes" : "no",
+                interp.active_promotion_ctx == null ? "yes" : "no",
+                (long)stats.scope_chain_scan_total,
+                (long)stats.scope_chain_scan_fallback,
+                (long)stats.scope_chain_scan_suppressed
             );
             (*fail)++;
         }

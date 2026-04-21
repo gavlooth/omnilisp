@@ -19,7 +19,7 @@ fn void run_memory_lifetime_env_copy_memo_tests(Interp* interp, int* pass, int* 
         Value* shared = make_cons(interp, make_int(interp, 123), make_nil(interp));
         for (usz i = 0; i < 24; i++) {
             char[64] nbuf;
-            if (try char[] name = io::bprintf(&nbuf, "__copy_env_shared_%d", (long)i)) {
+            if (try char[] name = io::bprintf(&nbuf, "__copy_env_shared_%d", i)) {
                 env_define_with_barrier(src_env, interp.symbols.intern(name), shared, interp);
             } else {
                 src_env = null;
@@ -68,10 +68,82 @@ fn void run_memory_lifetime_env_copy_memo_tests(Interp* interp, int* pass, int* 
             (*pass)++;
         } else {
             io::printfn("[FAIL] lifetime: copy_env shared-value memo gate (site_delta=%d copied_ok=%s alias_ok=%s post_ok=%s)",
-                (long)site_delta,
+                site_delta,
                 copied_ok ? "yes" : "no",
                 alias_ok ? "yes" : "no",
                 post_ok ? "yes" : "no");
+            (*fail)++;
+        }
+    }
+}
+
+fn void run_memory_lifetime_env_copy_reuses_target_owned_frame_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: env-copy/TCO-copy should not rematerialize frames that are
+    // already owned by the target scope chain and whose bindings are reusable.
+    {
+        reset_memory_promotion_stats();
+
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* saved_releasing = interp.releasing_scope;
+        main::ScopeRegion* target = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing = main::scope_create(saved_scope);
+        if (target == null || releasing == null) {
+            if (target != null) main::scope_release(target);
+            if (releasing != null) main::scope_release(releasing);
+            io::printn("[FAIL] lifetime: env copy reuses target-owned frame");
+            (*fail)++;
+            return;
+        }
+
+        SymbolId sym = interp.symbols.intern("__copy_env_reuse_target_owned");
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+        Env* target_env = make_env(interp, interp.global_env);
+        Value* value = make_int(interp, 4242);
+        bool setup_ok = target_env != null &&
+                        value != null &&
+                        env_define_with_barrier_checked(target_env, sym, value, interp);
+
+        interp.current_scope = releasing;
+        interp.releasing_scope = null;
+        usz base_env_site = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE);
+        Env* copied_env = setup_ok ? boundary_copy_env_to_target_scope(target_env, interp, target) : null;
+        usz env_site_delta = copy_to_parent_site_calls(COPY_SITE_COPY_ENV_TO_SCOPE) - base_env_site;
+
+        interp.current_scope = target;
+        interp.releasing_scope = releasing;
+        usz base_tco_site = copy_to_parent_site_calls(COPY_SITE_JIT_TCO_FRAME_COPY);
+        Env* copied_tco = setup_ok ? copy_tco_env_chain(target_env, interp) : null;
+        usz tco_site_delta = copy_to_parent_site_calls(COPY_SITE_JIT_TCO_FRAME_COPY) - base_tco_site;
+
+        Value* copied_value = copied_env != null ? copied_env.lookup(sym) : null;
+        Value* copied_tco_value = copied_tco != null ? copied_tco.lookup(sym) : null;
+
+        bool reuse_ok = copied_env == target_env &&
+                        copied_tco == target_env &&
+                        copied_value == value &&
+                        copied_tco_value == value &&
+                        env_site_delta == 0 &&
+                        tco_site_delta == 0;
+
+        interp.current_scope = saved_scope;
+        interp.releasing_scope = saved_releasing;
+        main::scope_release(releasing);
+        main::scope_release(target);
+
+        bool ok = setup_ok && reuse_ok;
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: env copy reuses target-owned frame");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: env copy reuses target-owned frame (setup_ok=%s copied_same=%s tco_same=%s env_site=%d tco_site=%d)",
+                setup_ok ? "yes" : "no",
+                copied_env == target_env ? "yes" : "no",
+                copied_tco == target_env ? "yes" : "no",
+                (long)env_site_delta,
+                (long)tco_site_delta
+            );
             (*fail)++;
         }
     }
@@ -279,7 +351,7 @@ fn void run_memory_lifetime_env_copy_closure_retain_stress_test(Interp* interp, 
 
             interp.current_scope = target;
             interp.releasing_scope = source;
-            Value* copied = setup_ok ? copy_to_parent(closure, interp) : null;
+            Value* copied = setup_ok ? test_copy_to_parent(closure, interp) : null;
             interp.releasing_scope = saved_releasing_scope;
 
             bool copied_ok = copied != null &&
@@ -314,7 +386,7 @@ fn void run_memory_lifetime_env_copy_closure_retain_stress_test(Interp* interp, 
             (*pass)++;
         } else {
             io::printfn("[FAIL] lifetime: copy_env closure retain symmetry stress (failed_iter=%d rc_before=%d rc_after=%d)",
-                (long)failed_iter,
+                failed_iter,
                 failed_before,
                 failed_after);
             (*fail)++;

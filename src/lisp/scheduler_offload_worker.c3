@@ -107,6 +107,7 @@ fn void scheduler_uv_offload_work_cb(void* req) {
 
     queued.executed = true;
     queued.completion = scheduler_execute_offload(work);
+    scheduler_release_custom_ctx(&queued.work);
 }
 
 fn void scheduler_uv_offload_after_cb(void* req, int status) {
@@ -142,6 +143,7 @@ fn void scheduler_uv_offload_after_cb(void* req, int status) {
                 work.shared = null;
                 queued.work.shared = null;
             }
+            scheduler_release_custom_ctx(&queued.work);
             if (completion != null) {
                 scheduler_free_offload_completion(completion);
                 completion = null;
@@ -150,6 +152,14 @@ fn void scheduler_uv_offload_after_cb(void* req, int status) {
             (void)scheduler_cancel_thread_task(work.task_id, &already_done, queued.task_generation);
         }
     } else {
+        if (!queued.executed) {
+            if (work.shared != null) {
+                scheduler_release_shared(work.shared);
+                work.shared = null;
+                queued.work.shared = null;
+            }
+            scheduler_release_custom_ctx(&queued.work);
+        }
         if (completion == null) {
             completion = scheduler_make_offload_alloc_failure_completion();
         }

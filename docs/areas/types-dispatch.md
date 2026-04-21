@@ -80,8 +80,8 @@ As of: 2026-04-12
 - Runtime dispatch boundary for compiled binaries is:
   - `src/lisp/aot.c3`: `invoke_once`/`apply_multi_once` route non-AOT callables to `jit_apply_value` / `jit_apply_multi_args`.
 - Interpreter/JIT type-definition path is explicit evaluator delegation:
-  - `src/lisp/jit_jit_compile_effects_modules.c3`: `jit_compile_deftype/defabstract/defunion/defalias/defeffect` lower via `jit_compile_3arg_helper`.
-  - `src/lisp/jit_jit_dispatch_helpers.c3`: `jit_do_deftype/defabstract/defunion/defalias/defeffect` call `eval_def*`.
+  - `src/lisp/jit_compile_effects_modules.c3`: `jit_compile_deftype/defabstract/defunion/defalias/defeffect` lower via `jit_compile_3arg_helper`.
+  - `src/lisp/jit_dispatch_helpers.c3`: `jit_do_deftype/defabstract/defunion/defalias/defeffect` call `eval_def*`.
 - Historical compiler/AOT audit notes:
   - The former `E_DEFTYPE/E_DEFABSTRACT/E_DEFUNION/E_DEFALIAS` temp-lowering gap in `src/lisp/compiler_temp_core.c3` has since been closed through direct type-form lowering.
   - The generic fallback path in `src/lisp/compiler_expression_compilation.c3` still emits `aot::make_nil() /* WARNING: unsupported expr type */` for expression tags that have no dedicated AOT lowering.

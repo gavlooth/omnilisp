@@ -3,32 +3,6 @@ module lisp;
 import std::io;
 import main;
 
-struct DnsTestAddrInfo {
-    int flags;
-    int family;
-    int socktype;
-    int protocol;
-    uint addrlen;
-    void* addr;
-    void* canonname;
-    void* next;
-}
-
-struct DnsTestSockaddrIn {
-    ushort sin_family;
-    ushort sin_port;
-    uint sin_addr;
-    char[8] sin_zero;
-}
-
-struct DnsTestSockaddrIn6 {
-    ushort sin6_family;
-    ushort sin6_port;
-    uint sin6_flowinfo;
-    char[16] sin6_addr;
-    uint sin6_scope_id;
-}
-
 fn bool async_tls_integration_enabled() @inline {
     // TLS integration fixtures can leak subprocesses in plain full-suite runs.
     // Keep them opt-in until process-lifecycle stability is finalized.
@@ -46,23 +20,18 @@ fn bool dns_test_value_equals(Value* value, char[] expected) {
 }
 
 fn void run_async_dns_render_tests(Interp* interp, int* pass, int* fail) {
-    DnsTestSockaddrIn addr4 = {};
-    addr4.sin_family = (ushort)AF_INET;
-    addr4.sin_addr = c_inet_addr("127.0.0.1");
-    DnsTestAddrInfo ai4 = {};
-    ai4.family = AF_INET;
-    ai4.addr = &addr4;
+    void* ai4 = null;
+    void* ai6 = null;
+    bool resolved4 = resolve_host_and_port("127.0.0.1", 0, &ai4);
+    bool resolved6 = resolve_host_and_port("::1", 0, &ai6);
+    defer if (ai4 != null) c_freeaddrinfo(ai4);
+    defer if (ai6 != null) c_freeaddrinfo(ai6);
 
-    DnsTestSockaddrIn6 addr6 = {};
-    addr6.sin6_family = (ushort)AF_INET6;
-    addr6.sin6_addr[15] = 1;
-    DnsTestAddrInfo ai6 = {};
-    ai6.family = AF_INET6;
-    ai6.addr = &addr6;
-
-    Value* rendered4 = dns_result_to_ip_string(interp, &ai4);
-    Value* rendered6 = dns_result_to_ip_string(interp, &ai6);
-    if (dns_test_value_equals(rendered4, "127.0.0.1") &&
+    Value* rendered4 = resolved4 ? dns_result_to_ip_string(interp, ai4) : null;
+    Value* rendered6 = resolved6 ? dns_result_to_ip_string(interp, ai6) : null;
+    if (resolved4 &&
+        resolved6 &&
+        dns_test_value_equals(rendered4, "127.0.0.1") &&
         dns_test_value_equals(rendered6, "::1")) {
         emit_pass_literal("[PASS] dns-resolve renders IPv4 and IPv6 addrinfo payloads");
         (*pass)++;

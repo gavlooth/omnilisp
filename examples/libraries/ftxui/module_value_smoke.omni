@@ -3,6 +3,8 @@
 
 (import "ui.omni")
 (import ui)
+(import ui.runtime)
+(import ui.ftxui)
 
 (define sample (ui.nodes.text "hello"))
 (define decorated (ui.style.border sample))
@@ -17,4 +19,9 @@
      (= (ui.nodes.kind (ref (ui.nodes.children decorated) 0)) 'text)
      (= (ui.effects.effect_tag effect-tree) 'open)
      (= (ui.effects.effect_tag (ref (ui.effects.effect_children effect-tree) 0)) 'render)
-     (= (ui.effects.effect_tag (ref (ui.effects.effect_children effect-tree) 1)) 'close))
+     (= (ui.effects.effect_tag (ref (ui.effects.effect_children effect-tree) 1)) 'close)
+     (procedure? (ref ui.runtime 'open_session_to))
+     (procedure? (ref ui.runtime 'render_session_to))
+     (procedure? (ref ui.ftxui 'open_session))
+     (procedure? (ref ui.ftxui 'render_session))
+     (procedure? (ref ui.ftxui 'close_session)))

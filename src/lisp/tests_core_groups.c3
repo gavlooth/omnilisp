@@ -2,6 +2,7 @@ module lisp;
 
 
 import std::io;
+import main;
 
 fn void run_basic_intro_tests(Interp* interp, int* pass, int* fail) {
     // Literals & bindings
@@ -61,6 +62,48 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "index/ref parity dict", "(= (ref {'a 1 'b 2} 'b) (let (m {'a 1 'b 2}) m.['b]))", pass, fail);
     test_truthy(interp, "index/ref parity string", "(= (ref \"xyz\" 1) (\"xyz\".[1]))", pass, fail);
     test_truthy(interp, "index/ref parity string negative", "(= (ref \"xyz\" -1) (\"xyz\".[-1]))", pass, fail);
+    test_truthy(interp, "index/ref parity array oob error",
+        "(= (handle (ref [10 20] 5) (raise e (String e))) (handle (let (a [10 20]) a.[5]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity array wrong index error",
+        "(= (handle (ref [10 20] 'x) (raise e (String e))) (handle (let (a [10 20]) a.['x]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity list oob error",
+        "(= (handle (ref '(10 20) 5) (raise e (String e))) (handle (let (l '(10 20)) l.[5]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity list wrong index error",
+        "(= (handle (ref '(10 20) 'x) (raise e (String e))) (handle (let (l '(10 20)) l.['x]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity string oob error",
+        "(= (handle (ref \"xy\" 5) (raise e (String e))) (handle (\"xy\".[5]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity string wrong index error",
+        "(= (handle (ref \"xy\" 'x) (raise e (String e))) (handle (\"xy\".['x]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity dict missing key",
+        "(= (ref {'a 1} 'missing) (let (m {'a 1}) m.['missing]))",
+        pass, fail);
+    test_truthy(interp, "index/ref parity unsupported collection error",
+        "(= (handle (ref 42 0) (raise e (String e))) (handle (42.[0]) (raise e (String e))))",
+        pass, fail);
+    test_truthy(interp, "postfix array oob canonical error",
+        "(= (handle (let (a [10 20]) a.[5]) (raise e (String e))) \"ref: array index out of bounds\")",
+        pass, fail);
+    test_truthy(interp, "postfix array wrong index canonical error",
+        "(= (handle (let (a [10 20]) a.['x]) (raise e (String e))) \"ref: array requires int index\")",
+        pass, fail);
+    test_truthy(interp, "postfix list oob canonical error",
+        "(= (handle (let (l '(10 20)) l.[5]) (raise e (String e))) \"ref: list index out of bounds\")",
+        pass, fail);
+    test_truthy(interp, "postfix list wrong index canonical error",
+        "(= (handle (let (l '(10 20)) l.['x]) (raise e (String e))) \"ref: list requires int index\")",
+        pass, fail);
+    test_truthy(interp, "postfix string oob canonical error",
+        "(= (handle (\"xy\".[5]) (raise e (String e))) \"ref: string index out of bounds\")",
+        pass, fail);
+    test_truthy(interp, "postfix string wrong index canonical error",
+        "(= (handle (\"xy\".['x]) (raise e (String e))) \"ref: string requires int index\")",
+        pass, fail);
     test_eq(interp, "postfix index then symbol path", "(let (rows [(Dictionary 'name 44)]) rows.[0].name)", 44, pass, fail);
     test_error_contains(interp, "leading-dot int accessor removed", "(.1 (quote (10 20 30)))",
         "leading-dot accessors were removed", pass, fail);
@@ -165,11 +208,17 @@ fn void run_basic_control_flow_tests(Interp* interp, int* pass, int* fail) {
 }
 
 fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* fail) {
+    if (!symbol_table_fault_injection_enabled()) {
+        emit_pass_literal("[PASS] symbol table fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
+        (*pass)++;
+        return;
+    }
+
     {
         SymbolTable table = {};
-        g_symbol_table_force_entries_alloc_fail = true;
+        symbol_table_force_entries_alloc_fail_for_test(true);
         table.init();
-        g_symbol_table_force_entries_alloc_fail = false;
+        symbol_table_force_entries_alloc_fail_for_test(false);
 
         bool ok = table.entries == null
             && table.hash_index == null
@@ -191,9 +240,9 @@ fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* f
         table.init();
         SymbolId first = table.intern("alpha");
 
-        g_symbol_table_force_name_alloc_fail = true;
+        symbol_table_force_name_alloc_fail_for_test(true);
         SymbolId failed = table.intern("beta");
-        g_symbol_table_force_name_alloc_fail = false;
+        symbol_table_force_name_alloc_fail_for_test(false);
 
         SymbolId later = table.intern("gamma");
         bool ok = first != INVALID_SYMBOL_ID
@@ -233,9 +282,9 @@ fn void run_basic_symbol_table_hardening_tests(Interp* interp, int* pass, int* f
 
         SymbolId before = table.intern("stable-before-grow");
         usz count_before = table.count;
-        g_symbol_table_force_grow_entries_alloc_fail = true;
+        symbol_table_force_grow_entries_alloc_fail_for_test(true);
         SymbolId failed = table.intern("trigger-grow-fail");
-        g_symbol_table_force_grow_entries_alloc_fail = false;
+        symbol_table_force_grow_entries_alloc_fail_for_test(false);
         SymbolId after = table.intern("after-grow-ok");
 
         bool ok = seeded
@@ -275,11 +324,17 @@ fn TypeInfo make_basic_type_info(SymbolId name) {
 }
 
 fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* fail) {
+    if (!type_registry_fault_injection_enabled()) {
+        emit_pass_literal("[PASS] type registry fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
+        (*pass)++;
+        return;
+    }
+
     {
         TypeRegistry registry = {};
-        g_type_registry_force_types_alloc_fail = true;
+        type_registry_force_types_alloc_fail_for_test(true);
         bool ok = registry.init();
-        g_type_registry_force_types_alloc_fail = false;
+        type_registry_force_types_alloc_fail_for_test(false);
 
         bool closed = !ok
             && registry.types == null
@@ -299,9 +354,9 @@ fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* 
 
     {
         TypeRegistry registry = {};
-        g_type_registry_force_hash_alloc_fail = true;
+        type_registry_force_hash_alloc_fail_for_test(true);
         bool ok = registry.init();
-        g_type_registry_force_hash_alloc_fail = false;
+        type_registry_force_hash_alloc_fail_for_test(false);
 
         bool closed = !ok
             && registry.types == null
@@ -353,10 +408,10 @@ fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* 
             usz before_cap = registry.capacity;
             usz before_hash_cap = registry.hash_capacity;
 
-            g_type_registry_force_grow_types_alloc_fail = true;
+            type_registry_force_grow_types_alloc_fail_for_test(true);
             TypeInfo fail_info = make_basic_type_info(syms.intern("grow-fail"));
             TypeId fail_id = registry.register_type(fail_info, &syms);
-            g_type_registry_force_grow_types_alloc_fail = false;
+            type_registry_force_grow_types_alloc_fail_for_test(false);
 
             bool preserved_after_failure = seeded
                 && fail_id == INVALID_TYPE_ID
@@ -388,6 +443,50 @@ fn void run_basic_type_registry_hardening_tests(Interp* interp, int* pass, int* 
     }
 }
 
+fn void run_basic_runtime_memory_stats_tests(Interp* interp, int* pass, int* fail) {
+    EvalResult r = run(
+        "(let (s (runtime-memory-stats)) "
+        "  (and (= (ref s 'kind) 'runtime-memory-stats) "
+        "       (= (ref s 'status) 'ok) "
+        "       (>= (ref (ref s 'scope) 'scope-create-count) 1) "
+        "       (>= (ref (ref s 'scope) 'temp-bytes-allocated) 0) "
+        "       (>= (ref (ref s 'copy-to-parent) 'copy-to-parent-bytes) 0) "
+        "       (>= (ref (ref s 'fiber-temp) 'take-hits) 0)))",
+        interp
+    );
+    if (!r.error.has_error && !is_falsy(r.value, interp)) {
+        emit_pass_literal("[PASS] runtime-memory-stats structured counters");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] runtime-memory-stats structured counters");
+        (*fail)++;
+    }
+}
+
+fn void run_basic_runtime_memory_stats_native_tests(Interp* interp, int* pass, int* fail) {
+    usz create_before = main::g_scope_memory_telemetry_stats.scope_create_count;
+    main::ScopeRegion* scope = main::scope_create(interp.root_scope);
+    if (scope != null) {
+        void* temp_ptr = scope.alloc(24);
+        void* escape_ptr = scope.alloc_escape(32);
+        (void)temp_ptr;
+        (void)escape_ptr;
+        main::scope_release(scope);
+    }
+    main::ScopeMemoryTelemetryStats stats = main::g_scope_memory_telemetry_stats;
+    if (scope != null &&
+        stats.scope_create_count >= create_before + 1 &&
+        stats.total_temp_bytes_allocated >= 24 &&
+        stats.total_escape_bytes_allocated >= 32 &&
+        stats.scope_release_count > 0) {
+        emit_pass_literal("[PASS] runtime memory telemetry native counters");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] runtime memory telemetry native counters");
+        (*fail)++;
+    }
+}
+
 fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     emit_test_section_banner("Basic Tests");
 
@@ -398,5 +497,7 @@ fn void run_basic_tests(Interp* interp, int* pass, int* fail) {
     run_basic_control_flow_tests(interp, pass, fail);
     run_basic_symbol_table_hardening_tests(interp, pass, fail);
     run_basic_type_registry_hardening_tests(interp, pass, fail);
+    run_basic_runtime_memory_stats_tests(interp, pass, fail);
+    run_basic_runtime_memory_stats_native_tests(interp, pass, fail);
     run_basic_interp_storage_hardening_tests(interp, pass, fail);
 }

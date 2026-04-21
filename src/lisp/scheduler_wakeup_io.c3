@@ -80,6 +80,8 @@ fn Value* scheduler_value_from_offload_completion(OffloadCompletion* completion,
                 completion.int_result,
                 interp
             );
+        case OFFLOAD_RES_DOUBLE:
+            return make_double(interp, completion.double_result);
         case OFFLOAD_RES_BYTES:
             return scheduler_value_from_offload_bytes(completion, interp);
         case OFFLOAD_RES_ERROR:

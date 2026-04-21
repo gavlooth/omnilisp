@@ -445,6 +445,53 @@ extern fn int omni_tensor_backend_vulkan_ml_clip_scale_f32(
     float scale,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_clip_scale_f32");
+extern fn int omni_tensor_backend_vulkan_kernel_source_scale_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    float scale,
+    uint local_size,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_kernel_source_scale_f32");
+extern fn int omni_tensor_backend_vulkan_kernel_source_scale_f32_spirv(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    float scale,
+    uint local_size,
+    uint* shader_words,
+    usz shader_word_count,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_kernel_source_scale_f32_spirv");
+extern fn int omni_tensor_backend_vulkan_kernel_source_unary_f32(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    uint op,
+    uint local_size,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_kernel_source_unary_f32");
+extern fn int omni_tensor_backend_vulkan_kernel_source_unary_f32_spirv(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz element_count,
+    uint op,
+    uint local_size,
+    uint* shader_words,
+    usz shader_word_count,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_kernel_source_unary_f32_spirv");
+extern fn int omni_tensor_backend_vulkan_kernel_source_binary_f32_spirv(
+    void* left_device_ptr,
+    usz left_byte_len,
+    void* right_device_ptr,
+    usz right_byte_len,
+    usz element_count,
+    uint local_size,
+    uint* shader_words,
+    usz shader_word_count,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_kernel_source_binary_f32_spirv");
 extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     void* input_device_ptr,
     usz input_byte_len,

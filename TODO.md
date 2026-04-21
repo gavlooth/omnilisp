@@ -2,11 +2,13 @@
 
 `TODO.md` remains the canonical backlog entrypoint; read the indexed part files for the full live queue and recently closed history.
 
-The historical content was split mechanically to keep the active backlog readable. Content order is preserved in the part files. The hard 700-line split gate applies to code files only.
+The historical content was split mechanically to keep the active backlog
+readable. Content order is preserved in the part files. The hard 1000-line
+split gate applies to code files only.
 
 ## Parts
 
-- Part 01: [docs/todo_parts/todo_part_01.md](docs/todo_parts/todo_part_01.md) (624 lines)
+- Part 01: [docs/todo_parts/todo_part_01.md](docs/todo_parts/todo_part_01.md) (639 lines)
 - Part 02: [docs/todo_parts/todo_part_02.md](docs/todo_parts/todo_part_02.md) (624 lines)
 - Part 03: [docs/todo_parts/todo_part_03.md](docs/todo_parts/todo_part_03.md) (322 lines)
 - Part 04: [docs/todo_parts/todo_part_04.md](docs/todo_parts/todo_part_04.md) (432 lines)
@@ -19,4 +21,5 @@ The historical content was split mechanically to keep the active backlog readabl
 - Part 11: [docs/todo_parts/todo_part_11.md](docs/todo_parts/todo_part_11.md) (318 lines)
 - Part 12: [docs/todo_parts/todo_part_12.md](docs/todo_parts/todo_part_12.md) (337 lines)
 - Part 13: [docs/todo_parts/todo_part_13.md](docs/todo_parts/todo_part_13.md) (325 lines)
-- Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (871 lines)
+- Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1823 lines)
+- Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (608 lines)

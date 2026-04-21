@@ -51,7 +51,7 @@ fn void Compiler.find_free_vars_lambda(Compiler* self, Expr* expr, List{SymbolId
         for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
             new_bound.push(expr.lambda.params[pi]);
         }
-    } else if ((uint)expr.lambda.param != 0xFFFFFFFF) {
+    } else if (expr.lambda.param != INVALID_SYMBOL_ID) {
         new_bound.push(expr.lambda.param);
     }
     self.find_free_vars(expr.lambda.body, &new_bound, free_vars, enclosing_scope);

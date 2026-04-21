@@ -179,6 +179,34 @@ fn bool type_ann_to_ffi_tag(SymbolId base_type, Interp* interp, FfiTypeTag* out_
         *out_tag = FFI_TYPE_VOID;
         return true;
     }
+    if (base_type == interp.sym_Float32) {
+        *out_tag = FFI_TYPE_FLOAT32;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "Int32")) {
+        *out_tag = FFI_TYPE_INT32;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "Int64")) {
+        *out_tag = FFI_TYPE_INT64;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "UInt32")) {
+        *out_tag = FFI_TYPE_UINT32;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "UInt64")) {
+        *out_tag = FFI_TYPE_UINT64;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "Buffer")) {
+        *out_tag = FFI_TYPE_BUFFER;
+        return true;
+    }
+    if (ffi_symbol_name_equals(base_type, interp, "Struct")) {
+        *out_tag = FFI_TYPE_STRUCT;
+        return true;
+    }
     return false;
 }
 

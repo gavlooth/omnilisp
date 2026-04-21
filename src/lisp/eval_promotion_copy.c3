@@ -213,13 +213,6 @@ fn Value* copy_to_parent_by_route(
     }
 }
 
-<*
-@require interp != null : "copy_to_parent: null interp"
-*>
-fn Value* copy_to_parent(Value* v, Interp* interp) {
-    return copy_to_parent_with_fault(v, interp, null);
-}
-
 fn Value* copy_to_parent_with_fault(
     Value* v,
     Interp* interp,
@@ -227,37 +220,53 @@ fn Value* copy_to_parent_with_fault(
 ) @inline {
     if (copy_fault_out != null) *copy_fault_out = BOUNDARY_COPY_FAULT_NONE;
     if (v == null) return null;
+    bool telemetry_outer = g_copy_to_parent_telemetry_depth == 0;
+    usz telemetry_before = telemetry_outer ? copy_to_parent_current_scope_alloc_bytes(interp) : 0;
+    g_copy_to_parent_telemetry_depth++;
     g_copy_to_parent_stats.total_calls++;
     copy_to_parent_note_tag(v.tag);
+    Value* result = null;
     if (interp.current_scope == null || interp.releasing_scope == null) {
         g_copy_to_parent_stats.defensive_copies++;
-        return copy_to_parent_missing_scope_provenance_error(interp);
-    }
+        if (copy_fault_out != null) {
+            *copy_fault_out = BOUNDARY_COPY_FAULT_MISSING_SCOPE_PROVENANCE;
+            result = null;
+        } else {
+            result = copy_to_parent_missing_scope_provenance_error(interp);
+        }
+    } else {
+        PromotionContext* active_ctx = interp.active_promotion_ctx;
+        if (active_ctx != null) {
+            result = promotion_context_lookup(active_ctx, v);
+        }
 
-    PromotionContext* active_ctx = interp.active_promotion_ctx;
-    if (active_ctx != null) {
-        Value* cached = promotion_context_lookup(active_ctx, v);
-        if (cached != null) return cached;
+        if (result == null) {
+            CopyParentRoute route = copy_parent_route_for_tag(v.tag);
+            if (copy_parent_should_skip_reuse_for_stackctx_headroom(route, v.tag)) {
+                g_copy_to_parent_stats.defensive_copies++;
+                result = copy_to_parent_by_route(v, interp, route, copy_fault_out);
+            } else {
+                // Scope-aware optimization: if value is NOT in the scope being released,
+                // reuse only when it is already in the target scope chain.
+                // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
+                // chunk-transfer paths (scope_splice_escapes) move allocations without
+                // rewriting per-value scope_gen stamps.
+                if (active_ctx == null) {
+                    Value* fast_reuse = null;
+                    if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) {
+                        result = fast_reuse;
+                    }
+                }
+                if (result == null) {
+                    copy_to_parent_note_cons_spine(v);
+                    result = copy_to_parent_by_route(v, interp, route, copy_fault_out);
+                }
+            }
+        }
     }
-
-    CopyParentRoute route = copy_parent_route_for_tag(v.tag);
-    if (copy_parent_should_skip_reuse_for_stackctx_headroom(route, v.tag)) {
-        g_copy_to_parent_stats.defensive_copies++;
-        return copy_to_parent_by_route(v, interp, route, copy_fault_out);
-    }
-
-    // Scope-aware optimization: if value is NOT in the scope being released,
-    // reuse only when it is already in the target scope chain.
-    // Note: uses is_in_scope (chunk walk) rather than scope_gen stamp because
-    // chunk-transfer paths (scope_splice_escapes) move allocations without
-    // rewriting per-value scope_gen stamps.
-    if (active_ctx == null) {
-        Value* fast_reuse = null;
-        if (copy_to_parent_try_fast_reuse(v, interp, &fast_reuse)) return fast_reuse;
-    }
-    copy_to_parent_note_cons_spine(v);
-
-    return copy_to_parent_by_route(v, interp, route, copy_fault_out);
+    g_copy_to_parent_telemetry_depth--;
+    if (telemetry_outer) copy_to_parent_note_scope_bytes(telemetry_before, interp);
+    return result;
 }
 
 fn Value* copy_to_parent_site_checked(Value* v, Interp* interp, uint site, BoundaryCopyFault* copy_fault_out) @inline {
@@ -265,9 +274,4 @@ fn Value* copy_to_parent_site_checked(Value* v, Interp* interp, uint site, Bound
     if (copy_fault_out != null) *copy_fault_out = BOUNDARY_COPY_FAULT_NONE;
     if (site < COPY_SITE_COUNT) g_copy_to_parent_stats.site_calls[(usz)site]++;
     return copy_to_parent_with_fault(v, interp, copy_fault_out);
-}
-
-fn Value* copy_to_parent_site(Value* v, Interp* interp, uint site) {
-    if (site < COPY_SITE_COUNT) g_copy_to_parent_stats.site_calls[(usz)site]++;
-    return copy_to_parent(v, interp);
 }

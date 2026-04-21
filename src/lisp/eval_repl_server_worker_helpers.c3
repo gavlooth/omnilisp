@@ -4,7 +4,7 @@ import std::core::mem;
 import main;
 
 fn bool repl_server_worker_busy_locked(ReplServerWorker* worker) @inline {
-    return worker.command_pending || worker.busy;
+    return worker.command_queue_count >= REPL_SERVER_WORKER_QUEUE_CAPACITY;
 }
 
 fn bool repl_server_worker_busy(ReplServerWorker* worker) {
@@ -72,7 +72,9 @@ fn bool repl_server_worker_submit(
         return false;
     }
 
-    worker.pending_command = {
+    usz queue_idx = (worker.command_queue_head + worker.command_queue_count) %
+        REPL_SERVER_WORKER_QUEUE_CAPACITY;
+    worker.command_queue[queue_idx] = {
         .kind = kind,
         .session = session,
         .program_mode = program_mode,
@@ -81,6 +83,7 @@ fn bool repl_server_worker_submit(
         .payload_ptr = payload_copy,
         .payload_len = payload_len,
     };
+    worker.command_queue_count++;
     worker.command_pending = true;
     (void)worker.cv.signal();
     worker.mu.unlock();
@@ -110,8 +113,30 @@ fn bool repl_server_worker_accepts_stdin(
 ) {
     if (worker == null || !worker.mu_ready) return false;
     worker.mu.lock();
-    bool matched = repl_server_worker_matches_active_locked(worker, session, target_id) ||
-        repl_server_worker_command_matches(&worker.pending_command, session, target_id);
+    bool matched = repl_server_worker_matches_active_locked(worker, session, target_id);
+    if (!matched) {
+        for (usz i = 0; i < worker.command_queue_count; i++) {
+            usz queue_idx = (worker.command_queue_head + i) %
+                REPL_SERVER_WORKER_QUEUE_CAPACITY;
+            if (repl_server_worker_command_matches(&worker.command_queue[queue_idx], session, target_id)) {
+                matched = true;
+                break;
+            }
+        }
+    }
     worker.mu.unlock();
     return matched;
+}
+
+fn void repl_server_worker_clear_queued_commands(ReplServerWorker* worker) {
+    if (worker == null) return;
+    for (usz i = 0; i < worker.command_queue_count; i++) {
+        usz queue_idx = (worker.command_queue_head + i) %
+            REPL_SERVER_WORKER_QUEUE_CAPACITY;
+        repl_server_command_free(&worker.command_queue[queue_idx]);
+    }
+    worker.command_queue_head = 0;
+    worker.command_queue_count = 0;
+    worker.command_pending = false;
+    repl_server_command_free(&worker.pending_command);
 }

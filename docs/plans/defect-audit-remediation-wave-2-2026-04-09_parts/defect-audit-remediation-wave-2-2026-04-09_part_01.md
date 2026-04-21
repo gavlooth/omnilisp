@@ -30,12 +30,12 @@ Post-wave follow-up (2026-04-09, late pass):
     reuse contract directly.
   - `TODO.md` no longer tracks `AUDIT-ASYNC-PROCESS-CONCURRENCY-003`.
 - Remaining follow-up lanes are now also closed:
-  - `src/lisp/jit_jit_apply_multi_prims.c3` now uses the canonical
+  - `src/lisp/jit_apply_multi_prims.c3` now uses the canonical
     under-arity format for non-tail fixed/variadic multi-arg closure apply,
     and `src/lisp/tests_compiler_core_groups_fail_closed.c3` now asserts
     prelude-stripped parser coordinates through the compiler pipeline.
   - `src/lisp/eval_promotion_root_clones.c3` and
-    `src/lisp/jit_jit_closure_support.c3` now expose a narrow
+    `src/lisp/jit_closure_support.c3` now expose a narrow
     method-table-abort cleanup seam, and
     `src/lisp/tests_memory_lifetime_boundary_groups.c3` proves both
     copy-to-parent and escape-promotion partial-cleanup paths reclaim copied
@@ -266,10 +266,10 @@ Post-wave follow-up (2026-04-10):
   - `src/lisp/value_constructors.c3`
     now rejects null/error `boundary_promote_to_root(...)` results before
     publishing pending raise payload state.
-  - `src/lisp/jit_jit_runtime_effects_handle.c3`
+  - `src/lisp/jit_runtime_effects_handle.c3`
     now rejects fallback raise message-string and arg-pair constructor failure
     before handler call-through.
-  - `src/lisp/jit_jit_handle_signal_handle.c3`
+  - `src/lisp/jit_handle_signal_handle.c3`
     now rejects fallback raise message-string materialization failure before
     handler env binding.
   - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
@@ -373,12 +373,12 @@ Post-wave follow-up (2026-04-10):
     - bounded `memory-lifetime-smoke`: `pass=189 fail=0`
 
 - The runtime module export growth fail-closed lane is now also closed:
-  - `src/lisp/jit_jit_module_setup_helpers.c3`
+  - `src/lisp/jit_module_setup_helpers.c3`
     now uses a checked export allocation helper, preserves existing exports
     on growth failure, and rejects oversized export capacity before byte-size
     arithmetic can wrap.
-  - `src/lisp/jit_jit_compile_effects_modules.c3` and
-    `src/lisp/jit_jit_module_import_setup.c3`
+  - `src/lisp/jit_compile_effects_modules.c3` and
+    `src/lisp/jit_module_import_setup.c3`
     now propagate export-table growth failure during re-export and implicit
     module export paths.
   - `src/lisp/tests_advanced_stdlib_module_groups.c3`
@@ -599,7 +599,7 @@ Post-wave follow-up (2026-04-10):
     for runtime status payloads.
   - `src/lisp/http_url_response.c3`,
     `src/lisp/eval_dispatch_error_payloads.c3`,
-    `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`, and
+    `src/lisp/jit_handle_signal_helpers_runtime_effects.c3`, and
     `src/lisp/primitives_meta_types_ctor_helpers.c3`
     now fail closed when auxiliary payload-map construction fails instead of
     dereferencing unchecked hashmap payloads.

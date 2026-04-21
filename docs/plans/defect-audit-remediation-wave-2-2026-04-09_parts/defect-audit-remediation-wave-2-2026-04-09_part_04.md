@@ -43,10 +43,10 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
       module table growth after creating a first-class module value and
       verifies exported path access still works under normal and ASAN smoke.
   - Closed follow-up `AUDIT-JIT-MUTATION-PROMOTION-NULL-GUARDS-070`:
-    - `src/lisp/jit_jit_closure_let_set_helpers.c3` now rejects null
+    - `src/lisp/jit_closure_let_set_helpers.c3` now rejects null
       cons-field promotion and null instance-field boundary-copy results before
       mutating storage.
-    - `src/lisp/jit_jit_define_method_table.c3` now rejects null typed method
+    - `src/lisp/jit_define_method_table.c3` now rejects null typed method
       implementations and null global define promotion results before mutating
       method-table entries or fallbacks.
     - `src/lisp/aot_type_definitions.c3` mirrors the typed-method promotion
@@ -60,7 +60,7 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
       - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
         `pass=196 fail=0`
   - Closed follow-up `AUDIT-TCO-ENV-COPY-FAIL-CLOSED-071`:
-    - `src/lisp/jit_jit_eval_scope_copy.c3` now uses checked boundary-copy
+    - `src/lisp/jit_eval_scope_copy.c3` now uses checked boundary-copy
       results while copying TCO env-frame bindings and rejects copy faults,
       null results, and copied `ERROR` values before binding them into a copied
       env frame.
@@ -85,14 +85,14 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
       - bounded normal+ASAN `memory-lifetime-smoke` with FTXUI smoke enabled:
         `pass=198 fail=0`
   - Closed follow-up `AUDIT-JIT-MUTABLE-LOCAL-NULL-BOX-073`:
-    - `src/lisp/jit_jit_apply_multi_prims_tail.c3` now makes
+    - `src/lisp/jit_apply_multi_prims_tail.c3` now makes
       `jit_env_lookup_local(...)` reject null envs and missing bindings with an
       explicit `jit: missing mutable local binding` error.
     - `jit_env_reparent(...)` now returns the effective env and lets compiled
       capture setup continue with the helper result when the original env box is
       null.
-    - `src/lisp/jit_jit_compile_expr_basic.c3` and
-      `src/lisp/jit_jit_emit_helpers.c3` now consume those checked helper
+    - `src/lisp/jit_compile_expr_basic.c3` and
+      `src/lisp/jit_emit_helpers.c3` now consume those checked helper
       contracts.
     - `src/lisp/tests_runtime_feature_jit_groups_more.c3` covers both helper
       contracts in `jit-policy`.
@@ -197,10 +197,10 @@ Source: `docs/plans/defect-audit-remediation-wave-2-2026-04-09.md`
   - Closed follow-up `AUDIT-RUNTIME-INTERN-RAISEPAYLOAD-GUARDS-081`:
     - `src/lisp/eval_init_primitive_registration.c3` now rejects failed `nil`
       symbol interning before defining the language constant.
-    - `src/lisp/jit_jit_closure_runtime.c3` now treats failed promise env-tag
+    - `src/lisp/jit_closure_runtime.c3` now treats failed promise env-tag
       interning as a non-match instead of probing environments with invalid
       symbols.
-    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3` now builds
+    - `src/lisp/jit_handle_signal_helpers_runtime_effects.c3` now builds
       unhandled-effect raise payload dictionaries through the non-raising
       hashmap helper and checks payload-key interning before publication.
     - validation:

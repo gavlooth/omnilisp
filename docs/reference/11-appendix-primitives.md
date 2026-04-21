@@ -182,6 +182,7 @@ not exported.
 | `iterator?` | 1 | Is iterator value? |
 | `foreign-describe` | 1 | Return `ForeignHandle` or FFI-bound callable metadata dictionary |
 | `foreign-release` | 1 | Explicitly release an owned/releasable `ForeignHandle` payload and return `Void` |
+| `ffi-callback` | -1 | Create a C-callable callback from an Omni lambda and type signature; returns `ForeignHandle` |
 
 `Nil` is the language-level empty/false value type. `Void` is now a real
 singleton value constructor with zero arguments, and FFI `^Void` returns map to
@@ -240,12 +241,13 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `math/erfc` | 1 | Complementary error function; applies elementwise to supported Tensor inputs |
 | `stats/normal-cdf` | 1 | Standard normal cumulative distribution function; applies elementwise to supported Tensor inputs |
 | `stats/normal-quantile` | 1 | Standard normal inverse cumulative distribution function; applies elementwise to supported CPU, CUDA, and Vulkan Float32 Tensor inputs |
-| `ml/grad` | 1 | Data-oriented gradient spec evaluator; currently supports CPU linear MSE, linear-activation MSE, and linear softmax cross-entropy gradients |
+| `ml/grad` | 1 | Data-oriented gradient spec evaluator; supports CPU linear MSE, linear-activation MSE, linear softmax cross-entropy, tensor-expression MSE, and tensor-expression softmax cross-entropy gradients, returning metadata-only scope-owned `gradient-tape` dictionaries |
 | `ml/sgd-step` | 3 | Immutable SGD parameter-tree update for CPU Float64/Float32 Tensor leaves: parameters, gradients, learning-rate |
 | `ml/clip-gradients` | 2 | CPU max-norm gradient clipping over dense Float64/Float32 Tensor leaves and all-Vulkan dense row-major `Float32` trees; mixed-device and unsupported-dtype clipping fail-closed before fallback |
 | `ml/optimizer-step` | 4 | Data-oriented optimizer spec step; currently supports CPU Adam/AdamW/RMSProp, CPU/Vulkan dense row-major Float32 SGD, and CUDA dense row-major Float32 map-backed SGD/Adam/AdamW/RMSProp with optional state over explicit parameter/state trees |
 | `ml/save-optimizer` | 2-3 | Serialize a supported optimizer spec and explicit state Dictionary checkpoint to JSON, or write it to a path and return `Void` |
 | `ml/load-optimizer` | 1 | Load an optimizer checkpoint from JSON or path and return an ordinary `{kind spec state}` Dictionary after envelope/spec/state-container validation |
+| `ml/leaky-relu` | 1-2 | Leaky ReLU activation for Float64/Float32 Tensor inputs with optional non-negative finite negative-slope; preserves dtype and placement |
 | `ml/sum` | 2 | Axis sum reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/mean` | 2 | Axis mean reduction for supported Tensor inputs; drops reduced axes from the result shape |
 | `ml/variance` | 2 | Axis population-variance reduction for supported Tensor inputs; drops reduced axes from the result shape |
@@ -265,6 +267,7 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/init` | 1-2 | Build/initialize a model bundle from a valid Omni Neural DataSpec with optional init options (`dtype`, `device`, `seed`, `mode`) and return fields `kind` (`'model`), `spec`, `params`, `state`, `mode`, `dtype`, `device`, `metadata` |
 | `nn/sequential` | variadic | Construct a normalized sequential layer spec from one or more layer specs |
 | `nn/dense` | 2-3 | Construct a normalized dense layer spec from input/output features and optional options |
+| `nn/batch-normalization` | 2-3 | Construct a normalized batch-normalization layer spec from channels and channel-axis with optional `epsilon`, `momentum`, `scale-init`, and `bias-init` |
 | `nn/conv1d` | 7-8 | Construct a normalized dense NCW convolution layer spec with optional activation/bias/initializer options |
 | `nn/conv2d` | 7-8 | Construct a normalized dense NCHW convolution layer spec with optional activation/bias/initializer options |
 | `nn/max-pool2d` | 3 | Construct a normalized max-pooling layer spec from window/stride/padding pairs |
@@ -272,12 +275,13 @@ Callable core type symbols also provide constructor/coercion surface here:
 | `nn/flatten` | 0-2 | Construct a normalized flatten layer spec with optional start/end axes |
 | `nn/activation` | 1 | Construct a normalized activation layer spec |
 | `nn/relu` | 0 | Construct a ReLU activation layer spec |
+| `nn/leaky-relu` | 0 | Construct a default-slope leaky ReLU activation layer spec |
 | `nn/sigmoid` | 0 | Construct a sigmoid activation layer spec |
 | `nn/tanh` | 0 | Construct a tanh activation layer spec |
 | `nn/gelu` | 0 | Construct a GELU activation layer spec |
 | `nn/softmax` | 0 | Construct a softmax activation layer spec |
 | `nn/apply` | 2, 4-5 | Run inference from normalized model or explicit `(spec params state input [options])` data; optional options must currently be empty and supported layers lower to `ml/*` |
-| `nn/forward` | 2, 4-5 | Training-friendly forward execution over the same model or explicit data shapes as `nn/apply`; returns the output Tensor without requiring eval mode |
+| `nn/forward` | 2, 4-5 | Training-friendly forward execution over the same model or explicit data shapes as `nn/apply`; train-mode stateful layers return an `nn-forward` Dictionary containing output and updated state/model data |
 | `nn/grad` | 3-4 | Build gradients for train-mode dense or single dense-plus-activation model data using the supported CPU `ml/grad` linear MSE and softmax cross-entropy contracts |
 | `nn/train-step` | 5-6 | Compose `nn/grad` with `ml/optimizer-step` and return updated model data, optimizer state, gradients, loss, and output without hidden mutation |
 | `nn/sgd` | 1-2 | Construct a validated ordinary SGD optimizer spec Dictionary from `learning-rate` and optional `momentum`, `weight-decay`, and `clip-norm` options |
@@ -356,8 +360,9 @@ for complex operands.
 | `Tensor` | 1-3 | Construct native CPU `Float64`, `Float32`, `Complex128`, `Complex64`, `BigInteger`, `BigFloat`, or `BigComplex` tensor storage as `(Tensor data)`, `(Tensor data dtype)`, `(Tensor iterator)`, `(Tensor iterator dtype)`, `(Tensor dtype shape data-or-scalar)`, or `(Tensor dtype shape iterator)` |
 | `Kernel` | 1 | Construct a validated data-oriented custom backend kernel spec as a typed `Kernel` dictionary; path access and `ref` remain ordinary data access |
 | `kernel/capture` | 3 | Validate a checked Vulkan Kernel against runtime inputs and push data and return a single-node `kernel-graph` launch plan with dtype/device/shape/execution/invalidation metadata without executing the kernel |
-| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `normal-cdf-f32` `Float32` tensor kernels and fails closed for unsupported backend compilation/execution |
-| `tensor/capture` | 1 | Return a non-executing `tensor-graph` plan for supported all-Vulkan `Float32` concrete/map/contract/direct-transpose-view Tensor expression graphs, including node ids, source/map/contract/view nodes, scalar operands, contract axes, view strides, output id, shape, schedule metadata, command-batch planning metadata, nested metadata-only memory-plan and fusion-plan data, `fusion 'none`, and invalidation metadata. This is capture metadata, not arbitrary graph execution; executable command-buffer batching is a separate narrow Vulkan `Float32` two-scalar-map slice and still fails closed without hidden CPU fallback or `(define [kernel] ...)` sugar |
+| `kernel/run` | 3 | Explicit custom kernel execution entrypoint; supports checked Vulkan `scale-f32`, registered-source `source-scale-f32` using `source 'ml-clip-scale-f32`, direct-SPIR-V word-array `source-scale-f32` for the checked `source-scale-f32-v1` scale ABI, binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, `max-f32`, scalar `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, `scalar-div-f32`, and unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`, `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, `normal-cdf-f32` `Float32` tensor kernels; unary `Float32` kernels may also run from registered `format 'builtin-spirv` source `name 'map-unary-f32` or direct word-array source with explicit `abi 'source-unary-f32-v1`; binary `Float32` kernels may run from direct word-array source with explicit `abi 'source-binary-f32-v1`; direct scale SPIR-V sources may declare `abi 'source-scale-f32-v1`, omitted ABI means the same checked scale ABI; checked direct scale, unary, and binary SPIR-V sources may declare a matching `kernel-source-layout` metadata dictionary, with legacy binary `metadata 'storage2-output1-f32-v1` still accepted for that binary ABI only; unsupported direct-SPIR-V ABIs fail closed |
+| `tensor/capture` | 1 | Return a non-executing `tensor-graph` plan for supported all-Vulkan `Float32` concrete/map/contract/direct-transpose-view Tensor expression graphs, including node ids, source/map/contract/view nodes, scalar operands, contract axes, view strides, output id, concrete source-node tensor values, shape, schedule metadata, command-batch planning metadata, nested metadata-only memory-plan and fusion-plan data, top-level selected-region-plan data, `fusion 'none`, and invalidation metadata. This is capture metadata; capture itself does not allocate or submit command buffers and unsupported execution still fails closed without hidden CPU fallback or `(define [kernel] ...)` sugar |
+| `tensor/run` | 1 | Execute a captured all-Vulkan `Float32` `tensor-graph` dictionary by replaying source/map nodes, contract nodes, and direct transpose-view nodes through existing Vulkan helpers; eligible source -> scalar-map* graphs with two or more scalar map nodes, dense tensor/tensor map -> scalar-map* regions, view-consuming scalar regions, contract -> scalar-map* regions, and the concrete mixed view/dense-source region lower matching `selected-region-plan` candidates and validated `command-buffer-candidate` metadata to native Vulkan command-buffer batch/reuse helpers; malformed graphs, missing source-node tensors, mixed placement, unsupported dtypes, arbitrary strided views, fused dispatch, and unsupported command-buffer regions fail closed |
 | `tensor?` | 1 | Predicate for native tensor values |
 | `length` | 1 | Tensor element count |
 | `dtype` | 1 | Tensor dtype symbol |

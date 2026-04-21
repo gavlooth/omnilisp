@@ -55,6 +55,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
             mem::free(scope);
             return null;
         }
+        scope_telemetry_note_temp_chunk_alloc(chunk);
         chunk.next = null;
         scope.chunks = chunk;
     }
@@ -83,6 +84,7 @@ fn ScopeRegion* scope_create(ScopeRegion* parent = null) {
 
     scope_assert_escape_tail_consistency(scope);
 
+    g_scope_memory_telemetry_stats.scope_create_count++;
     return scope;
 }
 
@@ -93,6 +95,7 @@ fn void scope_retain(ScopeRegion* scope) @inline {
     if (scope == null) return;
     scope_guard_owner(scope, "scope_retain");
     scope_invariant_refcount_live(scope);
+    assert(scope.refcount < uint.max, "scope_retain: refcount overflow");
     scope.refcount++;
 }
 
@@ -101,6 +104,7 @@ fn void scope_retain(ScopeRegion* scope) @inline {
  */
 fn void scope_release(ScopeRegion* scope) @inline {
     if (scope == null) return;
+    g_scope_memory_telemetry_stats.scope_release_count++;
     scope_guard_owner(scope, "scope_release");
     scope_invariant_refcount_live(scope);
     if (--scope.refcount == 0) {

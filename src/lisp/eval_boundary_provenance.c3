@@ -33,6 +33,13 @@ struct BoundaryAliasGraphScan {
     BoundaryAliasSeenFastSet fast_set;
 }
 
+<*
+@require stack != null : "boundary_alias_push_visit: null stack"
+@require stack_len != null : "boundary_alias_push_visit: null stack_len"
+@require seen != null : "boundary_alias_push_visit: null seen"
+@require seen_len != null : "boundary_alias_push_visit: null seen_len"
+@require fast_set != null : "boundary_alias_push_visit: null fast_set"
+*>
 fn bool boundary_alias_push_visit(
     BoundaryAliasVisit* stack,
     usz* stack_len,
@@ -57,6 +64,14 @@ fn bool boundary_alias_push_visit(
     return false;
 }
 
+<*
+@require stack != null : "boundary_alias_push_child: null stack"
+@require stack_len != null : "boundary_alias_push_child: null stack_len"
+@require seen != null : "boundary_alias_push_child: null seen"
+@require seen_len != null : "boundary_alias_push_child: null seen_len"
+@require fast_set != null : "boundary_alias_push_child: null fast_set"
+@require interp != null : "boundary_alias_push_child: null interp"
+*>
 fn bool boundary_alias_push_child(
     BoundaryAliasVisit* stack,
     usz* stack_len,
@@ -82,6 +97,11 @@ fn bool boundary_graph_alias_unsafe_for_reuse(Value* v, Interp* interp, usz dept
     return boundary_graph_alias_unsafe_for_reuse_walk(v, interp, depth);
 }
 
+<*
+@require v != null : "boundary_graph_alias_unsafe_for_reuse_walk: null value"
+@require interp != null : "boundary_graph_alias_unsafe_for_reuse_walk: null interp"
+@require depth < BOUNDARY_ALIAS_MAX_DEPTH : "boundary_graph_alias_unsafe_for_reuse_walk: depth exhausted"
+*>
 fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz depth) @noinline {
     // This scan can run on small continuation stacks during effect resume.
     // Keep the large traversal buffers off the C stack.
@@ -307,7 +327,25 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     }
                 }
                 break;
-            default:
+            case NIL:
+            case VOID:
+            case INT:
+            case DOUBLE:
+            case FLOAT32:
+            case BIG_INTEGER:
+            case BIG_FLOAT:
+            case BIG_COMPLEX:
+            case COMPLEX128:
+            case COMPLEX64:
+            case STRING:
+            case SYMBOL:
+            case CONTINUATION:
+            case PRIMITIVE:
+            case ERROR:
+            case FFI_HANDLE:
+            case TYPE_INFO:
+            case COROUTINE:
+            case TIME_POINT:
                 break;
         }
     }
@@ -317,12 +355,26 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
 <*
 @require interp != null : "boundary_can_reuse_value: null interp"
 *>
-fn bool boundary_can_reuse_value(Value* v, Interp* interp) @inline {
+fn bool boundary_can_reuse_value_with_target_chain(
+    Value* v,
+    Interp* interp,
+    bool in_target_scope_chain
+) @inline {
     if (v == null) return false;
     boundary_assert_interp_scope_chain(interp);
     if (boundary_value_in_releasing_scope(v, interp)) return false;
     if (boundary_graph_alias_unsafe_for_reuse(v, interp)) return false;
-    return boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
+    return in_target_scope_chain;
+}
+
+<*
+@require interp != null : "boundary_can_reuse_value: null interp"
+*>
+fn bool boundary_can_reuse_value(Value* v, Interp* interp) @inline {
+    if (v == null) return false;
+    bool in_target_scope_chain =
+        boundary_ptr_in_target_scope_chain_with_hint((void*)v, interp, v.scope_gen);
+    return boundary_can_reuse_value_with_target_chain(v, interp, in_target_scope_chain);
 }
 
 <*
@@ -345,8 +397,10 @@ fn BoundaryReturnClassification boundary_classify_return_value(
     if (v == null) return classification;
 
     classification.in_releasing_scope = boundary_ptr_in_scope((void*)v, releasing_scope);
-    classification.in_target_scope_chain = boundary_ptr_in_scope_chain_with_hint((void*)v, target_scope, v.scope_gen);
-    if (!classification.in_releasing_scope && boundary_can_reuse_value(v, interp)) {
+    classification.in_target_scope_chain =
+        boundary_ptr_in_scope_chain_with_hint_cached((void*)v, interp, target_scope, v.scope_gen);
+    if (!classification.in_releasing_scope &&
+        boundary_can_reuse_value_with_target_chain(v, interp, classification.in_target_scope_chain)) {
         classification.provenance = BOUNDARY_RETURN_REUSABLE_IN_TARGET_CHAIN;
         return classification;
     }
@@ -370,6 +424,126 @@ fn BoundaryScopeTransferResult boundary_try_scope_splice_escapes_result(main::Sc
     BoundaryScopeTransferResult result = boundary_check_scope_transfer(parent, child);
     if (result.allowed) {
         main::scope_splice_escapes(parent, child);
+    }
+    boundary_note_splice_result(result);
+    return result;
+}
+
+fn bool boundary_rewrite_spliced_escape_stamps(Value* root, main::ScopeRegion* parent, main::ScopeRegion* child) @noinline {
+    if (root == null || parent == null || child == null) return root == null;
+
+    Value** value_stack = (Value**)mem::malloc(Value*.sizeof * BOUNDARY_GRAPH_AUDIT_MAX_NODES);
+    Value** seen_values = (Value**)mem::malloc(Value*.sizeof * BOUNDARY_GRAPH_AUDIT_MAX_NODES);
+    Env** env_stack = (Env**)mem::malloc(Env*.sizeof * BOUNDARY_GRAPH_AUDIT_MAX_NODES);
+    Env** seen_envs = (Env**)mem::malloc(Env*.sizeof * BOUNDARY_GRAPH_AUDIT_MAX_NODES);
+    if (value_stack == null || seen_values == null || env_stack == null || seen_envs == null) {
+        if (value_stack != null) mem::free(value_stack);
+        if (seen_values != null) mem::free(seen_values);
+        if (env_stack != null) mem::free(env_stack);
+        if (seen_envs != null) mem::free(seen_envs);
+        return false;
+    }
+    defer {
+        mem::free(value_stack);
+        mem::free(seen_values);
+        mem::free(env_stack);
+        mem::free(seen_envs);
+    }
+
+    usz value_stack_len = 0;
+    usz seen_value_len = 0;
+    usz env_stack_len = 0;
+    usz seen_env_len = 0;
+    if (!boundary_graph_audit_push_value(value_stack, &value_stack_len, root)) return false;
+
+    usz root_tag = (usz)root.tag;
+    usz root_scope_gen = (usz)root.scope_gen;
+    while (value_stack_len > 0 || env_stack_len > 0) {
+        while (value_stack_len > 0) {
+            Value* cur = value_stack[--value_stack_len];
+            if (cur == null) continue;
+            if (boundary_graph_audit_value_seen(seen_values, seen_value_len, cur)) continue;
+            if (seen_value_len >= BOUNDARY_GRAPH_AUDIT_MAX_NODES) return false;
+            seen_values[seen_value_len++] = cur;
+
+            if (main::scope_contains(child, (void*)cur) && cur.scope_gen == child.escape_generation) {
+                cur.scope_gen = parent.escape_generation;
+            }
+            if (cur.tag == CLOSURE && cur.closure_val != null) {
+                if (cur.closure_val.scope_gen == child.escape_generation) {
+                    cur.closure_val.scope_gen = parent.escape_generation;
+                }
+                if (cur.closure_val.env_scope == child) {
+                    cur.closure_val.env_scope = parent;
+                }
+            }
+
+            BoundaryGraphAuditResult step = boundary_graph_audit_visit_value(
+                cur,
+                value_stack,
+                &value_stack_len,
+                env_stack,
+                &env_stack_len,
+                parent,
+                child,
+                null,
+                false,
+                root_tag,
+                root_scope_gen
+            );
+            if (!step.ok) return false;
+        }
+
+        while (env_stack_len > 0) {
+            Env* env = env_stack[--env_stack_len];
+            if (env == null) continue;
+            if (boundary_graph_audit_env_seen(seen_envs, seen_env_len, env)) continue;
+            if (seen_env_len >= BOUNDARY_GRAPH_AUDIT_MAX_NODES) return false;
+            seen_envs[seen_env_len++] = env;
+
+            if (main::scope_contains(child, (void*)env) && env.scope_gen == child.escape_generation) {
+                env.scope_gen = parent.escape_generation;
+            }
+            if (env.owner_scope == child && env.owner_escape_lane) {
+                env.owner_scope = parent;
+            }
+
+            BoundaryGraphAuditResult step = boundary_graph_audit_visit_env(
+                env,
+                value_stack,
+                &value_stack_len,
+                env_stack,
+                &env_stack_len,
+                parent,
+                child,
+                null,
+                false,
+                root_tag,
+                root_scope_gen
+            );
+            if (!step.ok) return false;
+        }
+    }
+    return true;
+}
+
+fn BoundaryScopeTransferResult boundary_try_scope_splice_escapes_root_result(
+    main::ScopeRegion* parent,
+    main::ScopeRegion* child,
+    Value* root,
+    Env* global_env = null
+) {
+    BoundaryScopeTransferResult result = boundary_check_scope_transfer(parent, child);
+    if (result.allowed) {
+        if (!boundary_debug_graph_audit_pre_splice_escape_root(root, parent, child, global_env)) {
+            result.allowed = false;
+            result.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID;
+        } else if (!boundary_rewrite_spliced_escape_stamps(root, parent, child)) {
+            result.allowed = false;
+            result.reason = BOUNDARY_SCOPE_TRANSFER_CHILD_ESCAPE_LANE_INVALID;
+        } else {
+            main::scope_splice_escapes(parent, child);
+        }
     }
     boundary_note_splice_result(result);
     return result;
@@ -412,7 +586,23 @@ fn bool boundary_nonunique_destination_retry_allowed(Value* v) @inline {
         case TIME_POINT:
         case TENSOR:
             return true;
-        default:
+        case STRING:
+        case CONS:
+        case CLOSURE:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case PARTIAL_PRIM:
+        case ERROR:
+        case HASHMAP:
+        case SET:
+        case FFI_HANDLE:
+        case ARRAY:
+        case TYPE_INFO:
+        case INSTANCE:
+        case METHOD_TABLE:
+        case MODULE:
+        case ITERATOR:
+        case COROUTINE:
             return false;
     }
 }

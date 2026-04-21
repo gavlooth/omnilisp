@@ -173,6 +173,62 @@ Omni uses explicit lifetimes and scope-based memory management. Respect boundari
 - C interop/resource handles must have explicit teardown policy.
 - Coroutine/continuation resources must be reclaimed via lifecycle APIs, not only at process exit.
 
+### Ownership-Boundary Checklist
+
+Use this checklist whenever adding or changing a graph-carrying `ValueTag`,
+wrapper payload, env/frame shape, Tensor payload, iterator, closure, FFI object,
+or backend/device handle.
+
+1. Owned edges:
+   Identify every `Value*`, `Env*`, scope-owned child pointer, closure/env
+   pointer, Tensor expression edge, iterator payload, and opaque payload edge.
+2. Boundary copy:
+   Name the function that copies or rebuilds the value when it crosses return,
+   env-copy, mutation-store, root/global-store, or JIT TCO boundaries.
+3. ESCAPE promotion:
+   Name the path that builds or promotes the value into destination ESCAPE.
+4. Root-store clone:
+   State whether root/global storage can retain the value and how TEMP edges
+   are removed first.
+5. Graph audit:
+   Add traversal for every Omni-owned edge, or document why the payload is
+   opaque and owns no Omni values.
+6. Destructor authority:
+   State whether cleanup is scope dtor, heap finalizer, backend finalizer, or a
+   single foreign-resource release function.
+7. Rollback behavior:
+   Ensure allocation-failure paths undo partially materialized payloads,
+   retained handles, and registered destructors.
+8. Regression coverage:
+   Add tests for return survival, closure/env capture, root/global store when
+   applicable, no TEMP edge under committed ESCAPE roots, allocation-failure
+   rollback, destruction safety, and audit traversal or opaque exclusion.
+
+### Durable Graph and Handle Policy
+
+- Temporary evaluator data may be cyclic when needed.
+- Durable published data should prefer trees/DAGs, interned atoms, compact
+  records, arrays, indices, stable IDs, and explicit handles.
+- Arbitrary durable cycles require an explicit design note naming ownership,
+  destructor authority, boundary traversal, and tests.
+- Ordinary `Value*` and runtime pointers are fine within one scope/lane.
+- Cross-subsystem or cross-lifetime APIs should prefer stable handles/IDs with
+  one release/finalizer authority.
+- Opaque payloads are safe only when they own no Omni values, expose explicit
+  traversal/copy/promotion/destructor hooks, or fail closed at boundary
+  promotion.
+
+### Static Allocation Routing
+
+Static/JIT allocation intent is an optimization layer. It must not replace
+runtime boundary enforcement for correctness.
+
+- Keep return/env/root publication behind boundary helpers.
+- Compare copy-site/commit counters before and after allocation-routing changes.
+- Run focused memory-lifetime tests for any change that claims to avoid copies.
+- Do not use compile-time escape analysis to justify storing a releasing TEMP
+  edge in a durable value.
+
 ## 9. Iteration and Data Access
 
 ### Rules

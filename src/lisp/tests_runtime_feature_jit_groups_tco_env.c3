@@ -412,8 +412,8 @@ fn void run_jit_policy_cross_scope_alias_policy_test(Interp* interp, int* pass, 
     }
 
     interp.releasing_scope = releasing;
-    Value* copied_closure = setup_ok ? copy_to_parent(moved_closure, interp) : null;
-    Value* copied_iterator = setup_ok ? copy_to_parent(moved_iterator, interp) : null;
+    Value* copied_closure = setup_ok ? test_copy_to_parent(moved_closure, interp) : null;
+    Value* copied_iterator = setup_ok ? test_copy_to_parent(moved_iterator, interp) : null;
 
     bool closure_copy_ok = copied_closure != null &&
                            copied_closure.tag == CLOSURE &&

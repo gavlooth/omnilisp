@@ -171,11 +171,11 @@ Source: `TODO.md`
   export-table growth fail closed instead of writing through failed
   replacement allocation
   - closure evidence:
-    - `src/lisp/jit_jit_module_setup_helpers.c3`
+    - `src/lisp/jit_module_setup_helpers.c3`
       now routes export allocation/growth through a checked helper and
       preserves existing exports on growth failure.
-    - `src/lisp/jit_jit_compile_effects_modules.c3` and
-      `src/lisp/jit_jit_module_import_setup.c3`
+    - `src/lisp/jit_compile_effects_modules.c3` and
+      `src/lisp/jit_module_import_setup.c3`
       now propagate export growth failure from re-export and implicit module
       export paths.
     - `src/lisp/tests_advanced_stdlib_module_groups.c3`
@@ -192,7 +192,7 @@ Source: `TODO.md`
       dirty-predicate, rule-signature, relation-schema, and persisted-rule
       catalog growth helpers now fail closed before allocation byte counts
       overflow.
-    - `src/lisp/jit_jit_module_setup_helpers.c3`
+    - `src/lisp/jit_module_setup_helpers.c3`
       now rejects oversized source-dir vector growth and path length
       increments before allocation-size arithmetic can wrap.
     - `src/lisp/tests_deduce_groups_parallel.c3`
@@ -248,13 +248,13 @@ Source: `TODO.md`
     - `src/lisp/value_interp_continuation_helpers.c3`
       now exposes a narrow continuation-allocation failure seam instead of
       dereferencing failed root-scope allocation.
-    - `src/lisp/jit_jit_handle_signal.c3`,
-      `src/lisp/jit_jit_runtime_effects_handle.c3`,
-      `src/lisp/jit_jit_reset_shift.c3`, and
-      `src/lisp/jit_jit_runtime_effects_reset_shift.c3`
+    - `src/lisp/jit_handle_signal.c3`,
+      `src/lisp/jit_runtime_effects_handle.c3`,
+      `src/lisp/jit_reset_shift.c3`, and
+      `src/lisp/jit_runtime_effects_reset_shift.c3`
       now fail closed on continuation allocation failure in handled effect and
       capture dispatch.
-    - `src/lisp/jit_jit_handle_signal_helpers_runtime_effects.c3`
+    - `src/lisp/jit_handle_signal_helpers_runtime_effects.c3`
       now returns `"runtime effect payload: out of memory"` when
       unhandled-effect diagnostic payload construction cannot complete,
       instead of silently dropping the payload.
@@ -297,11 +297,11 @@ Source: `TODO.md`
     - `src/lisp/value_constructors.c3`
       now exposes a checked `make_list1_or_error(...)` helper with a narrow
       nth-failure seam for deterministic JIT variadic-rest tests.
-    - `src/lisp/jit_jit_apply_helpers.c3` and
-      `src/lisp/jit_jit_apply_runtime.c3`
+    - `src/lisp/jit_apply_helpers.c3` and
+      `src/lisp/jit_apply_runtime.c3`
       now reject variadic zero-fixed-arg rest-list construction failure before
       binding the rest parameter environment.
-    - `src/lisp/jit_jit_dispatch_helpers.c3`
+    - `src/lisp/jit_dispatch_helpers.c3`
       now routes instance `ref` dispatch arg-list materialization through the
       shared checked two-item helper instead of nesting raw `make_cons(...)`.
     - `src/lisp/tests_runtime_feature_jit_groups_more.c3`
@@ -315,7 +315,7 @@ Source: `TODO.md`
   construction fail closed instead of wrapping cons-constructor faults as
   successful quasiquote values
   - closure evidence:
-    - `src/lisp/jit_jit_quasiquote_macros.c3`
+    - `src/lisp/jit_quasiquote_macros.c3`
       now routes all internal quasiquote pair construction through one checked
       helper with a narrow nth-failure seam, and returns
       `"quasiquote: failed to allocate pair"` on allocation failure instead of

@@ -1,6 +1,6 @@
 # UI Library Facade Plan (2026-03-27)
 
-Status: `active`
+Status: `completed-facade-backend-session` (raw event-payload reads remain a separate backend ABI question)
 Owner: Codex workflow
 
 ## Purpose
@@ -50,28 +50,34 @@ Current shipped high-level surface already includes:
   `ui.read_event`, `ui.invalidate`, `ui.close`, `ui.post_event`
 - the direct convenience runner `ui.run`
 
-The first facade split is now partially landed:
+The facade split is now landed:
 
 - `examples/libraries/ftxui/ui.omni` is the canonical public facade
-- `examples/libraries/ftxui/ui_nodes.omni` holds internal node/data helpers
-- `examples/libraries/ftxui/ui_effects.omni` holds internal effect declarations
+- `examples/libraries/ftxui/lib/ui/nodes.omni` holds node/data helpers
+- `examples/libraries/ftxui/lib/ui/effects.omni` holds effect declarations
+- `examples/libraries/ftxui/lib/ui/layout.omni` holds layout helpers
+- `examples/libraries/ftxui/lib/ui/style.omni` holds style helpers
+- `examples/libraries/ftxui/lib/ui/runtime.omni` holds the runtime dispatcher
+- `examples/libraries/ftxui/lib/ui/ftxui.omni` holds the concrete backend
+  bridge
 
-Important current limitation:
+Current checkpoint:
 
-- direct dotted import targets like `(import ui.nodes)` are not yet supported by
-  the current module-import parser/runtime path,
-- so the shipped split currently uses file-backed flat helper modules
-  (`ui-nodes`, `ui-effects`) underneath the public `ui` facade,
-- the canonical public `ui.*` surface still works and remains the supported
-  user-facing path.
-
-What is still missing is library structure and public-surface breadth:
-
-1. the surface is still a single scaffold file instead of a real module tree,
-2. styling/layout helpers are not yet rich enough,
-3. `ui.run` exists, but the effect-driven runtime path is not yet the primary
-   execution model,
-4. backend-facing structure is not yet clearly separated from the public facade.
+1. the public facade loads the dotted `lib/ui/*` modules as its implementation
+   source;
+2. direct default-path dotted imports such as `(import ui.nodes)` are covered
+   by `module_direct_smoke.omni`;
+3. layout/style helpers and backend-owned `ui.ftxui.run` are split from the
+   facade;
+4. `ui.runtime` owns dispatch only, while static tree evaluation is isolated in
+   `lib/ui/evaluate.omni`;
+5. the non-interactive runtime-backend lifecycle path is shipped through
+   `ui.ftxui.dispatch`;
+6. the blocking effect-tree loop is shipped through `ui.ftxui.loop`;
+7. session-owned update/render state is shipped through `ui.open_session`,
+   `ui.update_session`, `ui.render_session`, `ui.invalidate_session`,
+   `ui.post_event_session`, and `ui.close_session`; raw event-payload reads
+   remain fail-closed until the backend exposes event values as Omni data.
 
 ## 100% Facade Completion
 
@@ -296,11 +302,14 @@ Initial target:
 
 - `run`
 - thin helpers around effect-driven render/update loops
+- backend handoff helpers for session-owned lifecycle operations:
+  `open_session_to`, `update_session_to`, `render_session_to`,
+  `read_event_session_to`, `invalidate_session_to`, `post_event_session_to`,
+  and `close_session_to`
 
 Longer term:
 
-- app loop helpers,
-- model/view/update helpers if adopted,
+- model/view/update helpers over the explicit session handle if adopted,
 - backend selection glue.
 
 ### `ui.ftxui`
@@ -370,9 +379,9 @@ Acceptance boundary:
 
 Current status:
 
-- shipped as `ui` facade + file-backed helper modules,
-- residual blocker promoted separately: direct dotted import support for true
-  `ui.nodes` / `ui.effects` ownership remains open.
+- shipped as `ui` facade + dotted `lib/ui/*` helper modules;
+- direct dotted module import coverage is provided by
+  `examples/libraries/ftxui/module_direct_smoke.omni`.
 
 ### Slice 2: Layout and Style Surface
 
@@ -478,8 +487,42 @@ an explicitly chosen public library feature.
 
 ## Next Recommended Execution Order
 
+Completed:
+
 1. Facade split: `ui`, `ui.nodes`, `ui.effects`
 2. `ui.style` and `ui.layout` first-class surface
 3. Extract backend logic into `ui.ftxui`
-4. Build the first effect-driven runtime path
-5. Add library-focused examples/tests around that public contract
+4. Add library-focused examples/tests around the public module contract
+
+Completed backend lifecycle item:
+
+1. `UI-LIB-RUNTIME-BACKEND-001`: declarative `open_tree` / `render_tree` /
+   `invalidate_tree` / `post_event_tree` / `close_tree` now drive a real
+   non-interactive FTXUI backend lifecycle through `ui.ftxui.dispatch`.
+
+Completed blocking loop item:
+
+1. `UI-LIB-RUNTIME-INTERACTIVE-LOOP-001`: `ui.loop` / `ui.ftxui.loop` now run
+   a root `open_tree` with exactly one `render_tree` through the real FTXUI app
+   loop, route through `ui.runtime.loop_to`, apply `invalidate_tree`,
+   `post_event_tree`, and explicit pre-loop `close_tree`, and keep
+   `read_event_tree` fail-closed in the one-shot blocking helper.
+
+Completed session item:
+
+1. `UI-LIB-RUNTIME-SESSION-001`: `ui.open_session` / `ui.ftxui.open_session`
+   now create an owned `ui-ftxui-session` `ForeignHandle` over the FTXUI custom
+   loop ABI; `ui.update_session`, `ui.render_session`, `ui.invalidate_session`,
+   `ui.post_event_session`, `ui.read_event_session`, and `ui.close_session`
+   expose the external update/render/read lifecycle without reusing the
+   one-shot `ui.loop` contract.
+
+Completed session event item:
+
+1. `UI-LIB-RUNTIME-SESSION-EVENT-PAYLOAD-001`: session event payload reads now
+   use an ABI-level capture/read contract. The FTXUI root component is wrapped
+   with `CatchEvent`, the shim stores the last captured event payload, and
+   `ui.read_event_session` runs one blocking loop step before returning `nil`
+   or an Omni dictionary with `kind` and optional `text`. This keeps the
+   explicit session contract separate from the one-shot blocking `ui.loop`
+   helper and avoids treating `RunOnceBlocking` itself as an event value.

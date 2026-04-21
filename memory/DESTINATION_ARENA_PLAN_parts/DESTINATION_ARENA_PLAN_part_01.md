@@ -65,7 +65,7 @@ To know *when* to allocate into `dest_scope`, the evaluator must track **Tail Po
    * *Alternative Approach*: Instead of a strict AST tail-position flag, functions that build complex return structures can explicitly switch `interp.current_scope = interp.dest_scope` just before constructing the final return object.
 
 ### Phase 3: Eradicating `copy_to_parent`
-**Target Files**: `src/lisp/eval.c3`, `src/lisp/jit_jit_helper_functions.c3`
+**Target Files**: `src/lisp/eval.c3`, `src/lisp/jit_helper_functions.c3`
 
 1. **Remove O(N) Copies**:
    Search for all instances of `copy_to_parent(result, interp)`. Because `result` was constructed directly in `dest_scope`, these calls become a no-op.
@@ -285,10 +285,10 @@ The following code paths are the current ground truth and must remain valid thro
 - `scope_adopt` behavior and chunk transfer: `src/scope_region.c3::scope_adopt`.
 - boundary promotion primitive: `src/lisp/eval.c3::copy_to_parent`.
 - list escape optimization currently in production: `src/lisp/value.c3::make_cons_escape`, `src/lisp/value.c3::make_cons`.
-- call-scope orchestration and adopt/copy branching: `src/lisp/jit_jit_helper_functions.c3::jit_eval_in_single_scope`, `src/lisp/jit_jit_helper_functions.c3::jit_eval_in_call_scope`.
+- call-scope orchestration and adopt/copy branching: `src/lisp/jit_helper_functions.c3::jit_eval_in_single_scope`, `src/lisp/jit_helper_functions.c3::jit_eval_in_call_scope`.
 - top-level eval boundary crossing: `src/lisp/eval.c3::run`.
 - coroutine yield boundary crossing: `src/lisp/primitives.c3::prim_resume`.
-- global mutation/definition promotion: `src/lisp/jit_jit_helper_functions.c3::jit_eval_set`, `src/lisp/jit_jit_helper_functions.c3::jit_eval_define`.
+- global mutation/definition promotion: `src/lisp/jit_helper_functions.c3::jit_eval_set`, `src/lisp/jit_helper_functions.c3::jit_eval_define`.
 
 ### Technical Critique
 1. **Frozen Scratch Arenas are lifetime inflation by design.**

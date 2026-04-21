@@ -297,10 +297,12 @@ fn bool tensor_infer_fixed_complex_dtype_from_value(Value* value, TensorDType* d
     return true;
 }
 
-fn TensorDType tensor_default_inferred_dtype(Value* data_arg) {
+fn bool tensor_default_inferred_dtype(Value* data_arg, TensorDType* out_dtype) {
+    if (out_dtype == null) return false;
     TensorDType dtype = TENSOR_DTYPE_DOUBLE;
-    (void)tensor_infer_fixed_complex_dtype_from_value(data_arg, &dtype);
-    return dtype;
+    if (!tensor_infer_fixed_complex_dtype_from_value(data_arg, &dtype)) return false;
+    *out_dtype = dtype;
+    return true;
 }
 
 fn bool tensor_infer_shape_from_value(

@@ -19,6 +19,9 @@ const int RTLD_LAZY = 1;
 // C helper from csrc/ffi_helpers.c
 extern fn int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
                             int ret_type, void* ret_value) @extern("omni_ffi_call");
+extern fn int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
+                                int* arg_types, void** arg_values,
+                                int ret_type, void* ret_value) @extern("omni_ffi_call_var");
 
 // eval_ffi_lib — (define [ffi lib] name "path.so")
 fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
@@ -29,22 +32,23 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     if (path_val == null || path_val.tag == ERROR) return path_val;
     if (path_val.tag != STRING) return raise_error(interp, "ffi lib: path must be a string");
 
-    // dlopen
+    // Acquire shared dlopen handle via registry
     (void)dlerror();
-    void* handle = dlopen((ZString)path_val.str_chars, RTLD_LAZY);
+    void* handle = ffi_dlopen_registry_acquire(path_val.str_chars[:path_val.str_len]);
     if (handle == null) {
+        int saved_errno = *c_errno_location();
         char[256] ebuf;
         char* dl_err = dlerror();
         char[] msg;
         if (dl_err != null && dl_err[0] != 0) {
-            if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s",
-                    (ZString)path_val.str_chars, (ZString)dl_err)) {
+            if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s': %s (errno=%d)",
+                    (ZString)path_val.str_chars, (ZString)dl_err, saved_errno)) {
                 msg = formatted;
             } else {
                 msg = "ffi lib: dlopen failed (error formatting failed)";
             }
-        } else if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s'",
-                (ZString)path_val.str_chars)) {
+        } else if (try formatted = io::bprintf(&ebuf, "ffi lib: dlopen failed for '%s' (errno=%d)",
+                (ZString)path_val.str_chars, saved_errno)) {
             msg = formatted;
         } else {
             msg = "ffi lib: dlopen failed";
@@ -55,14 +59,15 @@ fn Value* eval_ffi_lib(Expr* expr, Env* env, Interp* interp) {
     // Create FFI handle value and bind in global env
     Value* ffi_handle = make_ffi_handle(interp, handle, path_val.str_chars[:path_val.str_len]);
     if (ffi_handle == null) {
-        dlclose(handle);
+        // make_ffi_handle may have already released the box (and thus registry ref)
+        // via ffi_handle_release; do not call registry_release again to avoid
+        // double-decrement. Any remaining refcount is cleaned up at teardown.
         return raise_error(interp, "ffi lib: out of memory");
     }
     if (!env_define_with_barrier_checked(interp.global_env, fl.name, ffi_handle, interp)) {
-        dlclose(handle);
         FfiHandle* box = ffi_handle.ffi_val;
         ffi_handle.ffi_val = null;
-        ffi_handle_release(box);
+        ffi_handle_release(box);  // releases registry ref via ffi_handle_release_payload
         return raise_error(interp, "ffi lib: out of memory");
     }
     return ffi_handle;
@@ -98,18 +103,19 @@ fn Value* ffi_resolve_return_handle_finalizer(FfiBoundFn* bound, FfiHandlePolicy
     (void)dlerror();
     void* finalizer_ptr = dlsym(bound.lib_handle, (ZString)&finalizer_name);
     if (finalizer_ptr == null) {
+        int saved_errno = *c_errno_location();
         char[256] ebuf;
         char* dl_err = dlerror();
         char[] finalizer_source_name = interp.symbols.get_name(policy.finalizer_symbol);
         if (dl_err != null && dl_err[0] != 0) {
-            if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s': %s",
-                (ZString)finalizer_source_name, (ZString)dl_err)) {
+            if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s': %s (errno=%d)",
+                (ZString)finalizer_source_name, (ZString)dl_err, saved_errno)) {
                 return raise_error(interp, msg);
             }
             return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
         }
-        if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s'",
-            (ZString)finalizer_source_name)) {
+        if (try msg = io::bprintf(&ebuf, "ffi λ: dlsym failed for ForeignHandle finalizer '%s' (errno=%d)",
+            (ZString)finalizer_source_name, saved_errno)) {
             return raise_error(interp, msg);
         }
         return raise_error(interp, "ffi λ: dlsym failed for ForeignHandle finalizer");
@@ -123,9 +129,6 @@ fn Value* ffi_resolve_return_handle_finalizer(FfiBoundFn* bound, FfiHandlePolicy
 // eval_ffi_fn — (define [ffi λ libname] (fname (^T arg)...) ^RetT)
 fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     ExprFfiFn* ff = expr.ffi_fn;
-    if (ff.is_variadic) {
-        return raise_error(interp, "ffi λ: variadic bindings are not supported yet");
-    }
 
     // Look up library handle
     Value* lib_val = env.lookup(ff.lib_name);
@@ -188,6 +191,7 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     bound.c_name[ff.c_name_len] = 0;
     bound.c_name_len = ff.c_name_len;
     bound.param_count = ff.param_count;
+    bound.fixed_param_count = ff.param_count;
     bound.param_types = null;
     bound.param_handle_policies = null;
     bound.return_handle_policy = ffi_handle_policy_default();
@@ -223,10 +227,11 @@ fn Value* eval_ffi_fn(Expr* expr, Env* env, Interp* interp) {
     }
 
     // Create a primitive value with user_data pointing to bound
+    int prim_arity = ff.is_variadic ? -1 : (int)ff.param_count;
     Value* prim = make_primitive(interp,
         interp.symbols.get_name(ff.fn_name),
         &prim_ffi_bound_call,
-        (int)ff.param_count);
+        prim_arity);
     if (prim == null) {
         return raise_error(interp, "ffi λ: out of memory for bound function primitive");
     }

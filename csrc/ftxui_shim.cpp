@@ -11,6 +11,7 @@
 #include <vector>
 
 #if __has_include(<ftxui/component/component.hpp>) && \
+    __has_include(<ftxui/component/loop.hpp>) && \
     __has_include(<ftxui/component/screen_interactive.hpp>) && \
     __has_include(<ftxui/dom/elements.hpp>) && \
     __has_include(<ftxui/dom/table.hpp>) && \
@@ -19,6 +20,7 @@
 #define OMNI_FTXUI_HAS_BACKEND 1
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
+#include <ftxui/component/loop.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/canvas.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -54,6 +56,19 @@ struct omni_ftxui_screen_t {
     std::shared_ptr<ftxui::ScreenInteractive> screen;
 };
 
+struct omni_ftxui_captured_event_t {
+    omni_ftxui_event_kind kind = OMNI_FTXUI_EVENT_CUSTOM;
+    std::string text;
+};
+
+struct omni_ftxui_session_t {
+    omni_ftxui_screen_t* screen;
+    omni_ftxui_component_t* root;
+    bool has_event = false;
+    omni_ftxui_captured_event_t event;
+    std::unique_ptr<ftxui::Loop> loop;
+};
+
 struct omni_ftxui_table_t {
     std::vector<std::vector<std::string>> data;
     std::unique_ptr<ftxui::Table> table;
@@ -68,6 +83,7 @@ struct omni_ftxui_event_t {};
 struct omni_ftxui_element_t {};
 struct omni_ftxui_component_t {};
 struct omni_ftxui_screen_t {};
+struct omni_ftxui_session_t {};
 struct omni_ftxui_table_t {};
 struct omni_ftxui_canvas_t {};
 #endif

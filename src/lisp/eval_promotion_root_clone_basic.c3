@@ -93,12 +93,18 @@ fn Value* root_store_clone_array_to_scope(
     }
 
     for (usz i = 0; i < src_arr.length; i++) {
-        Value* copied = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult copy_result = boundary_copy_to_parent_site_ctx_checked(
             src_arr.items[i],
             interp,
             COPY_SITE_PROMOTE_TO_ROOT,
             &copy_ctx
         );
+        Value* copied = null;
+        if (!boundary_copy_result_ok(copy_result)) {
+            copied = raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+        } else {
+            copied = copy_result.value;
+        }
         if (copied != null && copied.tag == ERROR) {
             boundary_cleanup_partial_array_copy(src_arr, dst_arr, i, target_scope);
             return copied;
@@ -167,23 +173,35 @@ fn Value* root_store_clone_hashmap_to_scope(
             dst_e.key = null;
             dst_e.value = null;
             if (src_e.key != null) {
-                Value* copied_key = boundary_copy_to_parent_site_ctx(
+                BoundaryCopyResult key_copy = boundary_copy_to_parent_site_ctx_checked(
                     src_e.key,
                     interp,
                     COPY_SITE_PROMOTE_TO_ROOT,
                     &copy_ctx
                 );
+                Value* copied_key = null;
+                if (!boundary_copy_result_ok(key_copy)) {
+                    copied_key = raise_error(interp, boundary_copy_fault_message(key_copy.fault_code));
+                } else {
+                    copied_key = key_copy.value;
+                }
                 if (copied_key != null && copied_key.tag == ERROR) {
                     boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1, target_scope);
                     return copied_key;
                 }
                 dst_e.key = copied_key;
-                Value* copied_value = boundary_copy_to_parent_site_ctx(
+                BoundaryCopyResult value_copy = boundary_copy_to_parent_site_ctx_checked(
                     src_e.value,
                     interp,
                     COPY_SITE_PROMOTE_TO_ROOT,
                     &copy_ctx
                 );
+                Value* copied_value = null;
+                if (!boundary_copy_result_ok(value_copy)) {
+                    copied_value = raise_error(interp, boundary_copy_fault_message(value_copy.fault_code));
+                } else {
+                    copied_value = value_copy.value;
+                }
                 if (copied_value != null && copied_value.tag == ERROR) {
                     boundary_cleanup_partial_hashmap_copy(src_map, dst_map, i + 1, target_scope);
                     return copied_value;

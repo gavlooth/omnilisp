@@ -35,6 +35,8 @@ struct ReplServerCommand {
     usz payload_len;
 }
 
+const usz REPL_SERVER_WORKER_QUEUE_CAPACITY = 8;
+
 struct ReplServerWorker {
     ReplServerConnection* conn;
     ReplServerOutput* output;
@@ -46,6 +48,9 @@ struct ReplServerWorker {
     bool command_pending;
     bool busy;
     ReplServerCommand pending_command;
+    ReplServerCommand[REPL_SERVER_WORKER_QUEUE_CAPACITY] command_queue;
+    usz command_queue_head;
+    usz command_queue_count;
     ReplServerCommandKind active_kind;
     ReplServerSession* active_session;
     char* active_request_id_ptr;
@@ -67,10 +72,23 @@ struct ReplServerConnection {
     ReplServerWorker worker;
 }
 
+const usz REPL_SERVER_CSTR_SCAN_MAX = REPL_SERVER_LINE_MAX;
+
+fn bool repl_server_cstr_len_bounded(char* text, usz max_len, usz* out_len) @inline {
+    *out_len = 0;
+    if (text == null) return true;
+    for (usz len = 0; len < max_len; len++) {
+        if (text[len] == 0) {
+            *out_len = len;
+            return true;
+        }
+    }
+    return false;
+}
+
 fn usz repl_server_cstr_len(char* text) @inline {
-    if (text == null) return 0;
     usz len = 0;
-    while (text[len] != 0) len++;
+    if (!repl_server_cstr_len_bounded(text, REPL_SERVER_CSTR_SCAN_MAX, &len)) return 0;
     return len;
 }
 
@@ -96,7 +114,10 @@ fn void repl_server_destroy_interp(Interp* interp) {
 fn void repl_server_close_session(ReplServerSession* session) {
     if (session == null || !session.active) return;
     session.interrupt_requested.store(0);
-    (void)io_input_state_close(&session.input);
+    bool input_closed = io_input_state_close(&session.input);
+    if (!input_closed) {
+        io::eprintfn("WARNING: REPL server session input close failed");
+    }
     if (session.id_ptr != null) mem::free(session.id_ptr);
     if (session.interp != null) repl_server_destroy_interp(session.interp);
     io_input_state_destroy(&session.input);
@@ -150,9 +171,13 @@ fn void repl_server_connection_init(
 ) {
     *conn = {};
     conn.next_session_id = 1;
-    conn.auth_required = auth_required && auth_token_ptr != null && auth_token_ptr[0] != 0;
-    conn.auth_token_ptr = conn.auth_required ? auth_token_ptr : null;
-    conn.auth_token_len = conn.auth_required ? repl_server_cstr_len(auth_token_ptr) : 0;
+    usz auth_token_len = 0;
+    bool auth_token_terminated = !auth_required || auth_token_ptr == null ||
+        repl_server_cstr_len_bounded(auth_token_ptr, REPL_SERVER_CSTR_SCAN_MAX, &auth_token_len);
+    conn.auth_required = auth_required && auth_token_ptr != null &&
+        (!auth_token_terminated || auth_token_len > 0);
+    conn.auth_token_ptr = conn.auth_required && auth_token_terminated ? auth_token_ptr : null;
+    conn.auth_token_len = conn.auth_required && auth_token_terminated ? auth_token_len : 0;
     conn.preload_project = preload_project;
     conn.preload_project_dir = preload_project_dir;
     repl_server_output_init(&conn.output, write_fd, socket_write);
@@ -166,7 +191,7 @@ fn void repl_server_connection_destroy(ReplServerConnection* conn) {
         }
         mem::free(conn.sessions);
     }
-    repl_server_command_free(&conn.worker.pending_command);
+    repl_server_worker_clear_queued_commands(&conn.worker);
     repl_server_output_destroy(&conn.output);
     *conn = {};
 }
@@ -224,7 +249,7 @@ fn ReplServerSession* repl_server_new_session(ReplServerConnection* conn) {
     char[REPL_SERVER_SESSION_ID_MAX] id_buf = {};
     char[] id;
     if (conn.next_session_id > (usz)long.max) return null;
-    if (try rendered = io::bprintf(&id_buf, "s%d", (long)conn.next_session_id)) {
+    if (try rendered = io::bprintf(&id_buf, "s%d", conn.next_session_id)) {
         id = rendered;
     } else {
         return null;

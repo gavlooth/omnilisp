@@ -14,6 +14,9 @@ struct JitTrackedState {
     ulong compile_nonce;
 }
 
+// Owner-thread protected by jit_require_owner_thread at all mutating runtime
+// entrypoints. The fixed pool and spill list are intentionally process-wide so
+// compiled code can be retired against interpreter attach serials.
 JitTrackedState[JIT_STATE_POOL_SIZE] g_jit_states;
 usz g_jit_state_count = 0;
 

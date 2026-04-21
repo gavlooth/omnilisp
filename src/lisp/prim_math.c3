@@ -2,6 +2,9 @@ module lisp;
 
 extern fn int c_getrandom(void* buf, usz buflen, uint flags) @extern("getrandom");
 
+const ulong MATH_RANDOM_MANTISSA_MASK = 0x000F_FFFF_FFFF_FFFF;
+const double MATH_RANDOM_MANTISSA_SCALE = 4503599627370496.0;
+
 fn bool math_fill_random_bytes(void* buf, usz len) {
     char* bytes = (char*)buf;
     usz off = 0;
@@ -18,9 +21,9 @@ fn Value* prim_random(Value*[] args, Env* env, Interp* interp) {
     if (!math_fill_random_bytes(&buf, ulong.sizeof)) {
         return raise_error(interp, "random: failed to read random bytes");
     }
-    // Convert to double in [0, 1): mask to 52 bits, divide by 2^52
-    ulong mantissa = buf & 0x000F_FFFF_FFFF_FFFF;
-    double val = (double)mantissa / 4503599627370496.0;  // 2^52
+    // Convert to double in [0, 1): mask to 52 bits, divide by 2^52.
+    ulong mantissa = buf & MATH_RANDOM_MANTISSA_MASK;
+    double val = (double)mantissa / MATH_RANDOM_MANTISSA_SCALE;
     return make_double(interp, val);
 }
 

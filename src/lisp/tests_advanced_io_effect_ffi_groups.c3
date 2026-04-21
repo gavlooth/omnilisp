@@ -108,6 +108,14 @@ fn void run_advanced_uv_timer_callback_scope_release_test(Interp* interp, int* p
     run_advanced_uv_timer_callback_scope_release_test_impl(interp, pass, fail);
 }
 
+fn void run_advanced_uv_timer_callback_wrapper_failure_scope_release_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_wrapper_failure_scope_release_test_impl(interp, pass, fail);
+}
+
+fn void run_advanced_uv_timer_callback_finalizer_scope_release_test(Interp* interp, int* pass, int* fail) {
+    run_advanced_uv_timer_callback_finalizer_scope_release_test_impl(interp, pass, fail);
+}
+
 fn void run_advanced_uv_timer_callback_handle_isolation_test(Interp* interp, int* pass, int* fail) {
     run_advanced_uv_timer_callback_handle_isolation_test_impl(interp, pass, fail);
 }

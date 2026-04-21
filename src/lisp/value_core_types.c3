@@ -173,6 +173,10 @@ struct MethodTable {
     Value* fallback;  // untyped catch-all
 }
 
+// ABI/interop guard: dispatch table wrappers cross runtime boundaries.
+// Update external bindings and this assertion together when the layout changes.
+$assert(MethodTable.sizeof == 40);
+
 struct Complex128Val {
     double real;
     double imag;
@@ -224,4 +228,8 @@ struct Value {
         TensorVal*    tensor_val;       // Rank-polymorphic numeric aggregate
     }
 }
+
+// ABI/interop guard: Value is the central runtime handle exposed to generated,
+// JIT, and helper-boundary code. Update bindings and this assertion together.
+$assert(Value.sizeof == 56);
 

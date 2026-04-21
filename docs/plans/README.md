@@ -11,6 +11,13 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 ## Current TODO-Linked Plans
 
+- `memory-tier3-evaluation-2026-04-21.md`: closed evaluation note for the
+  remaining Tier 3 memory proposal items. It rejects immediate `Value` inline
+  collection rewrites, unmeasured TEMP lane paging, and cross-thread scope pool
+  changes without benchmark/telemetry evidence and a transfer contract. Future
+  work should start with measurement: collection length/capacity telemetry,
+  chunk-class fragmentation telemetry, and scope global-lock contention
+  telemetry.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI
@@ -125,6 +132,14 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
 
 Recently closed TODO-linked plans:
 
+- `main-lisp-module-cycle-isolation-2026-04-21.md`: closes
+  `AUDIT-2026-M5-MODULE-CYCLE` by making the current `main` <-> `lisp` module
+  cycle explicit and isolated. `main -> lisp` is limited to entry, CLI, REPL,
+  build, bindgen, source-check, and test adapter surfaces; `lisp -> main` is
+  limited to low-level runtime services still hosted in `main` such as
+  scope/region, stack/coroutine, lifecycle, bindgen manifest, diagnostics, and
+  tests. A real cycle break remains a separate neutral-runtime-module
+  extraction, not a leaf import reshuffle.
 - `ffi-first-class-grouped-module-plan-2026-04-11.md`: grouped C ABI FFI,
   grouped bindgen output, generated bind manifests, strict bind TOML hardening,
   and `exclude-functions` denylist filtering.

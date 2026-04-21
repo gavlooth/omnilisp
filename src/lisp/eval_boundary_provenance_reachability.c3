@@ -97,7 +97,25 @@ fn bool boundary_alias_value_has_child_payload(Value* value) @inline {
         case MODULE:
         case TENSOR:
             return true;
-        default:
+        case NIL:
+        case VOID:
+        case INT:
+        case DOUBLE:
+        case FLOAT32:
+        case BIG_INTEGER:
+        case BIG_FLOAT:
+        case BIG_COMPLEX:
+        case COMPLEX128:
+        case COMPLEX64:
+        case STRING:
+        case SYMBOL:
+        case CONTINUATION:
+        case PRIMITIVE:
+        case ERROR:
+        case FFI_HANDLE:
+        case TYPE_INFO:
+        case COROUTINE:
+        case TIME_POINT:
             return false;
     }
 }
@@ -283,7 +301,25 @@ fn bool boundary_alias_graph_reaches_scope(Value* root, main::ScopeRegion* scope
                         }
                     }
                     break;
-                default:
+                case NIL:
+                case VOID:
+                case INT:
+                case DOUBLE:
+                case FLOAT32:
+                case BIG_INTEGER:
+                case BIG_FLOAT:
+                case BIG_COMPLEX:
+                case COMPLEX128:
+                case COMPLEX64:
+                case STRING:
+                case SYMBOL:
+                case CONTINUATION:
+                case PRIMITIVE:
+                case ERROR:
+                case FFI_HANDLE:
+                case TYPE_INFO:
+                case COROUTINE:
+                case TIME_POINT:
                     break;
             }
         }

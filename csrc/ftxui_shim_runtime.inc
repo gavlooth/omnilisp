@@ -111,6 +111,50 @@ void omni_ftxui_event_destroy(omni_ftxui_event_t* event) {
     delete event;
 }
 
+#if OMNI_FTXUI_HAS_BACKEND
+static omni_ftxui_captured_event_t capture_event_payload(const ftxui::Event& event) {
+    omni_ftxui_captured_event_t out;
+    if (event.is_character()) {
+        out.kind = OMNI_FTXUI_EVENT_CHARACTER;
+        out.text = event.character();
+        return out;
+    }
+    if (event == ftxui::Event::ArrowLeft) { out.kind = OMNI_FTXUI_EVENT_ARROW_LEFT; return out; }
+    if (event == ftxui::Event::ArrowRight) { out.kind = OMNI_FTXUI_EVENT_ARROW_RIGHT; return out; }
+    if (event == ftxui::Event::ArrowUp) { out.kind = OMNI_FTXUI_EVENT_ARROW_UP; return out; }
+    if (event == ftxui::Event::ArrowDown) { out.kind = OMNI_FTXUI_EVENT_ARROW_DOWN; return out; }
+    if (event == ftxui::Event::Return) { out.kind = OMNI_FTXUI_EVENT_RETURN; return out; }
+    if (event == ftxui::Event::Escape) { out.kind = OMNI_FTXUI_EVENT_ESCAPE; return out; }
+    if (event == ftxui::Event::Tab) { out.kind = OMNI_FTXUI_EVENT_TAB; return out; }
+    if (event == ftxui::Event::TabReverse) { out.kind = OMNI_FTXUI_EVENT_TAB_REVERSE; return out; }
+    if (event == ftxui::Event::Backspace) { out.kind = OMNI_FTXUI_EVENT_BACKSPACE; return out; }
+    if (event == ftxui::Event::Delete) { out.kind = OMNI_FTXUI_EVENT_DELETE; return out; }
+    if (event == ftxui::Event::Home) { out.kind = OMNI_FTXUI_EVENT_HOME; return out; }
+    if (event == ftxui::Event::End) { out.kind = OMNI_FTXUI_EVENT_END; return out; }
+    if (event == ftxui::Event::PageUp) { out.kind = OMNI_FTXUI_EVENT_PAGE_UP; return out; }
+    if (event == ftxui::Event::PageDown) { out.kind = OMNI_FTXUI_EVENT_PAGE_DOWN; return out; }
+    if (event == ftxui::Event::F1) { out.kind = OMNI_FTXUI_EVENT_F1; return out; }
+    if (event == ftxui::Event::F2) { out.kind = OMNI_FTXUI_EVENT_F2; return out; }
+    if (event == ftxui::Event::F3) { out.kind = OMNI_FTXUI_EVENT_F3; return out; }
+    if (event == ftxui::Event::F4) { out.kind = OMNI_FTXUI_EVENT_F4; return out; }
+    if (event == ftxui::Event::F5) { out.kind = OMNI_FTXUI_EVENT_F5; return out; }
+    if (event == ftxui::Event::F6) { out.kind = OMNI_FTXUI_EVENT_F6; return out; }
+    if (event == ftxui::Event::F7) { out.kind = OMNI_FTXUI_EVENT_F7; return out; }
+    if (event == ftxui::Event::F8) { out.kind = OMNI_FTXUI_EVENT_F8; return out; }
+    if (event == ftxui::Event::F9) { out.kind = OMNI_FTXUI_EVENT_F9; return out; }
+    if (event == ftxui::Event::F10) { out.kind = OMNI_FTXUI_EVENT_F10; return out; }
+    if (event == ftxui::Event::F11) { out.kind = OMNI_FTXUI_EVENT_F11; return out; }
+    if (event == ftxui::Event::F12) { out.kind = OMNI_FTXUI_EVENT_F12; return out; }
+    if (event == ftxui::Event::Custom) {
+        out.kind = OMNI_FTXUI_EVENT_CUSTOM;
+        return out;
+    }
+    out.kind = OMNI_FTXUI_EVENT_SPECIAL;
+    out.text = event.input();
+    return out;
+}
+#endif
+
 omni_ftxui_status omni_ftxui_screen_create(
     omni_ftxui_context_t* context,
     const omni_ftxui_screen_create_options* options,
@@ -329,4 +373,122 @@ omni_ftxui_status omni_ftxui_app_post_event(
     return status_try(context, "app_post_event: out of memory", "app_post_event: exception", [&]() -> omni_ftxui_status {
     return omni_ftxui_screen_post_event(context, app->screen, event);
     });
+}
+
+omni_ftxui_status omni_ftxui_session_create(
+    omni_ftxui_context_t* context,
+    omni_ftxui_screen_t* screen,
+    omni_ftxui_component_t* root,
+    omni_ftxui_session_t** out_session
+) {
+    if (screen == nullptr || root == nullptr || out_session == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_create: null argument");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_create: FTXUI backend unavailable");
+#else
+    return status_try(context, "session_create: out of memory", "session_create: exception", [&]() -> omni_ftxui_status {
+    auto* session = new (std::nothrow) omni_ftxui_session_t();
+    if (session == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_OUT_OF_MEMORY, "session_create: allocation failed");
+    session->screen = screen;
+    session->root = root;
+    auto captured_root = ftxui::CatchEvent(root->component, [session](ftxui::Event event) {
+        session->event = capture_event_payload(event);
+        session->has_event = true;
+        return false;
+    });
+    session->loop = std::make_unique<ftxui::Loop>(screen->screen.get(), std::move(captured_root));
+    *out_session = session;
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
+void omni_ftxui_session_destroy(omni_ftxui_session_t* session) {
+    delete session;
+}
+
+omni_ftxui_status omni_ftxui_session_run_once(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session
+) {
+    if (session == nullptr) return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_run_once: null session");
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_run_once: FTXUI backend unavailable");
+#else
+    return status_try(context, "session_run_once: out of memory", "session_run_once: exception", [&]() -> omni_ftxui_status {
+    session->loop->RunOnce();
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
+omni_ftxui_status omni_ftxui_session_run_once_blocking(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session
+) {
+    if (session == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_run_once_blocking: null session");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_run_once_blocking: FTXUI backend unavailable");
+#else
+    return status_try(context, "session_run_once_blocking: out of memory", "session_run_once_blocking: exception", [&]() -> omni_ftxui_status {
+    session->loop->RunOnceBlocking();
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
+omni_ftxui_status omni_ftxui_session_has_quitted(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session,
+    bool* out_quitted
+) {
+    if (session == nullptr || out_quitted == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_has_quitted: null argument");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_has_quitted: FTXUI backend unavailable");
+#else
+    return status_try(context, "session_has_quitted: out of memory", "session_has_quitted: exception", [&]() -> omni_ftxui_status {
+    *out_quitted = session->loop->HasQuitted();
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
+}
+
+omni_ftxui_status omni_ftxui_session_take_event(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session,
+    omni_ftxui_event_read_result* out_event
+) {
+    if (session == nullptr || out_event == nullptr) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_take_event: null argument");
+    }
+    if (!validate_sized_abi(out_event->size, out_event->abi_version, sizeof(omni_ftxui_event_read_result))) {
+        return ctx_fail(context, OMNI_FTXUI_STATUS_INVALID_ARGUMENT, "session_take_event: invalid result ABI");
+    }
+#if !OMNI_FTXUI_HAS_BACKEND
+    return ctx_fail(context, OMNI_FTXUI_STATUS_BACKEND_UNAVAILABLE, "session_take_event: FTXUI backend unavailable");
+#else
+    return status_try(context, "session_take_event: out of memory", "session_take_event: exception", [&]() -> omni_ftxui_status {
+    out_event->has_event = session->has_event;
+    out_event->kind = session->event.kind;
+    out_event->text[0] = '\0';
+    if (session->has_event) {
+        size_t copy_len = std::min(session->event.text.size(), sizeof(out_event->text) - 1);
+        std::copy_n(session->event.text.data(), copy_len, out_event->text);
+        out_event->text[copy_len] = '\0';
+    }
+    session->has_event = false;
+    session->event = {};
+    ctx_clear(context);
+    return OMNI_FTXUI_STATUS_OK;
+    });
+#endif
 }

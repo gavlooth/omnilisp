@@ -1,6 +1,6 @@
 # Omni REPL Server Protocol Proposal (2026-03-30)
 
-Status: phase 1 partially implemented
+Status: phase 1 transport concurrency and bounded request queueing implemented
 
 ## Current Implementation Boundary
 
@@ -14,6 +14,13 @@ Shipped now:
 - Unix domain socket transport
 - stdio transport
 - TCP transport
+- concurrent accepted-client handling for Unix socket and TCP transports:
+  - each accepted client is handed to a detached handler thread,
+  - the listener returns to `accept` immediately after successful handoff,
+  - each client keeps its own connection state and per-connection runtime
+    worker,
+  - handler-start failure returns a protocol error to the accepted client and
+    closes that fd without serially falling back to listener-thread handling
 - nREPL-style TCP discovery file:
   - `--repl-server --tcp` writes `.omni-repl-port` in the current working
     directory after bind succeeds
@@ -27,14 +34,20 @@ Shipped now:
 - newline-delimited JSON protocol framing
 - current single-worker execution semantics:
   - only one runtime request may be active at a time,
-  - `clone`, `eval`, `load-file`, `complete`, and `close` fail with
-    `protocol/server-busy` while another runtime request is in flight or
-    already queued,
+  - each stream has a bounded FIFO runtime request queue,
+  - `clone`, `eval`, `load-file`, `complete`, and `close` are accepted while
+    earlier runtime requests are active or queued until the queue reaches its
+    fixed capacity,
+  - once the queue is full, additional runtime work fails closed with
+    `protocol/server-busy`,
+  - queued `clone` requests allocate the new session on the worker execution
+    path, avoiding request-thread session-table reallocation while the worker
+    may hold active session pointers,
   - `interrupt` only targets the currently running request; queued work is
     rejected as `protocol/no-such-target`,
-  - `stdin` may still be routed to the currently running request or the single
-    queued request so blocked `(read-line)` workflows can stage input before
-    execution resumes
+  - `stdin` may still be routed to the currently running request or queued
+    `eval` / `load-file` requests so blocked `(read-line)` workflows can stage
+    input before execution resumes
 - ops:
   - `describe`
   - `clone`
@@ -57,11 +70,6 @@ Shipped now:
   - `done`
   - `interrupted`
   - `error`
-
-Not shipped yet:
-
-- concurrent multi-client handling
-- request queueing beyond one in-flight runtime operation per stream
 
 The rest of this document remains the target design direction for the next
 slices.

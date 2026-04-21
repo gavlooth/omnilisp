@@ -244,6 +244,7 @@ fn TensorVal* tensor_alloc_payload_base_checked(
     tensor.storage_offset = 0;
     tensor.storage_element_count = element_count;
     tensor.storage_byte_len = byte_len;
+    tensor.alias_origin = (void*)tensor;
     tensor.mutable = mutable;
     tensor.is_view = false;
 

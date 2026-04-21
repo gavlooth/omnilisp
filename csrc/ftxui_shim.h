@@ -14,6 +14,7 @@ extern "C" {
 typedef struct omni_ftxui_context_t omni_ftxui_context_t;
 typedef struct omni_ftxui_app_t omni_ftxui_app_t;
 typedef struct omni_ftxui_screen_t omni_ftxui_screen_t;
+typedef struct omni_ftxui_session_t omni_ftxui_session_t;
 typedef struct omni_ftxui_event_t omni_ftxui_event_t;
 typedef struct omni_ftxui_element_t omni_ftxui_element_t;
 typedef struct omni_ftxui_component_t omni_ftxui_component_t;
@@ -132,6 +133,14 @@ typedef struct omni_ftxui_event_spec {
     omni_ftxui_event_kind kind;
     const char* text;
 } omni_ftxui_event_spec;
+
+typedef struct omni_ftxui_event_read_result {
+    uint32_t size;
+    uint32_t abi_version;
+    bool has_event;
+    omni_ftxui_event_kind kind;
+    char text[256];
+} omni_ftxui_event_read_result;
 
 typedef omni_ftxui_status (*omni_ftxui_graph_callback_fn)(
     void* user_data,
@@ -422,6 +431,37 @@ omni_ftxui_status omni_ftxui_app_post_event(
     const omni_ftxui_event_t* event
 );
 
+/*
+ * Session owns FTXUI's custom Loop lifecycle around a screen + root component.
+ * It does not own the screen or root handles; callers must keep those handles
+ * alive until the session is destroyed.
+ */
+omni_ftxui_status omni_ftxui_session_create(
+    omni_ftxui_context_t* context,
+    omni_ftxui_screen_t* screen,
+    omni_ftxui_component_t* root,
+    omni_ftxui_session_t** out_session
+);
+void omni_ftxui_session_destroy(omni_ftxui_session_t* session);
+omni_ftxui_status omni_ftxui_session_run_once(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session
+);
+omni_ftxui_status omni_ftxui_session_run_once_blocking(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session
+);
+omni_ftxui_status omni_ftxui_session_has_quitted(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session,
+    bool* out_quitted
+);
+omni_ftxui_status omni_ftxui_session_take_event(
+    omni_ftxui_context_t* context,
+    omni_ftxui_session_t* session,
+    omni_ftxui_event_read_result* out_event
+);
+
 omni_ftxui_status omni_ftxui_element_create(
     omni_ftxui_context_t* context,
     const omni_ftxui_element_create_options* options,
@@ -459,6 +499,12 @@ omni_ftxui_status omni_ftxui_component_take_focus(
     omni_ftxui_context_t* context,
     omni_ftxui_component_t* component
 );
+omni_ftxui_status omni_ftxui_component_handle_event(
+    omni_ftxui_context_t* context,
+    omni_ftxui_component_t* component,
+    const omni_ftxui_event_t* event,
+    bool* out_handled
+);
 
 /*
  * Generic callback wrappers:
@@ -473,6 +519,12 @@ omni_ftxui_status omni_ftxui_component_wrap_renderer(
     omni_ftxui_component_t** out_component
 );
 omni_ftxui_status omni_ftxui_component_wrap_event_handler(
+    omni_ftxui_context_t* context,
+    omni_ftxui_component_t* base,
+    const omni_ftxui_callback_options* callbacks,
+    omni_ftxui_component_t** out_component
+);
+omni_ftxui_status omni_ftxui_component_wrap_action(
     omni_ftxui_context_t* context,
     omni_ftxui_component_t* base,
     const omni_ftxui_callback_options* callbacks,

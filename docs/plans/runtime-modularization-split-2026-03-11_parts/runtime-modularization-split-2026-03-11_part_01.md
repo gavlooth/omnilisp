@@ -116,11 +116,11 @@ Applied in largest-first order:
 - retained type declaration/evaluator paths and constructor validation flow in:
   - `src/lisp/eval_type_evaluators.c3`
 
-18. `jit_jit_closure_define_qq.c3` (top-down continuation split)
+18. `jit_closure_define_qq.c3` (top-down continuation split)
 - extracted closure/type-signature/tco helper block into:
-  - `src/lisp/jit_jit_closure_support.c3`
+  - `src/lisp/jit_closure_support.c3`
 - retained let-rec/set-path/env-extend helpers in:
-  - `src/lisp/jit_jit_closure_define_qq.c3`
+  - `src/lisp/jit_closure_define_qq.c3`
 
 19. `tests_deduce_query_groups.c3` (top-down continuation split)
 - extracted scan/scan-range/query-filter and benchmark utility helpers into:
@@ -140,11 +140,11 @@ Applied in largest-first order:
 - retained JSON pointer helpers, option parsers, and runtime parse/emit primitives in:
   - `src/lisp/json.c3`
 
-22. `jit_jit_compile_expr_core.c3` (top-down continuation split)
+22. `jit_compile_expr_core.c3` (top-down continuation split)
 - extracted fallback-audit metadata and expression-family dispatch front-end into:
-  - `src/lisp/jit_jit_compile_expr_dispatch.c3`
+  - `src/lisp/jit_compile_expr_dispatch.c3`
 - retained concrete core call/app expression lowerings in:
-  - `src/lisp/jit_jit_compile_expr_core.c3`
+  - `src/lisp/jit_compile_expr_core.c3`
 
 23. `scheduler_primitives.c3` (top-down continuation split)
 - extracted offload entrypoint/job parse/queue submission helpers into:
@@ -385,16 +385,16 @@ Applied in largest-first order:
   - `src/lisp/tests_scheduler_boundary_thread_task_groups.c3`: `584` lines
   - `src/lisp/tests_scheduler_boundary_thread_task_groups_more.c3`: `214` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_handle_signal.c3` (`551` lines)
+  - `src/lisp/jit_handle_signal.c3` (`551` lines)
 
-54. `jit_jit_handle_signal.c3` (signal-dispatch continuation split)
+54. `jit_handle_signal.c3` (signal-dispatch continuation split)
 - retained the lower-level effect state and signal dispatch machinery in:
-  - `src/lisp/jit_jit_handle_signal.c3`
+  - `src/lisp/jit_handle_signal.c3`
 - extracted eval-result conversion, pending-raise dispatch, warm-clauses handling, handle-state setup, body switching, no-signal finish, implementation, and continuation application into:
-  - `src/lisp/jit_jit_handle_signal_handle.c3`
+  - `src/lisp/jit_handle_signal_handle.c3`
 - post-step-54 line counts:
-  - `src/lisp/jit_jit_handle_signal.c3`: `551` lines
-  - `src/lisp/jit_jit_handle_signal_handle.c3`: `225` lines
+  - `src/lisp/jit_handle_signal.c3`: `551` lines
+  - `src/lisp/jit_handle_signal_handle.c3`: `225` lines
 - next largest target after this split:
   - `src/lisp/deduce_rule_ops.c3` (`767` lines)
 
@@ -407,16 +407,16 @@ Applied in largest-first order:
   - `src/lisp/deduce_rule_ops.c3`: `548` lines
   - `src/lisp/deduce_rule_ops_explain.c3`: `219` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_compiler.c3` (`753` lines)
+  - `src/lisp/jit_compiler.c3` (`753` lines)
 
-56. `jit_jit_compiler.c3` (compile-path continuation split)
+56. `jit_compiler.c3` (compile-path continuation split)
 - retained runtime cache / lifecycle helpers in:
-  - `src/lisp/jit_jit_compiler.c3`
+  - `src/lisp/jit_compiler.c3`
 - extracted JIT state tracking and `jit_compile(...)` into:
-  - `src/lisp/jit_jit_compiler_compile.c3`
+  - `src/lisp/jit_compiler_compile.c3`
 - post-step-56 line counts:
-  - `src/lisp/jit_jit_compiler.c3`: `638` lines
-  - `src/lisp/jit_jit_compiler_compile.c3`: `121` lines
+  - `src/lisp/jit_compiler.c3`: `638` lines
+  - `src/lisp/jit_compiler_compile.c3`: `121` lines
 - next largest target after this split:
   - `src/lisp/tests_compiler_core_groups.c3` (`716` lines)
 
@@ -474,16 +474,16 @@ Applied in largest-first order:
   - `src/lisp/tests_runtime_feature_jit_groups_more.c3`: `392` lines
   - `src/lisp/tests_runtime_feature_jit_groups_tail.c3`: `314` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_compiler.c3` (`638` lines)
+  - `src/lisp/jit_compiler.c3` (`638` lines)
 
-62. `jit_jit_compiler.c3` (top-down continuation split)
+62. `jit_compiler.c3` (top-down continuation split)
 - retained the JIT compiler state, cache, and attachment bookkeeping in:
-  - `src/lisp/jit_jit_compiler.c3`
+  - `src/lisp/jit_compiler.c3`
 - extracted the lifecycle, GC, exec-depth, and liveness helpers into:
-  - `src/lisp/jit_jit_compiler_lifecycle.c3`
+  - `src/lisp/jit_compiler_lifecycle.c3`
 - post-step-62 line counts:
-  - `src/lisp/jit_jit_compiler.c3`: `418` lines
-  - `src/lisp/jit_jit_compiler_lifecycle.c3`: `225` lines
+  - `src/lisp/jit_compiler.c3`: `418` lines
+  - `src/lisp/jit_compiler_lifecycle.c3`: `225` lines
 - next largest target after this split:
   - `src/lisp/deduce_rule_eval_exec.c3` (`638` lines)
 
@@ -507,16 +507,16 @@ Applied in largest-first order:
   - `src/lisp/tests_scheduler_groups.c3`: `424` lines
   - `src/lisp/tests_scheduler_groups_more.c3`: `218` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_runtime_effects.c3` (`625` lines)
+  - `src/lisp/jit_runtime_effects.c3` (`625` lines)
 
-65. `jit_jit_runtime_effects.c3` (top-down continuation split)
+65. `jit_runtime_effects.c3` (top-down continuation split)
 - retained the resolve-side runtime effect helpers in:
-  - `src/lisp/jit_jit_runtime_effects.c3`
+  - `src/lisp/jit_runtime_effects.c3`
 - extracted the handler-application helpers into:
-  - `src/lisp/jit_jit_runtime_effects_handle.c3`
+  - `src/lisp/jit_runtime_effects_handle.c3`
 - post-step-65 line counts:
-  - `src/lisp/jit_jit_runtime_effects.c3`: `422` lines
-  - `src/lisp/jit_jit_runtime_effects_handle.c3`: `206` lines
+  - `src/lisp/jit_runtime_effects.c3`: `422` lines
+  - `src/lisp/jit_runtime_effects_handle.c3`: `206` lines
 - next largest target after this split:
   - `src/lisp/tests_deduce_rule_groups_more.c3` (`618` lines)
 
@@ -573,27 +573,27 @@ Applied in largest-first order:
   - `src/lisp/tests_deduce_rule_groups.c3`: `419` lines
   - `src/lisp/tests_deduce_rule_groups_explain.c3`: `170` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_eval_scopes.c3` (`557` lines)
+  - `src/lisp/jit_eval_scopes.c3` (`557` lines)
 
-71. `jit_jit_eval_scopes.c3` (top-down continuation split)
+71. `jit_eval_scopes.c3` (top-down continuation split)
 - retained the JIT lookup/eval wrappers and TCO recycle entrypoints in:
-  - `src/lisp/jit_jit_eval_scopes.c3`
+  - `src/lisp/jit_eval_scopes.c3`
 - extracted the scope-chain, finalize, and recycle helper layer into:
-  - `src/lisp/jit_jit_eval_scopes_helpers.c3`
+  - `src/lisp/jit_eval_scopes_helpers.c3`
 - post-step-71 line counts:
-  - `src/lisp/jit_jit_eval_scopes.c3`: `368` lines
-  - `src/lisp/jit_jit_eval_scopes_helpers.c3`: `192` lines
+  - `src/lisp/jit_eval_scopes.c3`: `368` lines
+  - `src/lisp/jit_eval_scopes_helpers.c3`: `192` lines
 - next largest target after this split:
-  - `src/lisp/jit_jit_handle_signal.c3` (`551` lines)
+  - `src/lisp/jit_handle_signal.c3` (`551` lines)
 
-72. `jit_jit_handle_signal.c3` (top-down continuation split)
+72. `jit_handle_signal.c3` (top-down continuation split)
 - retained the signal/dispatch entrypoints in:
-  - `src/lisp/jit_jit_handle_signal.c3`
+  - `src/lisp/jit_handle_signal.c3`
 - extracted the shared effect-state, continuation scan, and fast-path helpers into:
-  - `src/lisp/jit_jit_handle_signal_helpers.c3`
+  - `src/lisp/jit_handle_signal_helpers.c3`
 - post-step-72 line counts:
-  - `src/lisp/jit_jit_handle_signal.c3`: `108` lines
-  - `src/lisp/jit_jit_handle_signal_helpers.c3`: `446` lines
+  - `src/lisp/jit_handle_signal.c3`: `108` lines
+  - `src/lisp/jit_handle_signal_helpers.c3`: `446` lines
 - next largest target after this split:
   - `src/lisp/deduce_rule_ops.c3` (`548` lines)
 

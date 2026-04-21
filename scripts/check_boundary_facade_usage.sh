@@ -106,6 +106,9 @@ main() {
 
   local -a legacy_symbols=(
     copy_to_parent
+    copy_to_parent_by_route
+    boundary_copy_to_parent_site_ctx
+    boundary_ptr_in_scope_chain_with_hint
     promote_to_escape
     promote_to_root
     copy_env_to_scope_checked

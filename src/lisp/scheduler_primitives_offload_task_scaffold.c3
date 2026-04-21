@@ -26,12 +26,14 @@ fn Value* scheduler_admit_offload_task_work(
     }
     if (task_id == NO_TASK) {
         if (release_shared_on_error) scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(interp, "scheduler/offload-task-table-full", "offload: task table full");
     }
 
     uint generation = 0;
     if (!scheduler_get_thread_task_generation(task_id, &generation) || generation == 0) {
         if (release_shared_on_error) scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         if (allocated_task_id) scheduler_drop_thread_task(task_id);
         return scheduler_raise(interp, generation_error_code, generation_error_msg);
     }
@@ -43,6 +45,7 @@ fn Value* scheduler_admit_offload_task_work(
     work.task_id = task_id;
     if (!scheduler_enqueue_offload(*work)) {
         if (release_shared_on_error) scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         scheduler_drop_thread_task(task_id, generation);
         return scheduler_raise(interp, "scheduler/offload-admission-full", "offload: admission cap reached");
     }

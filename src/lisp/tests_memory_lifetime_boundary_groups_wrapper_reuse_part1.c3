@@ -31,8 +31,8 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_reuse_and_copy(
         interp.current_scope = target;
         interp.releasing_scope = releasing;
 
-        Value* reused = copy_to_parent(reusable, interp);
-        Value* copied = copy_to_parent(disjoint, interp);
+        Value* reused = test_copy_to_parent(reusable, interp);
+        Value* copied = test_copy_to_parent(disjoint, interp);
 
         bool reuse_ok = reused == reusable;
         bool copied_ok = copied != null &&
@@ -401,10 +401,10 @@ fn bool run_memory_lifetime_wrapper_reuse_vs_defensive_copy_test_shared_wrapper_
         interp.current_scope = target;
         interp.releasing_scope = releasing;
 
-        Value* array_copied = copy_to_parent(array_src, interp);
-        Value* hashmap_copied = copy_to_parent(hashmap_src, interp);
-        Value* set_copied = copy_to_parent(set_src, interp);
-        Value* mt_copied = copy_to_parent(mt_src, interp);
+        Value* array_copied = test_copy_to_parent(array_src, interp);
+        Value* hashmap_copied = test_copy_to_parent(hashmap_src, interp);
+        Value* set_copied = test_copy_to_parent(set_src, interp);
+        Value* mt_copied = test_copy_to_parent(mt_src, interp);
         Value* array_escaped = promote_to_escape(array_src, interp);
         Value* hashmap_escaped = promote_to_escape(hashmap_src, interp);
         Value* set_escaped = promote_to_escape(set_src, interp);

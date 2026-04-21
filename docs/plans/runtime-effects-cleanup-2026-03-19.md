@@ -14,7 +14,7 @@ checkpoint/capture/signal entrypoints with continuation-resume mechanics.
 
 ## Rationale
 
-- `src/lisp/jit_jit_runtime_effects.c3` is the next large consequential
+- `src/lisp/jit_runtime_effects.c3` is the next large consequential
   runtime file.
 - It sits on a sensitive control-flow boundary:
   - checkpoint/reset runtime,
@@ -37,34 +37,34 @@ checkpoint/capture/signal entrypoints with continuation-resume mechanics.
 
 ## Queue
 
-### 1. Reduce `jit_jit_runtime_effects.c3` helper ownership
+### 1. Reduce `jit_runtime_effects.c3` helper ownership
 
 Why:
 - continuation validation/resume is the largest cohesive helper block.
 - checkpoint and signal entrypoints should remain easy to read.
 
 Acceptance:
-- `src/lisp/jit_jit_runtime_effects.c3` keeps the public effect entrypoints.
+- `src/lisp/jit_runtime_effects.c3` keeps the public effect entrypoints.
 - continuation/resume helper logic moves into dedicated companion files.
 
 Current state (2026-03-19):
 - complete
 - split continuation validation/resume helpers out of
-  `src/lisp/jit_jit_runtime_effects.c3`
-  into `src/lisp/jit_jit_runtime_effects_continuation.c3`
+  `src/lisp/jit_runtime_effects.c3`
+  into `src/lisp/jit_runtime_effects_continuation.c3`
 - split checkpoint/reset and capture helpers out of
-  `src/lisp/jit_jit_runtime_effects.c3`
-  into `src/lisp/jit_jit_runtime_effects_reset_shift.c3`
+  `src/lisp/jit_runtime_effects.c3`
+  into `src/lisp/jit_runtime_effects_reset_shift.c3`
 - split signal fast-path and handler-resume helpers out of
-  `src/lisp/jit_jit_runtime_effects.c3`
-  into `src/lisp/jit_jit_runtime_effects_signal.c3`
-- `src/lisp/jit_jit_runtime_effects.c3` now keeps:
+  `src/lisp/jit_runtime_effects.c3`
+  into `src/lisp/jit_runtime_effects_signal.c3`
+- `src/lisp/jit_runtime_effects.c3` now keeps:
   - public resolve/continuation application entrypoints
 - resulting file sizes:
-  - `src/lisp/jit_jit_runtime_effects.c3`: `153` lines
-  - `src/lisp/jit_jit_runtime_effects_continuation.c3`: `137` lines
-  - `src/lisp/jit_jit_runtime_effects_reset_shift.c3`: `120` lines
-  - `src/lisp/jit_jit_runtime_effects_signal.c3`: `84` lines
+  - `src/lisp/jit_runtime_effects.c3`: `153` lines
+  - `src/lisp/jit_runtime_effects_continuation.c3`: `137` lines
+  - `src/lisp/jit_runtime_effects_reset_shift.c3`: `120` lines
+  - `src/lisp/jit_runtime_effects_signal.c3`: `84` lines
 - validation is green:
   - `c3c build`
   - `scripts/run_validation_status_summary.sh build/validation_status_summary.json`

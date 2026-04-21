@@ -79,6 +79,137 @@ fn void run_memory_lifetime_boundary_transition_regression_tests(Interp* interp,
             (*fail)++;
         }
     }
+
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        Value* root = null;
+        Value* leaf = null;
+        Value* tail = null;
+        bool setup_ok = target_scope != null && releasing_scope != null;
+        uint target_escape_generation = target_scope != null ? target_scope.escape_generation : 0;
+
+        if (setup_ok) {
+            interp.current_scope = releasing_scope;
+            root = interp.alloc_value_escape();
+            leaf = interp.alloc_value_escape();
+            tail = interp.alloc_value_escape();
+            setup_ok = root != null && leaf != null && tail != null;
+            if (setup_ok) {
+                leaf.tag = INT;
+                leaf.int_val = 42;
+                tail.tag = NIL;
+                root.tag = CONS;
+                root.cons_val.car = leaf;
+                root.cons_val.cdr = tail;
+            }
+            interp.current_scope = saved_scope;
+        }
+
+        BoundaryScopeTransferResult splice_result = setup_ok
+            ? boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, root)
+            : (BoundaryScopeTransferResult){};
+        bool splice_allowed = setup_ok && splice_result.allowed;
+        bool root_adopted = splice_allowed && main::scope_contains(target_scope, (void*)root);
+        bool leaf_adopted = splice_allowed && main::scope_contains(target_scope, (void*)leaf);
+        bool tail_adopted = splice_allowed && main::scope_contains(target_scope, (void*)tail);
+        bool root_stamp_ok = splice_allowed && root.scope_gen == target_escape_generation;
+        bool leaf_stamp_ok = splice_allowed && leaf.scope_gen == target_escape_generation;
+        bool tail_stamp_ok = splice_allowed && tail.scope_gen == target_escape_generation;
+        bool ok = splice_allowed &&
+                  root_adopted &&
+                  leaf_adopted &&
+                  tail_adopted &&
+                  root_stamp_ok &&
+                  leaf_stamp_ok &&
+                  tail_stamp_ok;
+
+        interp.current_scope = saved_scope;
+        if (!splice_allowed && releasing_scope != null) main::scope_release(releasing_scope);
+        if (target_scope != null) main::scope_release(target_scope);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root splice rewrites escape generation stamps");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: root splice rewrites escape generation stamps (setup_ok=%s splice_allowed=%s reason=%s root_adopted=%s leaf_adopted=%s tail_adopted=%s root_stamp=%s leaf_stamp=%s tail_stamp=%s)",
+                setup_ok ? "yes" : "no",
+                splice_allowed ? "yes" : "no",
+                (ZString)boundary_scope_transfer_reason_name(splice_result.reason),
+                root_adopted ? "yes" : "no",
+                leaf_adopted ? "yes" : "no",
+                tail_adopted ? "yes" : "no",
+                root_stamp_ok ? "yes" : "no",
+                leaf_stamp_ok ? "yes" : "no",
+                tail_stamp_ok ? "yes" : "no"
+            );
+            (*fail)++;
+        }
+    }
+
+    {
+        main::ScopeRegion* saved_scope = interp.current_scope;
+        BoundaryRuntimePolicy saved_policy = g_boundary_runtime_policy;
+        g_boundary_runtime_policy.initialized = true;
+        g_boundary_runtime_policy.graph_audit = true;
+        g_boundary_runtime_policy.graph_audit_rate = 1;
+        g_boundary_runtime_policy.graph_audit_max_roots = 0;
+
+        main::ScopeRegion* target_scope = main::scope_create(saved_scope);
+        main::ScopeRegion* releasing_scope = target_scope == null ? null : main::scope_create(target_scope);
+        Value* root = null;
+        Value* leaf = null;
+        Value* tail = null;
+        bool setup_ok = target_scope != null && releasing_scope != null;
+
+        if (setup_ok) {
+            interp.current_scope = releasing_scope;
+            leaf = make_int(interp, 43);
+            root = interp.alloc_value_escape();
+            tail = interp.alloc_value_escape();
+            setup_ok = root != null && leaf != null && tail != null;
+            if (setup_ok) {
+                tail.tag = NIL;
+                root.tag = CONS;
+                root.cons_val.car = leaf;
+                root.cons_val.cdr = tail;
+            }
+            interp.current_scope = saved_scope;
+        }
+
+        BoundaryScopeTransferResult splice_result = setup_ok
+            ? boundary_try_scope_splice_escapes_root_result(target_scope, releasing_scope, root, interp.global_env)
+            : (BoundaryScopeTransferResult){};
+        bool ok = setup_ok &&
+                  !splice_result.allowed &&
+                  splice_result.reason == BOUNDARY_SCOPE_TRANSFER_CHILD_TEMP_LANE_INVALID &&
+                  root != null &&
+                  root.scope_gen == releasing_scope.escape_generation &&
+                  leaf != null &&
+                  leaf.scope_gen == releasing_scope.generation &&
+                  main::scope_contains(releasing_scope, (void*)root) &&
+                  main::scope_contains(releasing_scope, (void*)leaf);
+
+        g_boundary_runtime_policy = saved_policy;
+        interp.current_scope = saved_scope;
+        if (releasing_scope != null) main::scope_release(releasing_scope);
+        if (target_scope != null) main::scope_release(target_scope);
+
+        if (ok) {
+            emit_pass_literal("[PASS] lifetime: root splice debug audit rejects releasing temp edge");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] lifetime: root splice debug audit rejects releasing temp edge (setup_ok=%s allowed=%s reason=%s)",
+                setup_ok ? "yes" : "no",
+                splice_result.allowed ? "yes" : "no",
+                (ZString)boundary_scope_transfer_reason_name(splice_result.reason)
+            );
+            (*fail)++;
+        }
+    }
 }
 
 fn void run_memory_lifetime_run_program_boundary_state_test(Interp* interp, int* pass, int* fail) {

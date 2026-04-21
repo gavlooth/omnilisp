@@ -216,7 +216,7 @@ fn Value* jit_make_closure_from_expr(Interp* interp, Expr* expr, Env* env) {
     BoundaryEnvCopyFault copy_fault = BOUNDARY_ENV_COPY_FAULT_NONE;
 
     // Check for zero-arg lambda (sentinel param)
-    if ((uint)expr.lambda.param == 0xFFFFFFFF && !expr.lambda.has_rest) {
+    if (expr.lambda.param == INVALID_SYMBOL_ID && !expr.lambda.has_rest) {
         Value* closure = make_closure_no_param(interp, expr.lambda.body, env);
         if (!jit_copy_closure_env_if_needed(interp, closure, env, need_env_copy, &copy_fault)) {
             return raise_error(interp, jit_env_copy_fault_message(copy_fault));

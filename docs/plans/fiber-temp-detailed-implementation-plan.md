@@ -165,7 +165,7 @@ Goal:
 - Replace ad-hoc scope teardown assumptions with explicit boundary cleanup registration.
 
 Likely files:
-- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/jit_eval_scopes.c3`
 - `src/lisp/eval_boundary_api.c3`
 - `src/lisp/eval_env_copy.c3`
 - `src/lisp/eval_promotion_context.c3`
@@ -213,8 +213,8 @@ Goal:
 
 Likely files:
 - `src/stack_engine.c3`
-- `src/lisp/jit_jit_compiler.c3`
-- `src/lisp/jit_jit_eval_scopes.c3`
+- `src/lisp/jit_compiler.c3`
+- `src/lisp/jit_eval_scopes.c3`
 
 Changes:
 - Profile defer registration overhead.

@@ -59,7 +59,7 @@ fn bool ml_sgd_tensor_shapes_match(TensorVal* left, TensorVal* right) {
 
 fn Value* ml_sgd_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
     if (ml_grad_touches_vulkan(value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/sgd-step: Vulkan optimizer kernels are not implemented", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/sgd-step: mixed-device SGD operands are not supported", null);
     }
     return tensor_expr_resolve_concrete_cpu(
         value,
@@ -71,7 +71,80 @@ fn Value* ml_sgd_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_v
     );
 }
 
+fn Value* ml_sgd_step_tensor_try_device(
+    Value* params_arg,
+    Value* grads_arg,
+    double learning_rate,
+    Interp* interp,
+    Value** out_value,
+    bool* out_attempted
+) {
+    if (out_value != null) *out_value = null;
+    if (out_attempted != null) *out_attempted = false;
+
+    Value* updated = null;
+    Value* ignored_velocity = null;
+    bool cuda_attempted = false;
+    Value* cuda_err = ml_optimizer_step_tensor_try_cuda(
+        params_arg,
+        grads_arg,
+        null,
+        learning_rate,
+        0.0,
+        0.0,
+        interp,
+        &updated,
+        &ignored_velocity,
+        &cuda_attempted
+    );
+    if (cuda_err != null) return cuda_err;
+    if (cuda_attempted) {
+        if (out_attempted != null) *out_attempted = true;
+        if (out_value != null) *out_value = updated;
+        return updated == null
+            ? tensor_runtime_raise(interp, "ml/sgd-step: CUDA SGD kernel did not return a result")
+            : null;
+    }
+
+    bool vulkan_attempted = false;
+    Value* vulkan_err = ml_optimizer_step_tensor_try_vulkan(
+        params_arg,
+        grads_arg,
+        null,
+        learning_rate,
+        0.0,
+        0.0,
+        interp,
+        &updated,
+        &ignored_velocity,
+        &vulkan_attempted
+    );
+    if (vulkan_err != null) return vulkan_err;
+    if (vulkan_attempted) {
+        if (out_attempted != null) *out_attempted = true;
+        if (out_value != null) *out_value = updated;
+        return updated == null
+            ? tensor_runtime_raise(interp, "ml/sgd-step: Vulkan SGD kernel did not return a result")
+            : null;
+    }
+
+    return null;
+}
+
 fn Value* ml_sgd_step_tensor(Value* params_arg, Value* grads_arg, double learning_rate, Interp* interp) {
+    Value* device_result = null;
+    bool device_attempted = false;
+    Value* device_err = ml_sgd_step_tensor_try_device(
+        params_arg,
+        grads_arg,
+        learning_rate,
+        interp,
+        &device_result,
+        &device_attempted
+    );
+    if (device_err != null) return device_err;
+    if (device_attempted) return device_result;
+
     TensorVal* params = null;
     TensorVal* grads = null;
     Value* params_value = null;
@@ -165,21 +238,30 @@ fn Value* ml_sgd_step_tree(Value* params, Value* grads, double learning_rate, In
 
 fn bool ml_grad_activation_supported(SymbolId activation, Interp* interp) @inline {
     return nn_symbol_name_is(activation, interp, "relu") ||
+        nn_symbol_name_is(activation, interp, "leaky-relu") ||
         nn_symbol_name_is(activation, interp, "sigmoid") ||
         nn_symbol_name_is(activation, interp, "tanh") ||
         nn_symbol_name_is(activation, interp, "gelu");
 }
 
 fn bool ml_grad_activation_accepts_dtype(SymbolId activation, TensorDType dtype, Interp* interp) @inline {
-    if (nn_symbol_name_is(activation, interp, "relu")) return dtype == TENSOR_DTYPE_DOUBLE || dtype == TENSOR_DTYPE_FLOAT32;
+    if (nn_symbol_name_is(activation, interp, "relu") ||
+        nn_symbol_name_is(activation, interp, "leaky-relu")) {
+        return dtype == TENSOR_DTYPE_DOUBLE || dtype == TENSOR_DTYPE_FLOAT32;
+    }
     return dtype == TENSOR_DTYPE_FLOAT32;
 }
 
-fn bool ml_grad_activation_eval(SymbolId activation, Interp* interp, double x, double* out_value, double* out_derivative) {
+fn bool ml_grad_activation_eval(SymbolId activation, Interp* interp, double x, double leaky_relu_slope, double* out_value, double* out_derivative) {
     if (out_value == null || out_derivative == null) return false;
     if (nn_symbol_name_is(activation, interp, "relu")) {
         *out_value = x > 0.0 ? x : 0.0;
         *out_derivative = x > 0.0 ? 1.0 : 0.0;
+        return true;
+    }
+    if (nn_symbol_name_is(activation, interp, "leaky-relu")) {
+        *out_value = x > 0.0 ? x : leaky_relu_slope * x;
+        *out_derivative = x > 0.0 ? 1.0 : leaky_relu_slope;
         return true;
     }
     if (nn_symbol_name_is(activation, interp, "sigmoid")) {
@@ -195,8 +277,8 @@ fn bool ml_grad_activation_eval(SymbolId activation, Interp* interp, double x, d
         return true;
     }
     if (nn_symbol_name_is(activation, interp, "gelu")) {
-        double c = 0.7978845608028654;
-        double k = 0.044715;
+        double c = ML_GELU_SQRT_TWO_OVER_PI;
+        double k = ML_GELU_CUBE_SCALE;
         double x2 = x * x;
         double inner = c * (x + (k * x * x2));
         double t = ml_grad_c_tanh(inner);
@@ -205,6 +287,85 @@ fn bool ml_grad_activation_eval(SymbolId activation, Interp* interp, double x, d
         return true;
     }
     return false;
+}
+
+fn Value* ml_grad_tape_node(Interp* interp, usz id, char[] op, char[] role) {
+    Value* node = nn_make_dict(interp, 6);
+    if (node == null || node.tag == ERROR) return node;
+    if (Value* err = nn_dict_set(node, interp, "id", make_int(interp, (isz)id))) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "op", op)) return err;
+    if (Value* err = nn_dict_set_symbol(node, interp, "role", role)) return err;
+    return node;
+}
+
+fn Value* ml_grad_tape_push_node(Value* nodes, Interp* interp, usz id, char[] op, char[] role) {
+    if (nodes == null || nodes.tag != ARRAY || nodes.array_val == null || nodes.array_val.length >= nodes.array_val.capacity) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "ml/grad: failed to allocate tape node", null);
+    }
+    Value* node = ml_grad_tape_node(interp, id, op, role);
+    if (node == null || node.tag == ERROR) return node;
+    nodes.array_val.items[nodes.array_val.length] = node;
+    nodes.array_val.length++;
+    return null;
+}
+
+fn Value* ml_grad_make_tape(
+    Interp* interp,
+    char[] source_name,
+    TensorDType dtype,
+    bool has_bias,
+    bool has_activation,
+    SymbolId activation,
+    bool softmax_cross_entropy
+) {
+    usz node_capacity = 4;
+    if (has_bias) node_capacity++;
+    if (has_activation) node_capacity++;
+    if (softmax_cross_entropy) node_capacity++;
+    Value* nodes = make_array_checked(interp, node_capacity, "ml/grad: failed to allocate tape nodes");
+    if (nodes == null || nodes.tag == ERROR) return nodes;
+    usz id = 0;
+    if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "leaf", "input")) return err;
+    if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "leaf", "weights")) return err;
+    if (has_bias) {
+        if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "leaf", "bias")) return err;
+    }
+    if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "linear", "forward")) return err;
+    if (has_activation) {
+        char[] activation_name = nn_symbol_name_is(activation, interp, "leaky-relu")
+            ? "leaky-relu"
+            : nn_symbol_name_is(activation, interp, "relu")
+                ? "relu"
+                : nn_symbol_name_is(activation, interp, "sigmoid")
+                    ? "sigmoid"
+                    : nn_symbol_name_is(activation, interp, "tanh")
+                        ? "tanh"
+                        : "gelu";
+        if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, activation_name, "activation")) return err;
+    }
+    if (softmax_cross_entropy) {
+        if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "softmax", "activation")) return err;
+        if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "cross-entropy", "loss")) return err;
+    } else {
+        if (Value* err = ml_grad_tape_push_node(nodes, interp, id++, "mean-squared-error", "loss")) return err;
+    }
+
+    Value* tape = nn_make_dict(interp, 16);
+    if (tape == null || tape.tag == ERROR) return tape;
+    if (Value* err = nn_dict_set_symbol(tape, interp, "kind", "gradient-tape")) return err;
+    if (Value* err = nn_dict_set(tape, interp, "version", make_int(interp, 1))) return err;
+    if (Value* err = nn_dict_set_symbol(tape, interp, "policy", "metadata-only")) return err;
+    if (Value* err = nn_dict_set_symbol(tape, interp, "owner", "scope-region")) return err;
+    if (Value* err = nn_dict_set(tape, interp, "retains-handles", make_bool_value(interp, false))) return err;
+    if (Value* err = nn_dict_set_symbol(tape, interp, "device", "cpu")) return err;
+    if (Value* err = nn_dict_set(tape, interp, "dtype", make_symbol(interp, tensor_dtype_symbol(dtype, interp)))) return err;
+    if (Value* err = nn_dict_set_symbol(tape, interp, "source", source_name)) return err;
+    if (has_activation) {
+        if (Value* err = nn_dict_set(tape, interp, "activation", make_symbol(interp, activation))) return err;
+    }
+    if (Value* err = nn_dict_set(tape, interp, "node-count", make_int(interp, (isz)nodes.array_val.length))) return err;
+    if (Value* err = nn_dict_set(tape, interp, "nodes", nodes)) return err;
+    return tape;
 }
 
 fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) {
@@ -223,6 +384,15 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
         if (activation_arg == null || activation_arg.tag != SYMBOL) return ml_grad_invalid(interp, "ml/grad: activation spec requires an activation symbol");
         activation = activation_arg.sym_val;
         if (!ml_grad_activation_supported(activation, interp)) return ml_grad_invalid(interp, "ml/grad: unsupported activation backward rule");
+    }
+    double leaky_relu_slope = 0.01;
+    if (with_activation && nn_symbol_name_is(activation, interp, "leaky-relu")) {
+        Value* slope_arg = nn_dict_get(spec, interp, "negative-slope");
+        if (slope_arg != null && !is_nil(slope_arg)) {
+            if (!try_numeric_to_double(slope_arg, &leaky_relu_slope) || !conversion_double_is_finite(leaky_relu_slope) || leaky_relu_slope < 0.0) {
+                return ml_grad_invalid(interp, "ml/grad: leaky-relu negative-slope must be a non-negative finite number");
+            }
+        }
     }
 
     TensorVal* input = null;
@@ -261,6 +431,11 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
     }
     if (with_activation && !ml_grad_activation_accepts_dtype(activation, input.dtype, interp)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: activation backward dtype is not implemented", null);
+    }
+    float leaky_relu_slope_f32 = 0.0f;
+    if (with_activation && nn_symbol_name_is(activation, interp, "leaky-relu") &&
+        input.dtype == TENSOR_DTYPE_FLOAT32 && !tensor_double_to_float32(leaky_relu_slope, &leaky_relu_slope_f32)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/grad: leaky-relu negative-slope must be representable as Float32", null);
     }
     if (targets.rank != input.rank || targets.shape[targets.rank - 1] != out_features) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: target shape must match linear output shape", null);
@@ -320,7 +495,7 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
             if (!ml_reduction_read(targets, output_base + out_axis, &target_value)) return tensor_runtime_raise(interp, "ml/grad: target tensor index is invalid");
             double output_value_read = sum;
             double activation_derivative = 1.0;
-            if (with_activation && !ml_grad_activation_eval(activation, interp, sum, &output_value_read, &activation_derivative)) {
+            if (with_activation && !ml_grad_activation_eval(activation, interp, sum, leaky_relu_slope, &output_value_read, &activation_derivative)) {
                 return ml_grad_invalid(interp, "ml/grad: unsupported activation backward rule");
             }
             output_values[output_base + out_axis] = output_value_read;
@@ -372,8 +547,18 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
     if (err != null) return err;
     err = nn_dict_set(parameter_gradients, interp, "bias", bias_grad);
     if (err != null) return err;
+    Value* tape = ml_grad_make_tape(
+        interp,
+        with_activation ? "linear-activation-mean-squared-error" : "linear-mean-squared-error",
+        input.dtype,
+        has_bias,
+        with_activation,
+        activation,
+        false
+    );
+    if (tape == null || tape.tag == ERROR) return tape;
 
-    Value* result = nn_make_dict(interp, 10);
+    Value* result = nn_make_dict(interp, 12);
     if (result == null || result.tag == ERROR) return result;
     err = nn_dict_set_symbol(result, interp, "kind", "gradients");
     if (err != null) return err;
@@ -382,6 +567,10 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
     if (with_activation) {
         err = nn_dict_set(result, interp, "activation", make_symbol(interp, activation));
         if (err != null) return err;
+        if (nn_symbol_name_is(activation, interp, "leaky-relu")) {
+            err = nn_dict_set(result, interp, "negative-slope", input.dtype == TENSOR_DTYPE_FLOAT32 ? make_float32(interp, leaky_relu_slope_f32) : make_double(interp, leaky_relu_slope));
+            if (err != null) return err;
+        }
     }
     err = nn_dict_set(result, interp, "loss", loss_value);
     if (err != null) return err;
@@ -390,6 +579,8 @@ fn Value* ml_grad_linear_mse(Value* spec, Interp* interp, bool with_activation) 
     err = nn_dict_set(result, interp, "input-gradient", input_grad);
     if (err != null) return err;
     err = nn_dict_set(result, interp, "parameter-gradients", parameter_gradients);
+    if (err != null) return err;
+    err = nn_dict_set(result, interp, "tape", tape);
     if (err != null) return err;
     return result;
 }
@@ -578,8 +769,18 @@ fn Value* ml_grad_linear_softmax_cross_entropy(Value* spec, Interp* interp) {
     if (err != null) return err;
     err = nn_dict_set(parameter_gradients, interp, "bias", bias_grad);
     if (err != null) return err;
+    Value* tape = ml_grad_make_tape(
+        interp,
+        "linear-softmax-cross-entropy",
+        input.dtype,
+        has_bias,
+        false,
+        INVALID_SYMBOL_ID,
+        true
+    );
+    if (tape == null || tape.tag == ERROR) return tape;
 
-    Value* result = nn_make_dict(interp, 10);
+    Value* result = nn_make_dict(interp, 12);
     if (result == null || result.tag == ERROR) return result;
     err = nn_dict_set_symbol(result, interp, "kind", "gradients");
     if (err != null) return err;
@@ -593,6 +794,8 @@ fn Value* ml_grad_linear_softmax_cross_entropy(Value* spec, Interp* interp) {
     if (err != null) return err;
     err = nn_dict_set(result, interp, "parameter-gradients", parameter_gradients);
     if (err != null) return err;
+    err = nn_dict_set(result, interp, "tape", tape);
+    if (err != null) return err;
     return result;
 }
 
@@ -605,6 +808,8 @@ fn Value* prim_ml_grad(Value*[] args, Env* env, Interp* interp) {
     if (nn_symbol_is(kind, interp, "linear-mean-squared-error")) return ml_grad_linear_mse(args[0], interp, false);
     if (nn_symbol_is(kind, interp, "linear-activation-mean-squared-error")) return ml_grad_linear_mse(args[0], interp, true);
     if (nn_symbol_is(kind, interp, "linear-softmax-cross-entropy")) return ml_grad_linear_softmax_cross_entropy(args[0], interp);
+    if (nn_symbol_is(kind, interp, "tensor-mean-squared-error")) return ml_grad_tensor_mse(args[0], interp);
+    if (nn_symbol_is(kind, interp, "tensor-softmax-cross-entropy")) return ml_grad_tensor_softmax_cross_entropy(args[0], interp);
     return ml_grad_invalid(interp, "ml/grad: unsupported gradient spec kind");
 }
 

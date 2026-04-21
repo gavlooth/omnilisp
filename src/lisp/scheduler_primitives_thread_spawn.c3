@@ -84,6 +84,7 @@ fn Value* scheduler_prepare_os_thread_spawn(OffloadWork* work, usz* thread_id_ou
     usz thread_id = scheduler_alloc_os_thread();
     if (thread_id == NO_OS_THREAD) {
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(interp, "scheduler/thread-spawn-thread-table-full", "thread-spawn: thread table full");
     }
 
@@ -91,6 +92,7 @@ fn Value* scheduler_prepare_os_thread_spawn(OffloadWork* work, usz* thread_id_ou
     if (!scheduler_get_os_thread_generation(thread_id, &generation) || generation == 0) {
         scheduler_drop_os_thread(thread_id);
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(
             interp,
             "scheduler/thread-spawn-thread-handle-invalid",
@@ -103,6 +105,7 @@ fn Value* scheduler_prepare_os_thread_spawn(OffloadWork* work, usz* thread_id_ou
     if (!scheduler_start_os_thread(thread_id, generation, *work)) {
         scheduler_drop_os_thread(thread_id, generation);
         scheduler_release_shared(work.shared);
+        scheduler_release_custom_ctx(work);
         return scheduler_raise(
             interp,
             "scheduler/thread-spawn-create-failed",

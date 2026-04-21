@@ -416,12 +416,18 @@ fn Value* root_store_clone_method_table_to_scope(
             boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, copied_entries, false, target_scope);
             return null;
         }
-        Value* copied_impl = boundary_copy_to_parent_site_ctx(
+        BoundaryCopyResult impl_copy = boundary_copy_to_parent_site_ctx_checked(
             src_mt.entries[i].implementation,
             interp,
             COPY_SITE_PROMOTE_TO_ROOT,
             &copy_ctx
         );
+        Value* copied_impl = null;
+        if (!boundary_copy_result_ok(impl_copy)) {
+            copied_impl = raise_error(interp, boundary_copy_fault_message(impl_copy.fault_code));
+        } else {
+            copied_impl = impl_copy.value;
+        }
         if (copied_impl != null && copied_impl.tag == ERROR) {
             boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, copied_entries, false, target_scope);
             return copied_impl;
@@ -430,12 +436,18 @@ fn Value* root_store_clone_method_table_to_scope(
         copied_entries++;
     }
 
-    Value* copied_fallback = boundary_copy_to_parent_site_ctx(
+    BoundaryCopyResult fallback_copy = boundary_copy_to_parent_site_ctx_checked(
         src_mt.fallback,
         interp,
         COPY_SITE_PROMOTE_TO_ROOT,
         &copy_ctx
     );
+    Value* copied_fallback = null;
+    if (!boundary_copy_result_ok(fallback_copy)) {
+        copied_fallback = raise_error(interp, boundary_copy_fault_message(fallback_copy.fault_code));
+    } else {
+        copied_fallback = fallback_copy.value;
+    }
     if (copied_fallback != null && copied_fallback.tag == ERROR) {
         boundary_cleanup_partial_method_table_copy(src_mt, dst_mt, copied_entries, false, target_scope);
         return copied_fallback;

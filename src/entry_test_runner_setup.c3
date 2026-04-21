@@ -19,6 +19,9 @@ fn int run_lisp_test_suite_with_registry(int* out_pass, int* out_fail) {
         lisp::print_memory_promotion_stats();
         scope_print_memory_stats();
     }
+    if (mem_telemetry_enabled()) {
+        lisp::runtime_memory_print_telemetry();
+    }
 
     thread_registry_shutdown();
     if (!lisp::test_quiet_requested()) {

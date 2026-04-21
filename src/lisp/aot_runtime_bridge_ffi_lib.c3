@@ -43,7 +43,7 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
     void* handle = null;
     if (eager_load) {
         (void)dlerror();
-        handle = dlopen((ZString)soname, RTLD_LAZY);
+        handle = lisp::ffi_dlopen_registry_acquire(soname);
         if (handle == null) {
             char[256] ebuf;
             char* dl_err = dlerror();
@@ -84,11 +84,9 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
             lisp::FOREIGN_CAP_LOAD | lisp::FOREIGN_CAP_RESOLVE | lisp::FOREIGN_CAP_REFLECT,
             true);
         if (ffi_handle == null) {
-            if (handle != null) dlclose(handle);
             return aot_make_error_best_effort(interp, "aot ffi lib: out of memory while creating handle");
         }
         if (!lisp::env_define_with_barrier_checked(interp.global_env, binding_sid, ffi_handle, interp)) {
-            if (handle != null) dlclose(handle);
             lisp::FfiHandle* box = ffi_handle.ffi_val;
             ffi_handle.ffi_val = null;
             lisp::ffi_handle_release(box);

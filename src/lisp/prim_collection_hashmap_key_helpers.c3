@@ -3,6 +3,8 @@ module lisp;
 import std::core::mem;
 import main;
 
+const int TIME_POINT_TZ_OFFSET_HASH_BIAS = 0x8000;
+
 fn uint fnv1a(char[] data) {
     uint h = 2166136261;
     for (usz i = 0; i < data.len; i++) { h ^= (uint)data[i]; h *= 16777619; }
@@ -105,7 +107,7 @@ fn uint hash_value(Value* key) {
             h *= 16777619;
             h ^= murmur_finalizer((uint)key.time_point_val.microsecond);
             h *= 16777619;
-            h ^= murmur_finalizer((uint)(uint)(key.time_point_val.tz_offset + 0x8000));
+            h ^= murmur_finalizer((uint)(uint)(key.time_point_val.tz_offset + TIME_POINT_TZ_OFFSET_HASH_BIAS));
             h *= 16777619;
             h ^= murmur_finalizer((uint)key.time_point_val.kind);
             return murmur_finalizer(h);

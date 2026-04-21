@@ -10,6 +10,7 @@ import main;
 
 // POSIX sockets (blocking fast-path for TCP)
 extern fn int c_socket(int domain, int type, int protocol) @extern("socket");
+extern fn int c_socketpair(int domain, int type, int protocol, int* sv) @extern("socketpair");
 extern fn int c_connect(int sockfd, void* addr, uint addrlen) @extern("connect");
 extern fn int c_bind(int sockfd, void* addr, uint addrlen) @extern("bind");
 extern fn int c_listen(int sockfd, int backlog) @extern("listen");
@@ -165,6 +166,7 @@ struct SockaddrIn {
 // addrinfo result — we only need ai_family, ai_addrlen, ai_addr, ai_next
 // offsets vary by platform, so we read fields via helpers
 const int AF_INET = 2;
+const int AF_UNIX = 1;
 const int AF_INET6 @if(env::DARWIN) = 30;
 const int AF_INET6 @if(!env::DARWIN) = 10;
 const int SOCK_STREAM = 1;

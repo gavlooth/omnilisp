@@ -43,6 +43,14 @@ Use the full binary for:
 - `--compile`
 - integration validation before finishing substantial changes
 
+Runtime library path overrides:
+- `scripts/run_e2e.sh` uses `OMNI_RUNTIME_TOOLCHAIN_LIB_PATH` when the host
+  runtime libraries are not under `/usr/local/lib`; Docker-bound validation
+  still prefers the mounted `/opt/omni-host-toolchain/lib` path.
+- AOT backend builds use `OMNI_AOT_LINK_LIBRARY_PATH` for the host library
+  search path when linking generated binaries. If unset, they fall back to
+  `/usr/local/lib`.
+
 Operational rule:
 - do not run multiple `c3c build` commands concurrently against the same `build/` tree
 - the fast dev path is safe to run alongside the full build because it uses separate build/output directories

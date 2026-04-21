@@ -105,6 +105,153 @@ fn void run_async_repl_server_active_interrupt_test(Interp* interp, int* pass, i
     }
 }
 
+fn void run_async_repl_server_request_queue_accepts_multiple_pending_test(Interp* interp, int* pass, int* fail) {
+    ReplServerConnection conn = {};
+    repl_server_connection_init(&conn, 1, false);
+    defer repl_server_connection_destroy(&conn);
+
+    if (!conn.worker.mu_ready || !conn.worker.cv_ready) {
+        io::printn("[FAIL] async repl-server request queue accepts multiple pending commands (worker init)");
+        (*fail)++;
+        return;
+    }
+
+    ReplServerSession* session = repl_server_new_session(&conn);
+    if (session == null) {
+        io::printn("[FAIL] async repl-server request queue accepts multiple pending commands (session alloc)");
+        (*fail)++;
+        return;
+    }
+
+    bool submit_a = repl_server_worker_submit(&conn.worker, REPL_SERVER_CMD_EVAL, session, "qa", "(+ 1 1)");
+    bool submit_b = repl_server_worker_submit(&conn.worker, REPL_SERVER_CMD_LOAD_FILE, session, "qb", "demo.omni");
+    bool queue_size_ok = conn.worker.command_queue_count == 2;
+    bool busy_ok = !repl_server_worker_busy(&conn.worker);
+    bool stdin_a = repl_server_worker_accepts_stdin(&conn.worker, session, "qa");
+    bool stdin_b = repl_server_worker_accepts_stdin(&conn.worker, session, "qb");
+    bool interrupt_queued = repl_server_worker_request_interrupt(&conn.worker, session, "qa");
+    bool interrupt_ok = !interrupt_queued && session.interrupt_requested.load() == 0;
+
+    bool order_ok = queue_size_ok &&
+        conn.worker.command_queue[conn.worker.command_queue_head].id_len == 2 &&
+        conn.worker.command_queue[conn.worker.command_queue_head].id_ptr[1] == 'a' &&
+        conn.worker.command_queue[(conn.worker.command_queue_head + 1) %
+            REPL_SERVER_WORKER_QUEUE_CAPACITY].id_len == 2 &&
+        conn.worker.command_queue[(conn.worker.command_queue_head + 1) %
+            REPL_SERVER_WORKER_QUEUE_CAPACITY].id_ptr[1] == 'b';
+
+    bool ok = submit_a && submit_b && queue_size_ok && busy_ok && stdin_a && stdin_b && interrupt_ok && order_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server request queue accepts multiple pending commands");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] async repl-server request queue accepts multiple pending commands (submit_a=%s submit_b=%s count=%d busy_ok=%s stdin_a=%s stdin_b=%s interrupt_ok=%s order_ok=%s)",
+            submit_a ? "yes" : "no",
+            submit_b ? "yes" : "no",
+            (long)conn.worker.command_queue_count,
+            busy_ok ? "yes" : "no",
+            stdin_a ? "yes" : "no",
+            stdin_b ? "yes" : "no",
+            interrupt_ok ? "yes" : "no",
+            order_ok ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_async_repl_server_request_queue_backpressure_test(Interp* interp, int* pass, int* fail) {
+    ReplServerConnection conn = {};
+    repl_server_connection_init(&conn, 1, false);
+    defer repl_server_connection_destroy(&conn);
+
+    if (!conn.worker.mu_ready || !conn.worker.cv_ready) {
+        io::printn("[FAIL] async repl-server request queue backpressure (worker init)");
+        (*fail)++;
+        return;
+    }
+
+    ReplServerSession* session = repl_server_new_session(&conn);
+    if (session == null) {
+        io::printn("[FAIL] async repl-server request queue backpressure (session alloc)");
+        (*fail)++;
+        return;
+    }
+
+    bool filled = true;
+    for (usz i = 0; i < REPL_SERVER_WORKER_QUEUE_CAPACITY; i++) {
+        char[16] id_buf;
+        char[] id;
+        if (try rendered = io::bprintf(&id_buf, "q%d", (long)i)) {
+            id = rendered;
+        } else {
+            filled = false;
+            break;
+        }
+        if (!repl_server_worker_submit(&conn.worker, REPL_SERVER_CMD_EVAL, session, id, "(+ 1 1)")) {
+            filled = false;
+            break;
+        }
+    }
+
+    bool full_busy = repl_server_worker_busy(&conn.worker);
+    bool overflow_rejected = !repl_server_worker_submit(
+        &conn.worker,
+        REPL_SERVER_CMD_EVAL,
+        session,
+        "overflow",
+        "(+ 2 2)"
+    );
+    bool count_ok = conn.worker.command_queue_count == REPL_SERVER_WORKER_QUEUE_CAPACITY;
+
+    bool ok = filled && full_busy && overflow_rejected && count_ok;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server request queue backpressure");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] async repl-server request queue backpressure (filled=%s full_busy=%s overflow_rejected=%s count=%d)",
+            filled ? "yes" : "no",
+            full_busy ? "yes" : "no",
+            overflow_rejected ? "yes" : "no",
+            (long)conn.worker.command_queue_count
+        );
+        (*fail)++;
+    }
+}
+
+fn void run_async_repl_server_clone_queue_defers_session_allocation_test(Interp* interp, int* pass, int* fail) {
+    ReplServerConnection conn = {};
+    repl_server_connection_init(&conn, 1, false);
+    defer repl_server_connection_destroy(&conn);
+
+    if (!conn.worker.mu_ready || !conn.worker.cv_ready) {
+        io::printn("[FAIL] async repl-server clone queue defers session allocation (worker init)");
+        (*fail)++;
+        return;
+    }
+
+    bool submit_clone = repl_server_worker_submit(&conn.worker, REPL_SERVER_CMD_CLONE, null, "clone-a");
+    bool no_session_alloc = conn.session_capacity == 0 && conn.sessions == null;
+    bool queued_null_session = submit_clone &&
+        conn.worker.command_queue_count == 1 &&
+        conn.worker.command_queue[conn.worker.command_queue_head].session == null;
+
+    bool ok = submit_clone && no_session_alloc && queued_null_session;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server clone queue defers session allocation");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] async repl-server clone queue defers session allocation (submit=%s capacity=%d queued_null=%s)",
+            submit_clone ? "yes" : "no",
+            (long)conn.session_capacity,
+            queued_null_session ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_async_repl_server_input_destroy_close_test(Interp* interp, int* pass, int* fail) {
     (void)interp;
     InterpInputState state = {};
@@ -193,10 +340,86 @@ fn void run_async_repl_server_auth_policy_test(Interp* interp, int* pass, int* f
     }
 }
 
+fn bool repl_server_test_socketpair(int* left, int* right) {
+    int[2] fds = {};
+    if (c_socketpair(AF_UNIX, SOCK_STREAM, 0, &fds[0]) != 0) return false;
+    *left = fds[0];
+    *right = fds[1];
+    return true;
+}
+
+fn bool repl_server_test_send_describe_and_read(int fd, char[] id, char[] transport_name) {
+    char[128] request_buf;
+    char[] request;
+    if (try rendered = io::bprintf(&request_buf, "{\"id\":\"%s\",\"op\":\"describe\"}\n", (ZString)id.ptr)) {
+        request = rendered;
+    } else {
+        return false;
+    }
+    if (!repl_server_write_all_raw(fd, request, true)) return false;
+
+    char[4096] response_buf = {};
+    long nread = c_recv(fd, &response_buf[0], response_buf.len, 0);
+    if (nread <= 0) return false;
+    char[] response = response_buf[:(usz)nread];
+    return str_contains(response, "\"event\":\"describe\"") &&
+        str_contains(response, "\"id\":\"") &&
+        str_contains(response, id) &&
+        str_contains(response, transport_name);
+}
+
+fn void run_async_repl_server_client_threads_handle_independent_streams_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    int server_a = -1;
+    int client_a = -1;
+    int server_b = -1;
+    int client_b = -1;
+    if (!repl_server_test_socketpair(&server_a, &client_a) ||
+        !repl_server_test_socketpair(&server_b, &client_b)) {
+        if (server_a >= 0) c_close_fd(server_a);
+        if (client_a >= 0) c_close_fd(client_a);
+        if (server_b >= 0) c_close_fd(server_b);
+        if (client_b >= 0) c_close_fd(client_b);
+        io::printn("[FAIL] async repl-server client threads handle independent streams (socketpair)");
+        (*fail)++;
+        return;
+    }
+
+    bool started_a = repl_server_start_client_thread(server_a, false);
+    bool started_b = repl_server_start_client_thread(server_b, true);
+    if (!started_a) c_close_fd(server_a);
+    if (!started_b) c_close_fd(server_b);
+
+    bool response_a = started_a && repl_server_test_send_describe_and_read(client_a, "a1", "unix");
+    bool response_b = started_b && repl_server_test_send_describe_and_read(client_b, "b1", "tcp");
+
+    c_close_fd(client_a);
+    c_close_fd(client_b);
+
+    bool ok = started_a && started_b && response_a && response_b;
+    if (ok) {
+        emit_pass_literal("[PASS] async repl-server client threads handle independent streams");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] async repl-server client threads handle independent streams (started_a=%s started_b=%s response_a=%s response_b=%s)",
+            started_a ? "yes" : "no",
+            started_b ? "yes" : "no",
+            response_a ? "yes" : "no",
+            response_b ? "yes" : "no"
+        );
+        (*fail)++;
+    }
+}
+
 fn void run_async_tests_repl_server(Interp* interp, int* pass, int* fail) {
     run_async_repl_server_worker_start_requires_ready_primitives_test(interp, pass, fail);
     run_async_repl_server_pending_interrupt_window_test(interp, pass, fail);
     run_async_repl_server_active_interrupt_test(interp, pass, fail);
+    run_async_repl_server_request_queue_accepts_multiple_pending_test(interp, pass, fail);
+    run_async_repl_server_request_queue_backpressure_test(interp, pass, fail);
+    run_async_repl_server_clone_queue_defers_session_allocation_test(interp, pass, fail);
     run_async_repl_server_input_destroy_close_test(interp, pass, fail);
     run_async_repl_server_auth_policy_test(interp, pass, fail);
+    run_async_repl_server_client_threads_handle_independent_streams_test(interp, pass, fail);
 }

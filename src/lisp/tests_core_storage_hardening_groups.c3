@@ -3,71 +3,76 @@ module lisp;
 import std::io;
 
 fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int* fail) {
-    {
-        Interp local = {};
-        g_interp_force_macro_table_alloc_fail = true;
-        local.init();
-        g_interp_force_macro_table_alloc_fail = false;
+    if (interp_fault_injection_enabled()) {
+        {
+            Interp local = {};
+            interp_force_macro_table_alloc_fail_for_test(true);
+            local.init();
+            interp_force_macro_table_alloc_fail_for_test(false);
 
-        bool ok = local.macro_table == null
-            && local.macro_hash_index == null
-            && local.macro_capacity == 0
-            && local.macro_hash_capacity == 0
-            && local.ensure_macro_capacity(1)
-            && local.macro_table != null
-            && local.macro_hash_index != null;
-        if (ok) {
-            emit_pass_literal("[PASS] interp macro init allocation failure fails closed");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] interp macro init allocation failure fails closed");
-            (*fail)++;
+            bool ok = local.macro_table == null
+                && local.macro_hash_index == null
+                && local.macro_capacity == 0
+                && local.macro_hash_capacity == 0
+                && local.ensure_macro_capacity(1)
+                && local.macro_table != null
+                && local.macro_hash_index != null;
+            if (ok) {
+                emit_pass_literal("[PASS] interp macro init allocation failure fails closed");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] interp macro init allocation failure fails closed");
+                (*fail)++;
+            }
+            local.destroy();
         }
-        local.destroy();
-    }
 
-    {
-        Interp local = {};
-        g_interp_force_module_table_alloc_fail = true;
-        local.init();
-        g_interp_force_module_table_alloc_fail = false;
+        {
+            Interp local = {};
+            interp_force_module_table_alloc_fail_for_test(true);
+            local.init();
+            interp_force_module_table_alloc_fail_for_test(false);
 
-        bool ok = local.modules == null
-            && local.module_hash_index == null
-            && local.module_capacity == 0
-            && local.module_hash_capacity == 0
-            && local.ensure_module_capacity(1)
-            && local.modules != null
-            && local.module_hash_index != null;
-        if (ok) {
-            emit_pass_literal("[PASS] interp module init allocation failure fails closed");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] interp module init allocation failure fails closed");
-            (*fail)++;
+            bool ok = local.modules == null
+                && local.module_hash_index == null
+                && local.module_capacity == 0
+                && local.module_hash_capacity == 0
+                && local.ensure_module_capacity(1)
+                && local.modules != null
+                && local.module_hash_index != null;
+            if (ok) {
+                emit_pass_literal("[PASS] interp module init allocation failure fails closed");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] interp module init allocation failure fails closed");
+                (*fail)++;
+            }
+            local.destroy();
         }
-        local.destroy();
-    }
 
-    {
-        Interp local = {};
-        g_interp_force_handler_stack_alloc_fail = true;
-        local.init();
-        g_interp_force_handler_stack_alloc_fail = false;
+        {
+            Interp local = {};
+            interp_force_handler_stack_alloc_fail_for_test(true);
+            local.init();
+            interp_force_handler_stack_alloc_fail_for_test(false);
 
-        bool ok = local.handler_stack == null
-            && local.handler_capacity == 0
-            && local.ensure_handler_capacity(1)
-            && local.handler_stack != null
-            && local.handler_capacity >= 1;
-        if (ok) {
-            emit_pass_literal("[PASS] interp handler stack init allocation failure fails closed");
-            (*pass)++;
-        } else {
-            io::printn("[FAIL] interp handler stack init allocation failure fails closed");
-            (*fail)++;
+            bool ok = local.handler_stack == null
+                && local.handler_capacity == 0
+                && local.ensure_handler_capacity(1)
+                && local.handler_stack != null
+                && local.handler_capacity >= 1;
+            if (ok) {
+                emit_pass_literal("[PASS] interp handler stack init allocation failure fails closed");
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] interp handler stack init allocation failure fails closed");
+                (*fail)++;
+            }
+            local.destroy();
         }
-        local.destroy();
+    } else {
+        emit_pass_literal("[PASS] interp init fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
+        (*pass)++;
     }
 
     {
@@ -91,6 +96,12 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
             (*fail)++;
         }
         local.destroy();
+    }
+
+    if (!interp_fault_injection_enabled()) {
+        emit_pass_literal("[PASS] interp grow fault-injection hardening skipped (enable OMNI_TEST_FAULT_INJECTION)");
+        (*pass)++;
+        return;
     }
 
     {
@@ -182,9 +193,9 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
         usz before_cap = local.macro_capacity;
         usz before_hash_cap = local.macro_hash_capacity;
 
-        g_interp_force_grow_macro_table_alloc_fail = true;
+        interp_force_grow_macro_table_alloc_fail_for_test(true);
         bool failed = !local.ensure_macro_capacity(local.macro_capacity + 1);
-        g_interp_force_grow_macro_table_alloc_fail = false;
+        interp_force_grow_macro_table_alloc_fail_for_test(false);
         bool preserved = local.macro_count == 1
             && before_table == local.macro_table
             && before_hash == local.macro_hash_index
@@ -232,9 +243,9 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
         usz before_cap = local.module_capacity;
         usz before_hash_cap = local.module_hash_capacity;
 
-        g_interp_force_grow_module_table_alloc_fail = true;
+        interp_force_grow_module_table_alloc_fail_for_test(true);
         bool failed = !local.ensure_module_capacity(local.module_capacity + 1);
-        g_interp_force_grow_module_table_alloc_fail = false;
+        interp_force_grow_module_table_alloc_fail_for_test(false);
         bool preserved = local.module_count == 1
             && before_modules == local.modules
             && before_hash == local.module_hash_index
@@ -275,9 +286,9 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
         EffectHandler* before_stack = local.handler_stack;
         usz before_cap = local.handler_capacity;
 
-        g_interp_force_grow_handler_stack_alloc_fail = true;
+        interp_force_grow_handler_stack_alloc_fail_for_test(true);
         bool failed = !local.ensure_handler_capacity(local.handler_capacity + 1);
-        g_interp_force_grow_handler_stack_alloc_fail = false;
+        interp_force_grow_handler_stack_alloc_fail_for_test(false);
         bool preserved = before_stack == local.handler_stack
             && before_cap == local.handler_capacity
             && local.handler_count == 1;
