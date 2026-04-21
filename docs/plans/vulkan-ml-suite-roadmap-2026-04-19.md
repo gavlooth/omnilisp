@@ -425,6 +425,11 @@ Shipped first slice:
   one input descriptor, one output descriptor, matching shapes, and a `scale`
   `Float32` push constant; CPU, mixed-device, unsupported dtype, missing push,
   and unsupported operation paths fail closed.
+- `ML-VK-080-003`: `kernel/run` now also executes checked helper-backed Vulkan
+  `add-f32` kernels over two same-shape dense row-major `Float32` tensor inputs.
+  Specs must use two input descriptors, one output descriptor, matching shapes,
+  and no push constants; CPU, mixed-device, unsupported dtype, unexpected push,
+  and shape-mismatch paths fail closed.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

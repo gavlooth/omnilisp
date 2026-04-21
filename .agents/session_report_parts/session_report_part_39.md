@@ -410,3 +410,58 @@ Signature: GPT-5 Codex
   - Continue `ML-VK-080` with operation DAG capture or a second checked
     helper-backed kernel operation before attempting general shader compilation.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 05:26 CEST - ML-VK-080-003 Checked Vulkan Add Kernel Runner
+
+- Objective attempted: continue `ML-VK-080` by adding a second real checked
+  Vulkan `kernel/run` execution route while preserving the data-oriented
+  `Kernel(spec)` surface and not adding `(define [kernel] ...)` sugar.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - language/reference docs, Vulkan ML roadmap, TODO, plan, changelog, and
+    session-report artifacts.
+- Code or configuration changes made:
+  - Added `kernel/run` support for `backend 'vulkan`, `operation 'add-f32`.
+  - The runner validates two input descriptors, one output descriptor, `Float32`
+    descriptor dtypes, empty spec/runtime push dictionaries, descriptor shape
+    agreement, same-shape runtime tensors, and dense row-major Vulkan `Float32`
+    storage for both inputs.
+  - Execution uses the existing checked Vulkan Float32 map helper in add mode
+    and returns an ordinary dictionary keyed by the output descriptor name.
+  - Refactored shared Kernel runner helpers for output dictionaries and
+    descriptor-based Vulkan input resolution, keeping `scale-f32` behavior
+    unchanged.
+  - CPU placement, non-empty runtime push dictionaries, unsupported dtype,
+    empty tensor, shape mismatch, unsupported operations, arbitrary backend
+    source compilation, graph capture, batching, fusion, and buffer reuse
+    planning remain fail-closed.
+- Commands run:
+  - `c3c build`
+  - Direct `build/main --eval` smokes for Vulkan-gated `add-f32` execution and
+    invalid runtime push rejection.
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Direct smokes returned `true`.
+  - Focused advanced collections passed with `pass=1839 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Compiler slice passed with `pass=287 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Arbitrary user kernel source compilation, graph capture, batching, fusion,
+    buffer reuse/lifetime planning, and deterministic invalidation remain open.
+- Next actions:
+  - Continue `ML-VK-080` with graph/DAG capture or another checked
+    helper-backed runner.
+- Signature: GPT-5 Codex

@@ -858,7 +858,7 @@ Date: 2026-04-21 - Added data-first NN optimizer constructors.
 
 ## Completed ML-VK-080-001 Kernel Value Surface
 Date: 2026-04-21 - Implemented the first data-oriented custom `Kernel` value
-surface and kept execution explicit/fail-closed.
+surface and kept execution explicit.
 
 - Active hypothesis validated: `Kernel` can be a real type/value without
   becoming an opaque object. The runtime value remains a dictionary-shaped data
@@ -868,12 +868,30 @@ surface and kept execution explicit/fail-closed.
     push constants, optional workgroup, and recognized keys.
   - Constructed values normalize `kind` to `'kernel` and preserve ordinary
     path/index/ref data access.
-  - `kernel/run(kernel inputs push)` is explicit and currently raises
-    `tensor/backend-unsupported`.
+  - `kernel/run(kernel inputs push)` is explicit. The initial value-surface
+    slice failed closed; later `ML-VK-080-002` and `ML-VK-080-003` added checked
+    Vulkan `scale-f32` and `add-f32` execution.
   - Parser postfix chaining now supports `rows.[0].name` /
     `k.inputs.[0].name` without reviving removed leading-dot accessors.
 - Validation path completed: `c3c build`, direct eval smokes, focused advanced
   collections exit 0, compiler slice, basic slice, primitive docs parity,
   Stage 3 source parity, code file-size gate, and `git diff --check`.
-- Next checkpoint: implement the real `Kernel` backend compiler/runner contract
-  or graph-capture command batching from the remaining `ML-VK-080` TODOs.
+- Next checkpoint: implement graph-capture command batching or a third checked
+  helper-backed Kernel operation from the remaining `ML-VK-080` TODOs.
+
+## Active ML-VK-080-003 Checked Vulkan Add Kernel Runner
+Date: 2026-04-21 - Implemented the second real `kernel/run` backend route.
+
+- Shipped operation: `operation 'add-f32` with `backend 'vulkan`.
+- Contract:
+  - two input descriptors and one output descriptor;
+  - all descriptors must declare `dtype 'Float32`;
+  - input tensors and output descriptor shape must match;
+  - `push` must be empty and `push` specs must be absent or empty;
+  - runtime inputs must be dense row-major Vulkan `Float32`.
+- The runner uses the existing Vulkan Float32 map helper with binary add and
+  returns an ordinary dictionary keyed by the output descriptor name.
+- Still open under `ML-VK-080`: arbitrary user source compilation, graph capture,
+  command-buffer batching, fusion, device-buffer reuse/lifetime planning, and
+  deterministic invalidation.
+- Negative constraint remains active: do not implement `(define [kernel] ...)`.

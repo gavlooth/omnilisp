@@ -742,6 +742,11 @@ Source: `TODO.md`
         scale helper for one dense row-major Vulkan tensor input, one matching
         output descriptor, and a `scale` Float32 push constant; unsupported
         custom compilation/fusion routes remain fail-closed.
+    - [x] `ML-VK-080-003` add checked Vulkan `add-f32` `kernel/run` execution.
+      - shipped: `operation 'add-f32` launches the existing Vulkan Float32 map
+        helper for two same-shape dense row-major Vulkan tensor inputs and one
+        matching output descriptor; push constants are rejected and unsupported
+        custom compilation/fusion routes remain fail-closed.
   - scope:
     - operation DAG capture;
     - command-buffer batching;

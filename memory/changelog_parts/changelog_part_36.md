@@ -469,3 +469,25 @@
     collections `pass=1837 fail=0`, basic Lisp `pass=161 fail=0`, compiler
     slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-003 Checked Vulkan Add Kernel Runner
+
+- Implemented the second checked Vulkan `kernel/run` execution route.
+  - Supported spec: `backend 'vulkan`, `operation 'add-f32`.
+  - Contract: two input descriptors, one output descriptor, `Float32`
+    descriptor dtypes, empty spec/runtime push dictionaries, matching
+    descriptor shapes, same-shape runtime tensors, and dense row-major Vulkan
+    `Float32` storage for both inputs.
+  - Execution uses the existing checked Vulkan Float32 map helper in add mode
+    and returns an ordinary dictionary keyed by the output descriptor name.
+  - Shared Kernel runner helpers now cover output dictionaries and
+    descriptor-based Vulkan input resolution for `scale-f32` and `add-f32`.
+  - CPU placement, non-empty runtime push dictionaries, unsupported dtype,
+    empty tensor, shape mismatch, unsupported operations, arbitrary user source
+    compilation, graph capture, command-buffer batching, fusion, device-buffer
+    reuse/lifetime planning, deterministic invalidation, and
+    `(define [kernel] ...)` sugar remain out of scope.
+  - Validation passed: `c3c build`, direct eval smokes, focused advanced
+    collections `pass=1839 fail=0`, basic Lisp `pass=161 fail=0`, compiler
+    slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
+    code file-size gate, and `git diff --check`.

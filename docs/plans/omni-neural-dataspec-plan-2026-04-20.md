@@ -100,12 +100,12 @@ surface. Kernel execution should remain explicit, for example:
   {'learning-rate (Float32 0.1) 'weight-decay (Float32 0.0)})
 ```
 
-`kernel/run` is present as the explicit execution boundary. It now supports the
-first checked helper-backed Vulkan runner, `operation 'scale-f32`, for one
-dense row-major `Float32` tensor input, one matching output descriptor, and a
-`scale` `Float32` push constant. Arbitrary user source compilation, graph
-fusion, and command-buffer planning still fail closed until their backend
-runner exists.
+`kernel/run` is present as the explicit execution boundary. It now supports
+checked helper-backed Vulkan runners: `operation 'scale-f32` for one dense
+row-major `Float32` tensor input and a `scale` `Float32` push constant, plus
+`operation 'add-f32` for two same-shape dense row-major `Float32` tensor inputs.
+Arbitrary user source compilation, graph fusion, and command-buffer planning
+still fail closed until their backend runner exists.
 
 Do not add `(define [kernel] ...)` declaration sugar. Named kernels should use
 ordinary Omni binding over the value constructor:

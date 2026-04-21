@@ -199,6 +199,46 @@ fn bool kernel_shape_matches_tensor(Value* shape, TensorVal* tensor) {
     return true;
 }
 
+fn Value* kernel_output_dict(Value* output_name, Value* output_value, Interp* interp) {
+    Value* result = nn_make_dict(interp, 2);
+    if (result == null || result.tag == ERROR) return result;
+    if (!hashmap_set_checked(result.hashmap_val, output_name, output_value, interp)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "kernel/run: failed to allocate output dictionary", null);
+    }
+    return result;
+}
+
+fn Value* kernel_input_by_descriptor(Value* inputs, Value* descriptor, Interp* interp, char[] invalid_name_label, char[] missing_label) {
+    Value* input_name = kernel_descriptor_name(descriptor, interp, invalid_name_label);
+    if (input_name == null || input_name.tag == ERROR) return input_name;
+    Value* input_value = hashmap_get(inputs.hashmap_val, input_name);
+    if (input_value == null) return kernel_run_invalid(interp, missing_label);
+    return input_value;
+}
+
+fn Value* kernel_resolve_vulkan_f32_input(Value* input_value, TensorVal** out_tensor, Value** out_materialized, Interp* interp, char[] label) {
+    if (!is_tensor(input_value)) return kernel_run_invalid(interp, "kernel/run: input must be a Tensor");
+    if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) || tensor_expr_has_non_vulkan_device(input_value)) {
+        return kernel_run_unsupported(interp, "kernel/run: input must remain fully Vulkan-placed");
+    }
+
+    Value* err = tensor_expr_resolve_concrete_any_device(input_value, out_tensor, out_materialized, interp, label);
+    if (err != null) return err;
+    if (*out_tensor == null || (*out_tensor).device != TENSOR_DEVICE_VULKAN) {
+        return kernel_run_unsupported(interp, "kernel/run: input must realize to Vulkan storage");
+    }
+    if ((*out_tensor).dtype != TENSOR_DTYPE_FLOAT32) {
+        return kernel_run_unsupported(interp, "kernel/run: currently supports Float32 tensor storage");
+    }
+    if ((*out_tensor).element_count == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: empty tensors are not supported", null);
+    }
+    if (!tensor_has_valid_device_storage(*out_tensor, TENSOR_DEVICE_VULKAN)) {
+        return tensor_runtime_raise(interp, "kernel/run: Vulkan tensor backing storage is missing");
+    }
+    return null;
+}
+
 fn Value* kernel_run_validate_scale_f32_spec(Value* kernel, Interp* interp, Value** out_input_descriptor, Value** out_output_descriptor) {
     Value* inputs = nn_dict_get(kernel, interp, "inputs");
     Value* outputs = nn_dict_get(kernel, interp, "outputs");
@@ -240,29 +280,13 @@ fn Value* kernel_run_scale_f32(Value* kernel, Value* inputs, Value* push, Interp
     if (scale_value == null || !tensor_value_to_float32(scale_value, &scale)) {
         return kernel_run_invalid(interp, "kernel/run: scale-f32 push scale must be representable as Float32");
     }
-    if (!is_tensor(input_value)) return kernel_run_invalid(interp, "kernel/run: scale-f32 input must be a Tensor");
-    if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) || tensor_expr_has_non_vulkan_device(input_value)) {
-        return kernel_run_unsupported(interp, "kernel/run: scale-f32 input must remain fully Vulkan-placed");
-    }
 
     TensorVal* input_tensor = null;
     Value* materialized = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input_tensor, &materialized, interp, "kernel/run: scale-f32 tensor backing storage is missing");
+    Value* err = kernel_resolve_vulkan_f32_input(input_value, &input_tensor, &materialized, interp, "kernel/run: scale-f32 tensor backing storage is missing");
     if (err != null) return err;
     defer if (materialized != null && materialized != input_value) boundary_cleanup_materialized_value(null, materialized, interp.current_scope);
 
-    if (input_tensor == null || input_tensor.device != TENSOR_DEVICE_VULKAN) {
-        return kernel_run_unsupported(interp, "kernel/run: scale-f32 input must realize to Vulkan storage");
-    }
-    if (input_tensor.dtype != TENSOR_DTYPE_FLOAT32) {
-        return kernel_run_unsupported(interp, "kernel/run: scale-f32 currently supports Float32 tensor storage");
-    }
-    if (input_tensor.element_count == 0) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: scale-f32 empty tensors are not supported", null);
-    }
-    if (!tensor_has_valid_device_storage(input_tensor, TENSOR_DEVICE_VULKAN)) {
-        return tensor_runtime_raise(interp, "kernel/run: scale-f32 Vulkan tensor backing storage is missing");
-    }
     if (!kernel_shape_matches_tensor(nn_dict_get(input_descriptor, interp, "shape"), input_tensor) ||
         !kernel_shape_matches_tensor(nn_dict_get(output_descriptor, interp, "shape"), input_tensor)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: scale-f32 descriptor shape does not match input tensor", null);
@@ -283,13 +307,99 @@ fn Value* kernel_run_scale_f32(Value* kernel, Value* inputs, Value* push, Interp
 
     Value* output_value = ml_optimizer_vulkan_tensor_value(input_tensor, out_device, interp, "kernel/run: failed to allocate Vulkan output tensor metadata", "kernel/run: failed to allocate Vulkan output tensor value");
     if (output_value == null || output_value.tag == ERROR) return output_value;
+    return kernel_output_dict(output_name, output_value, interp);
+}
 
-    Value* result = nn_make_dict(interp, 2);
-    if (result == null || result.tag == ERROR) return result;
-    if (!hashmap_set_checked(result.hashmap_val, output_name, output_value, interp)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "kernel/run: failed to allocate output dictionary", null);
+fn Value* kernel_run_validate_add_f32_spec(Value* kernel, Interp* interp, Value** out_left_descriptor, Value** out_right_descriptor, Value** out_output_descriptor) {
+    Value* inputs = nn_dict_get(kernel, interp, "inputs");
+    Value* outputs = nn_dict_get(kernel, interp, "outputs");
+    if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null || inputs.array_val.length != 2) {
+        return kernel_run_unsupported(interp, "kernel/run: add-f32 expects exactly two input descriptors");
     }
-    return result;
+    if (outputs == null || outputs.tag != ARRAY || outputs.array_val == null || outputs.array_val.length != 1) {
+        return kernel_run_unsupported(interp, "kernel/run: add-f32 expects exactly one output descriptor");
+    }
+    Value* left_descriptor = inputs.array_val.items[0];
+    Value* right_descriptor = inputs.array_val.items[1];
+    Value* output_descriptor = outputs.array_val.items[0];
+    if (!kernel_dtype_is(left_descriptor, interp, "Float32") ||
+        !kernel_dtype_is(right_descriptor, interp, "Float32") ||
+        !kernel_dtype_is(output_descriptor, interp, "Float32")) {
+        return kernel_run_unsupported(interp, "kernel/run: add-f32 currently supports Float32 inputs and outputs");
+    }
+    Value* push_spec = nn_dict_get(kernel, interp, "push");
+    if (push_spec != null && push_spec.tag != NIL && (push_spec.tag != HASHMAP || push_spec.hashmap_val == null || push_spec.hashmap_val.count != 0)) {
+        return kernel_run_invalid(interp, "kernel/run: add-f32 does not accept push constants");
+    }
+    *out_left_descriptor = left_descriptor;
+    *out_right_descriptor = right_descriptor;
+    *out_output_descriptor = output_descriptor;
+    return null;
+}
+
+fn Value* kernel_run_add_f32(Value* kernel, Value* inputs, Value* push, Interp* interp) {
+    if (push.hashmap_val.count != 0) return kernel_run_invalid(interp, "kernel/run: add-f32 does not accept push constants");
+
+    Value* left_descriptor = null;
+    Value* right_descriptor = null;
+    Value* output_descriptor = null;
+    if (Value* err = kernel_run_validate_add_f32_spec(kernel, interp, &left_descriptor, &right_descriptor, &output_descriptor)) return err;
+
+    Value* left_value = kernel_input_by_descriptor(inputs, left_descriptor, interp, "kernel/run: add-f32 left input descriptor name is invalid", "kernel/run: add-f32 left input is missing");
+    if (left_value == null || left_value.tag == ERROR) return left_value;
+    Value* right_value = kernel_input_by_descriptor(inputs, right_descriptor, interp, "kernel/run: add-f32 right input descriptor name is invalid", "kernel/run: add-f32 right input is missing");
+    if (right_value == null || right_value.tag == ERROR) return right_value;
+    Value* output_name = kernel_descriptor_name(output_descriptor, interp, "kernel/run: add-f32 output descriptor name is invalid");
+    if (output_name == null || output_name.tag == ERROR) return output_name;
+
+    TensorVal* left_tensor = null;
+    TensorVal* right_tensor = null;
+    Value* left_materialized = null;
+    Value* right_materialized = null;
+    Value* err = kernel_resolve_vulkan_f32_input(left_value, &left_tensor, &left_materialized, interp, "kernel/run: add-f32 left tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (left_materialized != null && left_materialized != left_value) boundary_cleanup_materialized_value(null, left_materialized, interp.current_scope);
+    err = kernel_resolve_vulkan_f32_input(right_value, &right_tensor, &right_materialized, interp, "kernel/run: add-f32 right tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (right_materialized != null && right_materialized != right_value) boundary_cleanup_materialized_value(null, right_materialized, interp.current_scope);
+
+    if (!ml_sgd_tensor_shapes_match(left_tensor, right_tensor)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: add-f32 input tensor shapes must match", null);
+    }
+    if (!kernel_shape_matches_tensor(nn_dict_get(left_descriptor, interp, "shape"), left_tensor) ||
+        !kernel_shape_matches_tensor(nn_dict_get(right_descriptor, interp, "shape"), right_tensor) ||
+        !kernel_shape_matches_tensor(nn_dict_get(output_descriptor, interp, "shape"), left_tensor)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: add-f32 descriptor shape does not match input tensors", null);
+    }
+
+    void* out_device = null;
+    int status = omni_tensor_backend_vulkan_map_f32(
+        left_tensor.device_handle,
+        right_tensor.device_handle,
+        left_tensor.byte_len,
+        left_tensor.element_count,
+        0.0,
+        2,
+        0,
+        left_tensor.rank,
+        left_tensor.rank,
+        right_tensor.rank,
+        left_tensor.shape,
+        left_tensor.strides,
+        left_tensor.shape,
+        left_tensor.strides,
+        right_tensor.shape,
+        right_tensor.strides,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        if (out_device != null) omni_tensor_backend_vulkan_free(out_device);
+        return tensor_vulkan_status_raise(interp, status, "kernel/run: Vulkan add-f32 kernel failed");
+    }
+
+    Value* output_value = ml_optimizer_vulkan_tensor_value(left_tensor, out_device, interp, "kernel/run: failed to allocate Vulkan output tensor metadata", "kernel/run: failed to allocate Vulkan output tensor value");
+    if (output_value == null || output_value.tag == ERROR) return output_value;
+    return kernel_output_dict(output_name, output_value, interp);
 }
 
 fn Value* prim_kernel(Value*[] args, Env* env, Interp* interp) {
@@ -314,6 +424,9 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     }
     if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "scale-f32")) {
         return kernel_run_scale_f32(args[0], args[1], args[2], interp);
+    }
+    if (nn_symbol_is(nn_dict_get(args[0], interp, "operation"), interp, "add-f32")) {
+        return kernel_run_add_f32(args[0], args[1], args[2], interp);
     }
     return kernel_run_unsupported(interp, "kernel/run: unsupported Kernel operation for Vulkan backend");
 }
