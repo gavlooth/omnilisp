@@ -434,6 +434,12 @@ Shipped first slice:
   includes `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, and `max-f32` in addition
   to `add-f32`, all with two same-shape dense row-major Vulkan tensor inputs,
   one matching output descriptor, and no push constants.
+- `ML-VK-080-005`: `kernel/run` now executes checked helper-backed scalar
+  `Float32` kernels with one dense row-major Vulkan tensor input and one
+  `scalar` `Float32` push constant. Tensor-scalar operations are
+  `add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`,
+  `min-scalar-f32`, and `max-scalar-f32`; scalar-left noncommutative operations
+  are `scalar-sub-f32` and `scalar-div-f32`.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

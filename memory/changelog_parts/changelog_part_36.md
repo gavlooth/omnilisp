@@ -510,3 +510,26 @@
     collections `pass=1840 fail=0`, basic Lisp `pass=161 fail=0`, compiler
     slice `pass=287 fail=0`, primitive docs parity, Stage 3 source parity,
     code file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-005 Checked Vulkan Scalar Float32 Kernel Family
+
+- Added checked Vulkan `kernel/run` scalar Float32 execution.
+  - Supported tensor-scalar specs: `operation 'add-scalar-f32`,
+    `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`,
+    and `max-scalar-f32`.
+  - Supported scalar-left specs: `operation 'scalar-sub-f32` and
+    `scalar-div-f32`.
+  - Contract: one input descriptor, one output descriptor, `Float32` descriptor
+    dtypes, spec push dictionary containing only `scalar 'Float32`, runtime
+    push dictionary containing exactly one `scalar` value representable as
+    `Float32`, matching descriptor shapes, and dense row-major Vulkan `Float32`
+    runtime input storage.
+  - Execution uses the existing checked Vulkan Float32 map helper scalar modes
+    and returns an ordinary dictionary keyed by the output descriptor name.
+  - Arbitrary user source compilation, graph capture, command-buffer batching,
+    fusion, device-buffer reuse/lifetime planning, deterministic invalidation,
+    and `(define [kernel] ...)` sugar remain out of scope.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1842 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
+    `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

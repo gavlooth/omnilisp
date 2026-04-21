@@ -514,3 +514,53 @@ Signature: GPT-5 Codex
   - Commit and push this slice, then continue `ML-VK-080` with graph/DAG
     capture or another real backend execution boundary.
 - Signature: GPT-5 Codex
+
+## 2026-04-21 06:17 CEST - ML-VK-080-005 Checked Vulkan Scalar Float32 Kernel Family
+
+- Objective attempted: continue `ML-VK-080` by adding real checked scalar
+  Kernel execution on top of the existing Vulkan Float32 map helper scalar
+  modes, without adding `(define [kernel] ...)` sugar.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - language/reference docs, Vulkan ML roadmap, TODO, plan, changelog, and
+    session-report artifacts.
+- Code or configuration changes made:
+  - Added tensor-scalar `kernel/run` operations `add-scalar-f32`,
+    `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`,
+    and `max-scalar-f32`.
+  - Added scalar-left noncommutative operations `scalar-sub-f32` and
+    `scalar-div-f32`.
+  - The scalar runner validates one input descriptor, one output descriptor,
+    `Float32` descriptor dtypes, matching descriptor/runtime tensor shapes,
+    `push` spec containing only `scalar 'Float32`, runtime push containing
+    exactly one `scalar` value representable as `Float32`, and dense row-major
+    Vulkan Float32 input storage.
+  - Unsupported backend source compilation, graph capture, batching, fusion,
+    and buffer reuse planning remain fail-closed.
+- Commands run:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Focused advanced collections passed with `pass=1842 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Compiler slice passed with `pass=287 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Arbitrary user kernel source compilation, graph capture, batching, fusion,
+    buffer reuse/lifetime planning, and deterministic invalidation remain open.
+- Next actions:
+  - Commit and push this slice, then continue `ML-VK-080` with graph/DAG
+    capture or another real backend execution boundary.
+- Signature: GPT-5 Codex

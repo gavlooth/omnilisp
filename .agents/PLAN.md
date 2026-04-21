@@ -915,3 +915,26 @@ Date: 2026-04-21 - Generalized the helper-backed binary Kernel runner.
   file-size gate, and `git diff --check`.
 - Next checkpoint: commit and push this checked binary family slice, then
   continue toward graph/DAG capture or another real backend execution boundary.
+
+## Active ML-VK-080-005 Checked Vulkan Scalar Float32 Kernel Family
+Date: 2026-04-21 - Added scalar helper-backed Kernel execution.
+
+- Shipped tensor-scalar operations: `add-scalar-f32`, `sub-scalar-f32`,
+  `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, and `max-scalar-f32`.
+- Shipped scalar-left operations: `scalar-sub-f32` and `scalar-div-f32`.
+- Contract:
+  - one input descriptor and one output descriptor;
+  - both descriptors must declare `dtype 'Float32`;
+  - descriptor and tensor shapes must match;
+  - the Kernel spec push dictionary must contain only `scalar 'Float32`;
+  - runtime push must contain exactly one `scalar` value representable as
+    `Float32`;
+  - runtime input must be dense row-major Vulkan `Float32`.
+- The runner uses the existing Vulkan Float32 map helper scalar modes and
+  returns an ordinary dictionary keyed by the output descriptor name.
+- Validation completed: `c3c build`, focused advanced collections
+  `pass=1842 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
+  `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`.
+- Next checkpoint: commit and push this scalar family slice, then continue
+  toward graph/DAG capture or another real backend execution boundary.

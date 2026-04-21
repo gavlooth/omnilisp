@@ -339,6 +339,129 @@ fn bool kernel_binary_f32_operation(Value* operation, Interp* interp, uint* out_
     return false;
 }
 
+fn bool kernel_scalar_f32_operation(Value* operation, Interp* interp, uint* out_op, uint* out_mode) {
+    if (operation == null || out_op == null || out_mode == null) return false;
+    *out_mode = 0;
+    if (nn_symbol_is(operation, interp, "add-scalar-f32")) {
+        *out_op = 0;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "sub-scalar-f32")) {
+        *out_op = 1;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "mul-scalar-f32")) {
+        *out_op = 2;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "div-scalar-f32")) {
+        *out_op = 3;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "min-scalar-f32")) {
+        *out_op = 4;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "max-scalar-f32")) {
+        *out_op = 5;
+        return true;
+    }
+    *out_mode = 1;
+    if (nn_symbol_is(operation, interp, "scalar-sub-f32")) {
+        *out_op = 1;
+        return true;
+    }
+    if (nn_symbol_is(operation, interp, "scalar-div-f32")) {
+        *out_op = 3;
+        return true;
+    }
+    return false;
+}
+
+fn Value* kernel_run_validate_scalar_f32_spec(Value* kernel, Interp* interp, Value** out_input_descriptor, Value** out_output_descriptor) {
+    Value* inputs = nn_dict_get(kernel, interp, "inputs");
+    Value* outputs = nn_dict_get(kernel, interp, "outputs");
+    if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null || inputs.array_val.length != 1) {
+        return kernel_run_unsupported(interp, "kernel/run: scalar Float32 kernels expect exactly one input descriptor");
+    }
+    if (outputs == null || outputs.tag != ARRAY || outputs.array_val == null || outputs.array_val.length != 1) {
+        return kernel_run_unsupported(interp, "kernel/run: scalar Float32 kernels expect exactly one output descriptor");
+    }
+    Value* input_descriptor = inputs.array_val.items[0];
+    Value* output_descriptor = outputs.array_val.items[0];
+    if (!kernel_dtype_is(input_descriptor, interp, "Float32") || !kernel_dtype_is(output_descriptor, interp, "Float32")) {
+        return kernel_run_unsupported(interp, "kernel/run: scalar kernels currently support Float32 inputs and outputs");
+    }
+    Value* push_spec = nn_dict_get(kernel, interp, "push");
+    if (push_spec == null || push_spec.tag != HASHMAP || push_spec.hashmap_val == null ||
+        push_spec.hashmap_val.count != 1 || !nn_symbol_is(nn_dict_get(push_spec, interp, "scalar"), interp, "Float32")) {
+        return kernel_run_invalid(interp, "kernel/run: scalar Float32 kernels require push Dictionary with scalar Float32");
+    }
+    *out_input_descriptor = input_descriptor;
+    *out_output_descriptor = output_descriptor;
+    return null;
+}
+
+fn Value* kernel_run_scalar_f32(Value* kernel, Value* inputs, Value* push, Interp* interp, uint op, uint mode) {
+    if (push.hashmap_val.count != 1) return kernel_run_invalid(interp, "kernel/run: scalar Float32 kernels require exactly one scalar push constant");
+
+    Value* input_descriptor = null;
+    Value* output_descriptor = null;
+    if (Value* err = kernel_run_validate_scalar_f32_spec(kernel, interp, &input_descriptor, &output_descriptor)) return err;
+
+    Value* input_value = kernel_input_by_descriptor(inputs, input_descriptor, interp, "kernel/run: scalar Float32 input descriptor name is invalid", "kernel/run: scalar Float32 input is missing");
+    if (input_value == null || input_value.tag == ERROR) return input_value;
+    Value* output_name = kernel_descriptor_name(output_descriptor, interp, "kernel/run: scalar Float32 output descriptor name is invalid");
+    if (output_name == null || output_name.tag == ERROR) return output_name;
+
+    Value* scalar_value = nn_dict_get(push, interp, "scalar");
+    float scalar = 0.0;
+    if (scalar_value == null || !tensor_value_to_float32(scalar_value, &scalar)) {
+        return kernel_run_invalid(interp, "kernel/run: scalar push must be representable as Float32");
+    }
+
+    TensorVal* input_tensor = null;
+    Value* materialized = null;
+    Value* err = kernel_resolve_vulkan_f32_input(input_value, &input_tensor, &materialized, interp, "kernel/run: scalar Float32 tensor backing storage is missing");
+    if (err != null) return err;
+    defer if (materialized != null && materialized != input_value) boundary_cleanup_materialized_value(null, materialized, interp.current_scope);
+
+    if (!kernel_shape_matches_tensor(nn_dict_get(input_descriptor, interp, "shape"), input_tensor) ||
+        !kernel_shape_matches_tensor(nn_dict_get(output_descriptor, interp, "shape"), input_tensor)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "kernel/run: scalar Float32 descriptor shape does not match input tensor", null);
+    }
+
+    bool scalar_left = mode == 1;
+    void* out_device = null;
+    int status = omni_tensor_backend_vulkan_map_f32(
+        scalar_left ? null : input_tensor.device_handle,
+        scalar_left ? input_tensor.device_handle : null,
+        input_tensor.byte_len,
+        input_tensor.element_count,
+        scalar,
+        mode,
+        op,
+        input_tensor.rank,
+        scalar_left ? 0 : input_tensor.rank,
+        scalar_left ? input_tensor.rank : 0,
+        input_tensor.shape,
+        input_tensor.strides,
+        scalar_left ? null : input_tensor.shape,
+        scalar_left ? null : input_tensor.strides,
+        scalar_left ? input_tensor.shape : null,
+        scalar_left ? input_tensor.strides : null,
+        &out_device
+    );
+    if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
+        if (out_device != null) omni_tensor_backend_vulkan_free(out_device);
+        return tensor_vulkan_status_raise(interp, status, "kernel/run: Vulkan scalar Float32 kernel failed");
+    }
+
+    Value* output_value = ml_optimizer_vulkan_tensor_value(input_tensor, out_device, interp, "kernel/run: failed to allocate Vulkan output tensor metadata", "kernel/run: failed to allocate Vulkan output tensor value");
+    if (output_value == null || output_value.tag == ERROR) return output_value;
+    return kernel_output_dict(output_name, output_value, interp);
+}
+
 fn Value* kernel_run_validate_binary_f32_spec(Value* kernel, Interp* interp, Value** out_left_descriptor, Value** out_right_descriptor, Value** out_output_descriptor) {
     Value* inputs = nn_dict_get(kernel, interp, "inputs");
     Value* outputs = nn_dict_get(kernel, interp, "outputs");
@@ -457,6 +580,11 @@ fn Value* prim_kernel_run(Value*[] args, Env* env, Interp* interp) {
     uint binary_op = 0;
     if (kernel_binary_f32_operation(nn_dict_get(args[0], interp, "operation"), interp, &binary_op)) {
         return kernel_run_binary_f32(args[0], args[1], args[2], interp, binary_op);
+    }
+    uint scalar_op = 0;
+    uint scalar_mode = 0;
+    if (kernel_scalar_f32_operation(nn_dict_get(args[0], interp, "operation"), interp, &scalar_op, &scalar_mode)) {
+        return kernel_run_scalar_f32(args[0], args[1], args[2], interp, scalar_op, scalar_mode);
     }
     return kernel_run_unsupported(interp, "kernel/run: unsupported Kernel operation for Vulkan backend");
 }

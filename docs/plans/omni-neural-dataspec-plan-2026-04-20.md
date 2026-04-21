@@ -104,7 +104,11 @@ surface. Kernel execution should remain explicit, for example:
 checked helper-backed Vulkan runners: `operation 'scale-f32` for one dense
 row-major `Float32` tensor input and a `scale` `Float32` push constant, plus
 binary `add-f32`, `sub-f32`, `mul-f32`, `div-f32`, `min-f32`, and `max-f32`
-for two same-shape dense row-major `Float32` tensor inputs.
+for two same-shape dense row-major `Float32` tensor inputs, plus scalar
+`add-scalar-f32`, `sub-scalar-f32`, `mul-scalar-f32`, `div-scalar-f32`,
+`min-scalar-f32`, `max-scalar-f32`, `scalar-sub-f32`, and `scalar-div-f32`
+for one dense row-major `Float32` tensor input and one `scalar` `Float32` push
+constant.
 Arbitrary user source compilation, graph fusion, and command-buffer planning
 still fail closed until their backend runner exists.
 

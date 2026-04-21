@@ -753,6 +753,13 @@ Source: `TODO.md`
         `max-f32` share the same two-input dense row-major Vulkan Float32
         contract as `add-f32`; all reject push constants and preserve Vulkan
         output placement.
+    - [x] `ML-VK-080-005` add checked Vulkan scalar Float32 `kernel/run`
+      execution.
+      - shipped: tensor-scalar `add-scalar-f32`, `sub-scalar-f32`,
+        `mul-scalar-f32`, `div-scalar-f32`, `min-scalar-f32`, and
+        `max-scalar-f32`, plus scalar-left `scalar-sub-f32` and
+        `scalar-div-f32`; all require one dense row-major Vulkan Float32 tensor
+        input and one `scalar` Float32 push constant.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
