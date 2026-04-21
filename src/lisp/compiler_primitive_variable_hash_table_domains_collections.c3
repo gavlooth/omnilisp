@@ -44,6 +44,7 @@ fn void init_prim_hash_collections_math_bitwise(SymbolTable* st) {
     prim_hash_insert(st.intern("type-args"), "aot::lookup_prim(\"type-args\")");
     prim_hash_insert(st.intern("Tensor"), "aot::lookup_prim(\"Tensor\")");
     prim_hash_insert(st.intern("Kernel"), "aot::lookup_prim(\"Kernel\")");
+    prim_hash_insert(st.intern("kernel/capture"), "aot::lookup_prim(\"kernel/capture\")");
     prim_hash_insert(st.intern("kernel/run"), "aot::lookup_prim(\"kernel/run\")");
     prim_hash_insert(st.intern("__tensor-map"), "aot::lookup_prim(\"__tensor-map\")");
     prim_hash_insert(st.intern("nn/validate"), "aot::lookup_prim(\"nn/validate\")");

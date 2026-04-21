@@ -490,6 +490,12 @@ fn void run_compiler_group_missing_io_ref_tests(Interp* interp, usz* pass, usz* 
             && compiler_code_contains_none(code, {"unsupported"});
         compiler_test_finish_bool(ok, "Compiler: kernel/run", "[FAIL] Compiler: kernel/run", pass, fail);
     }
+    {
+        char[] code = compile_to_c3("(kernel/capture k inputs push)", interp);
+        bool ok = compiler_code_contains_all(code, {"lookup_prim(\"kernel/capture\")"})
+            && compiler_code_contains_none(code, {"unsupported"});
+        compiler_test_finish_bool(ok, "Compiler: kernel/capture", "[FAIL] Compiler: kernel/capture", pass, fail);
+    }
     // 58bb. TimePoint constructor compiles
     {
         char[] code = compile_to_c3("(TimePoint 'date 2026 3 7)", interp);

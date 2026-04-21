@@ -556,3 +556,26 @@
     `pass=1844 fail=0`, basic Lisp `pass=161 fail=0`, compiler slice
     `pass=287 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+
+## 2026-04-21 - ML-VK-080-007 Checked Vulkan Single-Node Kernel Capture
+
+- Added `kernel/capture(kernel inputs push)` for checked Vulkan Kernel launch
+  planning.
+  - Supported capture families match the checked direct-helper `kernel/run`
+    coverage for Vulkan `Float32`: `scale-f32`, binary operations, scalar
+    operations, and unary operations.
+  - Capture validates backend, operation family, descriptor arity/dtypes,
+    runtime input placement, push contract, and concrete runtime shape without
+    launching the kernel.
+  - Capture returns ordinary `kernel-graph` data with one `kernel-node`,
+    backend, operation, family, dtype, device, direct-helper execution,
+    input/output names, concrete runtime shape, push data, and invalidation key.
+  - Added primitive registration, AOT compiler primitive lookup, AOT runtime
+    source manifest wiring, tests, docs, TODO, plan, and session report updates.
+  - Multi-node Tensor expression DAG capture, command-buffer batching, fusion,
+    arbitrary source compilation, buffer reuse/lifetime planning, and broader
+    deterministic invalidation remain open.
+  - Validation passed: `c3c build`, focused advanced collections
+    `pass=1846 fail=0`, compiler slice `pass=288 fail=0`, basic Lisp
+    `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+    file-size gate, and `git diff --check`.

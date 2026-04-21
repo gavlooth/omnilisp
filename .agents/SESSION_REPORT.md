@@ -44,7 +44,7 @@ The historical content was split mechanically to keep individual files below the
 - Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
-- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (626 lines)
+- Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (680 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 
@@ -708,6 +708,22 @@ The historical content was split mechanically to keep individual files below the
     `pass=1811 fail=0`, basic Lisp `pass=160 fail=0`, compiler slice
     `pass=281 fail=0`, primitive docs parity, Stage 3 source parity, code
     file-size gate, and `git diff --check`.
+- Signature: GPT-5 Codex
+
+## 2026-04-21 - ML-VK-080-007 Checked Vulkan Single-Node Kernel Capture
+
+- Canonical report entry:
+  - See Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md).
+- Summary:
+  - Implemented `kernel/capture(kernel inputs push)` for checked Vulkan
+    direct-helper `Float32` Kernel launch planning.
+  - Capture validates runtime inputs/push data and returns a single-node
+    `kernel-graph` with operation, family, dtype, device, shape, execution, node
+    data, and invalidation key without launching the kernel.
+  - Validation: `c3c build`, focused advanced collections `pass=1846 fail=0`,
+    compiler slice `pass=288 fail=0`, basic Lisp `pass=161 fail=0`,
+    primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check`.
 - Signature: GPT-5 Codex
 
 ## 2026-04-21 - ML-VK-080-006 Checked Vulkan Unary Float32 Kernel Family

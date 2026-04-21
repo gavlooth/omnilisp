@@ -962,3 +962,25 @@ Date: 2026-04-21 - Added unary helper-backed Kernel execution.
 - Next checkpoint: commit and push this unary family slice, then continue
   toward graph/DAG capture, source compilation, command-buffer batching, fusion,
   or device-buffer lifetime planning.
+
+## Active ML-VK-080-007 Checked Vulkan Single-Node Kernel Capture
+Date: 2026-04-21 - Added the first checked Kernel graph-capture surface.
+
+- Shipped `kernel/capture(kernel inputs push)` for the checked direct-helper
+  Vulkan `Float32` Kernel families already supported by `kernel/run`.
+- Contract:
+  - accepts the same explicit Kernel, input dictionary, and push dictionary
+    boundary as `kernel/run`;
+  - validates backend, operation family, descriptor dtype/arity, runtime
+    placement, push contract, and concrete runtime shape;
+  - returns ordinary data with `kind 'kernel-graph`, a single `kernel-node`,
+    backend, operation, family, dtype, device, direct-helper execution,
+    input/output names, concrete runtime shape, push data, and invalidation key;
+  - does not launch the kernel.
+- Validation completed: `c3c build`, focused advanced collections
+  `pass=1846 fail=0`, compiler slice `pass=288 fail=0`, basic Lisp
+  `pass=161 fail=0`, primitive docs parity, Stage 3 source parity, code
+  file-size gate, and `git diff --check`.
+- Next checkpoint: commit and push this single-node capture slice, then continue
+  toward multi-node Tensor expression DAG capture, command-buffer batching,
+  fusion, or device-buffer lifetime planning.

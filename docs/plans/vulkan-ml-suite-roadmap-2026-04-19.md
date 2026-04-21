@@ -446,6 +446,12 @@ Shipped first slice:
   `neg-f32`, `sqrt-f32`, `identity-f32`, `zero-f32`, `sin-f32`, `cos-f32`,
   `tan-f32`, `asin-f32`, `acos-f32`, `atan-f32`, `sinh-f32`, `cosh-f32`,
   `tanh-f32`, `exp-f32`, `log-f32`, `log10-f32`, and `normal-cdf-f32`.
+- `ML-VK-080-007`: `kernel/capture` now validates the checked helper-backed
+  Vulkan `Float32` Kernel families against runtime inputs and push data and
+  returns a single-node `kernel-graph` launch plan. The plan records backend,
+  operation, family, dtype, device, direct-helper execution, input/output names,
+  concrete runtime shape, push data, node data, and an invalidation key without
+  launching the kernel.
 
 ### `ML-VK-090` Validation And Benchmark Suite
 

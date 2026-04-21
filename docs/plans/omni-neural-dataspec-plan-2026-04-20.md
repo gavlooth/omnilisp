@@ -113,6 +113,11 @@ constant, plus unary `abs-f32`, `neg-f32`, `sqrt-f32`, `identity-f32`,
 `atan-f32`, `sinh-f32`, `cosh-f32`, `tanh-f32`, `exp-f32`, `log-f32`,
 `log10-f32`, and `normal-cdf-f32` for one dense row-major `Float32` tensor
 input and no push constants.
+`kernel/capture(kernel inputs push)` validates the same checked Vulkan
+direct-helper Kernel families against runtime inputs and push data and returns a
+single-node `kernel-graph` launch plan with backend, operation, family, dtype,
+device, direct-helper execution, input/output names, concrete runtime shape,
+push data, node data, and an invalidation key without executing the kernel.
 Arbitrary user source compilation, graph fusion, and command-buffer planning
 still fail closed until their backend runner exists.
 

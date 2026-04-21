@@ -575,6 +575,60 @@ Signature: GPT-5 Codex
     device-buffer lifetime planning.
 - Signature: GPT-5 Codex
 
+## 2026-04-21 05:52 CEST - ML-VK-080-007 Checked Vulkan Single-Node Kernel Capture
+
+- Objective attempted: continue `ML-VK-080` by adding the first real
+  graph-capture surface for the checked Vulkan direct-helper Kernel families,
+  without changing scalar/Tensor semantics or launching kernels during capture.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_kernel_capture.c3`
+  - `src/lisp/eval_init_primitive_tables.c3`
+  - `src/lisp/compiler_primitive_variable_hash_table_domains_collections.c3`
+  - `src/entry_build_runtime_manifest_lisp_part3.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+  - language/reference docs, Vulkan ML roadmap, TODO, plan, changelog, and
+    session-report artifacts.
+- Code or configuration changes made:
+  - Added `kernel/capture(kernel inputs push)`.
+  - Capture validates the same checked direct-helper Vulkan `Float32` Kernel
+    families supported by `kernel/run`: scale, binary, scalar, and unary.
+  - Capture returns ordinary `kernel-graph` data with a single `kernel-node`,
+    backend, operation, family, dtype, device, direct-helper execution,
+    input/output names, concrete runtime shape, push data, and invalidation key.
+  - Added primitive registration, AOT compiler primitive lookup, and AOT runtime
+    manifest wiring.
+  - Unsupported multi-node Tensor expression DAG capture, command-buffer
+    batching, fusion, source compilation, and buffer lifetime planning remain
+    fail-closed/deferred under explicit TODO scope.
+- Commands run:
+  - `c3c build`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=compiler OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `LD_LIBRARY_PATH=/usr/local/lib OMNI_LISP_TEST_SLICE=basic OMNI_TEST_SUMMARY=1 ./build/main --test-suite lisp`
+  - `scripts/check_primitive_docs_parity.sh`
+  - `scripts/check_e2e_baseline_policy.sh --stage3-source-parity`
+  - `scripts/check_file_size_gate.sh`
+  - `git diff --check`
+- Key results:
+  - Build linked `build/main`.
+  - Focused advanced collections passed with `pass=1846 fail=0`.
+  - Compiler slice passed with `pass=288 fail=0`.
+  - Basic Lisp passed with `pass=161 fail=0`.
+  - Primitive docs parity, Stage 3 source parity, code file-size gate, and
+    `git diff --check` passed.
+- Unresolved issues:
+  - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this
+    slice.
+  - Multi-node Tensor expression DAG capture, command-buffer batching, fusion,
+    arbitrary source compilation, buffer reuse/lifetime planning, and
+    deterministic invalidation beyond the single-node key remain open.
+- Next actions:
+  - Commit and push this slice, then continue `ML-VK-080` toward multi-node
+    Tensor expression DAG capture or command-buffer batching/fusion.
+- Signature: GPT-5 Codex
+
 ## 2026-04-21 06:17 CEST - ML-VK-080-005 Checked Vulkan Scalar Float32 Kernel Family
 
 - Objective attempted: continue `ML-VK-080` by adding real checked scalar

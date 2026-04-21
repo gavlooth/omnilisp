@@ -768,6 +768,13 @@ Source: `TODO.md`
         `log-f32`, `log10-f32`, and `normal-cdf-f32`; all require one dense
         row-major Vulkan Float32 tensor input, one matching output descriptor,
         and no push constants.
+    - [x] `ML-VK-080-007` add checked Vulkan single-node Kernel graph capture.
+      - shipped: `kernel/capture` validates the checked direct-helper Vulkan
+        Float32 Kernel families against runtime inputs and push data, then
+        returns a single-node `kernel-graph` with backend, operation, family,
+        dtype, device, direct-helper execution, input/output names, concrete
+        runtime shape, push data, node data, and invalidation key. It does not
+        launch the kernel.
   - scope:
     - operation DAG capture;
     - command-buffer batching;
