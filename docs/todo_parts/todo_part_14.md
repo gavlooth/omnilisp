@@ -741,12 +741,12 @@ Source: `TODO.md`
     - command-buffer batching;
     - safe elementwise/reduction fusion;
     - backend compilation and execution for user-defined `Kernel` values;
-    - optional `(define [kernel] ...)` sugar only as macro/desugaring to
-      `(define name (Kernel spec))`;
     - device buffer reuse and lifetime planning;
     - deterministic invalidation on shape, dtype, device, or capability change.
   - constraint:
     - performance work only; Tensor semantics must not change;
+    - do not implement `(define [kernel] ...)`; use ordinary
+      `(define name (Kernel spec))` bindings for named kernels;
     - do not overload ordinary function calls, path access, postfix indexing,
       or `ref` into kernel execution.
 

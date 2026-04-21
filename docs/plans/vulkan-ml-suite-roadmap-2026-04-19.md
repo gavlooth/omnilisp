@@ -402,8 +402,8 @@ Add optional execution graph capture for inference and training steps:
 - kernel fusion for safe elementwise/reduction chains;
 - custom `Kernel` values for user-defined backend kernels, constructed as
   explicit data specs and executed through an explicit kernel runner;
-- optional `(define [kernel] ...)` macro/declaration sugar only if it
-  desugars to canonical `(define name (Kernel spec))`;
+- no `(define [kernel] ...)` declaration sugar; named kernels use ordinary
+  `(define name (Kernel spec))` bindings;
 - device buffer reuse and lifetime planning;
 - deterministic invalidation when shapes, dtypes, devices, or capability bits
   change.

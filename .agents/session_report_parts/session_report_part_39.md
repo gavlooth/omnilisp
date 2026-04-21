@@ -348,6 +348,8 @@ Signature: GPT-5 Codex
   - Full bounded-container `OMNI_LISP_TEST_SLICE=all` was not run for this slice.
   - `kernel/run` has no backend compiler/runner yet and intentionally fails
     closed.
-  - Graph capture, command-buffer batching, fusion, device-buffer reuse, and
-    optional `(define [kernel] ...)` sugar remain open under `ML-VK-080`.
+  - Graph capture, command-buffer batching, fusion, and device-buffer reuse
+    remain open under `ML-VK-080`.
+  - Owner revision after this slice: do not implement `(define [kernel] ...)`.
+    Named kernels should use ordinary `(define name (Kernel spec))` bindings.
 - Signature: GPT-5 Codex

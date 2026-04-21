@@ -799,8 +799,9 @@ AdamW, and RMSProp with explicit state.
 Date: 2026-04-20 - Owner approved `Kernel` as a real type/value, possibly with special runtime/compiler support, for user-defined backend kernels.
 
 - Canonical base form: `(define name (Kernel spec))`.
-- Optional declaration sugar may exist later as `(define [kernel] name spec)`
-  only if it macro-expands/desugars to `(define name (Kernel spec))`.
+- Owner revision on 2026-04-21: do not implement `(define [kernel] ...)`.
+  Kernel declarations should remain ordinary bindings to `Kernel` values, for
+  example `(define name (Kernel spec))`.
 - Specs use ordinary Omni data with quoted symbol keys, `Dictionary`, arrays,
   path access, and postfix index access. Example inspection:
   `k.inputs`, `k.inputs.[0]`, `k.inputs.[0].name`.

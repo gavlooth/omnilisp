@@ -103,14 +103,8 @@ surface. Kernel execution should remain explicit, for example:
 `kernel/run` is present as the explicit execution boundary, but currently fails
 closed with `tensor/backend-unsupported` until a backend compiler/runner exists.
 
-Declaration sugar is allowed only when it expands to canonical Omni forms. A
-future macro/declaration family such as:
-
-```lisp
-(define [kernel] sgd-update spec)
-```
-
-must desugar to:
+Do not add `(define [kernel] ...)` declaration sugar. Named kernels should use
+ordinary Omni binding over the value constructor:
 
 ```lisp
 (define sgd-update (Kernel spec))

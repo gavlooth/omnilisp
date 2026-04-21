@@ -23,9 +23,10 @@
   - Updated tests so Adam/RMSProp Vulkan paths remain fail-closed while Vulkan
     Float32 SGD succeeds and preserves device placement.
   - Recorded the custom `Kernel` design decision: `Kernel` is a real type/value;
-    optional `(define [kernel] ...)` sugar must desugar to
-    `(define name (Kernel spec))`; access uses Omni path/index syntax such as
-    `k.inputs.[0].name`; execution stays explicit through `kernel/run`.
+    access uses Omni path/index syntax such as `k.inputs.[0].name`; execution
+    stays explicit through `kernel/run`. Superseded on 2026-04-21: do not
+    implement `(define [kernel] ...)`; named kernels should use ordinary
+    `(define name (Kernel spec))` bindings.
 - Commands run so far:
   - `glslangValidator -V --target-env vulkan1.0` for all three SGD shaders
   - `spirv-val --target-env vulkan1.0` for all generated SGD SPIR-V binaries
