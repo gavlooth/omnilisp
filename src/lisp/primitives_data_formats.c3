@@ -1,5 +1,10 @@
 module lisp;
 
+fn Value* data_format_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, (String)message, null);
+}
+
+
 import main;
 
 fn bool symbol_matches(Value* v, char[] name, Interp* interp) {
@@ -30,18 +35,18 @@ fn bool time_point_time_args_in_range(Value* hour, Value* minute, Value* second,
 }
 
 fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
-    if (args.len == 0) return raise_error(interp, "time-point: expected kind symbol");
+    if (args.len == 0) return data_format_raise(interp, "type/arg-mismatch", "time-point: expected kind symbol");
     if (args[0] == null || args[0].tag != SYMBOL) {
-        return raise_error(interp, "time-point: expected kind symbol");
+        return data_format_raise(interp, "type/arg-mismatch", "time-point: expected kind symbol");
     }
 
     if (symbol_matches(args[0], "date", interp)) {
-        if (args.len != 4) return raise_error(interp, "time-point: date expects 4 arguments: kind year month day");
+        if (args.len != 4) return data_format_raise(interp, "type/arg-mismatch", "time-point: date expects 4 arguments: kind year month day");
         if (!is_int(args[1]) || !is_int(args[2]) || !is_int(args[3])) {
-            return raise_error(interp, "time-point: expected date arguments to be integers");
+            return data_format_raise(interp, "type/arity", "time-point: expected date arguments to be integers");
         }
         if (!time_point_date_args_in_range(args[1], args[2], args[3])) {
-            return raise_error(interp, "time-point: date arguments out of range");
+            return data_format_raise(interp, "type/arg-mismatch", "time-point: date arguments out of range");
         }
         return make_time_point(
             interp,
@@ -58,12 +63,12 @@ fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (symbol_matches(args[0], "time", interp)) {
-        if (args.len != 5) return raise_error(interp, "time-point: time expects 5 arguments: kind hour minute second microsecond");
+        if (args.len != 5) return data_format_raise(interp, "type/arg-mismatch", "time-point: time expects 5 arguments: kind hour minute second microsecond");
         if (!is_int(args[1]) || !is_int(args[2]) || !is_int(args[3]) || !is_int(args[4])) {
-            return raise_error(interp, "time-point: expected time arguments to be integers");
+            return data_format_raise(interp, "type/arity", "time-point: expected time arguments to be integers");
         }
         if (!time_point_time_args_in_range(args[1], args[2], args[3], args[4])) {
-            return raise_error(interp, "time-point: time arguments out of range");
+            return data_format_raise(interp, "type/arg-mismatch", "time-point: time arguments out of range");
         }
         return make_time_point(
             interp,
@@ -80,13 +85,13 @@ fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (symbol_matches(args[0], "datetime", interp)) {
-        if (args.len != 8) return raise_error(interp, "time-point: datetime expects 8 arguments: kind year month day hour minute second microsecond");
+        if (args.len != 8) return data_format_raise(interp, "type/arg-mismatch", "time-point: datetime expects 8 arguments: kind year month day hour minute second microsecond");
         if (!is_int(args[1]) || !is_int(args[2]) || !is_int(args[3]) || !is_int(args[4]) || !is_int(args[5]) || !is_int(args[6]) || !is_int(args[7])) {
-            return raise_error(interp, "time-point: expected datetime arguments to be integers");
+            return data_format_raise(interp, "type/arity", "time-point: expected datetime arguments to be integers");
         }
         if (!time_point_date_args_in_range(args[1], args[2], args[3]) ||
             !time_point_time_args_in_range(args[4], args[5], args[6], args[7])) {
-            return raise_error(interp, "time-point: datetime arguments out of range");
+            return data_format_raise(interp, "type/arg-mismatch", "time-point: datetime arguments out of range");
         }
         return make_time_point(
             interp,
@@ -103,14 +108,14 @@ fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
     }
 
     if (symbol_matches(args[0], "datetime-tz", interp) || symbol_matches(args[0], "datetimetz", interp)) {
-        if (args.len != 9) return raise_error(interp, "time-point: datetime-tz expects 9 arguments: kind year month day hour minute second microsecond tz-offset");
+        if (args.len != 9) return data_format_raise(interp, "type/arg-mismatch", "time-point: datetime-tz expects 9 arguments: kind year month day hour minute second microsecond tz-offset");
         if (!is_int(args[1]) || !is_int(args[2]) || !is_int(args[3]) || !is_int(args[4]) || !is_int(args[5]) || !is_int(args[6]) || !is_int(args[7]) || !is_int(args[8])) {
-            return raise_error(interp, "time-point: expected datetime-tz arguments to be integers");
+            return data_format_raise(interp, "type/arity", "time-point: expected datetime-tz arguments to be integers");
         }
         if (!time_point_date_args_in_range(args[1], args[2], args[3]) ||
             !time_point_time_args_in_range(args[4], args[5], args[6], args[7]) ||
             !time_point_arg_in_range(args[8], -1440, 1440)) {
-            return raise_error(interp, "time-point: datetime-tz arguments out of range");
+            return data_format_raise(interp, "type/arg-mismatch", "time-point: datetime-tz arguments out of range");
         }
         return make_time_point(
             interp,
@@ -126,5 +131,5 @@ fn Value* prim_time_point(Value*[] args, Env* env, Interp* interp) {
         );
     }
 
-    return raise_error(interp, "time-point: unsupported kind, expected one of 'date, 'time, 'datetime, 'datetime-tz");
+    return data_format_raise(interp, "type/arg-mismatch", "time-point: unsupported kind, expected one of 'date, 'time, 'datetime, 'datetime-tz");
 }

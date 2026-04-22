@@ -4,6 +4,11 @@
 (import "ui.omni")
 (import ui)
 
+(define (raise-message payload)
+  (if (dict? payload)
+      (String (ref payload 'message))
+      (String payload)))
+
 (define loop-view
   (ui.window
     "Loop"
@@ -28,7 +33,7 @@
       (ui.open_tree {'backend 'ftxui}
         (ui.render_tree {'node loop-view})
         (ui.read_event_tree {})))
-    (raise msg (String msg))))
+    (raise msg (raise-message msg))))
 
 (define double-render-error
   (handle
@@ -36,7 +41,7 @@
       (ui.open_tree {'backend 'ftxui}
         (ui.render_tree {'node loop-view})
         (ui.render_tree {'node loop-view})))
-    (raise msg (String msg))))
+    (raise msg (raise-message msg))))
 
 (and (= (ui.loop loop-effects) true)
      (= (ui.ftxui.loop close-effects) true)

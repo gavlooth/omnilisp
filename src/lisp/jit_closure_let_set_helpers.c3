@@ -16,7 +16,7 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
     }
     if (!mr.matched) {
         mr.cleanup();
-        return raise_error(interp, "let destructuring: pattern did not match value");
+        return jit_raise(interp, "runtime/evaluation-error", "let destructuring: pattern did not match value");
     }
 
     Env* dest_env = env;
@@ -25,7 +25,7 @@ fn Value* jit_eval_let_destruct(Interp* interp, Expr* expr, Env* env) {
         if (dest_env == null ||
             env_define_with_barrier_result(dest_env, mr.bindings[i].name, mr.bindings[i].value, interp) != null) {
             mr.cleanup();
-            return raise_error(interp, "let destructuring: out of memory while binding pattern");
+            return jit_raise(interp, "runtime/out-of-memory", "let destructuring: out of memory while binding pattern");
         }
     }
     mr.cleanup();
@@ -107,13 +107,13 @@ fn Value* jit_eval_let_rec(Interp* interp, Expr* expr, Env* env) {
     if (interp == null) return null;
     Value* placeholder = make_nil(interp);
     Env* rec_env = jit_env_extend(interp, env, expr.let_expr.name, placeholder);
-    if (rec_env == null) return raise_error(interp, "let: out of memory while binding recursive name");
+    if (rec_env == null) return jit_raise(interp, "runtime/out-of-memory", "let: out of memory while binding recursive name");
     Value* actual_value = jit_eval(expr.let_expr.init, rec_env, interp);
     if (actual_value != null && actual_value.tag == ERROR) return actual_value;
 
     Value* published_value = jit_patch_rec_closure(actual_value, rec_env, expr.let_expr.name, interp);
     if (actual_value != null && actual_value.tag == CLOSURE && published_value == null) {
-        return raise_error(interp, "let: out of memory while patching recursive closure");
+        return jit_raise(interp, "runtime/out-of-memory", "let: out of memory while patching recursive closure");
     }
     jit_patch_rec_binding(rec_env, expr.let_expr.name, published_value);
 
@@ -129,11 +129,11 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
     Value* write_err = env_set_with_barrier_result(env, name, value, interp, &found);
     if (write_err != null) return write_err;
     if (!found) {
-        if (interp.global_env == null) return raise_error(interp, "set!: unbound variable");
+        if (interp.global_env == null) return jit_raise(interp, "runtime/evaluation-error", "set!: unbound variable");
         write_err = env_set_with_barrier_result(interp.global_env, name, value, interp, &found);
         if (write_err != null) return write_err;
         if (!found) {
-            return raise_error(interp, "set!: unbound variable");
+            return jit_raise(interp, "runtime/evaluation-error", "set!: unbound variable");
         }
     }
     return make_void(interp);
@@ -142,7 +142,7 @@ fn Value* jit_eval_set(Interp* interp, SymbolId name, Value* value, Env* env) {
 fn Value* jit_resolve_set_path_root(Interp* interp, Expr* expr, Env* env) {
     Value* current = env.lookup(expr.set_expr.path_segments[0]);
     if (current == null) current = interp.global_env.lookup(expr.set_expr.path_segments[0]);
-    if (current == null) return raise_error(interp, "set!: unbound path root");
+    if (current == null) return jit_raise(interp, "runtime/evaluation-error", "set!: unbound path root");
     return current;
 }
 
@@ -155,13 +155,13 @@ fn Value* jit_set_path_step_instance(Value* current, SymbolId seg, Interp* inter
             }
         }
     }
-    return raise_error(interp, "set!: field not found in path");
+    return jit_raise(interp, "runtime/evaluation-error", "set!: field not found in path");
 }
 
 fn Value* jit_set_path_step_cons(Value* current, SymbolId seg, Interp* interp) {
     if ((uint)seg == (uint)interp.sym_car) return current.cons_val.car;
     if ((uint)seg == (uint)interp.sym_cdr) return current.cons_val.cdr;
-    return raise_error(interp, "set!: cons only supports .car and .cdr");
+    return jit_raise(interp, "type/arg-mismatch", "set!: cons only supports .car and .cdr");
 }
 
 fn Value* jit_set_path_step(Value* current, SymbolId seg, Interp* interp) {
@@ -171,12 +171,12 @@ fn Value* jit_set_path_step(Value* current, SymbolId seg, Interp* interp) {
     if (current != null && current.tag == CONS) {
         return jit_set_path_step_cons(current, seg, interp);
     }
-    return raise_error(interp, "set!: path segment is not an instance or cons");
+    return jit_raise(interp, "type/arg-mismatch", "set!: path segment is not an instance or cons");
 }
 
 fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* value, Interp* interp) {
     Value* stored = boundary_promote_to_root(value, interp);
-    if (stored == null) return raise_error(interp, "set!: cons field promotion failed");
+    if (stored == null) return jit_raise(interp, "type/arg-mismatch", "set!: cons field promotion failed");
     if (stored != null && stored.tag == ERROR) return stored;
     if ((uint)last_seg == (uint)interp.sym_car) {
         current.cons_val.car = stored;
@@ -186,7 +186,7 @@ fn Value* jit_set_path_mutate_cons(Value* current, SymbolId last_seg, Value* val
         current.cons_val.cdr = stored;
         return make_void(interp);
     }
-    return raise_error(interp, "set!: cons only supports .car and .cdr");
+    return jit_raise(interp, "type/arg-mismatch", "set!: cons only supports .car and .cdr");
 }
 
 <*
@@ -227,16 +227,16 @@ fn Value* jit_set_path_mutate_instance(Value* current, SymbolId last_seg, Value*
                     COPY_SITE_ENV_PROMOTE_FOR_TARGET
                 );
                 if (!boundary_copy_result_ok(copied)) {
-                    return raise_error(interp, boundary_copy_fault_message(copied.fault_code));
+                    return jit_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copied.fault_code));
                 }
                 if (copied.value != null && copied.value.tag == ERROR) return copied.value;
-                if (copied.value == null) return raise_error(interp, "set!: field value copy failed");
+                if (copied.value == null) return jit_raise(interp, "type/arg-mismatch", "set!: field value copy failed");
                 current.instance_val.fields[fi] = *copied.value;
                 return make_void(interp);
             }
         }
     }
-    return raise_error(interp, "set!: field not found");
+    return jit_raise(interp, "runtime/evaluation-error", "set!: field not found");
 }
 
 fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) {
@@ -257,5 +257,5 @@ fn Value* jit_eval_set_path(Interp* interp, Expr* expr, Value* value, Env* env) 
     if (current != null && current.tag == INSTANCE && current.instance_val != null) {
         return jit_set_path_mutate_instance(current, last_seg, value, interp);
     }
-    return raise_error(interp, "set!: target is not an instance or cons");
+    return jit_raise(interp, "type/arg-mismatch", "set!: target is not an instance or cons");
 }

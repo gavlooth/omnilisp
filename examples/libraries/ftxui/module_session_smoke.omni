@@ -4,6 +4,11 @@
 (import "ui.omni")
 (import ui)
 
+(define (raise-message payload)
+  (if (dict? payload)
+      (String (ref payload 'message))
+      (String payload)))
+
 (define session-view
   (ui.window
     "Session"
@@ -35,7 +40,7 @@
 (define render-after-close-error
   (handle
     (ui.render_session session)
-    (raise msg (String msg))))
+    (raise msg (raise-message msg))))
 
 (and (= (ref meta-before-close 'name) 'ui-ftxui-session)
      (= (ref meta-before-close 'live) true)

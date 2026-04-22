@@ -354,7 +354,7 @@ fn Value* tensor_contract_eval_into(
                 }
 
                 void* sum = omni_big_integer_from_i64(0);
-                if (sum == null) return raise_error(interp, "contract: failed to allocate BigInteger accumulator");
+                if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "contract: failed to allocate BigInteger accumulator");
                 bool ok = true;
                 for (usz contract_index = 0; contract_index < contracted_count; contract_index++) {
                     usz left_offset = left_base_offset;
@@ -388,7 +388,7 @@ fn Value* tensor_contract_eval_into(
                 }
                 if (!ok) {
                     omni_big_integer_free(sum);
-                    return raise_error(interp, "contract: failed to compute BigInteger contraction");
+                    return tensor_raise(interp, "tensor/invalid-argument", "contract: failed to compute BigInteger contraction");
                 }
                 if (out[out_index] != null) omni_big_integer_free(out[out_index]);
                 out[out_index] = sum;
@@ -419,7 +419,7 @@ fn Value* tensor_contract_eval_into(
                 }
 
                 void* sum = omni_big_float_from_i64(0);
-                if (sum == null) return raise_error(interp, "contract: failed to allocate BigFloat accumulator");
+                if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "contract: failed to allocate BigFloat accumulator");
                 bool ok = true;
                 for (usz contract_index = 0; contract_index < contracted_count; contract_index++) {
                     usz left_offset = left_base_offset;
@@ -453,7 +453,7 @@ fn Value* tensor_contract_eval_into(
                 }
                 if (!ok) {
                     omni_big_float_free(sum);
-                    return raise_error(interp, "contract: failed to compute BigFloat contraction");
+                    return tensor_raise(interp, "tensor/invalid-argument", "contract: failed to compute BigFloat contraction");
                 }
                 if (out[out_index] != null) omni_big_float_free(out[out_index]);
                 out[out_index] = sum;
@@ -484,7 +484,7 @@ fn Value* tensor_contract_eval_into(
                 }
 
                 void* sum = omni_big_complex_from_i64(0);
-                if (sum == null) return raise_error(interp, "contract: failed to allocate BigComplex accumulator");
+                if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "contract: failed to allocate BigComplex accumulator");
                 bool ok = true;
                 for (usz contract_index = 0; contract_index < contracted_count; contract_index++) {
                     usz left_offset = left_base_offset;
@@ -518,7 +518,7 @@ fn Value* tensor_contract_eval_into(
                 }
                 if (!ok) {
                     omni_big_complex_free(sum);
-                    return raise_error(interp, "contract: failed to compute BigComplex contraction");
+                    return tensor_raise(interp, "tensor/invalid-argument", "contract: failed to compute BigComplex contraction");
                 }
                 if (out[out_index] != null) omni_big_complex_free(out[out_index]);
                 out[out_index] = sum;
@@ -539,7 +539,7 @@ fn Value* make_tensor_contract_expr(
 ) {
     TensorVal* source = left_value.tensor_val;
     TensorVal* tensor = tensor_alloc_expression_payload_checked(source.dtype, result_shape, TENSOR_PAYLOAD_CONTRACT, "contract: failed to allocate tensor expression");
-    if (tensor == null) return raise_error(interp, "contract: failed to allocate tensor expression");
+    if (tensor == null) return tensor_raise(interp, "tensor/out-of-memory", "contract: failed to allocate tensor expression");
     tensor.contract_left = left_value;
     tensor.contract_right = right_value;
     tensor.contract_axis_count = axis_count;
@@ -565,7 +565,7 @@ fn Value* make_tensor_contract_expr(
     Value* result = interp.alloc_value();
     if (result == null) {
         tensor_free_payload(tensor);
-        return raise_error(interp, "contract: failed to allocate tensor expression");
+        return tensor_raise(interp, "tensor/out-of-memory", "contract: failed to allocate tensor expression");
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;

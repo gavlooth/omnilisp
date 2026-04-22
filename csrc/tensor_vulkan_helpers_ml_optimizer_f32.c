@@ -516,7 +516,7 @@ int omni_tensor_backend_vulkan_ml_sgd_f32(
     if (out_params_device_ptr == NULL || out_velocity_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     *out_params_device_ptr = NULL;
     *out_velocity_device_ptr = NULL;
-    if (!isfinite(learning_rate) || !isfinite(momentum) || !isfinite(weight_decay) || learning_rate <= 0.0f || momentum < 0.0f) {
+    if (!isfinite(learning_rate) || !isfinite(momentum) || !isfinite(weight_decay) || learning_rate < 0.0f || momentum < 0.0f) {
         return OMNI_TENSOR_VULKAN_INVALID_ARGUMENT;
     }
     if (element_count > UINT32_MAX || element_count > SIZE_MAX / sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;

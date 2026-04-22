@@ -39,6 +39,8 @@ fn Value* prim_matrix_singular_values(Value*[] args, Env* env, Interp* interp) {
     }
     Value* vulkan_result = matrix_singular_values_try_vulkan_value(matrix, interp);
     if (vulkan_result != null) return vulkan_result;
+    Value* cuda_result = matrix_singular_values_try_cuda_value(matrix, interp);
+    if (cuda_result != null) return cuda_result;
     if (matrix.device != TENSOR_DEVICE_CPU) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/singular-values: unsupported Tensor device", null);
     }
@@ -214,9 +216,9 @@ fn Value* prim_matrix_singular_values(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_matrix_svd(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) {
-        return primitive_arity_raise(interp, "matrix/svd", "1 argument: rank-2 Float64 Tensor or Vulkan Float32 Tensor", args.len);
+        return primitive_arity_raise(interp, "matrix/svd", "1 argument: rank-2 Float64, Float32, Complex128, or Complex64 Tensor", args.len);
     }
-    if (!is_tensor(args[0])) return tensor_type_raise(interp, "matrix/svd: input must be a rank-2 Float64 Tensor or Vulkan Float32 Tensor");
+    if (!is_tensor(args[0])) return tensor_type_raise(interp, "matrix/svd: input must be a rank-2 Float64, Float32, Complex128, or Complex64 Tensor");
 
     TensorVal* source = args[0].tensor_val;
     Value* matrix_value = source.kind == TENSOR_PAYLOAD_CONCRETE ? args[0] : tensor_realize_to_value(args[0], interp);
@@ -229,7 +231,12 @@ fn Value* prim_matrix_svd(Value*[] args, Env* env, Interp* interp) {
     TensorVal* matrix = matrix_value.tensor_val;
     if (
         matrix == null ||
-        (matrix.dtype != TENSOR_DTYPE_DOUBLE && matrix.dtype != TENSOR_DTYPE_FLOAT32) ||
+        (
+            matrix.dtype != TENSOR_DTYPE_DOUBLE &&
+            matrix.dtype != TENSOR_DTYPE_FLOAT32 &&
+            matrix.dtype != TENSOR_DTYPE_COMPLEX128 &&
+            matrix.dtype != TENSOR_DTYPE_COMPLEX64
+        ) ||
         matrix.rank != 2 ||
         matrix.shape == null
     ) {
@@ -237,12 +244,14 @@ fn Value* prim_matrix_svd(Value*[] args, Env* env, Interp* interp) {
             interp,
             "tensor",
             "tensor/shape-mismatch",
-            "matrix/svd: expected a rank-2 Float64 Tensor or Vulkan Float32 Tensor",
+            "matrix/svd: expected a rank-2 Float64, Float32, Complex128, or Complex64 Tensor",
             null
         );
     }
     Value* vulkan_result = matrix_svd_try_vulkan_value(matrix, interp);
     if (vulkan_result != null) return vulkan_result;
+    Value* cuda_result = matrix_svd_try_cuda_value(matrix, interp);
+    if (cuda_result != null) return cuda_result;
     if (matrix.device != TENSOR_DEVICE_CPU) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "matrix/svd: unsupported Tensor device", null);
     }
@@ -259,6 +268,224 @@ fn Value* prim_matrix_svd(Value*[] args, Env* env, Interp* interp) {
     usz v_count = 0;
     if (!tensor_checked_mul_usz(cols, k, &v_count)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: V workspace is too large", null);
+    }
+
+    if (matrix.dtype == TENSOR_DTYPE_COMPLEX128) {
+        Complex128Val* u_work_complex = null;
+        if (!matrix_complex128_workspace_zero(u_count, &u_work_complex)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex128 U workspace", null);
+        }
+        defer if (u_work_complex != null) mem::free(u_work_complex);
+
+        double* s_work_complex = null;
+        if (!matrix_double_workspace_zero(k, &s_work_complex)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex128 singular value workspace", null);
+        }
+        defer if (s_work_complex != null) mem::free(s_work_complex);
+
+        Complex128Val* v_work_complex = null;
+        if (!matrix_complex128_workspace_zero(v_count, &v_work_complex)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex128 V workspace", null);
+        }
+        defer if (v_work_complex != null) mem::free(v_work_complex);
+
+        if (!matrix_svd_factor_complex128(matrix, u_work_complex, s_work_complex, v_work_complex, k)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/no-convergence", "matrix/svd: failed to compute Complex128 reduced SVD", null);
+        }
+
+        usz[2] u_shape_buf_complex = { rows, k };
+        Value* u_value_complex = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_COMPLEX128, u_shape_buf_complex[0:2], "matrix/svd: failed to allocate Complex128 U tensor");
+        if (u_value_complex == null || u_value_complex.tag == ERROR) return u_value_complex;
+        bool keep_u_value_complex = false;
+        defer if (!keep_u_value_complex) {
+            boundary_cleanup_materialized_value(null, u_value_complex, interp.current_scope);
+        }
+        if (u_value_complex.tag != TENSOR || !tensor_has_valid_storage(u_value_complex.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: U tensor backing storage is missing");
+        }
+        if (u_count > 0) {
+            usz u_bytes_complex = 0;
+            if (!tensor_checked_mul_usz(u_count, Complex128Val.sizeof, &u_bytes_complex)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: U tensor is too large", null);
+            }
+            mem::copy(u_value_complex.tensor_val.data, u_work_complex, u_bytes_complex);
+        }
+
+        Value* u_for_dict_complex = boundary_promote_to_root(u_value_complex, interp);
+        if (u_for_dict_complex == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote U tensor", null);
+        }
+        if (u_for_dict_complex.tag == ERROR) return u_for_dict_complex;
+        keep_u_value_complex = u_for_dict_complex == u_value_complex;
+
+        usz[1] s_shape_buf_complex = { k };
+        Value* s_value_complex = make_tensor_double_uninitialized_checked(interp, s_shape_buf_complex[0:1], "matrix/svd: failed to allocate Complex128 singular value tensor");
+        if (s_value_complex == null || s_value_complex.tag == ERROR) return s_value_complex;
+        bool keep_s_value_complex = false;
+        defer if (!keep_s_value_complex) {
+            boundary_cleanup_materialized_value(null, s_value_complex, interp.current_scope);
+        }
+        if (s_value_complex.tag != TENSOR || !tensor_has_valid_storage(s_value_complex.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: singular value tensor backing storage is missing");
+        }
+        if (k > 0) {
+            usz s_bytes_complex = 0;
+            if (!tensor_checked_mul_usz(k, double.sizeof, &s_bytes_complex)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: singular value tensor is too large", null);
+            }
+            mem::copy(s_value_complex.tensor_val.data, s_work_complex, s_bytes_complex);
+        }
+
+        Value* s_for_dict_complex = boundary_promote_to_root(s_value_complex, interp);
+        if (s_for_dict_complex == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote singular value tensor", null);
+        }
+        if (s_for_dict_complex.tag == ERROR) return s_for_dict_complex;
+        keep_s_value_complex = s_for_dict_complex == s_value_complex;
+
+        usz[2] v_shape_buf_complex = { cols, k };
+        Value* v_value_complex = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_COMPLEX128, v_shape_buf_complex[0:2], "matrix/svd: failed to allocate Complex128 V tensor");
+        if (v_value_complex == null || v_value_complex.tag == ERROR) return v_value_complex;
+        bool keep_v_value_complex = false;
+        defer if (!keep_v_value_complex) {
+            boundary_cleanup_materialized_value(null, v_value_complex, interp.current_scope);
+        }
+        if (v_value_complex.tag != TENSOR || !tensor_has_valid_storage(v_value_complex.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: V tensor backing storage is missing");
+        }
+        if (v_count > 0) {
+            usz v_bytes_complex = 0;
+            if (!tensor_checked_mul_usz(v_count, Complex128Val.sizeof, &v_bytes_complex)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: V tensor is too large", null);
+            }
+            mem::copy(v_value_complex.tensor_val.data, v_work_complex, v_bytes_complex);
+        }
+
+        Value* v_for_dict_complex = boundary_promote_to_root(v_value_complex, interp);
+        if (v_for_dict_complex == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote V tensor", null);
+        }
+        if (v_for_dict_complex.tag == ERROR) return v_for_dict_complex;
+        keep_v_value_complex = v_for_dict_complex == v_value_complex;
+
+        Value* out_complex = make_hashmap_checked(interp, 8, "matrix/svd: failed to allocate result dictionary");
+        if (out_complex == null || out_complex.tag == ERROR) return out_complex;
+        if (out_complex.tag != HASHMAP || out_complex.hashmap_val == null) {
+            return tensor_runtime_raise(interp, "matrix/svd: result dictionary backing storage is missing");
+        }
+        if (Value* err = explain_dict_set(out_complex, interp, "u", u_for_dict_complex)) return err;
+        if (Value* err = explain_dict_set(out_complex, interp, "s", s_for_dict_complex)) return err;
+        if (Value* err = explain_dict_set(out_complex, interp, "v", v_for_dict_complex)) return err;
+        return out_complex;
+    }
+
+    if (matrix.dtype == TENSOR_DTYPE_COMPLEX64) {
+        Complex64Val* u_work_complex64 = null;
+        if (!matrix_complex64_workspace_zero(u_count, &u_work_complex64)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex64 U workspace", null);
+        }
+        defer if (u_work_complex64 != null) mem::free(u_work_complex64);
+
+        float* s_work_complex64 = null;
+        if (!matrix_float32_workspace_zero(k, &s_work_complex64)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex64 singular value workspace", null);
+        }
+        defer if (s_work_complex64 != null) mem::free(s_work_complex64);
+
+        Complex64Val* v_work_complex64 = null;
+        if (!matrix_complex64_workspace_zero(v_count, &v_work_complex64)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to allocate Complex64 V workspace", null);
+        }
+        defer if (v_work_complex64 != null) mem::free(v_work_complex64);
+
+        if (!matrix_svd_factor_complex64(matrix, u_work_complex64, s_work_complex64, v_work_complex64, k)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/no-convergence", "matrix/svd: failed to compute Complex64 reduced SVD", null);
+        }
+
+        usz[2] u_shape_buf_complex64 = { rows, k };
+        Value* u_value_complex64 = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_COMPLEX64, u_shape_buf_complex64[0:2], "matrix/svd: failed to allocate Complex64 U tensor");
+        if (u_value_complex64 == null || u_value_complex64.tag == ERROR) return u_value_complex64;
+        bool keep_u_value_complex64 = false;
+        defer if (!keep_u_value_complex64) {
+            boundary_cleanup_materialized_value(null, u_value_complex64, interp.current_scope);
+        }
+        if (u_value_complex64.tag != TENSOR || !tensor_has_valid_storage(u_value_complex64.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: U tensor backing storage is missing");
+        }
+        if (u_count > 0) {
+            usz u_bytes_complex64 = 0;
+            if (!tensor_checked_mul_usz(u_count, Complex64Val.sizeof, &u_bytes_complex64)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: U tensor is too large", null);
+            }
+            mem::copy(u_value_complex64.tensor_val.data, u_work_complex64, u_bytes_complex64);
+        }
+
+        Value* u_for_dict_complex64 = boundary_promote_to_root(u_value_complex64, interp);
+        if (u_for_dict_complex64 == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote U tensor", null);
+        }
+        if (u_for_dict_complex64.tag == ERROR) return u_for_dict_complex64;
+        keep_u_value_complex64 = u_for_dict_complex64 == u_value_complex64;
+
+        usz[1] s_shape_buf_complex64 = { k };
+        Value* s_value_complex64 = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_FLOAT32, s_shape_buf_complex64[0:1], "matrix/svd: failed to allocate Complex64 singular value tensor");
+        if (s_value_complex64 == null || s_value_complex64.tag == ERROR) return s_value_complex64;
+        bool keep_s_value_complex64 = false;
+        defer if (!keep_s_value_complex64) {
+            boundary_cleanup_materialized_value(null, s_value_complex64, interp.current_scope);
+        }
+        if (s_value_complex64.tag != TENSOR || !tensor_has_valid_storage(s_value_complex64.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: singular value tensor backing storage is missing");
+        }
+        if (k > 0) {
+            usz s_bytes_complex64 = 0;
+            if (!tensor_checked_mul_usz(k, float.sizeof, &s_bytes_complex64)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: singular value tensor is too large", null);
+            }
+            mem::copy(s_value_complex64.tensor_val.data, s_work_complex64, s_bytes_complex64);
+        }
+
+        Value* s_for_dict_complex64 = boundary_promote_to_root(s_value_complex64, interp);
+        if (s_for_dict_complex64 == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote singular value tensor", null);
+        }
+        if (s_for_dict_complex64.tag == ERROR) return s_for_dict_complex64;
+        keep_s_value_complex64 = s_for_dict_complex64 == s_value_complex64;
+
+        usz[2] v_shape_buf_complex64 = { cols, k };
+        Value* v_value_complex64 = make_tensor_uninitialized_checked(interp, TENSOR_DTYPE_COMPLEX64, v_shape_buf_complex64[0:2], "matrix/svd: failed to allocate Complex64 V tensor");
+        if (v_value_complex64 == null || v_value_complex64.tag == ERROR) return v_value_complex64;
+        bool keep_v_value_complex64 = false;
+        defer if (!keep_v_value_complex64) {
+            boundary_cleanup_materialized_value(null, v_value_complex64, interp.current_scope);
+        }
+        if (v_value_complex64.tag != TENSOR || !tensor_has_valid_storage(v_value_complex64.tensor_val)) {
+            return tensor_runtime_raise(interp, "matrix/svd: V tensor backing storage is missing");
+        }
+        if (v_count > 0) {
+            usz v_bytes_complex64 = 0;
+            if (!tensor_checked_mul_usz(v_count, Complex64Val.sizeof, &v_bytes_complex64)) {
+                return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: V tensor is too large", null);
+            }
+            mem::copy(v_value_complex64.tensor_val.data, v_work_complex64, v_bytes_complex64);
+        }
+
+        Value* v_for_dict_complex64 = boundary_promote_to_root(v_value_complex64, interp);
+        if (v_for_dict_complex64 == null) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/svd: failed to promote V tensor", null);
+        }
+        if (v_for_dict_complex64.tag == ERROR) return v_for_dict_complex64;
+        keep_v_value_complex64 = v_for_dict_complex64 == v_value_complex64;
+
+        Value* out_complex64 = make_hashmap_checked(interp, 8, "matrix/svd: failed to allocate result dictionary");
+        if (out_complex64 == null || out_complex64.tag == ERROR) return out_complex64;
+        if (out_complex64.tag != HASHMAP || out_complex64.hashmap_val == null) {
+            return tensor_runtime_raise(interp, "matrix/svd: result dictionary backing storage is missing");
+        }
+        if (Value* err = explain_dict_set(out_complex64, interp, "u", u_for_dict_complex64)) return err;
+        if (Value* err = explain_dict_set(out_complex64, interp, "s", s_for_dict_complex64)) return err;
+        if (Value* err = explain_dict_set(out_complex64, interp, "v", v_for_dict_complex64)) return err;
+        return out_complex64;
     }
 
     if (matrix.dtype == TENSOR_DTYPE_FLOAT32) {

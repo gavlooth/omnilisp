@@ -5,6 +5,13 @@ Source: `.agents/PLAN.md`
 ## Current Validation Checkpoint
 
 - 2026-04-18 Vulkan fixed-width complex singular-values/norm checkpoint:
+  - Superseded closure note: as of 2026-04-23, the fixed-width complex
+    numerical matrix closure plan is a closed record. CPU/Vulkan complex SVD
+    factors, complex eigen routines, and direct Vulkan general
+    `matrix/eigenpairs` result-contract work have shipped and passed the
+    bounded global gate. No residual live work remains in this checkpoint;
+    future fixed-width complex tensor work should start from a newly selected
+    capability or audit item, not from this 2026-04-18 queue.
   - CPU `Complex128` and `Complex64` tensors now provide
     `matrix/singular-values` through realification and duplicate-pair collapse,
     returning component-width real tensors. CPU spectral/nuclear
@@ -25,13 +32,11 @@ Source: `.agents/PLAN.md`
   - Review follow-up: native helper validation now rejects fixed-complex
     shapes whose realified Jacobi iteration count would overflow shader
     `uint`; tests cover non-diagonal lazy, wide, zero-size, and guard paths.
-  - Remaining operation families: full complex `matrix/svd` factor output,
-    CUDA fixed-width complex singular-values/norm/SVD, complex eigen routines,
-    and direct Vulkan general `matrix/eigenpairs` result-contract work.
-  - Planning follow-up: those residuals are split into
+  - Historical planning follow-up: those residuals were split into
     `TENSOR-100H-SVD-FACTORS`, `TENSOR-100H-CUDA-SVD-NORMS`, and
-    `TENSOR-100H-COMPLEX-EIGEN` with the active closure plan at
-    `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md`.
+    `TENSOR-100H-COMPLEX-EIGEN`. The closure plan at
+    `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md` is now a
+    closed record, not an active queue.
 
 - 2026-04-18 Vulkan fixed-width complex QR/Cholesky checkpoint:
   - CPU `Complex128` and `Complex64` tensors now provide public

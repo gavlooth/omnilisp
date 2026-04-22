@@ -2,11 +2,11 @@ module lisp;
 
 fn Value* explain_effect_result_from_thunk(Interp* interp, Value* thunk_value) {
     if (thunk_value == null || thunk_value.tag != CLOSURE || thunk_value.closure_val == null) {
-        return raise_error(interp, "explain effect: expected thunked form");
+        return runtime_raise(interp, "type/arg-mismatch", "explain effect: expected thunked form");
     }
     Closure* thunk = thunk_value.closure_val;
     if (thunk.param_count != 0 || thunk.has_rest) {
-        return raise_error(interp, "explain effect: expected zero-arg thunk");
+        return runtime_raise(interp, "type/arg-mismatch", "explain effect: expected zero-arg thunk");
     }
 
     Expr* target = thunk.body;

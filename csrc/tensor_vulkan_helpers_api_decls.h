@@ -102,6 +102,48 @@ int omni_tensor_backend_vulkan_contract_f32(
     const size_t* out_strides,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_hermitian_eigen_complex128(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
+int omni_tensor_backend_vulkan_hermitian_eigen_complex64(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
+int omni_tensor_backend_vulkan_general_eigen_complex128(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
+int omni_tensor_backend_vulkan_general_eigen_complex64(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
+int omni_tensor_backend_vulkan_general_eigen_f64(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
+int omni_tensor_backend_vulkan_general_eigen_f32(
+    const void* input_device_ptr,
+    size_t byte_len,
+    size_t n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+);
 int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
     const void* left_device_ptr,
     const void* right_device_ptr,
@@ -148,6 +190,12 @@ int omni_tensor_backend_vulkan_read_symmetric_eigen_status_f64(
     void* output_device,
     size_t status_offset_bytes
 );
+int omni_tensor_backend_vulkan_read_symmetric_eigen_status_f32(
+    void* output_device,
+    size_t status_offset_bytes
+);
+int omni_tensor_backend_vulkan_read_general_eigen_status_f64(void* status_device);
+int omni_tensor_backend_vulkan_read_general_eigen_status_f32(void* status_device);
 int omni_tensor_backend_vulkan_singular_values_validate_shape_complex(
     size_t byte_len,
     size_t rows,
@@ -162,6 +210,17 @@ int omni_tensor_backend_vulkan_singular_values_validate_shape_f64(
     size_t cols,
     size_t* out_k,
     size_t* out_output_storage_count
+);
+int omni_tensor_backend_vulkan_svd_validate_shape_complex(
+    size_t byte_len,
+    size_t rows,
+    size_t cols,
+    size_t scalar_size,
+    size_t* out_k,
+    size_t* out_u_count,
+    size_t* out_u_storage_count,
+    size_t* out_s_storage_count,
+    size_t* out_v_count
 );
 int omni_tensor_backend_vulkan_singular_values_f64(
     const void* input_device_ptr,
@@ -357,6 +416,18 @@ int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     const size_t* out_strides,
     void** out_device_ptr
 );
+int omni_tensor_backend_vulkan_ml_layer_norm_f64(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t input_element_count,
+    size_t input_rank,
+    size_t axis,
+    double epsilon,
+    const size_t* input_shape,
+    const size_t* input_strides,
+    const size_t* out_strides,
+    void** out_device_ptr
+);
 int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     const void* input_device_ptr,
     size_t input_byte_len,
@@ -364,6 +435,26 @@ int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     size_t input_rank,
     size_t channel_axis,
     float epsilon,
+    const size_t* input_shape,
+    const size_t* input_strides,
+    const size_t* out_strides,
+    const void* scale_device_ptr,
+    size_t scale_byte_len,
+    const void* bias_device_ptr,
+    size_t bias_byte_len,
+    const void* mean_device_ptr,
+    size_t mean_byte_len,
+    const void* variance_device_ptr,
+    size_t variance_byte_len,
+    void** out_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_batch_norm_f64(
+    const void* input_device_ptr,
+    size_t input_byte_len,
+    size_t input_element_count,
+    size_t input_rank,
+    size_t channel_axis,
+    double epsilon,
     const size_t* input_shape,
     const size_t* input_strides,
     const size_t* out_strides,
@@ -643,6 +734,65 @@ int omni_tensor_backend_vulkan_ml_rmsprop_f32(
     float epsilon,
     float momentum,
     float weight_decay,
+    int has_square,
+    int has_velocity,
+    void** out_params_device_ptr,
+    void** out_square_device_ptr,
+    void** out_velocity_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_sgd_f64(
+    const void* params_device_ptr,
+    size_t params_byte_len,
+    const void* grads_device_ptr,
+    size_t grads_byte_len,
+    const void* velocity_device_ptr,
+    size_t velocity_byte_len,
+    size_t element_count,
+    double learning_rate,
+    double momentum,
+    double weight_decay,
+    int has_velocity,
+    void** out_params_device_ptr,
+    void** out_velocity_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_adam_f64(
+    const void* params_device_ptr,
+    size_t params_byte_len,
+    const void* grads_device_ptr,
+    size_t grads_byte_len,
+    const void* first_device_ptr,
+    size_t first_byte_len,
+    const void* second_device_ptr,
+    size_t second_byte_len,
+    size_t element_count,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon,
+    double weight_decay,
+    double first_correction,
+    double second_correction,
+    int decoupled_weight_decay,
+    int has_moments,
+    void** out_params_device_ptr,
+    void** out_first_device_ptr,
+    void** out_second_device_ptr
+);
+int omni_tensor_backend_vulkan_ml_rmsprop_f64(
+    const void* params_device_ptr,
+    size_t params_byte_len,
+    const void* grads_device_ptr,
+    size_t grads_byte_len,
+    const void* square_device_ptr,
+    size_t square_byte_len,
+    const void* velocity_device_ptr,
+    size_t velocity_byte_len,
+    size_t element_count,
+    double learning_rate,
+    double alpha,
+    double epsilon,
+    double momentum,
+    double weight_decay,
     int has_square,
     int has_velocity,
     void** out_params_device_ptr,

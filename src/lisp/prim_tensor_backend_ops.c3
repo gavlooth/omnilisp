@@ -5,7 +5,7 @@ import main;
 
 fn Value* prim_tensor_layout(Value*[] args, Env* env, Interp* interp) {
     if (args.len != 1) return primitive_arity_raise(interp, "tensor-layout", "1 argument: tensor", args.len);
-    if (!is_tensor(args[0])) return raise_error(interp, "tensor-layout: expected Tensor");
+    if (!is_tensor(args[0])) return tensor_raise(interp, "tensor/arg-mismatch", "tensor-layout: expected Tensor");
     TensorVal* tensor = args[0].tensor_val;
     if (tensor == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "tensor-layout: tensor backing storage is missing", null);
     if (!tensor_has_valid_metadata(tensor)) {
@@ -75,11 +75,11 @@ fn Value* tensor_backend_entry(
     if (!hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern("name")), make_symbol(interp, name), interp) ||
         !hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern("available")), available_value, interp) ||
         !hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern("device")), make_symbol(interp, placement), interp)) {
-        return raise_error(interp, "tensor-backends: out of memory while building backend entry");
+        return tensor_runtime_raise(interp, "tensor-backends: out of memory while building backend entry");
     }
     if (reason != INVALID_SYMBOL_ID &&
         !hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern("reason")), make_symbol(interp, reason), interp)) {
-        return raise_error(interp, "tensor-backends: out of memory while building backend entry");
+        return tensor_runtime_raise(interp, "tensor-backends: out of memory while building backend entry");
     }
     return entry;
 }
@@ -88,7 +88,7 @@ fn Value* tensor_backend_set_bool_field(Interp* interp, Value* entry, char[] fie
     if (entry == null || entry.tag == ERROR) return entry;
     Value* field_value = value ? make_symbol(interp, interp.sym_true) : make_symbol(interp, interp.sym_false);
     if (!hashmap_set_checked(entry.hashmap_val, make_symbol(interp, interp.symbols.intern(field_name)), field_value, interp)) {
-        return raise_error(interp, "tensor-backends: out of memory while building backend entry");
+        return tensor_runtime_raise(interp, "tensor-backends: out of memory while building backend entry");
     }
     return null;
 }
@@ -223,6 +223,9 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     SymbolId vulkan_sym = interp.symbols.intern("vulkan");
     bool cuda_available = omni_tensor_backend_cuda_available() != 0;
     bool cuda_map_available = omni_tensor_backend_cuda_map_available() != 0;
+    bool cuda_ml_optimizer_available = omni_tensor_backend_cuda_ml_optimizer_available() != 0;
+    bool cuda_ml_sgd_available = cuda_map_available || cuda_ml_optimizer_available;
+    bool cuda_ml_stateful_optimizer_available = cuda_map_available || cuda_ml_optimizer_available;
     bool cuda_scientific_map_available = omni_tensor_backend_cuda_scientific_map_available() != 0;
     bool cuda_complex_map_available = omni_tensor_backend_cuda_complex_map_available() != 0;
     bool cuda_complex_matrix_available = omni_tensor_backend_cuda_complex_matrix_available() != 0;
@@ -230,6 +233,8 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     bool cublas_available = omni_tensor_backend_cublas_available() != 0;
     bool cublas_float32_available = omni_tensor_backend_cublas_float32_available() != 0;
     bool cublas_complex_available = omni_tensor_backend_cublas_complex_available() != 0;
+    bool cusolver_available = omni_tensor_backend_cusolver_available() != 0;
+    bool cusolver_complex_svd_available = omni_tensor_backend_cusolver_complex_svd_available() != 0;
     bool vulkan_available = omni_tensor_backend_vulkan_available() != 0;
     bool vulkan_float64_available = omni_tensor_backend_vulkan_float64_available() != 0;
     bool vulkan_rounding_i64_available = omni_tensor_backend_vulkan_rounding_i64_available() != 0;
@@ -271,6 +276,18 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-numerical-complex64", vulkan_float32_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-hermitian-eigen-complex128", vulkan_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-hermitian-eigen-complex64", vulkan_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-eigenpairs-complex128", vulkan_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-eigenpairs-complex64", vulkan_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-eigenpairs-float64", vulkan_float64_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "matrix-eigenpairs-float32", vulkan_float32_available);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "scientific-map-float64", false);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "scientific-map-float32", vulkan_float32_available);
@@ -281,13 +298,52 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "rounding-big-integer", vulkan_rounding_i64_available);
     if (err != null) return err;
-    err = tensor_backend_set_ml_capability_fields(interp, vulkan_entry, false, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, vulkan_float64_available, vulkan_float32_available, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available, false, vulkan_float32_available);
+    err = tensor_backend_set_ml_capability_fields(
+        interp,
+        vulkan_entry,
+        false,
+        vulkan_float64_available,
+        vulkan_float32_available,
+        vulkan_float64_available,
+        vulkan_float32_available,
+        vulkan_float64_available,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        vulkan_float64_available,
+        vulkan_float32_available,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        vulkan_float64_available,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available,
+        false,
+        vulkan_float32_available
+    );
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-sgd-float64", vulkan_float64_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-sgd-float32", vulkan_float32_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-adam-float64", vulkan_float64_available);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-adam-float32", vulkan_float32_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-adamw-float64", vulkan_float64_available);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-adamw-float32", vulkan_float32_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-rmsprop-float64", vulkan_float64_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, vulkan_entry, "ml-optimizer-rmsprop-float32", vulkan_float32_available);
     if (err != null) return err;
@@ -311,6 +367,14 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, cublas_entry, "stats-normal-float64", false);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cublas_entry, "stats-normal-float32", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-hermitian-eigen-complex128", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-hermitian-eigen-complex64", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-eigenpairs-complex128", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cublas_entry, "matrix-eigenpairs-complex64", false);
     if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(interp, cublas_entry, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
     if (err != null) return err;
@@ -353,6 +417,14 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-numerical-complex64", false);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-hermitian-eigen-complex128", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-hermitian-eigen-complex64", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-eigenpairs-complex128", false);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-eigenpairs-complex64", false);
+    if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "scientific-map-float64", cuda_scientific_map_available);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "scientific-map-float32", cuda_scientific_map_available);
@@ -363,15 +435,27 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cuda_entry, "rounding-big-integer", cuda_rounding_i64_available);
     if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "cusolver", cusolver_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "cusolver-complex-svd", cusolver_complex_svd_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-singular-values-complex128", cusolver_complex_svd_available && cuda_complex_matrix_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-singular-values-complex64", cusolver_complex_svd_available && cuda_complex_matrix_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-svd-complex128", cusolver_complex_svd_available && cuda_complex_matrix_available);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "matrix-svd-complex64", cusolver_complex_svd_available && cuda_complex_matrix_available);
+    if (err != null) return err;
     err = tensor_backend_set_ml_capability_fields(interp, cuda_entry, false, false, false, cuda_map_available, cuda_map_available, cuda_map_available, cuda_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, cuda_scientific_map_available, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
     if (err != null) return err;
-    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-sgd-float32", cuda_map_available);
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-sgd-float32", cuda_ml_sgd_available);
     if (err != null) return err;
-    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adam-float32", cuda_map_available);
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adam-float32", cuda_ml_stateful_optimizer_available);
     if (err != null) return err;
-    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adamw-float32", cuda_map_available);
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-adamw-float32", cuda_ml_stateful_optimizer_available);
     if (err != null) return err;
-    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-rmsprop-float32", cuda_map_available);
+    err = tensor_backend_set_bool_field(interp, cuda_entry, "ml-optimizer-rmsprop-float32", cuda_ml_stateful_optimizer_available);
     if (err != null) return err;
     result = make_cons_or_error(interp, cuda_entry, result, "tensor-backends: failed to allocate result list");
     if (result == null || result.tag == ERROR) return result;
@@ -401,6 +485,14 @@ fn Value* prim_tensor_backends(Value*[] args, Env* env, Interp* interp) {
     err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-numerical-complex128", true);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-numerical-complex64", true);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-hermitian-eigen-complex128", true);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-hermitian-eigen-complex64", true);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-eigenpairs-complex128", omni_tensor_backend_lapack_zgeev_available() != 0);
+    if (err != null) return err;
+    err = tensor_backend_set_bool_field(interp, cpu_entry, "matrix-eigenpairs-complex64", omni_tensor_backend_lapack_cgeev_available() != 0);
     if (err != null) return err;
     err = tensor_backend_set_bool_field(interp, cpu_entry, "scientific-map-float64", true);
     if (err != null) return err;

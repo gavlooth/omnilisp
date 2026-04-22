@@ -17,24 +17,30 @@ permissions:
 
 jobs:
   aot-e2e-gate:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build main
-        run: c3c build
+      - name: Build static dependencies
+        run: deps/build_static.sh
 
-      - name: AOT smoke build
-        run: LD_LIBRARY_PATH=/usr/local/lib ./build/main --build test_simple.omni -o build/test_simple_aot
+      - name: Build validation image
+        run: OMNI_VALIDATION_IMAGE=omni-validation-ci scripts/build_validation_image.sh
 
-      - name: AOT smoke run
+      - name: AOT and E2E compile gate
         run: |
-          output="$(LD_LIBRARY_PATH=/usr/local/lib ./build/test_simple_aot)"
-          echo "$output"
-          test "$output" = "\"hello world\""
-
-      - name: E2E compile gate
-        run: OMNI_E2E_COMPILE_ONLY=1 scripts/run_e2e.sh
+          OMNI_VALIDATION_IMAGE=omni-validation-ci \
+            scripts/run_validation_container.sh \
+              bash -lc '
+                set -euo pipefail
+                scripts/build_omni_chelpers.sh
+                c3c build
+                LD_LIBRARY_PATH=/usr/local/lib ./build/main --build test_simple.omni -o build/test_simple_aot
+                output="$(LD_LIBRARY_PATH=/usr/local/lib ./build/test_simple_aot)"
+                echo "$output"
+                test "$output" = "\"hello world\""
+                OMNI_E2E_COMPILE_ONLY=1 scripts/run_e2e.sh
+              '

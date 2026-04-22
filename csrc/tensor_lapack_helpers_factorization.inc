@@ -132,6 +132,7 @@ int omni_tensor_backend_lapack_dgeev(
     double* wi,
     double* vr
 ) {
+    if (omni_tensor_backend_lapack_dgeev_disabled()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
     if (!omni_tensor_lapack_resolve()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
     if (omni_tensor_lapacke_dgeev == NULL) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
     if (a == NULL || wr == NULL || wi == NULL || vr == NULL) return OMNI_TENSOR_LAPACK_INVALID;
@@ -155,6 +156,113 @@ int omni_tensor_backend_lapack_dgeev(
     );
     if (info == 0) {
         omni_tensor_lapack_dgeev_calls++;
+        return OMNI_TENSOR_LAPACK_SUCCESS;
+    }
+    if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
+    return OMNI_TENSOR_LAPACK_INVALID;
+}
+
+int omni_tensor_backend_lapack_sgeev(
+    size_t n,
+    float* a,
+    float* wr,
+    float* wi,
+    float* vr
+) {
+    if (omni_tensor_backend_lapack_sgeev_disabled()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (!omni_tensor_lapack_resolve()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (omni_tensor_lapacke_sgeev == NULL) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (a == NULL || wr == NULL || wi == NULL || vr == NULL) return OMNI_TENSOR_LAPACK_INVALID;
+    if (n > (size_t)INT_MAX) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (n == 0) return OMNI_TENSOR_LAPACK_SUCCESS;
+
+    omni_lapack_int lapack_n = (omni_lapack_int)n;
+    int info = omni_tensor_lapacke_sgeev(
+        OMNI_LAPACK_ROW_MAJOR,
+        'N',
+        'V',
+        lapack_n,
+        a,
+        lapack_n,
+        wr,
+        wi,
+        NULL,
+        1,
+        vr,
+        lapack_n
+    );
+    if (info == 0) {
+        omni_tensor_lapack_sgeev_calls++;
+        return OMNI_TENSOR_LAPACK_SUCCESS;
+    }
+    if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
+    return OMNI_TENSOR_LAPACK_INVALID;
+}
+
+int omni_tensor_backend_lapack_zgeev(
+    size_t n,
+    omni_lapack_complex128* a,
+    omni_lapack_complex128* w,
+    omni_lapack_complex128* vr
+) {
+    if (omni_tensor_backend_lapack_zgeev_disabled()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (!omni_tensor_lapack_resolve()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (omni_tensor_lapacke_zgeev == NULL) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (a == NULL || w == NULL || vr == NULL) return OMNI_TENSOR_LAPACK_INVALID;
+    if (n > (size_t)INT_MAX) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (n == 0) return OMNI_TENSOR_LAPACK_SUCCESS;
+
+    omni_lapack_int lapack_n = (omni_lapack_int)n;
+    int info = omni_tensor_lapacke_zgeev(
+        OMNI_LAPACK_ROW_MAJOR,
+        'N',
+        'V',
+        lapack_n,
+        a,
+        lapack_n,
+        w,
+        NULL,
+        1,
+        vr,
+        lapack_n
+    );
+    if (info == 0) {
+        omni_tensor_lapack_zgeev_calls++;
+        return OMNI_TENSOR_LAPACK_SUCCESS;
+    }
+    if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;
+    return OMNI_TENSOR_LAPACK_INVALID;
+}
+
+int omni_tensor_backend_lapack_cgeev(
+    size_t n,
+    omni_lapack_complex64* a,
+    omni_lapack_complex64* w,
+    omni_lapack_complex64* vr
+) {
+    if (omni_tensor_backend_lapack_cgeev_disabled()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (!omni_tensor_lapack_resolve()) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (omni_tensor_lapacke_cgeev == NULL) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (a == NULL || w == NULL || vr == NULL) return OMNI_TENSOR_LAPACK_INVALID;
+    if (n > (size_t)INT_MAX) return OMNI_TENSOR_LAPACK_UNAVAILABLE;
+    if (n == 0) return OMNI_TENSOR_LAPACK_SUCCESS;
+
+    omni_lapack_int lapack_n = (omni_lapack_int)n;
+    int info = omni_tensor_lapacke_cgeev(
+        OMNI_LAPACK_ROW_MAJOR,
+        'N',
+        'V',
+        lapack_n,
+        a,
+        lapack_n,
+        w,
+        NULL,
+        1,
+        vr,
+        lapack_n
+    );
+    if (info == 0) {
+        omni_tensor_lapack_cgeev_calls++;
         return OMNI_TENSOR_LAPACK_SUCCESS;
     }
     if (info > 0) return OMNI_TENSOR_LAPACK_NO_CONVERGENCE;

@@ -340,7 +340,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
         case TENSOR_DTYPE_BIG_INTEGER: {
             void** values = (void**)matrix.data;
             void* sum = omni_big_integer_from_i64(0);
-            if (sum == null) return raise_error(interp, "matrix/trace: failed to allocate BigInteger zero");
+            if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigInteger zero");
             for (usz i = 0; i < n; i++) {
                 usz index = i * n + i;
                 if (values[index] == null) {
@@ -349,7 +349,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
                 }
                 void* next = omni_big_integer_binary(sum, values[index], BIG_INTEGER_OP_ADD);
                 omni_big_integer_free(sum);
-                if (next == null) return raise_error(interp, "matrix/trace: failed to allocate BigInteger trace");
+                if (next == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigInteger trace");
                 sum = next;
             }
             return make_big_integer_from_owned_handle(interp, sum, "matrix/trace: failed to allocate BigInteger trace");
@@ -357,7 +357,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
         case TENSOR_DTYPE_BIG_FLOAT: {
             void** values = (void**)matrix.data;
             void* sum = omni_big_float_from_i64(0);
-            if (sum == null) return raise_error(interp, "matrix/trace: failed to allocate BigFloat zero");
+            if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigFloat zero");
             for (usz i = 0; i < n; i++) {
                 usz index = i * n + i;
                 if (values[index] == null) {
@@ -366,7 +366,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
                 }
                 void* next = omni_big_float_binary(sum, values[index], BIG_FLOAT_OP_ADD);
                 omni_big_float_free(sum);
-                if (next == null) return raise_error(interp, "matrix/trace: failed to allocate BigFloat trace");
+                if (next == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigFloat trace");
                 sum = next;
             }
             return make_big_float_from_owned_handle(interp, sum, "matrix/trace: failed to allocate BigFloat trace");
@@ -374,7 +374,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
         case TENSOR_DTYPE_BIG_COMPLEX: {
             void** values = (void**)matrix.data;
             void* sum = omni_big_complex_from_i64(0);
-            if (sum == null) return raise_error(interp, "matrix/trace: failed to allocate BigComplex zero");
+            if (sum == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigComplex zero");
             for (usz i = 0; i < n; i++) {
                 usz index = i * n + i;
                 if (values[index] == null) {
@@ -383,7 +383,7 @@ fn Value* matrix_trace_scalar_value(TensorVal* matrix, Interp* interp) {
                 }
                 void* next = omni_big_complex_binary(sum, values[index], BIG_COMPLEX_OP_ADD);
                 omni_big_complex_free(sum);
-                if (next == null) return raise_error(interp, "matrix/trace: failed to allocate BigComplex trace");
+                if (next == null) return tensor_raise(interp, "tensor/out-of-memory", "matrix/trace: failed to allocate BigComplex trace");
                 sum = next;
             }
             return make_big_complex_from_owned_handle(interp, sum, "matrix/trace: failed to allocate BigComplex trace");
@@ -603,6 +603,34 @@ fn bool matrix_general_vectors_from_lapack(
     }
     return true;
 }
+fn bool matrix_general_vectors_from_lapack_f32(
+    float* raw_vectors,
+    float* imag_parts,
+    usz n,
+    double* vector_real,
+    double* vector_imag
+) {
+    if (n == 0) return true;
+    if (raw_vectors == null || imag_parts == null || vector_real == null || vector_imag == null) return false;
+    for (usz col = 0; col < n; col++) {
+        for (usz row = 0; row < n; row++) {
+            double component_real = 0.0;
+            double component_imag = 0.0;
+            if (imag_parts[col] > 0.0f && col + 1 < n) {
+                component_real = (double)raw_vectors[row * n + col];
+                component_imag = (double)raw_vectors[row * n + col + 1];
+            } else if (imag_parts[col] < 0.0f && col > 0) {
+                component_real = (double)raw_vectors[row * n + col - 1];
+                component_imag = -(double)raw_vectors[row * n + col];
+            } else {
+                component_real = (double)raw_vectors[row * n + col];
+            }
+            vector_real[row * n + col] = component_real;
+            vector_imag[row * n + col] = component_imag;
+        }
+    }
+    return true;
+}
 fn bool matrix_store_big_complex_handle(void** slots, usz index, double real_part, double imag_part) {
     if (slots == null) return false;
     void* handle = omni_big_complex_from_doubles(matrix_clean_near_zero(real_part), matrix_clean_near_zero(imag_part));
@@ -659,6 +687,114 @@ fn bool matrix_fill_general_eigenpairs_from_vectors_big_complex(
             double normalized_real = component_real * rotation_real - component_imag * rotation_imag;
             double normalized_imag = component_real * rotation_imag + component_imag * rotation_real;
             if (!matrix_store_big_complex_handle(vector_slots, row * n + out_col, normalized_real, normalized_imag)) return false;
+        }
+    }
+    return true;
+}
+fn bool matrix_fill_general_eigenpairs_from_vectors_complex128(
+    usz n,
+    double* real_parts,
+    double* imag_parts,
+    double* vector_real,
+    double* vector_imag,
+    TensorVal* values_tensor,
+    TensorVal* vectors_tensor
+) {
+    if (values_tensor == null || vectors_tensor == null) return false;
+    if (values_tensor.dtype != TENSOR_DTYPE_COMPLEX128 || vectors_tensor.dtype != TENSOR_DTYPE_COMPLEX128) return false;
+    if (values_tensor.rank != 1 || vectors_tensor.rank != 2 || values_tensor.shape == null || vectors_tensor.shape == null) return false;
+    if (values_tensor.shape[0] != n || vectors_tensor.shape[0] != n || vectors_tensor.shape[1] != n) return false;
+    if (!tensor_has_valid_storage(values_tensor) || !tensor_has_valid_storage(vectors_tensor)) return false;
+    usz* order = null;
+    if (!matrix_general_eigen_order(real_parts, imag_parts, n, &order)) return false;
+    defer if (order != null) mem::free(order);
+    Complex128Val* value_slots = (Complex128Val*)values_tensor.data;
+    Complex128Val* vector_slots = (Complex128Val*)vectors_tensor.data;
+    for (usz out_col = 0; out_col < n; out_col++) {
+        usz eigen_index = order[out_col];
+        value_slots[out_col].real = matrix_clean_near_zero(real_parts[eigen_index]);
+        value_slots[out_col].imag = matrix_clean_near_zero(imag_parts[eigen_index]);
+        double pivot_real = 0.0;
+        double pivot_imag = 0.0;
+        double pivot_magnitude = 0.0;
+        for (usz row = 0; row < n; row++) {
+            double component_real = vector_real[row * n + eigen_index];
+            double component_imag = vector_imag[row * n + eigen_index];
+            double component_magnitude = matrix_complex_magnitude_squared(component_real, component_imag);
+            if (component_magnitude > pivot_magnitude) {
+                pivot_magnitude = component_magnitude;
+                pivot_real = component_real;
+                pivot_imag = component_imag;
+            }
+        }
+        double rotation_real = 1.0;
+        double rotation_imag = 0.0;
+        if (pivot_magnitude > 0.0) {
+            double pivot_abs = tensor_c_sqrt(pivot_magnitude);
+            rotation_real = pivot_real / pivot_abs;
+            rotation_imag = -pivot_imag / pivot_abs;
+        }
+        for (usz row = 0; row < n; row++) {
+            double component_real = vector_real[row * n + eigen_index];
+            double component_imag = vector_imag[row * n + eigen_index];
+            Complex128Val out;
+            out.real = matrix_clean_near_zero(component_real * rotation_real - component_imag * rotation_imag);
+            out.imag = matrix_clean_near_zero(component_real * rotation_imag + component_imag * rotation_real);
+            vector_slots[row * n + out_col] = out;
+        }
+    }
+    return true;
+}
+fn bool matrix_fill_general_eigenpairs_from_vectors_complex64(
+    usz n,
+    double* real_parts,
+    double* imag_parts,
+    double* vector_real,
+    double* vector_imag,
+    TensorVal* values_tensor,
+    TensorVal* vectors_tensor
+) {
+    if (values_tensor == null || vectors_tensor == null) return false;
+    if (values_tensor.dtype != TENSOR_DTYPE_COMPLEX64 || vectors_tensor.dtype != TENSOR_DTYPE_COMPLEX64) return false;
+    if (values_tensor.rank != 1 || vectors_tensor.rank != 2 || values_tensor.shape == null || vectors_tensor.shape == null) return false;
+    if (values_tensor.shape[0] != n || vectors_tensor.shape[0] != n || vectors_tensor.shape[1] != n) return false;
+    if (!tensor_has_valid_storage(values_tensor) || !tensor_has_valid_storage(vectors_tensor)) return false;
+    usz* order = null;
+    if (!matrix_general_eigen_order(real_parts, imag_parts, n, &order)) return false;
+    defer if (order != null) mem::free(order);
+    Complex64Val* value_slots = (Complex64Val*)values_tensor.data;
+    Complex64Val* vector_slots = (Complex64Val*)vectors_tensor.data;
+    for (usz out_col = 0; out_col < n; out_col++) {
+        usz eigen_index = order[out_col];
+        value_slots[out_col].real = (float)matrix_clean_near_zero(real_parts[eigen_index]);
+        value_slots[out_col].imag = (float)matrix_clean_near_zero(imag_parts[eigen_index]);
+        double pivot_real = 0.0;
+        double pivot_imag = 0.0;
+        double pivot_magnitude = 0.0;
+        for (usz row = 0; row < n; row++) {
+            double component_real = vector_real[row * n + eigen_index];
+            double component_imag = vector_imag[row * n + eigen_index];
+            double component_magnitude = matrix_complex_magnitude_squared(component_real, component_imag);
+            if (component_magnitude > pivot_magnitude) {
+                pivot_magnitude = component_magnitude;
+                pivot_real = component_real;
+                pivot_imag = component_imag;
+            }
+        }
+        double rotation_real = 1.0;
+        double rotation_imag = 0.0;
+        if (pivot_magnitude > 0.0) {
+            double pivot_abs = tensor_c_sqrt(pivot_magnitude);
+            rotation_real = pivot_real / pivot_abs;
+            rotation_imag = -pivot_imag / pivot_abs;
+        }
+        for (usz row = 0; row < n; row++) {
+            double component_real = vector_real[row * n + eigen_index];
+            double component_imag = vector_imag[row * n + eigen_index];
+            Complex64Val out;
+            out.real = (float)matrix_clean_near_zero(component_real * rotation_real - component_imag * rotation_imag);
+            out.imag = (float)matrix_clean_near_zero(component_real * rotation_imag + component_imag * rotation_real);
+            vector_slots[row * n + out_col] = out;
         }
     }
     return true;

@@ -11,7 +11,7 @@
 ## Current Status
 
 Status: `green`
-As of: 2026-04-12
+As of: 2026-04-23
 
 The latest all-slice follow-up,
 `VALIDATION-ALL-SLICE-NESTED-LET-2026-04-11`, is closed.

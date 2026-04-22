@@ -69,6 +69,10 @@ fn void ui_ftxui_destroy_state(UiFtxuiRunState* state) {
     *state = {};
 }
 
+fn Value* ftxui_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "ui", code, message, null);
+}
+
 fn Value* ui_ftxui_raise_status(
     UiFtxuiRunState* state,
     char[] op_name,
@@ -92,7 +96,7 @@ fn Value* ui_ftxui_raise_status(
     )) {
         msg = formatted;
     }
-    return raise_error(interp, msg);
+    return ftxui_raise(interp, "ui/operation-failed", msg);
 }
 
 fn Value* ui_ftxui_track_component_or_oom(
@@ -102,13 +106,13 @@ fn Value* ui_ftxui_track_component_or_oom(
 ) {
     if (ui_ftxui_push_component(state, component)) return null;
     if (component != null) omni_ftxui_component_destroy(component);
-    return raise_error(interp, "ui-ftxui: out of memory while tracking component");
+    return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory while tracking component");
 }
 
 fn Value* ui_ftxui_track_heap_or_oom(UiFtxuiRunState* state, void* ptr, Interp* interp) {
     if (ui_ftxui_push_heap_ptr(state, ptr)) return null;
     if (ptr != null) mem::free(ptr);
-    return raise_error(interp, "ui-ftxui: out of memory while tracking heap state");
+    return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory while tracking heap state");
 }
 
 fn Value* ui_ftxui_dict_get(Value* dict, char[] key, Interp* interp) {
@@ -127,7 +131,7 @@ fn char[] ui_ftxui_kind_name(Value* kind_value, Interp* interp) {
 
 fn Value* ui_ftxui_require_stringish(Value* value, char** out_text, Interp* interp, char[] message) {
     char* text = copy_value_to_heap_c_string(value, interp);
-    if (text == null) return raise_error(interp, message);
+    if (text == null) return ftxui_raise(interp, "ui/invalid-argument", message);
     *out_text = text;
     return null;
 }
@@ -141,7 +145,7 @@ fn Value* ui_ftxui_collect_number_sequence(
 ) {
     *out_values = null;
     *out_count = 0;
-    if (seq == null || is_nil(seq)) return raise_error(interp, message);
+    if (seq == null || is_nil(seq)) return ftxui_raise(interp, "ui/invalid-argument", message);
 
     usz count = 0;
     if (seq.tag == ARRAY && seq.array_val != null) {
@@ -149,27 +153,27 @@ fn Value* ui_ftxui_collect_number_sequence(
     } else if (is_cons(seq)) {
         Value* cur = seq;
         while (is_cons(cur)) {
-            if (count == usz.max) return raise_error(interp, message);
+            if (count == usz.max) return ftxui_raise(interp, "ui/invalid-argument", message);
             count++;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, message);
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", message);
     } else {
-        return raise_error(interp, message);
+        return ftxui_raise(interp, "ui/invalid-argument", message);
     }
 
-    if (count == 0) return raise_error(interp, "ui-ftxui: graph requires at least one numeric sample");
-    if (count > usz.max / double.sizeof) return raise_error(interp, "ui-ftxui: graph series too large");
+    if (count == 0) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: graph requires at least one numeric sample");
+    if (count > usz.max / double.sizeof) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: graph series too large");
 
     double* values = (double*)mem::malloc(double.sizeof * count);
-    if (values == null) return raise_error(interp, "ui-ftxui: out of memory allocating graph series");
+    if (values == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory allocating graph series");
 
     if (seq.tag == ARRAY && seq.array_val != null) {
         for (usz i = 0; i < count; i++) {
             Value* item = seq.array_val.items[i];
             if (!is_number(item)) {
                 mem::free(values);
-                return raise_error(interp, message);
+                return ftxui_raise(interp, "ui/invalid-argument", message);
             }
             values[i] = to_double(item);
         }
@@ -180,7 +184,7 @@ fn Value* ui_ftxui_collect_number_sequence(
             Value* item = car(cur);
             if (!is_number(item)) {
                 mem::free(values);
-                return raise_error(interp, message);
+                return ftxui_raise(interp, "ui/invalid-argument", message);
             }
             values[index++] = to_double(item);
             cur = cdr(cur);

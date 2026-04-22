@@ -1,5 +1,10 @@
 module lisp;
 
+fn Value* tensor_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "tensor", code, (String)message, null);
+}
+
+
 import std::core::mem;
 import main;
 
@@ -24,15 +29,15 @@ fn double tensor_apply_double_rounding(double input, int op) {
 
 fn Value* tensor_store_integer_value(void** out_values, usz index, Value* integer_value, Interp* interp, char[] message) {
     void* handle = null;
-    if (integer_value == null) return raise_error(interp, message);
+    if (integer_value == null) return tensor_raise(interp, "tensor/invalid-argument", message);
     if (integer_value.tag == INT) {
         handle = omni_big_integer_from_i64(integer_value.int_val);
     } else if (integer_value.tag == BIG_INTEGER) {
         handle = omni_big_integer_clone(integer_value.big_integer_val);
     } else {
-        return raise_error(interp, message);
+        return tensor_raise(interp, "tensor/invalid-argument", message);
     }
-    if (handle == null) return raise_error(interp, message);
+    if (handle == null) return tensor_raise(interp, "tensor/invalid-argument", message);
     if (out_values[index] != null) omni_big_integer_free(out_values[index]);
     out_values[index] = handle;
     return null;
@@ -67,10 +72,10 @@ fn Value* tensor_cuda_rounding_to_cpu_big_integer_value(TensorVal* source, int o
     long* rounded_values = null;
     if (source.element_count > 0) {
         if (source.element_count > usz.max / long.sizeof) {
-            return raise_error(interp, "rounding: tensor integer result storage is too large");
+            return tensor_raise(interp, "tensor/out-of-memory", "rounding: tensor integer result storage is too large");
         }
         rounded_values = (long*)mem::malloc(long.sizeof * source.element_count);
-        if (rounded_values == null) return raise_error(interp, "rounding: failed to allocate CUDA integer result buffer");
+        if (rounded_values == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate CUDA integer result buffer");
     }
     defer if (rounded_values != null) mem::free(rounded_values);
 
@@ -94,15 +99,15 @@ fn Value* tensor_cuda_rounding_to_cpu_big_integer_value(TensorVal* source, int o
         );
     }
     if (status != OMNI_TENSOR_CUDA_SUCCESS) {
-        if (status == OMNI_TENSOR_CUDA_DOMAIN_ERROR) return raise_error(interp, range_message);
-        if (status == OMNI_TENSOR_CUDA_INVALID_ARGUMENT) return raise_error(interp, "rounding: invalid CUDA rounding operation");
+        if (status == OMNI_TENSOR_CUDA_DOMAIN_ERROR) return tensor_raise(interp, "tensor/domain-error", range_message);
+        if (status == OMNI_TENSOR_CUDA_INVALID_ARGUMENT) return tensor_raise(interp, "tensor/invalid-argument", "rounding: invalid CUDA rounding operation");
         return tensor_cuda_status_raise(interp, status, "rounding: CUDA rounding kernel failed");
     }
 
     void** dst_values = (void**)out_value.tensor_val.data;
     for (usz i = 0; i < source.element_count; i++) {
         void* result = omni_big_integer_from_i64(rounded_values[i]);
-        if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+        if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate BigInteger tensor element");
         if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
         dst_values[i] = result;
     }
@@ -140,10 +145,10 @@ fn Value* tensor_vulkan_rounding_to_cpu_big_integer_value(TensorVal* source, int
     long* rounded_values = null;
     if (source.element_count > 0) {
         if (source.element_count > usz.max / long.sizeof) {
-            return raise_error(interp, "rounding: tensor integer result storage is too large");
+            return tensor_raise(interp, "tensor/out-of-memory", "rounding: tensor integer result storage is too large");
         }
         rounded_values = (long*)mem::malloc(long.sizeof * source.element_count);
-        if (rounded_values == null) return raise_error(interp, "rounding: failed to allocate Vulkan integer result buffer");
+        if (rounded_values == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate Vulkan integer result buffer");
     }
     defer if (rounded_values != null) mem::free(rounded_values);
 
@@ -167,15 +172,15 @@ fn Value* tensor_vulkan_rounding_to_cpu_big_integer_value(TensorVal* source, int
         );
     }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
-        if (status == OMNI_TENSOR_VULKAN_DOMAIN_ERROR) return raise_error(interp, range_message);
-        if (status == OMNI_TENSOR_VULKAN_INVALID_ARGUMENT) return raise_error(interp, "rounding: invalid Vulkan rounding operation");
+        if (status == OMNI_TENSOR_VULKAN_DOMAIN_ERROR) return tensor_raise(interp, "tensor/domain-error", range_message);
+        if (status == OMNI_TENSOR_VULKAN_INVALID_ARGUMENT) return tensor_raise(interp, "tensor/invalid-argument", "rounding: invalid Vulkan rounding operation");
         return tensor_vulkan_status_raise(interp, status, "rounding: Vulkan rounding kernel failed");
     }
 
     void** dst_values = (void**)out_value.tensor_val.data;
     for (usz i = 0; i < source.element_count; i++) {
         void* result = omni_big_integer_from_i64(rounded_values[i]);
-        if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+        if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate BigInteger tensor element");
         if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
         dst_values[i] = result;
     }
@@ -237,7 +242,7 @@ fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_messag
         boundary_cleanup_materialized_value(null, concrete_value, interp.current_scope);
     }
     if (source.dtype == TENSOR_DTYPE_BIG_COMPLEX || tensor_dtype_is_fixed_complex(source.dtype)) {
-        return raise_error(interp, "rounding: complex numbers are not supported");
+        return tensor_raise(interp, "tensor/unsupported", "rounding: complex numbers are not supported");
     }
 
     usz[1] scalar_shape = { 0 };
@@ -259,9 +264,9 @@ fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_messag
             for (usz i = 0; i < source.element_count; i++) {
                 double rounded = tensor_apply_double_rounding(src_values[i], op);
                 long narrowed = 0;
-                if (!math_try_double_to_int(rounded, &narrowed)) return raise_error(interp, range_message);
+                if (!math_try_double_to_int(rounded, &narrowed)) return tensor_raise(interp, "tensor/domain-error", range_message);
                 void* result = omni_big_integer_from_i64(narrowed);
-                if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate BigInteger tensor element");
                 if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -271,9 +276,9 @@ fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_messag
             for (usz i = 0; i < source.element_count; i++) {
                 double rounded = tensor_apply_double_rounding((double)src_values[i], op);
                 long narrowed = 0;
-                if (!math_try_double_to_int(rounded, &narrowed)) return raise_error(interp, range_message);
+                if (!math_try_double_to_int(rounded, &narrowed)) return tensor_raise(interp, "tensor/domain-error", range_message);
                 void* result = omni_big_integer_from_i64(narrowed);
-                if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate BigInteger tensor element");
                 if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -283,7 +288,7 @@ fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_messag
             for (usz i = 0; i < source.element_count; i++) {
                 if (src_values[i] == null) return tensor_runtime_raise(interp, "rounding: tensor BigInteger element is missing");
                 void* result = omni_big_integer_clone(src_values[i]);
-                if (result == null) return raise_error(interp, "rounding: failed to allocate BigInteger tensor element");
+                if (result == null) return tensor_raise(interp, "tensor/out-of-memory", "rounding: failed to allocate BigInteger tensor element");
                 if (dst_values[i] != null) omni_big_integer_free(dst_values[i]);
                 dst_values[i] = result;
             }
@@ -301,10 +306,10 @@ fn Value* tensor_rounding_value(Value* tensor_value, int op, char[] range_messag
             }
         }
         case TENSOR_DTYPE_BIG_COMPLEX:
-            return raise_error(interp, "rounding: complex numbers are not supported");
+            return tensor_raise(interp, "tensor/unsupported", "rounding: complex numbers are not supported");
         case TENSOR_DTYPE_COMPLEX128:
         case TENSOR_DTYPE_COMPLEX64:
-            return raise_error(interp, "rounding: complex numbers are not supported");
+            return tensor_raise(interp, "tensor/unsupported", "rounding: complex numbers are not supported");
     }
 
     keep_out = true;

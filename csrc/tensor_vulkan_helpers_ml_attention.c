@@ -22,9 +22,11 @@ int omni_tensor_backend_vulkan_ml_attention_f32(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float32_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (query_device_ptr == NULL || key_device_ptr == NULL || value_device_ptr == NULL || mask_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     if (batch_count == 0 || query_len == 0 || key_len == 0 || head_dim == 0 || value_dim == 0) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (mask_kind > 2u || !isfinite(scale) || scale <= 0.0f) return OMNI_TENSOR_VULKAN_INVALID_ARGUMENT;
+    if (query_device_ptr == NULL || key_device_ptr == NULL || value_device_ptr == NULL || (mask_kind != 0u && mask_device_ptr == NULL)) {
+        return OMNI_TENSOR_VULKAN_INVALID;
+    }
     if (batch_count > UINT32_MAX || query_len > UINT32_MAX || key_len > UINT32_MAX ||
         head_dim > UINT32_MAX || value_dim > UINT32_MAX) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
@@ -65,7 +67,7 @@ int omni_tensor_backend_vulkan_ml_attention_f32(
         return OMNI_TENSOR_VULKAN_INVALID;
     }
 
-    size_t mask_required = sizeof(float);
+    size_t mask_required = 0;
     if (mask_kind == 1u) {
         if (query_len > SIZE_MAX / key_len) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
         size_t mask_count = query_len * key_len;
@@ -80,18 +82,19 @@ int omni_tensor_backend_vulkan_ml_attention_f32(
         if (mask_count > UINT32_MAX || mask_count > SIZE_MAX / sizeof(float)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
         mask_required = mask_count * sizeof(float);
     }
-    if (mask_byte_len < mask_required) return OMNI_TENSOR_VULKAN_INVALID;
+    if (mask_kind != 0u && mask_byte_len < mask_required) return OMNI_TENSOR_VULKAN_INVALID;
 
     OmniTensorVulkanBuffer* query = (OmniTensorVulkanBuffer*)query_device_ptr;
     OmniTensorVulkanBuffer* key = (OmniTensorVulkanBuffer*)key_device_ptr;
     OmniTensorVulkanBuffer* value = (OmniTensorVulkanBuffer*)value_device_ptr;
-    OmniTensorVulkanBuffer* mask = (OmniTensorVulkanBuffer*)mask_device_ptr;
+    OmniTensorVulkanBuffer* mask = mask_kind == 0u ? query : (OmniTensorVulkanBuffer*)mask_device_ptr;
+    size_t effective_mask_byte_len = mask_kind == 0u ? query_byte_len : mask_byte_len;
     OmniTensorVulkanContext* context = query->context;
     if (context == NULL || context->device == NULL ||
         key->context != context || value->context != context || mask->context != context ||
         query->buffer == NULL || key->buffer == NULL || value->buffer == NULL || mask->buffer == NULL ||
         query->byte_len < query_byte_len || key->byte_len < key_byte_len ||
-        value->byte_len < value_byte_len || mask->byte_len < mask_byte_len) {
+        value->byte_len < value_byte_len || mask->byte_len < effective_mask_byte_len) {
         return OMNI_TENSOR_VULKAN_INVALID;
     }
 
@@ -111,7 +114,7 @@ int omni_tensor_backend_vulkan_ml_attention_f32(
         { query->buffer, (OmniVulkanDeviceSize)query_byte_len },
         { key->buffer, (OmniVulkanDeviceSize)key_byte_len },
         { value->buffer, (OmniVulkanDeviceSize)value_byte_len },
-        { mask->buffer, (OmniVulkanDeviceSize)mask_byte_len },
+        { mask->buffer, (OmniVulkanDeviceSize)effective_mask_byte_len },
         { NULL, (OmniVulkanDeviceSize)output_byte_len }
     };
 

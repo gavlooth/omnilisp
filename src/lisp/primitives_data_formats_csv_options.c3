@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::core::mem;
 import std::io;
 import main;
@@ -47,16 +48,16 @@ fn Value* parse_csv_char_option(
 ) {
     if (value == null || value.tag != STRING || value.str_len != 1) {
         if (string_equals(context, "csv-parse") && string_equals(option_name, "delimiter")) {
-            return raise_error(interp, "csv-parse: delimiter must be a one-character string");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-parse: delimiter must be a one-character string");
         }
         if (string_equals(context, "csv-emit") && string_equals(option_name, "delimiter")) {
-            return raise_error(interp, "csv-emit: delimiter must be a one-character string");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: delimiter must be a one-character string");
         }
         if (string_equals(context, "csv-emit") && string_equals(option_name, "quote-char")) {
-            return raise_error(interp, "csv-emit: quote-char must be a one-character string");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-char must be a one-character string");
         }
 
-        return raise_error(interp, "option must be a one-character string");
+        return data_format_raise(interp, "type/arg-mismatch", "option must be a one-character string");
     }
 
     *out_char = value.str_chars[0];
@@ -90,12 +91,12 @@ fn Value* parse_csv_bool_option(
     } else {
         msg = "csv-emit: option must be a boolean (true/false)";
     }
-    return raise_error(interp, msg);
+    return data_format_raise(interp, "type/arg-mismatch", msg);
 }
 
 fn Value* parse_csv_line_ending(Value* value, char[]* out_line_ending, Interp* interp) {
     if (value == null || value.tag != STRING) {
-        return raise_error(interp, "csv-emit: line-ending must be a string");
+        return data_format_raise(interp, "type/arg-mismatch", "csv-emit: line-ending must be a string");
     }
 
     if (value.str_len == 1 && (value.str_chars[0] == '\n' || value.str_chars[0] == '\r')) {
@@ -108,7 +109,7 @@ fn Value* parse_csv_line_ending(Value* value, char[]* out_line_ending, Interp* i
         return null;
     }
 
-    return raise_error(interp, "csv-emit: line-ending must be \"\\n\", \"\\r\", or \"\\r\\n\"");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: line-ending must be \"\\n\", \"\\r\", or \"\\r\\n\"");
 }
 
 fn Value* parse_csv_quote_style_option(Value* value, int* out_style, Interp* interp) {
@@ -118,14 +119,14 @@ fn Value* parse_csv_quote_style_option(Value* value, int* out_style, Interp* int
             if (!is_nil(quote_sym) && is_symbol(quote_sym) && csv_is_symbol_name(quote_sym, "quote", interp)) {
                 Value* quote_arg = cdr(value);
                 if (!is_cons(quote_arg) || !is_nil(cdr(quote_arg))) {
-                    return raise_error(interp, "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
+                    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
                 }
                 value = car(quote_arg);
             }
         }
     }
     if (value == null || value.tag != SYMBOL) {
-        return raise_error(interp, "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
+        return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
     }
 
     if (csv_is_symbol_name(value, "minimal", interp)) {
@@ -141,7 +142,7 @@ fn Value* parse_csv_quote_style_option(Value* value, int* out_style, Interp* int
         return null;
     }
 
-    return raise_error(interp, "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: quote-style must be one of 'minimal, 'always, or 'none");
 }
 
 fn Value* parse_csv_parse_option_entry(Value* key, Value* value, CsvParseOptions* opts, Interp* interp) {
@@ -151,7 +152,7 @@ fn Value* parse_csv_parse_option_entry(Value* key, Value* value, CsvParseOptions
     if (csv_is_symbol_name(key, "strict", interp)) {
         return parse_csv_bool_option(value, &opts.strict, "strict", interp, "csv-parse");
     }
-    return raise_error(interp, "csv-parse: unknown option key");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-parse: unknown option key");
 }
 
 fn Value* parse_csv_emit_option_entry(Value* key, Value* value, CsvEmitOptions* opts, Interp* interp) {
@@ -175,14 +176,14 @@ fn Value* parse_csv_emit_option_entry(Value* key, Value* value, CsvEmitOptions* 
         } else if (is_symbol(value)) {
             opts.nil_as = interp.symbols.get_name(value.sym_val);
         } else {
-            return raise_error(interp, "csv-emit: nil-as must be a string or symbol");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-emit: nil-as must be a string or symbol");
         }
         return null;
     }
     if (csv_is_symbol_name(key, "strict", interp)) {
         return parse_csv_bool_option(value, &opts.strict, "strict", interp, "csv-emit");
     }
-    return raise_error(interp, "csv-emit: unknown option key");
+    return data_format_raise(interp, "type/arg-mismatch", "csv-emit: unknown option key");
 }
 
 fn bool csv_char_is_line_ending(char ch) {

@@ -1,0 +1,442 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const float OMNI_SVD_EPS = 0.0000000001f;
+const float OMNI_SVD_NORM_EPS = 0.000000000000000000000001f;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    vec2 input_values[];
+};
+
+layout(std430, binding = 1) buffer UBuffer {
+    vec2 u_values[];
+};
+
+layout(std430, binding = 2) buffer SBuffer {
+    float s_values[];
+};
+
+layout(std430, binding = 3) buffer VBuffer {
+    vec2 v_values[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint cols;
+    uint k;
+    uint u_count;
+    uint s_count;
+    uint v_count;
+} pc;
+
+float abs_f32(float value) {
+    return value < 0.0f ? -value : value;
+}
+
+bool is_finite_f32(float value) {
+    return value == value && (value - value) == 0.0f;
+}
+
+vec2 c_add(vec2 left, vec2 right) {
+    return vec2(left.x + right.x, left.y + right.y);
+}
+
+vec2 c_sub(vec2 left, vec2 right) {
+    return vec2(left.x - right.x, left.y - right.y);
+}
+
+vec2 c_mul(vec2 left, vec2 right) {
+    return vec2(left.x * right.x - left.y * right.y, left.x * right.y + left.y * right.x);
+}
+
+vec2 c_conj(vec2 value) {
+    return vec2(value.x, -value.y);
+}
+
+vec2 c_scale(vec2 value, float scale) {
+    return vec2(value.x * scale, value.y * scale);
+}
+
+float c_abs_squared(vec2 value) {
+    return value.x * value.x + value.y * value.y;
+}
+
+bool c_is_finite(vec2 value) {
+    return is_finite_f32(value.x) && is_finite_f32(value.y);
+}
+
+uint gram_index(uint row, uint col, uint n) {
+    return pc.u_count + row * n + col;
+}
+
+uint vector_index(uint row, uint n) {
+    return pc.u_count + n * n + row;
+}
+
+uint next_index(uint row, uint n) {
+    return pc.u_count + n * n + n + row;
+}
+
+vec2 basis_get(bool use_v, uint row, uint col) {
+    return use_v ? v_values[row * pc.k + col] : u_values[row * pc.k + col];
+}
+
+void basis_set(bool use_v, uint row, uint col, vec2 value) {
+    if (use_v) {
+        v_values[row * pc.k + col] = value;
+    } else {
+        u_values[row * pc.k + col] = value;
+    }
+}
+
+void zero_outputs() {
+    for (uint index = 0u; index < pc.u_count; index++) {
+        u_values[index] = vec2(0.0f, 0.0f);
+    }
+    for (uint index = 0u; index < pc.s_count; index++) {
+        s_values[index] = 0.0f;
+    }
+    for (uint index = 0u; index < pc.v_count; index++) {
+        v_values[index] = vec2(0.0f, 0.0f);
+    }
+}
+
+void vector_orthogonalize_against_basis(uint offset, uint rows, uint col, bool use_v) {
+    for (uint prev = 0u; prev < col; prev++) {
+        vec2 dot = vec2(0.0f, 0.0f);
+        for (uint row = 0u; row < rows; row++) {
+            dot = c_add(dot, c_mul(c_conj(basis_get(use_v, row, prev)), u_values[offset + row]));
+        }
+        for (uint row = 0u; row < rows; row++) {
+            u_values[offset + row] = c_sub(u_values[offset + row], c_mul(basis_get(use_v, row, prev), dot));
+        }
+    }
+}
+
+bool vector_normalize(uint offset, uint rows) {
+    float norm_squared = 0.0f;
+    for (uint row = 0u; row < rows; row++) {
+        norm_squared += c_abs_squared(u_values[offset + row]);
+    }
+    if (!(norm_squared > OMNI_SVD_NORM_EPS) || !is_finite_f32(norm_squared)) {
+        return false;
+    }
+    float inv_norm = 1.0f / sqrt(norm_squared);
+    if (!is_finite_f32(inv_norm)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        u_values[offset + row] = c_scale(u_values[offset + row], inv_norm);
+    }
+    return true;
+}
+
+bool fill_completion_column(uint rows, uint col, bool use_v) {
+    uint offset = vector_index(0u, pc.k);
+    for (uint seed = 0u; seed < rows; seed++) {
+        for (uint row = 0u; row < rows; row++) {
+            u_values[offset + row] = vec2(row == seed ? 1.0f : 0.0f, 0.0f);
+        }
+        vector_orthogonalize_against_basis(offset, rows, col, use_v);
+        if (!vector_normalize(offset, rows)) {
+            continue;
+        }
+        for (uint row = 0u; row < rows; row++) {
+            basis_set(use_v, row, col, u_values[offset + row]);
+        }
+        return true;
+    }
+    return rows == 0u;
+}
+
+bool orthonormalize_basis_column(uint rows, uint col, bool use_v) {
+    uint offset = vector_index(0u, pc.k);
+    for (uint row = 0u; row < rows; row++) {
+        u_values[offset + row] = basis_get(use_v, row, col);
+    }
+    vector_orthogonalize_against_basis(offset, rows, col, use_v);
+    if (!vector_normalize(offset, rows)) {
+        return false;
+    }
+    for (uint row = 0u; row < rows; row++) {
+        basis_set(use_v, row, col, u_values[offset + row]);
+    }
+    return true;
+}
+
+void build_hermitian(bool tall_or_square, uint n) {
+    for (uint row = 0u; row < n; row++) {
+        for (uint col = 0u; col < n; col++) {
+            vec2 sum = vec2(0.0f, 0.0f);
+            if (tall_or_square) {
+                for (uint source_row = 0u; source_row < pc.rows; source_row++) {
+                    sum = c_add(
+                        sum,
+                        c_mul(
+                            c_conj(input_values[source_row * pc.cols + row]),
+                            input_values[source_row * pc.cols + col]
+                        )
+                    );
+                }
+            } else {
+                for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                    sum = c_add(
+                        sum,
+                        c_mul(
+                            input_values[row * pc.cols + source_col],
+                            c_conj(input_values[col * pc.cols + source_col])
+                        )
+                    );
+                }
+            }
+            if (!c_is_finite(sum)) {
+                sum = vec2(0.0f, 0.0f);
+                s_values[pc.k] = 1.0f;
+            }
+            u_values[gram_index(row, col, n)] = sum;
+        }
+    }
+}
+
+void hermitian_matvec(uint n, uint source_offset, uint destination_offset) {
+    for (uint row = 0u; row < n; row++) {
+        vec2 sum = vec2(0.0f, 0.0f);
+        for (uint col = 0u; col < n; col++) {
+            sum = c_add(sum, c_mul(u_values[gram_index(row, col, n)], u_values[source_offset + col]));
+        }
+        u_values[destination_offset + row] = sum;
+    }
+}
+
+float rayleigh_real(uint n, uint vector_offset, uint work_offset) {
+    hermitian_matvec(n, vector_offset, work_offset);
+    vec2 dot = vec2(0.0f, 0.0f);
+    for (uint row = 0u; row < n; row++) {
+        dot = c_add(dot, c_mul(c_conj(u_values[vector_offset + row]), u_values[work_offset + row]));
+    }
+    return dot.x;
+}
+
+void sort_singular_columns(uint rows, uint cols, bool tall_or_square) {
+    for (uint i = 0u; i < pc.k; i++) {
+        uint best = i;
+        for (uint j = i + 1u; j < pc.k; j++) {
+            if (s_values[j] > s_values[best]) {
+                best = j;
+            }
+        }
+        if (best == i) {
+            continue;
+        }
+        float s_tmp = s_values[i];
+        s_values[i] = s_values[best];
+        s_values[best] = s_tmp;
+        uint basis_rows = tall_or_square ? cols : rows;
+        bool use_v = tall_or_square;
+        for (uint row = 0u; row < basis_rows; row++) {
+            vec2 tmp = basis_get(use_v, row, i);
+            basis_set(use_v, row, i, basis_get(use_v, row, best));
+            basis_set(use_v, row, best, tmp);
+        }
+    }
+}
+
+bool compute_power_eigenpairs(uint n, bool use_v_basis) {
+    uint vector_offset = vector_index(0u, n);
+    uint next_offset = next_index(0u, n);
+    uint max_iterations = n * 64u + 128u;
+    for (uint col = 0u; col < pc.k; col++) {
+        uint seed = 0u;
+        float best_diagonal = -1.0f;
+        for (uint row = 0u; row < n; row++) {
+            float diagonal = u_values[gram_index(row, row, n)].x;
+            if (diagonal > best_diagonal) {
+                best_diagonal = diagonal;
+                seed = row;
+            }
+        }
+        for (uint row = 0u; row < n; row++) {
+            u_values[vector_offset + row] = vec2(row == seed ? 1.0f : 0.0f, 0.0f);
+        }
+        vector_orthogonalize_against_basis(vector_offset, n, col, use_v_basis);
+        if (!vector_normalize(vector_offset, n)) {
+            if (!fill_completion_column(n, col, use_v_basis)) {
+                return false;
+            }
+            s_values[col] = 0.0f;
+            continue;
+        }
+        for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+            hermitian_matvec(n, vector_offset, next_offset);
+            vector_orthogonalize_against_basis(next_offset, n, col, use_v_basis);
+            if (!vector_normalize(next_offset, n)) {
+                break;
+            }
+            float diff = 0.0f;
+            for (uint row = 0u; row < n; row++) {
+                diff += c_abs_squared(c_sub(u_values[next_offset + row], u_values[vector_offset + row]));
+                u_values[vector_offset + row] = u_values[next_offset + row];
+            }
+            if (diff <= 0.00000000000000000001f) {
+                break;
+            }
+        }
+        float eigenvalue = rayleigh_real(n, vector_offset, next_offset);
+        if (!is_finite_f32(eigenvalue)) {
+            s_values[pc.k] = 1.0f;
+            eigenvalue = 0.0f;
+        } else if (eigenvalue < -OMNI_SVD_EPS) {
+            s_values[pc.k] = 1.0f;
+            eigenvalue = 0.0f;
+        } else if (eigenvalue < 0.0f) {
+            eigenvalue = 0.0f;
+        }
+        s_values[col] = sqrt(eigenvalue);
+        for (uint row = 0u; row < n; row++) {
+            basis_set(use_v_basis, row, col, u_values[vector_offset + row]);
+        }
+        for (uint row = 0u; row < n; row++) {
+            for (uint inner_col = 0u; inner_col < n; inner_col++) {
+                vec2 outer = c_mul(u_values[vector_offset + row], c_conj(u_values[vector_offset + inner_col]));
+                u_values[gram_index(row, inner_col, n)] = c_sub(
+                    u_values[gram_index(row, inner_col, n)],
+                    c_scale(outer, eigenvalue)
+                );
+            }
+        }
+    }
+    return true;
+}
+
+void phase_normalize_pair(uint rows, uint cols, uint col, bool use_v_anchor) {
+    uint anchor_rows = use_v_anchor ? cols : rows;
+    bool anchor_use_v = use_v_anchor;
+    uint anchor_index = 0u;
+    float anchor_abs = 0.0f;
+    for (uint row = 0u; row < anchor_rows; row++) {
+        float candidate = c_abs_squared(basis_get(anchor_use_v, row, col));
+        if (candidate > anchor_abs) {
+            anchor_abs = candidate;
+            anchor_index = row;
+        }
+    }
+    if (!(anchor_abs > OMNI_SVD_NORM_EPS)) {
+        return;
+    }
+    vec2 anchor = basis_get(anchor_use_v, anchor_index, col);
+    vec2 phase = c_scale(c_conj(anchor), 1.0f / sqrt(anchor_abs));
+    for (uint row = 0u; row < rows; row++) {
+        u_values[row * pc.k + col] = c_mul(u_values[row * pc.k + col], phase);
+    }
+    for (uint row = 0u; row < cols; row++) {
+        v_values[row * pc.k + col] = c_mul(v_values[row * pc.k + col], phase);
+    }
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    if (pc.s_count < pc.k + 1u ||
+        pc.u_count < pc.rows * pc.k ||
+        pc.v_count < pc.cols * pc.k) {
+        return;
+    }
+
+    zero_outputs();
+    uint status_index = pc.k;
+    s_values[status_index] = 0.0f;
+
+    if (pc.k == 0u) {
+        s_values[status_index] = 0.0f;
+        return;
+    }
+
+    bool tall_or_square = pc.rows >= pc.cols;
+    uint n = pc.k;
+    build_hermitian(tall_or_square, n);
+    if (s_values[status_index] != 0.0f) {
+        return;
+    }
+
+    bool use_v_basis = tall_or_square;
+    if (!compute_power_eigenpairs(n, use_v_basis)) {
+        s_values[status_index] = 1.0f;
+        return;
+    }
+    sort_singular_columns(pc.rows, pc.cols, tall_or_square);
+
+    float max_singular = 0.0f;
+    for (uint col = 0u; col < pc.k; col++) {
+        if (!is_finite_f32(s_values[col])) {
+            s_values[status_index] = 1.0f;
+            s_values[col] = 0.0f;
+        }
+        if (s_values[col] > max_singular) {
+            max_singular = s_values[col];
+        }
+    }
+    float singular_tolerance = OMNI_SVD_EPS * (max_singular + 1.0f);
+
+    if (tall_or_square) {
+        for (uint col = 0u; col < pc.k; col++) {
+            if (!orthonormalize_basis_column(pc.cols, col, true) &&
+                !fill_completion_column(pc.cols, col, true)) {
+                s_values[status_index] = 1.0f;
+                return;
+            }
+            if (s_values[col] > singular_tolerance) {
+                for (uint row = 0u; row < pc.rows; row++) {
+                    vec2 sum = vec2(0.0f, 0.0f);
+                    for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                        sum = c_add(sum, c_mul(input_values[row * pc.cols + source_col], v_values[source_col * pc.k + col]));
+                    }
+                    u_values[row * pc.k + col] = c_scale(sum, 1.0f / s_values[col]);
+                }
+                if (!orthonormalize_basis_column(pc.rows, col, false) &&
+                    !fill_completion_column(pc.rows, col, false)) {
+                    s_values[status_index] = 1.0f;
+                    return;
+                }
+            } else if (!fill_completion_column(pc.rows, col, false)) {
+                s_values[status_index] = 1.0f;
+                return;
+            }
+            phase_normalize_pair(pc.rows, pc.cols, col, true);
+        }
+    } else {
+        for (uint col = 0u; col < pc.k; col++) {
+            if (!orthonormalize_basis_column(pc.rows, col, false) &&
+                !fill_completion_column(pc.rows, col, false)) {
+                s_values[status_index] = 1.0f;
+                return;
+            }
+            if (s_values[col] > singular_tolerance) {
+                for (uint source_col = 0u; source_col < pc.cols; source_col++) {
+                    vec2 sum = vec2(0.0f, 0.0f);
+                    for (uint row = 0u; row < pc.rows; row++) {
+                        sum = c_add(
+                            sum,
+                            c_mul(c_conj(input_values[row * pc.cols + source_col]), u_values[row * pc.k + col])
+                        );
+                    }
+                    v_values[source_col * pc.k + col] = c_scale(sum, 1.0f / s_values[col]);
+                }
+                if (!orthonormalize_basis_column(pc.cols, col, true) &&
+                    !fill_completion_column(pc.cols, col, true)) {
+                    s_values[status_index] = 1.0f;
+                    return;
+                }
+            } else if (!fill_completion_column(pc.cols, col, true)) {
+                s_values[status_index] = 1.0f;
+                return;
+            }
+            phase_normalize_pair(pc.rows, pc.cols, col, false);
+        }
+    }
+
+    s_values[status_index] = 0.0f;
+}

@@ -6,7 +6,7 @@ import main;
 // SECTION: STRING FORMATTING + CL-FORMAT
 // =============================================================================
 fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "format: expected format string");
+    if (args.len < 1 || args[0].tag != STRING) return runtime_raise(interp, "type/arg-mismatch", "format: expected format string");
     char[] fmt = args[0].str_chars[:args[0].str_len];
     StringVal* builder = strval_new(fmt.len);
     if (builder == null) {
@@ -34,7 +34,7 @@ fn Value* prim_format(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_cl_format(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args[0].tag != STRING) return raise_error(interp, "cl-format: expected format string");
+    if (args.len < 1 || args[0].tag != STRING) return runtime_raise(interp, "type/arg-mismatch", "cl-format: expected format string");
     char[] fmt = args[0].str_chars[:args[0].str_len];
     StringVal* builder = strval_new(fmt.len);
     if (builder == null) {

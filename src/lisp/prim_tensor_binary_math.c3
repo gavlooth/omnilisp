@@ -84,10 +84,10 @@ fn Value* tensor_exact_integer_binary_value(
 
     if (left_tensor == null && left_is_tensor) left_tensor = left_concrete.tensor_val;
     if (right_tensor == null && right_is_tensor) right_tensor = right_concrete.tensor_val;
-    if (left_tensor != null && left_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return raise_error(interp, type_message);
-    if (right_tensor != null && right_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return raise_error(interp, type_message);
-    if (left_tensor == null && !is_exact_integer_value(left_value)) return raise_error(interp, type_message);
-    if (right_tensor == null && !is_exact_integer_value(right_value)) return raise_error(interp, type_message);
+    if (left_tensor != null && left_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return tensor_raise(interp, "tensor/invalid-argument", type_message);
+    if (right_tensor != null && right_tensor.dtype != TENSOR_DTYPE_BIG_INTEGER) return tensor_raise(interp, "tensor/invalid-argument", type_message);
+    if (left_tensor == null && !is_exact_integer_value(left_value)) return tensor_raise(interp, "tensor/invalid-argument", type_message);
+    if (right_tensor == null && !is_exact_integer_value(right_value)) return tensor_raise(interp, "tensor/invalid-argument", type_message);
 
     usz* result_shape = null;
     usz result_rank = 0;
@@ -138,7 +138,7 @@ fn Value* tensor_exact_integer_binary_value(
             left_handle,
             right_handle,
             op);
-        if (result == null) return raise_error(interp, oom_message);
+        if (result == null) return tensor_raise(interp, "tensor/invalid-argument", oom_message);
         if (out_values[i] != null) omni_big_integer_free(out_values[i]);
         out_values[i] = result;
     }
@@ -273,7 +273,7 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
     if (!tensor_binary_numeric_input_dtype(left_value, left_tensor, &left_dtype)) return primitive_arg_type_raise(interp, "pow", 0, "number or Tensor", left_value);
     if (!tensor_binary_numeric_input_dtype(right_value, right_tensor, &right_dtype)) return primitive_arg_type_raise(interp, "pow", 1, "number or Tensor", right_value);
     if (tensor_dtype_is_fixed_complex(left_dtype) || tensor_dtype_is_fixed_complex(right_dtype)) {
-        return raise_error(interp, "pow: fixed-width complex numbers are not supported");
+        return tensor_raise(interp, "tensor/invalid-argument", "pow: fixed-width complex numbers are not supported");
     }
     TensorDType result_dtype = tensor_pow_result_dtype(left_dtype, right_dtype);
 
@@ -321,7 +321,7 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
                 double base = 0.0;
                 double exponent = 0.0;
                 if (!try_numeric_to_double(left_arg, &base) || !try_numeric_to_double(right_arg, &exponent)) {
-                    return raise_error(interp, "pow: tensor element out of Float64 range");
+                    return tensor_raise(interp, "tensor/invalid-argument", "pow: tensor element out of Float64 range");
                 }
                 ((double*)out_tensor.data)[i] = tensor_c_pow(base, exponent);
             }
@@ -334,7 +334,7 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
                 if (result == null || result.tag == ERROR) return result;
                 void** out = (void**)out_tensor.data;
                 void* cloned = omni_big_float_clone(result.big_float_val);
-                if (cloned == null) return raise_error(interp, "pow: failed to allocate BigFloat tensor element");
+                if (cloned == null) return tensor_raise(interp, "tensor/out-of-memory", "pow: failed to allocate BigFloat tensor element");
                 if (out[i] != null) omni_big_float_free(out[i]);
                 out[i] = cloned;
             }
@@ -343,7 +343,7 @@ fn Value* tensor_pow_value(Value* left_value, Value* right_value, Interp* interp
                 if (result == null || result.tag == ERROR) return result;
                 void** out = (void**)out_tensor.data;
                 void* cloned = omni_big_complex_clone(result.big_complex_val);
-                if (cloned == null) return raise_error(interp, "pow: failed to allocate BigComplex tensor element");
+                if (cloned == null) return tensor_raise(interp, "tensor/out-of-memory", "pow: failed to allocate BigComplex tensor element");
                 if (out[i] != null) omni_big_complex_free(out[i]);
                 out[i] = cloned;
             }
@@ -413,7 +413,7 @@ fn Value* tensor_atan2_value(Value* y_value, Value* x_value, Interp* interp) {
     if (!tensor_binary_numeric_input_dtype(x_value, x_tensor, &x_dtype)) return primitive_arg_type_raise(interp, "atan2", 1, "number or Tensor", x_value);
     if (y_dtype == TENSOR_DTYPE_BIG_COMPLEX || x_dtype == TENSOR_DTYPE_BIG_COMPLEX ||
         tensor_dtype_is_fixed_complex(y_dtype) || tensor_dtype_is_fixed_complex(x_dtype)) {
-        return raise_error(interp, "atan2: complex numbers are not supported");
+        return tensor_raise(interp, "tensor/invalid-argument", "atan2: complex numbers are not supported");
     }
     TensorDType result_dtype = tensor_atan2_result_dtype(y_dtype, x_dtype);
 
@@ -461,7 +461,7 @@ fn Value* tensor_atan2_value(Value* y_value, Value* x_value, Interp* interp) {
                 double y = 0.0;
                 double x = 0.0;
                 if (!try_numeric_to_double(y_arg, &y) || !try_numeric_to_double(x_arg, &x)) {
-                    return raise_error(interp, "atan2: tensor element out of Float64 range");
+                    return tensor_raise(interp, "tensor/invalid-argument", "atan2: tensor element out of Float64 range");
                 }
                 ((double*)out_tensor.data)[i] = tensor_c_atan2(y, x);
             }
@@ -474,7 +474,7 @@ fn Value* tensor_atan2_value(Value* y_value, Value* x_value, Interp* interp) {
                 if (result == null || result.tag == ERROR) return result;
                 void** out = (void**)out_tensor.data;
                 void* cloned = omni_big_float_clone(result.big_float_val);
-                if (cloned == null) return raise_error(interp, "atan2: failed to allocate BigFloat tensor element");
+                if (cloned == null) return tensor_raise(interp, "tensor/out-of-memory", "atan2: failed to allocate BigFloat tensor element");
                 if (out[i] != null) omni_big_float_free(out[i]);
                 out[i] = cloned;
             }
@@ -630,7 +630,7 @@ fn Value* tensor_big_complex_conjugate_value(Value* tensor_value, Interp* interp
     for (usz i = 0; i < source.element_count; i++) {
         if (src_values[i] == null) return tensor_runtime_raise(interp, "conjugate: tensor BigComplex element is missing");
         void* conjugated = omni_big_complex_conjugate(src_values[i]);
-        if (conjugated == null) return raise_error(interp, "conjugate: failed to conjugate tensor element");
+        if (conjugated == null) return tensor_raise(interp, "tensor/invalid-argument", "conjugate: failed to conjugate tensor element");
         if (dst_values[i] != null) omni_big_complex_free(dst_values[i]);
         dst_values[i] = conjugated;
     }

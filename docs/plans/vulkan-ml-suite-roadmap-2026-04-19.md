@@ -1,7 +1,8 @@
 # Vulkan ML Suite Roadmap
 
 Date: 2026-04-19
-Status: active roadmap for TODO lanes `ML-VK-*`
+Status: roadmap record for `ML-VK-*`; no `ML-VK` TODO-backed live lane is
+currently open in `TODO.md`.
 
 ## Decision
 
@@ -259,10 +260,10 @@ Add Vulkan kernels for normalization and attention building blocks:
   `ml-normalization` true when at least one dtype route exists.
 - `ML-VK-040-002`: shipped
   `ml/batch-normalization(input scale bias mean variance channel-axis [epsilon])`
-  for CPU `Float64`/`Float32` and direct Vulkan `Float32`. It preserves input
-  shape, requires rank-1 scale/bias/mean/variance tensors matching the channel
-  axis, reports narrow `ml-batch-normalization-*` capability bits, and keeps
-  mixed CPU/Vulkan operands fail-closed before CPU fallback.
+  for CPU `Float64`/`Float32` and direct Vulkan `Float32`/`Float64`. It preserves
+  input shape, requires rank-1 scale/bias/mean/variance tensors matching the
+  channel axis, reports narrow `ml-batch-normalization-*` capability bits, and
+  keeps mixed CPU/Vulkan operands fail-closed before CPU fallback.
 - `ML-VK-040-003`: shipped
   `ml/scaled-dot-product-attention(query key value [mask] [scale])` for CPU
   `Float64`/`Float32` and direct dense Vulkan `Float32`. It computes
@@ -278,9 +279,12 @@ Add Vulkan kernels for normalization and attention building blocks:
   CPU dense row-major stats while returning updated ordinary state/model data
   without hidden mutation. CUDA/Vulkan/current-batch training remains
   fail-closed until native backward/state kernels are implemented.
-- optional fused softmax/dropout/matmul is now split to
-  `ML-VK-040-FUSED-ATTENTION-001`; the shipped `ML-VK-040` primitive boundary
-  is closed around unfused oracle-preserving inference/eval semantics.
+- `ML-VK-040-FUSED-ATTENTION-001`: closed after confirming the supported
+  inference/eval attention contract already routes through a single direct
+  dense Vulkan `Float32` attention shader and adding oracle coverage for
+  additive and batched masks. Dropout/training attention remains outside the
+  shipped `ml/scaled-dot-product-attention` surface rather than an open
+  residual of `ML-VK-040`.
 
 ### `ML-VK-050` Autograd Core
 
@@ -327,12 +331,39 @@ device semantics:
   kernels, and the metadata-only tape records `device 'vulkan`.
 
 Future native device backward work is split into operation-specific items.
-`ML-VK-050-VK-MAP-BWD-001` owns graph-preserving Vulkan map-expression backward
-for `map +`/`map *` under MSE. Current Vulkan `map` eagerly materializes direct
-concrete device tensors and drops expression edges, so that residual requires
-an explicit autograd capture/tape mode or a graph-preserving `ml/grad` map path;
-do not globally make Vulkan `map` lazy. Every Vulkan op without a matching
-backward kernel must continue to fail closed.
+`ML-VK-050-VK-MAP-BWD-001` shipped graph-preserving Vulkan map-expression
+backward for same-shape dense row-major `Float32` `map +`, `map -`, and
+`map *` under MSE. `ML-VK-050-VK-SOFTMAX-CE-BWD-001` shipped native Vulkan
+`tensor-softmax-cross-entropy` backward for direct logits and same-shape map
+provenance. The implementation keeps normal Vulkan `map` eager, records
+scope-safe provenance on concrete map results, and consumes that provenance in
+native Vulkan loss backward paths. `ML-VK-050-VK-MAP-BCAST-BWD-001` then added
+native Vulkan reduction of broadcasted map upstream gradients back to wrt
+shapes for dense row-major `Float32` map provenance. Every Vulkan op without a
+matching backward kernel must continue to fail closed.
+- `ML-VK-050-VK-BWD-DIV-001`: shipped Vulkan `map /` backward rule for
+  `tensor-mean-squared-error`. Left-path gradient is `upstream / right_operand`;
+  right-path gradient computes `-output / right_operand` then multiplies by
+  upstream. It uses existing generic Vulkan map primitives (`/`, `*`, unary `-`)
+  without a dedicated division-backward shader, and supports dense row-major
+  `Float32` and `Float64`.
+- `ML-VK-050-VK-BWD-F64-001`: shipped native Vulkan `Float64` backward for
+  `tensor-mean-squared-error` and `tensor-softmax-cross-entropy`. Scalar creation
+  in backward helpers now uses `make_double` for `Float64` instead of hardcoded
+  `make_float32`, and all dtype gates in `ml_grad_tensor_mse_try_vulkan` and
+  `ml_grad_tensor_softmax_ce_try_vulkan` accept `TENSOR_DTYPE_DOUBLE`.
+- `ML-VK-050-VK-BWD-MIXED-001`: shipped mixed-device auto-migration for Vulkan
+  backward loss targets. When `ml/grad` `tensor-mean-squared-error` or
+  `tensor-softmax-cross-entropy` has Vulkan predictions/logits and wrt but CPU
+  targets, the backward path auto-migrates targets to Vulkan via
+  `tensor_expr_resolve_vulkan_or_migrate` before computing gradients. Predictions
+  and wrt remain strict Vulkan requirements to preserve provenance. Mixed-device
+  auto-migration keeps gradients on-device and avoids silent CPU fallback.
+- `ML-VK-050-VK-BWD-MINMAX-001`: shipped `map min` and `map max` backward rules
+  for `tensor-mean-squared-error`. CPU Tensor-expression gradients now apply
+  comparison-mask derivatives, and Vulkan dense row-major `Float32`/`Float64`
+  gradients reuse existing binary map comparison mask ops so gradients stay on
+  device without adding a dedicated backward shader.
 
 Autograd must preserve the runtime memory model and must not introduce a
 separate per-Tensor ownership system.
@@ -407,11 +438,30 @@ false.
   kernels for all-device parameter and gradient leaves. The primitive preserves
   CUDA/Vulkan placement when `ml-optimizer-sgd-float32` is available and keeps
   mixed CPU/device leaves fail-closed instead of silently transferring tensors.
+- `ML-VK-060-F64-CAP-001`: fixed stale `ml-optimizer-{sgd,adam,adamw,rmsprop}-float64`
+  capability bits for Vulkan from hardcoded `false` to `vulkan_float64_available`,
+  aligning narrow capability truth with actual f64 optimizer shader availability.
 - `ML-VK-060` is closed for the explicit-state optimizer suite: CPU, Vulkan
   dense row-major `Float32`, map-backed CUDA dense row-major `Float32`,
   checkpoint helpers, gradient clipping, and `nn/train-step` integration are
-  shipped. Native fused CUDA optimizer kernels are split to
-  `ML-VK-060-FUSED-CUDA-001` as a benchmark-backed performance boundary.
+  shipped.
+- Adam/AdamW optional moment state follows the same convention as SGD/RMSProp
+  optional state: explicit `nil` `first-moment` and `second-moment` entries
+  initialize fresh moments, while one-sided present moment state remains an
+  invalid optimizer state. CPU, CUDA, and Vulkan dispatch share this contract.
+- Vulkan SGD accepts `learning-rate 0.0` as a valid no-op update, matching the
+  public non-negative optimizer spec contract and CPU/CUDA behavior.
+- `ML-VK-060-FUSED-CUDA-001`: shipped native fused CUDA dense row-major
+  `Float32` SGD execution for `ml/optimizer-step`. The helper computes weight
+  decay, optional momentum velocity initialization/continuation, updated
+  parameters, and updated velocity in one CUDA kernel, then falls back to the
+  existing map-backed route only when the native optimizer module is
+  unavailable.
+- `ML-VK-060-FUSED-CUDA-STATEFUL-001`: open stateful CUDA fusion boundary for
+  Adam, AdamW, and RMSProp. These remain map-backed until native multi-output
+  state kernels and CUDA-host oracle coverage are added. Resolved native fused
+  kernel failures must fail closed rather than falling back to map-backed
+  execution.
 
 Optimizer state must keep dtype/device placement explicit and must reject
 mixed-device parameter groups unless an explicit transfer step is requested.

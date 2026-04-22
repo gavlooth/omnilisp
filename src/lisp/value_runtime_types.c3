@@ -170,6 +170,7 @@ alias FfiHandleFinalizer = fn void(void* handle);
  */
 struct FfiHandle {
     void*    lib_handle;     // dlopen() result
+    void*    user_data;      // Optional context for finalizer (e.g. FfiCallbackContext)
     char[256] lib_name;      // for display/debugging
     usz      name_len;
     uint     refcount;       // Shared ownership count for handle wrappers

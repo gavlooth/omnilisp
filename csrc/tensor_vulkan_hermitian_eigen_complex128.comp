@@ -1,0 +1,317 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const double OMNI_HERMITIAN_EIGEN_EPS = 0.000000000001lf;
+
+struct Complex {
+    double real;
+    double imag;
+};
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    double input_values[];
+};
+
+layout(std430, binding = 1) buffer ValuesBuffer {
+    double eigen_values[];
+};
+
+layout(std430, binding = 2) buffer VectorsBuffer {
+    double eigen_vectors[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint value_count;
+    uint vector_count;
+    uint reserved;
+} pc;
+
+double abs_f64(double value) {
+    return value < 0.0lf ? -value : value;
+}
+
+bool is_finite_f64(double value) {
+    return value == value && (value - value) == 0.0lf;
+}
+
+Complex complex_make(double real, double imag) {
+    Complex out_value;
+    out_value.real = real;
+    out_value.imag = imag;
+    return out_value;
+}
+
+Complex complex_add(Complex left, Complex right) {
+    return complex_make(left.real + right.real, left.imag + right.imag);
+}
+
+Complex complex_sub(Complex left, Complex right) {
+    return complex_make(left.real - right.real, left.imag - right.imag);
+}
+
+Complex complex_scale(Complex value, double scalar) {
+    return complex_make(value.real * scalar, value.imag * scalar);
+}
+
+Complex complex_mul(Complex left, Complex right) {
+    return complex_make(
+        left.real * right.real - left.imag * right.imag,
+        left.real * right.imag + left.imag * right.real
+    );
+}
+
+Complex complex_conj(Complex value) {
+    return complex_make(value.real, -value.imag);
+}
+
+double complex_abs_squared(Complex value) {
+    return value.real * value.real + value.imag * value.imag;
+}
+
+bool complex_finite(Complex value) {
+    return is_finite_f64(value.real) && is_finite_f64(value.imag);
+}
+
+uint complex_matrix_index(uint row, uint col, uint n) {
+    return 2u * (pc.vector_count + row * n + col);
+}
+
+uint complex_vector_index(uint row, uint col, uint n) {
+    return 2u * (row * n + col);
+}
+
+Complex input_at(uint row, uint col, uint n) {
+    uint index = 2u * (row * n + col);
+    return complex_make(input_values[index], input_values[index + 1u]);
+}
+
+Complex matrix_at(uint row, uint col, uint n) {
+    uint index = complex_matrix_index(row, col, n);
+    return complex_make(eigen_vectors[index], eigen_vectors[index + 1u]);
+}
+
+void matrix_set(uint row, uint col, uint n, Complex value) {
+    uint index = complex_matrix_index(row, col, n);
+    eigen_vectors[index] = value.real;
+    eigen_vectors[index + 1u] = value.imag;
+}
+
+Complex vector_at(uint row, uint col, uint n) {
+    uint index = complex_vector_index(row, col, n);
+    return complex_make(eigen_vectors[index], eigen_vectors[index + 1u]);
+}
+
+void vector_set(uint row, uint col, uint n, Complex value) {
+    uint index = complex_vector_index(row, col, n);
+    eigen_vectors[index] = value.real;
+    eigen_vectors[index + 1u] = value.imag;
+}
+
+void zero_outputs() {
+    for (uint index = 0u; index < pc.value_count; index++) {
+        eigen_values[index] = 0.0lf;
+    }
+    for (uint index = 0u; index < 4u * pc.vector_count; index++) {
+        eigen_vectors[index] = 0.0lf;
+    }
+}
+
+void phase_normalize_columns(uint n) {
+    for (uint col = 0u; col < n; col++) {
+        uint pivot_row = 0u;
+        double pivot_abs = 0.0lf;
+        for (uint row = 0u; row < n; row++) {
+            double candidate_abs = complex_abs_squared(vector_at(row, col, n));
+            if (candidate_abs > pivot_abs) {
+                pivot_abs = candidate_abs;
+                pivot_row = row;
+            }
+        }
+        if (pivot_abs > 0.0lf) {
+            Complex anchor = vector_at(pivot_row, col, n);
+            Complex phase = complex_scale(complex_conj(anchor), 1.0lf / sqrt(pivot_abs));
+            for (uint row = 0u; row < n; row++) {
+                vector_set(row, col, n, complex_mul(vector_at(row, col, n), phase));
+            }
+        }
+    }
+}
+
+void swap_vector_columns(uint left_col, uint right_col, uint n) {
+    for (uint row = 0u; row < n; row++) {
+        Complex tmp = vector_at(row, left_col, n);
+        vector_set(row, left_col, n, vector_at(row, right_col, n));
+        vector_set(row, right_col, n, tmp);
+    }
+}
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) return;
+    if (pc.value_count < pc.n + 1u || pc.vector_count < pc.n * pc.n) return;
+
+    zero_outputs();
+    uint status_index = pc.n;
+    double status = 0.0lf;
+    eigen_values[status_index] = 1.0lf;
+
+    if (pc.n == 0u) {
+        eigen_values[status_index] = status;
+        return;
+    }
+
+    bool failed = false;
+    for (uint row = 0u; row < pc.n; row++) {
+        for (uint col = 0u; col < pc.n; col++) {
+            Complex value = input_at(row, col, pc.n);
+            if (!complex_finite(value)) {
+                status = 1.0lf;
+                failed = true;
+                value = complex_make(0.0lf, 0.0lf);
+            }
+            matrix_set(row, col, pc.n, value);
+            vector_set(row, col, pc.n, row == col ? complex_make(1.0lf, 0.0lf) : complex_make(0.0lf, 0.0lf));
+        }
+    }
+
+    if (!failed) {
+        for (uint row = 0u; row < pc.n; row++) {
+            Complex diag = matrix_at(row, row, pc.n);
+            if (abs_f64(diag.imag) > OMNI_HERMITIAN_EIGEN_EPS) {
+                status = 3.0lf;
+                failed = true;
+                break;
+            }
+            matrix_set(row, row, pc.n, complex_make(diag.real, 0.0lf));
+            for (uint col = row + 1u; col < pc.n; col++) {
+                Complex upper = matrix_at(row, col, pc.n);
+                Complex lower = matrix_at(col, row, pc.n);
+                if (abs_f64(upper.real - lower.real) > OMNI_HERMITIAN_EIGEN_EPS ||
+                    abs_f64(upper.imag + lower.imag) > OMNI_HERMITIAN_EIGEN_EPS) {
+                    status = 3.0lf;
+                    failed = true;
+                    break;
+                }
+            }
+            if (failed) break;
+        }
+    }
+
+    uint max_iterations = 64u * pc.n * pc.n;
+    bool converged = false;
+    if (!failed) {
+        for (uint iteration = 0u; iteration < max_iterations; iteration++) {
+            uint p = 0u;
+            uint q = pc.n > 1u ? 1u : 0u;
+            double max_offdiag = 0.0lf;
+            for (uint row = 0u; row < pc.n; row++) {
+                for (uint col = row + 1u; col < pc.n; col++) {
+                    Complex value = matrix_at(row, col, pc.n);
+                    double offdiag = complex_abs_squared(value);
+                    if (!complex_finite(value) || !is_finite_f64(offdiag)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                    if (offdiag > max_offdiag) {
+                        max_offdiag = offdiag;
+                        p = row;
+                        q = col;
+                    }
+                }
+                if (failed) break;
+            }
+            if (failed) break;
+            if (!(max_offdiag > OMNI_HERMITIAN_EIGEN_EPS * OMNI_HERMITIAN_EIGEN_EPS)) {
+                converged = true;
+                break;
+            }
+
+            Complex apq = matrix_at(p, q, pc.n);
+            double apq_abs = sqrt(complex_abs_squared(apq));
+            if (!(apq_abs > 0.0lf) || !is_finite_f64(apq_abs)) continue;
+
+            double app = matrix_at(p, p, pc.n).real;
+            double aqq = matrix_at(q, q, pc.n).real;
+            double tau = (aqq - app) / (2.0lf * apq_abs);
+            double sign_tau = tau < 0.0lf ? -1.0lf : 1.0lf;
+            double t = sign_tau / (abs_f64(tau) + sqrt(1.0lf + tau * tau));
+            double c = 1.0lf / sqrt(1.0lf + t * t);
+            double s = t * c;
+            if (!is_finite_f64(c) || !is_finite_f64(s)) {
+                status = 1.0lf;
+                failed = true;
+                break;
+            }
+
+            Complex phase_conj = complex_scale(complex_conj(apq), 1.0lf / apq_abs);
+            for (uint k = 0u; k < pc.n; k++) {
+                if (k != p && k != q) {
+                    Complex akp = matrix_at(k, p, pc.n);
+                    Complex akq = complex_mul(matrix_at(k, q, pc.n), phase_conj);
+                    Complex new_kp = complex_sub(complex_scale(akp, c), complex_scale(akq, s));
+                    Complex new_kq = complex_add(complex_scale(akp, s), complex_scale(akq, c));
+                    if (!complex_finite(new_kp) || !complex_finite(new_kq)) {
+                        status = 1.0lf;
+                        failed = true;
+                        break;
+                    }
+                    matrix_set(k, p, pc.n, new_kp);
+                    matrix_set(p, k, pc.n, complex_conj(new_kp));
+                    matrix_set(k, q, pc.n, new_kq);
+                    matrix_set(q, k, pc.n, complex_conj(new_kq));
+                }
+
+                Complex vip = vector_at(k, p, pc.n);
+                Complex viq = complex_mul(vector_at(k, q, pc.n), phase_conj);
+                Complex new_vip = complex_sub(complex_scale(vip, c), complex_scale(viq, s));
+                Complex new_viq = complex_add(complex_scale(vip, s), complex_scale(viq, c));
+                if (!complex_finite(new_vip) || !complex_finite(new_viq)) {
+                    status = 1.0lf;
+                    failed = true;
+                    break;
+                }
+                vector_set(k, p, pc.n, new_vip);
+                vector_set(k, q, pc.n, new_viq);
+            }
+            if (failed) break;
+
+            double new_app = c * c * app - 2.0lf * s * c * apq_abs + s * s * aqq;
+            double new_aqq = s * s * app + 2.0lf * s * c * apq_abs + c * c * aqq;
+            matrix_set(p, p, pc.n, complex_make(new_app, 0.0lf));
+            matrix_set(q, q, pc.n, complex_make(new_aqq, 0.0lf));
+            matrix_set(p, q, pc.n, complex_make(0.0lf, 0.0lf));
+            matrix_set(q, p, pc.n, complex_make(0.0lf, 0.0lf));
+        }
+    }
+
+    if (!failed && !converged && status == 0.0lf) status = 2.0lf;
+
+    for (uint i = 0u; i < pc.n; i++) {
+        double value = matrix_at(i, i, pc.n).real;
+        eigen_values[i] = abs_f64(value) < OMNI_HERMITIAN_EIGEN_EPS ? 0.0lf : value;
+    }
+
+    for (uint i = 0u; i < pc.n; i++) {
+        uint best = i;
+        double best_value = eigen_values[i];
+        for (uint j = i + 1u; j < pc.n; j++) {
+            if (eigen_values[j] > best_value) {
+                best = j;
+                best_value = eigen_values[j];
+            }
+        }
+        if (best != i) {
+            double tmp = eigen_values[i];
+            eigen_values[i] = eigen_values[best];
+            eigen_values[best] = tmp;
+            swap_vector_columns(i, best, pc.n);
+        }
+    }
+
+    phase_normalize_columns(pc.n);
+    if (failed && status == 0.0lf) status = 1.0lf;
+    eigen_values[status_index] = status;
+}

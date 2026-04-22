@@ -265,7 +265,7 @@ int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
     if (scalar_op_count > SIZE_MAX / sizeof(OmniTensorVulkanBuffer*) || scalar_op_count > SIZE_MAX / sizeof(OmniVulkanDescriptorSet)) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if ((scalar_op_count + 1u) > UINT32_MAX / 4u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     for (size_t i = 0; i < scalar_op_count; i++) {
-        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 5u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+        if ((modes[i] != 0u && modes[i] != 1u) || ops[i] > 7u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
 
     size_t left_count = 0;

@@ -14,6 +14,7 @@ source scripts/c3c_limits.sh
 : "${OMNI_GLOBAL_GATES_INCLUDE_LIFETIME_SOAK:=0}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_ALLOCATOR_BENCH:=0}"
 : "${OMNI_GLOBAL_GATES_INCLUDE_FTXUI_SMOKE:=1}"
+: "${OMNI_GLOBAL_GATES_SKIP_UNSUPPORTED_ASAN:=1}"
 : "${OMNI_GLOBAL_GATES_TEST_QUIET:=1}"
 : "${OMNI_GLOBAL_GATES_TEST_SUMMARY:=1}"
 : "${OMNI_GLOBAL_GATES_SKIP_TLS_INTEGRATION:=1}"
@@ -185,7 +186,29 @@ fi
 
 echo ""
 echo "=== Stage 3: ASAN build ==="
-omni_c3 build --sanitize=address
+asan_build_log="$(mktemp)"
+asan_build_status=0
+if omni_c3 build --sanitize=address >"$asan_build_log" 2>&1; then
+  asan_build_status=0
+else
+  asan_build_status=$?
+fi
+cat "$asan_build_log"
+if [[ "$asan_build_status" != "0" ]]; then
+  if [[ "$OMNI_GLOBAL_GATES_SKIP_UNSUPPORTED_ASAN" == "1" ]] &&
+     grep -qi "Address sanitizer is only supported" "$asan_build_log"; then
+    echo "ASAN build skipped: current C3 toolchain reports address sanitizer unsupported for this target."
+    echo ""
+    echo "=== Stage 4: ASAN tests skipped ==="
+    rm -f "$asan_build_log"
+    echo ""
+    echo "Global gates passed with ASAN skipped because the toolchain does not support it on this target."
+    exit 0
+  fi
+  rm -f "$asan_build_log"
+  exit "$asan_build_status"
+fi
+rm -f "$asan_build_log"
 
 echo ""
 echo "=== Stage 4: ASAN tests ==="

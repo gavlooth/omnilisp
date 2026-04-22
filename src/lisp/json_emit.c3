@@ -19,7 +19,7 @@ fn Value* json_emit_set_allocated_value(
     } else {
         msg = "json-emit: allocation failed";
     }
-    return raise_error(interp, msg);
+    return json_raise(interp, "parser/out-of-memory", msg);
 }
 
 fn Value* json_emit_raise_unsupported_value_type(Value* val, Interp* interp) {
@@ -31,7 +31,7 @@ fn Value* json_emit_raise_unsupported_value_type(Value* val, Interp* interp) {
     } else {
         msg = "json-emit: unsupported value type";
     }
-    return raise_error(interp, msg);
+    return json_raise(interp, "parser/type-mismatch", msg);
 }
 
 fn Value* json_emit_raise_unsupported_dict_key_type(Value* key_v, Interp* interp) {
@@ -43,19 +43,19 @@ fn Value* json_emit_raise_unsupported_dict_key_type(Value* key_v, Interp* interp
     } else {
         msg = "json-emit: unsupported dictionary key type";
     }
-    return raise_error(interp, msg);
+    return json_raise(interp, "parser/type-mismatch", msg);
 }
 
 fn Value* json_emit_append_array_value(YyjsonMutVal* arr, YyjsonMutVal* elem, Interp* interp) {
     if (!omni_yyjson_mut_arr_append(arr, elem)) {
-        return raise_error(interp, "json-emit: failed to append array element");
+        return json_raise(interp, "parser/out-of-memory", "json-emit: failed to append array element");
     }
     return null;
 }
 
 fn Value* json_emit_add_object_value(YyjsonMutVal* obj, YyjsonMutVal* key, YyjsonMutVal* value, Interp* interp) {
     if (!omni_yyjson_mut_obj_add(obj, key, value)) {
-        return raise_error(interp, "json-emit: failed to add object field");
+        return json_raise(interp, "parser/out-of-memory", "json-emit: failed to add object field");
     }
     return null;
 }
@@ -75,7 +75,7 @@ fn Value* omni_symbol_to_json(SymbolId sym, YyjsonMutDoc* doc, Interp* interp, Y
 
 fn Value* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp, YyjsonMutVal** out_json) {
     YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
-    if (arr == null) return raise_error(interp, "json-emit: failed to allocate JSON array");
+    if (arr == null) return json_raise(interp, "parser/out-of-memory", "json-emit: failed to allocate JSON array");
     Value* curr = list;
     while (is_cons(curr)) {
         YyjsonMutVal* elem = null;
@@ -86,7 +86,7 @@ fn Value* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp,
         curr = cdr(curr);
     }
     if (!is_nil(curr)) {
-        return raise_error(interp, "json-emit: expected proper list");
+        return json_raise(interp, "parser/invalid-argument", "json-emit: expected proper list");
     }
     *out_json = arr;
     return null;
@@ -94,7 +94,7 @@ fn Value* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp,
 
 fn Value* omni_array_to_json(Value* arr_v, YyjsonMutDoc* doc, Interp* interp, YyjsonMutVal** out_json) {
     YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
-    if (arr == null) return raise_error(interp, "json-emit: failed to allocate JSON array");
+    if (arr == null) return json_raise(interp, "parser/out-of-memory", "json-emit: failed to allocate JSON array");
     for (usz i = 0; i < arr_v.array_val.length; i++) {
         YyjsonMutVal* elem = null;
         Value* elem_err = omni_to_json_val(arr_v.array_val.items[i], doc, interp, &elem);
@@ -129,7 +129,7 @@ fn Value* omni_hash_key_to_json(Value* key_v, YyjsonMutDoc* doc, Interp* interp,
 
 fn Value* omni_hashmap_to_json(Value* map_v, YyjsonMutDoc* doc, Interp* interp, YyjsonMutVal** out_json) {
     YyjsonMutVal* obj = omni_yyjson_mut_obj(doc);
-    if (obj == null) return raise_error(interp, "json-emit: failed to allocate JSON object");
+    if (obj == null) return json_raise(interp, "parser/out-of-memory", "json-emit: failed to allocate JSON object");
     HashMap* hm = map_v.hashmap_val;
     for (usz i = 0; i < hm.capacity; i++) {
         HashEntry* entry = &hm.entries[i];
@@ -193,11 +193,11 @@ fn Value* omni_to_json_val(Value* val, YyjsonMutDoc* doc, Interp* interp, Yyjson
 
 fn Value* json_emit_impl(Value*[] args, Interp* interp, bool pretty_default) {
     if (args.len < 1 || args.len > 2) {
-        return raise_error(interp, "json-emit: expected 1-2 arguments");
+        return json_raise(interp, "parser/arity", "json-emit: expected 1-2 arguments");
     }
 
     YyjsonMutDoc* doc = omni_yyjson_mut_doc_new();
-    if (doc == null) return raise_error(interp, "json-emit: failed to create document");
+    if (doc == null) return json_raise(interp, "parser/out-of-memory", "json-emit: failed to create document");
 
     YyjsonMutVal* root = null;
     Value* root_err = omni_to_json_val(args[0], doc, interp, &root);
@@ -236,7 +236,7 @@ fn Value* json_emit_impl(Value*[] args, Interp* interp, bool pretty_default) {
     if (opts.has_precision) {
         if (opts.precision < 0 || opts.precision > 15) {
             omni_yyjson_mut_doc_free(doc);
-            return raise_error(interp, "json-emit: precision must be in range 0..15");
+            return json_raise(interp, "parser/invalid-argument", "json-emit: precision must be in range 0..15");
         }
         usz fixed_flag = omni_yyjson_fp_to_fixed_flag(opts.precision);
         if (fixed_flag != 0) opts.flags |= fixed_flag;
@@ -247,7 +247,7 @@ fn Value* json_emit_impl(Value*[] args, Interp* interp, bool pretty_default) {
 
     omni_yyjson_mut_doc_free(doc);
 
-    if (json_str == null) return raise_error(interp, "json-emit: serialization failed");
+    if (json_str == null) return json_raise(interp, "parser/serialization-failed", "json-emit: serialization failed");
 
     Value* result = make_string(interp, json_str[:len]);
     c_free_json(json_str);

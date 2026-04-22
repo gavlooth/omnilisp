@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::core::mem;
 import std::io;
 import main;
@@ -155,7 +156,7 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
                 Value* v = toml_datum_to_omni(omni_toml_datum_array_elem(datum, (int)i), interp);
                 if (v != null && v.tag == ERROR) return v;
                 Value* promoted = boundary_promote_to_root(v, interp);
-                if (promoted == null) return raise_error(interp, "toml-parse: out of memory");
+                if (promoted == null) return data_format_raise(interp, "type/out-of-memory", "toml-parse: out of memory");
                 if (promoted.tag == ERROR) return promoted;
                 arr.array_val.items[i] = promoted;
                 arr.array_val.length++;
@@ -180,7 +181,7 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
                     return key_v != null && key_v.tag == ERROR ? key_v : v;
                 }
                 if (!hashmap_set_checked(dict.hashmap_val, key_v, v, interp)) {
-                    return raise_error(interp, "toml-parse: out of memory");
+                    return data_format_raise(interp, "type/out-of-memory", "toml-parse: out of memory");
                 }
             }
             return dict;
@@ -217,8 +218,8 @@ fn Value* toml_datum_to_omni(OmniTomlDatum* datum, Interp* interp) {
 }
 
 fn Value* prim_toml_parse(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || args.len > 2) return raise_error(interp, "toml-parse: expected 1-2 arguments");
-    if (!is_string(args[0])) return raise_error(interp, "toml-parse: expected string argument");
+    if (args.len < 1 || args.len > 2) return data_format_raise(interp, "type/arity", "toml-parse: expected 1-2 arguments");
+    if (!is_string(args[0])) return data_format_raise(interp, "type/arity", "toml-parse: expected string argument");
 
     TomlParseOptions opts;
     opts.check_utf8 = false;
@@ -236,7 +237,7 @@ fn Value* prim_toml_parse(Value*[] args, Env* env, Interp* interp) {
     OmniTomlParse* handle = omni_toml_parse_with_options(src.ptr, src.len, &err_buf, err_buf.len, opts.check_utf8);
     if (handle == null) {
         if (err_buf[0] == 0) {
-            return raise_error(interp, "toml-parse: invalid TOML");
+            return data_format_raise(interp, "type/arg-mismatch", "toml-parse: invalid TOML");
         }
 
         char[320] msg_buf;
@@ -246,7 +247,7 @@ fn Value* prim_toml_parse(Value*[] args, Env* env, Interp* interp) {
         } else {
             msg = "toml-parse: invalid TOML";
         }
-        return raise_error(interp, msg);
+        return data_format_raise(interp, "type/arg-mismatch", msg);
     }
 
     defer omni_toml_result_free(handle);

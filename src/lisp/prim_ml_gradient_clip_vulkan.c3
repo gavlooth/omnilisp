@@ -21,11 +21,8 @@ fn bool ml_clip_tree_touches_vulkan(Value* gradients) {
 
 fn Value* ml_clip_vulkan_resolve_leaf(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp) {
     if (!is_tensor(value)) return ml_clip_invalid(interp, "ml/clip-gradients: gradient tree leaves must be tensors");
-    if (!tensor_expr_has_device(value, TENSOR_DEVICE_VULKAN) || tensor_expr_has_non_vulkan_device(value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/clip-gradients: Vulkan gradient trees must remain fully Vulkan-placed", null);
-    }
 
-    Value* err = tensor_expr_resolve_concrete_any_device(value, out_tensor, out_value, interp, "ml/clip-gradients: gradient tensor backing storage is missing");
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(value, out_tensor, out_value, interp, "ml/clip-gradients: gradient tensor backing storage is missing");
     if (err != null) return err;
     if (*out_tensor == null || (*out_tensor).device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/clip-gradients: Vulkan gradient trees must realize to Vulkan storage", null);

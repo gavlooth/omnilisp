@@ -85,6 +85,57 @@ typedef int (*omni_lapacke_dgeev_fn)(
     double* vr,
     omni_lapack_int ldvr
 );
+typedef int (*omni_lapacke_sgeev_fn)(
+    int matrix_layout,
+    char jobvl,
+    char jobvr,
+    omni_lapack_int n,
+    float* a,
+    omni_lapack_int lda,
+    float* wr,
+    float* wi,
+    float* vl,
+    omni_lapack_int ldvl,
+    float* vr,
+    omni_lapack_int ldvr
+);
+
+typedef struct {
+    double real;
+    double imag;
+} omni_lapack_complex128;
+
+typedef struct {
+    float real;
+    float imag;
+} omni_lapack_complex64;
+
+typedef int (*omni_lapacke_zgeev_fn)(
+    int matrix_layout,
+    char jobvl,
+    char jobvr,
+    omni_lapack_int n,
+    omni_lapack_complex128* a,
+    omni_lapack_int lda,
+    omni_lapack_complex128* w,
+    omni_lapack_complex128* vl,
+    omni_lapack_int ldvl,
+    omni_lapack_complex128* vr,
+    omni_lapack_int ldvr
+);
+typedef int (*omni_lapacke_cgeev_fn)(
+    int matrix_layout,
+    char jobvl,
+    char jobvr,
+    omni_lapack_int n,
+    omni_lapack_complex64* a,
+    omni_lapack_int lda,
+    omni_lapack_complex64* w,
+    omni_lapack_complex64* vl,
+    omni_lapack_int ldvl,
+    omni_lapack_complex64* vr,
+    omni_lapack_int ldvr
+);
 
 enum {
     OMNI_LAPACK_ROW_MAJOR = 101,
@@ -105,6 +156,9 @@ static omni_lapacke_dorgqr_fn omni_tensor_lapacke_dorgqr = NULL;
 static omni_lapacke_dsyev_fn omni_tensor_lapacke_dsyev = NULL;
 static omni_lapacke_dgesvd_fn omni_tensor_lapacke_dgesvd = NULL;
 static omni_lapacke_dgeev_fn omni_tensor_lapacke_dgeev = NULL;
+static omni_lapacke_sgeev_fn omni_tensor_lapacke_sgeev = NULL;
+static omni_lapacke_zgeev_fn omni_tensor_lapacke_zgeev = NULL;
+static omni_lapacke_cgeev_fn omni_tensor_lapacke_cgeev = NULL;
 static int omni_tensor_lapack_resolution_attempted = 0;
 static long omni_tensor_lapack_dgesv_calls = 0;
 static long omni_tensor_lapack_dgetrf_calls = 0;
@@ -113,6 +167,9 @@ static long omni_tensor_lapack_dgeqrf_calls = 0;
 static long omni_tensor_lapack_dsyev_calls = 0;
 static long omni_tensor_lapack_dgesvd_calls = 0;
 static long omni_tensor_lapack_dgeev_calls = 0;
+static long omni_tensor_lapack_sgeev_calls = 0;
+static long omni_tensor_lapack_zgeev_calls = 0;
+static long omni_tensor_lapack_cgeev_calls = 0;
 static int omni_tensor_lapack_dgesv_disabled_for_tests = 0;
 static int omni_tensor_lapack_dgetrf_disabled_for_tests = 0;
 static int omni_tensor_lapack_dpotrf_disabled_for_tests = 0;
@@ -120,6 +177,9 @@ static int omni_tensor_lapack_dgeqrf_disabled_for_tests = 0;
 static int omni_tensor_lapack_dsyev_disabled_for_tests = 0;
 static int omni_tensor_lapack_dgesvd_disabled_for_tests = 0;
 static int omni_tensor_lapack_dgeev_disabled_for_tests = 0;
+static int omni_tensor_lapack_sgeev_disabled_for_tests = 0;
+static int omni_tensor_lapack_zgeev_disabled_for_tests = 0;
+static int omni_tensor_lapack_cgeev_disabled_for_tests = 0;
 
 static int omni_tensor_backend_lapack_dgesv_disabled(void) {
     return omni_tensor_lapack_dgesv_disabled_for_tests ||
@@ -154,6 +214,21 @@ static int omni_tensor_backend_lapack_dgesvd_disabled(void) {
 static int omni_tensor_backend_lapack_dgeev_disabled(void) {
     return omni_tensor_lapack_dgeev_disabled_for_tests ||
         getenv("OMNI_TENSOR_DISABLE_LAPACK_DGEEV") != NULL;
+}
+
+static int omni_tensor_backend_lapack_sgeev_disabled(void) {
+    return omni_tensor_lapack_sgeev_disabled_for_tests ||
+        getenv("OMNI_TENSOR_DISABLE_LAPACK_SGEEV") != NULL;
+}
+
+static int omni_tensor_backend_lapack_zgeev_disabled(void) {
+    return omni_tensor_lapack_zgeev_disabled_for_tests ||
+        getenv("OMNI_TENSOR_DISABLE_LAPACK_ZGEEV") != NULL;
+}
+
+static int omni_tensor_backend_lapack_cgeev_disabled(void) {
+    return omni_tensor_lapack_cgeev_disabled_for_tests ||
+        getenv("OMNI_TENSOR_DISABLE_LAPACK_CGEEV") != NULL;
 }
 
 static double omni_tensor_backend_lapack_abs(double value) {
@@ -228,6 +303,9 @@ static int omni_tensor_lapack_resolve(void) {
         void* dsyev_symbol = dlsym(handle, "LAPACKE_dsyev");
         void* dgesvd_symbol = dlsym(handle, "LAPACKE_dgesvd");
         void* dgeev_symbol = dlsym(handle, "LAPACKE_dgeev");
+        void* sgeev_symbol = dlsym(handle, "LAPACKE_sgeev");
+        void* zgeev_symbol = dlsym(handle, "LAPACKE_zgeev");
+        void* cgeev_symbol = dlsym(handle, "LAPACKE_cgeev");
         if (
             dgesv_symbol != NULL ||
             dgetrf_symbol != NULL ||
@@ -235,7 +313,10 @@ static int omni_tensor_lapack_resolve(void) {
             (dgeqrf_symbol != NULL && dorgqr_symbol != NULL) ||
             dsyev_symbol != NULL ||
             dgesvd_symbol != NULL ||
-            dgeev_symbol != NULL
+            dgeev_symbol != NULL ||
+            sgeev_symbol != NULL ||
+            zgeev_symbol != NULL ||
+            cgeev_symbol != NULL
         ) {
             omni_tensor_lapack_handle = handle;
             omni_tensor_lapacke_dgesv = (omni_lapacke_dgesv_fn)dgesv_symbol;
@@ -246,6 +327,9 @@ static int omni_tensor_lapack_resolve(void) {
             omni_tensor_lapacke_dsyev = (omni_lapacke_dsyev_fn)dsyev_symbol;
             omni_tensor_lapacke_dgesvd = (omni_lapacke_dgesvd_fn)dgesvd_symbol;
             omni_tensor_lapacke_dgeev = (omni_lapacke_dgeev_fn)dgeev_symbol;
+            omni_tensor_lapacke_sgeev = (omni_lapacke_sgeev_fn)sgeev_symbol;
+            omni_tensor_lapacke_zgeev = (omni_lapacke_zgeev_fn)zgeev_symbol;
+            omni_tensor_lapacke_cgeev = (omni_lapacke_cgeev_fn)cgeev_symbol;
             return 1;
         }
         dlclose(handle);
@@ -318,8 +402,47 @@ long omni_tensor_backend_lapack_dgeev_call_count(void) {
     return omni_tensor_lapack_dgeev_calls;
 }
 
+int omni_tensor_backend_lapack_sgeev_available(void) {
+    if (omni_tensor_backend_lapack_sgeev_disabled()) return 0;
+    return omni_tensor_lapack_resolve() && omni_tensor_lapacke_sgeev != NULL;
+}
+
+long omni_tensor_backend_lapack_sgeev_call_count(void) {
+    return omni_tensor_lapack_sgeev_calls;
+}
+
+int omni_tensor_backend_lapack_zgeev_available(void) {
+    if (omni_tensor_backend_lapack_zgeev_disabled()) return 0;
+    return omni_tensor_lapack_resolve() && omni_tensor_lapacke_zgeev != NULL;
+}
+
+long omni_tensor_backend_lapack_zgeev_call_count(void) {
+    return omni_tensor_lapack_zgeev_calls;
+}
+
+int omni_tensor_backend_lapack_cgeev_available(void) {
+    if (omni_tensor_backend_lapack_cgeev_disabled()) return 0;
+    return omni_tensor_lapack_resolve() && omni_tensor_lapacke_cgeev != NULL;
+}
+
+long omni_tensor_backend_lapack_cgeev_call_count(void) {
+    return omni_tensor_lapack_cgeev_calls;
+}
+
 void omni_tensor_backend_lapack_dgeev_disable_for_tests(int disabled) {
     omni_tensor_lapack_dgeev_disabled_for_tests = disabled != 0;
+}
+
+void omni_tensor_backend_lapack_sgeev_disable_for_tests(int disabled) {
+    omni_tensor_lapack_sgeev_disabled_for_tests = disabled != 0;
+}
+
+void omni_tensor_backend_lapack_zgeev_disable_for_tests(int disabled) {
+    omni_tensor_lapack_zgeev_disabled_for_tests = disabled != 0;
+}
+
+void omni_tensor_backend_lapack_cgeev_disable_for_tests(int disabled) {
+    omni_tensor_lapack_cgeev_disabled_for_tests = disabled != 0;
 }
 
 void omni_tensor_backend_lapack_dgesv_disable_for_tests(int disabled) {

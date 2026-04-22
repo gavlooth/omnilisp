@@ -1,5 +1,6 @@
 module lisp;
 
+
 import main;
 
 // =============================================================================
@@ -10,7 +11,7 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
 
     for (usz i = 0; i < args.len; i++) {
         if (!is_string(args[i])) {
-            return raise_error(interp, "string-append: expected string arguments");
+            return string_raise(interp, "type/arity", "string-append: expected string arguments");
         }
     }
 
@@ -28,9 +29,9 @@ fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
  * (string-upcase s) -> uppercase string
  */
 fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string-upcase: expected 1 argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string-upcase: expected 1 argument");
     if (!is_string(args[0])) {
-        return raise_error(interp, "string-upcase: expected string argument");
+        return string_raise(interp, "type/arity", "string-upcase: expected string argument");
     }
 
     Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
@@ -48,9 +49,9 @@ fn Value* prim_string_upcase(Value*[] args, Env* env, Interp* interp) {
  * (string-downcase s) -> lowercase string
  */
 fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string-downcase: expected 1 argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string-downcase: expected 1 argument");
     if (!is_string(args[0])) {
-        return raise_error(interp, "string-downcase: expected string argument");
+        return string_raise(interp, "type/arity", "string-downcase: expected string argument");
     }
 
     Value* result = make_string(interp, args[0].str_chars[:args[0].str_len]);
@@ -68,9 +69,9 @@ fn Value* prim_string_downcase(Value*[] args, Env* env, Interp* interp) {
  * (string-trim s) -> string with leading/trailing whitespace removed
  */
 fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string-trim: expected 1 argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string-trim: expected 1 argument");
     if (!is_string(args[0])) {
-        return raise_error(interp, "string-trim: expected string argument");
+        return string_raise(interp, "type/arity", "string-trim: expected string argument");
     }
 
     char* str = args[0].str_chars;
@@ -100,15 +101,15 @@ fn Value* prim_string_trim(Value*[] args, Env* env, Interp* interp) {
  * Join list of strings with separator
  */
 fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "string-join: expected 2 arguments");
-    if (!is_string(args[0])) return raise_error(interp, "string-join: expected string separator");
+    if (args.len < 2) return string_raise(interp, "type/arity", "string-join: expected 2 arguments");
+    if (!is_string(args[0])) return string_raise(interp, "type/arg-mismatch", "string-join: expected string separator");
 
     if (is_nil(args[1])) {
         return make_string(interp, "");
     }
 
     if (!is_cons(args[1])) {
-        return raise_error(interp, "string-join: expected list as second argument");
+        return string_raise(interp, "type/arity", "string-join: expected list as second argument");
     }
 
     char[] sep = args[0].str_chars[:args[0].str_len];
@@ -129,12 +130,12 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
         first = false;
 
         if (!is_string(elem)) {
-            return raise_error(interp, "string-join: expected string elements");
+            return string_raise(interp, "type/arg-mismatch", "string-join: expected string elements");
         }
         ds.append_string((String)elem.str_chars[:elem.str_len]);
     }
     if (!is_nil(list)) {
-        return raise_error(interp, "string-join: expected proper list");
+        return string_raise(interp, "type/arg-mismatch", "string-join: expected proper list");
     }
 
     return make_string(interp, ds.str_view());
@@ -144,10 +145,10 @@ fn Value* prim_string_join(Value*[] args, Env* env, Interp* interp) {
  * (substring s start end) -> substring
  */
 fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return raise_error(interp, "substring: expected 3 arguments");
-    if (!is_string(args[0])) return raise_error(interp, "substring: expected string as first argument");
+    if (args.len < 3) return string_raise(interp, "type/arity", "substring: expected 3 arguments");
+    if (!is_string(args[0])) return string_raise(interp, "type/arity", "substring: expected string as first argument");
     if (!is_int(args[1]) || !is_int(args[2])) {
-        return raise_error(interp, "substring: expected integer indices");
+        return string_raise(interp, "type/arg-mismatch", "substring: expected integer indices");
     }
 
     char[] bytes = args[0].str_chars[:args[0].str_len];
@@ -172,12 +173,12 @@ fn Value* prim_substring(Value*[] args, Env* env, Interp* interp) {
  * (string-split s sep) -> list of strings
  */
 fn Value* prim_string_split(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "string-split: expected 2 arguments");
+    if (args.len < 2) return string_raise(interp, "type/arity", "string-split: expected 2 arguments");
     if (!is_string(args[0]) || !is_string(args[1])) {
-        return raise_error(interp, "string-split: expected string arguments");
+        return string_raise(interp, "type/arity", "string-split: expected string arguments");
     }
     if (args[1].str_len == 0) {
-        return raise_error(interp, "string-split: empty separator");
+        return string_raise(interp, "type/arg-mismatch", "string-split: empty separator");
     }
 
     char* str = args[0].str_chars;

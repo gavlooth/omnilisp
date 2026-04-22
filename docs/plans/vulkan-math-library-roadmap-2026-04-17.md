@@ -1,7 +1,7 @@
 # Vulkan Math Library Roadmap
 
 Date: 2026-04-17
-Status: Active plan for `TENSOR-100F`; `TENSOR-100G` is a closed measured solver baseline
+Status: Closed for `TENSOR-100F`; `TENSOR-100G` is a closed measured solver baseline, and `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` is closed.
 
 ## Decision
 
@@ -18,6 +18,14 @@ has native `Float32` staged parallel solve parity at the same `65` threshold,
 with local timing tied against forced serial on this stack. Further solver
 work should reopen as a separate performance item only if measurements justify
 broader algorithmic scope.
+
+`TENSOR-100F` closed on 2026-04-22 after bounded-container global validation.
+The broad gate passed normal build/tests and FTXUI smoke; ASAN was explicitly
+skipped because the current C3 toolchain reports address sanitizer unsupported
+for this target. During that closure pass, `ast_arena_alloc` was hardened to
+fail closed on corrupt current chunks and the JIT tail `List` / `Array`
+constructor shortcut was narrowed so one-argument conversion calls preserve
+primitive malformed-list and malformed-iterator validation.
 
 ## Scope
 
@@ -156,13 +164,16 @@ Eligible next kernels:
   paths. CUDA zero-size contract identity/fill and rank-1/rank-1 dot also
   preserve CUDA placement for supported layouts. CUDA elementwise `map` has
   landed for dense row-major `Float64`/`Float32` binary scalar/exact-shape/
-  right-aligned broadcast operands, arithmetic/component unary ops, and
-  generated CUDA C/libdevice PTX scientific unary ops; valid foreign CUDA
-  concrete payload clone now deep-copies into Omni-owned CUDA storage.
+  right-aligned broadcast operands, zero-offset CUDA transpose-view binary
+  operands, arithmetic/component unary ops, and generated CUDA C/libdevice PTX
+  scientific unary ops; valid foreign CUDA concrete payload clone now
+  deep-copies into Omni-owned CUDA storage.
   `matrix/transpose-view` has landed as the first read-only Tensor view
   constructor, and direct rank-2 Vulkan transpose views can materialize into
   dense Vulkan storage at explicit placement/realization/copyback boundaries;
-  broader GPU view-backed kernels remain fail-closed. Fixed-width complex raw
+  CUDA transpose views can feed supported binary map kernels through explicit
+  stride-offset metadata. Raw CUDA view materialization, nonzero-offset views,
+  and CUDA unary/scientific view-backed kernels remain fail-closed. Fixed-width complex raw
   storage, elementwise map, contract, CUDA/Vulkan structural matrix kernels,
   and Vulkan fixed-width complex `matrix/lu`, `matrix/determinant`,
   `matrix/solve`, `matrix/inverse`, `matrix/rank`, `matrix/norm`,
@@ -192,11 +203,13 @@ Eligible next kernels:
   `tensor-layout` reports these as payload `view`, layout `strided`, owner
   `view-source`, `owns-storage` false, and write-policy `read-only-view`.
   CPU `ref`, `Array`, `List`, and `realize` materialization observe the view.
-  Vulkan/CUDA kernels and raw copy helpers still fail closed for view payloads
-  instead of consuming offset/stride metadata or hiding materialization. A
-  follow-on Vulkan materialization lane has landed for explicitly producing
-  dense Vulkan storage from direct rank-2 transpose views; that is narrower
-  than arbitrary stride-aware Vulkan kernel execution.
+  Vulkan/CUDA kernels and raw backend helpers still fail closed for view
+  payloads instead of consuming offset/stride metadata or hiding
+  materialization. Follow-on explicit materialization lanes have landed for
+  producing dense Vulkan storage from direct rank-2 Vulkan transpose views and
+  dense CUDA storage from CPU-backed transpose views at `to-device`/destination
+  copy boundaries; those are narrower than arbitrary stride-aware GPU kernel
+  execution.
 - Vulkan fixed-width complex LU/determinant/solve/inverse/rank/norm and
   singular-values are landed for dense row-major zero-offset
   `Complex128`/`Complex64` tensors. The
@@ -589,11 +602,11 @@ Initial numerical surface landed:
    capability bits, status mapping, shape guards, tolerance policy, and tests
    proving no hidden CPU fallback.
 3. `TENSOR-100H-COMPLEX-EIGEN`: complex eigen/eigenpair contracts across CPU
-   oracle and eligible backends. This lane starts with the public result
-   contract: fixed-width complex values/vectors where applicable, a clear
-   relationship to existing `matrix/eigenvalues`, `matrix/eigenvectors`, and
-   `matrix/eigenpairs`, and no fake Vulkan/CUDA support through host-built
-   `BigComplex` tensors.
+   oracle and eligible backends. This lane is closed for CPU and Vulkan:
+   fixed-width complex values/vectors are returned where applicable through
+   existing `matrix/eigenvalues`, `matrix/eigenvectors`, and
+   `matrix/eigenpairs`; CUDA eigen remains false until a separate cuSOLVER
+   eigen lane is explicitly opened.
 
 The operational closure plan is
 `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md`.
@@ -657,8 +670,9 @@ Non-Docker implementation order:
    `matrix/transpose-view`, with CPU read/materialize support and fail-closed
    GPU/copy-kernel posture.
 11. Landed: define CPU fixed-width complex Tensor storage before Vulkan complex
-    kernels or direct Vulkan general `matrix/eigenpairs`; remaining complex GPU
-    work is backend ABI, capability reporting, copy semantics, and kernels.
+    kernels and direct Vulkan general `matrix/eigenpairs`; Vulkan complex GPU
+    ABI, capability reporting, copy semantics, and shipped kernels are now
+    closed for this lane.
 12. Treat large-`k` SVD and large-`n` symmetric eigen improvements as
    measurement-led performance work. Direct Vulkan `matrix/svd` and symmetric
    eigen correctness already landed for dense row-major supported inputs; do

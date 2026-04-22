@@ -53,7 +53,7 @@ fn Value* boundary_build_destination_partial_escape(
         );
         Value* routed_first = null;
         if (!boundary_copy_result_ok(first_copy)) {
-            routed_first = raise_error(interp, boundary_copy_fault_message(first_copy.fault_code));
+            routed_first = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(first_copy.fault_code));
         } else {
             routed_first = first_copy.value;
         }
@@ -106,7 +106,7 @@ fn Value* boundary_build_destination_partial_escape(
         );
         Value* routed_second = null;
         if (!boundary_copy_result_ok(second_copy)) {
-            routed_second = raise_error(interp, boundary_copy_fault_message(second_copy.fault_code));
+            routed_second = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(second_copy.fault_code));
         } else {
             routed_second = second_copy.value;
         }
@@ -192,7 +192,7 @@ fn Value* boundary_build_destination_iterator_escape(
     );
     Value* routed_inner = null;
     if (!boundary_copy_result_ok(inner_copy)) {
-        routed_inner = raise_error(interp, boundary_copy_fault_message(inner_copy.fault_code));
+        routed_inner = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(inner_copy.fault_code));
     } else {
         routed_inner = inner_copy.value;
     }

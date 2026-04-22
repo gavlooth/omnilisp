@@ -386,15 +386,14 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
         return tensor_type_raise(interp, "ml/mean-squared-error: expected Tensor predictions and Tensor targets");
     }
 
+    bool touches_vulkan = tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN) ||
+        tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN);
+
     TensorVal* predictions = null;
     Value* predictions_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(
-        args[0],
-        &predictions,
-        &predictions_value,
-        interp,
-        "ml/mean-squared-error: predictions tensor backing storage is missing"
-    );
+    Value* err = touches_vulkan
+        ? tensor_expr_resolve_vulkan_or_migrate(args[0], &predictions, &predictions_value, interp, "ml/mean-squared-error: predictions tensor backing storage is missing")
+        : tensor_expr_resolve_concrete_any_device(args[0], &predictions, &predictions_value, interp, "ml/mean-squared-error: predictions tensor backing storage is missing");
     if (err != null) return err;
     bool cleanup_predictions = predictions_value != args[0];
     defer if (cleanup_predictions) {
@@ -403,13 +402,9 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* targets = null;
     Value* targets_value = null;
-    err = tensor_expr_resolve_concrete_any_device(
-        args[1],
-        &targets,
-        &targets_value,
-        interp,
-        "ml/mean-squared-error: targets tensor backing storage is missing"
-    );
+    err = touches_vulkan
+        ? tensor_expr_resolve_vulkan_or_migrate(args[1], &targets, &targets_value, interp, "ml/mean-squared-error: targets tensor backing storage is missing")
+        : tensor_expr_resolve_concrete_any_device(args[1], &targets, &targets_value, interp, "ml/mean-squared-error: targets tensor backing storage is missing");
     if (err != null) return err;
     bool cleanup_targets = targets_value != args[1];
     defer if (cleanup_targets) {
@@ -424,9 +419,6 @@ fn Value* prim_ml_mean_squared_error(Value*[] args, Env* env, Interp* interp) {
     }
     if (predictions.device == TENSOR_DEVICE_CPU && (!tensor_has_valid_storage(predictions) || !tensor_has_valid_storage(targets))) {
         return tensor_runtime_raise(interp, "ml/mean-squared-error: tensor backing storage is missing");
-    }
-    if (predictions.device == TENSOR_DEVICE_VULKAN && (!tensor_has_valid_device_storage(predictions, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN))) {
-        return tensor_runtime_raise(interp, "ml/mean-squared-error: Vulkan tensor backing storage is missing");
     }
     if (!ml_reduction_supported_dtype(predictions.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/mean-squared-error: currently supports Float64 and Float32 tensors", null);
@@ -480,25 +472,14 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
         return tensor_type_raise(interp, "ml/cross-entropy: expected Tensor logits and Tensor targets");
     }
 
-    bool logits_touches_vulkan = tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN);
-    bool targets_touches_vulkan = tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN);
-    if (logits_touches_vulkan || targets_touches_vulkan) {
-        if (!logits_touches_vulkan || !targets_touches_vulkan ||
-            tensor_expr_has_non_vulkan_device(args[0]) ||
-            tensor_expr_has_non_vulkan_device(args[1])) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: Vulkan operands must remain Vulkan-placed", null);
-        }
-    }
+    bool touches_vulkan = tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN) ||
+        tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN);
 
     TensorVal* logits = null;
     Value* logits_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(
-        args[0],
-        &logits,
-        &logits_value,
-        interp,
-        "ml/cross-entropy: logits tensor backing storage is missing"
-    );
+    Value* err = touches_vulkan
+        ? tensor_expr_resolve_vulkan_or_migrate(args[0], &logits, &logits_value, interp, "ml/cross-entropy: logits tensor backing storage is missing")
+        : tensor_expr_resolve_concrete_any_device(args[0], &logits, &logits_value, interp, "ml/cross-entropy: logits tensor backing storage is missing");
     if (err != null) return err;
     bool cleanup_logits = logits_value != args[0];
     defer if (cleanup_logits) {
@@ -507,13 +488,9 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
 
     TensorVal* targets = null;
     Value* targets_value = null;
-    err = tensor_expr_resolve_concrete_any_device(
-        args[1],
-        &targets,
-        &targets_value,
-        interp,
-        "ml/cross-entropy: targets tensor backing storage is missing"
-    );
+    err = touches_vulkan
+        ? tensor_expr_resolve_vulkan_or_migrate(args[1], &targets, &targets_value, interp, "ml/cross-entropy: targets tensor backing storage is missing")
+        : tensor_expr_resolve_concrete_any_device(args[1], &targets, &targets_value, interp, "ml/cross-entropy: targets tensor backing storage is missing");
     if (err != null) return err;
     bool cleanup_targets = targets_value != args[1];
     defer if (cleanup_targets) {
@@ -528,9 +505,6 @@ fn Value* prim_ml_cross_entropy(Value*[] args, Env* env, Interp* interp) {
     }
     if (logits.device == TENSOR_DEVICE_CPU && (!tensor_has_valid_storage(logits) || !tensor_has_valid_storage(targets))) {
         return tensor_runtime_raise(interp, "ml/cross-entropy: tensor backing storage is missing");
-    }
-    if (logits.device == TENSOR_DEVICE_VULKAN && (!tensor_has_valid_device_storage(logits, TENSOR_DEVICE_VULKAN) || !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN))) {
-        return tensor_runtime_raise(interp, "ml/cross-entropy: Vulkan tensor backing storage is missing");
     }
     if (!ml_reduction_supported_dtype(logits.dtype) || !ml_reduction_supported_dtype(targets.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/cross-entropy: currently supports Float64 and Float32 tensors", null);

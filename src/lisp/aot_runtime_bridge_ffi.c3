@@ -175,7 +175,8 @@ fn lisp::Value* ffi_declare_fn(
     bound.c_name[c_symbol.len] = 0;
 
     if (param_count > 0) {
-        if (param_count > usz.max / lisp::FfiTypeTag.sizeof) {
+        if (param_count > usz.max / lisp::FfiTypeTag.sizeof ||
+            param_count > usz.max / lisp::FfiHandlePolicy.sizeof) {
             aot_ffi_free_bound(bound);
             return aot_make_error_best_effort(interp, "aot ffi λ: parameter ABI table size overflow");
         }

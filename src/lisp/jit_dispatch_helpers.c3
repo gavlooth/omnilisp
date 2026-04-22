@@ -5,7 +5,7 @@ fn bool jit_try_index_instance(Interp* interp, Value* collection, Value* index, 
 
     SymbolId ref_sym = interp.symbols.intern("ref");
     if (ref_sym == INVALID_SYMBOL_ID) {
-        *out = raise_error(interp, "ref: failed to intern dispatch symbol");
+        *out = jit_raise(interp, "runtime/out-of-memory", "ref: failed to intern dispatch symbol");
         return true;
     }
     Value* ref_fn = interp.global_env.lookup(ref_sym);
@@ -52,7 +52,7 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
             Env* clause_env = make_env(interp, env);
             if (clause_env == null) {
                 match_r.cleanup();
-                return raise_error(interp, "out of memory while binding match clause");
+                return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding match clause");
             }
             for (usz j = 0; j < match_r.binding_count; j++) {
                 Value* bind_err = env_define_with_barrier_result(
@@ -63,7 +63,7 @@ fn Value* jit_do_match(Interp* interp, Value* scrutinee, Expr* expr, Env* env) {
                 );
                 if (bind_err != null) {
                     match_r.cleanup();
-                    return raise_error(interp, "out of memory while binding match clause");
+                    return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding match clause");
                 }
             }
             match_r.cleanup();

@@ -23,6 +23,9 @@ extern fn int omni_ffi_closure_alloc(int nargs, int* arg_types, int ret_type,
                                      void* user_data) @extern("omni_ffi_closure_alloc");
 extern fn void omni_ffi_closure_free(void* closure) @extern("omni_ffi_closure_free");
 extern fn int omni_ffi_test_callback_int_int(void* cb, int a, int b) @extern("omni_ffi_test_callback_int_int");
+extern fn int omni_ffi_call_null_arg_vectors_guard_for_tests() @extern("omni_ffi_call_null_arg_vectors_guard_for_tests");
+extern fn int omni_ffi_call_var_null_arg_vectors_guard_for_tests() @extern("omni_ffi_call_var_null_arg_vectors_guard_for_tests");
+extern fn int omni_ffi_closure_alloc_failure_clears_outputs_for_tests() @extern("omni_ffi_closure_alloc_failure_clears_outputs_for_tests");
 
 fn bool ffi_callback_value_to_type_tag(Value* value, Interp* interp, FfiTypeTag* out_tag, FfiHandlePolicy* out_policy) {
     if (value == null || interp == null || out_tag == null || out_policy == null) return false;
@@ -114,7 +117,7 @@ fn Value* ffi_callback_arg_to_value(void* arg_ptr, FfiTypeTag tag, Interp* inter
                         : "ffi-callback-ptr";
             return make_ffi_handle_ex(interp, ptr, name, null, false, false, null);
         }
-        default:
+        case FFI_TYPE_VOID:
             return make_nil(interp);
     }
 }
@@ -189,8 +192,6 @@ fn void ffi_callback_value_to_c(Value* value, FfiTypeTag tag, void* ret_ptr) {
                 *(void**)ret_ptr = null;
             }
             break;
-        default:
-            break;
     }
 }
 
@@ -250,12 +251,12 @@ fn void ffi_callback_dispatch(void* user_data, void* ret, void** args) @extern("
 fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     (void)env;
     if (args.len < 3) {
-        return raise_error(interp, "ffi-callback: expected (ffi-callback lambda param-types return-type)");
+        return ffi_raise(interp, "ffi/arity", "ffi-callback: expected (ffi-callback lambda param-types return-type)");
     }
 
     Value* callback_v = args[0];
     if (!ffi_callback_callable(callback_v)) {
-        return raise_error(interp, "ffi-callback: first arg must be a callable");
+        return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: first arg must be a callable");
     }
 
     // Parse parameter types and return type.
@@ -281,10 +282,16 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
             count = type_list.array_val != null ? type_list.array_val.length : 0;
         }
         param_count = count;
+        if (param_count > (usz)int.max) {
+            return ffi_raise(interp, "ffi/arity", "ffi-callback: parameter count exceeds supported arity");
+        }
+        if (param_count > usz.max / FfiTypeTag.sizeof) {
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi-callback: parameter table size overflow");
+        }
         if (param_count > 0) {
             param_types = (FfiTypeTag*)mem::malloc(FfiTypeTag.sizeof * param_count);
             if (param_types == null) {
-                return raise_error(interp, "ffi-callback: out of memory");
+                return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
             }
             if (type_list.tag == CONS) {
                 Value* cur = type_list;
@@ -292,7 +299,7 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
                 while (is_cons(cur)) {
                     if (!ffi_symbol_value_to_tag(cur.cons_val.car, interp, &param_types[i])) {
                         mem::free(param_types);
-                        return raise_error(interp, "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
+                        return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                     }
                     i++;
                     cur = cur.cons_val.cdr;
@@ -301,7 +308,7 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
                 for (usz i = 0; i < param_count; i++) {
                     if (!ffi_symbol_value_to_tag(type_list.array_val.items[i], interp, &param_types[i])) {
                         mem::free(param_types);
-                        return raise_error(interp, "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
+                        return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                     }
                 }
             }
@@ -309,39 +316,45 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
         // Return type is args[2]
         if (!ffi_symbol_value_to_tag(args[2], interp, &return_type)) {
             if (param_types != null) mem::free(param_types);
-            return raise_error(interp, "ffi-callback: unsupported return type (expected symbol like 'Integer)");
+            return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported return type (expected symbol like 'Integer)");
         }
     } else {
         // Form: (ffi-callback lambda 'Type1 'Type2 ... 'ReturnType)
         param_count = args.len - 2;
+        if (param_count > (usz)int.max) {
+            return ffi_raise(interp, "ffi/arity", "ffi-callback: parameter count exceeds supported arity");
+        }
+        if (param_count > usz.max / FfiTypeTag.sizeof) {
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi-callback: parameter table size overflow");
+        }
         if (param_count > 0) {
             param_types = (FfiTypeTag*)mem::malloc(FfiTypeTag.sizeof * param_count);
             if (param_types == null) {
-                return raise_error(interp, "ffi-callback: out of memory");
+                return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
             }
             for (usz i = 0; i < param_count; i++) {
                 if (!ffi_symbol_value_to_tag(args[i + 1], interp, &param_types[i])) {
                     mem::free(param_types);
-                    return raise_error(interp, "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
+                    return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported parameter type (expected symbol like 'Integer)");
                 }
             }
         }
         if (!ffi_symbol_value_to_tag(args[args.len - 1], interp, &return_type)) {
             if (param_types != null) mem::free(param_types);
-            return raise_error(interp, "ffi-callback: unsupported return type (expected symbol like 'Integer)");
+            return ffi_raise(interp, "ffi/type-mismatch", "ffi-callback: unsupported return type (expected symbol like 'Integer)");
         }
     }
 
     main::ScopeRegion* owner_scope = resolve_ffi_callback_owner_scope(callback_v, interp);
     if (owner_scope == null) {
         if (param_types != null) mem::free(param_types);
-        return raise_error(interp, "ffi-callback: callback lifetime is not owned by the active interpreter scope chain");
+        return ffi_raise(interp, "ffi/invalid-state", "ffi-callback: callback lifetime is not owned by the active interpreter scope chain");
     }
 
     FfiCallbackContext* ctx = (FfiCallbackContext*)mem::malloc(FfiCallbackContext.sizeof);
     if (ctx == null) {
         if (param_types != null) mem::free(param_types);
-        return raise_error(interp, "ffi-callback: out of memory");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
     }
     *ctx = {};
     main::scope_retain(owner_scope);
@@ -356,12 +369,18 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
     // Allocate libffi closure
     int* c_arg_types = null;
     if (param_count > 0) {
+        if (param_count > usz.max / int.sizeof) {
+            release_ffi_callback_owner_scope(ctx);
+            if (param_types != null) mem::free(param_types);
+            mem::free(ctx);
+            return ffi_raise(interp, "ffi/invalid-argument", "ffi-callback: parameter table size overflow");
+        }
         c_arg_types = (int*)mem::malloc(int.sizeof * param_count);
         if (c_arg_types == null) {
             release_ffi_callback_owner_scope(ctx);
             if (param_types != null) mem::free(param_types);
             mem::free(ctx);
-            return raise_error(interp, "ffi-callback: out of memory");
+            return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
         }
         for (usz i = 0; i < param_count; i++) {
             c_arg_types[i] = (int)param_types[i];
@@ -383,7 +402,7 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
         release_ffi_callback_owner_scope(ctx);
         if (param_types != null) mem::free(param_types);
         mem::free(ctx);
-        return raise_error(interp, "ffi-callback: failed to allocate closure (libffi)");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: failed to allocate closure (libffi)");
     }
 
     Value* handle = make_ffi_handle_ex(
@@ -392,18 +411,17 @@ fn Value* prim_ffi_callback(Value*[] args, Env* env, Interp* interp) {
         "ffi-callback",
         &ffi_callback_context_finalizer,
         true,
-        false
+        false,
+        null,
+        ctx
     );
     if (handle == null) {
         omni_ffi_closure_free(ctx.closure_handle);
         release_ffi_callback_owner_scope(ctx);
         if (param_types != null) mem::free(param_types);
         mem::free(ctx);
-        return raise_error(interp, "ffi-callback: out of memory");
+        return ffi_raise(interp, "ffi/out-of-memory", "ffi-callback: out of memory");
     }
-
-    // Store ctx pointer in the FfiHandle so we can access it later
-    handle.ffi_val.lib_handle = ctx.code_ptr;
 
     // Keepalive: ensure ffi_callback_dispatch is not DCE'd by the C3 compiler.
     ffi_callback_dispatch(null, null, null);

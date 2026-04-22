@@ -65,9 +65,9 @@ fn Value* boundary_fallback_disallowed_error(Interp* interp, BoundaryCommitFault
         "boundary: traversal fallback disallowed for commit path (%s)",
         (ZString)boundary_commit_fault_name(fault_code)
     )) {
-        return raise_error(interp, msg);
+        return boundary_raise(interp, "boundary/copy-fault", (String)msg);
     }
-    return raise_error(interp, "boundary: traversal fallback disallowed for commit path");
+    return boundary_raise(interp, "boundary/invalid-state", "boundary: traversal fallback disallowed for commit path");
 }
 
 fn Value* boundary_destination_promote_routed_escape(
@@ -145,7 +145,7 @@ fn Value* boundary_destination_detach_iterator_inner(
         ctx
     );
     if (!boundary_copy_result_ok(copy_result)) {
-        return raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+        return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copy_result.fault_code));
     }
     return copy_result.value;
 }

@@ -14,9 +14,9 @@ fn Value* array_promote_or_error(Value* value, Interp* interp) @inline {
 }
 
 fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "sort: expected list argument");
+    if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "sort: expected list argument");
     if (is_nil(args[0])) return make_nil(interp);
-    if (!is_cons(args[0])) return raise_error(interp, "sort: expected list argument");
+    if (!is_cons(args[0])) return collection_raise(interp, "type/arg-mismatch", "sort: expected list argument");
     // Convert list to array
     Value*[256] arr;
     usz len = 0;
@@ -25,8 +25,8 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
         arr[len++] = cur.cons_val.car;
         cur = cur.cons_val.cdr;
     }
-    if (is_cons(cur)) return raise_error(interp, "sort: list input too long");
-    if (!is_nil(cur)) return raise_error(interp, "sort: expected a proper list");
+    if (is_cons(cur)) return collection_raise(interp, "type/range-error", "sort: list input too long");
+    if (!is_nil(cur)) return collection_raise(interp, "type/arg-mismatch", "sort: expected a proper list");
     // Insertion sort (stable)
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
@@ -67,10 +67,10 @@ fn Value* prim_sort(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "sort-by: expected comparator and list");
+    if (args.len < 2) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected comparator and list");
     Value* cmp_fn = args[0];
     if (is_nil(args[1])) return make_nil(interp);
-    if (!is_cons(args[1])) return raise_error(interp, "sort-by: expected list argument");
+    if (!is_cons(args[1])) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected list argument");
     // Convert list to array
     Value*[256] arr;
     usz len = 0;
@@ -79,8 +79,8 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
         arr[len++] = cur.cons_val.car;
         cur = cur.cons_val.cdr;
     }
-    if (is_cons(cur)) return raise_error(interp, "sort-by: list input too long");
-    if (!is_nil(cur)) return raise_error(interp, "sort-by: expected a proper list");
+    if (is_cons(cur)) return collection_raise(interp, "type/range-error", "sort-by: list input too long");
+    if (!is_nil(cur)) return collection_raise(interp, "type/arg-mismatch", "sort-by: expected a proper list");
     // Insertion sort with custom comparator
     for (usz i = 1; i < len; i++) {
         Value* key = arr[i];
@@ -88,10 +88,10 @@ fn Value* prim_sort_by(Value*[] args, Env* env, Interp* interp) {
         while (j >= 0) {
             // Call comparator: (cmp a b) should return negative/0/positive or truthy for a>b
             Value* r1 = jit_apply_value(cmp_fn, arr[(usz)j], interp);
-            if (r1 == null) return raise_error(interp, "sort-by: comparator application failed");
+            if (r1 == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
             if (r1.tag == ERROR) return r1;
             Value* r2 = jit_apply_value(r1, key, interp);
-            if (r2 == null) return raise_error(interp, "sort-by: comparator application failed");
+            if (r2 == null) return collection_raise(interp, "runtime/evaluation-error", "sort-by: comparator application failed");
             if (r2.tag == ERROR) return r2;
             // If result > 0 (or truthy for >), swap
             bool gt = false;
@@ -138,10 +138,10 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
         Value* cur = args[0];
         while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
         if (is_cons(cur)) {
-            return raise_error(interp, "Array: list input too long or cyclic");
+            return collection_raise(interp, "type/range-error", "Array: list input too long or cyclic");
         }
         if (!is_nil(cur)) {
-            return raise_error(interp, "Array: expected a proper list");
+            return collection_raise(interp, "type/arg-mismatch", "Array: expected a proper list");
         }
         Value* v = make_array(interp, count);
         if (v == null || v.tag != ARRAY || v.array_val == null) return v;
@@ -168,12 +168,12 @@ fn Value* prim_array(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return raise_error(interp, "set!: expected array target, integer index, value");
+    if (args.len < 3 || !is_array(args[0]) || !is_int(args[1])) return collection_raise(interp, "type/arg-mismatch", "set!: expected array target, integer index, value");
     if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: array backing storage is missing");
     long idx = args[1].int_val;
     long alen = (long)args[0].array_val.length;
     if (idx < 0) idx += alen;
-    if (idx < 0 || idx >= alen) return raise_error(interp, "set!: array index out of range");
+    if (idx < 0 || idx >= alen) return collection_raise(interp, "type/range-error", "set!: array index out of range");
     Value* promoted = array_promote_or_error(args[2], interp);
     if (promoted == null || promoted.tag == ERROR) return promoted;
     args[0].array_val.items[(usz)idx] = promoted;
@@ -181,13 +181,13 @@ fn Value* prim_array_set(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_array_length(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array-length: expected array");
+    if (args.len < 1 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "array-length: expected array");
     if (args[0].array_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "array-length: array backing storage is missing");
     return make_int(interp, (long)args[0].array_val.length);
 }
 
 fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1 || !is_array(args[0])) return raise_error(interp, "array->list: expected array");
+    if (args.len < 1 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "array->list: expected array");
     Array* vec = args[0].array_val;
     if (vec == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "array->list: array backing storage is missing");
     Value* result = make_nil(interp);
@@ -200,17 +200,17 @@ fn Value* prim_array_to_list(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "list->array: expected list");
-    if (!is_cons(args[0]) && !is_nil(args[0])) return raise_error(interp, "list->array: expected list");
+    if (args.len < 1) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
+    if (!is_cons(args[0]) && !is_nil(args[0])) return collection_raise(interp, "type/arg-mismatch", "list->array: expected list");
     // Count elements
     usz count = 0;
     Value* cur = args[0];
     while (is_cons(cur) && count < 65536) { count++; cur = cur.cons_val.cdr; }
     if (is_cons(cur)) {
-        return raise_error(interp, "list->array: list input too long or cyclic");
+        return collection_raise(interp, "type/range-error", "list->array: list input too long or cyclic");
     }
     if (!is_nil(cur)) {
-        return raise_error(interp, "list->array: expected a proper list");
+        return collection_raise(interp, "type/arg-mismatch", "list->array: expected a proper list");
     }
     Value* v = make_array(interp, count);
     if (v == null || v.tag != ARRAY || v.array_val == null) return v;
@@ -226,27 +226,27 @@ fn Value* prim_list_to_array(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_is_array(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "array?: expected 1 argument");
+    if (args.len < 1) return collection_raise(interp, "type/arity", "array?: expected 1 argument");
     return is_array(args[0]) ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
 
 fn Value* prim_array_push(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2 || !is_array(args[0])) return raise_error(interp, "push!: expected array and value");
+    if (args.len < 2 || !is_array(args[0])) return collection_raise(interp, "type/arg-mismatch", "push!: expected array and value");
     Array* vec = args[0].array_val;
     if (vec == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "push!: array backing storage is missing");
     if (vec.length >= vec.capacity) {
         if (vec.capacity == 0 || vec.capacity > usz.max / (usz)2) {
-            return raise_error(interp, "push!: array backing storage out of memory");
+            return collection_raise(interp, "type/range-error", "push!: array backing storage out of memory");
         }
         usz new_cap = vec.capacity * 2;
         if (new_cap > usz.max / Value*.sizeof) {
-            return raise_error(interp, "push!: array backing storage out of memory");
+            return collection_raise(interp, "type/range-error", "push!: array backing storage out of memory");
         }
         Value** new_items = g_array_push_force_grow_alloc_fail
             ? null
             : (Value**)mem::malloc(Value*.sizeof * new_cap);
         if (new_items == null) {
-            return raise_error(interp, "push!: array backing storage out of memory");
+            return collection_raise(interp, "type/range-error", "push!: array backing storage out of memory");
         }
         for (usz i = 0; i < vec.length; i++) { new_items[i] = vec.items[i]; }
         mem::free(vec.items);

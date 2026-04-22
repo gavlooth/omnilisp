@@ -78,10 +78,10 @@ fn Value* tensor_vulkan_map_unary_value(
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         tensor_free_payload(result_tensor);
         if (op == 20 && status == OMNI_TENSOR_VULKAN_DOMAIN_ERROR) {
-            return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
         }
         if (op == 20 && status == OMNI_TENSOR_VULKAN_INVALID_ARGUMENT) {
-            return raise_error(interp, "stats/normal-quantile: expected finite numeric input");
+            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: expected finite numeric input");
         }
         return tensor_vulkan_status_raise(interp, status, kernel_message);
     }
@@ -389,10 +389,10 @@ fn Value* tensor_cuda_map_unary_value(
     if (status != OMNI_TENSOR_CUDA_SUCCESS) {
         tensor_free_payload(result_tensor);
         if (op == 20 && status == OMNI_TENSOR_CUDA_DOMAIN_ERROR) {
-            return raise_error(interp, "stats/normal-quantile: probability must be between 0 and 1");
+            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: probability must be between 0 and 1");
         }
         if (op == 20 && status == OMNI_TENSOR_CUDA_INVALID_ARGUMENT) {
-            return raise_error(interp, "stats/normal-quantile: expected finite numeric input");
+            return tensor_raise(interp, "tensor/domain-error", "stats/normal-quantile: expected finite numeric input");
         }
         return tensor_cuda_status_raise(interp, status, kernel_message);
     }
@@ -443,9 +443,9 @@ fn Value* tensor_cuda_map_binary_resolved(
         (right_tensor != null && right_tensor.dtype != dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: CUDA tensor dtype mismatch", null);
     }
-    if (!tensor_dense_row_major(tensor) ||
-        (left_tensor != null && !tensor_dense_row_major(left_tensor)) ||
-        (right_tensor != null && !tensor_dense_row_major(right_tensor))) {
+    if (!tensor_zero_offset_strided_storage_span_valid(tensor) ||
+        (left_tensor != null && !tensor_zero_offset_strided_storage_span_valid(left_tensor)) ||
+        (right_tensor != null && !tensor_zero_offset_strided_storage_span_valid(right_tensor))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", unsupported_message, null);
     }
     if (!tensor_map_operand_matches_shape(tensor, result_shape) ||
@@ -453,9 +453,9 @@ fn Value* tensor_cuda_map_binary_resolved(
         (right_tensor != null && !tensor_map_operand_matches_shape(right_tensor, result_shape))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: CUDA result shape mismatch", null);
     }
-    if (!tensor_has_valid_device_storage(tensor, TENSOR_DEVICE_CUDA) ||
-        (left_tensor != null && !tensor_has_valid_device_storage(left_tensor, TENSOR_DEVICE_CUDA)) ||
-        (right_tensor != null && !tensor_has_valid_device_storage(right_tensor, TENSOR_DEVICE_CUDA))) {
+    if (!tensor_zero_offset_strided_device_map_operand(tensor, TENSOR_DEVICE_CUDA) ||
+        (left_tensor != null && !tensor_zero_offset_strided_device_map_operand(left_tensor, TENSOR_DEVICE_CUDA)) ||
+        (right_tensor != null && !tensor_zero_offset_strided_device_map_operand(right_tensor, TENSOR_DEVICE_CUDA))) {
         return tensor_runtime_raise(interp, missing_message);
     }
 
@@ -577,9 +577,9 @@ fn Value* tensor_cuda_map_complex_binary_resolved(
         (right_tensor != null && right_tensor.dtype != dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: CUDA tensor dtype mismatch", null);
     }
-    if (!tensor_dense_row_major(tensor) ||
-        (left_tensor != null && !tensor_dense_row_major(left_tensor)) ||
-        (right_tensor != null && !tensor_dense_row_major(right_tensor))) {
+    if (!tensor_zero_offset_strided_storage_span_valid(tensor) ||
+        (left_tensor != null && !tensor_zero_offset_strided_storage_span_valid(left_tensor)) ||
+        (right_tensor != null && !tensor_zero_offset_strided_storage_span_valid(right_tensor))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", unsupported_message, null);
     }
     if (!tensor_map_operand_matches_shape(tensor, result_shape) ||
@@ -587,9 +587,9 @@ fn Value* tensor_cuda_map_complex_binary_resolved(
         (right_tensor != null && !tensor_map_operand_matches_shape(right_tensor, result_shape))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "map: CUDA result shape mismatch", null);
     }
-    if (!tensor_has_valid_device_storage(tensor, TENSOR_DEVICE_CUDA) ||
-        (left_tensor != null && !tensor_has_valid_device_storage(left_tensor, TENSOR_DEVICE_CUDA)) ||
-        (right_tensor != null && !tensor_has_valid_device_storage(right_tensor, TENSOR_DEVICE_CUDA))) {
+    if (!tensor_zero_offset_strided_device_map_operand(tensor, TENSOR_DEVICE_CUDA) ||
+        (left_tensor != null && !tensor_zero_offset_strided_device_map_operand(left_tensor, TENSOR_DEVICE_CUDA)) ||
+        (right_tensor != null && !tensor_zero_offset_strided_device_map_operand(right_tensor, TENSOR_DEVICE_CUDA))) {
         return tensor_runtime_raise(interp, missing_message);
     }
 

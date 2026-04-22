@@ -4,6 +4,8 @@ import std::io;
 import std::core::mem;
 import std::thread;
 
+const usz FFI_DLOPEN_REGISTRY_PATH_CAP = 256;
+
 // =============================================================================
 // SHARED DLOPEN REGISTRY (Item 10)
 // Maps library path → shared dlopen handle with reference counting.
@@ -37,7 +39,15 @@ fn void ffi_dlopen_registry_unlock() @inline {
     g_dlopen_registry_mu.unlock();
 }
 
+fn bool ffi_dlopen_registry_copy_path(char[] path, char* out_path, usz out_cap) {
+    if (path.len == 0 || out_path == null || out_cap == 0 || path.len >= out_cap) return false;
+    for (usz i = 0; i < path.len; i++) out_path[i] = path[i];
+    out_path[path.len] = 0;
+    return true;
+}
+
 fn int ffi_dlopen_registry_find(char[] path) {
+    if (path.len == 0 || path.len >= FFI_DLOPEN_REGISTRY_PATH_CAP) return -1;
     for (uint i = 0; i < g_dlopen_registry_count; i++) {
         char[] entry_path = g_dlopen_registry[i].path[:ffi_c_string_len(&g_dlopen_registry[i].path[0])];
         if (ffi_char_slice_equals(path, entry_path)) {
@@ -64,9 +74,11 @@ fn void* ffi_dlopen_registry_acquire(char[] path) {
         g_dlopen_registry[idx].refcount++;
         return g_dlopen_registry[idx].handle;
     }
+    char[FFI_DLOPEN_REGISTRY_PATH_CAP] c_path;
+    if (!ffi_dlopen_registry_copy_path(path, &c_path[0], FFI_DLOPEN_REGISTRY_PATH_CAP)) return null;
 
     (void)dlerror();
-    void* handle = dlopen((ZString)&path[0], RTLD_LAZY);
+    void* handle = dlopen((ZString)&c_path[0], RTLD_LAZY);
     if (handle == null) return null;
 
     if (g_dlopen_registry_count >= g_dlopen_registry_capacity) {
@@ -83,7 +95,6 @@ fn void* ffi_dlopen_registry_acquire(char[] path) {
 
     DlopenRegistryEntry* entry = &g_dlopen_registry[g_dlopen_registry_count];
     usz len = path.len;
-    if (len > 255) len = 255;
     for (usz i = 0; i < len; i++) entry.path[i] = path[i];
     entry.path[len] = 0;
     entry.handle = handle;

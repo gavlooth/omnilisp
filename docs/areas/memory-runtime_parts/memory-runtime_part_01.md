@@ -5,7 +5,7 @@ Source: `docs/areas/memory-runtime.md`
 # Memory and Runtime
 
 Status: `green` (boundary hardening, nested fail-closed wrapper promotion, bounded runtime/JIT gates, signal-handle rollback cleanup, lazy Tensor cleanup, structured-error payload cleanup, checked-hashmap rollback cleanup, and transactional destination materialization are all currently validated)
-As of: 2026-04-12
+As of: 2026-04-23
 
 ## Canonical Sources
 

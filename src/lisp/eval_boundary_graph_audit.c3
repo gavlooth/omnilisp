@@ -44,14 +44,16 @@ fn void boundary_debug_graph_audit_committed_escape_root(
     if (!audit.ok) {
         boundary_graph_audit_log_reason(audit);
         boundary_graph_audit_log_commit_context(committed, audit);
-        BoundaryGraphAuditReason reason = audit.reason;
-        io::eprintfn(
-            "[boundary][graph-audit] committed escape root reachability violation outcome=%d reason=%s root_tag=%d violating_edge_tag=%d",
-            (int)committed.outcome,
-            (ZString)boundary_graph_audit_reason_name(reason),
-            (long)audit.root_tag,
-            (long)audit.violating_edge_tag
-        );
+        if (boundary_verbose_telemetry_enabled()) {
+            BoundaryGraphAuditReason reason = audit.reason;
+            io::eprintfn(
+                "[boundary][graph-audit] committed escape root reachability violation outcome=%d reason=%s root_tag=%d violating_edge_tag=%d",
+                (int)committed.outcome,
+                (ZString)boundary_graph_audit_reason_name(reason),
+                (long)audit.root_tag,
+                (long)audit.violating_edge_tag
+            );
+        }
     }
 }
 
@@ -89,11 +91,13 @@ fn bool boundary_debug_graph_audit_pre_splice_escape_root(
         boundary_graph_audit_escape_reachability_result(root, target_scope, true, releasing_scope, global_env);
     if (audit.ok) return true;
 
-    io::eprintfn(
-        "[boundary][graph-audit] pre-splice escape root reachability violation reason=%s root_tag=%d violating_edge_tag=%d",
-        (ZString)boundary_graph_audit_reason_name(audit.reason),
-        (long)audit.root_tag,
-        (long)audit.violating_edge_tag
-    );
+    if (boundary_verbose_telemetry_enabled()) {
+        io::eprintfn(
+            "[boundary][graph-audit] pre-splice escape root reachability violation reason=%s root_tag=%d violating_edge_tag=%d",
+            (ZString)boundary_graph_audit_reason_name(audit.reason),
+            (long)audit.root_tag,
+            (long)audit.violating_edge_tag
+        );
+    }
     return false;
 }

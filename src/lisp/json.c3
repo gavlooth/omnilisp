@@ -1,5 +1,9 @@
 module lisp;
 
+fn Value* json_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "parser", code, message, null);
+}
+
 // ============================================================
 // json-parse: JSON string → Omni value
 // ============================================================
@@ -42,7 +46,7 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
             Value* v = json_val_to_omni(elem, interp);
             if (v != null && v.tag == ERROR) return v;
             Value* promoted = boundary_promote_to_root(v, interp);
-            if (promoted == null) return raise_error(interp, "json-parse: out of memory");
+            if (promoted == null) return json_raise(interp, "parser/out-of-memory", "json-parse: out of memory");
             if (promoted.tag == ERROR) return promoted;
             arr.array_val.items[i] = promoted;
             arr.array_val.length++;
@@ -72,7 +76,7 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
                 return key_val != null && key_val.tag == ERROR ? key_val : val_v;
             }
             if (!hashmap_set_checked(dict.hashmap_val, key_val, val_v, interp)) {
-                return raise_error(interp, "json-parse: out of memory");
+                return json_raise(interp, "parser/out-of-memory", "json-parse: out of memory");
             }
         }
         return dict;
@@ -82,13 +86,13 @@ fn Value* json_val_to_omni(YyjsonVal* val, Interp* interp) {
 }
 
 fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
-    if (args.len != 2) return raise_error(interp, "json-get: expected 2 arguments");
+    if (args.len != 2) return json_raise(interp, "parser/arity", "json-get: expected 2 arguments");
     if (args[0] == null) return make_nil(interp);
-    if (!is_string(args[1])) return raise_error(interp, "json-get: path must be string");
+    if (!is_string(args[1])) return json_raise(interp, "parser/invalid-argument", "json-get: path must be string");
 
     char[] pointer = args[1].str_chars[:args[1].str_len];
     if (pointer.len == 0) return args[0];
-    if (pointer[0] != '/') return raise_error(interp, "json-get: pointer must be empty for root or start with '/'");
+    if (pointer[0] != '/') return json_raise(interp, "parser/invalid-argument", "json-get: pointer must be empty for root or start with '/'");
 
     Value* current = args[0];
     usz i = 0;
@@ -101,7 +105,7 @@ fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
         char[] token_raw = pointer[start:i - start];
 
         JsonPointerToken token = json_pointer_decode_token(token_raw);
-        if (!token.ok) return raise_error(interp, "json-get: invalid pointer escape sequence");
+        if (!token.ok) return json_raise(interp, "parser/invalid-argument", "json-get: invalid pointer escape sequence");
 
         current = json_pointer_lookup(current, token.text, interp);
         if (token.owned) json_pointer_token_release(&token);
@@ -113,9 +117,9 @@ fn Value* prim_json_get(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* prim_json_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
-        return raise_error(interp, "json-parse: expected 1-2 arguments");
+        return json_raise(interp, "parser/arity", "json-parse: expected 1-2 arguments");
     }
-    if (!is_string(args[0])) return raise_error(interp, "json-parse: expected string argument");
+    if (!is_string(args[0])) return json_raise(interp, "parser/invalid-argument", "json-parse: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
     usz parse_flags = 0;
@@ -125,7 +129,7 @@ fn Value* prim_json_parse(Value*[] args, Env* env, Interp* interp) {
     }
 
     YyjsonDoc* doc = omni_yyjson_read(src.ptr, src.len, parse_flags);
-    if (doc == null) return raise_error(interp, "json-parse: invalid JSON");
+    if (doc == null) return json_raise(interp, "parser/syntax-error", "json-parse: invalid JSON");
 
     YyjsonVal* root = omni_yyjson_doc_get_root(doc);
     Value* result = json_val_to_omni(root, interp);

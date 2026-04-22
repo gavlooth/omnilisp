@@ -169,11 +169,11 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
             : boundary_promote_to_escape(car, interp);
         if (car != null && car.scope_gen != interp.current_scope.escape_generation) {
             if (promoted_car == null) {
-                return raise_error(interp, "cons: failed to promote car to escape");
+                return boundary_raise(interp, "boundary/out-of-memory", "cons: failed to promote car to escape");
             }
             if (promoted_car.tag == ERROR && !make_cons_promoted_error_value_ok(interp, car, promoted_car)) return promoted_car;
             if (!make_cons_escape_identity_promotion_ok(interp, car, promoted_car)) {
-                return raise_error(interp, "cons: failed to promote car to escape");
+                return boundary_raise(interp, "boundary/out-of-memory", "cons: failed to promote car to escape");
             }
         }
 
@@ -189,7 +189,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                     interp.current_scope,
                     true
                 );
-                return raise_error(interp, "cons: failed to promote cdr to escape");
+                return boundary_raise(interp, "boundary/out-of-memory", "cons: failed to promote cdr to escape");
             }
             if (promoted_cdr.tag == ERROR && !make_cons_promoted_error_value_ok(interp, cdr, promoted_cdr)) {
                 boundary_cleanup_materialized_value(
@@ -207,7 +207,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                     interp.current_scope,
                     true
                 );
-                return raise_error(interp, "cons: failed to promote cdr to escape");
+                return boundary_raise(interp, "boundary/out-of-memory", "cons: failed to promote cdr to escape");
             }
         }
 
@@ -225,7 +225,7 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
                 interp.current_scope,
                 true
             );
-            return raise_error(interp, "cons: failed to allocate escape pair");
+            return boundary_raise(interp, "boundary/out-of-memory", "cons: failed to allocate escape pair");
         }
         v.tag = CONS;
         // Reusing an existing current-scope ESCAPE tail is safe and avoids
@@ -246,11 +246,11 @@ fn Value* make_cons(Interp* interp, Value* car, Value* cdr) @inline {
 fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
     Closure* closure = (Closure*)value_alloc_closure_payload(interp.current_scope, Closure.sizeof);
     if (closure == null) {
-        return raise_error(interp, "closure: out of memory");
+        return runtime_raise(interp, "runtime/out-of-memory", "closure: out of memory");
     }
     SymbolId* params = (SymbolId*)value_alloc_closure_payload(interp.current_scope, SymbolId.sizeof * 1);
     if (params == null) {
-        return raise_error(interp, "closure: out of memory");
+        return runtime_raise(interp, "runtime/out-of-memory", "closure: out of memory");
     }
     params[0] = param;
 
@@ -276,7 +276,7 @@ fn Value* make_closure(Interp* interp, SymbolId param, Expr* body, Env* env) {
 fn Value* make_closure_no_param(Interp* interp, Expr* body, Env* env) {
     Closure* closure = (Closure*)value_alloc_closure_payload(interp.current_scope, Closure.sizeof);
     if (closure == null) {
-        return raise_error(interp, "closure: out of memory");
+        return runtime_raise(interp, "runtime/out-of-memory", "closure: out of memory");
     }
 
     Value* v = interp.alloc_value();

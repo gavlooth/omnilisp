@@ -3,6 +3,10 @@ module lisp;
 import std::core::mem;
 import main;
 
+fn Value* boundary_raise(Interp* interp, String code, String message) @inline {
+    return raise_error_with_payload_names(interp, "boundary", code, message, null);
+}
+
 bool g_boundary_force_copy_continuation_wrapper_alloc_fail = false;
 bool g_boundary_force_copy_time_point_wrapper_alloc_fail = false;
 
@@ -15,7 +19,7 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         return fault_out != null
             ? null
             : (first_arg == null
-                ? raise_error(interp, "boundary: failed to copy partial primitive first arg")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy partial primitive first arg")
                 : first_arg);
     }
 
@@ -32,7 +36,7 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         return fault_out != null
             ? null
             : (second_arg == null
-                ? raise_error(interp, "boundary: failed to copy partial primitive second arg")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy partial primitive second arg")
                 : second_arg);
     }
 
@@ -54,7 +58,7 @@ fn Value* copy_partial_prim_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate partial primitive copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate partial primitive copy value");
     }
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = v.partial_val.func;
@@ -72,7 +76,7 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
         Value* result = interp.alloc_value();
         if (result == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy value");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array copy value");
         }
         result.tag = ARRAY;
         result.array_val = null;
@@ -83,7 +87,7 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
     Array* dst_arr = (Array*)mem::malloc(Array.sizeof);
     if (dst_arr == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array copy");
     }
     dst_arr.items = null;
     usz copied_items = 0;
@@ -102,12 +106,12 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
     dst_arr.length = src_arr.length;
     if (cap > usz.max / Value*.sizeof) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array copy");
     }
     dst_arr.items = (Value**)mem::malloc(Value*.sizeof * cap);
     if (dst_arr.items == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array copy");
     }
 
     for (usz i = 0; i < src_arr.length; i++) {
@@ -119,7 +123,7 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
             return fault_out != null
                 ? null
                 : (copied == null
-                    ? raise_error(interp, "boundary: failed to copy array item")
+                    ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy array item")
                     : copied);
         }
         dst_arr.items[i] = copied;
@@ -129,7 +133,7 @@ fn Value* copy_array_to_parent(Value* v, Interp* interp, BoundaryCopyFault* faul
     Value* result = interp.alloc_value();
     if (result == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate array copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate array copy value");
     }
     result.tag = ARRAY;
     result.array_val = dst_arr;
@@ -146,7 +150,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
         Value* result = interp.alloc_value();
         if (result == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy value");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap copy value");
         }
         result.tag = v.tag;
         result.hashmap_val = null;
@@ -157,7 +161,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     HashMap* dst_map = (HashMap*)mem::malloc(HashMap.sizeof);
     if (dst_map == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap copy");
     }
     dst_map.capacity = src_map.capacity;
     dst_map.count = src_map.count;
@@ -174,12 +178,12 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     if (src_map.capacity > 0) {
         if ((usz)src_map.capacity > usz.max / HashEntry.sizeof) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap copy");
         }
         dst_map.entries = (HashEntry*)mem::malloc(HashEntry.sizeof * src_map.capacity);
         if (dst_map.entries == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap copy");
         }
 
         for (uint i = 0; i < src_map.capacity; i++) {
@@ -197,7 +201,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
                     return fault_out != null
                         ? null
                         : (copied_key == null
-                            ? raise_error(interp, "boundary: failed to copy hashmap key")
+                            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy hashmap key")
                             : copied_key);
                 }
                 dst_e.key = copied_key;
@@ -209,7 +213,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
                     return fault_out != null
                         ? null
                         : (copied_value == null
-                            ? raise_error(interp, "boundary: failed to copy hashmap value")
+                            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy hashmap value")
                             : copied_value);
                 }
                 dst_e.value = copied_value;
@@ -220,7 +224,7 @@ fn Value* copy_hashmap_backed_to_parent(Value* v, Interp* interp, BoundaryCopyFa
     Value* result = interp.alloc_value();
     if (result == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate hashmap copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate hashmap copy value");
     }
     result.tag = v.tag;
     result.hashmap_val = dst_map;
@@ -237,7 +241,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         Value* result = interp.alloc_value();
         if (result == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy value");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table copy value");
         }
         result.tag = METHOD_TABLE;
         result.method_table_val = null;
@@ -248,7 +252,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     MethodTable* dst_mt = (MethodTable*)mem::malloc(MethodTable.sizeof);
     if (dst_mt == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table copy");
     }
     dst_mt.name = src_mt.name;
     dst_mt.entry_count = src_mt.entry_count;
@@ -274,12 +278,12 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     if (dst_mt.capacity > 0) {
         if (dst_mt.capacity > usz.max / MethodEntry.sizeof) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table copy");
         }
         dst_mt.entries = (MethodEntry*)mem::malloc(MethodEntry.sizeof * dst_mt.capacity);
         if (dst_mt.entries == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table copy");
         }
     }
 
@@ -288,7 +292,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         dst_mt.entries[i].implementation = null;
         if (!method_signature_copy_to_heap(&dst_mt.entries[i].sig, &src_mt.entries[i].sig)) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to copy method signature");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy method signature");
         }
         copied_entries = i + 1;
         Value* copied_impl = copy_to_parent_with_fault(src_mt.entries[i].implementation, interp, fault_out);
@@ -299,7 +303,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
             return fault_out != null
                 ? null
                 : (copied_impl == null
-                    ? raise_error(interp, "boundary: failed to copy method implementation")
+                    ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy method implementation")
                     : copied_impl);
         }
         dst_mt.entries[i].implementation = copied_impl;
@@ -313,7 +317,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
         return fault_out != null
             ? null
             : (copied_fallback == null
-                ? raise_error(interp, "boundary: failed to copy method fallback")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy method fallback")
                 : copied_fallback);
     }
     dst_mt.fallback = copied_fallback;
@@ -322,7 +326,7 @@ fn Value* copy_method_table_to_parent(Value* v, Interp* interp, BoundaryCopyFaul
     Value* result = interp.alloc_value();
     if (result == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate method table copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate method table copy value");
     }
     result.tag = METHOD_TABLE;
     result.method_table_val = dst_mt;
@@ -351,7 +355,7 @@ fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
     bool retained_now = false;
     if (v.cont_val != null) {
         if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
-            return raise_error(interp, "boundary: refusing continuation alias across interpreters");
+            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing continuation alias across interpreters");
         }
         retained_now = continuation_retain_handle_state_for_boundary(v.cont_val);
     }
@@ -362,7 +366,7 @@ fn Value* copy_continuation_to_parent(Value* v, Interp* interp) {
         if (retained_now) {
             continuation_release_handle_state_for_boundary(v.cont_val);
         }
-        return raise_error(interp, "boundary: failed to allocate continuation copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate continuation copy value");
     }
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
@@ -385,7 +389,7 @@ fn Value* copy_primitive_to_parent(
         Value* result = interp.alloc_value();
         if (result == null) {
             if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-            return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy value");
+            return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive copy value");
         }
         result.tag = PRIMITIVE;
         result.prim_val = null;
@@ -394,18 +398,18 @@ fn Value* copy_primitive_to_parent(
     }
     if (primitive_has_opaque_user_data(v)) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
-        return fault_out != null ? null : raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
+        return fault_out != null ? null : boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
     }
 
     Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
     if (dst_prim == null) {
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive copy");
     }
     if (!primitive_clone_plain_header(dst_prim, src_prim)) {
         mem::free(dst_prim);
         if (fault_out != null) *fault_out = BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD;
-        return fault_out != null ? null : raise_error(interp, boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
+        return fault_out != null ? null : boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(BOUNDARY_COPY_FAULT_OPAQUE_PRIMITIVE_PAYLOAD));
     }
 
     Value* result = interp.alloc_value();
@@ -414,7 +418,7 @@ fn Value* copy_primitive_to_parent(
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate primitive copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive copy value");
     }
     result.tag = PRIMITIVE;
     result.prim_val = null;
@@ -432,7 +436,7 @@ fn Value* copy_iterator_to_parent(Value* v, Interp* interp, BoundaryCopyFault* f
         return fault_out != null
             ? null
             : (promoted_thunk == null
-                ? raise_error(interp, "boundary: failed to copy iterator thunk")
+                ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy iterator thunk")
                 : promoted_thunk);
     }
     Value* result = interp.alloc_value();
@@ -445,7 +449,7 @@ fn Value* copy_iterator_to_parent(Value* v, Interp* interp, BoundaryCopyFault* f
         if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
             *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
         }
-        return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate iterator copy value");
+        return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate iterator copy value");
     }
     result.tag = ITERATOR;
     result.iterator_val = promoted_thunk;
@@ -502,11 +506,11 @@ fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
     // Coroutine wrappers own StackCtx teardown. Boundary copies must produce an
     // independent context so source aliases stay semantically unchanged.
     if (!boundary_value_in_releasing_scope(v, interp)) {
-        return raise_error(interp, "boundary: refusing coroutine wrapper alias across disjoint scopes");
+        return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing coroutine wrapper alias across disjoint scopes");
     }
     main::StackCtx* cloned_ctx = copy_parent_clone_coroutine_ctx(v.coroutine_val, interp);
     if (cloned_ctx == null) {
-        return raise_error(interp, "boundary: refusing coroutine wrapper copy without clonable context state");
+        return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing coroutine wrapper copy without clonable context state");
     }
     Value* result = boundary_alloc_value_in_scope(interp, interp.current_scope, true);
     if (result == null) {
@@ -515,7 +519,7 @@ fn Value* copy_coroutine_to_parent(Value* v, Interp* interp) {
             cloned_ctx.user_data = null;
         }
         main::stack_ctx_destroy(cloned_ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "boundary: failed to allocate coroutine copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate coroutine copy value");
     }
     result.tag = COROUTINE;
     result.coroutine_val = cloned_ctx;
@@ -527,7 +531,7 @@ fn Value* copy_time_point_to_parent(Value* v, Interp* interp) {
         ? null
         : interp.alloc_value();
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate time-point copy value");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate time-point copy value");
     }
     result.tag = TIME_POINT;
     result.time_point_val = v.time_point_val;

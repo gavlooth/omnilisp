@@ -4,7 +4,7 @@ import std::io;
 import main;
 
 fn Value* runtime_memory_stats_oom(Interp* interp) @inline {
-    return raise_error(interp, "runtime-memory-stats: out of memory");
+    return runtime_raise(interp, "runtime/out-of-memory", "runtime-memory-stats: out of memory");
 }
 
 fn Value* runtime_memory_make_dict(Interp* interp, uint capacity) @inline {

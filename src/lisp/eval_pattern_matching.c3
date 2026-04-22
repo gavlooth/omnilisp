@@ -84,7 +84,7 @@ fn bool match_seq_elements(Pattern* pat, Value*[] elems, usz start_idx, usz elem
         if (!out_result.merge(&elem_result)) {
             out_result.cleanup();
             out_result.matched = false;
-            out_result.error = raise_error(interp, "match: out of memory while binding sequence pattern");
+            out_result.error = runtime_raise(interp, "runtime/out-of-memory", "match: out of memory while binding sequence pattern");
             elem_result.cleanup();
             return false;
         }
@@ -112,11 +112,11 @@ fn MatchResult match_seq_pattern(Pattern* pat, Value* val, Interp* interp) {
     Value** elems = null;
     if (list_len > 0) {
         if (list_len > usz.max / Value*.sizeof) {
-            return match_error(raise_error(interp, "match: out of memory while collecting sequence elements"));
+            return match_error(runtime_raise(interp, "runtime/out-of-memory", "match: out of memory while collecting sequence elements"));
         }
         elems = (Value**)mem::malloc(Value*.sizeof * list_len);
         if (elems == null) {
-            return match_error(raise_error(interp, "match: out of memory while collecting sequence elements"));
+            return match_error(runtime_raise(interp, "runtime/out-of-memory", "match: out of memory while collecting sequence elements"));
         }
         collect_seq_elements(val, elems[0:list_len]);
     }

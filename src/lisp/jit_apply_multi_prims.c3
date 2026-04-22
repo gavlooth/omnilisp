@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::core::mem;
 import std::io;
 import main;
@@ -26,11 +27,11 @@ fn Value* jit_null_callable_error(Interp* interp) {
         char[256] ebuf;
         if (try char[] msg = io::bprintf(&ebuf, "'%s' is not defined\n  hint: did you (load ...) or (import ...) it?",
             (ZString)interp.symbols.get_name(interp.last_call_name))) {
-            return raise_error(interp, msg);
+            return jit_raise(interp, "runtime/evaluation-error", msg);
         }
-        return raise_error(interp, "called value is not defined");
+        return jit_raise(interp, "runtime/evaluation-error", "called value is not defined");
     }
-    return raise_error(interp, "called value is nil — not a function");
+    return jit_raise(interp, "type/arg-mismatch", "called value is nil — not a function");
 }
 
 fn Value* jit_apply_multi_args_zeroarg_closure(Interp* interp, Value* func) {
@@ -61,11 +62,11 @@ fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, 
         checked_args = checked_inline[:checked_count];
     } else {
         if (checked_count > usz.max / Value*.sizeof) {
-            return raise_error(interp, "lambda type check: out of memory");
+            return jit_raise(interp, "runtime/out-of-memory", "lambda type check: out of memory");
         }
         checked_storage = (Value**)mem::malloc(Value*.sizeof * checked_count);
         if (checked_storage == null) {
-            return raise_error(interp, "lambda type check: out of memory");
+            return jit_raise(interp, "runtime/out-of-memory", "lambda type check: out of memory");
         }
         checked_args = checked_storage[:checked_count];
     }
@@ -73,7 +74,7 @@ fn Value* jit_check_closure_typed_prefix_args(Interp* interp, Closure* closure, 
 
     Value* curr = arg_list;
     for (usz i = 0; i < checked_count; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         checked_args[i] = curr.cons_val.car;
         curr = curr.cons_val.cdr;
     }
@@ -100,20 +101,20 @@ fn Value* jit_apply_multi_args_variadic_closure(Interp* interp, Value* func, Val
         } else {
             msg = "variadic lambda arity mismatch";
         }
-        return raise_error(interp, msg);
+        return jit_raise(interp, "runtime/evaluation-error", msg);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
     Env* new_env = func.closure_val.env;
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         new_env = jit_env_extend(interp, new_env, func.closure_val.params[i], curr.cons_val.car);
-        if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+        if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     new_env = jit_env_extend(interp, new_env, func.closure_val.rest_param, curr);
-    if (new_env == null) return raise_error(interp, "out of memory while binding argument");
+    if (new_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
     Value* result = jit_eval_in_single_scope(func.closure_val.body, new_env, interp);
     if (zeroarg_closure_trace_enabled()) {
         io::printfn("OMNI_MULTI_TRACE variadic-exit body_tag=%d", (int)func.closure_val.body.tag);
@@ -128,10 +129,10 @@ fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg
     if (arity >= 0 && arg_count != (usz)arity) {
         char[128] buf;
         usz len = format_arity_error(&buf, (usz)arity, arg_count);
-        return raise_error(interp, buf[:len]);
+        return raise_error_with_payload_names(interp, "type", "type/arity", (String)buf[:len], null);
     }
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
-    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
+    if (arg_count > 0 && args == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
@@ -142,10 +143,10 @@ fn Value* jit_apply_multi_args_primitive(Interp* interp, Value* func, Value* arg
         curr = curr.cons_val.cdr;
     }
     if (actual_count < arg_count) {
-        return raise_error(interp, "arg list too short");
+        return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
     }
     Value* result = func.prim_val.func(args[:actual_count], null, interp);
-    if (is_error(result)) return raise_error(interp, result.str_chars[:result.str_len]);
+    if (is_error(result)) return raise_error_with_payload_names(interp, "runtime", "runtime/evaluation-error", (String)result.str_chars[:result.str_len], null);
     return result;
 }
 
@@ -163,17 +164,17 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
     if (arg_count < pc) {
         char[128] buf;
         usz len = format_arity_error(&buf, pc, arg_count);
-        return raise_error(interp, buf[:len]);
+        return raise_error_with_payload_names(interp, "type", "type/arity", (String)buf[:len], null);
     }
     Value* type_err = jit_check_closure_typed_prefix_args(interp, func.closure_val, arg_list, arg_count);
     if (type_err != null) return type_err;
     Env* call_env = make_env(interp, func.closure_val.env);
-    if (call_env == null) return raise_error(interp, "out of memory while binding argument");
+    if (call_env == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
     Value* curr = arg_list;
     for (usz i = 0; i < pc; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         Value* bind_err = env_define_with_barrier_result(call_env, func.closure_val.params[i], curr.cons_val.car, interp);
-        if (bind_err != null) return raise_error(interp, "out of memory while binding argument");
+        if (bind_err != null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while binding argument");
         curr = curr.cons_val.cdr;
     }
     Value* result = jit_eval_in_single_scope(func.closure_val.body, call_env, interp);
@@ -192,7 +193,7 @@ fn Value* jit_apply_multi_args_closure_multi(Interp* interp, Value* func, Value*
 
 fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* arg_list, usz arg_count) {
     Value** args = jit_alloc_multi_arg_buffer(interp, arg_count);
-    if (arg_count > 0 && args == null) return raise_error(interp, "out of memory while preparing call arguments");
+    if (arg_count > 0 && args == null) return jit_raise(interp, "runtime/out-of-memory", "out of memory while preparing call arguments");
     Value* curr = arg_list;
     usz actual_count = 0;
     for (usz i = 0; i < arg_count; i++) {
@@ -201,7 +202,7 @@ fn Value* jit_apply_multi_args_method_table(Interp* interp, Value* func, Value* 
         args[actual_count++] = arg;
         curr = curr.cons_val.cdr;
     }
-    if (actual_count < arg_count) return raise_error(interp, "arg list too short");
+    if (actual_count < arg_count) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
     MethodTable* mt = func.method_table_val;
     Value* resolved = find_best_method(mt, args[:actual_count], interp);
     if (resolved != null && resolved.tag == ERROR) return resolved;
@@ -214,7 +215,7 @@ fn Value* jit_apply_multi_args_iterative(Value* func, Value* arg_list, usz arg_c
     Value* result = func;
     Value* curr = arg_list;
     for (usz i = 0; i < arg_count; i++) {
-        if (curr == null || curr.tag != CONS) return raise_error(interp, "arg list too short");
+        if (curr == null || curr.tag != CONS) return jit_raise(interp, "runtime/evaluation-error", "arg list too short");
         Value* arg = curr.cons_val.car;
         curr = curr.cons_val.cdr;
         result = jit_apply_value(result, arg, interp);

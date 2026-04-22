@@ -20,9 +20,9 @@ fn RuntimeCompiledExpr runtime_backend_compile_expr(Expr* expr, Interp* interp) 
 
 fn Value* runtime_backend_exec_compiled_checked_expr(RuntimeCompiledExpr compiled, Interp* interp) {
     JitCompiledFn jit_compiled = runtime_backend_unwrap_compiled_expr(compiled);
-    if (jit_compiled_fn_is_null(jit_compiled)) return raise_error(interp, "jit: null compiled function");
+    if (jit_compiled_fn_is_null(jit_compiled)) return runtime_raise(interp, "runtime/evaluation-error", "jit: null compiled function");
     if (!jit_compiled_fn_is_live_for_interp(jit_compiled, interp)) {
-        return raise_error(interp, "jit: stale or foreign compiled function pointer");
+        return runtime_raise(interp, "runtime/evaluation-error", "jit: stale or foreign compiled function pointer");
     }
     Interp* saved_active_interp = g_jit_active_interp;
     g_jit_active_interp = interp;

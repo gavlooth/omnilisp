@@ -16,12 +16,12 @@ fn void repl_server_worker_run_command(ReplServerWorker* worker, ReplServerComma
                 session = repl_server_new_session(worker.conn);
             }
             if (session == null) {
-                (void)repl_server_send_protocol_error(output, command.id_ptr[:command.id_len], "runtime/session-create-failed", "failed to create session");
+                repl_server_send_protocol_error(output, command.id_ptr[:command.id_len], "runtime/session-create-failed", "failed to create session");
                 return;
             }
             Interp* interp = null;
             if (!repl_server_create_interp(&interp)) {
-                (void)repl_server_send_protocol_error(output, command.id_ptr[:command.id_len], "runtime/session-create-failed", "failed to create session");
+                repl_server_send_protocol_error(output, command.id_ptr[:command.id_len], "runtime/session-create-failed", "failed to create session");
                 repl_server_close_session(session);
                 return;
             }

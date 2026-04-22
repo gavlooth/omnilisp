@@ -208,8 +208,8 @@ fn Value* ml_batch_norm_eval_vulkan(
     if (input == null || scale == null || bias == null || mean == null || variance == null) {
         return tensor_runtime_raise(interp, "ml/batch-normalization: Vulkan tensor metadata is missing");
     }
-    if (input.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/batch-normalization: Vulkan currently supports Float32 tensors", null);
+    if (input.dtype != TENSOR_DTYPE_FLOAT32 && input.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/batch-normalization: Vulkan currently supports Float64 and Float32 tensors", null);
     }
     if (!tensor_has_valid_device_storage(input, TENSOR_DEVICE_VULKAN) ||
         !tensor_has_valid_device_storage(scale, TENSOR_DEVICE_VULKAN) ||
@@ -227,8 +227,14 @@ fn Value* ml_batch_norm_eval_vulkan(
     }
 
     float epsilon_f32 = 0.0f;
-    if (!tensor_double_to_float32(epsilon, &epsilon_f32) || epsilon_f32 <= 0.0f) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/batch-normalization: Vulkan epsilon must be representable as positive Float32", null);
+    if (input.dtype == TENSOR_DTYPE_FLOAT32) {
+        if (!tensor_double_to_float32(epsilon, &epsilon_f32) || epsilon_f32 <= 0.0f) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/batch-normalization: Vulkan epsilon must be representable as positive Float32", null);
+        }
+    } else {
+        if (!conversion_double_is_finite(epsilon) || epsilon <= 0.0) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/batch-normalization: Vulkan epsilon must be positive finite Float64", null);
+        }
     }
 
     usz[1] scalar_shape = { 0 };
@@ -239,26 +245,50 @@ fn Value* ml_batch_norm_eval_vulkan(
     tensor.device = TENSOR_DEVICE_VULKAN;
 
     void* out_device = null;
-    int status = omni_tensor_backend_vulkan_ml_batch_norm_f32(
-        input.device_handle,
-        input.byte_len,
-        input.element_count,
-        input.rank,
-        channel_axis,
-        epsilon_f32,
-        input.shape,
-        input.strides,
-        tensor.strides,
-        scale.device_handle,
-        scale.byte_len,
-        bias.device_handle,
-        bias.byte_len,
-        mean.device_handle,
-        mean.byte_len,
-        variance.device_handle,
-        variance.byte_len,
-        &out_device
-    );
+    int status;
+    if (input.dtype == TENSOR_DTYPE_FLOAT32) {
+        status = omni_tensor_backend_vulkan_ml_batch_norm_f32(
+            input.device_handle,
+            input.byte_len,
+            input.element_count,
+            input.rank,
+            channel_axis,
+            epsilon_f32,
+            input.shape,
+            input.strides,
+            tensor.strides,
+            scale.device_handle,
+            scale.byte_len,
+            bias.device_handle,
+            bias.byte_len,
+            mean.device_handle,
+            mean.byte_len,
+            variance.device_handle,
+            variance.byte_len,
+            &out_device
+        );
+    } else {
+        status = omni_tensor_backend_vulkan_ml_batch_norm_f64(
+            input.device_handle,
+            input.byte_len,
+            input.element_count,
+            input.rank,
+            channel_axis,
+            epsilon,
+            input.shape,
+            input.strides,
+            tensor.strides,
+            scale.device_handle,
+            scale.byte_len,
+            bias.device_handle,
+            bias.byte_len,
+            mean.device_handle,
+            mean.byte_len,
+            variance.device_handle,
+            variance.byte_len,
+            &out_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         tensor_free_payload(tensor);
         return tensor_vulkan_status_raise(interp, status, "ml/batch-normalization: Vulkan batch-normalization kernel failed");
@@ -284,16 +314,11 @@ fn Value* ml_layer_norm_eval_vulkan(
     Interp* interp
 ) {
     if (source == null) return tensor_runtime_raise(interp, "ml/layer-normalization: Vulkan tensor metadata is missing");
-    if (source.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/layer-normalization: Vulkan currently supports Float32 tensors", null);
+    if (source.dtype != TENSOR_DTYPE_FLOAT32 && source.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/layer-normalization: Vulkan currently supports Float64 and Float32 tensors", null);
     }
     if (!tensor_has_valid_device_storage(source, TENSOR_DEVICE_VULKAN)) {
         return tensor_runtime_raise(interp, "ml/layer-normalization: Vulkan tensor backing storage is missing");
-    }
-
-    float epsilon_f32 = 0.0f;
-    if (!tensor_double_to_float32(epsilon, &epsilon_f32) || epsilon_f32 <= 0.0f) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/layer-normalization: Vulkan epsilon must be representable as positive Float32", null);
     }
 
     usz[1] scalar_shape = { 0 };
@@ -304,18 +329,39 @@ fn Value* ml_layer_norm_eval_vulkan(
     tensor.device = TENSOR_DEVICE_VULKAN;
 
     void* out_device = null;
-    int status = omni_tensor_backend_vulkan_ml_layer_norm_f32(
-        source.device_handle,
-        source.byte_len,
-        source.element_count,
-        source.rank,
-        axis,
-        epsilon_f32,
-        source.shape,
-        source.strides,
-        tensor.strides,
-        &out_device
-    );
+    int status;
+    if (source.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_ml_layer_norm_f64(
+            source.device_handle,
+            source.byte_len,
+            source.element_count,
+            source.rank,
+            axis,
+            epsilon,
+            source.shape,
+            source.strides,
+            tensor.strides,
+            &out_device
+        );
+    } else {
+        float epsilon_f32 = 0.0f;
+        if (!tensor_double_to_float32(epsilon, &epsilon_f32) || epsilon_f32 <= 0.0f) {
+            tensor_free_payload(tensor);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/domain-error", "ml/layer-normalization: Vulkan epsilon must be representable as positive Float32", null);
+        }
+        status = omni_tensor_backend_vulkan_ml_layer_norm_f32(
+            source.device_handle,
+            source.byte_len,
+            source.element_count,
+            source.rank,
+            axis,
+            epsilon_f32,
+            source.shape,
+            source.strides,
+            tensor.strides,
+            &out_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         tensor_free_payload(tensor);
         return tensor_vulkan_status_raise(interp, status, "ml/layer-normalization: Vulkan layer-normalization kernel failed");
@@ -340,19 +386,27 @@ fn Value* prim_ml_layer_normalization(Value*[] args, Env* env, Interp* interp) {
     }
     if (!is_tensor(args[0])) return tensor_type_raise(interp, "ml/layer-normalization: expected Tensor input");
 
-    if (tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN) && tensor_expr_has_non_vulkan_device(args[0])) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/layer-normalization: Vulkan operands must remain Vulkan-placed", null);
-    }
-
+    bool source_touches_vulkan = tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN);
     TensorVal* source = null;
     Value* source_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(
-        args[0],
-        &source,
-        &source_value,
-        interp,
-        "ml/layer-normalization: tensor backing storage is missing"
-    );
+    Value* err;
+    if (source_touches_vulkan) {
+        err = tensor_expr_resolve_vulkan_or_migrate(
+            args[0],
+            &source,
+            &source_value,
+            interp,
+            "ml/layer-normalization: tensor backing storage is missing"
+        );
+    } else {
+        err = tensor_expr_resolve_concrete_any_device(
+            args[0],
+            &source,
+            &source_value,
+            interp,
+            "ml/layer-normalization: tensor backing storage is missing"
+        );
+    }
     if (err != null) return err;
     bool cleanup_source = source_value != args[0];
     defer if (cleanup_source) {
@@ -371,9 +425,7 @@ fn Value* prim_ml_layer_normalization(Value*[] args, Env* env, Interp* interp) {
     if (!ml_reduction_supported_dtype(source.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/layer-normalization: currently supports Float64 and Float32 tensors", null);
     }
-    if (source.device == TENSOR_DEVICE_VULKAN && source.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/layer-normalization: Vulkan currently supports Float32 tensors", null);
-    }
+
 
     usz axis = 0;
     err = ml_reduction_parse_axis_value(
@@ -445,13 +497,6 @@ fn Value* prim_ml_batch_normalization(Value*[] args, Env* env, Interp* interp) {
     for (usz i = 0; i < 5; i++) {
         if (tensor_expr_has_device(args[i], TENSOR_DEVICE_VULKAN)) touches_vulkan = true;
     }
-    if (touches_vulkan) {
-        for (usz i = 0; i < 5; i++) {
-            if (!tensor_expr_has_device(args[i], TENSOR_DEVICE_VULKAN) || tensor_expr_has_non_vulkan_device(args[i])) {
-                return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/batch-normalization: Vulkan operands must remain Vulkan-placed", null);
-            }
-        }
-    }
 
     TensorVal*[5] tensors = { null, null, null, null, null };
     Value*[5] values = { null, null, null, null, null };
@@ -463,7 +508,12 @@ fn Value* prim_ml_batch_normalization(Value*[] args, Env* env, Interp* interp) {
         "ml/batch-normalization: variance tensor backing storage is missing"
     };
     for (usz i = 0; i < 5; i++) {
-        Value* err = tensor_expr_resolve_concrete_any_device(args[i], &tensors[i], &values[i], interp, missing_labels[i]);
+        Value* err;
+        if (touches_vulkan) {
+            err = tensor_expr_resolve_vulkan_or_migrate(args[i], &tensors[i], &values[i], interp, missing_labels[i]);
+        } else {
+            err = tensor_expr_resolve_concrete_any_device(args[i], &tensors[i], &values[i], interp, missing_labels[i]);
+        }
         if (err != null) return err;
     }
     defer {

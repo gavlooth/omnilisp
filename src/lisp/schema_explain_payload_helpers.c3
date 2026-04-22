@@ -3,7 +3,7 @@ module lisp;
 int g_schema_explain_force_cons_alloc_fail_nth = 0;
 
 fn Value* explain_oom(Interp* interp) @inline {
-    return raise_error(interp, "schema explain: out of memory");
+    return runtime_raise(interp, "runtime/out-of-memory", "schema explain: out of memory");
 }
 
 fn Value* explain_make_dict(Interp* interp, uint capacity) @inline {

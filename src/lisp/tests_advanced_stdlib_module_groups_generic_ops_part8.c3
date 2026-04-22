@@ -6,7 +6,7 @@ import main;
 
 fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "tensor-backends reports ML capability contract",
-        "(let (rest-off (lambda (b) (and (= (ref b 'ml-neural-map) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) neural-f64-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float64) false) (= (ref b 'ml-neural-tanh-float64) false) (= (ref b 'ml-neural-gelu-float64) false))) neural-f32-on (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) true) (= (ref b 'ml-neural-tanh-float32) true) (= (ref b 'ml-neural-gelu-float32) true))) neural-f32-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) false) (= (ref b 'ml-neural-tanh-float32) false) (= (ref b 'ml-neural-gelu-float32) false))) reduction-on (lambda (b) (and (= (ref b 'ml-reduction-float64) true) (= (ref b 'ml-reduction-float32) true))) reduction-off (lambda (b) (and (= (ref b 'ml-reduction-float64) false) (= (ref b 'ml-reduction-float32) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cpu 'ml-linear-direct-float64) true) (= (ref cpu 'ml-linear-direct-float32) true) (= (ref cpu 'ml-neural-relu-float64) true) (= (ref cpu 'ml-neural-relu-float32) true) (neural-f64-off cpu) (neural-f32-on cpu) (reduction-on cpu) (= (ref cpu 'ml-normalization) true) (= (ref cpu 'ml-layer-normalization-float64) true) (= (ref cpu 'ml-layer-normalization-float32) true) (= (ref cuda 'ml-linear) false) (= (ref cuda 'ml-linear-direct-float64) false) (= (ref cuda 'ml-linear-direct-float32) false) (or (= (ref cuda 'ml-neural-relu-float64) true) (= (ref cuda 'ml-neural-relu-float64) false)) (or (= (ref cuda 'ml-neural-relu-float32) true) (= (ref cuda 'ml-neural-relu-float32) false)) (neural-f64-off cuda) (or (neural-f32-on cuda) (neural-f32-off cuda)) (reduction-off cuda) (= (ref cuda 'ml-normalization) false) (= (ref cuda 'ml-layer-normalization-float64) false) (= (ref cuda 'ml-layer-normalization-float32) false) (= (ref cublas 'ml-linear) false) (= (ref cublas 'ml-linear-direct-float64) false) (= (ref cublas 'ml-linear-direct-float32) false) (= (ref cublas 'ml-neural-relu-float64) false) (= (ref cublas 'ml-neural-relu-float32) false) (neural-f64-off cublas) (neural-f32-off cublas) (reduction-off cublas) (= (ref cublas 'ml-normalization) false) (= (ref cublas 'ml-layer-normalization-float64) false) (= (ref cublas 'ml-layer-normalization-float32) false) (= (ref vulkan 'ml-linear) false) (= (ref vulkan 'ml-linear-direct-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-linear-direct-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-relu-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-neural-relu-float32) (ref vulkan 'float32)) (neural-f64-off vulkan) (= (ref vulkan 'ml-neural-sigmoid-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-tanh-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-gelu-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-reduction-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-reduction-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-normalization) (ref vulkan 'float32)) (= (ref vulkan 'ml-layer-normalization-float64) false) (= (ref vulkan 'ml-layer-normalization-float32) (ref vulkan 'float32)) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
+        "(let (rest-off (lambda (b) (and (= (ref b 'ml-neural-map) false) (= (ref b 'ml-autograd) false) (= (ref b 'ml-optimizer) false) (= (ref b 'ml-graph-execution) false))) neural-f64-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float64) false) (= (ref b 'ml-neural-tanh-float64) false) (= (ref b 'ml-neural-gelu-float64) false))) neural-f32-on (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) true) (= (ref b 'ml-neural-tanh-float32) true) (= (ref b 'ml-neural-gelu-float32) true))) neural-f32-off (lambda (b) (and (= (ref b 'ml-neural-sigmoid-float32) false) (= (ref b 'ml-neural-tanh-float32) false) (= (ref b 'ml-neural-gelu-float32) false))) reduction-on (lambda (b) (and (= (ref b 'ml-reduction-float64) true) (= (ref b 'ml-reduction-float32) true))) reduction-off (lambda (b) (and (= (ref b 'ml-reduction-float64) false) (= (ref b 'ml-reduction-float32) false))) backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-linear) true) (= (ref cpu 'ml-linear-direct-float64) true) (= (ref cpu 'ml-linear-direct-float32) true) (= (ref cpu 'ml-neural-relu-float64) true) (= (ref cpu 'ml-neural-relu-float32) true) (neural-f64-off cpu) (neural-f32-on cpu) (reduction-on cpu) (= (ref cpu 'ml-normalization) true) (= (ref cpu 'ml-layer-normalization-float64) true) (= (ref cpu 'ml-layer-normalization-float32) true) (= (ref cuda 'ml-linear) false) (= (ref cuda 'ml-linear-direct-float64) false) (= (ref cuda 'ml-linear-direct-float32) false) (or (= (ref cuda 'ml-neural-relu-float64) true) (= (ref cuda 'ml-neural-relu-float64) false)) (or (= (ref cuda 'ml-neural-relu-float32) true) (= (ref cuda 'ml-neural-relu-float32) false)) (neural-f64-off cuda) (or (neural-f32-on cuda) (neural-f32-off cuda)) (reduction-off cuda) (= (ref cuda 'ml-normalization) false) (= (ref cuda 'ml-layer-normalization-float64) false) (= (ref cuda 'ml-layer-normalization-float32) false) (= (ref cublas 'ml-linear) false) (= (ref cublas 'ml-linear-direct-float64) false) (= (ref cublas 'ml-linear-direct-float32) false) (= (ref cublas 'ml-neural-relu-float64) false) (= (ref cublas 'ml-neural-relu-float32) false) (neural-f64-off cublas) (neural-f32-off cublas) (reduction-off cublas) (= (ref cublas 'ml-normalization) false) (= (ref cublas 'ml-layer-normalization-float64) false) (= (ref cublas 'ml-layer-normalization-float32) false) (= (ref vulkan 'ml-linear) false) (= (ref vulkan 'ml-linear-direct-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-linear-direct-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-relu-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-neural-relu-float32) (ref vulkan 'float32)) (neural-f64-off vulkan) (= (ref vulkan 'ml-neural-sigmoid-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-tanh-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-neural-gelu-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-reduction-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-reduction-float32) (ref vulkan 'float32)) (= (ref vulkan 'ml-normalization) (or (ref vulkan 'float64) (ref vulkan 'float32))) (= (ref vulkan 'ml-layer-normalization-float64) (ref vulkan 'float64)) (= (ref vulkan 'ml-layer-normalization-float32) (ref vulkan 'float32)) (rest-off cpu) (rest-off cuda) (rest-off cublas) (rest-off vulkan)))", pass, fail);
     test_truthy(interp, "ML Vulkan availability gate is explicit",
         "(let (vulkan (ref (tensor-backends) 3) f32 (ref vulkan 'float32) f32-family (lambda (b) (and (= (ref b 'ml-linear-direct-float32) f32) (= (ref b 'ml-neural-relu-float32) f32) (= (ref b 'ml-neural-sigmoid-float32) f32) (= (ref b 'ml-neural-tanh-float32) f32) (= (ref b 'ml-neural-gelu-float32) f32) (= (ref b 'ml-reduction-float32) f32) (= (ref b 'ml-normalization) f32) (= (ref b 'ml-layer-normalization-float32) f32) (= (ref b 'ml-batch-normalization-float32) f32) (= (ref b 'ml-attention) f32) (= (ref b 'ml-scaled-dot-product-attention-float32) f32) (= (ref b 'ml-convolution) f32) (= (ref b 'ml-conv1d-direct-float32) f32) (= (ref b 'ml-conv2d-direct-float32) f32) (= (ref b 'ml-pool2d-direct-float32) f32) (= (ref b 'ml-optimizer-sgd-float32) f32) (= (ref b 'ml-optimizer-adam-float32) f32) (= (ref b 'ml-optimizer-adamw-float32) f32) (= (ref b 'ml-optimizer-rmsprop-float32) f32) (= (ref b 'ml-clip-gradients-float32) f32))) unavailable-off (lambda (b) (and (= (ref b 'float32) false) (= (ref b 'float64) false) (= (ref b 'ml-linear-direct-float32) false) (= (ref b 'ml-linear-direct-float64) false) (= (ref b 'ml-neural-relu-float32) false) (= (ref b 'ml-neural-relu-float64) false) (= (ref b 'ml-neural-sigmoid-float32) false) (= (ref b 'ml-neural-tanh-float32) false) (= (ref b 'ml-neural-gelu-float32) false) (= (ref b 'ml-reduction-float32) false) (= (ref b 'ml-normalization) false) (= (ref b 'ml-batch-normalization-float32) false) (= (ref b 'ml-attention) false) (= (ref b 'ml-convolution) false) (= (ref b 'ml-optimizer-sgd-float32) false) (= (ref b 'ml-optimizer-adam-float32) false) (= (ref b 'ml-optimizer-adamw-float32) false) (= (ref b 'ml-optimizer-rmsprop-float32) false) (= (ref b 'ml-clip-gradients-float32) false)))) (if (ref vulkan 'available) (and (f32-family vulkan) (if f32 (let (out (ml/linear (to-device (Tensor Float32 [1] [2]) 'vulkan) (to-device (Tensor Float32 [1 1] [3]) 'vulkan))) (and (= (device out) 'vulkan) (= (ref (to-device out 'cpu) [0]) (Float32 6.0)))) true)) (and (unavailable-off vulkan) (= (handle (to-device (Tensor Float32 [1] [1]) 'vulkan) (raise msg (ref msg 'code))) 'tensor/backend-unavailable))))", pass, fail);
     test_truthy(interp, "tensor-backends reports ML leaky-ReLU narrow capability contract",
@@ -180,8 +180,8 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (out (ml/layer-normalization (Tensor Float64 [2] [1 3]) 0 1.0)) (and (< (abs (+ (ref out [0]) 0.7071067811865475)) 0.000000001) (< (abs (- (ref out [1]) 0.7071067811865475)) 0.000000001)))", pass, fail);
     test_truthy(interp, "ml/layer-normalization Vulkan Float32 stays on device and centers rows",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-layer-normalization-float32) (let (out (ml/layer-normalization (to-device (Tensor Float32 [2 3] [1 2 3 2 4 6]) 'vulkan) 1) cpu (to-device out 'cpu) row0 (+ (+ (ref cpu [0 0]) (ref cpu [0 1])) (ref cpu [0 2])) row1 (+ (+ (ref cpu [1 0]) (ref cpu [1 1])) (ref cpu [1 2]))) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs row0) 0.0001) (< (abs row1) 0.0001) (> (ref cpu [0 2]) 1.224) (< (ref cpu [0 0]) -1.224))) true))", pass, fail);
-    test_truthy(interp, "ml/layer-normalization rejects invalid inputs",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/layer-normalization (Tensor BigInteger [2] [1 2]) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/layer-normalization (Tensor Float64 [2] [1 2]) 0 0.0) (raise msg (ref msg 'code))) 'tensor/domain-error) (= (handle (ml/layer-normalization (Tensor Float64 [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'type/arg-mismatch) (if (ref vulkan-backend 'float64) (= (handle (ml/layer-normalization (to-device (Tensor Float64 [2] [1 2]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/layer-normalization validates invalid inputs and Vulkan Float64",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/layer-normalization (Tensor BigInteger [2] [1 2]) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/layer-normalization (Tensor Float64 [2] [1 2]) 0 0.0) (raise msg (ref msg 'code))) 'tensor/domain-error) (= (handle (ml/layer-normalization (Tensor Float64 [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'type/arg-mismatch) (if (ref vulkan-backend 'ml-layer-normalization-float64) (let (out (ml/layer-normalization (to-device (Tensor Float64 [2] [1 2]) 'vulkan) 0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (dtype out) 'Float64) (< (abs (+ (ref cpu [0]) 0.99998)) 0.0001) (< (abs (- (ref cpu [1]) 0.99998)) 0.0001))) true)))", pass, fail);
     test_truthy(interp, "ml/batch-normalization Float64 explicit stats channel axis",
         "(let (out (ml/batch-normalization (Tensor Float64 [1 2 1 2] [2 4 10 14]) (Tensor Float64 [2] [1 1]) (Tensor Float64 [2] [0 0]) (Tensor Float64 [2] [3 12]) (Tensor Float64 [2] [1 4]) 1 1.0)) (and (= (ref (shape out) 1) 2) (< (abs (+ (ref out [0 0 0 0]) 0.7071067811865475)) 0.000000001) (< (abs (- (ref out [0 1 0 1]) 0.8944271909999159)) 0.000000001)))", pass, fail);
     test_truthy(interp, "ml/batch-normalization Float32 negative axis preserves dtype",
@@ -190,16 +190,20 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-batch-normalization-float32) (let (out (ml/batch-normalization (to-device (Tensor Float32 [1 2 1 2] [2 4 10 14]) 'vulkan) (to-device (Tensor Float32 [2] [1 1]) 'vulkan) (to-device (Tensor Float32 [2] [0 0]) 'vulkan) (to-device (Tensor Float32 [2] [3 12]) 'vulkan) (to-device (Tensor Float32 [2] [1 4]) 'vulkan) 1 1.0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (+ (ref cpu [0 0 0 0]) 0.7071067)) 0.0001) (< (abs (- (ref cpu [0 1 0 1]) 0.8944272)) 0.0001))) true))", pass, fail);
     test_truthy(interp, "ml/batch-normalization rejects invalid CPU contract",
         "(and (= (handle (ml/batch-normalization (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [0]) (Tensor BigInteger [1] [0]) (Tensor BigInteger [1] [1]) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/batch-normalization (Tensor Float64 [1 2] [1 2]) (Tensor Float64 [1] [1]) (Tensor Float64 [1] [0]) (Tensor Float64 [1] [0]) (Tensor Float64 [1] [1]) 1) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/batch-normalization (Tensor Float64 [1] [1]) (Tensor Float64 [1] [1]) (Tensor Float64 [1] [0]) (Tensor Float64 [1] [0]) (Tensor Float64 [1] [1]) 0 0.0) (raise msg (ref msg 'code))) 'tensor/domain-error))", pass, fail);
-    test_truthy(interp, "ml/batch-normalization rejects unsupported Vulkan contracts",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'float32) (= (handle (ml/batch-normalization (to-device (Tensor Float32 [1] [1]) 'vulkan) (Tensor Float32 [1] [1]) (to-device (Tensor Float32 [1] [0]) 'vulkan) (to-device (Tensor Float32 [1] [0]) 'vulkan) (to-device (Tensor Float32 [1] [1]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float64) (= (handle (ml/batch-normalization (to-device (Tensor Float64 [1] [1]) 'vulkan) (to-device (Tensor Float64 [1] [1]) 'vulkan) (to-device (Tensor Float64 [1] [0]) 'vulkan) (to-device (Tensor Float64 [1] [0]) 'vulkan) (to-device (Tensor Float64 [1] [1]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/batch-normalization auto-migrates Float32 params and rejects Vulkan Float64",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'ml-batch-normalization-float32) (let (out (ml/batch-normalization (to-device (Tensor Float32 [1] [1]) 'vulkan) (Tensor Float32 [1] [1]) (to-device (Tensor Float32 [1] [0]) 'vulkan) (to-device (Tensor Float32 [1] [0]) 'vulkan) (to-device (Tensor Float32 [1] [1]) 'vulkan) 0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (ref cpu [0]) (Float32 0.99999493)))) true) (if (ref vulkan-backend 'float64) (= (handle (ml/batch-normalization (to-device (Tensor Float64 [1] [1]) 'vulkan) (to-device (Tensor Float64 [1] [1]) 'vulkan) (to-device (Tensor Float64 [1] [0]) 'vulkan) (to-device (Tensor Float64 [1] [0]) 'vulkan) (to-device (Tensor Float64 [1] [1]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "ml/scaled-dot-product-attention Float64 CPU stable",
         "(let (out (ml/scaled-dot-product-attention (Tensor Float64 [1 2] [1 2]) (Tensor Float64 [2 2] [1 0 0 1]) (Tensor Float64 [2 2] [10 20 30 40]) 1.0)) (and (= (rank out) 2) (= (ref (shape out) 0) 1) (= (ref (shape out) 1) 2) (< (abs (- (ref out [0 0]) 24.6211715726)) 0.000001) (< (abs (- (ref out [0 1]) 34.6211715726)) 0.000001)))", pass, fail);
     test_truthy(interp, "ml/scaled-dot-product-attention Float32 CPU additive mask",
         "(let (out (ml/scaled-dot-product-attention (Tensor Float32 [1 1] [1]) (Tensor Float32 [2 1] [1 1]) (Tensor Float32 [2 1] [10 30]) (Tensor Float32 [1 2] [0 -1000]) 1.0)) (and (= (String (dtype out)) \"Float32\") (< (abs (- (ref out [0 0]) 10.0)) 0.0001)))", pass, fail);
     test_truthy(interp, "ml/scaled-dot-product-attention Vulkan Float32 stays on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-scaled-dot-product-attention-float32) (let (out (ml/scaled-dot-product-attention (to-device (Tensor Float32 [1 2] [1 2]) 'vulkan) (to-device (Tensor Float32 [2 2] [1 0 0 1]) 'vulkan) (to-device (Tensor Float32 [2 2] [10 20 30 40]) 'vulkan) 1.0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0 0]) 24.6212)) 0.0002) (< (abs (- (ref cpu [0 1]) 34.6212)) 0.0002))) true))", pass, fail);
+    test_truthy(interp, "ml/scaled-dot-product-attention Vulkan Float32 additive mask stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-scaled-dot-product-attention-float32) (let (out (ml/scaled-dot-product-attention (to-device (Tensor Float32 [1 1] [1]) 'vulkan) (to-device (Tensor Float32 [2 1] [1 1]) 'vulkan) (to-device (Tensor Float32 [2 1] [10 30]) 'vulkan) (to-device (Tensor Float32 [1 2] [0 -1000]) 'vulkan) 1.0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (< (abs (- (ref cpu [0 0]) 10.0)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "ml/scaled-dot-product-attention Vulkan Float32 batched mask stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-scaled-dot-product-attention-float32) (let (out (ml/scaled-dot-product-attention (to-device (Tensor Float32 [2 1 1] [1 1]) 'vulkan) (to-device (Tensor Float32 [2 2 1] [1 1 1 1]) 'vulkan) (to-device (Tensor Float32 [2 2 1] [10 30 50 70]) 'vulkan) (to-device (Tensor Float32 [2 1 2] [0 -1000 -1000 0]) 'vulkan) 1.0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (ref (shape out) 0) 2) (= (ref (shape out) 1) 1) (= (ref (shape out) 2) 1) (< (abs (- (ref cpu [0 0 0]) 10.0)) 0.0001) (< (abs (- (ref cpu [1 0 0]) 70.0)) 0.0001))) true))", pass, fail);
     test_truthy(interp, "ml/scaled-dot-product-attention rejects invalid contracts",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/scaled-dot-product-attention (Tensor Float64 [1 1] [1]) (Tensor Float32 [1 1] [1]) (Tensor Float64 [1 1] [1])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (= (handle (ml/scaled-dot-product-attention (Tensor Float64 [1 1] [1]) (Tensor Float64 [1 1] [1]) (Tensor Float64 [1 1] [1]) (Tensor Float64 [2 2] [0 0 0 0])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'float32) (= (handle (ml/scaled-dot-product-attention (to-device (Tensor Float32 [1 1] [1]) 'vulkan) (Tensor Float32 [1 1] [1]) (to-device (Tensor Float32 [1 1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float64) (= (handle (ml/scaled-dot-product-attention (to-device (Tensor Float64 [1 1] [1]) 'vulkan) (to-device (Tensor Float64 [1 1] [1]) 'vulkan) (to-device (Tensor Float64 [1 1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/scaled-dot-product-attention (Tensor Float64 [1 1] [1]) (Tensor Float32 [1 1] [1]) (Tensor Float64 [1 1] [1])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (= (handle (ml/scaled-dot-product-attention (Tensor Float64 [1 1] [1]) (Tensor Float64 [1 1] [1]) (Tensor Float64 [1 1] [1]) (Tensor Float64 [2 2] [0 0 0 0])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'float32) (= (handle (ml/scaled-dot-product-attention (to-device (Tensor Float32 [1 1] [1]) 'vulkan) (Tensor Float32 [1 1] [1]) (to-device (Tensor Float32 [1 1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) true) (if (ref vulkan-backend 'float64) (= (handle (ml/scaled-dot-product-attention (to-device (Tensor Float64 [1 1] [1]) 'vulkan) (to-device (Tensor Float64 [1 1] [1]) 'vulkan) (to-device (Tensor Float64 [1 1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
     test_truthy(interp, "ml/grad linear MSE Float64 returns data gradients",
         "(let (g (ml/grad (Dictionary 'kind 'linear-mean-squared-error 'input (Tensor Float64 [2] [1 2]) 'weights (Tensor Float64 [1 2] [1 1]) 'bias (Tensor Float64 [1] [0]) 'targets (Tensor Float64 [1] [4]))) pg (ref g 'parameter-gradients)) (and (= (ref (ref g 'loss) []) 1.0) (= (ref (ref g 'output) [0]) 3.0) (= (ref (ref g 'input-gradient) [0]) -2.0) (= (ref (ref g 'input-gradient) [1]) -2.0) (= (ref (ref pg 'weights) [0 0]) -2.0) (= (ref (ref pg 'weights) [0 1]) -4.0) (= (ref (ref pg 'bias) [0]) -2.0)))", pass, fail);
     test_truthy(interp, "ml/grad emits metadata-only scope-owned tape",
@@ -210,15 +214,46 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (x (Tensor Float64 [2] [1 2]) w (Tensor Float64 [2] [3 4]) pred (contract x w [0] [0]) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction pred 'targets (Tensor Float64 [] 10.0) 'wrt x)) grad (ref g 'input-gradient)) (and (= (ref (ref g 'loss) []) 1.0) (= (ref grad [0]) 6.0) (= (ref grad [1]) 8.0)))", pass, fail);
     test_truthy(interp, "ml/grad tensor softmax cross entropy accumulates through map expression",
         "(let (x (Tensor Float64 [2] [1 2]) logits (map + x 0.0) g (ml/grad (Dictionary 'kind 'tensor-softmax-cross-entropy 'logits logits 'targets (Tensor Float64 [2] [0 1]) 'axis 0 'wrt x)) grad (ref g 'input-gradient) tape (ref g 'tape)) (and (= (ref g 'source) 'tensor-softmax-cross-entropy) (= (ref tape 'node-count) 4) (< (abs (- (ref (ref g 'loss) []) 0.3132616875)) 0.000000001) (< (abs (- (ref (ref g 'output) [1]) 0.7310585786)) 0.000000001) (< (abs (- (ref grad [0]) 0.2689414214)) 0.000000001) (< (abs (+ (ref grad [1]) 0.2689414214)) 0.000000001)))", pass, fail);
-    test_error_contains(interp, "ml/grad tensor MSE rejects unsupported map backward",
-        "(let (x (Tensor Float64 [2] [1 2])) (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction (map max x 0.0) 'targets (Tensor Float64 [2] [0 0]) 'wrt x)))",
-        "unsupported Tensor map backward rule", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE CPU map min backward returns masked wrt gradient",
+        "(let (x (Tensor Float64 [2] [1 2]) prediction (map min x 1.5) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets (Tensor Float64 [2] [0 0]) 'wrt x)) grad (ref g 'input-gradient)) (and (< (abs (- (ref grad [0]) 1.0)) 0.0001) (< (abs (- (ref grad [1]) 0.0)) 0.0001)))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE CPU map max backward returns masked wrt gradient",
+        "(let (x (Tensor Float64 [2] [1 2]) prediction (map max x 1.5) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets (Tensor Float64 [2] [0 0]) 'wrt x)) grad (ref g 'input-gradient)) (and (< (abs (- (ref grad [0]) 0.0)) 0.0001) (< (abs (- (ref grad [1]) 2.0)) 0.0001)))", pass, fail);
     test_truthy(interp, "ml/grad tensor MSE Vulkan Float32 returns prediction gradient on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (prediction (to-device (Tensor Float32 [2] [2 4]) 'vulkan) targets (to-device (Tensor Float32 [2] [1 1]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt prediction)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu) tape (ref g 'tape)) (and (= (device (ref g 'loss)) 'vulkan) (= (device grad) 'vulkan) (= (ref tape 'device) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 5.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1]) (Float32 3.0))) (Float32 0.0001)))) true))", pass, fail);
-    test_truthy(interp, "ml/grad tensor MSE still rejects Vulkan map-expression backward",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan)) (= (handle (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction (map + x (Float32 0.0)) 'targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) 'wrt x)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)) true))", pass, fail);
-    test_truthy(interp, "ml/grad tensor softmax CE rejects Vulkan backward for shipped forward tensor",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan)) (= (handle (ml/grad (Dictionary 'kind 'tensor-softmax-cross-entropy 'logits (map + x (Float32 0.0)) 'targets (to-device (Tensor Float32 [2] [0 1]) 'vulkan) 'axis 0 'wrt x)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map + backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) prediction (map + x (Float32 0.0)) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu) tape (ref g 'tape)) (and (= (device prediction) 'vulkan) (= (device grad) 'vulkan) (= (ref tape 'device) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 2.5))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1]) (Float32 2.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map * scalar backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) prediction (map * x (Float32 3.0)) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu)) (and (= (device prediction) 'vulkan) (= (device grad) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 22.5))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 9.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1]) (Float32 18.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map * tensor backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) scale (to-device (Tensor Float32 [2] [3 4]) 'vulkan) prediction (map * x scale) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu)) (and (= (device prediction) 'vulkan) (= (device grad) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 36.5))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 9.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1]) (Float32 32.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map + leading broadcast backward reduces wrt gradient",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) z (to-device (Tensor Float32 [2 2] [0 0 0 0]) 'vulkan) prediction (map + z x) targets (to-device (Tensor Float32 [2 2] [0 0 0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad-cpu (to-device (ref g 'input-gradient) 'cpu)) (and (= (ref (shape (ref g 'input-gradient)) 0) 2) (< (abs (- (ref grad-cpu [0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1]) (Float32 2.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map + inner singleton broadcast backward reduces wrt gradient",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 1] [1 2]) 'vulkan) z (to-device (Tensor Float32 [2 3] [0 0 0 0 0 0]) 'vulkan) prediction (map + z x) targets (to-device (Tensor Float32 [2 3] [0 0 0 0 0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu)) (and (= (ref (shape grad) 0) 2) (= (ref (shape grad) 1) 1) (< (abs (- (ref grad-cpu [0 0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1 0]) (Float32 2.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map * rank-0 broadcast backward reduces wrt gradient",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [] 2) 'vulkan) scale (to-device (Tensor Float32 [3] [1 1 1]) 'vulkan) prediction (map * x scale) targets (to-device (Tensor Float32 [3] [0 0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu)) (and (= (length (shape grad)) 0) (< (abs (- (ref grad-cpu []) (Float32 4.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan broadcast alias gradient remains dense concrete",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2 1] [1 2]) 'vulkan) z (to-device (Tensor Float32 [2 3] [0 0 0 0 0 0]) 'vulkan) prediction (map + z x) targets (to-device (Tensor Float32 [2 3] [0 0 0 0 0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (ref g 'input-gradient) layout (tensor-layout grad) grad-cpu (to-device grad 'cpu)) (and (= (device grad) 'vulkan) (= (ref layout 'payload) 'concrete) (= (ref layout 'dense-row-major) true) (= (ref (shape grad) 0) 2) (= (ref (shape grad) 1) 1) (< (abs (- (ref grad-cpu [0 0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [1 0]) (Float32 2.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map / left backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [2 4]) 'vulkan) d (to-device (Tensor Float32 [2] [2 2]) 'vulkan) prediction (map / x d) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (< (abs (- (ref grad [0]) (Float32 0.5))) (Float32 0.0001)) (< (abs (- (ref grad [1]) (Float32 1.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map / right backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [2 4]) 'vulkan) d (to-device (Tensor Float32 [2] [2 2]) 'vulkan) prediction (map / x d) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt d)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (< (abs (- (ref grad [0]) (Float32 -0.5))) (Float32 0.0001)) (< (abs (- (ref grad [1]) (Float32 -1.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map + Float64 backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (x (to-device (Tensor Float64 [2] [1 2]) 'vulkan) prediction (map + x 0.0) targets (to-device (Tensor Float64 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (to-device (ref g 'input-gradient) 'cpu) loss (to-device (ref g 'loss) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (= (dtype (ref g 'input-gradient)) 'Float64) (< (abs (- (ref grad [0]) 1.0)) 0.0001) (< (abs (- (ref grad [1]) 2.0)) 0.0001) (< (abs (- (ref loss []) 2.5)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan mixed-device auto-migrates CPU targets to Vulkan",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (prediction (to-device (Tensor Float32 [2] [2 4]) 'vulkan) targets (Tensor Float32 [2] [0 0]) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt prediction)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (< (abs (- (ref grad [0]) (Float32 2.0))) (Float32 0.0001)) (< (abs (- (ref grad [1]) (Float32 4.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan mixed-device Float64 auto-migrates CPU targets to Vulkan",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (prediction (to-device (Tensor Float64 [2] [2 4]) 'vulkan) targets (Tensor Float64 [2] [0 0]) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt prediction)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (= (dtype (ref g 'input-gradient)) 'Float64) (< (abs (- (ref grad [0]) 2.0)) 0.0001) (< (abs (- (ref grad [1]) 4.0)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor softmax CE Vulkan mixed-device auto-migrates CPU targets to Vulkan",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (logits (to-device (Tensor Float32 [2] [1 2]) 'vulkan) targets (Tensor Float32 [2] [0 1]) g (ml/grad (Dictionary 'kind 'tensor-softmax-cross-entropy 'logits logits 'targets targets 'axis 0 'wrt logits)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu) tape (ref g 'tape)) (and (= (device (ref g 'loss)) 'vulkan) (= (device grad) 'vulkan) (= (ref tape 'device) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 0.3132617))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 0.2689414))) (Float32 0.0001)) (< (abs (+ (ref grad-cpu [1]) (Float32 0.2689414))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map min backward returns masked wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) prediction (map min x (Float32 1.5)) targets (to-device (Tensor Float32 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (< (abs (- (ref grad [0]) (Float32 1.0))) (Float32 0.0001)) (< (abs (- (ref grad [1]) (Float32 0.0))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor MSE Vulkan map max backward returns masked wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float64) (let (x (to-device (Tensor Float64 [2] [1 2]) 'vulkan) prediction (map max x 1.5) targets (to-device (Tensor Float64 [2] [0 0]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-mean-squared-error 'prediction prediction 'targets targets 'wrt x)) grad (to-device (ref g 'input-gradient) 'cpu)) (and (= (device (ref g 'input-gradient)) 'vulkan) (= (dtype (ref g 'input-gradient)) 'Float64) (< (abs (- (ref grad [0]) 0.0)) 0.0001) (< (abs (- (ref grad [1]) 2.0)) 0.0001))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor softmax CE Vulkan direct backward returns logits gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (logits (to-device (Tensor Float32 [2] [1 2]) 'vulkan) targets (to-device (Tensor Float32 [2] [0 1]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-softmax-cross-entropy 'logits logits 'targets targets 'axis 0 'wrt logits)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu) tape (ref g 'tape)) (and (= (device (ref g 'loss)) 'vulkan) (= (device grad) 'vulkan) (= (ref tape 'device) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 0.3132617))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 0.2689414))) (Float32 0.0001)) (< (abs (+ (ref grad-cpu [1]) (Float32 0.2689414))) (Float32 0.0001)))) true))", pass, fail);
+    test_truthy(interp, "ml/grad tensor softmax CE Vulkan map + backward returns wrt gradient on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (to-device (Tensor Float32 [2] [1 2]) 'vulkan) logits (map + x (Float32 0.0)) targets (to-device (Tensor Float32 [2] [0 1]) 'vulkan) g (ml/grad (Dictionary 'kind 'tensor-softmax-cross-entropy 'logits logits 'targets targets 'axis 0 'wrt x)) grad (ref g 'input-gradient) grad-cpu (to-device grad 'cpu) loss-cpu (to-device (ref g 'loss) 'cpu) tape (ref g 'tape)) (and (= (device logits) 'vulkan) (= (device grad) 'vulkan) (= (ref tape 'device) 'vulkan) (< (abs (- (ref loss-cpu []) (Float32 0.3132617))) (Float32 0.0001)) (< (abs (- (ref grad-cpu [0]) (Float32 0.2689414))) (Float32 0.0001)) (< (abs (+ (ref grad-cpu [1]) (Float32 0.2689414))) (Float32 0.0001)))) true))", pass, fail);
     test_truthy(interp, "ml/grad capability keeps Vulkan autograd broad bit false",
         "(let (backends (tensor-backends) cpu (ref backends 0) cuda (ref backends 1) cublas (ref backends 2) vulkan (ref backends 3)) (and (= (ref cpu 'ml-autograd) false) (= (ref cuda 'ml-autograd) false) (= (ref cublas 'ml-autograd) false) (= (ref vulkan 'ml-autograd) false)))", pass, fail);
     test_truthy(interp, "ml/grad linear MSE input gradient matches finite difference",
@@ -249,8 +284,8 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (p (Dictionary 'weights (Tensor Float64 [2] [1 2]) 'bias (Tensor Float64 [1] [3])) g (Dictionary 'weights (Tensor Float64 [2] [0.5 -1]) 'bias (Tensor Float64 [1] [2])) out (ml/sgd-step p g 0.1)) (and (< (abs (- (ref (ref out 'weights) [0]) 0.95)) 0.000000001) (< (abs (- (ref (ref out 'weights) [1]) 2.1)) 0.000000001) (< (abs (- (ref (ref out 'bias) [0]) 2.8)) 0.000000001) (= (ref (ref p 'weights) [0]) 1.0)))", pass, fail);
     test_truthy(interp, "ml/sgd-step recurses through Float32 sequential parameter trees",
         "(let (out (ml/sgd-step (Array (Dictionary 'weights (Tensor Float32 [1] [2]))) (Array (Dictionary 'weights (Tensor Float32 [1] [0.5]))) 0.5)) (and (= (String (dtype (ref (ref out 0) 'weights))) \"Float32\") (= (ref (ref (ref out 0) 'weights) [0]) (Float32 1.75))))", pass, fail);
-    test_truthy(interp, "ml/sgd-step rejects tree mismatch and mixed Vulkan placement",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/sgd-step (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'b (Tensor Float32 [1] [1])) 0.1) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'float32) (= (handle (ml/sgd-step (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [1])) 0.1) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/sgd-step rejects tree mismatch and auto-migrates mixed Vulkan placement",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/sgd-step (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'b (Tensor Float32 [1] [1])) 0.1) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'ml-optimizer-sgd-float32) (let (out (ml/sgd-step (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [1])) 0.1) w (ref out 'w) cpu (to-device w 'cpu)) (and (= (device w) 'vulkan) (< (abs (- (ref cpu [0]) (Float32 0.9))) (Float32 0.0001)))) true)))", pass, fail);
     test_truthy(interp, "ml/sgd-step CUDA Float32 stays on device",
         "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'ml-optimizer-sgd-float32) (let (out (ml/sgd-step (Dictionary 'w (to-device (Tensor Float32 [2] [2 4]) 'cuda)) (Dictionary 'w (to-device (Tensor Float32 [2] [0.5 -1]) 'cuda)) 0.1) w (ref out 'w) cpu (to-device w 'cpu)) (and (= (device w) 'cuda) (< (abs (- (ref cpu [0]) (Float32 1.95))) (Float32 0.0001)) (< (abs (- (ref cpu [1]) (Float32 4.1))) (Float32 0.0001)))) true))", pass, fail);
     test_truthy(interp, "ml/sgd-step Vulkan Float32 stays on device",
@@ -267,14 +302,16 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (r (ml/optimizer-step (Dictionary 'kind 'adamw 'learning-rate 0.1 'weight-decay 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0])) (Dictionary)) st (ref r 'state) p (ref (ref r 'parameters) 'w)) (and (= (ref r 'optimizer) 'adamw) (= (ref st 'step) 1) (< (abs (- (ref p [0]) 0.99)) 0.000000001)))", pass, fail);
     test_truthy(interp, "ml/optimizer-step Adam consumes prior state and validates schema",
         "(let (r1 (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.1])) (Dictionary)) st1 (ref r1 'state) r2 (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (ref r1 'parameters) (Dictionary 'w (Tensor Float64 [1] [0.1])) st1) st2 (ref r2 'state) m2 (ref (ref st2 'first-moment) 'w)) (and (= (ref st2 'step) 2) (< (abs (- (ref m2 [0]) 0.019)) 0.000000001) (= (handle (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1 'beta1 1.0) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.1])) (Dictionary 'first-moment (Dictionary 'w (Tensor Float64 [1] [0])))) (raise msg (ref msg 'code))) 'tensor/invalid-argument)))", pass, fail);
+    test_truthy(interp, "ml/optimizer-step Adam treats nil moments as absent",
+        "(let (r (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.1])) (Dictionary 'first-moment nil 'second-moment nil)) st (ref r 'state) p (ref (ref r 'parameters) 'w) m (ref (ref st 'first-moment) 'w)) (and (= (ref st 'step) 1) (< (abs (- (ref p [0]) 0.90000001)) 0.000000001) (< (abs (- (ref m [0]) 0.01)) 0.000000001) (= (handle (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.1])) (Dictionary 'first-moment nil 'second-moment (Dictionary 'w (Tensor Float64 [1] [0])))) (raise msg (ref msg 'code))) 'tensor/invalid-argument)))", pass, fail);
     test_truthy(interp, "ml/optimizer-step RMSProp initializes square average",
         "(let (r (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary)) st (ref r 'state) p (ref (ref r 'parameters) 'w) s (ref (ref st 'square-average) 'w)) (and (= (ref r 'optimizer) 'rmsprop) (= (ref st 'step) 1) (< (abs (- (ref p [0]) 0.900000002)) 0.000000001) (< (abs (- (ref s [0]) 0.25)) 0.000000001)))", pass, fail);
     test_truthy(interp, "ml/optimizer-step RMSProp momentum consumes state",
         "(let (r1 (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0 'momentum 0.9) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary)) r2 (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0 'momentum 0.9) (ref r1 'parameters) (Dictionary 'w (Tensor Float64 [1] [0.5])) (ref r1 'state)) st2 (ref r2 'state) p2 (ref (ref r2 'parameters) 'w) v2 (ref (ref st2 'velocity) 'w)) (and (= (ref st2 'step) 2) (< (abs (- (ref p2 [0]) 0.7100000058)) 0.000000001) (< (abs (- (ref v2 [0]) 0.1899999962)) 0.000000001)))", pass, fail);
-    test_truthy(interp, "ml/optimizer-step RMSProp validates spec state and Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 1.0) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary 'square-average (Dictionary 'w (Tensor Float64 [2] [0 0])))) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'float32) (= (handle (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [0.5])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "ml/optimizer-step rejects invalid spec and Adam Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/optimizer-step (Dictionary 'kind 'bogus 'learning-rate 0.1) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 0.1 'momentum 1.0) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (if (ref vulkan-backend 'float32) (= (handle (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/optimizer-step RMSProp validates spec state and auto-migrates Vulkan grads",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 1.0) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1) (Dictionary 'w (Tensor Float64 [1] [1])) (Dictionary 'w (Tensor Float64 [1] [0.5])) (Dictionary 'square-average (Dictionary 'w (Tensor Float64 [2] [0 0])))) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (if (ref vulkan-backend 'ml-optimizer-rmsprop-float32) (let (r (ml/optimizer-step (Dictionary 'kind 'rmsprop 'learning-rate 0.1 'alpha 0.0) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [0.5])) (Dictionary)) p (ref (ref r 'parameters) 'w) s (ref (ref (ref r 'state) 'square-average) 'w) pcpu (to-device p 'cpu) scpu (to-device s 'cpu)) (and (= (device p) 'vulkan) (= (device s) 'vulkan) (< (abs (- (ref pcpu [0]) (Float32 0.9))) (Float32 0.0001)) (< (abs (- (ref scpu [0]) (Float32 0.25))) (Float32 0.0001)))) true)))", pass, fail);
+    test_truthy(interp, "ml/optimizer-step rejects invalid spec and auto-migrates Adam Vulkan grads",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/optimizer-step (Dictionary 'kind 'bogus 'learning-rate 0.1) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (= (handle (ml/optimizer-step (Dictionary 'kind 'sgd 'learning-rate 0.1 'momentum 1.0) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary 'w (Tensor Float32 [1] [1])) (Dictionary)) (raise msg (ref msg 'code))) 'tensor/invalid-argument) (if (ref vulkan-backend 'ml-optimizer-adam-float32) (let (r (ml/optimizer-step (Dictionary 'kind 'adam 'learning-rate 0.1) (Dictionary 'w (to-device (Tensor Float32 [1] [1]) 'vulkan)) (Dictionary 'w (Tensor Float32 [1] [0.1])) (Dictionary)) p (ref (ref r 'parameters) 'w) m (ref (ref (ref r 'state) 'first-moment) 'w) pcpu (to-device p 'cpu) mcpu (to-device m 'cpu)) (and (= (device p) 'vulkan) (= (device m) 'vulkan) (< (abs (- (ref pcpu [0]) (Float32 0.9000001))) (Float32 0.0001)) (< (abs (- (ref mcpu [0]) (Float32 0.01))) (Float32 0.0001)))) true)))", pass, fail);
     test_truthy(interp, "ml/softmax rejects axis lists",
         "(= (handle (ml/softmax (Tensor Float64 [2] [1 2]) [0]) (raise msg (ref msg 'code))) 'type/arg-mismatch)", pass, fail);
     test_truthy(interp, "ml/mean-squared-error Float64 scalar loss",
@@ -287,14 +324,16 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(and (= (handle (ml/mean-squared-error (Tensor Float64 [2] [1 2]) (Tensor Float64 [1 2] [1 2])) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/mean-squared-error (Tensor Float64 [1] [1]) (Tensor Float32 [1] [1])) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error Vulkan Float64 and Float32 stay on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'float64) (let (out (ml/mean-squared-error (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan) (to-device (Tensor Float64 [3] [1 1 5]) 'vulkan)) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (rank cpu) 0) (< (abs (- (ref cpu []) (/ 5.0 3.0))) 0.000000001))) true) (if (ref vulkan-backend 'float32) (let (out (ml/mean-squared-error (to-device (Tensor Float32 [3] [1 2 3]) 'vulkan) (to-device (Tensor Float32 [3] [1 1 5]) 'vulkan)) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (rank cpu) 0) (< (abs (- (ref cpu []) (/ 5.0 3.0))) 0.0001))) true)))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error materializes Vulkan transpose views logically",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (expected (to-device (Tensor Float32 [2 2] [1 3 2 4]) 'vulkan) left (ml/mean-squared-error (matrix/transpose-view (to-device (Tensor Float32 [2 2] [1 2 3 4]) 'vulkan)) expected) right (ml/mean-squared-error expected (matrix/transpose-view (to-device (Tensor Float32 [2 2] [1 2 3 4]) 'vulkan))) left-cpu (to-device left 'cpu) right-cpu (to-device right 'cpu)) (and (= (device left) 'vulkan) (= (device right) 'vulkan) (= (ref left-cpu []) (Float32 0.0)) (= (ref right-cpu []) (Float32 0.0)))) true))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error Vulkan Float32 overflow matches CPU",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/mean-squared-error (to-device (Tensor Float32 [1] [1.0e20]) 'vulkan) (to-device (Tensor Float32 [1] [0.0]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/numeric-overflow) true))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error Vulkan staged reductions stay on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'float64) (let (out (ml/mean-squared-error (to-device (Tensor Float64 [300] 1.0) 'vulkan) (to-device (Tensor Float64 [300] 0.0) 'vulkan)) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (rank cpu) 0) (< (abs (- (ref cpu []) 1.0)) 0.000000001))) true) (if (ref vulkan-backend 'float32) (let (out (ml/mean-squared-error (to-device (Tensor Float32 [70000] 1.0) 'vulkan) (to-device (Tensor Float32 [70000] 0.0) 'vulkan)) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (rank cpu) 0) (< (abs (- (ref cpu []) 1.0)) 0.0001))) true)))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error Vulkan staged Float32 overflow matches CPU",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/mean-squared-error (to-device (Tensor Float32 [300] 1.0e20) 'vulkan) (to-device (Tensor Float32 [300] 0.0) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/numeric-overflow) true))", pass, fail);
-    test_truthy(interp, "ml/mean-squared-error rejects unsupported dtype and mixed Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/mean-squared-error (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float64) (= (handle (ml/mean-squared-error (to-device (Tensor Float64 [1] [1]) 'vulkan) (Tensor Float64 [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float32) (= (handle (ml/mean-squared-error (to-device (Tensor Float32 [1] [1]) 'vulkan) (Tensor Float32 [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
+    test_truthy(interp, "ml/mean-squared-error rejects unsupported dtype and auto-migrates CPU targets",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/mean-squared-error (Tensor BigInteger [1] [1]) (Tensor BigInteger [1] [1])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (if (ref vulkan-backend 'float64) (let (out (ml/mean-squared-error (to-device (Tensor Float64 [1] [1]) 'vulkan) (Tensor Float64 [1] [1])) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (ref cpu []) 0.0))) true) (if (ref vulkan-backend 'float32) (let (out (ml/mean-squared-error (to-device (Tensor Float32 [1] [1]) 'vulkan) (Tensor Float32 [1] [1])) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (ref cpu []) (Float32 0.0)))) true)))", pass, fail);
     test_truthy(interp, "ml/mean-squared-error rejects Vulkan shape and dtype mismatch",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (and (ref vulkan-backend 'float64) (ref vulkan-backend 'float32)) (= (handle (ml/mean-squared-error (to-device (Tensor Float64 [1] [1]) 'vulkan) (to-device (Tensor Float32 [1] [1]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) true) (if (ref vulkan-backend 'float64) (= (handle (ml/mean-squared-error (to-device (Tensor Float64 [2] [1 2]) 'vulkan) (to-device (Tensor Float64 [1 2] [1 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) true)))", pass, fail);
     test_truthy(interp, "ml/cross-entropy Float64 rank-1 one-hot stable",
@@ -317,10 +356,10 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/cross-entropy (to-device (Tensor Float32 [2] [0 0]) 'vulkan) (to-device (Tensor Float32 [2] [0.25 0.25]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/invalid-argument) true))", pass, fail);
     test_truthy(interp, "ml/cross-entropy Vulkan Float32 staged reductions preserve invalid targets",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/cross-entropy (to-device (Tensor Float32 [300 2] 0.0) 'vulkan) (to-device (Tensor Float32 [300 2] 0.25) 'vulkan) 1) (raise msg (ref msg 'code))) 'tensor/invalid-argument) true))", pass, fail);
-    test_truthy(interp, "ml/cross-entropy rejects shape dtype and Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float64 [1 2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float32 [2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (if (ref vulkan-backend 'float64) (= (handle (ml/cross-entropy (to-device (Tensor Float64 [2] [0 0]) 'vulkan) (to-device (Tensor Float64 [2] [1 0]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float32) (= (handle (ml/cross-entropy (to-device (Tensor Float32 [2] [0 0]) 'vulkan) (Tensor Float32 [2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true)))", pass, fail);
-    test_truthy(interp, "ml/cross-entropy rejects lazy CPU and Vulkan mixing before CPU realization",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (ml/cross-entropy (map + (Tensor Float32 [2] [0 0]) 0.0) (to-device (Tensor Float32 [2] [1 0]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy rejects shape dtype and auto-migrates CPU targets",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (and (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float64 [1 2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/cross-entropy (Tensor Float64 [2] [0 0]) (Tensor Float32 [2] [1 0]) 0) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (if (ref vulkan-backend 'float64) (= (handle (ml/cross-entropy (to-device (Tensor Float64 [2] [0 0]) 'vulkan) (to-device (Tensor Float64 [2] [1 0]) 'vulkan) 0) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) (if (ref vulkan-backend 'float32) (let (out (ml/cross-entropy (to-device (Tensor Float32 [2] [0 0]) 'vulkan) (Tensor Float32 [2] [1 0]) 0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu []) (log 2.0))) 0.0001))) true)))", pass, fail);
+    test_truthy(interp, "ml/cross-entropy realizes lazy CPU logits before Vulkan migration",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (out (ml/cross-entropy (map + (Tensor Float32 [2] [0 0]) 0.0) (to-device (Tensor Float32 [2] [1 0]) 'vulkan) 0) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (< (abs (- (ref cpu []) (log 2.0))) 0.0001))) true))", pass, fail);
     test_truthy(interp, "ml reductions reject duplicate and empty axes",
         "(and (= (handle (ml/sum (Tensor Float64 [2 2] [1 2 3 4]) [0 0]) (raise msg (ref msg 'code))) 'tensor/axis-duplicate) (= (handle (ml/mean (Tensor Float64 [2] [1 2]) []) (raise msg (ref msg 'code))) 'tensor/shape-mismatch))", pass, fail);
     test_truthy(interp, "ml/max Vulkan axis reduction preserves device and values",
@@ -335,8 +374,8 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(and (= (handle (ml/conv1d (Tensor Float64 [1 1 4] [1 2 3 4]) (Tensor Float32 [1 1 2] [1 1]) 1 0 1 1) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (= (handle (ml/conv1d (Tensor Float64 [1 2 4] [1 2 3 4 5 6 7 8]) (Tensor Float64 [1 2 2] [1 1 1 1]) 1 0 1 2) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/conv1d (Tensor Float64 [1 1 4] [1 2 3 4]) (Tensor Float64 [1 1 2] [1 1]) 0 0 1 1) (raise msg (ref msg 'code))) 'tensor/invalid-argument))", pass, fail);
     test_truthy(interp, "ml/conv1d Vulkan Float32 stays on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv1d-direct-float32) (let (out (ml/conv1d (to-device (Tensor Float32 [1 1 4] [1 2 3 4]) 'vulkan) (to-device (Tensor Float32 [1 1 2] [10 1]) 'vulkan) 1 0 1 1) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref cpu [0 0 0]) (Float32 12.0)) (= (ref cpu [0 0 2]) (Float32 34.0)))) true))", pass, fail);
-    test_truthy(interp, "ml/conv1d rejects mixed CPU Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv1d-direct-float32) (and (= (handle (ml/conv1d (to-device (Tensor Float32 [1 1 4] [1 2 3 4]) 'vulkan) (Tensor Float32 [1 1 2] [10 1]) 1 0 1 1) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/conv1d (map + (Tensor Float32 [1 1 4] [1 2 3 4]) (Float32 0.0)) (to-device (Tensor Float32 [1 1 2] [10 1]) 'vulkan) 1 0 1 1) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)) true))", pass, fail);
+    test_truthy(interp, "ml/conv1d auto-migrates mixed CPU Vulkan operands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv1d-direct-float32) (let (a (ml/conv1d (to-device (Tensor Float32 [1 1 4] [1 2 3 4]) 'vulkan) (Tensor Float32 [1 1 2] [10 1]) 1 0 1 1) b (ml/conv1d (map + (Tensor Float32 [1 1 4] [1 2 3 4]) (Float32 0.0)) (to-device (Tensor Float32 [1 1 2] [10 1]) 'vulkan) 1 0 1 1) ac (to-device a 'cpu) bc (to-device b 'cpu)) (and (= (device a) 'vulkan) (= (device b) 'vulkan) (= (ref ac [0 0 0]) (Float32 12.0)) (= (ref ac [0 0 2]) (Float32 34.0)) (= (ref bc [0 0 0]) (Float32 12.0)) (= (ref bc [0 0 2]) (Float32 34.0)))) true))", pass, fail);
     test_truthy(interp, "ml/conv2d Float64 grouped NCHW dense row-major",
         "(let (out (ml/conv2d (Tensor Float64 [1 2 2 3] [1 2 3 4 5 6 10 20 30 40 50 60]) (Tensor Float64 [2 1 2 2] [1 1 1 1 2 0 0 0]) 1 1 0 0 1 1 2)) (and (= (ref out [0 0 0 0]) 12.0) (= (ref out [0 0 0 1]) 16.0) (= (ref out [0 1 0 1]) 40.0)))", pass, fail);
     test_truthy(interp, "ml/conv2d Float64 asymmetric stride padding output shape",
@@ -345,8 +384,8 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(and (= (handle (ml/conv2d (Tensor Float64 [1 1 2 2] [1 2 3 4]) (Tensor Float32 [1 1 1 1] [1]) 1 1 0 0 1 1 1) (raise msg (ref msg 'code))) 'tensor/dtype-mismatch) (= (handle (ml/conv2d (Tensor Float64 [1 2 2 2] [1 2 3 4 5 6 7 8]) (Tensor Float64 [1 2 1 1] [1 1]) 1 1 0 0 1 1 2) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) (= (handle (ml/conv2d (Tensor Float64 [1 1 2 2] [1 2 3 4]) (Tensor Float64 [1 1 1 1] [1]) 0 1 0 0 1 1 1) (raise msg (ref msg 'code))) 'tensor/invalid-argument))", pass, fail);
     test_truthy(interp, "ml/conv2d Vulkan Float32 stays on device",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv2d-direct-float32) (let (out (ml/conv2d (to-device (Tensor Float32 [1 1 2 3] [1 2 3 4 5 6]) 'vulkan) (to-device (Tensor Float32 [1 1 2 2] [1 1 1 1]) 'vulkan) 1 1 0 0 1 1 1) cpu (to-device out 'cpu)) (and (= (device out) 'vulkan) (= (String (dtype out)) \"Float32\") (= (ref cpu [0 0 0 0]) (Float32 12.0)) (= (ref cpu [0 0 0 1]) (Float32 16.0)))) true))", pass, fail);
-    test_truthy(interp, "ml/conv2d rejects mixed CPU Vulkan fallback",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv2d-direct-float32) (and (= (handle (ml/conv2d (to-device (Tensor Float32 [1 1 2 3] [1 2 3 4 5 6]) 'vulkan) (Tensor Float32 [1 1 2 2] [1 1 1 1]) 1 1 0 0 1 1 1) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (ml/conv2d (map + (Tensor Float32 [1 1 2 3] [1 2 3 4 5 6]) (Float32 0.0)) (to-device (Tensor Float32 [1 1 2 2] [1 1 1 1]) 'vulkan) 1 1 0 0 1 1 1) (raise msg (ref msg 'code))) 'tensor/backend-unsupported)) true))", pass, fail);
+    test_truthy(interp, "ml/conv2d auto-migrates mixed CPU Vulkan operands",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'ml-conv2d-direct-float32) (let (a (ml/conv2d (to-device (Tensor Float32 [1 1 2 3] [1 2 3 4 5 6]) 'vulkan) (Tensor Float32 [1 1 2 2] [1 1 1 1]) 1 1 0 0 1 1 1) b (ml/conv2d (map + (Tensor Float32 [1 1 2 3] [1 2 3 4 5 6]) (Float32 0.0)) (to-device (Tensor Float32 [1 1 2 2] [1 1 1 1]) 'vulkan) 1 1 0 0 1 1 1) ac (to-device a 'cpu) bc (to-device b 'cpu)) (and (= (device a) 'vulkan) (= (device b) 'vulkan) (= (ref ac [0 0 0 0]) (Float32 12.0)) (= (ref ac [0 0 0 1]) (Float32 16.0)) (= (ref bc [0 0 0 0]) (Float32 12.0)) (= (ref bc [0 0 0 1]) (Float32 16.0)))) true))", pass, fail);
     test_truthy(interp, "ml/max-pool2d Float64 dense NCHW row-major",
         "(let (out (ml/max-pool2d (Tensor Float64 [1 1 3 4] [1 2 3 4 5 6 7 8 9 10 11 12]) 2 2 1 2 0 0)) (and (= (ref out [0 0 0 0]) 6.0) (= (ref out [0 0 0 1]) 8.0) (= (ref out [0 0 1 0]) 10.0) (= (ref out [0 0 1 1]) 12.0)))", pass, fail);
     test_truthy(interp, "ml/avg-pool2d Float64 excludes padding from divisor",
@@ -501,6 +540,39 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
             *fail += 1;
         }
     }
+    test_truthy(interp, "matrix eigenvalues Vulkan Complex128 Hermitian stays on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (let (vals (matrix/eigenvalues (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]) 'vulkan))) (and (= (device vals) 'vulkan) (= (String (dtype vals)) \"Float64\"))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvalues Vulkan Complex128 Hermitian computes values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (let (vals (to-device (matrix/eigenvalues (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]) 'vulkan)) 'cpu)) (and (< (abs (- (ref vals [0]) 3.0)) 0.000000001) (< (abs (- (ref vals [1]) 1.0)) 0.000000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors Vulkan Complex128 Hermitian outputs stay on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (let (ev (matrix/eigenvectors (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]) 'vulkan))) (and (= (device (ref ev 'values)) 'vulkan) (= (device (ref ev 'vectors)) 'vulkan) (= (String (dtype (ref ev 'vectors))) \"Complex128\"))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvalues Vulkan Complex128 non-Hermitian reports not symmetric",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (= (handle (matrix/eigenvalues (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 1) (Complex128 2 0)]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/not-symmetric) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvalues Vulkan Complex64 Hermitian computes values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex64) (let (vals (to-device (matrix/eigenvalues (to-device (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)]) 'vulkan)) 'cpu)) (and (= (String (dtype vals)) \"Float32\") (< (abs (- (ref vals [0]) 3.0)) 0.001) (< (abs (- (ref vals [1]) 1.0)) 0.001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenvectors Vulkan Complex64 vectors dtype",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex64) (let (ev (matrix/eigenvectors (to-device (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)]) 'vulkan))) (and (= (device (ref ev 'vectors)) 'vulkan) (= (String (dtype (ref ev 'vectors))) \"Complex64\"))) true))", pass, fail);
+    {
+        bool vulkan_complex_hermitian_available = omni_tensor_backend_vulkan_available() != 0 &&
+            (omni_tensor_backend_vulkan_float64_available() != 0 || omni_tensor_backend_vulkan_float32_available() != 0);
+        long zgeev_calls_before = omni_tensor_backend_lapack_zgeev_call_count();
+        long cgeev_calls_before = omni_tensor_backend_lapack_cgeev_call_count();
+        test_truthy(interp, "matrix Hermitian Vulkan fixed complex path does not call LAPACK",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'matrix-hermitian-eigen-complex128) (let (vals (to-device (matrix/eigenvalues (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]) 'vulkan)) 'cpu) ev (matrix/eigenvectors (to-device (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]) 'vulkan))) (and (< (abs (- (ref vals [0]) 3.0)) 0.000000001) (= (device (ref ev 'vectors)) 'vulkan))) true) (if (ref vulkan-backend 'matrix-hermitian-eigen-complex64) (let (vals (to-device (matrix/eigenvalues (to-device (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)]) 'vulkan)) 'cpu) ev (matrix/eigenvectors (to-device (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)]) 'vulkan))) (and (< (abs (- (ref vals [0]) 3.0)) 0.001) (= (device (ref ev 'vectors)) 'vulkan))) true)))",
+            pass, fail);
+        bool no_complex_lapack_path_ok = !vulkan_complex_hermitian_available ||
+            (omni_tensor_backend_lapack_zgeev_call_count() == zgeev_calls_before &&
+                omni_tensor_backend_lapack_cgeev_call_count() == cgeev_calls_before);
+        if (no_complex_lapack_path_ok) {
+            emit_pass_literal(vulkan_complex_hermitian_available
+                ? "[PASS] tensor Vulkan fixed complex Hermitian eigen path does not call LAPACK"
+                : "[PASS] tensor Vulkan fixed complex Hermitian eigen unavailable; no-LAPACK path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan fixed complex Hermitian eigen path does not call LAPACK");
+            *fail += 1;
+        }
+    }
     test_eq(interp, "matrix eigenpairs empty values shape",
         "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [0 0] 0.0)) 'values)) 0)",
         0, pass, fail);
@@ -508,14 +580,14 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [0 0] 0.0)) 'vectors)) 1)",
         0, pass, fail);
     setup(interp,
-        "(define (matrix-eigenpairs-residual3-row a i v0 v1 v2) (+ (+ (* (BigComplex (ref a [i 0]) 0) v0) (* (BigComplex (ref a [i 1]) 0) v1)) (* (BigComplex (ref a [i 2]) 0) v2)))");
+        "(define (matrix-eigenpairs-residual3-row a i v0 v1 v2) (+ (+ (* (Complex128 (ref a [i 0]) 0) v0) (* (Complex128 (ref a [i 1]) 0) v1)) (* (Complex128 (ref a [i 2]) 0) v2)))");
     setup(interp,
         "(define (matrix-eigenpairs-residual3-ok a k tol) (let (ep (matrix/eigenpairs a) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (< (+ (+ (abs (- (matrix-eigenpairs-residual3-row a 0 v0 v1 v2) (* lambda v0))) (abs (- (matrix-eigenpairs-residual3-row a 1 v0 v1 v2) (* lambda v1)))) (abs (- (matrix-eigenpairs-residual3-row a 2 v0 v1 v2) (* lambda v2)))) tol)))");
     setup(interp,
         "(define (matrix-eigenpairs-residual3-all-ok a tol) (if (matrix-eigenpairs-residual3-ok a 0 tol) (if (matrix-eigenpairs-residual3-ok a 1 tol) (matrix-eigenpairs-residual3-ok a 2 tol) nil) nil))");
-    {
-        bool lapack_available = omni_tensor_backend_lapack_dgeev_available() != 0;
-        if (lapack_available) {
+	    {
+	        bool lapack_available = omni_tensor_backend_lapack_dgeev_available() != 0;
+	        if (lapack_available) {
             test_truthy(interp, "matrix eigenpairs complex value positive imaginary",
                 "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values) [0])) (BigFloat \"1\"))) (BigFloat \"1e-10\"))",
                 pass, fail);
@@ -524,10 +596,10 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
                 pass, fail);
             test_str_val(interp, "matrix eigenpairs values dtype",
                 "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values)))",
-                "BigComplex", pass, fail);
+                "Complex128", pass, fail);
             test_str_val(interp, "matrix eigenpairs vectors dtype",
                 "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)))",
-                "BigComplex", pass, fail);
+                "Complex128", pass, fail);
             test_eq(interp, "matrix eigenpairs vector shape columns",
                 "(ref (shape (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)) 1)",
                 2, pass, fail);
@@ -538,16 +610,16 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
                 "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) 'vectors) [0 0])) (BigFloat \"1\"))) (BigFloat \"1e-10\"))",
                 pass, fail);
             test_truthy(interp, "matrix eigenpairs LAPACK real residual",
-                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (BigComplex 3 0) v0) (* lambda v0))) (abs (- (* (BigComplex 2 0) v1) (* lambda v1)))) (BigFloat \"1e-8\")))",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [3 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (Complex128 3 0) v0) (* lambda v0))) (abs (- (* (Complex128 2 0) v1) (* lambda v1)))) 0.00000001))",
                 pass, fail);
             test_truthy(interp, "matrix eigenpairs LAPACK complex residual",
-                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (BigComplex -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) (BigFloat \"1e-8\")))",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (Complex128 -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) 0.00000001))",
                 pass, fail);
             test_truthy(interp, "matrix eigenpairs LAPACK nonnormal residual",
-                "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (BigComplex 5 0) v0) (* (BigComplex 7 0) v1)) (* lambda v0))) (abs (- (+ (* (BigComplex 3 0) v1) (* (BigComplex 2 0) v2)) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+                "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (Complex128 5 0) v0) (* (Complex128 7 0) v1)) (* lambda v0))) (abs (- (+ (* (Complex128 3 0) v1) (* (Complex128 2 0) v2)) (* lambda v1)))) (abs (- (* (Complex128 1 0) v2) (* lambda v2)))) 0.000001))",
                 pass, fail);
             test_truthy(interp, "matrix eigenpairs LAPACK residual harness 3x3 columns",
-                "(let (tol (BigFloat \"1e-6\") a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
+                "(let (tol 0.000001 a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
                 pass, fail);
             test_truthy(interp, "matrix eigenpairs realizes lazy input",
                 "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (map + (Tensor Float64 [2 2] [3 0 0 2]) 0.0)) 'values) [1])) (BigFloat \"2\"))) (BigFloat \"1e-10\"))",
@@ -569,10 +641,136 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
         } else {
             emit_pass_literal("[PASS] tensor LAPACK backend dgeev unavailable; matrix eigenpairs fallback retained");
             (*pass)++;
-        }
-    }
-    {
-        int fail_before = *fail;
+	        }
+	    }
+	    {
+	        bool lapack_available = omni_tensor_backend_lapack_sgeev_available() != 0;
+	        if (lapack_available) {
+	            test_str_val(interp, "matrix eigenpairs Float32 values dtype",
+	                "(String (dtype (ref (matrix/eigenpairs (Tensor Float32 [2 2] [0 -1 1 0])) 'values)))",
+	                "Complex64", pass, fail);
+	            test_str_val(interp, "matrix eigenpairs Float32 vectors dtype",
+	                "(String (dtype (ref (matrix/eigenpairs (Tensor Float32 [2 2] [0 -1 1 0])) 'vectors)))",
+	                "Complex64", pass, fail);
+	            test_truthy(interp, "matrix eigenpairs Float32 complex residual",
+	                "(let (ep (matrix/eigenpairs (Tensor Float32 [2 2] [0 -1 1 0])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (Complex64 -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) 0.00001))",
+	                pass, fail);
+	            {
+	                long lapack_calls_before = omni_tensor_backend_lapack_sgeev_call_count();
+	                test_truthy(interp, "matrix eigenpairs Float32 LAPACK candidate",
+	                    "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float32 [2 2] [3 0 0 2])) 'values) [0])) 3.0)) 0.00001)",
+	                    pass, fail);
+	                bool lapack_path_ok = omni_tensor_backend_lapack_sgeev_call_count() > lapack_calls_before;
+	                if (lapack_path_ok) {
+	                    emit_pass_literal("[PASS] tensor LAPACK backend sgeev matrix eigenpairs path");
+	                    (*pass)++;
+	                } else {
+	                    io::printn("[FAIL] tensor LAPACK backend sgeev matrix eigenpairs path");
+	                    (*fail)++;
+	                }
+	            }
+	        } else {
+	            emit_pass_literal("[PASS] tensor LAPACK backend sgeev unavailable; Float32 eigenpairs fallback retained");
+	            (*pass)++;
+	        }
+	    }
+	    {
+	        int fail_before = *fail;
+	        long lapack_calls_before = omni_tensor_backend_lapack_sgeev_call_count();
+	        omni_tensor_backend_lapack_sgeev_disable_for_tests(1);
+	        test_str_val(interp, "matrix eigenpairs Float32 pure fallback vectors dtype",
+	            "(String (dtype (ref (matrix/eigenpairs (Tensor Float32 [2 2] [0 -1 1 0])) 'vectors)))",
+	            "Complex64", pass, fail);
+	        test_truthy(interp, "matrix eigenpairs Float32 pure fallback complex positive imaginary",
+	            "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float32 [2 2] [0 -1 1 0])) 'values) [0])) 1.0)) 0.00001)",
+	            pass, fail);
+	        bool fallback_path_ok = *fail == fail_before &&
+	            omni_tensor_backend_lapack_sgeev_available() == 0 &&
+	            omni_tensor_backend_lapack_sgeev_call_count() == lapack_calls_before;
+	        omni_tensor_backend_lapack_sgeev_disable_for_tests(0);
+	        if (fallback_path_ok) {
+	            emit_pass_literal("[PASS] tensor LAPACK backend sgeev disabled; Float32 eigenpairs pure fallback path");
+	            (*pass)++;
+	        } else {
+	            io::printn("[FAIL] tensor LAPACK backend sgeev disabled; Float32 eigenpairs pure fallback path");
+	            (*fail)++;
+	        }
+	    }
+	    {
+	        bool lapack_available = omni_tensor_backend_lapack_zgeev_available() != 0;
+	        if (lapack_available) {
+	            test_str_val(interp, "matrix eigenpairs Complex128 values dtype",
+	                "(String (dtype (ref (matrix/eigenpairs (Tensor Complex128 [2 2] [(Complex128 1 1) 0 0 (Complex128 2 -3)])) 'values)))",
+	                "Complex128", pass, fail);
+	            test_truthy(interp, "matrix eigenpairs Complex128 diagonal keeps negative imaginary eigenvalue",
+	                "(let (vals (ref (matrix/eigenpairs (Tensor Complex128 [2 2] [(Complex128 1 1) 0 0 (Complex128 2 -3)])) 'values)) (< (+ (abs (- (real-part (ref vals [0])) 2.0)) (abs (- (imag-part (ref vals [0])) -3.0))) 0.00000001))",
+	                pass, fail);
+	            test_truthy(interp, "matrix eigenpairs Complex128 residual",
+	                "(let (ep (matrix/eigenpairs (Tensor Complex128 [2 2] [(Complex128 1 1) 0 0 (Complex128 2 -3)])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (Complex128 1 1) v0) (* lambda v0))) (abs (- (* (Complex128 2 -3) v1) (* lambda v1)))) 0.00000001))",
+	                pass, fail);
+	            {
+	                long lapack_calls_before = omni_tensor_backend_lapack_zgeev_call_count();
+	                test_truthy(interp, "matrix eigenpairs Complex128 LAPACK candidate",
+	                    "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Complex128 [2 2] [(Complex128 1 1) 0 0 (Complex128 2 -3)])) 'values) [0])) 2.0)) 0.00000001)",
+	                    pass, fail);
+	                bool lapack_path_ok = omni_tensor_backend_lapack_zgeev_call_count() > lapack_calls_before;
+	                if (lapack_path_ok) {
+	                    emit_pass_literal("[PASS] tensor LAPACK backend zgeev matrix eigenpairs path");
+	                    (*pass)++;
+	                } else {
+	                    io::printn("[FAIL] tensor LAPACK backend zgeev matrix eigenpairs path");
+	                    (*fail)++;
+	                }
+	            }
+	            omni_tensor_backend_lapack_zgeev_disable_for_tests(1);
+	            test_truthy(interp, "matrix eigenpairs Complex128 disabled zgeev fails closed",
+	                "(= (handle (matrix/eigenpairs (Tensor Complex128 [1 1] [(Complex128 1 2)])) (raise msg (ref msg 'code))) 'tensor/backend-unavailable)",
+	                pass, fail);
+	            omni_tensor_backend_lapack_zgeev_disable_for_tests(0);
+	        } else {
+	            emit_pass_literal("[PASS] tensor LAPACK backend zgeev unavailable; Complex128 eigenpairs fail-closed path retained");
+	            (*pass)++;
+	        }
+	    }
+	    {
+	        bool lapack_available = omni_tensor_backend_lapack_cgeev_available() != 0;
+	        if (lapack_available) {
+	            test_str_val(interp, "matrix eigenpairs Complex64 vectors dtype",
+	                "(String (dtype (ref (matrix/eigenpairs (Tensor Complex64 [2 2] [(Complex64 1 1) 0 0 (Complex64 2 -3)])) 'vectors)))",
+	                "Complex64", pass, fail);
+	            test_truthy(interp, "matrix eigenpairs Complex64 diagonal keeps negative imaginary eigenvalue",
+	                "(let (vals (ref (matrix/eigenpairs (Tensor Complex64 [2 2] [(Complex64 1 1) 0 0 (Complex64 2 -3)])) 'values)) (< (+ (abs (- (real-part (ref vals [0])) 2.0)) (abs (- (imag-part (ref vals [0])) -3.0))) 0.00001))",
+	                pass, fail);
+	            test_truthy(interp, "matrix eigenpairs Complex64 residual",
+	                "(let (ep (matrix/eigenpairs (Tensor Complex64 [2 2] [(Complex64 1 1) 0 0 (Complex64 2 -3)])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (< (+ (abs (- (* (Complex64 1 1) v0) (* lambda v0))) (abs (- (* (Complex64 2 -3) v1) (* lambda v1)))) 0.00001))",
+	                pass, fail);
+	            {
+	                long lapack_calls_before = omni_tensor_backend_lapack_cgeev_call_count();
+	                test_truthy(interp, "matrix eigenpairs Complex64 LAPACK candidate",
+	                    "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Complex64 [2 2] [(Complex64 1 1) 0 0 (Complex64 2 -3)])) 'values) [0])) 2.0)) 0.00001)",
+	                    pass, fail);
+	                bool lapack_path_ok = omni_tensor_backend_lapack_cgeev_call_count() > lapack_calls_before;
+	                if (lapack_path_ok) {
+	                    emit_pass_literal("[PASS] tensor LAPACK backend cgeev matrix eigenpairs path");
+	                    (*pass)++;
+	                } else {
+	                    io::printn("[FAIL] tensor LAPACK backend cgeev matrix eigenpairs path");
+	                    (*fail)++;
+	                }
+	            }
+	            omni_tensor_backend_lapack_cgeev_disable_for_tests(1);
+	            test_truthy(interp, "matrix eigenpairs Complex64 disabled cgeev fails closed",
+	                "(= (handle (matrix/eigenpairs (Tensor Complex64 [1 1] [(Complex64 1 2)])) (raise msg (ref msg 'code))) 'tensor/backend-unavailable)",
+	                pass, fail);
+	            omni_tensor_backend_lapack_cgeev_disable_for_tests(0);
+	        } else {
+	            emit_pass_literal("[PASS] tensor LAPACK backend cgeev unavailable; Complex64 eigenpairs fail-closed path retained");
+	            (*pass)++;
+	        }
+	    }
+	    {
+	        int fail_before = *fail;
+	        long lapack_calls_before = omni_tensor_backend_lapack_dgeev_call_count();
         omni_tensor_backend_lapack_dgeev_disable_for_tests(1);
         test_truthy(interp, "matrix eigenpairs pure fallback complex positive imaginary",
             "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'values) [0])) (BigFloat \"1\"))) (BigFloat \"1e-8\"))",
@@ -582,7 +780,7 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
             pass, fail);
         test_str_val(interp, "matrix eigenpairs pure fallback vectors dtype",
             "(String (dtype (ref (matrix/eigenpairs (Tensor Float64 [2 2] [0 -1 1 0])) 'vectors)))",
-            "BigComplex", pass, fail);
+            "Complex128", pass, fail);
         test_truthy(interp, "matrix eigenpairs pure fallback 3x3 diagonal first",
             "(< (abs (- (real-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [5 0 0 0 3 0 0 0 1])) 'values) [0])) (BigFloat \"5\"))) (BigFloat \"1e-8\"))",
             pass, fail);
@@ -596,18 +794,20 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
             "(< (abs (- (imag-part (ref (ref (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) 'values) [1])) (BigFloat \"1\"))) (BigFloat \"1e-8\"))",
             pass, fail);
         test_truthy(interp, "matrix eigenpairs pure fallback diagonal residual",
-            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 0 0 0 3 0 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0]) v2 (ref vecs [2 0])) (< (+ (+ (abs (- (* (BigComplex 5 0) v0) (* lambda v0))) (abs (- (* (BigComplex 3 0) v1) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 0 0 0 3 0 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [0]) v0 (ref vecs [0 0]) v1 (ref vecs [1 0]) v2 (ref vecs [2 0])) (< (+ (+ (abs (- (* (Complex128 5 0) v0) (* lambda v0))) (abs (- (* (Complex128 3 0) v1) (* lambda v1)))) (abs (- (* (Complex128 1 0) v2) (* lambda v2)))) 0.000001))",
             pass, fail);
         test_truthy(interp, "matrix eigenpairs pure fallback complex residual",
-            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (* (BigComplex -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) (abs (- (* (BigComplex 2 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (* (Complex128 -1 0) v1) (* lambda v0))) (abs (- v0 (* lambda v1)))) (abs (- (* (Complex128 2 0) v2) (* lambda v2)))) 0.000001))",
             pass, fail);
         test_truthy(interp, "matrix eigenpairs pure fallback nonnormal residual",
-            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (BigComplex 5 0) v0) (* (BigComplex 7 0) v1)) (* lambda v0))) (abs (- (+ (* (BigComplex 3 0) v1) (* (BigComplex 2 0) v2)) (* lambda v1)))) (abs (- (* (BigComplex 1 0) v2) (* lambda v2)))) (BigFloat \"1e-6\")))",
+            "(let (ep (matrix/eigenpairs (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1])) vals (ref ep 'values) vecs (ref ep 'vectors) lambda (ref vals [1]) v0 (ref vecs [0 1]) v1 (ref vecs [1 1]) v2 (ref vecs [2 1])) (< (+ (+ (abs (- (+ (* (Complex128 5 0) v0) (* (Complex128 7 0) v1)) (* lambda v0))) (abs (- (+ (* (Complex128 3 0) v1) (* (Complex128 2 0) v2)) (* lambda v1)))) (abs (- (* (Complex128 1 0) v2) (* lambda v2)))) 0.000001))",
             pass, fail);
         test_truthy(interp, "matrix eigenpairs pure fallback residual harness 3x3 columns",
-            "(let (tol (BigFloat \"1e-6\") a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
+            "(let (tol 0.000001 a (Tensor Float64 [3 3] [5 7 0 0 3 2 0 0 1]) b (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2])) (if (matrix-eigenpairs-residual3-all-ok a tol) (matrix-eigenpairs-residual3-all-ok b tol) nil))",
             pass, fail);
-        bool fallback_path_ok = *fail == fail_before && omni_tensor_backend_lapack_dgeev_available() == 0;
+        bool fallback_path_ok = *fail == fail_before &&
+            omni_tensor_backend_lapack_dgeev_available() == 0 &&
+            omni_tensor_backend_lapack_dgeev_call_count() == lapack_calls_before;
         omni_tensor_backend_lapack_dgeev_disable_for_tests(0);
         if (fallback_path_ok) {
             emit_pass_literal("[PASS] tensor LAPACK backend dgeev disabled; matrix eigenpairs pure fallback path");
@@ -616,34 +816,81 @@ fn void run_advanced_collections_generic_ops_part8(Interp* interp, int* pass, in
             io::printn("[FAIL] tensor LAPACK backend dgeev disabled; matrix eigenpairs pure fallback path");
             (*fail)++;
         }
-    }
-    test_error_contains(interp, "matrix eigenpairs rejects vector input",
-        "(matrix/eigenpairs (Tensor Float64 [2] [1 2]))",
-        "matrix/eigenpairs: expected a square rank-2 Float64 Tensor", pass, fail);
-    test_error_contains(interp, "matrix eigenpairs rejects complex dtype",
-        "(matrix/eigenpairs (Tensor BigComplex [2 2] [1 0 0 1]))",
-        "matrix/eigenpairs: expected a square rank-2 Float64 Tensor", pass, fail);
-    test_truthy(interp, "matrix eigenpairs vulkan fails closed when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
-    test_truthy(interp, "matrix eigenpairs lazy vulkan fails closed when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+	    }
+	    test_error_contains(interp, "matrix eigenpairs rejects vector input",
+	        "(matrix/eigenpairs (Tensor Float64 [2] [1 2]))",
+	        "matrix/eigenpairs: expected a square rank-2 Float64, Float32, Complex128, or Complex64 Tensor", pass, fail);
+	    test_error_contains(interp, "matrix eigenpairs rejects BigComplex dtype",
+	        "(matrix/eigenpairs (Tensor BigComplex [2 2] [1 0 0 1]))",
+	        "matrix/eigenpairs: expected a square rank-2 Float64, Float32, Complex128, or Complex64 Tensor", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float64 computes diagonal values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (ep (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (= (String (dtype (ref ep 'values))) \"Complex128\") (= (String (dtype (ref ep 'vectors))) \"Complex128\") (< (abs (- (real-part (ref vals [0])) 3.0)) 0.000001) (< (abs (imag-part (ref vals [0]))) 0.000001) (< (abs (- (real-part (ref vals [1])) 2.0)) 0.000001) (< (abs (imag-part (ref vals [1]))) 0.000001) (< (abs (- (real-part (ref vecs [0 0])) 1.0)) 0.000001) (< (abs (- (real-part (ref vecs [1 1])) 1.0)) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float32 computes diagonal values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float32) (let (ep (matrix/eigenpairs (to-device (Tensor Float32 [2 2] [3 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (= (String (dtype (ref ep 'values))) \"Complex64\") (= (String (dtype (ref ep 'vectors))) \"Complex64\") (< (abs (- (real-part (ref vals [0])) 3.0)) 0.001) (< (abs (imag-part (ref vals [0]))) 0.001) (< (abs (- (real-part (ref vals [1])) 2.0)) 0.001) (< (abs (imag-part (ref vals [1]))) 0.001) (< (abs (- (real-part (ref vecs [0 0])) 1.0)) 0.001) (< (abs (- (real-part (ref vecs [1 1])) 1.0)) 0.001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs lazy Vulkan Float64 computes on device",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (ep (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) vals (to-device (ref ep 'values) 'cpu)) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (< (abs (- (real-part (ref vals [0])) 3.0)) 0.000001) (< (abs (imag-part (ref vals [0]))) 0.000001) (< (abs (- (real-part (ref vals [1])) 2.0)) 0.000001) (< (abs (imag-part (ref vals [1]))) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float64 exact complex shift residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (a (Tensor Float64 [2 2] [0 -1 1 0]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0])) (and (= (device (ref ep 'values)) 'vulkan) (< (abs (- (abs (imag-part l0)) 1.0)) 0.000001) (< (+ (abs (- (* (Complex128 -1 0) v10) (* l0 v00))) (abs (- v00 (* l0 v10)))) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float32 exact complex shift residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float32) (let (a (Tensor Float32 [2 2] [0 -1 1 0]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0])) (and (= (device (ref ep 'values)) 'vulkan) (< (abs (- (abs (imag-part l0)) 1.0)) 0.001) (< (+ (abs (- (* (Complex64 -1 0) v10) (* l0 v00))) (abs (- v00 (* l0 v10)))) 0.001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float64 mixed block deflation residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (ep (matrix/eigenpairs (to-device (Tensor Float64 [3 3] [0 -1 0 1 0 0 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (block (define (res k) (let (l (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (+ (+ (abs (- (* (Complex128 -1 0) v1) (* l v0))) (abs (- v0 (* l v1)))) (abs (- (* (Complex128 2 0) v2) (* l v2)))))) (and (= (device (ref ep 'values)) 'vulkan) (< (res 0) 0.000001) (< (res 1) 0.000001) (< (res 2) 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Float32 mixed block deflation residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-float32) (let (ep (matrix/eigenpairs (to-device (Tensor Float32 [3 3] [0 -1 0 1 0 0 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (block (define (res k) (let (l (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (+ (+ (abs (- (* (Complex64 -1 0) v1) (* l v0))) (abs (- v0 (* l v1)))) (abs (- (* (Complex64 2 0) v2) (* l v2)))))) (and (= (device (ref ep 'values)) 'vulkan) (< (res 0) 0.001) (< (res 1) 0.001) (< (res 2) 0.001)))) true))", pass, fail);
     test_truthy(interp, "matrix eigenpairs vulkan wrong shape fails backend before shape when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2] [1 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
     test_truthy(interp, "matrix eigenpairs lazy vulkan wrong shape fails backend before shape when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2] [1 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex128 computes general triangular values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex128) (let (ep (matrix/eigenpairs (to-device (Tensor Complex128 [2 2] [(Complex128 1 1) (Complex128 2 0) 0 (Complex128 3 -2)]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (= (String (dtype (ref ep 'values))) \"Complex128\") (= (String (dtype (ref ep 'vectors))) \"Complex128\") (= (String (ref vals [0])) \"3.0-2.0i\") (= (String (ref vals [1])) \"1.0+1.0i\") (= (ref (shape vecs) 0) 2) (= (ref (shape vecs) 1) 2))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex64 computes general triangular values",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex64) (let (ep (matrix/eigenpairs (to-device (Tensor Complex64 [2 2] [(Complex64 1 1) (Complex64 2 0) 0 (Complex64 3 -2)]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (= (String (dtype (ref ep 'values))) \"Complex64\") (= (String (dtype (ref ep 'vectors))) \"Complex64\") (= (String (ref vals [0])) \"3.0-2.0i\") (= (String (ref vals [1])) \"1.0+1.0i\") (= (ref (shape vecs) 0) 2) (= (ref (shape vecs) 1) 2))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex128 general triangular residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex128) (let (a (Tensor Complex128 [2 2] [(Complex128 1 1) (Complex128 2 0) 0 (Complex128 3 -2)]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0]) r00 (+ (* (Complex128 1 1) v00) (* (Complex128 2 0) v10)) r10 (* (Complex128 3 -2) v10)) (and (< (abs (- r00 (* l0 v00))) 0.000001) (< (abs (- r10 (* l0 v10))) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex64 general triangular residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex64) (let (a (Tensor Complex64 [2 2] [(Complex64 1 1) (Complex64 2 0) 0 (Complex64 3 -2)]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0]) r00 (+ (* (Complex64 1 1) v00) (* (Complex64 2 0) v10)) r10 (* (Complex64 3 -2) v10)) (and (< (abs (- r00 (* l0 v00))) 0.001) (< (abs (- r10 (* l0 v10))) 0.001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex128 exact complex shift residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex128) (let (a (Tensor Complex128 [2 2] [0 -1 1 0]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0])) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (< (abs (- (abs (imag-part l0)) 1.0)) 0.000001) (< (+ (abs (- (* (Complex128 -1 0) v10) (* l0 v00))) (abs (- v00 (* l0 v10)))) 0.000001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex64 exact complex shift residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex64) (let (a (Tensor Complex64 [2 2] [0 -1 1 0]) ep (matrix/eigenpairs (to-device a 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu) l0 (ref vals [0]) v00 (ref vecs [0 0]) v10 (ref vecs [1 0])) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (< (abs (- (abs (imag-part l0)) 1.0)) 0.001) (< (+ (abs (- (* (Complex64 -1 0) v10) (* l0 v00))) (abs (- v00 (* l0 v10)))) 0.001))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex128 mixed block deflation residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex128) (let (ep (matrix/eigenpairs (to-device (Tensor Complex128 [3 3] [0 -1 0 1 0 0 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (block (define (res k) (let (l (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (+ (+ (abs (- (* (Complex128 -1 0) v1) (* l v0))) (abs (- v0 (* l v1)))) (abs (- (* (Complex128 2 0) v2) (* l v2)))))) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (< (res 0) 0.000001) (< (res 1) 0.000001) (< (res 2) 0.000001)))) true))", pass, fail);
+    test_truthy(interp, "matrix eigenpairs Vulkan Complex64 mixed block deflation residual",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-eigenpairs-complex64) (let (ep (matrix/eigenpairs (to-device (Tensor Complex64 [3 3] [0 -1 0 1 0 0 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu) vecs (to-device (ref ep 'vectors) 'cpu)) (block (define (res k) (let (l (ref vals [k]) v0 (ref vecs [0 k]) v1 (ref vecs [1 k]) v2 (ref vecs [2 k])) (+ (+ (abs (- (* (Complex64 -1 0) v1) (* l v0))) (abs (- v0 (* l v1)))) (abs (- (* (Complex64 2 0) v2) (* l v2)))))) (and (= (device (ref ep 'values)) 'vulkan) (= (device (ref ep 'vectors)) 'vulkan) (< (res 0) 0.001) (< (res 1) 0.001) (< (res 2) 0.001)))) true))", pass, fail);
     {
         bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
         long lapack_calls_before = omni_tensor_backend_lapack_dgeev_call_count();
-        test_truthy(interp, "matrix eigenpairs vulkan fail-closed path does not call LAPACK when available",
-            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (if (= (handle (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) (= (handle (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) nil) true) true))", pass, fail);
+        test_truthy(interp, "matrix eigenpairs Vulkan real native path does not call LAPACK",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (ep (matrix/eigenpairs (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu)) (and (= (device (ref ep 'vectors)) 'vulkan) (< (abs (- (real-part (ref vals [0])) 3.0)) 0.000001))) true) (if (ref vulkan-backend 'matrix-eigenpairs-float64) (let (ep (matrix/eigenpairs (map + (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan) 0.0)) vals (to-device (ref ep 'values) 'cpu)) (and (= (device (ref ep 'vectors)) 'vulkan) (< (abs (- (real-part (ref vals [0])) 3.0)) 0.000001))) true)))", pass, fail);
         bool no_lapack_path_ok = !vulkan_available || omni_tensor_backend_lapack_dgeev_call_count() == lapack_calls_before;
         if (no_lapack_path_ok) {
             emit_pass_literal(vulkan_available
-                ? "[PASS] tensor Vulkan matrix eigenpairs fail-closed path does not call LAPACK"
-                : "[PASS] tensor Vulkan matrix eigenpairs unavailable; no-LAPACK fail-closed path not exercised");
+                ? "[PASS] tensor Vulkan real matrix eigenpairs native path does not call LAPACK"
+                : "[PASS] tensor Vulkan real matrix eigenpairs unavailable; no-LAPACK native path not exercised");
             *pass += 1;
         } else {
-            io::printn("[FAIL] tensor Vulkan matrix eigenpairs fail-closed path does not call LAPACK");
+            io::printn("[FAIL] tensor Vulkan real matrix eigenpairs native path does not call LAPACK");
+            *fail += 1;
+        }
+    }
+    {
+        bool vulkan_complex_available = omni_tensor_backend_vulkan_available() != 0 &&
+            (omni_tensor_backend_vulkan_float64_available() != 0 || omni_tensor_backend_vulkan_float32_available() != 0);
+        long zgeev_calls_before = omni_tensor_backend_lapack_zgeev_call_count();
+        long cgeev_calls_before = omni_tensor_backend_lapack_cgeev_call_count();
+        test_truthy(interp, "matrix eigenpairs Vulkan fixed complex native path does not call LAPACK",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (and (if (ref vulkan-backend 'matrix-eigenpairs-complex128) (let (ep (matrix/eigenpairs (to-device (Tensor Complex128 [2 2] [(Complex128 1 1) (Complex128 2 0) 0 (Complex128 3 -2)]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu)) (and (= (device (ref ep 'vectors)) 'vulkan) (= (String (ref vals [0])) \"3.0-2.0i\"))) true) (if (ref vulkan-backend 'matrix-eigenpairs-complex64) (let (ep (matrix/eigenpairs (to-device (Tensor Complex64 [2 2] [(Complex64 1 1) (Complex64 2 0) 0 (Complex64 3 -2)]) 'vulkan)) vals (to-device (ref ep 'values) 'cpu)) (and (= (device (ref ep 'vectors)) 'vulkan) (= (String (ref vals [0])) \"3.0-2.0i\"))) true)))",
+            pass, fail);
+        bool no_complex_lapack_path_ok = !vulkan_complex_available ||
+            (omni_tensor_backend_lapack_zgeev_call_count() == zgeev_calls_before &&
+                omni_tensor_backend_lapack_cgeev_call_count() == cgeev_calls_before);
+        if (no_complex_lapack_path_ok) {
+            emit_pass_literal(vulkan_complex_available
+                ? "[PASS] tensor Vulkan fixed complex matrix eigenpairs native path does not call LAPACK"
+                : "[PASS] tensor Vulkan fixed complex matrix eigenpairs unavailable; no-LAPACK native path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan fixed complex matrix eigenpairs native path does not call LAPACK");
             *fail += 1;
         }
     }

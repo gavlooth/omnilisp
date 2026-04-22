@@ -25,23 +25,23 @@ fn Value* ui_ftxui_collect_children(
     } else if (is_cons(seq)) {
         Value* cur = seq;
         while (is_cons(cur)) {
-            if (count == usz.max) return raise_error(interp, "ui-ftxui: children list too large");
+            if (count == usz.max) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: children list too large");
             count++;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, "ui-ftxui: children must be a proper list or array");
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: children must be a proper list or array");
     } else {
-        return raise_error(interp, "ui-ftxui: children must be a proper list or array");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: children must be a proper list or array");
     }
 
     if (count == 0) return null;
     if (count > usz.max / OmniFtxuiComponent*.sizeof) {
-        return raise_error(interp, "ui-ftxui: child component array too large");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui: child component array too large");
     }
 
     OmniFtxuiComponent** children =
         (OmniFtxuiComponent**)mem::malloc(OmniFtxuiComponent*.sizeof * count);
-    if (children == null) return raise_error(interp, "ui-ftxui: out of memory allocating child component array");
+    if (children == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory allocating child component array");
     for (usz i = 0; i < count; i++) children[i] = null;
 
     if (seq.tag == ARRAY && seq.array_val != null) {
@@ -88,7 +88,7 @@ fn bool ui_ftxui_effect_tag_is(Value* node, Interp* interp, char[] expected) {
 
 fn Value* ui_ftxui_require_effect_attrs(Value* node, Interp* interp, char[] message) {
     Value* attrs = ui_ftxui_effect_attrs(node, interp);
-    if (attrs == null) return raise_error(interp, message);
+    if (attrs == null) return ftxui_raise(interp, "ui/invalid-argument", message);
     return attrs;
 }
 
@@ -136,7 +136,7 @@ fn bool ui_ftxui_event_kind_from_value(Value* kind_value, Interp* interp, int* o
 fn Value* ui_ftxui_dispatch_post_event(UiFtxuiRunState* state, Value* attrs, Interp* interp) {
     int kind = OMNI_FTXUI_EVENT_CUSTOM;
     if (!ui_ftxui_event_kind_from_value(ui_ftxui_dict_get(attrs, "kind", interp), interp, &kind)) {
-        return raise_error(interp, "ui-ftxui.dispatch: unsupported post_event kind");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: unsupported post_event kind");
     }
 
     char* text = null;
@@ -169,13 +169,13 @@ fn Value* ui_ftxui_dispatch_post_event(UiFtxuiRunState* state, Value* attrs, Int
 }
 
 fn Value* ui_ftxui_dispatch_effect_node(UiFtxuiRunState* state, Value* node, Interp* interp, bool* saw_render) {
-    if (node == null || !is_dict(node)) return raise_error(interp, "ui-ftxui.dispatch: expected effect node dictionary");
+    if (node == null || !is_dict(node)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: expected effect node dictionary");
     Value* attrs = ui_ftxui_require_effect_attrs(node, interp, "ui-ftxui.dispatch: effect attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
 
     if (ui_ftxui_effect_tag_is(node, interp, "render")) {
         Value* view = ui_ftxui_dict_get(attrs, "node", interp);
-        if (view == null) return raise_error(interp, "ui-ftxui.dispatch: render effect requires 'node'");
+        if (view == null) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: render effect requires 'node'");
         OmniFtxuiComponent* rendered = null;
         Value* lower_err = ui_ftxui_lower_node(state, view, &rendered, interp);
         if (lower_err != null) return lower_err;
@@ -196,10 +196,10 @@ fn Value* ui_ftxui_dispatch_effect_node(UiFtxuiRunState* state, Value* node, Int
     }
 
     if (ui_ftxui_effect_tag_is(node, interp, "read_event")) {
-        return raise_error(interp, "ui-ftxui.dispatch: read_event is not supported by the non-interactive backend dispatcher");
+        return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.dispatch: read_event is not supported by the non-interactive backend dispatcher");
     }
 
-    return raise_error(interp, "ui-ftxui.dispatch: unsupported effect tag");
+    return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.dispatch: unsupported effect tag");
 }
 
 fn Value* ui_ftxui_dispatch_effect_children(UiFtxuiRunState* state, Value* children, Interp* interp, bool* saw_render) {
@@ -218,10 +218,10 @@ fn Value* ui_ftxui_dispatch_effect_children(UiFtxuiRunState* state, Value* child
             if (err != null) return err;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, "ui-ftxui.dispatch: effect children must be a proper list or array");
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: effect children must be a proper list or array");
         return null;
     }
-    return raise_error(interp, "ui-ftxui.dispatch: effect children must be a proper list or array");
+    return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: effect children must be a proper list or array");
 }
 
 fn Value* ui_ftxui_loop_effect_node(
@@ -231,14 +231,14 @@ fn Value* ui_ftxui_loop_effect_node(
     bool* saw_render,
     OmniFtxuiComponent** out_root
 ) {
-    if (node == null || !is_dict(node)) return raise_error(interp, "ui-ftxui.loop: expected effect node dictionary");
+    if (node == null || !is_dict(node)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: expected effect node dictionary");
     Value* attrs = ui_ftxui_require_effect_attrs(node, interp, "ui-ftxui.loop: effect attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
 
     if (ui_ftxui_effect_tag_is(node, interp, "render")) {
-        if (*saw_render) return raise_error(interp, "ui-ftxui.loop: open tree requires exactly one render child");
+        if (*saw_render) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: open tree requires exactly one render child");
         Value* view = ui_ftxui_dict_get(attrs, "node", interp);
-        if (view == null) return raise_error(interp, "ui-ftxui.loop: render effect requires 'node'");
+        if (view == null) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: render effect requires 'node'");
         Value* lower_err = ui_ftxui_lower_node(state, view, out_root, interp);
         if (lower_err != null) return lower_err;
         *saw_render = true;
@@ -262,10 +262,10 @@ fn Value* ui_ftxui_loop_effect_node(
     }
 
     if (ui_ftxui_effect_tag_is(node, interp, "read_event")) {
-        return raise_error(interp, "ui-ftxui.loop: read_event is not supported by the blocking FTXUI loop");
+        return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.loop: read_event is not supported by the blocking FTXUI loop");
     }
 
-    return raise_error(interp, "ui-ftxui.loop: unsupported effect tag");
+    return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.loop: unsupported effect tag");
 }
 
 fn Value* ui_ftxui_loop_runtime_effect_node(
@@ -274,7 +274,7 @@ fn Value* ui_ftxui_loop_runtime_effect_node(
     Interp* interp,
     bool* close_requested
 ) {
-    if (node == null || !is_dict(node)) return raise_error(interp, "ui-ftxui.loop: expected effect node dictionary");
+    if (node == null || !is_dict(node)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: expected effect node dictionary");
     Value* attrs = ui_ftxui_require_effect_attrs(node, interp, "ui-ftxui.loop: effect attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
 
@@ -298,10 +298,10 @@ fn Value* ui_ftxui_loop_runtime_effect_node(
     }
 
     if (ui_ftxui_effect_tag_is(node, interp, "read_event")) {
-        return raise_error(interp, "ui-ftxui.loop: read_event is not supported by the blocking FTXUI loop");
+        return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.loop: read_event is not supported by the blocking FTXUI loop");
     }
 
-    return raise_error(interp, "ui-ftxui.loop: unsupported effect tag");
+    return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.loop: unsupported effect tag");
 }
 
 fn Value* ui_ftxui_loop_effect_children(
@@ -326,10 +326,10 @@ fn Value* ui_ftxui_loop_effect_children(
             if (err != null) return err;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, "ui-ftxui.loop: effect children must be a proper list or array");
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: effect children must be a proper list or array");
         return null;
     }
-    return raise_error(interp, "ui-ftxui.loop: effect children must be a proper list or array");
+    return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: effect children must be a proper list or array");
 }
 
 fn Value* ui_ftxui_loop_runtime_effect_children(
@@ -353,10 +353,10 @@ fn Value* ui_ftxui_loop_runtime_effect_children(
             if (err != null) return err;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, "ui-ftxui.loop: effect children must be a proper list or array");
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: effect children must be a proper list or array");
         return null;
     }
-    return raise_error(interp, "ui-ftxui.loop: effect children must be a proper list or array");
+    return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: effect children must be a proper list or array");
 }
 
 fn void ui_ftxui_session_finalizer(void* handle) {
@@ -373,10 +373,10 @@ fn void ui_ftxui_session_finalizer(void* handle) {
 fn Value* ui_ftxui_session_require(Value* value, Interp* interp, UiFtxuiSessionOwner** out_owner) {
     *out_owner = null;
     if (!ffi_handle_name_equals(value, "ui-ftxui-session")) {
-        return raise_error(interp, "ui-ftxui.session: expected ui-ftxui-session handle");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session: expected ui-ftxui-session handle");
     }
     if (value.ffi_val.lib_handle == null) {
-        return raise_error(interp, "ui-ftxui.session: session handle is closed");
+        return ftxui_raise(interp, "ui/invalid-state", "ui-ftxui.session: session handle is closed");
     }
     *out_owner = (UiFtxuiSessionOwner*)value.ffi_val.lib_handle;
     return null;
@@ -389,7 +389,7 @@ fn Value* ui_ftxui_session_require_open_tree(Value* root, Interp* interp, char[]
         if (try char[] formatted = io::bprintf(&msg_buf, "ui-ftxui.%s: expected effect tree dictionary", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return ftxui_raise(interp, "ui/invalid-argument", msg);
     }
     if (!ui_ftxui_effect_tag_is(root, interp, "open")) {
         char[128] msg_buf;
@@ -397,7 +397,7 @@ fn Value* ui_ftxui_session_require_open_tree(Value* root, Interp* interp, char[]
         if (try char[] formatted = io::bprintf(&msg_buf, "ui-ftxui.%s: root effect must be open", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return ftxui_raise(interp, "ui/invalid-argument", msg);
     }
     Value* attrs = ui_ftxui_require_effect_attrs(root, interp, "ui-ftxui.session: open attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
@@ -407,7 +407,7 @@ fn Value* ui_ftxui_session_require_open_tree(Value* root, Interp* interp, char[]
         if (try char[] formatted = io::bprintf(&msg_buf, "ui-ftxui.%s: open attrs require backend 'ftxui'", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return ftxui_raise(interp, "ui/invalid-argument", msg);
     }
     return null;
 }
@@ -486,13 +486,13 @@ fn char[] ui_ftxui_session_event_kind_symbol(int kind) {
 
 fn Value* ui_ftxui_session_event_dict_set(Value* dict, Interp* interp, char[] key, Value* value) {
     if (dict == null || dict.tag != HASHMAP || dict.hashmap_val == null) {
-        return raise_error(interp, "ui-ftxui.session-read-event: out of memory");
+        return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
     }
     if (value == null || value.tag == ERROR) return value;
     SymbolId key_sym = interp.symbols.intern(key);
-    if (key_sym == INVALID_SYMBOL_ID) return raise_error(interp, "ui-ftxui.session-read-event: out of memory");
+    if (key_sym == INVALID_SYMBOL_ID) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
     if (!hashmap_set_symbol_checked(dict.hashmap_val, key_sym, value, interp)) {
-        return raise_error(interp, "ui-ftxui.session-read-event: out of memory");
+        return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
     }
     return null;
 }
@@ -503,7 +503,7 @@ fn Value* ui_ftxui_session_event_to_value(OmniFtxuiEventReadResult* event, Inter
     if (out == null || out.tag == ERROR) return out;
     char[] kind_name = ui_ftxui_session_event_kind_symbol(event.kind);
     SymbolId kind_sym = interp.symbols.intern(kind_name);
-    if (kind_sym == INVALID_SYMBOL_ID) return raise_error(interp, "ui-ftxui.session-read-event: out of memory");
+    if (kind_sym == INVALID_SYMBOL_ID) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-read-event: out of memory");
     if (Value* err = ui_ftxui_session_event_dict_set(out, interp, "kind", make_symbol(interp, kind_sym))) return err;
 
     usz text_len = 0;
@@ -535,10 +535,10 @@ fn Value* ui_ftxui_session_runtime_effect_node(
         return null;
     }
     if (ui_ftxui_str_eq(tag, "read_event")) {
-        return raise_error(interp, "ui-ftxui.session: read_event payloads are not supported by the current FTXUI backend session API");
+        return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.session: read_event payloads are not supported by the current FTXUI backend session API");
     }
-    if (tag.len == 0) return raise_error(interp, "ui-ftxui.session: expected effect node dictionary");
-    return raise_error(interp, "ui-ftxui.session: unsupported effect tag in session update");
+    if (tag.len == 0) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session: expected effect node dictionary");
+    return ftxui_raise(interp, "ui/unsupported", "ui-ftxui.session: unsupported effect tag in session update");
 }
 
 fn Value* ui_ftxui_session_runtime_effect_children(
@@ -561,16 +561,16 @@ fn Value* ui_ftxui_session_runtime_effect_children(
             if (err != null) return err;
             cur = cdr(cur);
         }
-        if (!is_nil(cur)) return raise_error(interp, "ui-ftxui.session: effect children must be a proper list or array");
+        if (!is_nil(cur)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session: effect children must be a proper list or array");
         return null;
     }
-    return raise_error(interp, "ui-ftxui.session: effect children must be a proper list or array");
+    return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session: effect children must be a proper list or array");
 }
 
 fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-session-open: expected ui effect tree");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-open: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
-        return raise_error(interp, "__ui-ftxui-session-open: FTXUI backend unavailable");
+        return ftxui_raise(interp, "ui/unavailable", "__ui-ftxui-session-open: FTXUI backend unavailable");
     }
 
     Value* root = args[0];
@@ -578,7 +578,7 @@ fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
     if (tree_err != null) return tree_err;
 
     UiFtxuiSessionOwner* owner = (UiFtxuiSessionOwner*)mem::malloc(UiFtxuiSessionOwner.sizeof);
-    if (owner == null) return raise_error(interp, "ui-ftxui.session-open: out of memory allocating session owner");
+    if (owner == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-open: out of memory allocating session owner");
     *owner = {};
 
     OmniFtxuiStatus status = omni_ftxui_context_create(&owner.state.context);
@@ -618,7 +618,7 @@ fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
     }
     if (!saw_render || root_component == null) {
         ui_ftxui_session_finalizer(owner);
-        return raise_error(interp, "ui-ftxui.session-open: open tree requires exactly one render child");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session-open: open tree requires exactly one render child");
     }
 
     OmniFtxuiComponent* quit_wrapped = null;
@@ -654,13 +654,13 @@ fn Value* prim_ui_ftxui_session_open(Value*[] args, Env* env, Interp* interp) {
         FFI_HANDLE_OWNED);
     if (handle == null) {
         ui_ftxui_session_finalizer(owner);
-        return raise_error(interp, "ui-ftxui.session-open: out of memory wrapping session handle");
+        return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui.session-open: out of memory wrapping session handle");
     }
     return handle;
 }
 
 fn Value* prim_ui_ftxui_session_render(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-session-render: expected session handle");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-render: expected session handle");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
     OmniFtxuiStatus status = omni_ftxui_session_run_once(owner.state.context, owner.session);
@@ -669,7 +669,7 @@ fn Value* prim_ui_ftxui_session_render(Value*[] args, Env* env, Interp* interp) 
 }
 
 fn Value* prim_ui_ftxui_session_read_event(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-session-read-event: expected session handle");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-read-event: expected session handle");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
     OmniFtxuiStatus status = omni_ftxui_session_run_once_blocking(owner.state.context, owner.session);
@@ -683,7 +683,7 @@ fn Value* prim_ui_ftxui_session_read_event(Value*[] args, Env* env, Interp* inte
 }
 
 fn Value* prim_ui_ftxui_session_update(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "__ui-ftxui-session-update: expected session handle and ui effect tree");
+    if (args.len < 2) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-update: expected session handle and ui effect tree");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
     Value* tree_err = ui_ftxui_session_require_open_tree(args[1], interp, "session-update");
@@ -698,7 +698,7 @@ fn Value* prim_ui_ftxui_session_update(Value*[] args, Env* env, Interp* interp) 
 }
 
 fn Value* prim_ui_ftxui_session_invalidate(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-session-invalidate: expected session handle");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-invalidate: expected session handle");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
     OmniFtxuiStatus status = omni_ftxui_screen_request_animation_frame(owner.state.context, owner.state.screen);
@@ -707,7 +707,7 @@ fn Value* prim_ui_ftxui_session_invalidate(Value*[] args, Env* env, Interp* inte
 }
 
 fn Value* prim_ui_ftxui_session_post_event(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "__ui-ftxui-session-post-event: expected session handle and event attrs");
+    if (args.len < 2) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-post-event: expected session handle and event attrs");
     UiFtxuiSessionOwner* owner = null;
     if (Value* err = ui_ftxui_session_require(args[0], interp, &owner)) return err;
     Value* post_err = ui_ftxui_dispatch_post_event(&owner.state, args[1], interp);
@@ -716,37 +716,37 @@ fn Value* prim_ui_ftxui_session_post_event(Value*[] args, Env* env, Interp* inte
 }
 
 fn Value* prim_ui_ftxui_session_close(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-session-close: expected session handle");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-session-close: expected session handle");
     Value* value = args[0];
     if (!ffi_handle_name_equals(value, "ui-ftxui-session")) {
-        return raise_error(interp, "ui-ftxui.session-close: expected ui-ftxui-session handle");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.session-close: expected ui-ftxui-session handle");
     }
     if (value.ffi_val.lib_handle == null) return make_symbol(interp, interp.sym_true);
     UiFtxuiSessionOwner* owner = (UiFtxuiSessionOwner*)value.ffi_val.lib_handle;
     OmniFtxuiStatus status = omni_ftxui_screen_exit(owner.state.context, owner.state.screen);
     if (status != OMNI_FTXUI_STATUS_OK) return ui_ftxui_raise_status(&owner.state, "screen_exit", status, interp);
     if (!ffi_handle_release_payload(value.ffi_val)) {
-        return raise_error(interp, "ui-ftxui.session-close: failed to release session handle");
+        return ftxui_raise(interp, "ui/invalid-state", "ui-ftxui.session-close: failed to release session handle");
     }
     return make_symbol(interp, interp.sym_true);
 }
 
 fn Value* prim_ui_ftxui_dispatch_effect_tree(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-dispatch: expected ui effect tree");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-dispatch: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
-        return raise_error(interp, "__ui-ftxui-dispatch: FTXUI backend unavailable");
+        return ftxui_raise(interp, "ui/unavailable", "__ui-ftxui-dispatch: FTXUI backend unavailable");
     }
 
     Value* root = args[0];
-    if (root == null || !is_dict(root)) return raise_error(interp, "ui-ftxui.dispatch: expected effect tree dictionary");
+    if (root == null || !is_dict(root)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: expected effect tree dictionary");
     if (!ui_ftxui_effect_tag_is(root, interp, "open")) {
-        return raise_error(interp, "ui-ftxui.dispatch: root effect must be open");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: root effect must be open");
     }
 
     Value* attrs = ui_ftxui_require_effect_attrs(root, interp, "ui-ftxui.dispatch: open attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
     if (!ui_ftxui_effect_backend_is_ftxui(attrs, interp)) {
-        return raise_error(interp, "ui-ftxui.dispatch: open attrs require backend 'ftxui'");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: open attrs require backend 'ftxui'");
     }
 
     UiFtxuiRunState state = {};
@@ -769,27 +769,27 @@ fn Value* prim_ui_ftxui_dispatch_effect_tree(Value*[] args, Env* env, Interp* in
     bool saw_render = false;
     Value* dispatch_err = ui_ftxui_dispatch_effect_children(&state, ui_ftxui_dict_get(root, "children", interp), interp, &saw_render);
     if (dispatch_err != null) return dispatch_err;
-    if (!saw_render) return raise_error(interp, "ui-ftxui.dispatch: open tree requires at least one render child");
+    if (!saw_render) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.dispatch: open tree requires at least one render child");
 
     return make_symbol(interp, interp.sym_true);
 }
 
 fn Value* prim_ui_ftxui_loop_effect_tree(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-loop: expected ui effect tree");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-loop: expected ui effect tree");
     if (omni_ftxui_backend_available() == 0) {
-        return raise_error(interp, "__ui-ftxui-loop: FTXUI backend unavailable");
+        return ftxui_raise(interp, "ui/unavailable", "__ui-ftxui-loop: FTXUI backend unavailable");
     }
 
     Value* root = args[0];
-    if (root == null || !is_dict(root)) return raise_error(interp, "ui-ftxui.loop: expected effect tree dictionary");
+    if (root == null || !is_dict(root)) return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: expected effect tree dictionary");
     if (!ui_ftxui_effect_tag_is(root, interp, "open")) {
-        return raise_error(interp, "ui-ftxui.loop: root effect must be open");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: root effect must be open");
     }
 
     Value* attrs = ui_ftxui_require_effect_attrs(root, interp, "ui-ftxui.loop: open attrs must be dictionary");
     if (attrs != null && attrs.tag == ERROR) return attrs;
     if (!ui_ftxui_effect_backend_is_ftxui(attrs, interp)) {
-        return raise_error(interp, "ui-ftxui.loop: open attrs require backend 'ftxui'");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: open attrs require backend 'ftxui'");
     }
 
     UiFtxuiRunState state = {};
@@ -820,7 +820,7 @@ fn Value* prim_ui_ftxui_loop_effect_tree(Value*[] args, Env* env, Interp* interp
     );
     if (loop_err != null) return loop_err;
     if (!saw_render || root_component == null) {
-        return raise_error(interp, "ui-ftxui.loop: open tree requires exactly one render child");
+        return ftxui_raise(interp, "ui/invalid-argument", "ui-ftxui.loop: open tree requires exactly one render child");
     }
 
     OmniFtxuiComponent* quit_wrapped = null;
@@ -851,9 +851,9 @@ fn Value* prim_ui_ftxui_loop_effect_tree(Value*[] args, Env* env, Interp* interp
 }
 
 fn Value* prim_ui_ftxui_run(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "__ui-ftxui-run: expected ui root node");
+    if (args.len < 1) return ftxui_raise(interp, "ui/arity", "__ui-ftxui-run: expected ui root node");
     if (omni_ftxui_backend_available() == 0) {
-        return raise_error(interp, "__ui-ftxui-run: FTXUI backend unavailable");
+        return ftxui_raise(interp, "ui/unavailable", "__ui-ftxui-run: FTXUI backend unavailable");
     }
 
     UiFtxuiRunState state = {};

@@ -20,14 +20,14 @@ fn bool tensor_expr_storage_aliases(Value* source_expr, TensorVal* dest) {
     }
 
     switch (source.kind) {
+        case TENSOR_PAYLOAD_CONCRETE:
+            return false;
         case TENSOR_PAYLOAD_MAP:
             return tensor_expr_storage_aliases(source.map_left, dest) || tensor_expr_storage_aliases(source.map_right, dest);
         case TENSOR_PAYLOAD_CONTRACT:
             return tensor_expr_storage_aliases(source.contract_left, dest) || tensor_expr_storage_aliases(source.contract_right, dest);
         case TENSOR_PAYLOAD_VIEW:
             return tensor_expr_storage_aliases(source.view_source, dest);
-        default:
-            return false;
     }
 }
 
@@ -67,6 +67,33 @@ fn bool tensor_dense_row_major(TensorVal* tensor) {
         expected_stride *= tensor.shape[axis];
     }
     return true;
+}
+
+fn bool tensor_zero_offset_strided_storage_span_valid(TensorVal* tensor) {
+    if (tensor == null || !tensor_has_valid_metadata(tensor)) return false;
+    if (tensor.storage_offset != 0) return false;
+    if (tensor.rank == 0) return tensor.storage_element_count >= tensor.element_count;
+    if (tensor.element_count == 0) return true;
+
+    usz max_offset = 0;
+    for (usz axis = 0; axis < tensor.rank; axis++) {
+        usz dim = tensor.shape[axis];
+        if (dim == 0) return true;
+        usz extent = dim - 1;
+        usz axis_offset = 0;
+        if (!tensor_checked_mul_usz(extent, tensor.strides[axis], &axis_offset)) return false;
+        if (axis_offset > usz.max - max_offset) return false;
+        max_offset += axis_offset;
+    }
+    return max_offset < tensor.storage_element_count;
+}
+
+fn bool tensor_zero_offset_strided_device_map_operand(TensorVal* tensor, TensorDeviceKind device) {
+    if (tensor == null || !tensor_has_valid_metadata(tensor)) return false;
+    if (tensor.kind != TENSOR_PAYLOAD_CONCRETE && tensor.kind != TENSOR_PAYLOAD_VIEW) return false;
+    if (tensor.device != device) return false;
+    if (tensor.byte_len > 0 && tensor.device_handle == null) return false;
+    return tensor_zero_offset_strided_storage_span_valid(tensor);
 }
 
 fn bool tensor_concrete_zero_offset_dense_row_major(TensorVal* tensor) {

@@ -1,8 +1,9 @@
 module lisp;
 
+
 fn Value* parse_json_emit_option_entry(Value* key, Value* value, JsonEmitOptions* opts, Interp* interp) {
     if (!is_symbol(key)) {
-        return raise_error(interp, "json-emit: options must be key/value pairs with symbol keys");
+        return data_format_raise(interp, "type/arg-mismatch", "json-emit: options must be key/value pairs with symbol keys");
     }
 
     char[] key_name = interp.symbols.get_name(key.sym_val);
@@ -112,12 +113,12 @@ fn Value* parse_json_emit_option_entry(Value* key, Value* value, JsonEmitOptions
     }
     if (string_equals(key_name, "precision") || string_equals(key_name, "fp-precision")) {
         if (value == null || value.tag != INT) {
-            return raise_error(interp,
-                "json-emit: precision must be an integer between 0 and 15");
+            return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: precision must be an integer between 0 and 15");
         }
         if (value.int_val < 0 || value.int_val > 15) {
-            return raise_error(interp,
-                "json-emit: precision must be an integer between 0 and 15");
+            return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: precision must be an integer between 0 and 15");
         }
         if (value.int_val == 0) {
             opts.has_precision = false;
@@ -128,15 +129,15 @@ fn Value* parse_json_emit_option_entry(Value* key, Value* value, JsonEmitOptions
         return null;
     }
 
-    return raise_error(interp,
-        "json-emit: unknown option key (supported: pretty, pretty-two-spaces, escape-unicode, escape-slashes, allow-invalid-unicode, allow-inf-and-nan, inf-and-nan-as-null, newline-at-end, fp-to-float, precision)");
+    return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: unknown option key (supported: pretty, pretty-two-spaces, escape-unicode, escape-slashes, allow-invalid-unicode, allow-inf-and-nan, inf-and-nan-as-null, newline-at-end, fp-to-float, precision)");
 }
 
 fn Value* parse_json_emit_options(Value* options, JsonEmitOptions* opts, Interp* interp) {
     if (options == null || options.tag == NIL) return null;
     if (!is_cons(options)) {
-        return raise_error(interp,
-            "json-emit: expected second argument to be an option list");
+        return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: expected second argument to be an option list");
     }
 
     Value* cur = options;
@@ -148,16 +149,16 @@ fn Value* parse_json_emit_options(Value* options, JsonEmitOptions* opts, Interp*
             Value* key = car(entry);
             Value* rest = cdr(entry);
             if (!is_cons(rest) || !is_nil(cdr(rest))) {
-                return raise_error(interp,
-                    "json-emit: options list must be proper key/value pairs");
+                return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: options list must be proper key/value pairs");
             }
             Value* value = car(rest);
             Value* err = parse_json_emit_option_entry(key, value, opts, interp);
             if (err != null) return err;
         } else {
             if (!is_cons(next)) {
-                return raise_error(interp,
-                    "json-emit: options list must be proper key/value pairs");
+                return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: options list must be proper key/value pairs");
             }
             Value* key = entry;
             Value* value = car(next);
@@ -169,8 +170,8 @@ fn Value* parse_json_emit_options(Value* options, JsonEmitOptions* opts, Interp*
         cur = next;
     }
     if (!is_nil(cur)) {
-        return raise_error(interp,
-            "json-emit: options list must be a proper list");
+        return data_format_raise(interp, "type/arg-mismatch",
+    "json-emit: options list must be a proper list");
     }
 
     return null;
@@ -179,8 +180,8 @@ fn Value* parse_json_emit_options(Value* options, JsonEmitOptions* opts, Interp*
 fn Value* parse_json_options(Value* options, usz* flags_out, Interp* interp) {
     if (options == null || options.tag == NIL) return null;
     if (!is_cons(options)) {
-        return raise_error(interp,
-            "json-parse: expected second argument to be a list of option symbols");
+        return data_format_raise(interp, "type/arg-mismatch",
+    "json-parse: expected second argument to be a list of option symbols");
     }
 
     usz flags = 0;
@@ -188,19 +189,19 @@ fn Value* parse_json_options(Value* options, usz* flags_out, Interp* interp) {
     while (is_cons(cur)) {
         Value* opt = car(cur);
         if (!is_symbol(opt)) {
-            return raise_error(interp,
+            return data_format_raise(interp, "type/arg-mismatch",
                 "json-parse: options list must contain only symbols");
         }
         usz option_flag = json_parse_option_flag(interp.symbols.get_name(opt.sym_val));
         if (option_flag == 0) {
-            return raise_error(interp,
+            return data_format_raise(interp, "type/arg-mismatch",
                 "json-parse: unknown option symbol (supported: allow-comments, allow-trailing-commas, allow-nan-inf)");
         }
         flags |= option_flag;
         cur = cdr(cur);
     }
     if (!is_nil(cur)) {
-        return raise_error(interp,
+        return data_format_raise(interp, "type/arg-mismatch",
             "json-parse: options list must be a proper list");
     }
 

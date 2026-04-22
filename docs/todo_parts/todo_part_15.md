@@ -606,3 +606,71 @@ This part backfills actionable items from:
   - validation: `c3c build --obj-out obj`; focused
     `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface`
     passed with `pass=109 fail=0`; targeted `git diff --check` passed.
+
+- [x] `AUDIT-2026-ERROR-MODEL-MIGRATION` complete structured error model migration.
+  - source: `findings.md` finding #2 (2026-04-22 audit).
+  - status: all ~1013 non-test raw `raise_error(interp, ...)` sites in `src/lisp`
+    migrated to `raise_error_with_payload_names`. Only the compatibility wrapper
+    at `value_constructors.c3:560` remains.
+  - files: ~40 files across boundary, JIT, string/unicode, data formats, runtime,
+    tensor, big-numeric, math, I/O, FFI, HTTP, JSON, collections, UI families.
+  - docs: `docs/ERROR_MODEL.md` migration matrix updated with all completed rows.
+  - validation: `c3c build`; `LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite all`
+    passed with 166 passed, 0 failed.
+
+- [x] `AUDIT-2026-FFI-CALLBACK-RELEASE-SEGFAULT` fix ffi-callback segfault on
+  `foreign-release`.
+  - source: `findings.md` finding #1 (2026-04-22 audit).
+  - root cause: `prim_ffi_callback.c3` stored `ctx.code_ptr` as the FfiHandle
+    payload, but the finalizer expected `FfiCallbackContext*`.
+  - fix: added `user_data` field to `FfiHandle` so the finalizer receives the
+    context pointer while `lib_handle` remains the callable code pointer.
+  - files: `src/lisp/value_runtime_types.c3`, `src/lisp/value_constructors.c3`,
+    `src/lisp/prim_ffi_callback.c3`,
+    `src/lisp/tests_advanced_io_effect_ffi_ffi_surface_groups.c3`.
+  - validation: `c3c build`; repro command now returns `#<void>` instead of
+    SIGSEGV; regression test added and passes.
+
+- [x] `AUDIT-2026-VULKAN-BWD-STATUS-CONTRADICTION` resolve ML autograd Vulkan
+  backward status contradictions.
+  - source: `findings.md` finding #3 (2026-04-22 audit).
+  - issues: spec claimed CUDA/Vulkan backward fail-closed, but TODO records
+    shipped Vulkan backward for MSE, map expressions, broadcast map, and
+    softmax-CE; stale blanket rejection messages in code.
+  - fix: updated `docs/LANGUAGE_SPEC.part-01b.md` to list shipped Vulkan backward
+    operations; changed stale messages in `prim_ml_autograd_tensor_expr.c3:120`
+    and `prim_ml_autograd.c3:25` to qualified rejections.
+  - validation: `c3c build`.
+
+- [x] `AUDIT-2026-ML-VISUALIZATION-GAP` assess ML visualization/graphics surface.
+  - source: `findings.md` finding #4 (2026-04-22 audit).
+  - status: closed as design decision. Added
+    `docs/plans/ml-visualization-surface-decision-2026-04-22.md` with canonical
+    primitive names, backend contracts, and scope boundaries.
+
+- [x] `AUDIT-2026-VALIDATION-MASKING` review validation harness for memory/lifetime
+  diagnostic promotion.
+  - source: `findings.md` finding #5 (2026-04-22 audit).
+  - status: closed. Gated `io::eprintfn` diagnostic output in
+    `boundary_debug_graph_audit_pre_splice_escape_root` and
+    `boundary_debug_graph_audit_committed_escape_root` behind
+    `boundary_verbose_telemetry_enabled()`. The diagnostic was already classified
+    as expected output from the passing negative regression
+    `lifetime: root splice debug audit rejects releasing temp edge`.
+  - validation: `c3c build`; basic tests pass.
+
+- [x] `AUDIT-2026-CSTRING-SCANNING` audit bounded C-string scanning consistency.
+  - source: `findings.md` finding #6 (2026-04-22 audit).
+  - status: closed. Added inline bounds to unbounded C string scans in
+    `src/entry_cli_helpers.c3:15` (cap 65536), `src/entry_bind_paths.c3:52` (cap 256),
+    `src/entry_bind_dep_generation.c3:371` (cap 256/512), `src/main_repl_shared.c3:21`
+    (cap 4096). Reference pattern: `repl_cstr_len_bounded` in
+    `src/entry_runtime_project_paths.c3:9`.
+  - validation: `c3c build`; basic tests pass.
+
+- [x] `AUDIT-2026-TAGGED-SWITCH` audit exhaustive tagged-switch discipline.
+  - source: `findings.md` finding #7 (2026-04-22 audit).
+  - status: closed. Replaced `default:` fallbacks with explicit enum cases in:
+    `value_print.c3`, `eval_promotion_copy.c3`, `prim_tensor_storage.c3`,
+    `foreign_runtime_core.c3`.
+  - validation: `c3c build`; basic tests pass.

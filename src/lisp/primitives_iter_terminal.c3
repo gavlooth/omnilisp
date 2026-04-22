@@ -61,7 +61,7 @@ fn Value* prim_next(Value*[] args, Env* env, Interp* interp) {
 
 fn Value* iterator_require_arg(Value*[] args, char[] expected_msg, Value** iterator_out, Interp* interp) {
     if (args.len < 1 || !iterator_wrapper_has_callable_thunk(args[0])) {
-        return raise_error(interp, expected_msg);
+        return runtime_raise(interp, "type/arg-mismatch", expected_msg);
     }
     *iterator_out = args[0];
     return null;

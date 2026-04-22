@@ -13,7 +13,7 @@
 ## Current Status
 
 Status: `yellow`
-As of: 2026-04-12
+As of: 2026-04-23
 
 ## Lane Closure Snapshot
 

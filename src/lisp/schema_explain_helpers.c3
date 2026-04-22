@@ -18,12 +18,12 @@ fn bool explain_eval_call_target(
     *args_storage_out = null;
     if (arg_count > 0) {
         if (arg_count > usz.max / Value*.sizeof) {
-            *callee_out = raise_error(interp, "explain dispatch: out of memory");
+            *callee_out = runtime_raise(interp, "runtime/out-of-memory", "explain dispatch: out of memory");
             return false;
         }
         Value** storage = (Value**)mem::malloc(Value*.sizeof * arg_count);
         if (storage == null) {
-            *callee_out = raise_error(interp, "explain dispatch: out of memory");
+            *callee_out = runtime_raise(interp, "runtime/out-of-memory", "explain dispatch: out of memory");
             return false;
         }
         *args_storage_out = storage;
@@ -66,11 +66,11 @@ fn Value* explain_dispatch_result_from_evaluated_call(
     TypeId* arg_types_storage = null;
     if (call_args.len > 0) {
         if (call_args.len > usz.max / TypeId.sizeof) {
-            return raise_error(interp, "explain dispatch: out of memory");
+            return runtime_raise(interp, "runtime/out-of-memory", "explain dispatch: out of memory");
         }
         arg_types_storage = (TypeId*)mem::malloc(TypeId.sizeof * call_args.len);
         if (arg_types_storage == null) {
-            return raise_error(interp, "explain dispatch: out of memory");
+            return runtime_raise(interp, "runtime/out-of-memory", "explain dispatch: out of memory");
         }
         arg_types = arg_types_storage[:call_args.len];
         for (usz i = 0; i < call_args.len; i++) {
@@ -182,11 +182,11 @@ fn Value* explain_dispatch_result_from_compiled_call(
 
 fn Value* explain_dispatch_result_from_thunk(Interp* interp, Value* thunk_value) {
     if (thunk_value == null || thunk_value.tag != CLOSURE || thunk_value.closure_val == null) {
-        return raise_error(interp, "explain dispatch: expected thunked form");
+        return runtime_raise(interp, "type/arg-mismatch", "explain dispatch: expected thunked form");
     }
     Closure* thunk = thunk_value.closure_val;
     if (thunk.param_count != 0 || thunk.has_rest) {
-        return raise_error(interp, "explain dispatch: expected zero-arg thunk");
+        return runtime_raise(interp, "type/arg-mismatch", "explain dispatch: expected zero-arg thunk");
     }
 
     Expr* target = thunk.body;

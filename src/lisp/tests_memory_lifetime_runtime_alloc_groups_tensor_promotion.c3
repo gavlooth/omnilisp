@@ -170,10 +170,10 @@ fn void run_memory_lifetime_runtime_alloc_groups_tensor_promotion_tests(Interp* 
         Value*[1] to_array_args = { iterator };
 
         if (setup_ok) interp.current_scope = foreign;
-        Value* prim_array_boundary_fail = setup_ok ? prim_array(prim_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* list_to_array_boundary_fail = setup_ok ? prim_list_to_array(list_to_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
-        Value* array_set_boundary_fail = setup_ok ? prim_array_set(array_set_args[0:3], null, interp) : raise_error(interp, "setup failed");
-        Value* to_array_boundary_fail = setup_ok ? prim_to_array(to_array_args[0:1], null, interp) : raise_error(interp, "setup failed");
+        Value* prim_array_boundary_fail = setup_ok ? prim_array(prim_array_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* list_to_array_boundary_fail = setup_ok ? prim_list_to_array(list_to_array_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* array_set_boundary_fail = setup_ok ? prim_array_set(array_set_args[0:3], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
+        Value* to_array_boundary_fail = setup_ok ? prim_to_array(to_array_args[0:1], null, interp) : runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         interp.current_scope = saved;
 
         bool ok = setup_ok &&
@@ -293,7 +293,7 @@ fn void run_memory_lifetime_runtime_alloc_groups_tensor_promotion_tests(Interp* 
         if (setup_ok) {
             set_fail = jit_set_path_mutate_instance(inst, field_sym, opaque, interp);
         } else {
-            set_fail = raise_error(interp, "setup failed");
+            set_fail = runtime_raise(interp, "runtime/evaluation-error", "setup failed");
         }
         interp.current_scope = saved;
 

@@ -233,6 +233,8 @@ fn void run_advanced_collections_generic_ops_part4(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (= (length (to-device (matrix/transpose (to-device (Tensor Float32 [0 3] 0.0) 'vulkan)) 'cpu)) 0) true) true))", pass, fail);
     test_truthy(interp, "matrix transpose vulkan Float64 dtype remains Float64 when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (String (dtype (matrix/transpose (to-device (Tensor Float64 [2 3] [1 2 3 4 5 6]) 'vulkan)))) \"Float64\") true) true))", pass, fail);
+    test_truthy(interp, "matrix transpose-view rejects nested Vulkan views",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (= (handle (matrix/transpose-view (matrix/transpose-view (to-device (Tensor Float32 [2 3] [1 2 3 4 5 6]) 'vulkan))) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true))", pass, fail);
     test_truthy(interp, "matrix transpose vulkan Complex128 roundtrips when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'matrix-structural-complex128) (let (result (matrix/transpose (to-device (Tensor Complex128 [2 1] [(Complex128 1 2) (Complex128 3 4)]) 'vulkan)) cpu (to-device result 'cpu)) (and (= (device result) 'vulkan) (= (String (dtype result)) \"Complex128\") (= (String (ref cpu [0 1])) \"3.0+4.0i\"))) true))", pass, fail);
     test_truthy(interp, "matrix transpose vulkan Complex64 zero-size when available",

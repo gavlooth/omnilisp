@@ -15,7 +15,7 @@ fn Value* make_tensor_map_expr(
     Interp* interp
 ) {
     TensorVal* tensor = tensor_alloc_expression_payload_checked(dtype, result_shape, TENSOR_PAYLOAD_MAP, "map: failed to allocate tensor expression");
-    if (tensor == null) return raise_error(interp, "map: failed to allocate tensor expression");
+    if (tensor == null) return runtime_raise(interp, "runtime/out-of-memory", "map: failed to allocate tensor expression");
     tensor.map_func = func;
     tensor.map_left = left_tensor != null ? left_value : null;
     tensor.map_right = is_binary && right_tensor != null ? right_value : null;
@@ -114,7 +114,7 @@ fn Value* make_tensor_map_expr(
     Value* result = interp.alloc_value();
     if (result == null) {
         tensor_free_payload(tensor);
-        return raise_error(interp, "map: failed to allocate tensor expression");
+        return runtime_raise(interp, "runtime/out-of-memory", "map: failed to allocate tensor expression");
     }
     result.tag = TENSOR;
     result.tensor_val = tensor;
@@ -243,7 +243,7 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
         }
         if ((left_tensor != null && left_tensor.dtype != result_dtype) ||
             (args.len == 3 && right_tensor != null && right_tensor.dtype != result_dtype)) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "map: Vulkan currently supports matching Tensor storage dtypes", null);
+            return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "map: Vulkan tensor dtype mismatch", null);
         }
     }
     Value* vulkan_result = tensor_map_try_vulkan_direct(
@@ -255,6 +255,7 @@ fn Value* prim_tensor_map(Value*[] args, Env* env, Interp* interp) {
         args.len == 3,
         result_dtype,
         shape_slice,
+        true,
         interp
     );
     if (vulkan_result != null) return vulkan_result;

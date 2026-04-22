@@ -22,7 +22,7 @@ fn Value* ml_grad_required_tensor(Value* spec, Interp* interp, char[] key) {
 
 fn Value* ml_grad_resolve_cpu(Value* value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
     if (ml_grad_touches_vulkan(value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward kernels are not implemented", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward is not supported for this operation", null);
     }
     return tensor_expr_resolve_concrete_cpu(
         value,

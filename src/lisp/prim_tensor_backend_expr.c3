@@ -96,12 +96,22 @@ fn Value* tensor_map_try_cuda_direct(
     }
 
     if (left_source_tensor != null) {
-        err = tensor_expr_resolve_concrete_any_device(left_source, &left_tensor, &left_value, interp, "map: tensor backing storage is missing");
-        if (err != null) return err;
+        if (is_binary && tensor_zero_offset_strided_device_map_operand(left_source_tensor, TENSOR_DEVICE_CUDA)) {
+            left_tensor = left_source_tensor;
+            left_value = left_source;
+        } else {
+            err = tensor_expr_resolve_concrete_any_device(left_source, &left_tensor, &left_value, interp, "map: tensor backing storage is missing");
+            if (err != null) return err;
+        }
     }
     if (is_binary && right_source_tensor != null) {
-        err = tensor_expr_resolve_concrete_any_device(right_source, &right_tensor, &right_value, interp, "map: tensor backing storage is missing");
-        if (err != null) return err;
+        if (tensor_zero_offset_strided_device_map_operand(right_source_tensor, TENSOR_DEVICE_CUDA)) {
+            right_tensor = right_source_tensor;
+            right_value = right_source;
+        } else {
+            err = tensor_expr_resolve_concrete_any_device(right_source, &right_tensor, &right_value, interp, "map: tensor backing storage is missing");
+            if (err != null) return err;
+        }
     }
 
     if (!is_binary) {
@@ -219,6 +229,7 @@ fn Value* tensor_map_try_vulkan_direct(
     bool is_binary,
     TensorDType dtype,
     usz[] result_shape,
+    bool record_provenance,
     Interp* interp
 ) {
     bool touches_vulkan = (left_source_tensor != null && tensor_expr_has_device(left_source, TENSOR_DEVICE_VULKAN)) ||
@@ -241,6 +252,7 @@ fn Value* tensor_map_try_vulkan_direct(
         is_binary,
         dtype,
         result_shape,
+        record_provenance ? func : null,
         op,
         interp
     );

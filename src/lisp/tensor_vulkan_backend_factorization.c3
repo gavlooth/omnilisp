@@ -321,6 +321,24 @@ extern fn int omni_tensor_backend_vulkan_svd_f32(
     void** out_s_device_ptr,
     void** out_v_device_ptr
 ) @extern("omni_tensor_backend_vulkan_svd_f32");
+extern fn int omni_tensor_backend_vulkan_svd_complex128(
+    void* input_device_ptr,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_u_device_ptr,
+    void** out_s_device_ptr,
+    void** out_v_device_ptr
+) @extern("omni_tensor_backend_vulkan_svd_complex128");
+extern fn int omni_tensor_backend_vulkan_svd_complex64(
+    void* input_device_ptr,
+    usz byte_len,
+    usz rows,
+    usz cols,
+    void** out_u_device_ptr,
+    void** out_s_device_ptr,
+    void** out_v_device_ptr
+) @extern("omni_tensor_backend_vulkan_svd_complex64");
 extern fn int omni_tensor_backend_vulkan_symmetric_eigen_f64(
     void* input_device_ptr,
     usz byte_len,
@@ -328,6 +346,48 @@ extern fn int omni_tensor_backend_vulkan_symmetric_eigen_f64(
     void** out_values_device_ptr,
     void** out_vectors_device_ptr
 ) @extern("omni_tensor_backend_vulkan_symmetric_eigen_f64");
+extern fn int omni_tensor_backend_vulkan_hermitian_eigen_complex128(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_hermitian_eigen_complex128");
+extern fn int omni_tensor_backend_vulkan_hermitian_eigen_complex64(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_hermitian_eigen_complex64");
+extern fn int omni_tensor_backend_vulkan_general_eigen_complex128(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_general_eigen_complex128");
+extern fn int omni_tensor_backend_vulkan_general_eigen_complex64(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_general_eigen_complex64");
+extern fn int omni_tensor_backend_vulkan_general_eigen_f64(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_general_eigen_f64");
+extern fn int omni_tensor_backend_vulkan_general_eigen_f32(
+    void* input_device_ptr,
+    usz byte_len,
+    usz n,
+    void** out_values_device_ptr,
+    void** out_vectors_device_ptr
+) @extern("omni_tensor_backend_vulkan_general_eigen_f32");
 extern fn int omni_tensor_backend_vulkan_singular_norm_f64(
     void* input_device_ptr,
     usz byte_len,

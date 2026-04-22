@@ -1,7 +1,7 @@
 module lisp;
 
 fn MatchResult match_binding_oom(Interp* interp, char[] msg = "match: out of memory while binding pattern") @inline {
-    return match_error(raise_error(interp, msg));
+    return match_error(runtime_raise(interp, "runtime/evaluation-error", msg));
 }
 
 fn MatchResult match_pattern_var(Pattern* pat, Value* val, Interp* interp) {
@@ -63,7 +63,7 @@ fn MatchResult match_pattern_dict(Pattern* pat, Value* val, Interp* interp) {
         Value* lookup_key = interp.alloc_value();
         if (lookup_key == null) {
             dict_result.cleanup();
-            return match_error(raise_error(interp, "match: out of memory while allocating dict key"));
+            return match_error(runtime_raise(interp, "runtime/out-of-memory", "match: out of memory while allocating dict key"));
         }
         lookup_key.tag = SYMBOL;
         lookup_key.sym_val = pat.dict_keys[di];
@@ -159,7 +159,7 @@ fn MatchResult match_pattern_guard(Pattern* pat, Value* val, Interp* interp) {
         Env* guard_env = make_env(interp, interp.match_env);
         if (guard_env == null) {
             sub_r.cleanup();
-            return match_error(raise_error(interp, "match guard: out of memory while allocating guard env"));
+            return match_error(runtime_raise(interp, "runtime/out-of-memory", "match guard: out of memory while allocating guard env"));
         }
         for (usz j = 0; j < sub_r.binding_count; j++) {
             Value* bind_err = env_define_with_barrier_result(

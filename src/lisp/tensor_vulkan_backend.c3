@@ -432,6 +432,65 @@ extern fn int omni_tensor_backend_vulkan_ml_rmsprop_f32(
     void** out_square_device_ptr,
     void** out_velocity_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_rmsprop_f32");
+extern fn int omni_tensor_backend_vulkan_ml_sgd_f64(
+    void* params_device_ptr,
+    usz params_byte_len,
+    void* grads_device_ptr,
+    usz grads_byte_len,
+    void* velocity_device_ptr,
+    usz velocity_byte_len,
+    usz element_count,
+    double learning_rate,
+    double momentum,
+    double weight_decay,
+    int has_velocity,
+    void** out_params_device_ptr,
+    void** out_velocity_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_sgd_f64");
+extern fn int omni_tensor_backend_vulkan_ml_adam_f64(
+    void* params_device_ptr,
+    usz params_byte_len,
+    void* grads_device_ptr,
+    usz grads_byte_len,
+    void* first_device_ptr,
+    usz first_byte_len,
+    void* second_device_ptr,
+    usz second_byte_len,
+    usz element_count,
+    double learning_rate,
+    double beta1,
+    double beta2,
+    double epsilon,
+    double weight_decay,
+    double first_correction,
+    double second_correction,
+    int decoupled_weight_decay,
+    int has_moments,
+    void** out_params_device_ptr,
+    void** out_first_device_ptr,
+    void** out_second_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_adam_f64");
+extern fn int omni_tensor_backend_vulkan_ml_rmsprop_f64(
+    void* params_device_ptr,
+    usz params_byte_len,
+    void* grads_device_ptr,
+    usz grads_byte_len,
+    void* square_device_ptr,
+    usz square_byte_len,
+    void* velocity_device_ptr,
+    usz velocity_byte_len,
+    usz element_count,
+    double learning_rate,
+    double alpha,
+    double epsilon,
+    double momentum,
+    double weight_decay,
+    int has_square,
+    int has_velocity,
+    void** out_params_device_ptr,
+    void** out_square_device_ptr,
+    void** out_velocity_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_rmsprop_f64");
 extern fn int omni_tensor_backend_vulkan_ml_clip_sum_squares_f32(
     void* input_device_ptr,
     usz input_byte_len,
@@ -504,6 +563,18 @@ extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f32(
     usz* out_strides,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_layer_norm_f32");
+extern fn int omni_tensor_backend_vulkan_ml_layer_norm_f64(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz input_element_count,
+    usz input_rank,
+    usz axis,
+    double epsilon,
+    usz* input_shape,
+    usz* input_strides,
+    usz* out_strides,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_layer_norm_f64");
 extern fn int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     void* input_device_ptr,
     usz input_byte_len,
@@ -524,6 +595,26 @@ extern fn int omni_tensor_backend_vulkan_ml_batch_norm_f32(
     usz variance_byte_len,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_ml_batch_norm_f32");
+extern fn int omni_tensor_backend_vulkan_ml_batch_norm_f64(
+    void* input_device_ptr,
+    usz input_byte_len,
+    usz input_element_count,
+    usz input_rank,
+    usz channel_axis,
+    double epsilon,
+    usz* input_shape,
+    usz* input_strides,
+    usz* out_strides,
+    void* scale_device_ptr,
+    usz scale_byte_len,
+    void* bias_device_ptr,
+    usz bias_byte_len,
+    void* mean_device_ptr,
+    usz mean_byte_len,
+    void* variance_device_ptr,
+    usz variance_byte_len,
+    void** out_device_ptr
+) @extern("omni_tensor_backend_vulkan_ml_batch_norm_f64");
 extern fn int omni_tensor_backend_vulkan_ml_attention_f32(
     void* query_device_ptr,
     usz query_byte_len,

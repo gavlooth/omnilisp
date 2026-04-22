@@ -218,8 +218,12 @@ fn Value* ml_conv1d_vulkan_result(TensorVal* input, TensorVal* kernel, MlConv1dS
         tensor_free_payload(tensor);
         return tensor_vulkan_status_raise(interp, status, "ml/conv1d: Vulkan convolution kernel failed");
     }
+    if (out_device == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml/conv1d: Vulkan convolution kernel did not return result storage");
+    }
     tensor.device_handle = out_device;
-    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -237,33 +241,22 @@ fn Value* ml_conv1d_try_vulkan(Value* input_value, Value* kernel_value, usz stri
         tensor_expr_has_device(kernel_value, TENSOR_DEVICE_VULKAN);
     if (!touches_vulkan) return null;
 
-    if (!tensor_expr_has_device(input_value, TENSOR_DEVICE_VULKAN) ||
-        !tensor_expr_has_device(kernel_value, TENSOR_DEVICE_VULKAN)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/conv1d: Vulkan operands must be Vulkan-placed", null);
-    }
-    if (tensor_expr_has_non_vulkan_device(input_value) || tensor_expr_has_non_vulkan_device(kernel_value)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/conv1d: Vulkan operands must remain Vulkan-placed", null);
-    }
-
     TensorVal* input = null;
     TensorVal* kernel = null;
     Value* resolved_input_value = null;
     Value* resolved_kernel_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(input_value, &input, &resolved_input_value, interp, "ml/conv1d: input tensor metadata is missing");
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(input_value, &input, &resolved_input_value, interp, "ml/conv1d: input tensor metadata is missing");
     if (err != null) return err;
     defer if (resolved_input_value != null && resolved_input_value != input_value) {
         boundary_cleanup_materialized_value(null, resolved_input_value, interp.current_scope);
     }
-    err = tensor_expr_resolve_concrete_any_device(kernel_value, &kernel, &resolved_kernel_value, interp, "ml/conv1d: kernel tensor metadata is missing");
+    err = tensor_expr_resolve_vulkan_or_migrate(kernel_value, &kernel, &resolved_kernel_value, interp, "ml/conv1d: kernel tensor metadata is missing");
     if (err != null) return err;
     defer if (resolved_kernel_value != null && resolved_kernel_value != kernel_value) {
         boundary_cleanup_materialized_value(null, resolved_kernel_value, interp.current_scope);
     }
 
     if (input == null || kernel == null) return tensor_runtime_raise(interp, "ml/conv1d: tensor metadata is missing");
-    if (input.device != TENSOR_DEVICE_VULKAN || kernel.device != TENSOR_DEVICE_VULKAN) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/conv1d: Vulkan operands must realize to Vulkan storage", null);
-    }
     if (!tensor_dense_row_major(input) || !tensor_dense_row_major(kernel)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/conv1d: Vulkan currently supports dense row-major tensors", null);
     }

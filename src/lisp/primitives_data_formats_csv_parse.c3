@@ -1,6 +1,7 @@
 module lisp;
 
 
+
 import std::core::mem;
 import std::io;
 import main;
@@ -69,7 +70,7 @@ fn Value* csv_row_push_field(Value* row, CsvFieldBuf* field, Interp* interp) {
     Value* cell = make_string(interp, field.data[:field.len]);
     if (cell != null && cell.tag == ERROR) return cell;
     if (!csv_array_push(row, cell, interp)) {
-        return raise_error(interp, "csv-parse: out of memory");
+        return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
     }
     csv_field_clear(field);
     return null;
@@ -81,7 +82,7 @@ fn Value* csv_make_row(Interp* interp) @inline {
 
 fn Value* csv_rows_push_row(Value* rows, Value* row, Interp* interp) {
     if (!csv_array_push(rows, row, interp)) {
-        return raise_error(interp, "csv-parse: out of memory");
+        return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
     }
     return null;
 }
@@ -104,10 +105,10 @@ fn Value* csv_flush_row(Value* rows, Value* row, CsvFieldBuf* field, Interp* int
 
 fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || args.len > 2) {
-        return raise_error(interp, "csv-parse: expected 1-2 arguments");
+        return data_format_raise(interp, "type/arity", "csv-parse: expected 1-2 arguments");
     }
     if (!is_string(args[0])) {
-        return raise_error(interp, "csv-parse: expected string argument");
+        return data_format_raise(interp, "type/arity", "csv-parse: expected string argument");
     }
 
     CsvParseOptions opts;
@@ -127,7 +128,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
 
     CsvFieldBuf field;
     if (!csv_field_init(&field, 32)) {
-        return raise_error(interp, "csv-parse: out of memory");
+        return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
     }
     defer csv_field_free(&field);
 
@@ -144,7 +145,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
 
         if (at_end) {
             if (in_quotes) {
-                return raise_error(interp, "csv-parse: unterminated quoted field");
+                return data_format_raise(interp, "type/arg-mismatch", "csv-parse: unterminated quoted field");
             }
 
             if (Value* err = csv_flush_row(rows, row, &field, interp)) return err;
@@ -162,7 +163,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
             if (csv_char_is_line_ending(ch)) {
                 after_quote = false;
                 if (strict && !csv_line_ending_is_crlf(ch, next)) {
-                    return raise_error(interp, "csv-parse: strict mode requires CRLF line endings");
+                    return data_format_raise(interp, "type/arg-mismatch", "csv-parse: strict mode requires CRLF line endings");
                 }
                 if (Value* err = csv_flush_field(row, &field, interp)) return err;
 
@@ -179,18 +180,18 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
             }
 
             if (!strict) {
-                if (!csv_field_push(&field, '"')) return raise_error(interp, "csv-parse: out of memory");
+                if (!csv_field_push(&field, '"')) return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
                 after_quote = false;
                 continue;
             }
 
-            return raise_error(interp, "csv-parse: unexpected characters after closing quote");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-parse: unexpected characters after closing quote");
         }
 
         if (in_quotes) {
             if (ch == '"') {
                 if (i + 1 < src.len && src[i + 1] == '"') {
-                    if (!csv_field_push(&field, '"')) return raise_error(interp, "csv-parse: out of memory");
+                    if (!csv_field_push(&field, '"')) return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
                     i += 2;
                     continue;
                 }
@@ -200,7 +201,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 continue;
             }
 
-            if (!csv_field_push(&field, ch)) return raise_error(interp, "csv-parse: out of memory");
+            if (!csv_field_push(&field, ch)) return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
             i++;
             continue;
         }
@@ -228,12 +229,12 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
                 continue;
             }
 
-            return raise_error(interp, "csv-parse: strict mode requires CRLF line endings");
+            return data_format_raise(interp, "type/arg-mismatch", "csv-parse: strict mode requires CRLF line endings");
         }
 
         if (ch == '\n') {
             if (strict) {
-                return raise_error(interp, "csv-parse: strict mode requires CRLF line endings");
+                return data_format_raise(interp, "type/arg-mismatch", "csv-parse: strict mode requires CRLF line endings");
             }
             if (Value* err = csv_flush_field(row, &field, interp)) return err;
             if (row.array_val.length > 0) {
@@ -248,8 +249,8 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
 
         if (ch == '"') {
             if (field.len != 0) {
-                if (strict) return raise_error(interp, "csv-parse: quote not allowed in unquoted field");
-                if (!csv_field_push(&field, '"')) return raise_error(interp, "csv-parse: out of memory");
+                if (strict) return data_format_raise(interp, "type/arg-mismatch", "csv-parse: quote not allowed in unquoted field");
+                if (!csv_field_push(&field, '"')) return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
                 i++;
                 continue;
             }
@@ -264,7 +265,7 @@ fn Value* prim_csv_parse(Value*[] args, Env* env, Interp* interp) {
             continue;
         }
 
-        if (!csv_field_push(&field, ch)) return raise_error(interp, "csv-parse: out of memory");
+        if (!csv_field_push(&field, ch)) return data_format_raise(interp, "type/out-of-memory", "csv-parse: out of memory");
         i++;
     }
 

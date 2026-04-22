@@ -81,6 +81,7 @@
 #define OMNI_TENSOR_VULKAN_SINGULAR_VALUES_LOCAL_SIZE 1u
 #define OMNI_TENSOR_VULKAN_SVD_LOCAL_SIZE 1u
 #define OMNI_TENSOR_VULKAN_SYMMETRIC_EIGEN_LOCAL_SIZE 1u
+#define OMNI_TENSOR_VULKAN_GENERAL_EIGEN_LOCAL_SIZE 1u
 #define OMNI_TENSOR_VULKAN_ROUND_I64_LOCAL_SIZE 64u
 #define OMNI_TENSOR_VULKAN_MAX_STORAGE_DESCRIPTORS 8u
 
@@ -485,6 +486,14 @@ typedef struct OmniTensorVulkanMlLayerNormPushConstants {
     float epsilon;
 } OmniTensorVulkanMlLayerNormPushConstants;
 
+typedef struct OmniTensorVulkanMlLayerNormPushConstantsF64 {
+    uint32_t input_rank;
+    uint32_t out_count;
+    uint32_t axis;
+    uint32_t reduction_count;
+    double epsilon;
+} OmniTensorVulkanMlLayerNormPushConstantsF64;
+
 typedef struct OmniTensorVulkanMlBatchNormPushConstants {
     uint32_t input_rank;
     uint32_t out_count;
@@ -492,6 +501,14 @@ typedef struct OmniTensorVulkanMlBatchNormPushConstants {
     uint32_t channel_dim;
     float epsilon;
 } OmniTensorVulkanMlBatchNormPushConstants;
+
+typedef struct OmniTensorVulkanMlBatchNormPushConstantsF64 {
+    uint32_t input_rank;
+    uint32_t out_count;
+    uint32_t channel_axis;
+    uint32_t channel_dim;
+    double epsilon;
+} OmniTensorVulkanMlBatchNormPushConstantsF64;
 
 typedef struct OmniTensorVulkanMlAttentionPushConstants {
     uint32_t batch_count;
@@ -627,6 +644,15 @@ typedef struct OmniTensorVulkanSymmetricEigenPushConstants {
     uint32_t vector_count;
     uint32_t reserved;
 } OmniTensorVulkanSymmetricEigenPushConstants;
+
+typedef struct OmniTensorVulkanGeneralEigenPushConstants {
+    uint32_t n;
+    uint32_t value_count;
+    uint32_t vector_count;
+    uint32_t vector_storage_count;
+    uint32_t max_iterations;
+    uint32_t reserved;
+} OmniTensorVulkanGeneralEigenPushConstants;
 
 typedef struct OmniVulkanMemoryType {
     OmniVulkanFlags propertyFlags;

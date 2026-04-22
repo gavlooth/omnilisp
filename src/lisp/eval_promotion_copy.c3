@@ -117,7 +117,17 @@ fn bool copy_parent_route_is_leaf(CopyParentRoute route) @inline {
         case CP_ROUTE_ERROR:
         case CP_ROUTE_TIME_POINT:
             return true;
-        default:
+        case CP_ROUTE_CONS:
+        case CP_ROUTE_CLOSURE:
+        case CP_ROUTE_PRIMITIVE:
+        case CP_ROUTE_PARTIAL_PRIM:
+        case CP_ROUTE_CONTINUATION:
+        case CP_ROUTE_SHARED_WRAPPER:
+        case CP_ROUTE_INSTANCE:
+        case CP_ROUTE_FFI_HANDLE:
+        case CP_ROUTE_ITERATOR:
+        case CP_ROUTE_COROUTINE:
+        case CP_ROUTE_TENSOR:
             return false;
     }
 }

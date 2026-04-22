@@ -21,7 +21,7 @@ fn Value* jit_tco_recycle_restore_on_error(
     }
     interp.jit_env = saved_env;
     boundary_assert_interp_scope_chain(interp);
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }
 
 fn void jit_set_active_recycle_scope(Interp* interp, main::ScopeRegion* scope) @inline {

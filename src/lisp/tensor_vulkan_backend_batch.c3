@@ -87,6 +87,8 @@ extern fn int omni_tensor_backend_vulkan_map_tensor_scalar_chain_f32(
 
 extern fn long omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count() @extern("omni_tensor_backend_vulkan_map_tensor_scalar_chain_dispatch_call_count");
 
+extern fn int omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests() @extern("omni_tensor_backend_vulkan_map_chain_f32_byte_len_overflow_guard_for_tests");
+
 extern fn int omni_tensor_backend_vulkan_contract_scalar_chain_f32(
     void* left_device_ptr,
     void* right_device_ptr,

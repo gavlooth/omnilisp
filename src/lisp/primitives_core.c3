@@ -24,7 +24,7 @@ fn Value* numeric_compare_bool_result(Interp* interp, int cmp, int op) {
         case NUMERIC_COMPARE_GE:
             result = cmp >= 0;
         default:
-            return raise_error(interp, "numeric comparison: unknown comparison op");
+            return math_raise(interp, "type/unsupported", "numeric comparison: unknown comparison op");
     }
     return result ? make_symbol(interp, interp.sym_true) : make_nil(interp);
 }
@@ -36,14 +36,14 @@ fn Value* numeric_compare_primitive_result(Interp* interp, Value* lhs, Value* rh
     int cmp = 0;
     if (!numeric_values_compare(lhs, rhs, &cmp)) {
         if (is_big_complex(lhs) || is_big_complex(rhs) || is_fixed_complex(lhs) || is_fixed_complex(rhs)) {
-            return raise_error(interp, "numeric comparison: complex numbers are not ordered");
+            return math_raise(interp, "type/arg-mismatch", "numeric comparison: complex numbers are not ordered");
         }
         char[128] ebuf;
         char[] msg = "numeric comparison: BigInteger value is out of Float64 range";
         if (try char[] formatted = io::bprintf(&ebuf, "%s: BigInteger value is out of Float64 range", (ZString)op_name)) {
             msg = formatted;
         }
-        return raise_error(interp, msg);
+        return math_raise(interp, "type/arg-mismatch", msg);
     }
     return numeric_compare_bool_result(interp, cmp, op);
 }

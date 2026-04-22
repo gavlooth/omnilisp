@@ -63,46 +63,46 @@ fn void run_basic_index_and_match_tests(Interp* interp, int* pass, int* fail) {
     test_truthy(interp, "index/ref parity string", "(= (ref \"xyz\" 1) (\"xyz\".[1]))", pass, fail);
     test_truthy(interp, "index/ref parity string negative", "(= (ref \"xyz\" -1) (\"xyz\".[-1]))", pass, fail);
     test_truthy(interp, "index/ref parity array oob error",
-        "(= (handle (ref [10 20] 5) (raise e (String e))) (handle (let (a [10 20]) a.[5]) (raise e (String e))))",
+        "(= (handle (ref [10 20] 5) (raise e (String (ref e 'message)))) (handle (let (a [10 20]) a.[5]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity array wrong index error",
-        "(= (handle (ref [10 20] 'x) (raise e (String e))) (handle (let (a [10 20]) a.['x]) (raise e (String e))))",
+        "(= (handle (ref [10 20] 'x) (raise e (String (ref e 'message)))) (handle (let (a [10 20]) a.['x]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity list oob error",
-        "(= (handle (ref '(10 20) 5) (raise e (String e))) (handle (let (l '(10 20)) l.[5]) (raise e (String e))))",
+        "(= (handle (ref '(10 20) 5) (raise e (String (ref e 'message)))) (handle (let (l '(10 20)) l.[5]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity list wrong index error",
-        "(= (handle (ref '(10 20) 'x) (raise e (String e))) (handle (let (l '(10 20)) l.['x]) (raise e (String e))))",
+        "(= (handle (ref '(10 20) 'x) (raise e (String (ref e 'message)))) (handle (let (l '(10 20)) l.['x]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity string oob error",
-        "(= (handle (ref \"xy\" 5) (raise e (String e))) (handle (\"xy\".[5]) (raise e (String e))))",
+        "(= (handle (ref \"xy\" 5) (raise e (String (ref e 'message)))) (handle (\"xy\".[5]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity string wrong index error",
-        "(= (handle (ref \"xy\" 'x) (raise e (String e))) (handle (\"xy\".['x]) (raise e (String e))))",
+        "(= (handle (ref \"xy\" 'x) (raise e (String (ref e 'message)))) (handle (\"xy\".['x]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "index/ref parity dict missing key",
         "(= (ref {'a 1} 'missing) (let (m {'a 1}) m.['missing]))",
         pass, fail);
     test_truthy(interp, "index/ref parity unsupported collection error",
-        "(= (handle (ref 42 0) (raise e (String e))) (handle (42.[0]) (raise e (String e))))",
+        "(= (handle (ref 42 0) (raise e (String (ref e 'message)))) (handle (42.[0]) (raise e (String (ref e 'message)))))",
         pass, fail);
     test_truthy(interp, "postfix array oob canonical error",
-        "(= (handle (let (a [10 20]) a.[5]) (raise e (String e))) \"ref: array index out of bounds\")",
+        "(= (handle (let (a [10 20]) a.[5]) (raise e (String (ref e 'message)))) \"ref: array index out of bounds\")",
         pass, fail);
     test_truthy(interp, "postfix array wrong index canonical error",
-        "(= (handle (let (a [10 20]) a.['x]) (raise e (String e))) \"ref: array requires int index\")",
+        "(= (handle (let (a [10 20]) a.['x]) (raise e (String (ref e 'message)))) \"ref: array requires int index\")",
         pass, fail);
     test_truthy(interp, "postfix list oob canonical error",
-        "(= (handle (let (l '(10 20)) l.[5]) (raise e (String e))) \"ref: list index out of bounds\")",
+        "(= (handle (let (l '(10 20)) l.[5]) (raise e (String (ref e 'message)))) \"ref: list index out of bounds\")",
         pass, fail);
     test_truthy(interp, "postfix list wrong index canonical error",
-        "(= (handle (let (l '(10 20)) l.['x]) (raise e (String e))) \"ref: list requires int index\")",
+        "(= (handle (let (l '(10 20)) l.['x]) (raise e (String (ref e 'message)))) \"ref: list requires int index\")",
         pass, fail);
     test_truthy(interp, "postfix string oob canonical error",
-        "(= (handle (\"xy\".[5]) (raise e (String e))) \"ref: string index out of bounds\")",
+        "(= (handle (\"xy\".[5]) (raise e (String (ref e 'message)))) \"ref: string index out of bounds\")",
         pass, fail);
     test_truthy(interp, "postfix string wrong index canonical error",
-        "(= (handle (\"xy\".['x]) (raise e (String e))) \"ref: string requires int index\")",
+        "(= (handle (\"xy\".['x]) (raise e (String (ref e 'message)))) \"ref: string requires int index\")",
         pass, fail);
     test_eq(interp, "postfix index then symbol path", "(let (rows [(Dictionary 'name 44)]) rows.[0].name)", 44, pass, fail);
     test_error_contains(interp, "leading-dot int accessor removed", "(.1 (quote (10 20 30)))",

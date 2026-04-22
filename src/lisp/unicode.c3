@@ -1,13 +1,18 @@
 module lisp;
 
+fn Value* string_raise(Interp* interp, String code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "type", code, (String)message, null);
+}
+
+
 // ============================================================
 // (string-normalize s mode) — NFC, NFD, NFKC, NFKD
 // ============================================================
 
 fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "string-normalize: expected (string-normalize s mode)");
-    if (!is_string(args[0])) return raise_error(interp, "string-normalize: first arg must be string");
-    if (args[1].tag != SYMBOL) return raise_error(interp, "string-normalize: mode must be a symbol (NFC, NFD, NFKC, NFKD)");
+    if (args.len < 2) return string_raise(interp, "type/arg-mismatch", "string-normalize: expected (string-normalize s mode)");
+    if (!is_string(args[0])) return string_raise(interp, "type/arg-mismatch", "string-normalize: first arg must be string");
+    if (args[1].tag != SYMBOL) return string_raise(interp, "type/arg-mismatch", "string-normalize: mode must be a symbol (NFC, NFD, NFKC, NFKD)");
 
     char[] src = args[0].str_chars[:args[0].str_len];
     char[] mode_name = interp.symbols.get_name(args[1].sym_val);
@@ -22,13 +27,13 @@ fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
     } else if (str_eq_z(mode_name, "NFKD")) {
         options = UTF8PROC_STABLE | UTF8PROC_DECOMPOSE | UTF8PROC_COMPAT;
     } else {
-        return raise_error(interp, "string-normalize: mode must be NFC, NFD, NFKC, or NFKD");
+        return string_raise(interp, "type/arg-mismatch", "string-normalize: mode must be NFC, NFD, NFKC, or NFKD");
     }
 
     Utf8Char* result = null;
     long new_len = utf8proc_map((Utf8Char*)src.ptr, (long)src.len, &result, options);
     if (new_len < 0 || result == null) {
-        return raise_error(interp, "string-normalize: normalization failed");
+        return string_raise(interp, "type/arg-mismatch", "string-normalize: normalization failed");
     }
 
     Value* v = make_string(interp, ((char*)result)[:(usz)new_len]);
@@ -41,8 +46,8 @@ fn Value* prim_string_normalize(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string-graphemes: expected 1 argument");
-    if (!is_string(args[0])) return raise_error(interp, "string-graphemes: expected string argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string-graphemes: expected 1 argument");
+    if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-graphemes: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
@@ -95,8 +100,8 @@ fn Value* prim_string_graphemes(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "string-codepoints: expected 1 argument");
-    if (!is_string(args[0])) return raise_error(interp, "string-codepoints: expected string argument");
+    if (args.len < 1) return string_raise(interp, "type/arity", "string-codepoints: expected 1 argument");
+    if (!is_string(args[0])) return string_raise(interp, "type/arity", "string-codepoints: expected string argument");
 
     char[] src = args[0].str_chars[:args[0].str_len];
 
@@ -125,10 +130,10 @@ fn Value* prim_string_codepoints(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "char-category: expected 1 argument");
-    if (!is_int(args[0])) return raise_error(interp, "char-category: expected integer codepoint");
+    if (args.len < 1) return string_raise(interp, "type/arity", "char-category: expected 1 argument");
+    if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-category: expected integer codepoint");
     if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
-        return raise_error(interp, "char-category: codepoint out of range");
+        return string_raise(interp, "type/arg-mismatch", "char-category: codepoint out of range");
     }
 
     int cp = (int)args[0].int_val;
@@ -148,10 +153,10 @@ fn Value* prim_char_category(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_char_width(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "char-width: expected 1 argument");
-    if (!is_int(args[0])) return raise_error(interp, "char-width: expected integer codepoint");
+    if (args.len < 1) return string_raise(interp, "type/arity", "char-width: expected 1 argument");
+    if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-width: expected integer codepoint");
     if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
-        return raise_error(interp, "char-width: codepoint out of range");
+        return string_raise(interp, "type/arg-mismatch", "char-width: codepoint out of range");
     }
 
     int cp = (int)args[0].int_val;
@@ -164,11 +169,11 @@ fn Value* prim_char_width(Value*[] args, Env* env, Interp* interp) {
 // ============================================================
 
 fn Value* prim_char_property(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 2) return raise_error(interp, "char-property: expected 2 arguments");
-    if (!is_int(args[0])) return raise_error(interp, "char-property: first argument must be integer codepoint");
-    if (args[1].tag != SYMBOL) return raise_error(interp, "char-property: second argument must be a symbol");
+    if (args.len < 2) return string_raise(interp, "type/arity", "char-property: expected 2 arguments");
+    if (!is_int(args[0])) return string_raise(interp, "type/arg-mismatch", "char-property: first argument must be integer codepoint");
+    if (args[1].tag != SYMBOL) return string_raise(interp, "type/arg-mismatch", "char-property: second argument must be a symbol");
     if (args[0].int_val < 0 || args[0].int_val > 0x10FFFF) {
-        return raise_error(interp, "char-property: codepoint out of range");
+        return string_raise(interp, "type/arg-mismatch", "char-property: codepoint out of range");
     }
 
     int cp = (int)args[0].int_val;
@@ -211,7 +216,7 @@ fn Value* prim_char_property(Value*[] args, Env* env, Interp* interp) {
         return make_bool_value(interp, cat[0] == 'L' || cat[0] == 'N' || cp == 95);
     }
 
-    return raise_error(interp, "char-property: unknown property (use category, width, upper?, lower?, letter?, digit?, whitespace?, word?)");
+    return string_raise(interp, "type/arg-mismatch", "char-property: unknown property (use category, width, upper?, lower?, letter?, digit?, whitespace?, word?)");
 }
 
 // Helper: compare char[] to ZString

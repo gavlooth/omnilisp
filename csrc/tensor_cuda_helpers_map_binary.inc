@@ -23,7 +23,9 @@ static int omni_tensor_cuda_operand_needs_offsets(
     size_t operand_rank,
     size_t element_count,
     const size_t* out_shape,
-    const size_t* operand_shape
+    const size_t* out_strides,
+    const size_t* operand_shape,
+    const size_t* operand_strides
 ) {
     if (!omni_tensor_cuda_operand_matches_broadcast(out_rank, operand_rank, out_shape, operand_shape)) return -1;
     if (element_count <= 1) return 0;
@@ -31,6 +33,7 @@ static int omni_tensor_cuda_operand_needs_offsets(
     if (operand_rank != out_rank) return 1;
     for (size_t axis = 0; axis < out_rank; axis++) {
         if (operand_shape[axis] != out_shape[axis]) return 1;
+        if (operand_strides == NULL || out_strides == NULL || operand_strides[axis] != out_strides[axis]) return 1;
     }
     return 0;
 }
@@ -47,7 +50,7 @@ static int omni_tensor_cuda_build_operand_offsets(
 ) {
     if (out_offsets_device == NULL) return OMNI_TENSOR_CUDA_INVALID;
     *out_offsets_device = NULL;
-    int needs_offsets = omni_tensor_cuda_operand_needs_offsets(out_rank, operand_rank, element_count, out_shape, operand_shape);
+    int needs_offsets = omni_tensor_cuda_operand_needs_offsets(out_rank, operand_rank, element_count, out_shape, out_strides, operand_shape, operand_strides);
     if (needs_offsets < 0) return OMNI_TENSOR_CUDA_INVALID;
     if (!needs_offsets) return OMNI_TENSOR_CUDA_SUCCESS;
     if (element_count > ((size_t)-1) / sizeof(uint64_t)) return OMNI_TENSOR_CUDA_INVALID;
@@ -175,8 +178,14 @@ static int omni_tensor_backend_cuda_map_launch(
     }
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        if (left_offsets_device != NULL) omni_tensor_backend_cuda_free(left_offsets_device);
+        if (right_offsets_device != NULL) omni_tensor_backend_cuda_free(right_offsets_device);
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&left_device,
         (void*)&right_device,
@@ -305,8 +314,15 @@ static int omni_tensor_backend_cuda_complex_map_launch(
     }
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        if (left_offsets_device != NULL) omni_tensor_backend_cuda_free(left_offsets_device);
+        if (right_offsets_device != NULL) omni_tensor_backend_cuda_free(right_offsets_device);
+        omni_tensor_backend_cuda_free(status_device);
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&left_device,
         (void*)&right_device,

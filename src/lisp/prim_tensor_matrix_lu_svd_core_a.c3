@@ -30,6 +30,33 @@ fn bool matrix_fill_general_eigenpairs_big_complex(
         vectors_tensor
     );
 }
+fn bool matrix_fill_general_eigenpairs_complex128(
+    usz n,
+    double* real_parts,
+    double* imag_parts,
+    double* raw_vectors,
+    TensorVal* values_tensor,
+    TensorVal* vectors_tensor
+) {
+    usz vector_count = 0;
+    if (!tensor_checked_mul_usz(n, n, &vector_count)) return false;
+    double* vector_real = null;
+    if (!matrix_double_workspace_zero(vector_count, &vector_real)) return false;
+    defer if (vector_real != null) mem::free(vector_real);
+    double* vector_imag = null;
+    if (!matrix_double_workspace_zero(vector_count, &vector_imag)) return false;
+    defer if (vector_imag != null) mem::free(vector_imag);
+    if (!matrix_general_vectors_from_lapack(raw_vectors, imag_parts, n, vector_real, vector_imag)) return false;
+    return matrix_fill_general_eigenpairs_from_vectors_complex128(
+        n,
+        real_parts,
+        imag_parts,
+        vector_real,
+        vector_imag,
+        values_tensor,
+        vectors_tensor
+    );
+}
 fn void matrix_square_multiply(double* left, double* right, double* out, usz n) {
     if (left == null || right == null || out == null) return;
     for (usz row = 0; row < n; row++) {

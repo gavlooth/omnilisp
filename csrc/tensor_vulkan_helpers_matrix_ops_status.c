@@ -118,6 +118,14 @@ static int omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f64(do
     return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
 }
 
+static int omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(float status_payload) {
+    if (!isfinite(status_payload)) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    if (status_payload == 0.0f) return OMNI_TENSOR_VULKAN_SUCCESS;
+    if (status_payload == 2.0f) return OMNI_TENSOR_VULKAN_NO_CONVERGENCE;
+    if (status_payload == 3.0f) return OMNI_TENSOR_VULKAN_NOT_SYMMETRIC;
+    return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+}
+
 int omni_tensor_backend_vulkan_read_singular_values_status_f64(
     void* output_device,
     size_t status_offset_bytes
@@ -148,6 +156,47 @@ int omni_tensor_backend_vulkan_read_symmetric_eigen_status_f64(
         output_device,
         status_offset_bytes,
         omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f64
+    );
+}
+
+int omni_tensor_backend_vulkan_read_symmetric_eigen_status_f32(
+    void* output_device,
+    size_t status_offset_bytes
+) {
+    return omni_tensor_backend_vulkan_read_mapped_status_f32(
+        output_device,
+        status_offset_bytes,
+        omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32
+    );
+}
+
+static int omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64(double status_payload) {
+    if (!isfinite(status_payload)) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    if (status_payload == 0.0) return OMNI_TENSOR_VULKAN_SUCCESS;
+    if (status_payload == 2.0) return OMNI_TENSOR_VULKAN_NO_CONVERGENCE;
+    return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+}
+
+static int omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32(float status_payload) {
+    if (!isfinite(status_payload)) return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    if (status_payload == 0.0f) return OMNI_TENSOR_VULKAN_SUCCESS;
+    if (status_payload == 2.0f) return OMNI_TENSOR_VULKAN_NO_CONVERGENCE;
+    return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+}
+
+int omni_tensor_backend_vulkan_read_general_eigen_status_f64(void* status_device) {
+    return omni_tensor_backend_vulkan_read_mapped_status_f64(
+        status_device,
+        0u,
+        omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64
+    );
+}
+
+int omni_tensor_backend_vulkan_read_general_eigen_status_f32(void* status_device) {
+    return omni_tensor_backend_vulkan_read_mapped_status_f32(
+        status_device,
+        0u,
+        omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32
     );
 }
 
@@ -204,6 +253,45 @@ int omni_tensor_backend_vulkan_singular_values_status_payload_probe_for_tests(vo
         return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
     }
     if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f64(NAN) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(0.0f) != OMNI_TENSOR_VULKAN_SUCCESS) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(2.0f) != OMNI_TENSOR_VULKAN_NO_CONVERGENCE) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(3.0f) != OMNI_TENSOR_VULKAN_NOT_SYMMETRIC) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(1.0f) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_symmetric_eigen_status_from_payload_f32(NAN) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64(0.0) != OMNI_TENSOR_VULKAN_SUCCESS) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64(2.0) != OMNI_TENSOR_VULKAN_NO_CONVERGENCE) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64(1.0) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f64(NAN) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32(0.0f) != OMNI_TENSOR_VULKAN_SUCCESS) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32(2.0f) != OMNI_TENSOR_VULKAN_NO_CONVERGENCE) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32(1.0f) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
+        return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
+    }
+    if (omni_tensor_backend_vulkan_general_eigen_status_from_payload_f32(NAN) != OMNI_TENSOR_VULKAN_EXECUTION_FAILED) {
         return OMNI_TENSOR_VULKAN_EXECUTION_FAILED;
     }
     return OMNI_TENSOR_VULKAN_SUCCESS;

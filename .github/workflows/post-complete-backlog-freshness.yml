@@ -15,5 +15,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install status-check dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
       - name: Validate post-complete backlog freshness
         run: bash scripts/check_post_complete_backlog_freshness.sh

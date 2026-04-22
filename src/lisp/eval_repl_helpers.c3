@@ -118,7 +118,7 @@ fn int count_paren_depth(char[] input) {
 
 fn usz repl_cstr_len(char* line) @inline {
     usz len = 0;
-    while (line[len] != 0) len++;
+    while (len < 65536 && line[len] != 0) len++;
     return len;
 }
 

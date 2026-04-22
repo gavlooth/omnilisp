@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::core::mem;
 import main;
 
@@ -55,11 +56,11 @@ fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
     // The coroutine may be resumed after the creating scope is freed.
     thunk = boundary_promote_to_root(thunk, interp);
     if (thunk == null) {
-        return raise_error(interp, "coroutine: failed to promote thunk");
+        return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to promote thunk");
     }
     if (thunk.tag == ERROR) return thunk;
     if (thunk.tag != CLOSURE || thunk.closure_val == null) {
-        return raise_error(interp, "coroutine: failed to promote thunk");
+        return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to promote thunk");
     }
     // Precompile coroutine body before first execution on switched stack.
     jit_warm_expr_cache(thunk.closure_val.body, interp);
@@ -67,19 +68,19 @@ fn Value* prim_coroutine_prepare_thunk(Value* thunk, Interp* interp) {
 }
 
 fn Value* prim_coroutine_create_ctx(Value* thunk, main::StackCtx** ctx_out, Interp* interp) {
-    if (thunk == null) return raise_error(interp, "coroutine: failed to promote thunk");
+    if (thunk == null) return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to promote thunk");
     if (thunk.tag == ERROR) return thunk;
     if (!is_closure(thunk)) {
-        return raise_error(interp, "coroutine: failed to promote thunk");
+        return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to promote thunk");
     }
     main::StackCtx* ctx = main::stack_ctx_create(&interp.stack_ctx_pool);
-    if (ctx == null) return raise_error(interp, "coroutine: failed to create context");
+    if (ctx == null) return runtime_raise(interp, "runtime/invalid-state", "coroutine: failed to create context");
 
     // Store thunk state on the context's user_data (lives as long as the context)
     CoroutineThunkState* state = coroutine_alloc_thunk_state(thunk, interp);
     if (state == null) {
         main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
-        return raise_error(interp, "coroutine: out of memory");
+        return runtime_raise(interp, "runtime/out-of-memory", "coroutine: out of memory");
     }
     ctx.user_data = state;
 

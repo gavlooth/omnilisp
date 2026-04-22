@@ -22,7 +22,7 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault
             return fault_out != null
                 ? null
                 : (copied_car == null
-                    ? raise_error(interp, "boundary: failed to copy cons car")
+                    ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy cons car")
                     : copied_car);
         }
 
@@ -37,7 +37,7 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault
                 if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                     *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
                 }
-                return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate cons copy");
+                return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate cons copy");
             }
             head.tag = CONS;
             head.cons_val.car = null;
@@ -59,7 +59,7 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault
                 if (fault_out != null && *fault_out == BOUNDARY_COPY_FAULT_NONE) {
                     *fault_out = BOUNDARY_COPY_FAULT_NULL_RESULT;
                 }
-                return fault_out != null ? null : raise_error(interp, "boundary: failed to allocate cons tail copy");
+                return fault_out != null ? null : boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate cons tail copy");
             }
             next_new.tag = CONS;
             next_new.cons_val.car = null;
@@ -77,7 +77,7 @@ fn Value* copy_cons_to_parent(Value* v, Interp* interp, BoundaryCopyFault* fault
                 return fault_out != null
                     ? null
                     : (copied_cdr == null
-                        ? raise_error(interp, "boundary: failed to copy cons cdr")
+                        ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to copy cons cdr")
                         : copied_cdr);
             }
             current_new.cons_val.cdr = copied_cdr;
@@ -318,7 +318,7 @@ fn bool copy_to_parent_payload_in_releasing_scope(Value* v, Interp* interp) @inl
 }
 
 fn Value* copy_to_parent_missing_scope_provenance_error(Interp* interp) @noinline {
-    return raise_error(interp, "boundary: copy_to_parent requires target/releasing scope provenance");
+    return boundary_raise(interp, "boundary/copy-fault", "boundary: copy_to_parent requires target/releasing scope provenance");
 }
 
 <*

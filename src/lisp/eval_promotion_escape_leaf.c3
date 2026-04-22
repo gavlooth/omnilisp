@@ -10,7 +10,7 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
     if (!promote_escape_can_mutate(v, ctx)) return v;
     usz len = v.str_len;
     if (len == usz.max) {
-        return raise_error(interp, "boundary: string/error escape copy is too large");
+        return boundary_raise(interp, "boundary/copy-fault", "boundary: string/error escape copy is too large");
     }
     usz cap = len + 1;
     if (cap < 32) cap = 32;
@@ -18,13 +18,13 @@ fn Value* promote_escape_string_or_error(Value* v, Interp* interp, PromotionCont
         ? null
         : (char*)mem::malloc(cap);
     if (chars == null) {
-        return raise_error(interp, "boundary: failed to allocate string/error escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate string/error escape copy");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
         mem::free(chars);
-        return raise_error(interp, "boundary: failed to allocate string/error escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate string/error escape copy");
     }
     result.tag = v.tag;
     result.str_chars = chars;
@@ -43,7 +43,7 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
     Value* first_arg = promote_to_escape(v.partial_val.first_arg, interp);
     if (v.partial_val.first_arg != null && (first_arg == null || is_error(first_arg))) {
         return first_arg == null
-            ? raise_error(interp, "boundary: failed to promote partial primitive first arg during escape promotion")
+            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote partial primitive first arg during escape promotion")
             : first_arg;
     }
 
@@ -56,7 +56,7 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
             true
         );
         return second_arg == null
-            ? raise_error(interp, "boundary: failed to promote partial primitive second arg during escape promotion")
+            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote partial primitive second arg during escape promotion")
             : second_arg;
     }
 
@@ -77,7 +77,7 @@ fn Value* promote_escape_partial_prim(Value* v, Interp* interp, PromotionContext
                 true
             );
         }
-        return raise_error(interp, "boundary: failed to allocate partial primitive escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate partial primitive escape copy");
     }
     result.tag = PARTIAL_PRIM;
     result.partial_val.func = v.partial_val.func;
@@ -94,7 +94,7 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
         if (src_prim == null) {
             Value* result = boundary_alloc_value_in_current_escape(interp);
             if (result == null) {
-                return raise_error(interp, "boundary: failed to allocate primitive escape copy");
+                return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive escape copy");
             }
             result.tag = PRIMITIVE;
             result.prim_val = null;
@@ -102,20 +102,20 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
             return result;
         }
         if (primitive_has_opaque_user_data(v)) {
-            return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
+            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing primitive escape promotion with opaque user_data");
         }
 
         Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
-        if (dst_prim == null) return raise_error(interp, "boundary: failed to allocate primitive escape copy");
+        if (dst_prim == null) return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive escape copy");
         if (!primitive_clone_plain_header(dst_prim, src_prim)) {
             mem::free(dst_prim);
-            return raise_error(interp, "boundary: refusing primitive escape promotion with opaque user_data");
+            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing primitive escape promotion with opaque user_data");
         }
 
         Value* result = boundary_alloc_value_in_current_escape(interp);
         if (result == null) {
             mem::free(dst_prim);
-            return raise_error(interp, "boundary: failed to allocate primitive escape copy");
+            return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate primitive escape copy");
         }
         result.tag = PRIMITIVE;
         result.prim_val = null;
@@ -138,7 +138,7 @@ fn Value* promote_escape_shared_wrapper(Value* v, Interp* interp, PromotionConte
     }
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate shared wrapper escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate shared wrapper escape copy");
     }
     *result = *v;
     result.scope_gen = interp.current_scope.escape_generation;
@@ -149,7 +149,7 @@ fn Value* promote_escape_instance(Value* v, Interp* interp, PromotionContext* ct
     if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate instance escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate instance escape copy");
     }
     result.tag = INSTANCE;
     result.scope_gen = interp.current_scope.escape_generation;
@@ -163,7 +163,7 @@ fn Value* promote_escape_ffi_handle(Value* v, Interp* interp, PromotionContext* 
     if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate ffi handle escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate ffi handle escape copy");
     }
     result.tag = FFI_HANDLE;
     result.ffi_val = v.ffi_val;
@@ -176,7 +176,7 @@ fn Value* promote_escape_scalar(Value* v, Interp* interp, PromotionContext* ctx)
     if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate scalar escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate scalar escape copy");
     }
     switch (v.tag) {
         case NIL:
@@ -212,7 +212,7 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
     bool retained_now = false;
     if (v.cont_val != null) {
         if (v.cont_val.owner_interp != null && v.cont_val.owner_interp != interp) {
-            return raise_error(interp, "boundary: refusing continuation alias across interpreters");
+            return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing continuation alias across interpreters");
         }
         retained_now = continuation_retain_handle_state_for_boundary(v.cont_val);
     }
@@ -223,7 +223,7 @@ fn Value* promote_escape_continuation(Value* v, Interp* interp, PromotionContext
         if (retained_now) {
             continuation_release_handle_state_for_boundary(v.cont_val);
         }
-        return raise_error(interp, "boundary: failed to allocate continuation escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate continuation escape copy");
     }
     result.tag = CONTINUATION;
     result.cont_val = v.cont_val;
@@ -239,7 +239,7 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
     Value* promoted_thunk = promote_to_escape(v.iterator_val, interp);
     if (v.iterator_val != null && (promoted_thunk == null || is_error(promoted_thunk))) {
         return promoted_thunk == null
-            ? raise_error(interp, "boundary: failed to promote iterator thunk during escape promotion")
+            ? boundary_raise(interp, "boundary/copy-fault", "boundary: failed to promote iterator thunk during escape promotion")
             : promoted_thunk;
     }
     Value* result = boundary_alloc_value_in_current_escape(interp);
@@ -250,7 +250,7 @@ fn Value* promote_escape_iterator(Value* v, Interp* interp, PromotionContext* ct
             interp.current_scope,
             true
         );
-        return raise_error(interp, "boundary: failed to allocate iterator escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate iterator escape copy");
     }
     result.tag = ITERATOR;
     result.iterator_val = promoted_thunk;
@@ -261,13 +261,13 @@ fn Value* promote_escape_coroutine(Value* v, Interp* interp, PromotionContext* c
     if (!promote_escape_can_mutate(v, ctx)) return v;
     if (!boundary_ptr_in_scope((void*)v, interp.current_scope) ||
         v.scope_gen != interp.current_scope.generation) {
-        return raise_error(interp, "boundary: refusing coroutine wrapper alias during escape promotion");
+        return boundary_raise(interp, "boundary/invalid-state", "boundary: refusing coroutine wrapper alias during escape promotion");
     }
     Value* result = g_boundary_force_escape_coroutine_wrapper_alloc_fail
         ? null
         : boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate coroutine escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate coroutine escape copy");
     }
     result.tag = COROUTINE;
     result.coroutine_val = v.coroutine_val;
@@ -280,7 +280,7 @@ fn Value* promote_escape_time_point(Value* v, Interp* interp, PromotionContext* 
     if (!promote_escape_can_mutate(v, ctx)) return v;
     Value* result = boundary_alloc_value_in_current_escape(interp);
     if (result == null) {
-        return raise_error(interp, "boundary: failed to allocate time point escape copy");
+        return boundary_raise(interp, "boundary/out-of-memory", "boundary: failed to allocate time point escape copy");
     }
     result.tag = TIME_POINT;
     result.time_point_val = v.time_point_val;

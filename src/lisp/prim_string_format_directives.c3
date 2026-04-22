@@ -1,5 +1,6 @@
 module lisp;
 
+
 import std::io;
 import main;
 
@@ -82,11 +83,11 @@ fn Value* format_display_directive(StringVal* builder, Value* a, FormatSpec spec
 fn Value* format_int_directive(StringVal* builder, Value* a, FormatSpec spec, char directive, Interp* interp) {
     if (!is_int(a)) {
         switch (directive) {
-            case 'd': return raise_error(interp, "format: %d expects integer");
-            case 'x': return raise_error(interp, "format: %x expects integer");
-            case 'X': return raise_error(interp, "format: %X expects integer");
-            case 'o': return raise_error(interp, "format: %o expects integer");
-            default:  return raise_error(interp, "format: integer directive expects integer");
+            case 'd': return string_raise(interp, "type/arg-mismatch", "format: %d expects integer");
+            case 'x': return string_raise(interp, "type/arg-mismatch", "format: %x expects integer");
+            case 'X': return string_raise(interp, "type/arg-mismatch", "format: %X expects integer");
+            case 'o': return string_raise(interp, "type/arg-mismatch", "format: %o expects integer");
+            default:  return string_raise(interp, "type/arg-mismatch", "format: integer directive expects integer");
         }
     }
     char[32] buf;
@@ -96,27 +97,27 @@ fn Value* format_int_directive(StringVal* builder, Value* a, FormatSpec spec, ch
             if (try char[] rendered = io::bprintf(&buf, "%d", a.int_val)) {
                 val = rendered;
             } else {
-                return raise_error(interp, "format: internal integer formatting failure");
+                return string_raise(interp, "type/arg-mismatch", "format: internal integer formatting failure");
             }
         case 'x':
             if (try char[] rendered = io::bprintf(&buf, "%x", a.int_val)) {
                 val = rendered;
             } else {
-                return raise_error(interp, "format: internal integer formatting failure");
+                return string_raise(interp, "type/arg-mismatch", "format: internal integer formatting failure");
             }
         case 'X':
             if (try char[] rendered = io::bprintf(&buf, "%X", a.int_val)) {
                 val = rendered;
             } else {
-                return raise_error(interp, "format: internal integer formatting failure");
+                return string_raise(interp, "type/arg-mismatch", "format: internal integer formatting failure");
             }
         case 'o':
             if (try char[] rendered = io::bprintf(&buf, "%o", a.int_val)) {
                 val = rendered;
             } else {
-                return raise_error(interp, "format: internal integer formatting failure");
+                return string_raise(interp, "type/arg-mismatch", "format: internal integer formatting failure");
             }
-        default: return raise_error(interp, "format: unknown integer directive");
+        default: return string_raise(interp, "type/arg-mismatch", "format: unknown integer directive");
     }
     if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
         return raise_error_with_payload_names(interp, "runtime", "runtime/out-of-memory", "format: failed to grow result buffer");
@@ -126,20 +127,20 @@ fn Value* format_int_directive(StringVal* builder, Value* a, FormatSpec spec, ch
 
 fn Value* format_float_directive(StringVal* builder, Value* a, FormatSpec spec, Interp* interp) {
     double num;
-    if (!value_as_double(a, &num)) return raise_error(interp, "format: %f expects number");
+    if (!value_as_double(a, &num)) return string_raise(interp, "type/arg-mismatch", "format: %f expects number");
     char[128] buf;
     char[] val;
     if (spec.has_precision) {
         if (try char[] rendered = io::bprintf(&buf, "%.20f", num)) {
             val = truncate_after_decimal(rendered, spec.precision);
         } else {
-            return raise_error(interp, "format: internal float formatting failure");
+            return string_raise(interp, "type/arg-mismatch", "format: internal float formatting failure");
         }
     } else {
         if (try char[] rendered = io::bprintf(&buf, "%.6f", num)) {
             val = rendered;
         } else {
-            return raise_error(interp, "format: internal float formatting failure");
+            return string_raise(interp, "type/arg-mismatch", "format: internal float formatting failure");
         }
     }
     if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
@@ -150,7 +151,7 @@ fn Value* format_float_directive(StringVal* builder, Value* a, FormatSpec spec, 
 
 fn Value* format_scientific_directive(StringVal* builder, Value* a, FormatSpec spec, Interp* interp) {
     double num;
-    if (!value_as_double(a, &num)) return raise_error(interp, "format: %e expects number");
+    if (!value_as_double(a, &num)) return string_raise(interp, "type/arg-mismatch", "format: %e expects number");
     char[128] buf;
     char[] val;
     if (spec.has_precision) {
@@ -158,13 +159,13 @@ fn Value* format_scientific_directive(StringVal* builder, Value* a, FormatSpec s
         if (try char[] rendered = io::bprintf(&buf, "%.20e", num)) {
             val = truncate_scientific(rendered, spec.precision, tmp[0:128]);
         } else {
-            return raise_error(interp, "format: internal scientific formatting failure");
+            return string_raise(interp, "type/arg-mismatch", "format: internal scientific formatting failure");
         }
     } else {
         if (try char[] rendered = io::bprintf(&buf, "%e", num)) {
             val = rendered;
         } else {
-            return raise_error(interp, "format: internal scientific formatting failure");
+            return string_raise(interp, "type/arg-mismatch", "format: internal scientific formatting failure");
         }
     }
     if (!strval_append_num_padded(builder, val, spec.width, spec.left_align)) {
@@ -174,7 +175,7 @@ fn Value* format_scientific_directive(StringVal* builder, Value* a, FormatSpec s
 }
 
 fn Value* format_binary_directive(StringVal* builder, Value* a, FormatSpec spec, Interp* interp) {
-    if (!is_int(a)) return raise_error(interp, "format: %b expects integer");
+    if (!is_int(a)) return string_raise(interp, "type/arg-mismatch", "format: %b expects integer");
     char[68] out;
     usz out_len = 0;
     long val = a.int_val;
@@ -184,7 +185,7 @@ fn Value* format_binary_directive(StringVal* builder, Value* a, FormatSpec spec,
     } else {
         if (val < 0) {
             out[out_len++] = '-';
-            if (val == long.min) return raise_error(interp, "format: %b integer overflow");
+            if (val == long.min) return string_raise(interp, "type/arg-mismatch", "format: %b integer overflow");
             val = -val;
         }
         char[64] rev;
@@ -207,7 +208,7 @@ fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] 
     usz i = *i_ptr;
     FormatSpec spec = parse_format_spec(fmt, &i);
     if (spec.invalid) {
-        return raise_error(interp, "format: width or precision too large");
+        return string_raise(interp, "type/range-error", "format: width or precision too large");
     }
 
     if (i >= fmt.len) {
@@ -232,7 +233,7 @@ fn Value* format_directive(StringVal* builder, char[] fmt, usz* i_ptr, Value*[] 
 
     // All other directives consume an argument
     if (*arg_idx >= args.len) {
-        return raise_error(interp, "format: not enough arguments");
+        return string_raise(interp, "type/arg-mismatch", "format: not enough arguments");
     }
     Value* a = args[(*arg_idx)++];
 

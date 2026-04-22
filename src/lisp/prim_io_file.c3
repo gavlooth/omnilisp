@@ -168,14 +168,14 @@ fn Value* prim_read_lines(Value*[] args, Env* env, Interp* interp) {
  */
 fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return raise_error(interp, "load: expected a string path");
+        return io_raise(interp, "type/arg-mismatch", "load: expected a string path");
     }
 
     char[] rel_path = args[0].str_chars[:args[0].str_len];
     char[512] resolved;
     usz rlen = 0;
     if (!resolve_import_path_checked(rel_path, interp, &resolved, 512, &rlen)) {
-        return raise_error(interp, "load: path too long");
+        return io_raise(interp, "type/range-error", "load: path too long");
     }
     char[] path = resolved[:rlen];
 
@@ -185,9 +185,9 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         if (!push_source_dir(path, interp)) {
             char[512] ebuf;
             if (try char[] msg = io::bprintf(&ebuf, "load: failed to allocate source directory context for '%s'", (ZString)path.ptr)) {
-                return raise_error(interp, msg);
+                return io_raise(interp, "runtime/evaluation-error", msg);
             }
-            return raise_error(interp, "load: failed to allocate source directory context");
+            return io_raise(interp, "runtime/out-of-memory", "load: failed to allocate source directory context");
         }
 
         EvalResult r = run_program(source, interp);
@@ -197,9 +197,9 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         if (r.error.has_error) {
             char[512] ebuf;
             if (try char[] msg = io::bprintf(&ebuf, "load: error in '%s': %s", (ZString)path.ptr, (ZString)&r.error.message)) {
-                return raise_error(interp, msg);
+                return io_raise(interp, "runtime/evaluation-error", msg);
             }
-            return raise_error(interp, "load: error while evaluating file");
+            return io_raise(interp, "runtime/evaluation-error", "load: error while evaluating file");
         }
         return r.value;
     }
@@ -212,7 +212,7 @@ fn Value* prim_load(Value*[] args, Env* env, Interp* interp) {
         (ZString)path.ptr,
         (ZString)main::repl_file_read_kind_reason(read_kind)
     )) {
-        return raise_error(interp, msg);
+        return io_raise(interp, "runtime/evaluation-error", msg);
     }
-    return raise_error(interp, "load: cannot read file");
+    return io_raise(interp, "runtime/evaluation-error", "load: cannot read file");
 }

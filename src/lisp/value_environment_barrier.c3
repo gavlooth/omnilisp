@@ -69,7 +69,7 @@ fn Value* promote_for_env_target(Env* target, Value* value, Interp* interp) {
     BoundaryCopyFault copy_fault = BOUNDARY_COPY_FAULT_NONE;
     Value* copied = copy_to_parent_with_fault(value, interp, &copy_fault);
     if (copy_fault != BOUNDARY_COPY_FAULT_NONE) {
-        return raise_error(interp, boundary_copy_fault_message(copy_fault));
+        return boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copy_fault));
     }
     return copied;
 }
@@ -82,25 +82,25 @@ fn bool env_barrier_promote_failed(Value* original, Value* stored) @inline {
 fn Value* env_promote_for_target_result(Env* env, SymbolId _name, Value* value, Interp* interp, char[] failure_msg) {
     (void)_name;
     if (g_env_force_barrier_promote_failure) {
-        return raise_error(interp, failure_msg);
+        return runtime_raise(interp, "runtime/evaluation-error", failure_msg);
     }
 
     Value* stored = promote_for_env_target(env, value, interp);
     if (env_barrier_promote_failed(value, stored)) {
-        return stored != null ? stored : raise_error(interp, failure_msg);
+        return stored != null ? stored : runtime_raise(interp, "runtime/evaluation-error", failure_msg);
     }
     return stored;
 }
 
 fn Value* env_define_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp) {
-    if (env == null) return raise_error(interp, "out of memory while defining binding");
-    if (name == INVALID_SYMBOL_ID) return raise_error(interp, "invalid symbol while defining binding");
+    if (env == null) return runtime_raise(interp, "runtime/out-of-memory", "out of memory while defining binding");
+    if (name == INVALID_SYMBOL_ID) return runtime_raise(interp, "type/arg-mismatch", "invalid symbol while defining binding");
     Value* stored = env_promote_for_target_result(env, name, value, interp, "out of memory while defining binding");
     if (stored != null && stored.tag == ERROR && value != stored) {
         return stored;
     }
     if (!env.define(name, stored)) {
-        return raise_error(interp, "out of memory while defining binding");
+        return runtime_raise(interp, "runtime/out-of-memory", "out of memory while defining binding");
     }
     return null;
 }
@@ -120,7 +120,7 @@ fn void env_define_with_barrier(Env* env, SymbolId name, Value* value, Interp* i
 // Walks parent chain and applies TEMP->ESCAPE promotion at the actual write site.
 fn Value* env_set_with_barrier_result(Env* env, SymbolId name, Value* value, Interp* interp, bool* found_out) {
     if (found_out != null) *found_out = false;
-    if (name == INVALID_SYMBOL_ID) return raise_error(interp, "invalid symbol while mutating binding");
+    if (name == INVALID_SYMBOL_ID) return runtime_raise(interp, "type/arg-mismatch", "invalid symbol while mutating binding");
     Env* cur = env;
     while (cur != null) {
         if (cur.hash_table != null) {

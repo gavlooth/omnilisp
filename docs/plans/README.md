@@ -44,10 +44,10 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   layouts. Its next-boundary section now delegates the broader library and
   parallel solver roadmap to `vulkan-math-library-roadmap-2026-04-17.md` while
   keeping dtype/layout preconditions local to the policy note.
-- `fixed-width-complex-closure-plan-2026-04-18.md`: active closure plan for
-  the remaining fixed-width complex tensor work. It splits the old umbrella
-  residual into three TODO-backed lanes: `TENSOR-100H-SVD-FACTORS`,
-  `TENSOR-100H-CUDA-SVD-NORMS`, and `TENSOR-100H-COMPLEX-EIGEN`.
+- `fixed-width-complex-closure-plan-2026-04-18.md`: closure record for the
+  fixed-width complex tensor work. `TENSOR-100H-SVD-FACTORS`,
+  `TENSOR-100H-CUDA-SVD-NORMS`, and `TENSOR-100H-COMPLEX-EIGEN` are closed;
+  no live TODO lane remains under this plan.
 - `vulkan-math-library-roadmap-2026-04-17.md`: active plan for the next
   Vulkan math work after the correctness-first `TENSOR-100E` baseline. It
   keeps the residual live direction under `TENSOR-100F`
@@ -100,11 +100,12 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   `u`/`s`/`v` factor-output semantics, keeps outputs Vulkan-placed, forbids
   hidden CPU/LAPACK fallback, and tracks the storage-backed large-`k`
   factor-output helper separately from the singular-value-only helper.
-- `vulkan-eigensolver-plan-2026-04-17.md`: direct Vulkan eigen planning for
-  existing `matrix/eigenvalues`, `matrix/eigenvectors`, and `matrix/eigenpairs`
-  surfaces. Symmetric real `Float64` eigenvalues/eigenvectors are the first
-  eligible phase; general `matrix/eigenpairs` stays blocked for Vulkan while
-  its public output contract remains pointer-backed `BigComplex`.
+- `vulkan-eigensolver-plan-2026-04-17.md`: direct Vulkan eigen closure record
+  for existing `matrix/eigenvalues`, `matrix/eigenvectors`, and
+  `matrix/eigenpairs` surfaces. Native Vulkan general `matrix/eigenpairs` is
+  shipped for dense row-major `Float64`, `Float32`, `Complex128`, and
+  `Complex64`, returning Vulkan-placed fixed-width complex `values` and
+  `vectors` with exact-shift hardening and active-submatrix deflation.
 - `vulkan-float32-dtype-and-kernel-plan-2026-04-17.md`: `Float32` planning
   split into the landed native `Tensor Float32` CPU storage/oracle phase, the
   landed CPU `Float32` matrix factor/SVD oracle phase, the landed Vulkan

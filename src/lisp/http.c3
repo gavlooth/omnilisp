@@ -15,13 +15,17 @@ fn Value* http_raise_loop_unavailable(Interp* interp, char[] op_name, char[] cod
     return async_io_raise_loop_unavailable(interp, op_name, code, "http op: libuv loop unavailable");
 }
 
+fn Value* http_raise(Interp* interp, char[] code, char[] message) @inline {
+    return raise_error_with_payload_names(interp, "io", code, message, null);
+}
+
 // ============================================================
 // (http-get url) → dict with 'status 'headers 'body
 // ============================================================
 
 fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     if (args.len < 1 || !is_string(args[0])) {
-        return raise_error(interp, "http-get: expected (http-get url)");
+        return http_raise(interp, "io/http-get-expected-url", "http-get: expected (http-get url)");
     }
 
     char[] url = args[0].str_chars[:args[0].str_len];
@@ -36,7 +40,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     ParsedUrl parsed;
     // fault: lisp::INVALID_SYNTAX
     if (catch err = parse_url(url, &parsed)) {
-        return raise_error(interp, "http-get: invalid URL");
+        return http_raise(interp, "io/http-get-invalid-url", "http-get: invalid URL");
     }
 
     Value* host_val = make_string(interp, parsed.host[:parsed.host_len]);
@@ -49,7 +53,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
     char[ASYNC_IO_HTTP_GET_REQUEST_BUFFER_BYTES] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
     usz? req_len = build_request("GET", &parsed, "", "", &req_buf, ASYNC_IO_HTTP_GET_REQUEST_BUFFER_BYTES);
     if (catch err = req_len) {
-        return raise_error(interp, "http-get: request too large for buffer");
+        return http_raise(interp, "io/http-get-request-too-large", "http-get: request too large for buffer");
     }
     Value* req_str = make_string(interp, req_buf[:req_len]);
     if (req_str == null || req_str.tag == ERROR) return req_str;
@@ -59,7 +63,7 @@ fn Value* prim_http_get(Value*[] args, Env* env, Interp* interp) {
 
     // Heap-allocate: 65KB on stack overflows a 64KB StackCtx when called from a handle body.
     char* resp_buf = (char*)mem::malloc(ASYNC_IO_HTTP_RESPONSE_BUFFER_BYTES);
-    if (resp_buf == null) return raise_error(interp, "http-get: out of memory for response buffer");
+    if (resp_buf == null) return http_raise(interp, "io/http-get-out-of-memory", "http-get: out of memory for response buffer");
     defer mem::free(resp_buf);
     usz resp_len = 0;
     Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES, &resp_len, interp);
@@ -81,7 +85,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
         Value* packed = args[0];
         method_v = car(packed);
         packed = cdr(packed);
-        if (!is_cons(packed)) return raise_error(interp, "http-request: expected (http-request method url [headers] [body])");
+        if (!is_cons(packed)) return http_raise(interp, "io/http-request-expected-cons", "http-request: expected (http-request method url [headers] [body])");
         url_v = car(packed);
         packed = cdr(packed);
         if (is_cons(packed)) {
@@ -90,20 +94,20 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
             if (is_cons(packed)) body_v = car(packed);
         }
     } else {
-        if (args.len < 2) return raise_error(interp, "http-request: expected (http-request method url [headers] [body])");
+        if (args.len < 2) return http_raise(interp, "io/http-request-expected-args", "http-request: expected (http-request method url [headers] [body])");
         method_v = args[0];
         url_v = args[1];
         if (args.len > 2) headers_v = args[2];
         if (args.len > 3) body_v = args[3];
     }
     if (!is_string(method_v) || !is_string(url_v)) {
-        return raise_error(interp, "http-request: method and url must be strings");
+        return http_raise(interp, "io/http-request-expected-strings", "http-request: method and url must be strings");
     }
     if (headers_v != null && !is_string(headers_v)) {
-        return raise_error(interp, "http-request: headers must be a string");
+        return http_raise(interp, "io/http-request-headers-must-be-string", "http-request: headers must be a string");
     }
     if (body_v != null && !is_string(body_v)) {
-        return raise_error(interp, "http-request: body must be a string");
+        return http_raise(interp, "io/http-request-body-must-be-string", "http-request: body must be a string");
     }
 
     char[] method = method_v.str_chars[:method_v.str_len];
@@ -123,7 +127,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
 
     ParsedUrl parsed;
     // fault: lisp::INVALID_SYNTAX
-    if (catch err = parse_url(url, &parsed)) return raise_error(interp, "http-request: invalid URL");
+    if (catch err = parse_url(url, &parsed)) return http_raise(interp, "io/http-request-invalid-url", "http-request: invalid URL");
 
     Value* host_val = make_string(interp, parsed.host[:parsed.host_len]);
     if (host_val == null || host_val.tag == ERROR) return host_val;
@@ -136,7 +140,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
     char[ASYNC_IO_HTTP_REQUEST_BUFFER_BYTES] req_buf;  // buffer: accumulator (keep) — HTTP request assembly, passed to tcp/tls_write
     usz? req_len = build_request(method, &parsed, headers, body, &req_buf, ASYNC_IO_HTTP_REQUEST_BUFFER_BYTES);
     if (catch err = req_len) {
-        return raise_error(interp, "http-request: request too large for buffer");
+        return http_raise(interp, "io/http-request-too-large", "http-request: request too large for buffer");
     }
     Value* req_str = make_string(interp, req_buf[:req_len]);
     if (req_str == null || req_str.tag == ERROR) return req_str;
@@ -145,7 +149,7 @@ fn Value* prim_http_request(Value*[] args, Env* env, Interp* interp) {
 
     // Read response — heap-allocate to avoid StackCtx stack overflow.
     char* resp_buf = (char*)mem::malloc(ASYNC_IO_HTTP_RESPONSE_BUFFER_BYTES);
-    if (resp_buf == null) return raise_error(interp, "http-request: out of memory for response buffer");
+    if (resp_buf == null) return http_raise(interp, "io/http-request-out-of-memory", "http-request: out of memory for response buffer");
     defer mem::free(resp_buf);
     usz resp_len = 0;
     Value* read_result = http_read_connection(conn, parsed.is_https, resp_buf, ASYNC_IO_HTTP_RESPONSE_READ_MAX_BYTES, &resp_len, interp);

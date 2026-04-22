@@ -26,14 +26,14 @@ fn Value* root_store_clone_primitive_to_scope(
         return result;
     }
     if (primitive_has_opaque_user_data(src)) {
-        return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
+        return runtime_raise(interp, "runtime/evaluation-error", "root-store: refusing primitive clone with opaque user_data");
     }
 
     Primitive* dst_prim = (Primitive*)mem::malloc(Primitive.sizeof);
     if (dst_prim == null) return null;
     if (!primitive_clone_plain_header(dst_prim, src_prim)) {
         mem::free(dst_prim);
-        return raise_error(interp, "root-store: refusing primitive clone with opaque user_data");
+        return runtime_raise(interp, "runtime/evaluation-error", "root-store: refusing primitive clone with opaque user_data");
     }
 
     Value* result = boundary_alloc_value_in_current_escape(interp);
@@ -101,7 +101,7 @@ fn Value* root_store_clone_array_to_scope(
         );
         Value* copied = null;
         if (!boundary_copy_result_ok(copy_result)) {
-            copied = raise_error(interp, boundary_copy_fault_message(copy_result.fault_code));
+            copied = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(copy_result.fault_code));
         } else {
             copied = copy_result.value;
         }
@@ -181,7 +181,7 @@ fn Value* root_store_clone_hashmap_to_scope(
                 );
                 Value* copied_key = null;
                 if (!boundary_copy_result_ok(key_copy)) {
-                    copied_key = raise_error(interp, boundary_copy_fault_message(key_copy.fault_code));
+                    copied_key = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(key_copy.fault_code));
                 } else {
                     copied_key = key_copy.value;
                 }
@@ -198,7 +198,7 @@ fn Value* root_store_clone_hashmap_to_scope(
                 );
                 Value* copied_value = null;
                 if (!boundary_copy_result_ok(value_copy)) {
-                    copied_value = raise_error(interp, boundary_copy_fault_message(value_copy.fault_code));
+                    copied_value = boundary_raise(interp, "boundary/copy-fault", (String)boundary_copy_fault_message(value_copy.fault_code));
                 } else {
                     copied_value = value_copy.value;
                 }

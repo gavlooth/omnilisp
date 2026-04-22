@@ -11,7 +11,7 @@ const usz JIT_NATIVE_LOGICAL_CHAIN_LIMIT = 32;
 
 fn Value* jit_eval_staged_block(Interp* interp, Expr* expr, Env* env) {
     if (expr == null || expr.tag != E_BLOCK) {
-        return raise_error(interp, "jit: staged block helper expects block expression");
+        return runtime_raise(interp, "runtime/evaluation-error", "jit: staged block helper expects block expression");
     }
     Value* result = make_nil(interp);
     for (usz i = 0; i < expr.block.expr_count; i++) {

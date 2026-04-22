@@ -3,15 +3,19 @@ module lisp;
 import main;
 
 fn Value* ml_optimizer_vulkan_tensor_value(TensorVal* source, void* device_handle, Interp* interp, char[] metadata_label, char[] value_label) {
+    if (source == null || device_handle == null) {
+        if (device_handle != null) omni_tensor_backend_vulkan_free(device_handle);
+        return tensor_runtime_raise(interp, metadata_label);
+    }
     TensorVal* tensor = tensor_alloc_payload_base_checked(source.dtype, source.shape[0:source.rank], false, false, metadata_label);
     if (tensor == null) {
-        if (device_handle != null) omni_tensor_backend_vulkan_free(device_handle);
+        omni_tensor_backend_vulkan_free(device_handle);
         return tensor_runtime_raise(interp, metadata_label);
     }
     tensor.kind = TENSOR_PAYLOAD_CONCRETE;
     tensor.device = TENSOR_DEVICE_VULKAN;
     tensor.device_handle = device_handle;
-    tensor.device_finalizer = device_handle != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -22,41 +26,6 @@ fn Value* ml_optimizer_vulkan_tensor_value(TensorVal* source, void* device_handl
     result.tensor_val = tensor;
     main::scope_register_dtor(interp.current_scope, (void*)result, &scope_dtor_value);
     return result;
-}
-
-fn bool ml_optimizer_all_vulkan_sgd_operands(Value* params, Value* grads, Value* velocity, bool has_velocity) {
-    if (!tensor_expr_has_device(params, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(grads, TENSOR_DEVICE_VULKAN)) return false;
-    if (has_velocity && !tensor_expr_has_device(velocity, TENSOR_DEVICE_VULKAN)) return false;
-    return true;
-}
-
-fn bool ml_optimizer_any_non_vulkan_sgd_operand(Value* params, Value* grads, Value* velocity, bool has_velocity) {
-    if (tensor_expr_has_non_vulkan_device(params) || tensor_expr_has_non_vulkan_device(grads)) return true;
-    return has_velocity && tensor_expr_has_non_vulkan_device(velocity);
-}
-
-fn bool ml_optimizer_all_vulkan_adam_operands(Value* params, Value* grads, Value* first, Value* second, bool has_moments) {
-    if (!tensor_expr_has_device(params, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(grads, TENSOR_DEVICE_VULKAN)) return false;
-    if (has_moments && (!tensor_expr_has_device(first, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(second, TENSOR_DEVICE_VULKAN))) return false;
-    return true;
-}
-
-fn bool ml_optimizer_any_non_vulkan_adam_operand(Value* params, Value* grads, Value* first, Value* second, bool has_moments) {
-    if (tensor_expr_has_non_vulkan_device(params) || tensor_expr_has_non_vulkan_device(grads)) return true;
-    return has_moments && (tensor_expr_has_non_vulkan_device(first) || tensor_expr_has_non_vulkan_device(second));
-}
-
-fn bool ml_optimizer_all_vulkan_rmsprop_operands(Value* params, Value* grads, Value* square, Value* velocity, bool has_square, bool has_velocity) {
-    if (!tensor_expr_has_device(params, TENSOR_DEVICE_VULKAN) || !tensor_expr_has_device(grads, TENSOR_DEVICE_VULKAN)) return false;
-    if (has_square && !tensor_expr_has_device(square, TENSOR_DEVICE_VULKAN)) return false;
-    if (has_velocity && !tensor_expr_has_device(velocity, TENSOR_DEVICE_VULKAN)) return false;
-    return true;
-}
-
-fn bool ml_optimizer_any_non_vulkan_rmsprop_operand(Value* params, Value* grads, Value* square, Value* velocity, bool has_square, bool has_velocity) {
-    if (tensor_expr_has_non_vulkan_device(params) || tensor_expr_has_non_vulkan_device(grads)) return true;
-    if (has_square && tensor_expr_has_non_vulkan_device(square)) return true;
-    return has_velocity && tensor_expr_has_non_vulkan_device(velocity);
 }
 
 fn Value* ml_optimizer_step_tensor_try_vulkan(
@@ -79,10 +48,6 @@ fn Value* ml_optimizer_step_tensor_try_vulkan(
     if (!touches_vulkan) return null;
     if (out_attempted != null) *out_attempted = true;
 
-    if (!ml_optimizer_all_vulkan_sgd_operands(params_arg, grads_arg, velocity_arg, has_velocity) ||
-        ml_optimizer_any_non_vulkan_sgd_operand(params_arg, grads_arg, velocity_arg, has_velocity)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan SGD operands must remain Vulkan-placed", null);
-    }
     if (has_velocity && !is_tensor(velocity_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: velocity leaves must be tensors");
 
     TensorVal* params = null;
@@ -91,26 +56,22 @@ fn Value* ml_optimizer_step_tensor_try_vulkan(
     Value* params_value = null;
     Value* grads_value = null;
     Value* velocity_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
     if (err != null) return err;
     defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
-    err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
+    err = tensor_expr_resolve_vulkan_or_migrate(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
     if (err != null) return err;
     defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
     if (has_velocity) {
-        err = tensor_expr_resolve_concrete_any_device(velocity_arg, &velocity, &velocity_value, interp, "ml/optimizer-step: velocity tensor backing storage is missing");
+        err = tensor_expr_resolve_vulkan_or_migrate(velocity_arg, &velocity, &velocity_value, interp, "ml/optimizer-step: velocity tensor backing storage is missing");
         if (err != null) return err;
     }
     defer if (velocity_value != null && velocity_value != velocity_arg) boundary_cleanup_materialized_value(null, velocity_value, interp.current_scope);
-
-    if (params.device != TENSOR_DEVICE_VULKAN || grads.device != TENSOR_DEVICE_VULKAN || (has_velocity && velocity.device != TENSOR_DEVICE_VULKAN)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan SGD operands must realize to Vulkan storage", null);
-    }
     if (params.dtype != grads.dtype || (has_velocity && params.dtype != velocity.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/optimizer-step: parameter, gradient, and velocity dtypes must match", null);
     }
-    if (params.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan SGD currently supports Float32 tensors", null);
+    if (params.dtype != TENSOR_DTYPE_FLOAT32 && params.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan SGD currently supports Float64 and Float32 tensors", null);
     }
     if (!ml_sgd_tensor_shapes_match(params, grads) || (has_velocity && !ml_sgd_tensor_shapes_match(params, velocity))) {
         return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and velocity shapes must match");
@@ -127,21 +88,40 @@ fn Value* ml_optimizer_step_tensor_try_vulkan(
 
     void* out_params_device = null;
     void* out_velocity_device = null;
-    int status = omni_tensor_backend_vulkan_ml_sgd_f32(
-        params.device_handle,
-        params.byte_len,
-        grads.device_handle,
-        grads.byte_len,
-        has_velocity ? velocity.device_handle : null,
-        has_velocity ? velocity.byte_len : 0,
-        params.element_count,
-        (float)learning_rate,
-        (float)momentum,
-        (float)weight_decay,
-        has_velocity ? 1 : 0,
-        &out_params_device,
-        &out_velocity_device
-    );
+    int status;
+    if (params.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_ml_sgd_f64(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_velocity ? velocity.device_handle : null,
+            has_velocity ? velocity.byte_len : 0,
+            params.element_count,
+            learning_rate,
+            momentum,
+            weight_decay,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_velocity_device
+        );
+    } else {
+        status = omni_tensor_backend_vulkan_ml_sgd_f32(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_velocity ? velocity.device_handle : null,
+            has_velocity ? velocity.byte_len : 0,
+            params.element_count,
+            (float)learning_rate,
+            (float)momentum,
+            (float)weight_decay,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_velocity_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         if (out_params_device != null) omni_tensor_backend_vulkan_free(out_params_device);
         if (out_velocity_device != null) omni_tensor_backend_vulkan_free(out_velocity_device);
@@ -183,17 +163,15 @@ fn Value* ml_adam_step_tensor_try_vulkan(
     bool* out_attempted
 ) {
     if (out_attempted != null) *out_attempted = false;
-    bool has_moments = first_arg != null && second_arg != null;
+    bool has_moments = false;
+    Value* err = ml_optimizer_validate_adam_moments(first_arg, second_arg, interp, &has_moments);
+    if (err != null) return err;
     bool touches_vulkan = tensor_expr_has_device(params_arg, TENSOR_DEVICE_VULKAN) ||
         tensor_expr_has_device(grads_arg, TENSOR_DEVICE_VULKAN) ||
         (has_moments && (tensor_expr_has_device(first_arg, TENSOR_DEVICE_VULKAN) || tensor_expr_has_device(second_arg, TENSOR_DEVICE_VULKAN)));
     if (!touches_vulkan) return null;
     if (out_attempted != null) *out_attempted = true;
 
-    if (!ml_optimizer_all_vulkan_adam_operands(params_arg, grads_arg, first_arg, second_arg, has_moments) ||
-        ml_optimizer_any_non_vulkan_adam_operand(params_arg, grads_arg, first_arg, second_arg, has_moments)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam operands must remain Vulkan-placed", null);
-    }
     if (has_moments && (!is_tensor(first_arg) || !is_tensor(second_arg))) return ml_optimizer_invalid(interp, "ml/optimizer-step: Adam moment leaves must be tensors");
 
     TensorVal* params = null;
@@ -204,29 +182,25 @@ fn Value* ml_adam_step_tensor_try_vulkan(
     Value* grads_value = null;
     Value* first_value = null;
     Value* second_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    err = tensor_expr_resolve_vulkan_or_migrate(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
     if (err != null) return err;
     defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
-    err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
+    err = tensor_expr_resolve_vulkan_or_migrate(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
     if (err != null) return err;
     defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
     if (has_moments) {
-        err = tensor_expr_resolve_concrete_any_device(first_arg, &first, &first_value, interp, "ml/optimizer-step: first-moment tensor backing storage is missing");
+        err = tensor_expr_resolve_vulkan_or_migrate(first_arg, &first, &first_value, interp, "ml/optimizer-step: first-moment tensor backing storage is missing");
         if (err != null) return err;
-        err = tensor_expr_resolve_concrete_any_device(second_arg, &second, &second_value, interp, "ml/optimizer-step: second-moment tensor backing storage is missing");
+        err = tensor_expr_resolve_vulkan_or_migrate(second_arg, &second, &second_value, interp, "ml/optimizer-step: second-moment tensor backing storage is missing");
         if (err != null) return err;
     }
     defer if (first_value != null && first_value != first_arg) boundary_cleanup_materialized_value(null, first_value, interp.current_scope);
     defer if (second_value != null && second_value != second_arg) boundary_cleanup_materialized_value(null, second_value, interp.current_scope);
-
-    if (params.device != TENSOR_DEVICE_VULKAN || grads.device != TENSOR_DEVICE_VULKAN || (has_moments && (first.device != TENSOR_DEVICE_VULKAN || second.device != TENSOR_DEVICE_VULKAN))) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam operands must realize to Vulkan storage", null);
-    }
     if (params.dtype != grads.dtype || (has_moments && (params.dtype != first.dtype || params.dtype != second.dtype))) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/optimizer-step: parameter, gradient, and Adam moment dtypes must match", null);
     }
-    if (params.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam currently supports Float32 tensors", null);
+    if (params.dtype != TENSOR_DTYPE_FLOAT32 && params.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan Adam currently supports Float64 and Float32 tensors", null);
     }
     if (!ml_sgd_tensor_shapes_match(params, grads) || (has_moments && (!ml_sgd_tensor_shapes_match(params, first) || !ml_sgd_tensor_shapes_match(params, second)))) {
         return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and Adam moment shapes must match");
@@ -250,29 +224,56 @@ fn Value* ml_adam_step_tensor_try_vulkan(
     void* out_params_device = null;
     void* out_first_device = null;
     void* out_second_device = null;
-    int status = omni_tensor_backend_vulkan_ml_adam_f32(
-        params.device_handle,
-        params.byte_len,
-        grads.device_handle,
-        grads.byte_len,
-        has_moments ? first.device_handle : null,
-        has_moments ? first.byte_len : 0,
-        has_moments ? second.device_handle : null,
-        has_moments ? second.byte_len : 0,
-        params.element_count,
-        (float)learning_rate,
-        (float)beta1,
-        (float)beta2,
-        (float)epsilon,
-        (float)weight_decay,
-        (float)first_correction,
-        (float)second_correction,
-        decoupled_weight_decay ? 1 : 0,
-        has_moments ? 1 : 0,
-        &out_params_device,
-        &out_first_device,
-        &out_second_device
-    );
+    int status;
+    if (params.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_ml_adam_f64(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_moments ? first.device_handle : null,
+            has_moments ? first.byte_len : 0,
+            has_moments ? second.device_handle : null,
+            has_moments ? second.byte_len : 0,
+            params.element_count,
+            learning_rate,
+            beta1,
+            beta2,
+            epsilon,
+            weight_decay,
+            first_correction,
+            second_correction,
+            decoupled_weight_decay ? 1 : 0,
+            has_moments ? 1 : 0,
+            &out_params_device,
+            &out_first_device,
+            &out_second_device
+        );
+    } else {
+        status = omni_tensor_backend_vulkan_ml_adam_f32(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_moments ? first.device_handle : null,
+            has_moments ? first.byte_len : 0,
+            has_moments ? second.device_handle : null,
+            has_moments ? second.byte_len : 0,
+            params.element_count,
+            (float)learning_rate,
+            (float)beta1,
+            (float)beta2,
+            (float)epsilon,
+            (float)weight_decay,
+            (float)first_correction,
+            (float)second_correction,
+            decoupled_weight_decay ? 1 : 0,
+            has_moments ? 1 : 0,
+            &out_params_device,
+            &out_first_device,
+            &out_second_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         if (out_params_device != null) omni_tensor_backend_vulkan_free(out_params_device);
         if (out_first_device != null) omni_tensor_backend_vulkan_free(out_first_device);
@@ -325,10 +326,6 @@ fn Value* ml_rmsprop_step_tensor_try_vulkan(
     if (!touches_vulkan) return null;
     if (out_attempted != null) *out_attempted = true;
 
-    if (!ml_optimizer_all_vulkan_rmsprop_operands(params_arg, grads_arg, square_arg, velocity_arg, has_square, has_velocity) ||
-        ml_optimizer_any_non_vulkan_rmsprop_operand(params_arg, grads_arg, square_arg, velocity_arg, has_square, has_velocity)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp operands must remain Vulkan-placed", null);
-    }
     if (has_square && !is_tensor(square_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: RMSProp square-average leaves must be tensors");
     if (has_velocity && !is_tensor(velocity_arg)) return ml_optimizer_invalid(interp, "ml/optimizer-step: RMSProp velocity leaves must be tensors");
 
@@ -340,32 +337,27 @@ fn Value* ml_rmsprop_step_tensor_try_vulkan(
     Value* grads_value = null;
     Value* square_value = null;
     Value* velocity_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(params_arg, &params, &params_value, interp, "ml/optimizer-step: parameter tensor backing storage is missing");
     if (err != null) return err;
     defer if (params_value != null && params_value != params_arg) boundary_cleanup_materialized_value(null, params_value, interp.current_scope);
-    err = tensor_expr_resolve_concrete_any_device(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
+    err = tensor_expr_resolve_vulkan_or_migrate(grads_arg, &grads, &grads_value, interp, "ml/optimizer-step: gradient tensor backing storage is missing");
     if (err != null) return err;
     defer if (grads_value != null && grads_value != grads_arg) boundary_cleanup_materialized_value(null, grads_value, interp.current_scope);
     if (has_square) {
-        err = tensor_expr_resolve_concrete_any_device(square_arg, &square, &square_value, interp, "ml/optimizer-step: square-average tensor backing storage is missing");
+        err = tensor_expr_resolve_vulkan_or_migrate(square_arg, &square, &square_value, interp, "ml/optimizer-step: square-average tensor backing storage is missing");
         if (err != null) return err;
     }
     if (has_velocity) {
-        err = tensor_expr_resolve_concrete_any_device(velocity_arg, &velocity, &velocity_value, interp, "ml/optimizer-step: velocity tensor backing storage is missing");
+        err = tensor_expr_resolve_vulkan_or_migrate(velocity_arg, &velocity, &velocity_value, interp, "ml/optimizer-step: velocity tensor backing storage is missing");
         if (err != null) return err;
     }
     defer if (square_value != null && square_value != square_arg) boundary_cleanup_materialized_value(null, square_value, interp.current_scope);
     defer if (velocity_value != null && velocity_value != velocity_arg) boundary_cleanup_materialized_value(null, velocity_value, interp.current_scope);
-
-    if (params.device != TENSOR_DEVICE_VULKAN || grads.device != TENSOR_DEVICE_VULKAN ||
-        (has_square && square.device != TENSOR_DEVICE_VULKAN) || (has_velocity && velocity.device != TENSOR_DEVICE_VULKAN)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp operands must realize to Vulkan storage", null);
-    }
     if (params.dtype != grads.dtype || (has_square && params.dtype != square.dtype) || (has_velocity && params.dtype != velocity.dtype)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/optimizer-step: parameter, gradient, and RMSProp state dtypes must match", null);
     }
-    if (params.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp currently supports Float32 tensors", null);
+    if (params.dtype != TENSOR_DTYPE_FLOAT32 && params.dtype != TENSOR_DTYPE_DOUBLE) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/optimizer-step: Vulkan RMSProp currently supports Float64 and Float32 tensors", null);
     }
     if (!ml_sgd_tensor_shapes_match(params, grads) || (has_square && !ml_sgd_tensor_shapes_match(params, square)) || (has_velocity && !ml_sgd_tensor_shapes_match(params, velocity))) {
         return ml_optimizer_shape_mismatch(interp, "ml/optimizer-step: parameter, gradient, and RMSProp state shapes must match");
@@ -384,27 +376,52 @@ fn Value* ml_rmsprop_step_tensor_try_vulkan(
     void* out_params_device = null;
     void* out_square_device = null;
     void* out_velocity_device = null;
-    int status = omni_tensor_backend_vulkan_ml_rmsprop_f32(
-        params.device_handle,
-        params.byte_len,
-        grads.device_handle,
-        grads.byte_len,
-        has_square ? square.device_handle : null,
-        has_square ? square.byte_len : 0,
-        has_velocity ? velocity.device_handle : null,
-        has_velocity ? velocity.byte_len : 0,
-        params.element_count,
-        (float)learning_rate,
-        (float)alpha,
-        (float)epsilon,
-        (float)momentum,
-        (float)weight_decay,
-        has_square ? 1 : 0,
-        has_velocity ? 1 : 0,
-        &out_params_device,
-        &out_square_device,
-        &out_velocity_device
-    );
+    int status;
+    if (params.dtype == TENSOR_DTYPE_DOUBLE) {
+        status = omni_tensor_backend_vulkan_ml_rmsprop_f64(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_square ? square.device_handle : null,
+            has_square ? square.byte_len : 0,
+            has_velocity ? velocity.device_handle : null,
+            has_velocity ? velocity.byte_len : 0,
+            params.element_count,
+            learning_rate,
+            alpha,
+            epsilon,
+            momentum,
+            weight_decay,
+            has_square ? 1 : 0,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_square_device,
+            &out_velocity_device
+        );
+    } else {
+        status = omni_tensor_backend_vulkan_ml_rmsprop_f32(
+            params.device_handle,
+            params.byte_len,
+            grads.device_handle,
+            grads.byte_len,
+            has_square ? square.device_handle : null,
+            has_square ? square.byte_len : 0,
+            has_velocity ? velocity.device_handle : null,
+            has_velocity ? velocity.byte_len : 0,
+            params.element_count,
+            (float)learning_rate,
+            (float)alpha,
+            (float)epsilon,
+            (float)momentum,
+            (float)weight_decay,
+            has_square ? 1 : 0,
+            has_velocity ? 1 : 0,
+            &out_params_device,
+            &out_square_device,
+            &out_velocity_device
+        );
+    }
     if (status != OMNI_TENSOR_VULKAN_SUCCESS) {
         if (out_params_device != null) omni_tensor_backend_vulkan_free(out_params_device);
         if (out_square_device != null) omni_tensor_backend_vulkan_free(out_square_device);

@@ -13,6 +13,9 @@ fn lisp::Value* ffi_declare_lib(char[] binding_name, char[] soname, bool eager_l
     if (interp == null) return aot_make_error_best_effort(null, "aot ffi lib: runtime interpreter unavailable");
     if (binding_name.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: binding name must not be empty");
     if (soname.len == 0) return aot_make_error_best_effort(interp, "aot ffi lib: soname must not be empty");
+    if (soname.len >= lisp::FFI_DLOPEN_REGISTRY_PATH_CAP) {
+        return aot_make_error_best_effort(interp, "aot ffi lib: soname must be shorter than 256 bytes");
+    }
 
     lisp::SymbolId binding_sid = (lisp::SymbolId)0;
     if (!aot_intern_checked(interp, binding_name, &binding_sid)) {

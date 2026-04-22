@@ -17,24 +17,24 @@ Source: `TODO.md`
         LAPACK/CPU fallback counters, focused host and bounded-container
         advanced tests, docs parity, Stage 3 source parity, and
         `git diff --check`.
-    - [ ] `TENSOR-100H-COMPLEX-EIGEN` settle and implement fixed-width
+    - [x] `TENSOR-100H-COMPLEX-EIGEN` settle and implement fixed-width
       complex eigen/eigenpair contracts.
-      - blocker/defer reason: native fixed-width complex Tensor storage now
-        exists, but the public eigen result contract still has a `BigComplex`
-        general `matrix/eigenpairs` legacy. Backend support must not fake
-        support by lowering pointer-backed `BigComplex` or host-building it
-        behind a GPU result.
-      - next step: freeze the fixed-width contract first. Recommended
-        direction: `matrix/eigenvalues` / `matrix/eigenvectors` cover
-        symmetric/Hermitian inputs with component-width real values and
-        dtype-preserving vectors; `matrix/eigenpairs` becomes the general
-        fixed-width eigenpair surface returning fixed-width complex
-        values/vectors for fixed-width numeric inputs. CUDA remains false
-        unless cuSOLVER eigen support is introduced later.
-      - validation: residual checks `A * v ~= lambda * v`, Hermitian and
-        general cases, dtype/device/capability truth tables, no-hidden-fallback
-        tests, focused host and bounded-container advanced tests, docs parity,
-        Stage 3 source parity, and `git diff --check`.
+      - closed/superseded: the fixed-width eigen contract is now frozen in
+        `docs/plans/fixed-width-complex-closure-plan-2026-04-18.md` and split
+        into concrete tracked subitems in `docs/todo_parts/todo_part_01.md`.
+      - shipped slices: CPU `Float64` `matrix/eigenpairs` now returns
+        `Complex128` values/vectors; CPU Hermitian `Complex128`/`Complex64`
+        `matrix/eigenvalues` and `matrix/eigenvectors` are implemented; CPU
+        general `Float32`/`Complex128`/`Complex64` `matrix/eigenpairs` is
+        implemented; Vulkan Hermitian `Complex128`/`Complex64`
+        `matrix/eigenvalues`/`matrix/eigenvectors` is implemented.
+      - remaining work: continue with
+        `TENSOR-100H-COMPLEX-EIGEN-VULKAN-GENERAL` for backend-native
+        non-Hermitian Vulkan complex `matrix/eigenpairs` after recording the
+        solver design boundary.
+      - validation: see the closed subitems in
+        `docs/todo_parts/todo_part_01.md`; latest focused host
+        `advanced-collections-module` passed `1975/0`.
     - [x] Add explicit Tensor view/layout representation metadata before
       enabling view-backed GPU dispatch.
       - closed: `tensor-layout` now returns a metadata `Dictionary` covering
@@ -87,18 +87,39 @@ Source: `TODO.md`
         `advanced-collections-module` passed `1475/0`; bounded-container
         focused `advanced-collections-module` passed `1458/0`; targeted diff
         hygiene passed.
-    - [ ] Add explicit view-aware Vulkan/copy-kernel support after the
-      read-only CPU transpose-view and Vulkan materialization contracts are
-      validated.
-      - blocker/defer reason: `matrix/transpose-view` ships with CPU
-        read/materialize support, and direct rank-2 Vulkan transpose-view
-        materialization is landed. That materialization boundary is not broad
-        view-aware kernel execution. Vulkan/CUDA helpers still require
-        zero-offset dense row-major storage unless a specific helper ABI accepts
-        offset/stride metadata.
-      - concrete next step: choose one structural GPU operation, define the
-        helper ABI for source offset/strides/backing extent, add alias/bounds
-        tests, then route that operation without hidden CPU/GPU copies.
+    - [x] Land CUDA explicit-copy materialization for CPU-backed transpose
+      views before broader view-aware GPU execution.
+      - closed: explicit `to-device 'cuda` and destination-form `realize`
+        into CUDA tensors now allow CPU-backed `matrix/transpose-view` sources
+        by materializing them to dense CPU tensors at the public copy boundary
+        before using the existing CUDA dense-storage copy helpers.
+      - shipped contract: this is explicit copy-boundary materialization only.
+        It does not make CUDA kernels, CUDA-backed views, arbitrary strided
+        layouts, or raw backend helpers consume offset/stride metadata.
+      - validation: `scripts/check_file_size_gate.sh`; `c3c build --obj-out
+        obj`; host focused `advanced-collections-module` passed `1980/0`,
+        including fail-closed coverage for Vulkan-backed transpose views sent
+        to CUDA.
+    - [x] `TENSOR-100F-STRIDE-AWARE-HELPERS-001` add explicit stride-aware Vulkan/CUDA kernel-helper support after
+      the read-only CPU transpose-view and explicit materialization contracts
+      are validated.
+      - closed: the first CUDA stride-aware helper boundary is now shipped for
+        zero-offset strided Tensor operands in the CUDA binary-map helper ABI.
+        The helper validates storage span, builds per-output operand offset
+        tables when operand strides differ from dense output strides, and
+        preserves fail-closed behavior for unsupported device/layout cases.
+      - shipped contract: `matrix/transpose-view` over CUDA-backed
+        `Float64`/`Float32`/fixed-complex tensors produces CUDA read-only view
+        metadata when the source is zero-offset dense row-major storage. CUDA
+        binary map can consume those zero-offset strided CUDA view operands
+        without hidden CPU/GPU materialization.
+      - explicit non-contract: raw CUDA view materialization to CPU and CUDA
+        unary/scientific map over strided view operands remain fail-closed
+        because those helper ABIs do not yet accept stride metadata.
+      - validation: helper rebuild; `c3c build --obj-out obj`; direct CUDA
+        transpose-view/map probes; focused host `advanced-collections-module`
+        passed `2004/0`; bounded-container focused
+        `advanced-collections-module` passed `1973/0`.
       - prerequisite state: direct rank-2 Vulkan transpose-view materialization
         validation is recorded above. Future view-aware execution still needs
         new offset/stride/backing-extent validation, including alias/source
@@ -240,14 +261,19 @@ Source: `TODO.md`
         `advanced-collections-module` `pass=1282 fail=0`, bounded-container
         focused `advanced-collections-module` `pass=1269 fail=0`, primitive
         docs parity, Stage 3 source parity, and targeted `git diff --check`.
-    - [ ] Broaden CUDA `map` beyond the landed dense row-major arithmetic and
+    - [x] `TENSOR-100F-CUDA-MAP-BROADEN-001` broaden CUDA `map` beyond the landed dense row-major arithmetic and
       scientific `Float64`/`Float32` scope only after dedicated semantic and
       validation gates.
-      - blocker/defer reason: unsupported layouts need explicit storage-span /
-        base-offset / owner metadata before CUDA kernels can safely read
-        non-dense views; unsupported callables still need explicit dispatch
-        contracts. The current kernels intentionally cover dense row-major
-        supported callables only.
+      - closed: the open layout/view residual is resolved for the first
+        semantic boundary. CUDA `map` now keeps zero-offset CUDA
+        transpose-view operands on device for supported binary arithmetic/min/max
+        ops, including scalar/tensor and tensor/tensor cases, and the lazy map
+        realization path preserves the same behavior.
+      - shipped contract: the broadened CUDA map surface is still capability
+        gated by `elementwise-map-float64`, `elementwise-map-float32`, and
+        fixed-complex map capabilities. It does not add mixed-device execution,
+        arbitrary nonzero-offset views, unsupported callables, or hidden CPU
+        materialization.
       - closed hardening slice: mixed CPU/CUDA operands now fail with the
         explicit `map: CUDA operands must remain CUDA-placed` diagnostic, and
         mixed CUDA Tensor dtypes fail with `tensor/dtype-mismatch` instead of a
@@ -256,9 +282,10 @@ Source: `TODO.md`
         unsupported mixed CPU/CUDA lazy operand is rejected before CPU lazy
         materialization can run. This preserves the no-hidden-transfer rule; it
         does not add mixed-device execution support.
-      - next step: choose one residual family first: unsupported layout/view
-        metadata, explicit mixed-device execution support, or callable extension
-        beyond the fixed op-id table.
+      - future reopen rule: open a new item, not this closed residual, only for
+        a concrete next family such as nonzero storage offsets, unary/scientific
+        strided CUDA map, mixed-device execution, or callable extension beyond
+        the fixed op-id table.
       - prerequisite state: keep generated CUDA scientific PTX and the existing
         embedded arithmetic PTX as separate capability-gated modules; keep
         `tensor-backends` `elementwise-map-*` and `scientific-map-*` reporting
@@ -266,13 +293,13 @@ Source: `TODO.md`
       - negative constraint: do not treat the landed CUDA map support as
         arbitrary-layout support, and do not reintroduce hidden CPU
         materialization for unsupported CUDA operands.
-      - validation: CUDA direct smokes for the chosen residual family,
-        no-implicit-transfer regressions, helper rebuild if helper ABI changes,
-        `c3c build --obj-out obj`, focused host tests, and bounded-container
-        focused advanced collections. Mixed-operand hardening validation:
-        `c3c build --obj-out obj`; host focused `advanced-collections-module`
-        `pass=1261 fail=0`; bounded-container focused
-        `advanced-collections-module` `pass=1248 fail=0` with
+      - validation: helper rebuild; `c3c build --obj-out obj`; direct CUDA
+        transpose-view layout/map probes; focused host
+        `advanced-collections-module` `pass=2004 fail=0`; bounded-container
+        focused `advanced-collections-module` `pass=1973 fail=0`.
+        Mixed-operand hardening validation: `c3c build --obj-out obj`; host focused
+        `advanced-collections-module` `pass=1261 fail=0`; bounded-container
+        focused `advanced-collections-module` `pass=1248 fail=0` with
         `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
     - [x] Add CUDA-first Tensor rounding through a dtype-changing
       `Tensor BigInteger` result path.
@@ -506,42 +533,66 @@ Source: `TODO.md`
         advanced collections, docs parity, Stage 3 source parity, and targeted
         `git diff --check` passed for this checkpoint. Bounded-container
         focused advanced collections also passed after the CUDA addition.
-    - [ ] Reopen full blocked/tiled trailing-update LU only if new
+    - [x] `TENSOR-100F-LU-BLOCKED-PERF-001` reopen full blocked/tiled trailing-update LU only if new
       measurements justify it as a performance lane.
-      - blocker/defer reason: current measured parallel solve baseline routes
-        `n >= 65` through staged multi-dispatch solve; blocked trailing-update
-        LU is not required for correctness closure.
-      - next step: collect comparative measurements showing the existing
-        staged route is the bottleneck before broadening algorithmic scope.
+      - closed 2026-04-22: `scripts/run_vulkan_math_perf_probe.sh` now includes
+        staged Vulkan solve fixtures. The measured `Float64` route does not
+        justify reopening full blocked/tiled trailing-update LU: 65x65 identity
+        measured 323 ms, 65x65 `I + ones` measured 304 ms, 128x128 identity
+        measured 303 ms, 128x128 `I + ones` measured 326 ms, and 192x192
+        identity measured 314 ms.
+      - future reopen rule: open a new item, not this closed residual, only if
+        repeated larger solve measurements at a named size show the staged
+        route is the bottleneck and a blocked trailing-update LU design has a
+        clear correctness/placement validation path.
       - validation: checked-in measurement artifact, no-LAPACK solve tests,
         focused host plus bounded-container advanced collections tests.
-    - [ ] Run broad/heavy bounded-container validation before closing the whole
+    - [x] `TENSOR-100F-BROAD-VALIDATION-001` run broad/heavy bounded-container validation before closing the whole
       `TENSOR-100F` parent.
-      - blocker/defer reason: recent source-level slices ran focused host and
-        bounded-container validation, not full heavy/container-only gates. The
-        scalar `Float32` slice now has a bounded focused
-        `advanced-collections-module` pass, but parent-level closure still
-        needs the broader Docker-bound suite required by repo policy.
-      - next step: when the parent is otherwise ready to close, run the
-        Docker-bound suite required by repo policy rather than host-heavy
-        execution.
-      - validation: record the exact bounded-container command, pass/fail
-        counts, and any unresolved failures in this TODO or the session report.
-    - [ ] Fix the validation Docker image C3 compiler architecture on arm64
+      - closed 2026-04-22: broad validation ran through the bounded container
+        gate before parent closure.
+      - repair surfaced by the broad run: `allocator-validation` first exposed
+        that `ast_arena_alloc` continued allocating after the current chunk was
+        corrupt (`used > capacity`); the allocator now fails closed in that
+        state before adding another chunk.
+      - repair surfaced by the broad run: the `advanced` slice exposed that the
+        JIT tail-position `List` / `Array` constructor shortcut bypassed
+        one-argument conversion validation for improper lists and malformed
+        iterator tails; one-argument calls now route through the primitive
+        constructor semantics while variadic calls keep the tail fast path.
+      - validation: bounded-container `allocator-validation` passed
+        `pass=1 fail=0`; bounded-container `advanced` passed
+        `pass=3377 fail=0`; `scripts/run_validation_container.sh
+        scripts/run_global_gates.sh` passed the file-size gate, normal build,
+        all configured normal lisp slices, compiler slice, and FTXUI smokes.
+      - ASAN note: the current C3 toolchain reports address sanitizer
+        unsupported for this target, so `scripts/run_global_gates.sh` now
+        records that condition as an explicit ASAN skip instead of continuing
+        into mislabeled ASAN tests.
+      - diagnostic classification: `memory-lifetime-smoke` emits boundary
+        graph-audit diagnostic lines while returning `fail=0`; this is now
+        classified under `MEM-GRAPH-AUDIT-DIAGNOSTIC-20260422-001` as expected
+        output from the passing negative regression
+        `root splice debug audit rejects releasing temp edge`, not a Vulkan math
+        baseline blocker.
+    - [x] Fix the validation Docker image C3 compiler architecture on arm64
       hosts.
-      - blocker/defer reason: `scripts/build_validation_image.sh` currently
-        rebuilds an arm64 Ubuntu image but `docker/validation.Dockerfile`
-        downloads `c3-linux.tar.gz`, whose `/opt/c3/c3c` is x86-64. Running the
-        container path without a host toolchain mount fails before tests with
-        `/usr/local/bin/c3c: cannot execute binary file: Exec format error`.
-      - next step: update the validation Dockerfile/build script to select a
-        native arm64 C3 compiler artifact or build C3 from source for arm64;
-        until then run bounded validation with
-        `OMNI_VALIDATION_TOOLCHAIN_ROOT=/home/christos/.local`.
-      - validation: `docker run --rm --entrypoint /bin/sh
-        omni-validation:2026-03-10 -lc 'uname -m; file /opt/c3/c3c'` must show
-        matching arm64/aarch64, then rerun `scripts/run_validation_container.sh`
-        without `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
+      - closed 2026-04-22: `docker/validation.Dockerfile` now keeps the
+        checked C3 release tarball path for `amd64`/`x86_64` and builds C3
+        from the checked source tarball on `arm64`/`aarch64`, because the C3
+        release does not publish a Linux arm64 binary tarball.
+      - shipped contract: the validation image now pins C3 `v0.7.11`, matching
+        the repo's active host compiler contract, and installs LLVM/LLD/Polly
+        19 for the arm64 source-build path.
+      - negative-memory constraint: do not use Android aarch64 C3 release
+        artifacts in the Ubuntu validation image; they are not a native Linux
+        toolchain.
+      - validation: `scripts/build_validation_image.sh` passed on an arm64
+        Docker host; `docker run --rm --entrypoint /bin/sh
+        omni-validation:2026-03-10 -lc 'uname -m; file /opt/c3/c3c; c3c -V'`
+        reported `aarch64`, C3 `0.7.11`, LLVM `19.1.1`, and
+        `aarch64-unknown-linux-gnu`; `scripts/run_validation_container.sh c3c
+        build --obj-out obj` passed without `OMNI_VALIDATION_TOOLCHAIN_ROOT`.
   - shipped `TENSOR-100F1` slice:
     - factored shared trailing-status copyback for serial Vulkan matrix
       helpers;

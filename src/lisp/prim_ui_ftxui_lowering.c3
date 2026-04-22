@@ -10,7 +10,7 @@ fn Value* ui_ftxui_lower_node(
     Interp* interp
 ) {
     if (node == null || !is_dict(node)) {
-        return raise_error(interp, "ui-ftxui: expected ui node dictionary");
+        return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: expected ui node dictionary");
     }
 
     Value* kind_value = ui_ftxui_dict_get(node, "kind", interp);
@@ -18,8 +18,8 @@ fn Value* ui_ftxui_lower_node(
     Value* children_value = ui_ftxui_dict_get(node, "children", interp);
     char[] kind_name = ui_ftxui_kind_name(kind_value, interp);
 
-    if (kind_name.len == 0) return raise_error(interp, "ui-ftxui: node kind must be string or symbol");
-    if (props == null || !is_dict(props)) return raise_error(interp, "ui-ftxui: node props must be dictionary");
+    if (kind_name.len == 0) return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: node kind must be string or symbol");
+    if (props == null || !is_dict(props)) return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: node props must be dictionary");
 
     if (ui_ftxui_str_eq(kind_name, "text") || ui_ftxui_str_eq(kind_name, "paragraph")) {
         char* text = null;
@@ -69,7 +69,7 @@ fn Value* ui_ftxui_lower_node(
         if (track_err != null) return track_err;
 
         char* text_value = copy_to_heap_c_string("");
-        if (text_value == null) return raise_error(interp, "ui-ftxui: out of memory allocating input state");
+        if (text_value == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory allocating input state");
         track_err = ui_ftxui_track_heap_or_oom(state, text_value, interp);
         if (track_err != null) return track_err;
 
@@ -91,7 +91,7 @@ fn Value* ui_ftxui_lower_node(
         if (track_err != null) return track_err;
 
         bool* checked = (bool*)mem::malloc(bool.sizeof);
-        if (checked == null) return raise_error(interp, "ui-ftxui: out of memory allocating checkbox state");
+        if (checked == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory allocating checkbox state");
         *checked = !is_falsy(ui_ftxui_dict_get(props, "checked", interp), interp);
         track_err = ui_ftxui_track_heap_or_oom(state, checked, interp);
         if (track_err != null) return track_err;
@@ -118,12 +118,12 @@ fn Value* ui_ftxui_lower_node(
             "ui-ftxui: menu 'items' must be a proper list or array of strings/symbols"
         );
         if (items_err != null) return items_err;
-        if (items == null || item_count == 0) return raise_error(interp, "ui-ftxui: menu requires at least one item");
-        if (item_count > (usz)int.max) return raise_error(interp, "ui-ftxui: menu has too many items");
+        if (items == null || item_count == 0) return ftxui_raise(interp, "ui/arg-mismatch", "ui-ftxui: menu requires at least one item");
+        if (item_count > (usz)int.max) return ftxui_raise(interp, "ui/range-error", "ui-ftxui: menu has too many items");
         defer free_heap_c_string_items(items, item_count);
 
         int* selected_index = (int*)mem::malloc(int.sizeof);
-        if (selected_index == null) return raise_error(interp, "ui-ftxui: out of memory allocating menu state");
+        if (selected_index == null) return ftxui_raise(interp, "ui/out-of-memory", "ui-ftxui: out of memory allocating menu state");
         *selected_index = 0;
         Value* track_err = ui_ftxui_track_heap_or_oom(state, selected_index, interp);
         if (track_err != null) return track_err;
@@ -242,5 +242,5 @@ fn Value* ui_ftxui_lower_node(
     } else {
         msg = "ui-ftxui: unsupported node kind";
     }
-    return raise_error(interp, msg);
+    return runtime_raise(interp, "runtime/evaluation-error", msg);
 }

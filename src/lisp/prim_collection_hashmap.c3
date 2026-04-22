@@ -28,11 +28,11 @@ fn Value* dict_ctor_type_raise(Interp* interp, char[] code, char[] message) @inl
 }
 
 fn Value* dict_ctor_runtime_raise(Interp* interp, char[] message) @inline {
-    return raise_error(interp, message);
+    return collection_raise(interp, "type/arg-mismatch", message);
 }
 
 fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 1) return raise_error(interp, "length: expected 1 argument");
+    if (args.len < 1) return collection_raise(interp, "type/arity", "length: expected 1 argument");
 
     // nil has length 0
     if (is_nil(args[0])) {
@@ -53,7 +53,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
     // Tensor element count
     if (is_tensor(args[0])) {
         if (args[0].tensor_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "length: tensor backing storage is missing");
-        if (args[0].tensor_val.element_count > (usz)long.max) return raise_error(interp, "length: tensor element count is too large");
+        if (args[0].tensor_val.element_count > (usz)long.max) return collection_raise(interp, "type/range-error", "length: tensor element count is too large");
         return make_int(interp, (long)args[0].tensor_val.element_count);
     }
 
@@ -65,7 +65,7 @@ fn Value* prim_length(Value*[] args, Env* env, Interp* interp) {
 
     // Count cons cells
     if (!is_cons(args[0])) {
-        return raise_error(interp, "length: expected list, array, tensor, dict, set, or string");
+        return collection_raise(interp, "type/arg-mismatch", "length: expected list, array, tensor, dict, set, or string");
     }
 
     long count = 0;
@@ -437,8 +437,8 @@ fn Value* prim_dict(Value*[] args, Env* env, Interp* interp) {
 }
 
 fn Value* prim_dict_set(Value*[] args, Env* env, Interp* interp) {
-    if (args.len < 3) return raise_error(interp, "set!: expected collection, key, value");
-    if (args[0].tag != HASHMAP) return raise_error(interp, "set!: generic form expects array or dict target");
+    if (args.len < 3) return collection_raise(interp, "type/arity", "set!: expected collection, key, value");
+    if (args[0].tag != HASHMAP) return runtime_raise(interp, "runtime/evaluation-error", "set!: generic form expects array or dict target");
     if (args[0].hashmap_val == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "set!: dict backing storage is missing");
     if (!hashmap_set(args[0].hashmap_val, args[1], args[2], interp)) {
         return raise_error_with_payload_names(

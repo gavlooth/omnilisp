@@ -33,6 +33,8 @@ fn bool ml_grad_expr_same_tensor(Value* left, Value* right) @inline {
         left_tensor.byte_len == right_tensor.byte_len &&
         tensor_same_shape(left_tensor, right_tensor) &&
         left_tensor.device_handle != null &&
+        tensor_has_valid_device_storage(left_tensor, left_tensor.device) &&
+        tensor_has_valid_device_storage(right_tensor, right_tensor.device) &&
         left_tensor.device_handle == right_tensor.device_handle) {
         return true;
     }
@@ -64,7 +66,9 @@ fn bool ml_grad_expr_contains_value(Value* node, Value* target) {
     if (tensor == null) return false;
     switch (tensor.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
-            return false;
+            return tensor_concrete_has_map_provenance(tensor) &&
+                (ml_grad_expr_contains_value(tensor.map_left, target) ||
+                    ml_grad_expr_contains_value(tensor.map_right, target));
         case TENSOR_PAYLOAD_MAP:
             return ml_grad_expr_contains_value(tensor.map_left, target) ||
                 ml_grad_expr_contains_value(tensor.map_right, target);
@@ -81,7 +85,12 @@ fn usz ml_grad_expr_matching_leaf_count(Value* node, Value* target) {
     TensorVal* tensor = node.tensor_val;
     switch (tensor.kind) {
         case TENSOR_PAYLOAD_CONCRETE:
-            return ml_grad_expr_same_tensor(node, target) ? 1 : 0;
+            usz matches = ml_grad_expr_same_tensor(node, target) ? 1 : 0;
+            if (tensor_concrete_has_map_provenance(tensor)) {
+                matches += ml_grad_expr_matching_leaf_count(tensor.map_left, target);
+                matches += ml_grad_expr_matching_leaf_count(tensor.map_right, target);
+            }
+            return matches;
         case TENSOR_PAYLOAD_MAP:
             return ml_grad_expr_matching_leaf_count(tensor.map_left, target) +
                 ml_grad_expr_matching_leaf_count(tensor.map_right, target);
@@ -108,7 +117,7 @@ fn Value* ml_grad_expr_reject_device_backward(Value* primary, Value* targets, Va
     if (ml_grad_touches_vulkan(primary) ||
         ml_grad_touches_vulkan(targets) ||
         ml_grad_touches_vulkan(wrt)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward kernels are not implemented", null);
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward is not supported for this expression configuration", null);
     }
     if (tensor_expr_has_non_cpu_device(primary) ||
         tensor_expr_has_non_cpu_device(targets) ||
@@ -116,6 +125,30 @@ fn Value* ml_grad_expr_reject_device_backward(Value* primary, Value* targets, Va
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: backend kernel is not implemented for non-CPU tensors", null);
     }
     return null;
+}
+
+fn Value* ml_grad_vulkan_binary_map_direct(
+    Interp* interp,
+    uint op,
+    Value* left_value,
+    TensorVal* left_tensor,
+    Value* right_value,
+    TensorVal* right_tensor,
+    TensorDType dtype,
+    usz[] result_shape
+) {
+    return tensor_map_try_vulkan_direct_checked(
+        left_value,
+        left_tensor,
+        right_value,
+        right_tensor,
+        true,
+        dtype,
+        result_shape,
+        null,
+        op,
+        interp
+    );
 }
 
 fn Value* ml_grad_lookup_map_primitive(Interp* interp, char[] name) {
@@ -151,9 +184,251 @@ fn Value* ml_grad_vulkan_binary_map(
         true,
         dtype,
         result_shape,
+        null,
         op,
         interp
     );
+}
+
+fn Value* ml_grad_vulkan_map_scale_upstream(
+    Interp* interp,
+    Value* upstream_value,
+    TensorVal* upstream,
+    Value* other_value,
+    TensorVal* other,
+    double scalar,
+    bool has_scalar,
+    TensorDType dtype,
+    usz[] result_shape
+) {
+    if (has_scalar) {
+        Value* scalar_value = dtype == TENSOR_DTYPE_DOUBLE ? make_double(interp, scalar) : make_float32(interp, (float)scalar);
+        if (scalar_value == null) return nn_oom(interp);
+        return ml_grad_vulkan_binary_map(interp, "*", upstream_value, upstream, scalar_value, null, dtype, result_shape);
+    }
+    if (other_value == null || other == null || other.device != TENSOR_DEVICE_VULKAN || !tensor_same_shape(other, upstream)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward does not support broadcast-reduction gradients", null);
+    }
+    return ml_grad_vulkan_binary_map(interp, "*", upstream_value, upstream, other_value, other, dtype, result_shape);
+}
+
+fn Value* ml_grad_vulkan_map_comparison_mask(
+    Interp* interp,
+    Value* left_value,
+    TensorVal* left,
+    Value* right_value,
+    TensorVal* right,
+    uint op,
+    TensorDType dtype,
+    usz[] result_shape
+) {
+    return tensor_map_try_vulkan_direct_checked(
+        left_value,
+        left,
+        right_value,
+        right,
+        true,
+        dtype,
+        result_shape,
+        null,
+        op,
+        interp
+    );
+}
+
+fn Value* ml_grad_vulkan_map_backward_to_wrt(Value* node, Value* wrt, Value* upstream_value, Interp* interp) {
+    if (ml_grad_expr_same_tensor(node, wrt)) return upstream_value;
+    if (!is_tensor(node) || node.tensor_val == null || !is_tensor(wrt) || wrt.tensor_val == null ||
+        upstream_value == null || upstream_value.tag != TENSOR || upstream_value.tensor_val == null) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward graph is incomplete", null);
+    }
+
+    TensorVal* output = node.tensor_val;
+    TensorVal* upstream = upstream_value.tensor_val;
+    TensorVal* wrt_tensor = wrt.tensor_val;
+    if (!tensor_concrete_has_map_provenance(output)) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward provenance is missing", null);
+    }
+    if (output.device != TENSOR_DEVICE_VULKAN || upstream.device != TENSOR_DEVICE_VULKAN || wrt_tensor.device != TENSOR_DEVICE_VULKAN ||
+        (output.dtype != TENSOR_DTYPE_FLOAT32 && output.dtype != TENSOR_DTYPE_DOUBLE) ||
+        (upstream.dtype != TENSOR_DTYPE_FLOAT32 && upstream.dtype != TENSOR_DTYPE_DOUBLE) ||
+        (wrt_tensor.dtype != TENSOR_DTYPE_FLOAT32 && wrt_tensor.dtype != TENSOR_DTYPE_DOUBLE) ||
+        output.dtype != upstream.dtype || upstream.dtype != wrt_tensor.dtype ||
+        !tensor_dense_row_major(output) || !tensor_dense_row_major(upstream) || !tensor_dense_row_major(wrt_tensor) ||
+        !tensor_same_shape(output, upstream) || !tensor_map_operand_matches_shape(wrt_tensor, output.shape[0:output.rank])) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward currently supports broadcast-compatible dense row-major Float32 and Float64 tensors", null);
+    }
+
+    usz matches = ml_grad_expr_matching_leaf_count(node, wrt);
+    if (matches == 0) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: wrt tensor is not reachable from Vulkan map expression", null);
+    }
+    if (matches > 1) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward does not support duplicated wrt leaves", null);
+    }
+
+    uint op = 0;
+    if (!tensor_map_callable_vulkan_op(output.map_func, &op) || op > 5) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: unsupported Vulkan map backward rule", null);
+    }
+
+    bool left_path = ml_grad_expr_contains_value(output.map_left, wrt);
+    bool right_path = output.map_is_binary && ml_grad_expr_contains_value(output.map_right, wrt);
+    if (!left_path && !right_path) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: wrt tensor is not reachable from Vulkan map expression", null);
+    }
+    if (left_path && right_path) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward does not support duplicated wrt leaves", null);
+    }
+
+    Value* child_value = left_path ? output.map_left : output.map_right;
+    TensorVal* child = child_value != null && child_value.tag == TENSOR ? child_value.tensor_val : null;
+    if (child == null || child.device != TENSOR_DEVICE_VULKAN || !tensor_map_operand_matches_shape(child, output.shape[0:output.rank])) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan map backward does not support broadcast-reduction gradients", null);
+    }
+
+    Value* child_upstream = upstream_value;
+    switch (op) {
+        case 0:
+            child_upstream = upstream_value;
+        case 1:
+            if (right_path) {
+                child_upstream = ml_grad_vulkan_map_scale_upstream(
+                    interp,
+                    upstream_value,
+                    upstream,
+                    null,
+                    null,
+                    -1.0,
+                    true,
+                    output.dtype,
+                    output.shape[0:output.rank]
+                );
+                if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
+            }
+        case 2: {
+            Value* other_value = left_path ? output.map_right : output.map_left;
+            TensorVal* other = other_value != null && other_value.tag == TENSOR ? other_value.tensor_val : null;
+            double scalar = left_path ? output.map_right_scalar : output.map_left_scalar;
+            bool has_scalar = other == null;
+            child_upstream = ml_grad_vulkan_map_scale_upstream(
+                interp,
+                upstream_value,
+                upstream,
+                other_value,
+                other,
+                scalar,
+                has_scalar,
+                output.dtype,
+                output.shape[0:output.rank]
+            );
+            if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
+        }
+        case 3: {
+            Value* other_value = left_path ? output.map_right : output.map_left;
+            TensorVal* other = other_value != null && other_value.tag == TENSOR ? other_value.tensor_val : null;
+            if (left_path) {
+                child_upstream = ml_grad_vulkan_binary_map(
+                    interp,
+                    "/",
+                    upstream_value,
+                    upstream,
+                    other_value,
+                    other,
+                    output.dtype,
+                    output.shape[0:output.rank]
+                );
+            } else {
+                Value* neg_output = ml_grad_vulkan_map_scale_upstream(
+                    interp,
+                    node,
+                    output,
+                    null,
+                    null,
+                    -1.0,
+                    true,
+                    output.dtype,
+                    output.shape[0:output.rank]
+                );
+                if (neg_output == null || neg_output.tag == ERROR) return neg_output;
+                Value* scale = ml_grad_vulkan_binary_map(
+                    interp,
+                    "/",
+                    neg_output,
+                    neg_output.tensor_val,
+                    other_value,
+                    other,
+                    output.dtype,
+                    output.shape[0:output.rank]
+                );
+                if (scale == null || scale.tag == ERROR) return scale;
+                child_upstream = ml_grad_vulkan_binary_map(
+                    interp,
+                    "*",
+                    upstream_value,
+                    upstream,
+                    scale,
+                    scale.tensor_val,
+                    output.dtype,
+                    output.shape[0:output.rank]
+                );
+            }
+            if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
+        }
+        case 4:
+        case 5: {
+            uint mask_op = 0;
+            if (op == 4) {
+                mask_op = left_path ? 7 : 6;
+            } else {
+                mask_op = left_path ? 6 : 7;
+            }
+            TensorVal* mask_left = output.map_left != null && output.map_left.tag == TENSOR ? output.map_left.tensor_val : null;
+            TensorVal* mask_right = output.map_right != null && output.map_right.tag == TENSOR ? output.map_right.tensor_val : null;
+            Value* mask_left_value = output.map_left;
+            Value* mask_right_value = output.map_right;
+            if (mask_left == null) {
+                mask_left_value = output.dtype == TENSOR_DTYPE_DOUBLE
+                    ? make_double(interp, output.map_left_scalar)
+                    : make_float32(interp, (float)output.map_left_scalar);
+                if (mask_left_value == null) return nn_oom(interp);
+            }
+            if (mask_right == null) {
+                mask_right_value = output.dtype == TENSOR_DTYPE_DOUBLE
+                    ? make_double(interp, output.map_right_scalar)
+                    : make_float32(interp, (float)output.map_right_scalar);
+                if (mask_right_value == null) return nn_oom(interp);
+            }
+            Value* mask = ml_grad_vulkan_map_comparison_mask(
+                interp,
+                mask_left_value,
+                mask_left,
+                mask_right_value,
+                mask_right,
+                mask_op,
+                output.dtype,
+                output.shape[0:output.rank]
+            );
+            if (mask == null || mask.tag == ERROR) return mask;
+            child_upstream = ml_grad_vulkan_binary_map(
+                interp,
+                "*",
+                upstream_value,
+                upstream,
+                mask,
+                mask.tensor_val,
+                output.dtype,
+                output.shape[0:output.rank]
+            );
+            if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
+        }
+        default:
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: unsupported Vulkan map backward rule", null);
+    }
+
+    child_upstream = ml_grad_vulkan_reduce_broadcast_to_child(interp, child_upstream, child, output);
+    if (child_upstream == null || child_upstream.tag == ERROR) return child_upstream;
+    return ml_grad_vulkan_map_backward_to_wrt(child_value, wrt, child_upstream, interp);
 }
 
 fn Value* ml_grad_tensor_mse_try_vulkan(Value* prediction_arg, Value* targets_arg, Value* wrt_arg, Interp* interp) {
@@ -162,36 +437,42 @@ fn Value* ml_grad_tensor_mse_try_vulkan(Value* prediction_arg, Value* targets_ar
         ml_grad_touches_vulkan(wrt_arg);
     if (!touches_vulkan) return null;
     if (tensor_expr_has_non_vulkan_device(prediction_arg) ||
-        tensor_expr_has_non_vulkan_device(targets_arg) ||
         tensor_expr_has_non_vulkan_device(wrt_arg)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward operands must remain Vulkan-placed", null);
     }
-    if (!ml_grad_expr_same_tensor(prediction_arg, wrt_arg)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan tensor-expression backward currently supports wrt equal to prediction", null);
-    }
 
     TensorVal* prediction = prediction_arg.tensor_val;
-    TensorVal* targets = targets_arg.tensor_val;
     TensorVal* wrt = wrt_arg.tensor_val;
-    if (prediction == null || targets == null || wrt == null ||
+    if (prediction == null || wrt == null ||
         prediction.kind != TENSOR_PAYLOAD_CONCRETE ||
-        targets.kind != TENSOR_PAYLOAD_CONCRETE ||
-        wrt.kind != TENSOR_PAYLOAD_CONCRETE) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan expression graph backward is not implemented", null);
-    }
-    if (prediction.device != TENSOR_DEVICE_VULKAN ||
-        targets.device != TENSOR_DEVICE_VULKAN ||
+        wrt.kind != TENSOR_PAYLOAD_CONCRETE ||
+        prediction.device != TENSOR_DEVICE_VULKAN ||
         wrt.device != TENSOR_DEVICE_VULKAN) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward operands must remain Vulkan-placed", null);
     }
-    if (prediction.dtype != TENSOR_DTYPE_FLOAT32 || targets.dtype != TENSOR_DTYPE_FLOAT32 || wrt.dtype != TENSOR_DTYPE_FLOAT32) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan MSE backward currently supports dense row-major Float32 tensors", null);
+
+    Value* targets_value = null;
+    TensorVal* targets = null;
+    Value* err = tensor_expr_resolve_vulkan_or_migrate(targets_arg, &targets, &targets_value, interp, "ml/grad: Vulkan MSE backward target tensor backing storage is missing");
+    if (err != null) return err;
+    bool cleanup_targets = targets_value != targets_arg;
+    defer if (cleanup_targets) {
+        boundary_cleanup_materialized_value(null, targets_value, interp.current_scope);
+    }
+    if (targets == null || targets.kind != TENSOR_PAYLOAD_CONCRETE || targets.device != TENSOR_DEVICE_VULKAN) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan backward target must be a concrete Vulkan Tensor", null);
+    }
+    if ((prediction.dtype != TENSOR_DTYPE_FLOAT32 && prediction.dtype != TENSOR_DTYPE_DOUBLE) ||
+        (targets.dtype != TENSOR_DTYPE_FLOAT32 && targets.dtype != TENSOR_DTYPE_DOUBLE) ||
+        (wrt.dtype != TENSOR_DTYPE_FLOAT32 && wrt.dtype != TENSOR_DTYPE_DOUBLE) ||
+        prediction.dtype != targets.dtype || targets.dtype != wrt.dtype) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan MSE backward currently supports dense row-major Float32 and Float64 tensors", null);
     }
     if (!tensor_dense_row_major(prediction) || !tensor_dense_row_major(targets) || !tensor_dense_row_major(wrt)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan MSE backward currently supports dense row-major tensors", null);
     }
-    if (prediction.element_count == 0 || !tensor_same_shape(prediction, targets) || !tensor_same_shape(prediction, wrt)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: Vulkan MSE backward tensors must have the same non-empty shape", null);
+    if (prediction.element_count == 0 || !tensor_same_shape(prediction, targets) || !tensor_map_operand_matches_shape(wrt, prediction.shape[0:prediction.rank])) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: Vulkan MSE backward wrt tensor must match or broadcast to prediction shape", null);
     }
     if (!tensor_has_valid_device_storage(prediction, TENSOR_DEVICE_VULKAN) ||
         !tensor_has_valid_device_storage(targets, TENSOR_DEVICE_VULKAN) ||
@@ -206,14 +487,14 @@ fn Value* ml_grad_tensor_mse_try_vulkan(Value* prediction_arg, Value* targets_ar
         "-",
         prediction_arg,
         prediction,
-        targets_arg,
+        targets_value,
         targets,
         prediction.dtype,
         prediction.shape[0:prediction.rank]
     );
     if (diff == null || diff.tag == ERROR) return diff;
-    float scale = (float)(2.0 / (double)prediction.element_count);
-    Value* scale_value = make_float32(interp, scale);
+    double scale = 2.0 / (double)prediction.element_count;
+    Value* scale_value = prediction.dtype == TENSOR_DTYPE_DOUBLE ? make_double(interp, scale) : make_float32(interp, (float)scale);
     if (scale_value == null) return nn_oom(interp);
     Value* grad = ml_grad_vulkan_binary_map(
         interp,
@@ -226,6 +507,13 @@ fn Value* ml_grad_tensor_mse_try_vulkan(Value* prediction_arg, Value* targets_ar
         prediction.shape[0:prediction.rank]
     );
     if (grad == null || grad.tag == ERROR) return grad;
+    if (!ml_grad_expr_same_tensor(prediction_arg, wrt_arg)) {
+        if (!tensor_concrete_has_map_provenance(prediction)) {
+            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: Vulkan tensor-expression backward currently supports wrt equal to prediction or same-shape map provenance", null);
+        }
+        grad = ml_grad_vulkan_map_backward_to_wrt(prediction_arg, wrt_arg, grad, interp);
+        if (grad == null || grad.tag == ERROR) return grad;
+    }
     return ml_grad_tensor_value_result(interp, "tensor-mean-squared-error", prediction.dtype, "vulkan", loss, prediction_arg, grad, false);
 }
 
@@ -241,7 +529,7 @@ fn Value* ml_grad_expr_resolve_dense_cpu(Value* value, TensorVal** out, Interp* 
 
 fn bool ml_grad_map_binary_op(Value* func, uint* out_op) {
     uint op = 0;
-    if (!tensor_map_callable_vulkan_op(func, &op) || op > 3) return false;
+    if (!tensor_map_callable_vulkan_op(func, &op) || op > 5) return false;
     if (out_op != null) *out_op = op;
     return true;
 }
@@ -375,6 +663,12 @@ fn Value* ml_grad_expr_backprop_map(Value* node, Value* wrt, double* upstream, d
                 if (b == 0.0) return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: division map backward encountered zero denominator", null);
                 if (left_upstream != null) left_upstream[left_offset] += u / b;
                 if (right_upstream != null) right_upstream[right_offset] -= u * a / (b * b);
+            case 4:
+                if (left_upstream != null && a <= b) left_upstream[left_offset] += u;
+                if (right_upstream != null && b <= a) right_upstream[right_offset] += u;
+            case 5:
+                if (left_upstream != null && a >= b) left_upstream[left_offset] += u;
+                if (right_upstream != null && b >= a) right_upstream[right_offset] += u;
             default:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/grad: unsupported Tensor map backward rule", null);
         }
@@ -554,195 +848,4 @@ fn Value* ml_grad_tensor_result(
     if (err != null) return err;
 
     return ml_grad_tensor_value_result(interp, source_name, dtype, "cpu", loss_value, output, input_grad, softmax_cross_entropy);
-}
-
-fn Value* ml_grad_tensor_mse(Value* spec, Interp* interp) {
-    Value* prediction_arg = ml_grad_required_tensor(spec, interp, "prediction");
-    if (prediction_arg == null || prediction_arg.tag == ERROR) return prediction_arg;
-    Value* targets_arg = ml_grad_required_tensor(spec, interp, "targets");
-    if (targets_arg == null || targets_arg.tag == ERROR) return targets_arg;
-    Value* wrt_arg = ml_grad_required_tensor(spec, interp, "wrt");
-    if (wrt_arg == null || wrt_arg.tag == ERROR) return wrt_arg;
-    Value* vulkan_result = ml_grad_tensor_mse_try_vulkan(prediction_arg, targets_arg, wrt_arg, interp);
-    if (vulkan_result != null) return vulkan_result;
-    Value* err = ml_grad_expr_reject_device_backward(prediction_arg, targets_arg, wrt_arg, interp);
-    if (err != null) return err;
-    err = ml_grad_expr_validate_wrt_leaf(prediction_arg, wrt_arg, interp);
-    if (err != null) return err;
-
-    TensorVal* prediction = null;
-    err = ml_grad_expr_resolve_dense_cpu(prediction_arg, &prediction, interp, "ml/grad: prediction tensor backing storage is missing");
-    if (err != null) return err;
-    TensorVal* targets = null;
-    err = ml_grad_expr_resolve_dense_cpu(targets_arg, &targets, interp, "ml/grad: target tensor backing storage is missing");
-    if (err != null) return err;
-    TensorVal* wrt = null;
-    err = ml_grad_expr_resolve_dense_cpu(wrt_arg, &wrt, interp, "ml/grad: wrt tensor backing storage is missing");
-    if (err != null) return err;
-
-    if (prediction.dtype != targets.dtype || prediction.dtype != wrt.dtype ||
-        (prediction.dtype != TENSOR_DTYPE_DOUBLE && prediction.dtype != TENSOR_DTYPE_FLOAT32)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/grad: Tensor expression gradients require matching Float64 or Float32 tensors", null);
-    }
-    if (prediction.element_count == 0 || !tensor_same_shape(prediction, targets)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: prediction and targets must have the same non-empty shape", null);
-    }
-
-    double* upstream = null;
-    err = ml_grad_expr_buffer(interp, prediction.element_count, &upstream, "ml/grad: failed to allocate Tensor expression upstream");
-    if (err != null) return err;
-    defer mem::free(upstream);
-    double* wrt_grad = null;
-    err = ml_grad_expr_buffer(interp, wrt.element_count, &wrt_grad, "ml/grad: failed to allocate Tensor expression gradient");
-    if (err != null) return err;
-    defer mem::free(wrt_grad);
-
-    double loss = 0.0;
-    double inv_count = 1.0 / (double)prediction.element_count;
-    for (usz i = 0; i < prediction.element_count; i++) {
-        double y = 0.0;
-        double target = 0.0;
-        if (!ml_reduction_read(prediction, i, &y) || !ml_reduction_read(targets, i, &target)) {
-            return tensor_runtime_raise(interp, "ml/grad: Tensor expression index is invalid");
-        }
-        double diff = y - target;
-        loss += diff * diff;
-        upstream[i] = 2.0 * diff * inv_count;
-    }
-    loss *= inv_count;
-
-    err = ml_grad_expr_accumulate_to_wrt(prediction_arg, wrt_arg, upstream, wrt_grad, interp);
-    if (err != null) return err;
-    return ml_grad_tensor_result(interp, "tensor-mean-squared-error", prediction.dtype, loss, prediction_arg, wrt, wrt_grad, false);
-}
-
-fn Value* ml_grad_tensor_softmax_cross_entropy(Value* spec, Interp* interp) {
-    Value* logits_arg = ml_grad_required_tensor(spec, interp, "logits");
-    if (logits_arg == null || logits_arg.tag == ERROR) return logits_arg;
-    Value* targets_arg = ml_grad_required_tensor(spec, interp, "targets");
-    if (targets_arg == null || targets_arg.tag == ERROR) return targets_arg;
-    Value* wrt_arg = ml_grad_required_tensor(spec, interp, "wrt");
-    if (wrt_arg == null || wrt_arg.tag == ERROR) return wrt_arg;
-    Value* err = ml_grad_expr_reject_device_backward(logits_arg, targets_arg, wrt_arg, interp);
-    if (err != null) return err;
-    err = ml_grad_expr_validate_wrt_leaf(logits_arg, wrt_arg, interp);
-    if (err != null) return err;
-
-    TensorVal* logits = null;
-    err = ml_grad_expr_resolve_dense_cpu(logits_arg, &logits, interp, "ml/grad: logits tensor backing storage is missing");
-    if (err != null) return err;
-    TensorVal* targets = null;
-    err = ml_grad_expr_resolve_dense_cpu(targets_arg, &targets, interp, "ml/grad: target tensor backing storage is missing");
-    if (err != null) return err;
-    TensorVal* wrt = null;
-    err = ml_grad_expr_resolve_dense_cpu(wrt_arg, &wrt, interp, "ml/grad: wrt tensor backing storage is missing");
-    if (err != null) return err;
-
-    if (logits.dtype != targets.dtype || logits.dtype != wrt.dtype ||
-        (logits.dtype != TENSOR_DTYPE_DOUBLE && logits.dtype != TENSOR_DTYPE_FLOAT32)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/dtype-mismatch", "ml/grad: Tensor softmax gradients require matching Float64 or Float32 tensors", null);
-    }
-    if (logits.element_count == 0 || !tensor_same_shape(logits, targets)) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: logits and targets must have the same non-empty shape", null);
-    }
-
-    Value* axis_arg = nn_dict_get(spec, interp, "axis");
-    if (axis_arg == null) return ml_grad_invalid(interp, "ml/grad: tensor-softmax-cross-entropy requires axis");
-    usz axis = 0;
-    err = ml_reduction_parse_axis_value(
-        axis_arg,
-        logits,
-        interp,
-        "ml/grad: axis must be an integer",
-        "ml/grad: axis out of range",
-        "ml/grad: duplicate reduction axis",
-        null,
-        0,
-        &axis
-    );
-    if (err != null) return err;
-
-    usz[1] axes = { axis };
-    usz* result_shape = null;
-    usz result_rank = 0;
-    usz reduction_count = 0;
-    err = ml_reduction_result_shape(
-        logits,
-        axes[..],
-        1,
-        interp,
-        "ml/grad: softmax result shape is too large",
-        "ml/grad: cannot reduce an empty class axis",
-        &result_shape,
-        &result_rank,
-        &reduction_count
-    );
-    if (err != null) return err;
-    defer if (result_shape != null) mem::free(result_shape);
-    usz slice_count = result_rank == 0 ? (usz)1 : logits.element_count / reduction_count;
-    if (slice_count == 0) {
-        return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "ml/grad: cannot reduce empty tensors", null);
-    }
-
-    double* maxes = null;
-    double* exp_sums = null;
-    err = ml_stable_exp_stats_cpu(logits, axes[..], 1, slice_count, interp, "ml/grad: softmax tensor index is invalid", &maxes, &exp_sums);
-    if (err != null) return err;
-    defer mem::free(maxes);
-    defer mem::free(exp_sums);
-
-    double* softmax_values = null;
-    err = ml_grad_expr_buffer(interp, logits.element_count, &softmax_values, "ml/grad: failed to allocate softmax output");
-    if (err != null) return err;
-    defer mem::free(softmax_values);
-    double* upstream = null;
-    err = ml_grad_expr_buffer(interp, logits.element_count, &upstream, "ml/grad: failed to allocate softmax upstream");
-    if (err != null) return err;
-    defer mem::free(upstream);
-    double* target_sums = null;
-    err = ml_grad_expr_buffer(interp, slice_count, &target_sums, "ml/grad: failed to allocate target accumulator");
-    if (err != null) return err;
-    defer mem::free(target_sums);
-    double* wrt_grad = null;
-    err = ml_grad_expr_buffer(interp, wrt.element_count, &wrt_grad, "ml/grad: failed to allocate Tensor expression gradient");
-    if (err != null) return err;
-    defer mem::free(wrt_grad);
-
-    double tolerance = logits.dtype == TENSOR_DTYPE_FLOAT32 ? 0.0001 : 0.000000001;
-    double loss = 0.0;
-    for (usz i = 0; i < logits.element_count; i++) {
-        usz result_index = 0;
-        double logit = 0.0;
-        double target = 0.0;
-        if (!ml_reduction_result_index(logits, i, axes[..], 1, &result_index) ||
-            !ml_reduction_read(logits, i, &logit) ||
-            !ml_reduction_read(targets, i, &target) ||
-            result_index >= slice_count) {
-            return tensor_runtime_raise(interp, "ml/grad: softmax tensor index is invalid");
-        }
-        if (!conversion_double_is_finite(logit) || !conversion_double_is_finite(target) || target < -tolerance) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: targets must be probability or one-hot tensors", null);
-        }
-        double softmax = ml_c_exp(logit - maxes[result_index]) / exp_sums[result_index];
-        double log_prob = logit - maxes[result_index] - ml_c_log(exp_sums[result_index]);
-        softmax_values[i] = softmax;
-        upstream[i] = (softmax - target) / (double)slice_count;
-        loss += -target * log_prob;
-        target_sums[result_index] += target;
-    }
-    for (usz i = 0; i < slice_count; i++) {
-        if (tensor_c_fabs(target_sums[i] - 1.0) > tolerance) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "ml/grad: target probabilities must sum to one along the class axis", null);
-        }
-    }
-    loss /= (double)slice_count;
-
-    Value* output = ml_grad_make_tensor(interp, logits.dtype, logits.shape[0:logits.rank], "ml/grad: failed to allocate softmax output tensor");
-    if (output == null || output.tag == ERROR) return output;
-    err = ml_reduction_write_result(output.tensor_val, softmax_values, interp, "ml/grad: Float32 softmax output is not representable");
-    if (err != null) return err;
-
-    err = ml_grad_expr_accumulate_to_wrt(logits_arg, wrt_arg, upstream, wrt_grad, interp);
-    if (err != null) return err;
-    return ml_grad_tensor_result(interp, "tensor-softmax-cross-entropy", logits.dtype, loss, output, wrt, wrt_grad, true);
 }

@@ -342,6 +342,10 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "(foreign-release libc)",
         "handle is not releasable",
         pass, fail);
+    test_error_contains(interp, "ffi lib rejects empty path",
+        "(define [ffi lib] ffi-empty-path \"\")",
+        "path must be a non-empty string shorter than 256 bytes",
+        pass, fail);
     {
         bool saved_force = g_env_force_barrier_promote_failure;
         g_env_force_barrier_promote_failure = true;
@@ -370,6 +374,19 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
             (*pass)++;
         } else {
             io::printn("[FAIL] shared dlopen registry: libc-shared-a and libc-shared-b do not share handle");
+            (*fail)++;
+        }
+    }
+    {
+        char[256] too_long_path;
+        for (usz i = 0; i < too_long_path.len; i++) too_long_path[i] = 'a';
+        void* rejected = ffi_dlopen_registry_acquire(too_long_path[0:too_long_path.len]);
+        if (rejected == null) {
+            io::printn("[PASS] shared dlopen registry rejects overlong non-NUL path");
+            (*pass)++;
+        } else {
+            ffi_dlopen_registry_release(too_long_path[0:too_long_path.len]);
+            io::printn("[FAIL] shared dlopen registry rejects overlong non-NUL path");
             (*fail)++;
         }
     }
@@ -548,6 +565,28 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
         "(define [ffi module] bad-grouped \"libc.so.6\" (strlen (^String s)))",
         "expected return type annotation after [ffi module] function signature", pass, fail);
 
+    if (omni_ffi_call_null_arg_vectors_guard_for_tests() == -1) {
+        io::printn("[PASS] ffi native call rejects null arg vectors");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] ffi native call rejects null arg vectors");
+        (*fail)++;
+    }
+    if (omni_ffi_call_var_null_arg_vectors_guard_for_tests() == -1) {
+        io::printn("[PASS] ffi native variadic call rejects null arg vectors");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] ffi native variadic call rejects null arg vectors");
+        (*fail)++;
+    }
+    if (omni_ffi_closure_alloc_failure_clears_outputs_for_tests() == 0) {
+        io::printn("[PASS] ffi native closure failure clears outputs");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] ffi native closure failure clears outputs");
+        (*fail)++;
+    }
+
     // === FFI CALLBACK TESTS ===
     setup(interp, "(define cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer))");
     test_tag(interp, "ffi-callback list form creates ForeignHandle", "cb", FFI_HANDLE, pass, fail);
@@ -583,6 +622,18 @@ fn void run_advanced_ffi_system_surface_tests(Interp* interp, int* pass, int* fa
                 io::printfn("[FAIL] ffi-callback end-to-end invocation: expected 7, got %d", result);
                 (*fail)++;
             }
+        }
+    }
+
+    // Regression: foreign-release on ffi-callback must not segfault
+    {
+        EvalResult ri = run("(let (cb (ffi-callback (lambda (a b) (- a b)) ['Integer 'Integer] 'Integer)) (foreign-release cb))", interp);
+        if (ri.error.has_error) {
+            io::printfn("[FAIL] ffi-callback foreign-release: got error: %s", ri.error.message);
+            (*fail)++;
+        } else {
+            io::printfn("[PASS] ffi-callback foreign-release");
+            (*pass)++;
         }
     }
 

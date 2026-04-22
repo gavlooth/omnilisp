@@ -4,6 +4,11 @@
 (import "ui.omni")
 (import ui)
 
+(define (raise-message payload)
+  (if (dict? payload)
+      (String (ref payload 'message))
+      (String payload)))
+
 (define backend-view
   (ui.window
     "Backend"
@@ -24,14 +29,14 @@
     (ui.ftxui.dispatch
       (ui.open_tree {'backend 'ftxui}
         (ui.read_event_tree {})))
-    (raise msg (String msg))))
+    (raise msg (raise-message msg))))
 
 (define no-render-error
   (handle
     (ui.ftxui.dispatch
       (ui.open_tree {'backend 'ftxui}
         (ui.close_tree {'code 'ok})))
-    (raise msg (String msg))))
+    (raise msg (raise-message msg))))
 
 (and (= (ui.ftxui.dispatch backend-effects) true)
      (= read-event-error "ui-ftxui.dispatch: read_event is not supported by the non-interactive backend dispatcher")

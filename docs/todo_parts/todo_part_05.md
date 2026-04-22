@@ -275,6 +275,40 @@ Source: `TODO.md`
     - bounded container `memory-lifetime-smoke` slice: `pass=222 fail=0`
     - bounded ASAN container `memory-lifetime-smoke` slice: `pass=222 fail=0`
 
+- [x] `MEM-GRAPH-AUDIT-DIAGNOSTIC-20260422-001` eliminate or deliberately
+  classify the current `memory-lifetime-smoke` boundary graph-audit diagnostic
+  output.
+  - surface/runtime classification: runtime memory/lifetime diagnostic,
+    targeted until the emitting test and boundary path are isolated.
+  - blocker or task: `scripts/run_validation_container.sh
+    scripts/run_global_gates.sh` currently passes, but the
+    `memory-lifetime-smoke` slice prints `reachable Omni edge enters TEMP` and
+    `pre-splice escape root reachability violation` graph-audit diagnostics
+    while reporting `fail=0`.
+  - closed/classified 2026-04-22: the diagnostic is expected output from the
+    passing negative regression `lifetime: root splice debug audit rejects
+    releasing temp edge` in
+    `src/lisp/tests_memory_lifetime_boundary_groups.c3`, not the older lazy
+    Tensor return repro.
+  - evidence: the test deliberately builds a child-scope ESCAPE `CONS` root
+    whose `car` is a child-scope TEMP `INT`; `root_tag=4` is `CONS` and
+    `violating_edge_tag=1` is `INT`, matching the emitted diagnostic and the
+    intended pre-splice rejection path.
+  - validation: `scripts/run_validation_container.sh bash -lc 'env
+    LD_LIBRARY_PATH=/usr/lib:/usr/local/lib OMNI_TEST_SUMMARY=1
+    OMNI_TEST_VERBOSE=1 OMNI_SKIP_TLS_INTEGRATION=1
+    OMNI_LISP_TEST_SLICE=memory-lifetime-smoke ./build/main --test-suite lisp
+    2>&1 | grep -n -E "\[boundary\]\[graph-audit\]|root splice debug audit
+    rejects releasing temp edge|OMNI_TEST_SUMMARY suite"'` showed the two
+    graph-audit lines immediately followed by the passing root-splice debug
+    audit test and final `pass=237 fail=0`.
+  - prerequisites: bounded-container execution path and current `build/main`;
+    do not run host-heavy memory-lifetime gates directly.
+  - negative-memory constraint: do not interpret current
+    `memory-lifetime-smoke` graph-audit output as a Tensor/lazy-return
+    regression. It is a deliberately emitted negative boundary-splice
+    diagnostic unless the neighboring pass line or tag pattern changes.
+
 - [x] `AUDIT-ERROR-PAYLOAD-PROCESS-WAIT-112` skip unconsumed structured error
   payloads and clean process-wait partial result dictionaries
   - closure evidence:

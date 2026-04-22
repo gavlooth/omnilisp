@@ -424,19 +424,21 @@ fn void run_advanced_collections_generic_ops_part7(Interp* interp, int* pass, in
         0.0, pass, fail);
     test_error_contains(interp, "matrix svd rejects BigComplex dtype",
         "(matrix/svd (Tensor BigComplex [2 2] [1 0 0 1]))",
-        "matrix/svd: expected a rank-2 Float64 Tensor or Vulkan Float32 Tensor", pass, fail);
-    test_error_contains(interp, "matrix svd rejects Complex128 pending factor contract",
-        "(matrix/svd (Tensor Complex128 [2 2] [(Complex128 1 0) (Complex128 0 0) (Complex128 0 0) (Complex128 1 0)]))",
-        "matrix/svd: expected a rank-2 Float64 Tensor or Vulkan Float32 Tensor", pass, fail);
-    test_error_contains(interp, "matrix svd rejects Complex64 pending factor contract",
-        "(matrix/svd (Tensor Complex64 [2 2] [(Complex64 1 0) (Complex64 0 0) (Complex64 0 0) (Complex64 1 0)]))",
-        "matrix/svd: expected a rank-2 Float64 Tensor or Vulkan Float32 Tensor", pass, fail);
+        "matrix/svd: expected a rank-2 Float64, Float32, Complex128, or Complex64 Tensor", pass, fail);
     test_truthy(interp, "matrix svd CPU Float32 singular values and dtype",
         "(let (r (matrix/svd (Tensor Float32 [2 2] [3 0 0 2]))) (and (= (String (dtype (ref r 'u))) \"Float32\") (= (String (dtype (ref r 's))) \"Float32\") (= (String (dtype (ref r 'v))) \"Float32\") (= (ref (ref r 's) [0]) 3.0) (= (ref (ref r 's) [1]) 2.0)))", pass, fail);
     test_truthy(interp, "matrix svd CPU Float32 tall and wide shapes",
         "(and (= (ref (shape (ref (matrix/svd (Tensor Float32 [3 2] [3 0 0 2 0 0])) 'u)) 0) 3) (= (ref (shape (ref (matrix/svd (Tensor Float32 [2 3] [3 0 0 0 2 0])) 'v)) 0) 3))", pass, fail);
     test_truthy(interp, "matrix svd CPU Float32 zero singular value",
         "(= (ref (ref (matrix/svd (Tensor Float32 [2 2] [0 0 0 0])) 's) [0]) 0.0)", pass, fail);
+    test_truthy(interp, "matrix svd CPU Complex128 singular values and dtype",
+        "(let (r (matrix/svd (Tensor Complex128 [2 2] [(Complex128 3 4) (Complex128 0 0) (Complex128 0 0) (Complex128 2 0)]))) (and (= (String (dtype (ref r 'u))) \"Complex128\") (= (String (dtype (ref r 's))) \"Float64\") (= (String (dtype (ref r 'v))) \"Complex128\") (< (abs (- (ref (ref r 's) [0]) 5.0)) 0.000000001) (< (abs (- (ref (ref r 's) [1]) 2.0)) 0.000000001)))", pass, fail);
+    test_truthy(interp, "matrix svd CPU Complex128 reconstructs diagonal entries",
+        "(let (r (matrix/svd (Tensor Complex128 [2 2] [(Complex128 3 4) (Complex128 0 0) (Complex128 0 0) (Complex128 2 0)])) u (ref r 'u) s (ref r 's) v (ref r 'v) a00 (* (ref u [0 0]) (Complex128 (ref s [0]) 0)) a11 (* (ref u [1 1]) (Complex128 (ref s [1]) 0))) (and (< (abs (- (real-part a00) 3.0)) 0.000000001) (< (abs (- (imag-part a00) 4.0)) 0.000000001) (< (abs (- (real-part a11) 2.0)) 0.000000001) (< (abs (imag-part a11)) 0.000000001) (= (String (ref v [0 0])) \"1.0+0.0i\")))", pass, fail);
+    test_truthy(interp, "matrix svd CPU Complex64 singular values dtype and wide shape",
+        "(let (r (matrix/svd (Tensor Complex64 [2 3] [(Complex64 3 4) (Complex64 0 0) (Complex64 0 0) (Complex64 0 0) (Complex64 2 0) (Complex64 0 0)]))) (and (= (String (dtype (ref r 'u))) \"Complex64\") (= (String (dtype (ref r 's))) \"Float32\") (= (String (dtype (ref r 'v))) \"Complex64\") (= (ref (shape (ref r 'v)) 0) 3) (< (abs (- (ref (ref r 's) [0]) 5.0)) 0.001) (< (abs (- (ref (ref r 's) [1]) 2.0)) 0.001)))", pass, fail);
+    test_truthy(interp, "matrix svd CPU fixed complex zero and empty shapes",
+        "(let (z (matrix/svd (Tensor Complex128 [2 2] [(Complex128 0 0) (Complex128 0 0) (Complex128 0 0) (Complex128 0 0)])) e (matrix/svd (Tensor Complex64 [0 3] (Complex64 0 0)))) (and (= (ref (ref z 's) [0]) 0.0) (= (ref (shape (ref z 'u)) 0) 2) (= (length (ref e 's)) 0) (= (ref (shape (ref e 'v)) 0) 3)))", pass, fail);
     {
         long lapack_calls_before = omni_tensor_backend_lapack_dgesvd_call_count();
         test_truthy(interp, "matrix svd CPU Float32 does not call Float64 LAPACK",
@@ -447,6 +449,19 @@ fn void run_advanced_collections_generic_ops_part7(Interp* interp, int* pass, in
             *pass += 1;
         } else {
             io::printn("[FAIL] tensor CPU Float32 matrix svd does not call Float64 LAPACK");
+            *fail += 1;
+        }
+    }
+    {
+        long lapack_calls_before = omni_tensor_backend_lapack_dgesvd_call_count();
+        test_truthy(interp, "matrix svd CPU fixed complex does not call Float64 LAPACK",
+            "(and (< (abs (- (ref (ref (matrix/svd (Tensor Complex128 [2 2] [(Complex128 3 4) (Complex128 0 0) (Complex128 0 0) (Complex128 2 0)])) 's) [0]) 5.0)) 0.000000001) (< (abs (- (ref (ref (matrix/svd (Tensor Complex64 [2 2] [(Complex64 3 4) (Complex64 0 0) (Complex64 0 0) (Complex64 2 0)])) 's) [1]) 2.0)) 0.001))", pass, fail);
+        bool no_lapack_path_ok = omni_tensor_backend_lapack_dgesvd_call_count() == lapack_calls_before;
+        if (no_lapack_path_ok) {
+            emit_pass_literal("[PASS] tensor CPU fixed complex matrix svd does not call Float64 LAPACK");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor CPU fixed complex matrix svd does not call Float64 LAPACK");
             *fail += 1;
         }
     }
@@ -570,6 +585,38 @@ fn void run_advanced_collections_generic_ops_part7(Interp* interp, int* pass, in
             *fail += 1;
         }
     }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
+        long lapack_calls_before = omni_tensor_backend_lapack_dgesvd_call_count();
+        test_truthy(interp, "matrix svd vulkan Complex128 factors stay native when available",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (r (matrix/svd (to-device (Tensor Complex128 [2 2] [(Complex128 3 4) (Complex128 0 0) (Complex128 0 0) (Complex128 2 0)]) 'vulkan)) s (to-device (ref r 's) 'cpu)) (and (= (device (ref r 'u)) 'vulkan) (= (device (ref r 's)) 'vulkan) (= (device (ref r 'v)) 'vulkan) (= (String (dtype (ref r 'u))) \"Complex128\") (= (String (dtype (ref r 's))) \"Float64\") (= (String (dtype (ref r 'v))) \"Complex128\") (< (abs (- (ref s [0]) 5.0)) 0.000001) (< (abs (- (ref s [1]) 2.0)) 0.000001))) true) true))", pass, fail);
+        bool no_lapack_path_ok = !vulkan_available || omni_tensor_backend_lapack_dgesvd_call_count() == lapack_calls_before;
+        if (no_lapack_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan Complex128 matrix svd does not call LAPACK"
+                : "[PASS] tensor Vulkan Complex128 matrix svd unavailable; no-LAPACK path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan Complex128 matrix svd does not call LAPACK");
+            *fail += 1;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        long lapack_calls_before = omni_tensor_backend_lapack_dgesvd_call_count();
+        test_truthy(interp, "matrix svd vulkan Complex64 factors stay native when available",
+            "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float32) (let (r (matrix/svd (to-device (Tensor Complex64 [2 3] [(Complex64 3 4) (Complex64 0 0) (Complex64 0 0) (Complex64 0 0) (Complex64 2 0) (Complex64 0 0)]) 'vulkan)) s (to-device (ref r 's) 'cpu)) (and (= (device (ref r 'u)) 'vulkan) (= (device (ref r 's)) 'vulkan) (= (device (ref r 'v)) 'vulkan) (= (String (dtype (ref r 'u))) \"Complex64\") (= (String (dtype (ref r 's))) \"Float32\") (= (String (dtype (ref r 'v))) \"Complex64\") (= (ref (shape (ref r 'v)) 0) 3) (< (abs (- (ref s [0]) 5.0)) 0.001) (< (abs (- (ref s [1]) 2.0)) 0.001))) true) true))", pass, fail);
+        bool no_lapack_path_ok = !vulkan_available || omni_tensor_backend_lapack_dgesvd_call_count() == lapack_calls_before;
+        if (no_lapack_path_ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan Complex64 matrix svd does not call LAPACK"
+                : "[PASS] tensor Vulkan Complex64 matrix svd unavailable; no-LAPACK path not exercised");
+            *pass += 1;
+        } else {
+            io::printn("[FAIL] tensor Vulkan Complex64 matrix svd does not call LAPACK");
+            *fail += 1;
+        }
+    }
 	    test_double(interp, "matrix eigenvalues diagonal first",
 	        "(ref (matrix/eigenvalues (Tensor Float64 [2 2] [3 0 0 2])) [0])",
         3.0, pass, fail);
@@ -663,15 +710,30 @@ fn void run_advanced_collections_generic_ops_part7(Interp* interp, int* pass, in
     test_double(interp, "matrix eigenvalues realizes lazy input",
         "(ref (matrix/eigenvalues (map + (Tensor Float64 [2 2] [3 0 0 2]) 0.0)) [1])",
         2.0, pass, fail);
+    test_truthy(interp, "matrix eigenvalues Complex128 Hermitian values and dtype",
+        "(let (vals (matrix/eigenvalues (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)]))) (and (= (String (dtype vals)) \"Float64\") (< (abs (- (ref vals [0]) 3.0)) 0.00000001) (< (abs (- (ref vals [1]) 1.0)) 0.00000001)))",
+        pass, fail);
+    test_truthy(interp, "matrix eigenvectors Complex128 Hermitian residual",
+        "(let (ev (matrix/eigenvectors (Tensor Complex128 [2 2] [(Complex128 2 0) (Complex128 0 1) (Complex128 0 -1) (Complex128 2 0)])) vals (ref ev 'values) vecs (ref ev 'vectors) lambda (Complex128 (ref vals [0]) 0) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (and (= (String (dtype vals)) \"Float64\") (= (String (dtype vecs)) \"Complex128\") (< (+ (abs (- (+ (* (Complex128 2 0) v0) (* (Complex128 0 1) v1)) (* lambda v0))) (abs (- (+ (* (Complex128 0 -1) v0) (* (Complex128 2 0) v1)) (* lambda v1)))) 0.00000001)))",
+        pass, fail);
+    test_truthy(interp, "matrix eigenvalues Complex64 Hermitian values and dtype",
+        "(let (vals (matrix/eigenvalues (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)]))) (and (= (String (dtype vals)) \"Float32\") (< (abs (- (ref vals [0]) (Float32 3.0))) 0.00001) (< (abs (- (ref vals [1]) (Float32 1.0))) 0.00001)))",
+        pass, fail);
+    test_truthy(interp, "matrix eigenvectors Complex64 Hermitian residual",
+        "(let (ev (matrix/eigenvectors (Tensor Complex64 [2 2] [(Complex64 2 0) (Complex64 0 1) (Complex64 0 -1) (Complex64 2 0)])) vals (ref ev 'values) vecs (ref ev 'vectors) lambda (Complex64 (ref vals [0]) 0) v0 (ref vecs [0 0]) v1 (ref vecs [1 0])) (and (= (String (dtype vals)) \"Float32\") (= (String (dtype vecs)) \"Complex64\") (< (+ (abs (- (+ (* (Complex64 2 0) v0) (* (Complex64 0 1) v1)) (* lambda v0))) (abs (- (+ (* (Complex64 0 -1) v0) (* (Complex64 2 0) v1)) (* lambda v1)))) 0.00001)))",
+        pass, fail);
     test_error_contains(interp, "matrix eigenvalues rejects nonsymmetric input",
         "(matrix/eigenvalues (Tensor Float64 [2 2] [1 2 3 4]))",
         "matrix/eigenvalues: input matrix is not symmetric", pass, fail);
     test_error_contains(interp, "matrix eigenvectors rejects nonsymmetric input",
         "(matrix/eigenvectors (Tensor Float64 [2 2] [1 2 3 4]))",
         "matrix/eigenvectors: input matrix is not symmetric", pass, fail);
+    test_error_contains(interp, "matrix eigenvalues rejects non-Hermitian Complex128 input",
+        "(matrix/eigenvalues (Tensor Complex128 [2 2] [(Complex128 1 0) (Complex128 2 0) (Complex128 3 0) (Complex128 4 0)]))",
+        "matrix/eigenvalues: input matrix is not Hermitian", pass, fail);
     test_error_contains(interp, "matrix eigenvalues rejects complex dtype",
         "(matrix/eigenvalues (Tensor BigComplex [2 2] [1 0 0 1]))",
-        "matrix/eigenvalues: expected a square rank-2 Float64 Tensor", pass, fail);
+        "matrix/eigenvalues: expected a square rank-2 Float64, Complex128, or Complex64 Tensor", pass, fail);
     test_truthy(interp, "matrix eigenvalues vulkan computes when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (< (abs (- (ref (to-device (matrix/eigenvalues (to-device (Tensor Float64 [2 2] [3 0 0 2]) 'vulkan)) 'cpu) [0]) 3.0)) 0.000000001) true) true))", pass, fail);
     test_truthy(interp, "matrix eigenvalues vulkan result stays on device",

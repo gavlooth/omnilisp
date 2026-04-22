@@ -2,6 +2,7 @@
 // Reason: libffi uses C structs (ffi_type, ffi_cif) that are hard to declare in C3.
 
 #include <ffi.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 // Type codes matching Omni's FFI type enum (must stay in sync with value.c3 FfiTypeTag)
@@ -40,6 +41,20 @@ static ffi_type* omni_to_ffi_type(int t) {
     }
 }
 
+static int omni_ffi_arg_storage_valid(int nargs, int* arg_types, void** arg_values) {
+    if (nargs < 0) return 0;
+    if (nargs == 0) return 1;
+    if (arg_types == NULL || arg_values == NULL) return 0;
+    return (size_t)nargs <= SIZE_MAX / sizeof(ffi_type*);
+}
+
+static int omni_ffi_arg_types_valid(int nargs, int* arg_types) {
+    if (nargs < 0) return 0;
+    if (nargs == 0) return 1;
+    if (arg_types == NULL) return 0;
+    return (size_t)nargs <= SIZE_MAX / sizeof(ffi_type*);
+}
+
 // omni_ffi_call — prepare CIF and call function via libffi.
 // fn_ptr:     dlsym'd function pointer
 // nargs:      number of arguments
@@ -50,7 +65,7 @@ static ffi_type* omni_to_ffi_type(int t) {
 // Returns: 0 on success, -1 on error
 int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
                   int ret_type, void* ret_value) {
-    if (nargs < 0) return -1;
+    if (fn_ptr == NULL || !omni_ffi_arg_storage_valid(nargs, arg_types, arg_values)) return -1;
 
     ffi_cif cif;
     ffi_type** atypes = NULL;
@@ -79,7 +94,10 @@ int omni_ffi_call(void* fn_ptr, int nargs, int* arg_types, void** arg_values,
 int omni_ffi_call_var(void* fn_ptr, int nargs, int fixed_count,
                       int* arg_types, void** arg_values,
                       int ret_type, void* ret_value) {
-    if (nargs < 0 || fixed_count < 0 || fixed_count > nargs) return -1;
+    if (fn_ptr == NULL || fixed_count < 0 || fixed_count > nargs ||
+        !omni_ffi_arg_storage_valid(nargs, arg_types, arg_values)) {
+        return -1;
+    }
 
     ffi_cif cif;
     ffi_type** atypes = NULL;
@@ -135,7 +153,12 @@ static void omni_ffi_closure_handler(ffi_cif* cif, void* ret, void** args, void*
 int omni_ffi_closure_alloc(int nargs, int* arg_types, int ret_type,
                            void** out_closure, void** out_code,
                            void* user_data) {
-    if (nargs < 0 || out_closure == NULL || out_code == NULL) return -1;
+    if (out_closure != NULL) *out_closure = NULL;
+    if (out_code != NULL) *out_code = NULL;
+    if (out_closure == NULL || out_code == NULL ||
+        !omni_ffi_arg_types_valid(nargs, arg_types)) {
+        return -1;
+    }
 
     OmniFfiClosure* closure = (OmniFfiClosure*)calloc(1, sizeof(OmniFfiClosure));
     if (closure == NULL) return -1;
@@ -180,6 +203,7 @@ int omni_ffi_closure_alloc(int nargs, int* arg_types, int ret_type,
                                    omni_ffi_closure_handler, user_data, *out_code);
     if (status != FFI_OK) {
         ffi_closure_free(closure->closure);
+        *out_code = NULL;
         free(closure->atypes);
         free(closure->cif);
         free(closure);
@@ -203,4 +227,21 @@ void omni_ffi_closure_free(void* closure_handle) {
 int omni_ffi_test_callback_int_int(void* cb, int a, int b) {
     int (*fn)(int, int) = (int (*)(int, int))cb;
     return fn(a, b);
+}
+
+int omni_ffi_call_null_arg_vectors_guard_for_tests(void) {
+    long ret = 0;
+    return omni_ffi_call((void*)1, 1, NULL, NULL, OMNI_FFI_INT, &ret);
+}
+
+int omni_ffi_call_var_null_arg_vectors_guard_for_tests(void) {
+    long ret = 0;
+    return omni_ffi_call_var((void*)1, 1, 1, NULL, NULL, OMNI_FFI_INT, &ret);
+}
+
+int omni_ffi_closure_alloc_failure_clears_outputs_for_tests(void) {
+    void* closure = (void*)1;
+    void* code = (void*)1;
+    int status = omni_ffi_closure_alloc(1, NULL, OMNI_FFI_INT, &closure, &code, NULL);
+    return status == -1 && closure == NULL && code == NULL ? 0 : -1;
 }

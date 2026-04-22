@@ -30,8 +30,12 @@ static int omni_tensor_backend_cuda_map_unary_launch(
     if (alloc_status != OMNI_TENSOR_CUDA_SUCCESS) return alloc_status;
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&op,
@@ -98,8 +102,13 @@ static int omni_tensor_backend_cuda_map_scientific_unary_launch(
     }
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(status_device);
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&op,
@@ -188,8 +197,13 @@ static int omni_tensor_backend_cuda_complex_unary_launch(
     }
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(status_device);
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&op,
@@ -273,8 +287,13 @@ static int omni_tensor_backend_cuda_round_i64_launch(
     }
 
     unsigned int block_dim = 256;
-    unsigned int grid_dim = (unsigned int)((element_count + block_dim - 1) / block_dim);
-    if (grid_dim == 0) grid_dim = 1;
+    unsigned int grid_dim = 0;
+    int grid_status = omni_tensor_cuda_grid_dim_1d(element_count, block_dim, &grid_dim);
+    if (grid_status != OMNI_TENSOR_CUDA_SUCCESS) {
+        omni_tensor_backend_cuda_free(status_device);
+        omni_tensor_backend_cuda_free(out_device);
+        return grid_status;
+    }
     void* params[] = {
         (void*)&input_device,
         (void*)&op,

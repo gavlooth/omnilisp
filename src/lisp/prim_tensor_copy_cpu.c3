@@ -137,8 +137,11 @@ fn Value* tensor_copy_into_cuda_destination(Value* source_value, Value* dest_val
     if (source.element_count != dest.element_count || source.byte_len != dest.byte_len || !tensor_same_shape(source, dest)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/shape-mismatch", "realize: tensor shape mismatch", null);
     }
-    if (source.kind == TENSOR_PAYLOAD_VIEW || source.is_view ||
-        !tensor_dense_row_major(source) || !tensor_dense_row_major(dest)) {
+    bool source_is_view = source.kind == TENSOR_PAYLOAD_VIEW || source.is_view;
+    if (source_is_view && source.device != TENSOR_DEVICE_CPU) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "realize: CUDA destination currently supports CPU-backed view materialization", null);
+    }
+    if ((!source_is_view && !tensor_dense_row_major(source)) || !tensor_dense_row_major(dest)) {
         return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "realize: CUDA destination requires dense row-major tensors", null);
     }
 
@@ -341,6 +344,40 @@ fn Value* tensor_expr_resolve_concrete_any_device(Value* source_value, TensorVal
     return null;
 }
 
+fn Value* tensor_expr_resolve_vulkan_or_migrate(Value* source_value, TensorVal** out_tensor, Value** out_value, Interp* interp, char[] label) {
+    if (out_tensor == null) return tensor_runtime_raise(interp, label);
+    *out_tensor = null;
+    if (out_value != null) *out_value = null;
+    if (!is_tensor(source_value)) return tensor_type_raise(interp, label);
+
+    TensorVal* source = source_value.tensor_val;
+    if (!tensor_has_valid_metadata(source)) return tensor_runtime_raise(interp, label);
+    Value* realized = source.kind == TENSOR_PAYLOAD_CONCRETE ? source_value : tensor_realize_to_value(source_value, interp);
+    if (realized == null || realized.tag == ERROR) return realized;
+    if (!is_tensor(realized) || realized.tensor_val == null || !tensor_has_valid_metadata(realized.tensor_val) || realized.tensor_val.kind != TENSOR_PAYLOAD_CONCRETE) {
+        return tensor_runtime_raise(interp, label);
+    }
+
+    if (realized.tensor_val.device == TENSOR_DEVICE_VULKAN) {
+        *out_tensor = realized.tensor_val;
+        if (out_value != null) *out_value = realized;
+        return null;
+    }
+
+    if (realized.tensor_val.device != TENSOR_DEVICE_CPU) {
+        return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", label, null);
+    }
+
+    Value* migrated = tensor_copy_cpu_to_vulkan_value(realized, interp);
+    if (migrated == null || migrated.tag == ERROR) return migrated;
+    if (!is_tensor(migrated) || migrated.tensor_val == null || !tensor_has_valid_metadata(migrated.tensor_val)) {
+        return tensor_runtime_raise(interp, label);
+    }
+    *out_tensor = migrated.tensor_val;
+    if (out_value != null) *out_value = migrated;
+    return null;
+}
+
 fn Value* tensor_map_try_cuda_value(TensorVal* source, Interp* interp) {
     if (source == null || source.kind != TENSOR_PAYLOAD_MAP) return null;
 
@@ -377,12 +414,24 @@ fn Value* tensor_map_try_cuda_value(TensorVal* source, Interp* interp) {
     }
 
     if (source.map_left != null) {
-        err = tensor_expr_resolve_concrete_any_device(source.map_left, &left_tensor, &left_value, interp, "map: tensor backing storage is missing");
-        if (err != null) return err;
+        TensorVal* direct_left = is_tensor(source.map_left) ? source.map_left.tensor_val : null;
+        if (source.map_is_binary && tensor_zero_offset_strided_device_map_operand(direct_left, TENSOR_DEVICE_CUDA)) {
+            left_tensor = direct_left;
+            left_value = source.map_left;
+        } else {
+            err = tensor_expr_resolve_concrete_any_device(source.map_left, &left_tensor, &left_value, interp, "map: tensor backing storage is missing");
+            if (err != null) return err;
+        }
     }
     if (source.map_is_binary && source.map_right != null) {
-        err = tensor_expr_resolve_concrete_any_device(source.map_right, &right_tensor, &right_value, interp, "map: tensor backing storage is missing");
-        if (err != null) return err;
+        TensorVal* direct_right = is_tensor(source.map_right) ? source.map_right.tensor_val : null;
+        if (tensor_zero_offset_strided_device_map_operand(direct_right, TENSOR_DEVICE_CUDA)) {
+            right_tensor = direct_right;
+            right_value = source.map_right;
+        } else {
+            err = tensor_expr_resolve_concrete_any_device(source.map_right, &right_tensor, &right_value, interp, "map: tensor backing storage is missing");
+            if (err != null) return err;
+        }
     }
 
     if (!source.map_is_binary) {

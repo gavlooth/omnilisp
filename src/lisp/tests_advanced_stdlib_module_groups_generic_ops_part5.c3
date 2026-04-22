@@ -32,6 +32,31 @@ fn void run_advanced_collections_generic_ops_part5(Interp* interp, int* pass, in
     test_double(interp, "matrix norm Complex64 nuclear",
         "(matrix/norm (Tensor Complex64 [2 2] [(Complex64 3 4) (Complex64 0 0) (Complex64 0 0) (Complex64 2 0)]) 'nuclear)",
         7.0, pass, fail);
+    test_truthy(interp, "matrix singular-values CUDA Complex128 when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'matrix-singular-values-complex128) (let (x (to-device (Tensor Complex128 [2 2] [(Complex128 3 0) 0 0 (Complex128 2 0)]) 'cuda) s (matrix/singular-values x) cpu (to-device s 'cpu)) (and (= (device s) 'cuda) (= (String (dtype s)) \"Float64\") (= (ref (shape s) 0) 2) (= (ref cpu [0]) 3.0) (= (ref cpu [1]) 2.0))) true))", pass, fail);
+    test_truthy(interp, "matrix norm CUDA Complex128 spectral nuclear when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'matrix-singular-values-complex128) (let (x (to-device (Tensor Complex128 [2 2] [(Complex128 3 0) 0 0 (Complex128 2 0)]) 'cuda)) (and (= (matrix/norm x 'spectral) 3.0) (= (matrix/norm x 'nuclear) 5.0))) true))", pass, fail);
+    test_truthy(interp, "matrix svd CUDA Complex64 wide when available",
+        "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'matrix-svd-complex64) (let (x (to-device (Tensor Complex64 [2 3] [(Complex64 3 0) 0 0 0 (Complex64 2 0) 0]) 'cuda) svd (matrix/svd x) u (ref svd 'u) s (ref svd 's) v (ref svd 'v) scpu (to-device s 'cpu)) (and (= (device u) 'cuda) (= (device s) 'cuda) (= (device v) 'cuda) (= (String (dtype u)) \"Complex64\") (= (String (dtype s)) \"Float32\") (= (ref (shape u) 0) 2) (= (ref (shape u) 1) 2) (= (ref (shape v) 0) 3) (= (ref (shape v) 1) 2) (= (ref scpu [0]) (Float32 3.0)) (= (ref scpu [1]) (Float32 2.0)))) true))", pass, fail);
+    {
+        long z_calls_before = omni_tensor_backend_cusolver_zgesvd_call_count();
+        long c_calls_before = omni_tensor_backend_cusolver_cgesvd_call_count();
+        test_truthy(interp, "matrix CUDA complex SVD uses cuSOLVER counters when available",
+            "(let (cuda-backend (ref (tensor-backends) 1)) (if (ref cuda-backend 'matrix-singular-values-complex128) (let (s (matrix/singular-values (to-device (Tensor Complex128 [2 2] [(Complex128 1 0) 0 0 (Complex128 1 0)]) 'cuda))) (= (device s) 'cuda)) true))",
+            pass, fail);
+        bool cuda_svd_available = omni_tensor_backend_cusolver_complex_svd_available() != 0 &&
+            omni_tensor_backend_cuda_complex_matrix_available() != 0;
+        bool counter_ok = !cuda_svd_available ||
+            omni_tensor_backend_cusolver_zgesvd_call_count() > z_calls_before ||
+            omni_tensor_backend_cusolver_cgesvd_call_count() > c_calls_before;
+        if (counter_ok) {
+            emit_pass_literal("[PASS] tensor CUDA complex SVD cuSOLVER counter path");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor CUDA complex SVD cuSOLVER counter path");
+            (*fail)++;
+        }
+    }
     {
         long lapack_calls_before = omni_tensor_backend_lapack_dgesvd_call_count();
         test_truthy(interp, "matrix norm CPU fixed complex reducers do not call Float64 LAPACK",

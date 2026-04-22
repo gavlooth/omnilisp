@@ -271,8 +271,8 @@ fn Value* ml_attention_eval_vulkan(
     tensor.device = TENSOR_DEVICE_VULKAN;
 
     void* out_device = null;
-    void* mask_device = mask_kind == 0 ? query.device_handle : mask.device_handle;
-    usz mask_byte_len = mask_kind == 0 ? query.byte_len : mask.byte_len;
+    void* mask_device = mask_kind == 0 ? null : mask.device_handle;
+    usz mask_byte_len = mask_kind == 0 ? 0 : mask.byte_len;
     int status = omni_tensor_backend_vulkan_ml_attention_f32(
         query.device_handle,
         query.byte_len,
@@ -295,8 +295,12 @@ fn Value* ml_attention_eval_vulkan(
         tensor_free_payload(tensor);
         return tensor_vulkan_status_raise(interp, status, "ml/scaled-dot-product-attention: Vulkan attention kernel failed");
     }
+    if (out_device == null) {
+        tensor_free_payload(tensor);
+        return tensor_runtime_raise(interp, "ml/scaled-dot-product-attention: Vulkan attention kernel did not return result storage");
+    }
     tensor.device_handle = out_device;
-    tensor.device_finalizer = out_device != null ? &tensor_vulkan_device_finalizer : null;
+    tensor.device_finalizer = &tensor_vulkan_device_finalizer;
 
     Value* result = interp.alloc_value();
     if (result == null) {
@@ -338,18 +342,6 @@ fn Value* prim_ml_scaled_dot_product_attention(Value*[] args, Env* env, Interp* 
         tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN) ||
         tensor_expr_has_device(args[2], TENSOR_DEVICE_VULKAN) ||
         (has_mask && tensor_expr_has_device(mask_arg, TENSOR_DEVICE_VULKAN));
-    if (touches_vulkan) {
-        if (!tensor_expr_has_device(args[0], TENSOR_DEVICE_VULKAN) ||
-            !tensor_expr_has_device(args[1], TENSOR_DEVICE_VULKAN) ||
-            !tensor_expr_has_device(args[2], TENSOR_DEVICE_VULKAN) ||
-            (has_mask && !tensor_expr_has_device(mask_arg, TENSOR_DEVICE_VULKAN)) ||
-            tensor_expr_has_non_vulkan_device(args[0]) ||
-            tensor_expr_has_non_vulkan_device(args[1]) ||
-            tensor_expr_has_non_vulkan_device(args[2]) ||
-            (has_mask && tensor_expr_has_non_vulkan_device(mask_arg))) {
-            return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "ml/scaled-dot-product-attention: Vulkan operands must remain Vulkan-placed", null);
-        }
-    }
 
     TensorVal* query = null;
     TensorVal* key = null;
@@ -359,20 +351,38 @@ fn Value* prim_ml_scaled_dot_product_attention(Value*[] args, Env* env, Interp* 
     Value* key_value = null;
     Value* value_value = null;
     Value* mask_value = null;
-    Value* err = tensor_expr_resolve_concrete_any_device(args[0], &query, &query_value, interp, "ml/scaled-dot-product-attention: query tensor backing storage is missing");
-    if (err != null) return err;
-    defer if (query_value != null && query_value != args[0]) boundary_cleanup_materialized_value(null, query_value, interp.current_scope);
-    err = tensor_expr_resolve_concrete_any_device(args[1], &key, &key_value, interp, "ml/scaled-dot-product-attention: key tensor backing storage is missing");
-    if (err != null) return err;
-    defer if (key_value != null && key_value != args[1]) boundary_cleanup_materialized_value(null, key_value, interp.current_scope);
-    err = tensor_expr_resolve_concrete_any_device(args[2], &value, &value_value, interp, "ml/scaled-dot-product-attention: value tensor backing storage is missing");
-    if (err != null) return err;
-    defer if (value_value != null && value_value != args[2]) boundary_cleanup_materialized_value(null, value_value, interp.current_scope);
-    if (has_mask) {
-        err = tensor_expr_resolve_concrete_any_device(mask_arg, &mask, &mask_value, interp, "ml/scaled-dot-product-attention: mask tensor backing storage is missing");
+    Value* err;
+    if (touches_vulkan) {
+        err = tensor_expr_resolve_vulkan_or_migrate(args[0], &query, &query_value, interp, "ml/scaled-dot-product-attention: query tensor backing storage is missing");
         if (err != null) return err;
+        defer if (query_value != null && query_value != args[0]) boundary_cleanup_materialized_value(null, query_value, interp.current_scope);
+        err = tensor_expr_resolve_vulkan_or_migrate(args[1], &key, &key_value, interp, "ml/scaled-dot-product-attention: key tensor backing storage is missing");
+        if (err != null) return err;
+        defer if (key_value != null && key_value != args[1]) boundary_cleanup_materialized_value(null, key_value, interp.current_scope);
+        err = tensor_expr_resolve_vulkan_or_migrate(args[2], &value, &value_value, interp, "ml/scaled-dot-product-attention: value tensor backing storage is missing");
+        if (err != null) return err;
+        defer if (value_value != null && value_value != args[2]) boundary_cleanup_materialized_value(null, value_value, interp.current_scope);
+        if (has_mask) {
+            err = tensor_expr_resolve_vulkan_or_migrate(mask_arg, &mask, &mask_value, interp, "ml/scaled-dot-product-attention: mask tensor backing storage is missing");
+            if (err != null) return err;
+        }
+        defer if (mask_value != null && mask_value != mask_arg) boundary_cleanup_materialized_value(null, mask_value, interp.current_scope);
+    } else {
+        err = tensor_expr_resolve_concrete_any_device(args[0], &query, &query_value, interp, "ml/scaled-dot-product-attention: query tensor backing storage is missing");
+        if (err != null) return err;
+        defer if (query_value != null && query_value != args[0]) boundary_cleanup_materialized_value(null, query_value, interp.current_scope);
+        err = tensor_expr_resolve_concrete_any_device(args[1], &key, &key_value, interp, "ml/scaled-dot-product-attention: key tensor backing storage is missing");
+        if (err != null) return err;
+        defer if (key_value != null && key_value != args[1]) boundary_cleanup_materialized_value(null, key_value, interp.current_scope);
+        err = tensor_expr_resolve_concrete_any_device(args[2], &value, &value_value, interp, "ml/scaled-dot-product-attention: value tensor backing storage is missing");
+        if (err != null) return err;
+        defer if (value_value != null && value_value != args[2]) boundary_cleanup_materialized_value(null, value_value, interp.current_scope);
+        if (has_mask) {
+            err = tensor_expr_resolve_concrete_any_device(mask_arg, &mask, &mask_value, interp, "ml/scaled-dot-product-attention: mask tensor backing storage is missing");
+            if (err != null) return err;
+        }
+        defer if (mask_value != null && mask_value != mask_arg) boundary_cleanup_materialized_value(null, mask_value, interp.current_scope);
     }
-    defer if (mask_value != null && mask_value != mask_arg) boundary_cleanup_materialized_value(null, mask_value, interp.current_scope);
 
     usz* result_shape = null;
     usz result_rank = 0;
