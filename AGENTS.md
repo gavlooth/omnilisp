@@ -113,6 +113,11 @@ Before finishing significant code changes:
 - Run at least targeted tests for touched areas
 - Run `c3c build` for integration safety
 - When touching memory/lifetime logic, strongly prefer an ASAN pass: `c3c build --sanitize=address`
+- When ASAN is unsupported or when native memory/lifetime behavior remains
+  suspect, run Valgrind if available; the local command is `valgrind`.
+  Prefer a targeted invocation first, for example:
+  `valgrind --leak-check=full --error-exitcode=99 env LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  Use the bounded Docker validation path for broad/high-memory Valgrind runs.
 - When touching memory/lifetime logic, also run full suite:
   - `LD_LIBRARY_PATH=/usr/local/lib ./build/main`
 
