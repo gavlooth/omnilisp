@@ -16,13 +16,13 @@ fn Value* tensor_capture_fusion_ids(Value* nodes, Interp* interp, usz count) {
     Value* ids = make_array_checked(interp, count, "tensor/capture: fusion ids out of memory");
     if (ids == null || ids.tag == ERROR) return ids;
     if (ids.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (!tensor_capture_fusion_node_is(node, interp, "tensor-map")) continue;
         Value* id = tensor_capture_fusion_node_id(node, interp);
         if (id == null) return tensor_runtime_raise(interp, "tensor/capture: fusion node id is missing");
         if (Value* err = tensor_capture_array_push(ids, id, interp)) return err;
-    }
+}
     return ids;
 }
 
@@ -53,8 +53,8 @@ fn Value* tensor_capture_fusion_barriers(Value* nodes, Interp* interp, usz barri
     Value* barriers = make_array_checked(interp, barrier_count, "tensor/capture: fusion barriers out of memory");
     if (barriers == null || barriers.tag == ERROR) return barriers;
     if (barriers.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         char[] reason = tensor_capture_fusion_barrier_reason(node, interp);
         if (reason.len == 0) continue;
         Value* id = tensor_capture_fusion_node_id(node, interp);
@@ -65,7 +65,7 @@ fn Value* tensor_capture_fusion_barriers(Value* nodes, Interp* interp, usz barri
         if (Value* err = nn_dict_set(barrier, interp, "kind", nn_dict_get(node, interp, "kind"))) return err;
         if (Value* err = nn_dict_set_symbol(barrier, interp, "reason", reason)) return err;
         if (Value* err = tensor_capture_array_push(barriers, barrier, interp)) return err;
-    }
+}
     return barriers;
 }
 
@@ -74,12 +74,12 @@ fn Value* tensor_capture_fusion_plan(Value* nodes, Interp* interp) {
     usz map_count = 0;
     usz launch_count = 0;
     usz barrier_count = 0;
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (tensor_capture_node_launches(node, interp)) launch_count++;
         if (tensor_capture_fusion_node_is(node, interp, "tensor-map")) map_count++;
         if (tensor_capture_fusion_barrier_reason(node, interp).len > 0) barrier_count++;
-    }
+}
 
     bool eligible = map_count >= 2 && map_count == launch_count && barrier_count == 0;
     Value* candidates = make_array_checked(interp, eligible ? 1 : 0, "tensor/capture: fusion candidates out of memory");

@@ -267,9 +267,9 @@ fn Value* nn_validate_layer_spec(Value* spec, Interp* interp) {
         if (layers == null || layers.tag != ARRAY || layers.array_val == null || layers.array_val.length == 0) {
             return nn_invalid(interp, "spec.layers", "non-empty Array of layer specs", layers);
         }
-        for (usz i = 0; i < layers.array_val.length; i++) {
-            if (Value* err = nn_validate_layer_spec(layers.array_val.items[i], interp)) return err;
-        }
+foreach (item : layers.array_val.items[0:layers.array_val.length]) {
+            if (Value* err = nn_validate_layer_spec(item, interp)) return err;
+}
         return null;
     }
     if (nn_symbol_is(kind, interp, "dense")) return nn_validate_dense(spec, interp);
@@ -287,9 +287,9 @@ fn Value* nn_validate_tree(Value* tree, Interp* interp, char[] path) {
     if (tree == null || tree.tag == NIL || tree.tag == TENSOR) return null;
     if (tree.tag == ARRAY) {
         if (tree.array_val == null) return nn_invalid(interp, path, "valid array tree", tree);
-        for (usz i = 0; i < tree.array_val.length; i++) {
-            if (Value* err = nn_validate_tree(tree.array_val.items[i], interp, path)) return err;
-        }
+foreach (item : tree.array_val.items[0:tree.array_val.length]) {
+            if (Value* err = nn_validate_tree(item, interp, path)) return err;
+}
         return null;
     }
     if (is_cons(tree)) {

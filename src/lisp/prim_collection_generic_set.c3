@@ -230,11 +230,11 @@ fn Value* prim_set(Value*[] args, Env* env, Interp* interp) {
     HashMap* map = set_val.hashmap_val;
     if (map == null) return raise_error_with_payload_names(interp, "runtime", "runtime/invalid-state", "Set: set backing storage is missing");
     Value* true_val = make_symbol(interp, interp.sym_true);
-    for (usz i = 0; i < args.len; i++) {
-        if (!hashmap_set_checked(map, args[i], true_val, interp)) {
+foreach (arg : args) {
+        if (!hashmap_set_checked(map, arg, true_val, interp)) {
             return collection_raise(interp, "type/out-of-memory", "Set: out of memory while growing backing storage");
         }
-    }
+}
     return set_val;
 }
 

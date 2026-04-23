@@ -158,9 +158,9 @@ fn bool schema_check_map_clause(Value* schema, Value* val, Interp* interp) {
 fn bool schema_check_array_of_clause(Value* schema, Value* val, Interp* interp) {
     if (val == null || val.tag != ARRAY) return false;
     Value* elem_schema = car(cdr(schema));
-    for (usz i = 0; i < val.array_val.length; i++) {
-        if (!schema_check(elem_schema, val.array_val.items[i], interp)) return false;
-    }
+foreach (item : val.array_val.items[0:val.array_val.length]) {
+        if (!schema_check(elem_schema, item, interp)) return false;
+}
     return true;
 }
 

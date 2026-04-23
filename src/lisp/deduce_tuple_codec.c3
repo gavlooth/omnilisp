@@ -22,8 +22,8 @@ fn int read_i32_le(char* buf, usz pos) {
 
 fn usz? deduce_tuple_encoded_size(Value*[] vals) {
     usz total = 0;
-    for (usz i = 0; i < vals.len; i++) {
-        Value* v = vals[i];
+foreach (val : vals) {
+        Value* v = val;
         usz increment = 0;
         if (v == null || v.tag == NIL) {
             increment = 1;
@@ -43,14 +43,14 @@ fn usz? deduce_tuple_encoded_size(Value*[] vals) {
             return WRITE_FAILED~;
         }
         if (!deduce_checked_add_inplace(&total, increment)) return WRITE_FAILED~;
-    }
+}
     return total;
 }
 
 fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
     usz pos = 0;
-    for (usz i = 0; i < vals.len; i++) {
-        Value* v = vals[i];
+foreach (item : vals) {
+        Value* v = item;
         if (v == null || v.tag == NIL) {
             if (pos >= buf_size) return WRITE_FAILED~;
             buf[pos++] = 0;
@@ -107,7 +107,7 @@ fn usz? encode_tuple(Value*[] vals, char* buf, usz buf_size) {
             if (pos >= buf_size) return WRITE_FAILED~;
             buf[pos++] = 0;  // unsupported → nil
         }
-    }
+}
     return pos;
 }
 

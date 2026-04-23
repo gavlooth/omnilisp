@@ -33,10 +33,10 @@ fn Value* ml_clip_accumulate_norm(Value* gradients, Interp* interp, double* out_
         return null;
     }
     if (gradients.tag == ARRAY && gradients.array_val != null) {
-        for (usz i = 0; i < gradients.array_val.length; i++) {
-            Value* err = ml_clip_accumulate_norm(gradients.array_val.items[i], interp, out_sum);
+foreach (item : gradients.array_val.items[0:gradients.array_val.length]) {
+            Value* err = ml_clip_accumulate_norm(item, interp, out_sum);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (gradients.tag == HASHMAP && gradients.hashmap_val != null) {

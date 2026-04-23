@@ -168,12 +168,12 @@ fn void deduce_free_selected_rule_observed_counters(
     DeduceObservedRuleCounters[] observed_rules
 ) {
     if (observed_rules.ptr == null) return;
-    for (usz i = 0; i < observed_rules.len; i++) {
-        if (observed_rules[i].steps != null) {
-            mem::free(observed_rules[i].steps);
-            observed_rules[i].steps = null;
+foreach (observed_rule : observed_rules) {
+        if (observed_rule.steps != null) {
+            mem::free(observed_rule.steps);
+            observed_rule.steps = null;
         }
-    }
+}
     mem::free(observed_rules.ptr);
 }
 

@@ -540,8 +540,8 @@ fn Value* prim_tensor_run(Value*[] args, Env* env, Interp* interp) {
     chain_result = tensor_graph_run_try_scalar_map_chain(graph, nodes.array_val.items[0:nodes.array_val.length], (usz)output_id.int_val, interp);
     if (chain_result != null) return chain_result;
 
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (node == null || node.tag != HASHMAP) return raise_error_with_payload_names(interp, "tensor", "tensor/invalid-argument", "tensor/run: graph node is invalid", null);
         if (nn_symbol_is(nn_dict_get(node, interp, "kind"), interp, "tensor-source")) {
             if (Value* err = tensor_graph_run_source_node(node, results, interp)) return err;
@@ -554,7 +554,7 @@ fn Value* prim_tensor_run(Value*[] args, Env* env, Interp* interp) {
         } else {
             return raise_error_with_payload_names(interp, "tensor", "tensor/backend-unsupported", "tensor/run: unsupported graph node kind", null);
         }
-    }
+}
 
     Value* out = results[(usz)output_id.int_val];
     if (!is_tensor(out) || out.tensor_val == null) {

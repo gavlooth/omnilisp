@@ -230,16 +230,16 @@ fn bool jit_graph_binding_reaches_temp_scope(
                     break;
                 case ARRAY:
                     if (cur.array_val != null) {
-                        for (usz i = 0; i < cur.array_val.length; i++) {
+foreach (item : cur.array_val.items[0:cur.array_val.length]) {
                             if (jit_temp_graph_push_child_or_detect_temp(
                                 &scan.value_stack[0],
                                 &value_stack_len,
-                                cur.array_val.items[i],
+                                item,
                                 scope
                             )) {
                                 return true;
                             }
-                        }
+}
                     }
                     break;
                 case HASHMAP:

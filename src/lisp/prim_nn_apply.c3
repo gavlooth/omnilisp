@@ -897,9 +897,9 @@ fn Value* nn_summary_count_params(Value* tree, Interp* interp, NnSummaryCounts* 
         return null;
     }
     if (tree.tag == ARRAY && tree.array_val != null) {
-        for (usz i = 0; i < tree.array_val.length; i++) {
-            if (Value* err = nn_summary_count_params(tree.array_val.items[i], interp, counts)) return err;
-        }
+foreach (item : tree.array_val.items[0:tree.array_val.length]) {
+            if (Value* err = nn_summary_count_params(item, interp, counts)) return err;
+}
         return null;
     }
     if (tree.tag == HASHMAP && tree.hashmap_val != null) {
@@ -929,9 +929,9 @@ fn Value* nn_summary_count_layer_tree(Value* spec, Interp* interp, NnSummaryCoun
         if (layers == null || layers.tag != ARRAY || layers.array_val == null) {
             return nn_apply_invalid(interp, "spec.layers", "Array layer specs", layers);
         }
-        for (usz i = 0; i < layers.array_val.length; i++) {
-            if (Value* err = nn_summary_count_layer_tree(layers.array_val.items[i], interp, counts)) return err;
-        }
+foreach (item : layers.array_val.items[0:layers.array_val.length]) {
+            if (Value* err = nn_summary_count_layer_tree(item, interp, counts)) return err;
+}
         return null;
     }
     if (!nn_summary_add_usz(&counts.layers, 1)) {

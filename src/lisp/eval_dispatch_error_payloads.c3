@@ -209,10 +209,10 @@ fn Value* dispatch_ambiguous_error(
     SymbolId key_candidate_indices = interp.symbols.intern("candidate-indices");
 
     Value* arg_types_rev = make_nil(interp);
-    for (usz i = 0; i < args.len; i++) {
-        SymbolId arg_type_name = value_type_name(args[i], interp);
+foreach (arg : args) {
+        SymbolId arg_type_name = value_type_name(arg, interp);
         arg_types_rev = make_cons(interp, make_symbol(interp, arg_type_name), arg_types_rev);
-    }
+}
     Value* arg_types = dispatch_reverse_list(arg_types_rev, interp);
 
     if (data != null) {

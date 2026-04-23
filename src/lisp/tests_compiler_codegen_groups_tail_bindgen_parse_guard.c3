@@ -12,9 +12,9 @@ fn void run_compiler_group_bindgen_parse_guard_tests(Interp* _interp, usz* pass_
     char[640] long_header_buf;
     usz long_len = 0;
     char[] prefix = "/tmp/";
-    for (usz i = 0; i < prefix.len; i++) {
-        long_header_buf[long_len++] = prefix[i];
-    }
+foreach (item : prefix) {
+        long_header_buf[long_len++] = item;
+}
     while (long_len < 520) {
         long_header_buf[long_len++] = 'a';
     }

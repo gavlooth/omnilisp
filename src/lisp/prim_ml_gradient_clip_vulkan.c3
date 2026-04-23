@@ -4,9 +4,9 @@ fn bool ml_clip_tree_touches_vulkan(Value* gradients) {
     if (gradients == null) return false;
     if (is_tensor(gradients)) return tensor_expr_has_device(gradients, TENSOR_DEVICE_VULKAN);
     if (gradients.tag == ARRAY && gradients.array_val != null) {
-        for (usz i = 0; i < gradients.array_val.length; i++) {
-            if (ml_clip_tree_touches_vulkan(gradients.array_val.items[i])) return true;
-        }
+foreach (item : gradients.array_val.items[0:gradients.array_val.length]) {
+            if (ml_clip_tree_touches_vulkan(item)) return true;
+}
         return false;
     }
     if (gradients.tag == HASHMAP && gradients.hashmap_val != null) {
@@ -65,10 +65,10 @@ fn Value* ml_clip_vulkan_accumulate_norm(Value* gradients, Interp* interp, doubl
         return null;
     }
     if (gradients.tag == ARRAY && gradients.array_val != null) {
-        for (usz i = 0; i < gradients.array_val.length; i++) {
-            Value* err = ml_clip_vulkan_accumulate_norm(gradients.array_val.items[i], interp, out_sum);
+foreach (item : gradients.array_val.items[0:gradients.array_val.length]) {
+            Value* err = ml_clip_vulkan_accumulate_norm(item, interp, out_sum);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (gradients.tag == HASHMAP && gradients.hashmap_val != null) {

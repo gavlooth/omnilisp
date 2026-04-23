@@ -12,17 +12,17 @@ import main;
 fn Value* prim_string_append(Value*[] args, Env* env, Interp* interp) {
     if (args.len == 0) return make_string(interp, "");
 
-    for (usz i = 0; i < args.len; i++) {
-        if (!is_string(args[i])) {
+foreach (arg : args) {
+        if (!is_string(arg)) {
             return string_raise(interp, "type/arity", "string-append: expected string arguments");
         }
-    }
+}
 
     DString ds;
     ds.init(mem);
-    for (usz i = 0; i < args.len; i++) {
-        ds.append_string((String)args[i].str_chars[:args[i].str_len]);
-    }
+foreach (arg : args) {
+        ds.append_string((String)arg.str_chars[:arg.str_len]);
+}
     Value* result = make_string(interp, ds.str_view());
     ds.free();
     return result;

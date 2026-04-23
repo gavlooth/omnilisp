@@ -183,11 +183,11 @@ fn bool resolve_import_path_checked(char[] rel_path, Interp* interp, char* buf, 
         }
     }
 
-    for (usz i = 0; i < rel_path.len; i++) {
+foreach (item : rel_path) {
         if (pos >= buf_cap - 1) return false;
-        buf[pos] = rel_path[i];
+        buf[pos] = item;
         pos++;
-    }
+}
 
     buf[pos] = 0;
     *out_len = pos;

@@ -5,8 +5,8 @@ import main;
 
 fn void Compiler.serialize_quoted_text_to_buf(Compiler* self, char[] text, List{char}* buf) {
     buf.push('"');
-    for (usz i = 0; i < text.len; i++) {
-        char c = text[i];
+foreach (item : text) {
+        char c = item;
         if (c == '"') {
             buf.push('\\');
             buf.push('"');
@@ -22,7 +22,7 @@ fn void Compiler.serialize_quoted_text_to_buf(Compiler* self, char[] text, List{
         } else {
             buf.push(c);
         }
-    }
+}
     buf.push('"');
 }
 

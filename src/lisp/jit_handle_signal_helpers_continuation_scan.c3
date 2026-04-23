@@ -88,9 +88,9 @@ fn bool continuation_result_references_target(Value* root, Continuation* target)
                     if (continuation_scan_push_value(&scan, v.partial_val.second_arg)) return true;
                 case ARRAY:
                     if (v.array_val != null && v.array_val.items != null) {
-                        for (usz i = 0; i < v.array_val.length; i++) {
-                            if (continuation_scan_push_value(&scan, v.array_val.items[i])) return true;
-                        }
+foreach (item : v.array_val.items[0:v.array_val.length]) {
+                            if (continuation_scan_push_value(&scan, item)) return true;
+}
                     }
                 case HASHMAP:
                 case SET:

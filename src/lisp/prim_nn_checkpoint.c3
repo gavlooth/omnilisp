@@ -294,8 +294,8 @@ fn Value* nn_ckpt_decode_dict(Value* encoded, Interp* interp) {
     }
     Value* out = nn_make_dict(interp, (uint)(entries.array_val.length * 2 + 4));
     if (out == null || out.tag == ERROR) return out;
-    for (usz i = 0; i < entries.array_val.length; i++) {
-        Value* pair = entries.array_val.items[i];
+foreach (item : entries.array_val.items[0:entries.array_val.length]) {
+        Value* pair = item;
         if (pair == null || pair.tag != ARRAY || pair.array_val == null || pair.array_val.length != 2) {
             return nn_ckpt_invalid(interp, "checkpoint.entries", "key/value pair", pair);
         }
@@ -304,7 +304,7 @@ fn Value* nn_ckpt_decode_dict(Value* encoded, Interp* interp) {
         Value* value = nn_ckpt_decode_value(pair.array_val.items[1], interp);
         if (value == null || value.tag == ERROR) return value;
         if (!hashmap_set_checked(out.hashmap_val, key, value, interp)) return nn_oom(interp);
-    }
+}
     return out;
 }
 

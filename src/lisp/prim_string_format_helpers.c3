@@ -149,9 +149,9 @@ fn Value* strval_materialize_result(StringVal* sv, Interp* interp, char[] messag
 // Helper: append a char[] slice to a StringVal
 fn bool strval_append(StringVal* sv, char[] s) {
     if (!strval_ensure(sv, s.len)) return false;
-    for (usz k = 0; k < s.len; k++) {
-        sv.chars[sv.len++] = s[k];
-    }
+foreach (item : s) {
+        sv.chars[sv.len++] = item;
+}
     sv.chars[sv.len] = 0;
     return true;
 }

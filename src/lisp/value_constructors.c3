@@ -363,9 +363,9 @@ fn Value* make_raise_payload(
     bool keep_payload = false;
     HashMapSetRollback[4] payload_rollbacks = {};
     defer if (!keep_payload && payload != null && payload.hashmap_val != null) {
-        for (usz i = 0; i < payload_rollbacks.len; i++) {
-            hashmap_cleanup_rollback_record(&payload_rollbacks[i], interp);
-        }
+foreach (payload_rollback : payload_rollbacks) {
+            hashmap_cleanup_rollback_record(&payload_rollback, interp);
+}
         boundary_cleanup_materialized_value(null, payload, interp.root_scope);
     }
 

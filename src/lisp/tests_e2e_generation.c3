@@ -23,9 +23,9 @@ fn bool e2e_generation_fail(char[] msg) {
 
 fn bool append_line_to_buf(char* buf, usz* pos, usz cap, char[] text) {
     if (*pos + text.len + 1 >= cap) return false;
-    for (usz i = 0; i < text.len; i++) {
-        buf[(*pos)++] = text[i];
-    }
+foreach (item : text) {
+        buf[(*pos)++] = item;
+}
     buf[(*pos)++] = '\n';
     return true;
 }
@@ -40,9 +40,9 @@ fn void generate_e2e_run_setups(Interp* e2e_interp) {
 }
 
 fn bool generate_e2e_build_source_prefix(char* source_buf, usz* source_pos, usz buf_size) {
-    for (usz i = 0; i < E2E_SETUPS.len; i++) {
-        if (!append_line_to_buf(source_buf, source_pos, buf_size, E2E_SETUPS[i])) return false;
-    }
+foreach (item : E2E_SETUPS) {
+        if (!append_line_to_buf(source_buf, source_pos, buf_size, item)) return false;
+}
     return append_line_to_buf(source_buf, source_pos, buf_size, "(define __e2e_start__ true)");
 }
 
@@ -57,11 +57,11 @@ fn bool generate_e2e_collect_case_set(
     int* test_count,
     int* skip_count
 ) {
-    for (usz i = 0; i < test_cases.len; i++) {
-        EvalResult r = run(test_cases[i].expr, e2e_interp);
+foreach (test_case : test_cases) {
+        EvalResult r = run(test_case.expr, e2e_interp);
         if (r.error.has_error) {
             if (!e2e_generation_quiet_requested()) {
-                io::printfn("  SKIP (interp error): %s", (ZString)test_cases[i].name);
+                io::printfn("  SKIP (interp error): %s", (ZString)test_case.name);
             }
             (*skip_count)++;
             continue;
@@ -70,19 +70,19 @@ fn bool generate_e2e_collect_case_set(
         char[1024] val_buf;
         usz val_len = print_value_to_buf(r.value, &e2e_interp.symbols, &val_buf, val_buf.len);
         if (val_len + 1 >= val_buf.len) {
-            io::printfn("ERROR: E2E rendered value too large for '%s'", (ZString)test_cases[i].name);
+            io::printfn("ERROR: E2E rendered value too large for '%s'", (ZString)test_case.name);
             return false;
         }
         if (!append_line_to_buf(expected_buf, expected_pos, buf_size, val_buf[:val_len])) {
-            io::printfn("ERROR: E2E expected buffer exhausted at '%s'", (ZString)test_cases[i].name);
+            io::printfn("ERROR: E2E expected buffer exhausted at '%s'", (ZString)test_case.name);
             return false;
         }
-        if (!append_line_to_buf(source_buf, source_pos, buf_size, test_cases[i].expr)) {
-            io::printfn("ERROR: E2E source buffer exhausted at '%s'", (ZString)test_cases[i].name);
+        if (!append_line_to_buf(source_buf, source_pos, buf_size, test_case.expr)) {
+            io::printfn("ERROR: E2E source buffer exhausted at '%s'", (ZString)test_case.name);
             return false;
         }
         (*test_count)++;
-    }
+}
     return true;
 }
 

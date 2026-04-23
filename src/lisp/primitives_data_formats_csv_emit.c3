@@ -7,10 +7,10 @@ import std::io;
 import main;
 
 fn bool csv_string_needs_quotes(char[] text, char delimiter, char quote_char) {
-    for (usz i = 0; i < text.len; i++) {
-        char ch = text[i];
+foreach (item : text) {
+        char ch = item;
         if (ch == delimiter || ch == quote_char || ch == '\n' || ch == '\r') return true;
-    }
+}
     return false;
 }
 

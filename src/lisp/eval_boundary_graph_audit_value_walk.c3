@@ -48,8 +48,8 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
         case ARRAY:
             assert(edge_class == BOUNDARY_GRAPH_EDGE_VALUE, "boundary graph audit: ARRAY edge class mismatch");
             if (cur.array_val != null) {
-                for (usz i = 0; i < cur.array_val.length; i++) {
-                    if (!boundary_graph_audit_push_value(value_stack, value_stack_len, cur.array_val.items[i])) {
+foreach (item : cur.array_val.items[0:cur.array_val.length]) {
+                    if (!boundary_graph_audit_push_value(value_stack, value_stack_len, item)) {
                         return boundary_graph_audit_result(
                             emit,
                             BOUNDARY_GRAPH_AUDIT_PUSH_VALUE_OVERFLOW,
@@ -60,7 +60,7 @@ fn BoundaryGraphAuditResult boundary_graph_audit_visit_value(
                             0
                         );
                     }
-                }
+}
             }
             break;
         case HASHMAP:

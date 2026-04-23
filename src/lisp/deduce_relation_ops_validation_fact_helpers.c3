@@ -35,11 +35,11 @@ fn bool deduce_unique_constraint_equivalent_to_key(Relation* rel) @inline {
 }
 
 fn bool deduce_tuples_match_at_positions(Value*[] left, Value*[] right, usz[] positions) @inline {
-    for (usz i = 0; i < positions.len; i++) {
-        usz pos = positions[i];
+foreach (position : positions) {
+        usz pos = position;
         if (pos >= left.len || pos >= right.len) return false;
         if (deduce_compare_value(left[pos], right[pos]) != 0) return false;
-    }
+}
     return true;
 }
 

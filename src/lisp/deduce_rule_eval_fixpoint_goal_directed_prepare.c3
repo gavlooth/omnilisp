@@ -50,12 +50,12 @@ fn Value* deduce_fixpoint_snapshot_selected_schema_estimates(
 fn void deduce_fixpoint_restore_selected_schema_estimates(
     DeduceSelectedSchemaEstimateSnapshot[] snapshots
 ) {
-    for (usz i = 0; i < snapshots.len; i++) {
-        DeduceSelectedSchemaEstimateSnapshot snapshot = snapshots[i];
+foreach (item : snapshots) {
+        DeduceSelectedSchemaEstimateSnapshot snapshot = item;
         if (snapshot.schema == null) continue;
         snapshot.schema.cardinality_estimate = snapshot.cardinality_estimate;
         snapshot.schema.distinct_estimate = snapshot.distinct_estimate;
-    }
+}
 }
 
 fn bool deduce_fixpoint_selected_components_have_dirty_predicates(

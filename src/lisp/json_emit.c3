@@ -95,13 +95,13 @@ fn Value* omni_cons_list_to_json(Value* list, YyjsonMutDoc* doc, Interp* interp,
 fn Value* omni_array_to_json(Value* arr_v, YyjsonMutDoc* doc, Interp* interp, YyjsonMutVal** out_json) {
     YyjsonMutVal* arr = omni_yyjson_mut_arr(doc);
     if (arr == null) return json_raise(interp, "parser/out-of-memory", "json-emit: failed to allocate JSON array");
-    for (usz i = 0; i < arr_v.array_val.length; i++) {
+foreach (item : arr_v.array_val.items[0:arr_v.array_val.length]) {
         YyjsonMutVal* elem = null;
-        Value* elem_err = omni_to_json_val(arr_v.array_val.items[i], doc, interp, &elem);
+        Value* elem_err = omni_to_json_val(item, doc, interp, &elem);
         if (elem_err != null) return elem_err;
         Value* append_err = json_emit_append_array_value(arr, elem, interp);
         if (append_err != null) return append_err;
-    }
+}
     *out_json = arr;
     return null;
 }

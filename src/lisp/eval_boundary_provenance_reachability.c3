@@ -187,11 +187,11 @@ fn bool boundary_alias_graph_reaches_scope(Value* root, main::ScopeRegion* scope
                     break;
                 case ARRAY:
                     if (cur.array_val != null) {
-                        for (usz i = 0; i < cur.array_val.length; i++) {
-                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, cur.array_val.items[i])) {
+foreach (item : cur.array_val.items[0:cur.array_val.length]) {
+                            if (!boundary_alias_reach_push_value(&scan.value_stack[0], &value_stack_len, item)) {
                                 return true;
                             }
-                        }
+}
                     }
                     break;
                 case HASHMAP:

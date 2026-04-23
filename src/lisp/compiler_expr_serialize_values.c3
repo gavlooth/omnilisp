@@ -49,8 +49,8 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
             char[96] time_buf;
             char[] time_text = time_point_to_string(v.time_point_val, time_buf[..]);
             self.buf_append(buf, "\"");
-            for (usz i = 0; i < time_text.len; i++) {
-                char c = time_text[i];
+foreach (item : time_text) {
+                char c = item;
                 if (c == '\"') {
                     self.buf_append(buf, "\\\"");
                 } else if (c == '\\') {
@@ -62,7 +62,7 @@ fn void Compiler.serialize_value_to_buf(Compiler* self, Value* v, List{char}* bu
                 } else {
                     buf.push(c);
                 }
-            }
+}
             self.buf_append(buf, "\"");
 
         case CONS:

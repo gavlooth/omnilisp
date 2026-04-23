@@ -209,13 +209,13 @@ fn Value* explain_score_components(Interp* interp, DispatchMatchBreakdown* break
 
 fn Value* explain_arg_types(Interp* interp, TypeId[] arg_types) {
     Value* rev = make_nil(interp);
-    for (usz i = 0; i < arg_types.len; i++) {
+foreach (arg_type : arg_types) {
         rev = explain_prepend_or_oom(
-            make_symbol(interp, explain_type_symbol(interp, arg_types[i])),
+            make_symbol(interp, explain_type_symbol(interp, arg_type)),
             rev,
             interp);
         if (rev != null && rev.tag == ERROR) return rev;
-    }
+}
     return explain_reverse_list(rev, interp);
 }
 

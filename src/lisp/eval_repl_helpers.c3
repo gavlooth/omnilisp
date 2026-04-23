@@ -107,12 +107,12 @@ fn int count_paren_depth(char[] input) {
         .escape_next = false,
     };
 
-    for (usz i = 0; i < input.len; i++) {
-        char c = input[i];
+foreach (item : input) {
+        char c = item;
         if (repl_paren_depth_step_string(c, &state)) continue;
         if (repl_paren_depth_step_comment(c, &state)) continue;
         repl_paren_depth_step_normal(c, &state);
-    }
+}
     return state.depth;
 }
 

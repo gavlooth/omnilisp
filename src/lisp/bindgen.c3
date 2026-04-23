@@ -34,9 +34,9 @@ fn bool bindgen_library_name_is_safe(char* text) {
 
 fn bool bindgen_library_name_slice_is_safe(char[] text) {
     if (text.len == 0) return false;
-    for (usz i = 0; i < text.len; i++) {
-        if (!bindgen_library_name_char_is_safe(text[i])) return false;
-    }
+foreach (item : text) {
+        if (!bindgen_library_name_char_is_safe(item)) return false;
+}
     return true;
 }
 
@@ -93,9 +93,9 @@ fn usz bindgen_append_toml_escaped_char(char[] buf, usz pos, char ch, bool* ok) 
 
 fn usz bindgen_append_toml_quoted(char[] buf, usz pos, char[] text, bool* ok) {
     pos = buf_append_char(buf, pos, '"', ok);
-    for (usz i = 0; i < text.len; i++) {
-        pos = bindgen_append_toml_escaped_char(buf, pos, text[i], ok);
-    }
+foreach (item : text) {
+        pos = bindgen_append_toml_escaped_char(buf, pos, item, ok);
+}
     return buf_append_char(buf, pos, '"', ok);
 }
 

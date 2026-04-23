@@ -40,13 +40,13 @@ fn Value* kernel_validate_shape(Value* shape, Interp* interp, char[] path) {
     if (shape == null || shape.tag != ARRAY || shape.array_val == null) {
         return kernel_invalid(interp, path, "Array of non-negative integer or symbol dimensions", shape);
     }
-    for (usz i = 0; i < shape.array_val.length; i++) {
-        Value* dim = shape.array_val.items[i];
+foreach (item : shape.array_val.items[0:shape.array_val.length]) {
+        Value* dim = item;
         if (dim == null ||
             !((dim.tag == INT && dim.int_val >= 0) || dim.tag == SYMBOL)) {
             return kernel_invalid(interp, path, "Array of non-negative integer or symbol dimensions", dim);
         }
-    }
+}
     return null;
 }
 
@@ -72,9 +72,9 @@ fn Value* kernel_validate_io_array(Value* values, Interp* interp, char[] path, b
     if (!allow_empty && values.array_val.length == 0) {
         return kernel_invalid(interp, path, "non-empty Array of IO descriptor dictionaries", values);
     }
-    for (usz i = 0; i < values.array_val.length; i++) {
-        if (Value* err = kernel_validate_io_descriptor(values.array_val.items[i], interp, path)) return err;
-    }
+foreach (item : values.array_val.items[0:values.array_val.length]) {
+        if (Value* err = kernel_validate_io_descriptor(item, interp, path)) return err;
+}
     return null;
 }
 
@@ -98,12 +98,12 @@ fn Value* kernel_validate_workgroup(Value* workgroup, Interp* interp) {
     if (workgroup.tag != ARRAY || workgroup.array_val == null || workgroup.array_val.length != 3) {
         return kernel_invalid(interp, "kernel.workgroup", "Array of three positive integers", workgroup);
     }
-    for (usz i = 0; i < workgroup.array_val.length; i++) {
-        Value* dim = workgroup.array_val.items[i];
+foreach (item : workgroup.array_val.items[0:workgroup.array_val.length]) {
+        Value* dim = item;
         if (dim == null || dim.tag != INT || dim.int_val <= 0) {
             return kernel_invalid(interp, "kernel.workgroup", "Array of three positive integers", dim);
         }
-    }
+}
     return null;
 }
 

@@ -14,9 +14,9 @@ fn Value* make_process_wait_result(Interp* interp, int pid, int exit_code, int t
     bool keep_out = false;
     HashMapSetRollback[3] out_rollbacks = {};
     defer if (!keep_out && out.hashmap_val != null) {
-        for (usz i = 0; i < out_rollbacks.len; i++) {
-            hashmap_cleanup_rollback_record(&out_rollbacks[i], interp);
-        }
+foreach (out_rollback : out_rollbacks) {
+            hashmap_cleanup_rollback_record(&out_rollback, interp);
+}
         boundary_cleanup_materialized_value(null, out, interp.root_scope);
     }
     SymbolId pid_sym = interp.symbols.intern("pid");

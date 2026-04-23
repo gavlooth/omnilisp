@@ -410,9 +410,9 @@ fn Value* tensor_capture_command_dispatch(Value* node, usz index, Interp* interp
 fn Value* tensor_capture_command_batches(Value* nodes, Interp* interp, int* out_batch_count) {
     if (nodes == null || nodes.tag != ARRAY || nodes.array_val == null || out_batch_count == null) return nn_oom(interp);
     usz launch_count = 0;
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        if (tensor_capture_node_launches(nodes.array_val.items[i], interp)) launch_count++;
-    }
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        if (tensor_capture_node_launches(item, interp)) launch_count++;
+}
     *out_batch_count = launch_count > 0 ? 1 : 0;
     Value* batches = make_array_checked(interp, launch_count > 0 ? 1 : 0, "tensor/capture: out of memory");
     if (batches == null || batches.tag == ERROR) return batches;
@@ -445,8 +445,8 @@ fn Value* tensor_capture_command_batches(Value* nodes, Interp* interp, int* out_
         dispatch_index++;
     }
 
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (!tensor_capture_node_launches(node, interp)) continue;
         Value* inputs = nn_dict_get(node, interp, "inputs");
         if (inputs == null || inputs.tag != ARRAY || inputs.array_val == null) continue;
@@ -457,7 +457,7 @@ fn Value* tensor_capture_command_batches(Value* nodes, Interp* interp, int* out_
             if (tensor_capture_int_array_contains(depends_on, dep.int_val)) continue;
             if (Value* err = tensor_capture_array_push(depends_on, dep, interp)) return err;
         }
-    }
+}
 
     if (Value* err = nn_dict_set(batch, interp, "id", make_int(interp, 0))) return err;
     if (Value* err = nn_dict_set_symbol(batch, interp, "backend", "vulkan")) return err;

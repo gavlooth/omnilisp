@@ -83,13 +83,13 @@ fn bool json_pointer_parse_array_index(char[] token, usz* out_idx) {
     if (token.len == 0) return false;
 
     usz idx = 0;
-    for (usz i = 0; i < token.len; i++) {
-        char ch = token[i];
+foreach (item : token) {
+        char ch = item;
         if (ch < '0' || ch > '9') return false;
         usz digit = (usz)(ch - '0');
         if (idx > (usz.max - digit) / 10) return false;
         idx = (idx * 10) + digit;
-    }
+}
 
     *out_idx = idx;
     return true;

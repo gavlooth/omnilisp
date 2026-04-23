@@ -35,12 +35,12 @@ fn Value* deduce_build_integrity_columns_list(SymbolId* columns, usz count, Inte
 fn Value* deduce_build_tuple_projection_list(Value*[] tuple, usz[] positions, Interp* interp) {
     if (positions.len == 0) return make_nil(interp);
     Value* rev = make_nil(interp);
-    for (usz i = 0; i < positions.len; i++) {
-        usz pos = positions[i];
+foreach (position : positions) {
+        usz pos = position;
         Value* value = pos < tuple.len ? tuple[pos] : make_nil(interp);
         rev = make_cons(interp, value == null ? make_nil(interp) : value, rev);
         if (rev == null || rev.tag == ERROR) return rev;
-    }
+}
     return deduce_reverse_list(rev, interp);
 }
 

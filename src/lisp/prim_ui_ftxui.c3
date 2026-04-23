@@ -205,10 +205,10 @@ fn Value* ui_ftxui_dispatch_effect_node(UiFtxuiRunState* state, Value* node, Int
 fn Value* ui_ftxui_dispatch_effect_children(UiFtxuiRunState* state, Value* children, Interp* interp, bool* saw_render) {
     if (children == null || is_nil(children)) return null;
     if (children.tag == ARRAY && children.array_val != null) {
-        for (usz i = 0; i < children.array_val.length; i++) {
-            Value* err = ui_ftxui_dispatch_effect_node(state, children.array_val.items[i], interp, saw_render);
+foreach (item : children.array_val.items[0:children.array_val.length]) {
+            Value* err = ui_ftxui_dispatch_effect_node(state, item, interp, saw_render);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (is_cons(children)) {
@@ -313,10 +313,10 @@ fn Value* ui_ftxui_loop_effect_children(
 ) {
     if (children == null || is_nil(children)) return null;
     if (children.tag == ARRAY && children.array_val != null) {
-        for (usz i = 0; i < children.array_val.length; i++) {
-            Value* err = ui_ftxui_loop_effect_node(state, children.array_val.items[i], interp, saw_render, out_root);
+foreach (item : children.array_val.items[0:children.array_val.length]) {
+            Value* err = ui_ftxui_loop_effect_node(state, item, interp, saw_render, out_root);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (is_cons(children)) {
@@ -340,10 +340,10 @@ fn Value* ui_ftxui_loop_runtime_effect_children(
 ) {
     if (children == null || is_nil(children)) return null;
     if (children.tag == ARRAY && children.array_val != null) {
-        for (usz i = 0; i < children.array_val.length; i++) {
-            Value* err = ui_ftxui_loop_runtime_effect_node(state, children.array_val.items[i], interp, close_requested);
+foreach (item : children.array_val.items[0:children.array_val.length]) {
+            Value* err = ui_ftxui_loop_runtime_effect_node(state, item, interp, close_requested);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (is_cons(children)) {
@@ -548,10 +548,10 @@ fn Value* ui_ftxui_session_runtime_effect_children(
 ) {
     if (children == null || is_nil(children)) return null;
     if (children.tag == ARRAY && children.array_val != null) {
-        for (usz i = 0; i < children.array_val.length; i++) {
-            Value* err = ui_ftxui_session_runtime_effect_node(owner, children.array_val.items[i], interp);
+foreach (item : children.array_val.items[0:children.array_val.length]) {
+            Value* err = ui_ftxui_session_runtime_effect_node(owner, item, interp);
             if (err != null) return err;
-        }
+}
         return null;
     }
     if (is_cons(children)) {

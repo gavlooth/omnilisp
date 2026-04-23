@@ -43,8 +43,8 @@ fn Value* deduce_analyze_allocate_observed_rules(
 
 fn void deduce_analyze_free_observed_rules(DeduceObservedRuleCounters[] observed_rules) {
     if (observed_rules.ptr == null) return;
-    for (usz i = 0; i < observed_rules.len; i++) {
-        if (observed_rules[i].steps != null) mem::free(observed_rules[i].steps);
-    }
+foreach (observed_rule : observed_rules) {
+        if (observed_rule.steps != null) mem::free(observed_rule.steps);
+}
     mem::free(observed_rules.ptr);
 }

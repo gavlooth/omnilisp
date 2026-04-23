@@ -55,8 +55,8 @@ fn Value* tensor_capture_memory_plan_bytes(Value* nodes, Interp* interp, usz* ex
     if (nodes == null || nodes.tag != ARRAY || nodes.array_val == null || external_bytes == null || transient_bytes == null) return nn_oom(interp);
     *external_bytes = 0;
     *transient_bytes = 0;
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (node == null || node.tag != HASHMAP) return nn_oom(interp);
         Value* allocation = nn_dict_get(node, interp, "allocation");
         Value* storage_bytes = nn_dict_get(node, interp, "storage-bytes");
@@ -75,7 +75,7 @@ fn Value* tensor_capture_memory_plan_bytes(Value* nodes, Interp* interp, usz* ex
                 *transient_bytes += bytes;
             }
         }
-    }
+}
     return null;
 }
 
@@ -85,8 +85,8 @@ fn Value* tensor_capture_memory_reuse_groups(Value* nodes, Interp* interp, int* 
 
     int transient_count = 0;
     usz max_bytes = 0;
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         if (node == null || node.tag != HASHMAP) return nn_oom(interp);
         Value* allocation = nn_dict_get(node, interp, "allocation");
         Value* byte_length = nn_dict_get(node, interp, "byte-length");
@@ -94,7 +94,7 @@ fn Value* tensor_capture_memory_reuse_groups(Value* nodes, Interp* interp, int* 
         if (byte_length == null || byte_length.tag != INT || byte_length.int_val < 0) continue;
         transient_count++;
         if ((usz)byte_length.int_val > max_bytes) max_bytes = (usz)byte_length.int_val;
-    }
+}
 
     Value* groups = make_array_checked(interp, transient_count > 1 ? 1 : 0, "tensor/capture: out of memory");
     if (groups == null || groups.tag == ERROR) return groups;
@@ -104,14 +104,14 @@ fn Value* tensor_capture_memory_reuse_groups(Value* nodes, Interp* interp, int* 
     Value* node_ids = make_array_checked(interp, (usz)transient_count, "tensor/capture: out of memory");
     if (node_ids == null || node_ids.tag == ERROR) return node_ids;
     if (node_ids.array_val == null) return nn_oom(interp);
-    for (usz i = 0; i < nodes.array_val.length; i++) {
-        Value* node = nodes.array_val.items[i];
+foreach (item : nodes.array_val.items[0:nodes.array_val.length]) {
+        Value* node = item;
         Value* allocation = nn_dict_get(node, interp, "allocation");
         Value* id = nn_dict_get(node, interp, "id");
         if (allocation == null || allocation.tag != SYMBOL || !nn_symbol_is(allocation, interp, "transient")) continue;
         if (id == null || id.tag != INT) return tensor_runtime_raise(interp, "tensor/capture: reuse candidate node id is missing");
         if (Value* err = tensor_capture_array_push(node_ids, id, interp)) return err;
-    }
+}
 
     Value* group = nn_make_dict(interp, 8);
     if (group == null || group.tag == ERROR) return group;

@@ -197,10 +197,10 @@ fn bool SymbolTable.grow(SymbolTable* self) {
  */
 fn usz hash_symbol(char[] name) {
     usz h = 2166136261;  // FNV offset basis (32-bit)
-    for (usz i = 0; i < name.len; i++) {
-        h ^= (usz)name[i];
+foreach (item : name) {
+        h ^= (usz)item;
         h *= 16777619;   // FNV prime (32-bit)
-    }
+}
     return h;
 }
 

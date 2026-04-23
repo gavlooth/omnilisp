@@ -191,9 +191,9 @@ fn void tensor_free_payload(TensorVal* tensor) {
 fn bool tensor_shape_product(usz[] shape, usz* out_count) {
     if (out_count == null) return false;
     usz count = 1;
-    for (usz i = 0; i < shape.len; i++) {
-        if (!tensor_checked_mul_usz(count, shape[i], &count)) return false;
-    }
+foreach (item : shape) {
+        if (!tensor_checked_mul_usz(count, item, &count)) return false;
+}
     *out_count = count;
     return true;
 }

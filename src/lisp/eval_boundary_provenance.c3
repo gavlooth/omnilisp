@@ -214,20 +214,20 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
             case ARRAY:
                 if (cur.array_val != null) {
                     Array* arr = cur.array_val;
-                    for (usz i = 0; i < arr.length; i++) {
+foreach (item : arr.items[0:arr.length]) {
                         if (boundary_alias_push_child(
                             &scan.stack[0],
                             &stack_len,
                             &scan.seen[0],
                             &seen_len,
                             &scan.fast_set,
-                            arr.items[i],
+                            item,
                             interp,
                             cur_depth
                         )) {
                             return true;
                         }
-                    }
+}
                 }
                 break;
             case HASHMAP:

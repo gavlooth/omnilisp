@@ -51,9 +51,9 @@ fn SymbolId deduce_inferred_relation_column_symbol(usz index, Interp* interp) {
     char[64] buf = {};
     usz cursor = 0;
     char[] prefix = "__deduce_col_";
-    for (usz i = 0; i < prefix.len; i++) {
-        buf[cursor++] = prefix[i];
-    }
+foreach (item : prefix) {
+        buf[cursor++] = item;
+}
     cursor += deduce_format_usz_hex(buf[cursor..], index);
     return interp.symbols.intern(buf[..cursor]);
 }

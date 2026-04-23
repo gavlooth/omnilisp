@@ -82,10 +82,10 @@ fn bool deduce_join_inner_row_matches_static_values(Value*[] tuple_vals, usz tup
 fn ulong deduce_join_shape_bound_mask(usz rel_col_count, usz[] join_cols, Value*[] static_vals) {
     ulong mask = 0;
     usz width = (usz)(ulong.sizeof * 8);
-    for (usz i = 0; i < join_cols.len; i++) {
-        usz col = join_cols[i];
+foreach (join_col : join_cols) {
+        usz col = join_col;
         if (col < width) mask |= ((ulong)1 << col);
-    }
+}
     if (static_vals.len == rel_col_count) {
         for (usz i = 0; i < rel_col_count; i++) {
             if (static_vals[i] != null && i < width) {
