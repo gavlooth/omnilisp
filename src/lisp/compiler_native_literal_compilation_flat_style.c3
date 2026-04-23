@@ -17,6 +17,7 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             self.emit("aot::make_int(");
             self.emit_int(v.int_val);
             self.emit(")");
+            break;
 
         case DOUBLE:
             self.emit("aot::make_double(");
@@ -27,6 +28,7 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                 self.emit("0.0");
             }
             self.emit(")");
+            break;
 
         case FLOAT32:
             self.emit("aot::make_float32((float)");
@@ -37,6 +39,7 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                 self.emit("0.0");
             }
             self.emit(")");
+            break;
 
         case COMPLEX128:
             self.emit("aot::make_complex128(");
@@ -54,6 +57,7 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                 self.emit("0.0");
             }
             self.emit(")");
+            break;
 
         case COMPLEX64:
             self.emit("aot::make_complex64((float)");
@@ -71,6 +75,7 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                 self.emit("0.0");
             }
             self.emit(")");
+            break;
 
         case STRING:
             self.emit("aot::make_string(\"");
@@ -85,11 +90,14 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
                     self.emit("\\n");
                 } else if (c == '\t') {
                     self.emit("\\t");
+                } else if (c == '\0') {
+                    self.emit("\\0");
                 } else {
                     self.emit_char(c);
                 }
             }
             self.emit("\")");
+            break;
         case TIME_POINT:
             self.emit("aot::make_time_point(");
             self.emit_int((long)(int)v.time_point_val.kind);
@@ -110,12 +118,14 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             self.emit(", ");
             self.emit_int(v.time_point_val.tz_offset);
             self.emit(")");
+            break;
 
         case SYMBOL:
             self.emit("aot::make_symbol(\"");
             char[] name = self.interp.symbols.get_name(v.sym_val);
             self.emit_escaped(name);
             self.emit("\")");
+            break;
 
         case CONS:
             self.emit("aot::cons(");
@@ -123,9 +133,11 @@ fn void Compiler.compile_literal(Compiler* self, Value* v) {
             self.emit(", ");
             self.compile_literal(v.cons_val.cdr);
             self.emit(")");
+            break;
 
         default:
             self.emit("aot::make_nil()");
+            break;
     }
 }
 

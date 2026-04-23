@@ -64,6 +64,7 @@ fn Value* jit_reset_value(Interp* interp, Value* body) {
 
     if (state.shifted) {
         Value* shift_result = jit_apply_value(state.shift_body, state.shift_k, interp);
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         return shift_result;
     }
     if (ctx.status == main::StackCtxStatus.CTX_SUSPENDED) {

@@ -54,6 +54,9 @@ fn void Compiler.find_free_vars_lambda(Compiler* self, Expr* expr, List{SymbolId
     } else if (expr.lambda.param != INVALID_SYMBOL_ID) {
         new_bound.push(expr.lambda.param);
     }
+    if (expr.lambda.has_rest && expr.lambda.rest_param != INVALID_SYMBOL_ID) {
+        new_bound.push(expr.lambda.rest_param);
+    }
     self.find_free_vars(expr.lambda.body, &new_bound, free_vars, enclosing_scope);
     new_bound.free();
 }

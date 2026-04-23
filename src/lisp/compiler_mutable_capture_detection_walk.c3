@@ -83,6 +83,7 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
         case E_HANDLE:
         case E_RESOLVE:
         case E_INDEX:
+            return self.has_set_on(name, expr.index.collection) || self.has_set_on(name, expr.index.index);
         case E_PATH:
         case E_QUASIQUOTE:
         case E_UNQUOTE:
@@ -206,6 +207,8 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
         case E_HANDLE:
         case E_RESOLVE:
         case E_INDEX:
+            return self.is_captured_by_nested_lambda(name, expr.index.collection) ||
+                   self.is_captured_by_nested_lambda(name, expr.index.index);
         case E_PATH:
         case E_QUASIQUOTE:
         case E_UNQUOTE:

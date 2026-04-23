@@ -129,6 +129,15 @@ foreach (item : v.array_val.items[0:v.array_val.length]) {
                             if (continuation_scan_push_value(&scan, field_ptr)) return true;
                         }
                     }
+                    break;
+                case TENSOR:
+                    if (v.tensor_val != null) {
+                        if (continuation_scan_push_value(&scan, v.tensor_val.map_func)) return true;
+                        if (continuation_scan_push_value(&scan, v.tensor_val.map_left)) return true;
+                        if (continuation_scan_push_value(&scan, v.tensor_val.map_right)) return true;
+                        if (continuation_scan_push_value(&scan, v.tensor_val.contract_left)) return true;
+                        if (continuation_scan_push_value(&scan, v.tensor_val.contract_right)) return true;
+                    }
                 default:
                     break;
             }

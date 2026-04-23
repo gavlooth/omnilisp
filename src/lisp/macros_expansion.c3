@@ -27,6 +27,15 @@ fn bool expand_macros_unary(Expr* expr, Interp* interp) {
         case E_RESOLVE:
             expr.resolve.value = expand_macros_in_expr(expr.resolve.value, interp);
             return true;
+        case E_QUASIQUOTE:
+            expr.quasiquote.body = expand_macros_in_expr(expr.quasiquote.body, interp);
+            return true;
+        case E_UNQUOTE:
+            expr.unquote.body = expand_macros_in_expr(expr.unquote.body, interp);
+            return true;
+        case E_UNQUOTE_SPLICING:
+            expr.unquote_splicing.body = expand_macros_in_expr(expr.unquote_splicing.body, interp);
+            return true;
         default:
             return false;
     }

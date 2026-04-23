@@ -26,18 +26,23 @@ fn lisp::Value* aot_ffi_policy_from_spec(
     switch (spec.ownership) {
         case 0:
             out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_BORROWED;
+            break;
         case 1:
             out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_OWNED;
+            break;
         case 2:
             out_policy.ownership = lisp::FfiHandleOwnership.FFI_HANDLE_MANUAL;
+            break;
         default:
             return aot_make_error_best_effort(interp, "aot ffi λ: invalid ForeignHandle ownership policy");
     }
     switch (spec.nullability) {
         case 0:
             out_policy.nullability = lisp::FfiHandleNullability.FFI_HANDLE_NULLABLE;
+            break;
         case 1:
             out_policy.nullability = lisp::FfiHandleNullability.FFI_HANDLE_NON_NULL;
+            break;
         default:
             return aot_make_error_best_effort(interp, "aot ffi λ: invalid ForeignHandle nullability policy");
     }

@@ -144,6 +144,7 @@ fn Value* lambda_call_type_error(
             } else {
                 msg = "lambda: arity mismatch";
             }
+            break;
         case DISPATCH_MATCH_FAIL_CONSTRAINT:
             if (try char[] formatted = io::bprintf(&ebuf, "%s: argument constraints not satisfied",
                 (ZString)label)) {
@@ -151,6 +152,7 @@ fn Value* lambda_call_type_error(
             } else {
                 msg = "lambda: argument constraints not satisfied";
             }
+            break;
         case DISPATCH_MATCH_FAIL_VALUE_LITERAL:
             if (try char[] formatted = io::bprintf(&ebuf, "%s: literal mismatch at argument %d",
                 (ZString)label, (int)breakdown.failure_arg_index)) {
@@ -158,6 +160,7 @@ fn Value* lambda_call_type_error(
             } else {
                 msg = "lambda: literal mismatch";
             }
+            break;
         case DISPATCH_MATCH_FAIL_TYPE:
             if (try char[] formatted = io::bprintf(&ebuf, "%s: type mismatch at argument %d",
                 (ZString)label, (int)breakdown.failure_arg_index)) {
@@ -165,12 +168,14 @@ fn Value* lambda_call_type_error(
             } else {
                 msg = "lambda: argument type mismatch";
             }
+            break;
         default:
             if (try char[] formatted = io::bprintf(&ebuf, "%s: argument type mismatch", (ZString)label)) {
                 msg = formatted;
             } else {
                 msg = "lambda: argument type mismatch";
             }
+            break;
     }
 
     return raise_error_with_payload_names(interp, "type", code, msg, data);
