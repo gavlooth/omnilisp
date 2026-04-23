@@ -909,27 +909,43 @@ This part backfills actionable items from:
     unapproved hidden `default:` arms.
   - validation: `rg -n "default:"` over the audited files, `c3c build --obj-out obj`, targeted compiler and advanced module-group slices, `git diff --check`.
 
-- [ ] `AUDIT-REAUDIT-COMPILER-MUTABLE-CAPTURE-001` fix mutable-capture
+- [x] `AUDIT-REAUDIT-COMPILER-MUTABLE-CAPTURE-001` fix mutable-capture
   detection for multi-parameter lambdas and local definition/guard subtrees.
   - classification: runtime behavior, targeted compiler audit follow-up.
   - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
-  - next: update `compiler_mutable_capture_detection_walk.c3` to seed all
-    lambda params/rest params and to recurse through `E_DEFINE` initializers
-    plus match guard predicates, then add regressions for shadowed params and
-    nested capture cases.
+  - status: closed 2026-04-23. The capture walker now seeds all lambda params
+    and rest params, recurses through `E_DEFINE` initializers, and handles
+    match-guard predicates and subpattern scopes explicitly; the new guard
+    scope regression keeps the predicate from seeing subpattern bindings.
+  - validation: `c3c build --obj-out obj`; targeted compiler core and codegen
+    slices; `git diff --check`.
 
-- [ ] `AUDIT-REAUDIT-TENSOR-EMPTY-SOLVE-001` align empty-system `matrix/solve`
+- [x] `AUDIT-REAUDIT-TENSOR-EMPTY-SOLVE-001` align empty-system `matrix/solve`
   behavior across CPU and Vulkan backends.
   - classification: runtime behavior, targeted tensor/math audit follow-up.
   - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
-  - next: update the Vulkan solve path so zero-size systems and zero-column RHS
-    match the CPU empty-result semantics, then add a regression for the empty
-    solve case.
+  - status: closed 2026-04-23. Vulkan `matrix/solve` now matches the CPU
+    empty-result contract for zero-size systems and zero-column RHS, and the
+    runtime regression checks both empty vector and empty matrix outputs.
+  - validation: `c3c build --obj-out obj`; targeted advanced stdlib matrix
+    solve slice; `git diff --check`.
 
-- [ ] `AUDIT-REAUDIT-META-SYNC-001` repair stale plan/TODO/session-report
+- [x] `AUDIT-REAUDIT-META-SYNC-001` repair stale plan/TODO/session-report
   indexes and validation coverage.
   - classification: validation, targeted bookkeeping follow-up.
   - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
-  - next: resync `docs/plans/README.md`, `TODO.md`, and `.agents/SESSION_REPORT.md`
-    line counts/status references, then extend `scripts/check_status_consistency.sh`
-    so it catches index/line-count drift.
+  - status: closed 2026-04-23. The live status checks already validate the
+    `TODO.md` and `.agents/SESSION_REPORT.md` line counts plus plan status
+    consistency, and the current plan index is in sync with the completed
+    switch-exhaustiveness plan entry.
+  - validation: `scripts/check_status_consistency.sh`; `git diff --check`.
+
+- [x] `AUDIT-REAUDIT-PATTERN-SERIALIZER-001` add guarded-pattern serialization
+  and round-trip coverage.
+  - classification: runtime behavior, targeted compiler serialization follow-up.
+  - source: `.agents/DEEP_AUDIT_FINDINGS_2026-04-23.md`.
+  - status: closed 2026-04-23. `serialize_pattern_to_buf` now prints guarded
+    patterns explicitly, and the serializer plus core semantics tests cover
+    guarded round-trips and nested guard-sub scope behavior.
+  - validation: `c3c build --obj-out obj`; targeted compiler serializer and
+    advanced core semantics slices; `git diff --check`.

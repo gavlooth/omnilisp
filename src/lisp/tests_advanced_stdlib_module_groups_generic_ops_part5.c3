@@ -583,8 +583,10 @@ fn void run_advanced_collections_generic_ops_part5(Interp* interp, int* pass, in
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/solve (to-device (Tensor Float64 [2 2] [2 1 1 3]) 'vulkan) (to-device (Tensor Float64 [3] [1 2 3]) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/shape-mismatch) true) true))", pass, fail);
     test_truthy(interp, "matrix solve vulkan rejects mixed rhs device when available",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/solve (to-device (Tensor Float64 [2 2] [2 1 1 3]) 'vulkan) (Tensor Float64 [2] [1 2])) (raise msg (ref msg 'code))) 'tensor/backend-unsupported) true) true))", pass, fail);
-    test_truthy(interp, "matrix solve vulkan empty square keeps singular contract when available",
-        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (= (handle (matrix/solve (to-device (Tensor Float64 [0 0] 0.0) 'vulkan) (to-device (Tensor Float64 [0] 0.0) 'vulkan)) (raise msg (ref msg 'code))) 'tensor/singular-matrix) true) true))", pass, fail);
+    test_truthy(interp, "matrix solve vulkan empty square returns empty vector when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (s (matrix/solve (to-device (Tensor Float64 [0 0] 0.0) 'vulkan) (to-device (Tensor Float64 [0] 0.0) 'vulkan))) (and (= (device s) 'vulkan) (= (rank s) 1) (= (ref (shape s) 0) 0))) true) true))", pass, fail);
+    test_truthy(interp, "matrix solve vulkan empty matrix rhs returns empty matrix when available",
+        "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'available) (if (ref vulkan-backend 'float64) (let (s (matrix/solve (to-device (Tensor Float64 [0 0] 0.0) 'vulkan) (to-device (Tensor Float64 [0 0] 0.0) 'vulkan))) (and (= (device s) 'vulkan) (= (rank s) 2) (= (ref (shape s) 0) 0) (= (ref (shape s) 1) 0))) true) true))", pass, fail);
     {
         bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
         long lapack_calls_before = omni_tensor_backend_lapack_dgesv_call_count();

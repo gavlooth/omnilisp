@@ -4259,3 +4259,75 @@
   - `scripts/check_status_consistency.sh` passes.
   - `scripts/check_e2e_baseline_policy.sh` passes.
   - `git diff --check` passes.
+
+## 2026-04-23 - Process Spawn Fs-Handle Double-Free Fix
+
+- Fixed a double-free in `src/lisp/prim_io_fs_stream.c3` on the
+  `make_ffi_handle_ex(...) == null` path for `fs-handle` construction.
+- Root cause: `make_ffi_handle_ex` already releases the `FsHandle` payload via
+  the FFI finalizer on constructor failure, so the constructor's explicit
+  `mem::free(fh)` duplicated the free and crashed the memory-lifetime smoke
+  slice.
+- The constructor now lets the FFI failure path own the cleanup and only
+  reports the trace flag when the handle allocation path fails.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0
+    OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke
+    LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passes
+    with `238 passed, 0 failed`.
+  - `git diff --check` passes.
+
+## 2026-04-23 - Dispatch Ambiguous Tie-List OOM Hardening
+
+- Hardened `src/lisp/eval_dispatch_match.c3` so ambiguous method tie-list
+  construction uses `make_cons_or_error(...)` instead of raw `make_cons(...)`
+  for the candidate-index list. This keeps the failure mode explicit when the
+  allocation path is forced or exhausted and prevents a malformed tie list from
+  leaking into the ambiguous-dispatch payload path.
+- Added a focused regression in
+  `src/lisp/tests_advanced_type_dispatch_groups.c3` that forces the checked
+  cons-allocation failure hook and verifies the dispatch path returns the
+  expected out-of-memory error message instead of continuing into ambiguity
+  handling.
+- Validation:
+  - `c3c build --obj-out obj` passes.
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0
+    OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain
+    LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp` passes
+    with `241 passed, 0 failed`.
+  - `git diff --check` passes.
+## 2026-04-23
+
+- Hardened the Vulkan tensor unary host wrappers in `csrc/tensor_vulkan_helpers.c` so non-empty calls now reject a null `input_device_ptr` consistently across `f32`, `f64`, `complex64`, `complex128`, and the complex-to-real variants before dispatch.
+- Tightened `tensor_graph_run_vulkan_readable_float32()` in `src/lisp/prim_tensor_graph_run.c3` so Vulkan view tensors now require a device handle even when the byte length is zero; the zero-byte/null-handle hole is closed.
+- Made `find_best_method()` in `src/lisp/eval_dispatch_match.c3` fail closed on `make_int` / `make_cons` allocation failures while building ambiguity diagnostics instead of threading malformed candidate lists through dispatch errors.
+- Added regressions in `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3` for the Vulkan readable-helper zero-byte view guard and the null-input Vulkan unary host check.
+- Verification for the updated slice passed: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric ./build/main --test-suite lisp`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain ./build/main --test-suite lisp`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp`, `scripts/check_status_consistency.sh`, and `git diff --check`.
+## 2026-04-23 TLS lifecycle follow-up
+
+- Added a direct TLS lifecycle regression in `src/lisp/tests_runtime_async_io_tls_groups.c3` that proves the shared in-flight gate rejects concurrent `tls-read` / `tls-write` / `tls-close` entry.
+- Updated the foreign-runtime plan and area note to mark the scheduler-bound TLS lifecycle regression as covered by regression tests rather than an open follow-up.
+- Verification passed on the async TLS slice: `OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp` -> `70 passed, 0 failed`.
+
+## 2026-04-23 audit-repair loop continuation
+
+- Restored recursive traversal in `src/lisp/compiler_mutable_capture_detection_walk.c3` for effect-form subtrees so nested lambdas under `E_PERFORM`, `E_HANDLE`, and `E_RESOLVE` are visible to mutable-capture detection.
+- Hardened `csrc/tensor_vulkan_helpers_core.c` so Vulkan physical-device selection only considers compute-capable queue families.
+- Restored the zero-byte Vulkan readable-tensor contract in `src/lisp/prim_tensor_graph_run.c3` so null device handles remain accepted when `byte_len == 0`.
+- Added regressions in `src/lisp/tests_compiler_codegen_groups_tail.c3`, `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`, and `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`, plus the Vulkan test extern in `src/lisp/tensor_vulkan_backend.c3`.
+- Verification passed: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` (`306 passed, 0 failed`), `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` (`2069 passed, 0 failed`), `scripts/check_status_consistency.sh`, and `git diff --check`.
+
+## 2026-04-23 re-audit follow-up
+
+- Re-read the remaining audit entries against the current tree and confirmed that the previously reported runtime/memory issues were already resolved or were non-live contract boundaries.
+- No additional code changes were required in this pass.
+- Verification: `jj status`, `jj diff --name-only`, `git diff --check`, and `scripts/check_status_consistency.sh`.
+
+## 2026-04-23 Vulkan selector hardening
+
+- Added a physical-device-properties probe to the Vulkan helper layer and loaded `vkGetPhysicalDeviceProperties` alongside the existing Vulkan entry points.
+- Scored discrete GPUs ahead of integrated, virtual, and CPU devices so selector preference now reflects device class, not just “first compute-capable queue.”
+- Added a host-side regression in `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3` and exposed the helper through `src/lisp/tensor_vulkan_backend.c3`.
+- Verification passed: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` (`2070 passed, 0 failed`), `scripts/check_status_consistency.sh`, and `git diff --check`.

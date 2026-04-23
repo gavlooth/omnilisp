@@ -103,6 +103,7 @@ fn void interp_init_module_state(Interp* self) {
 }
 
 fn void interp_init_runtime_flags(Interp* self) {
+    self.flags.raise_pending = false;
     self.flags.jit_enabled = false;
     self.flags.console_to_stderr = false;
     self.console_capture_active = false;

@@ -20,6 +20,7 @@ fn void run_memory_lifetime_smoke_tests(Interp* interp, int* pass, int* fail) {
     run_memory_lifetime_boundary_wide_scalar_payload_test(interp, pass, fail);
     run_memory_lifetime_boundary_shared_composite_cycle_payload_test(interp, pass, fail);
     run_memory_lifetime_boundary_instance_payload_alias_test(interp, pass, fail);
+    run_memory_lifetime_boundary_list_child_scope_alias_test(interp, pass, fail);
     run_memory_lifetime_boundary_transition_regression_tests(interp, pass, fail);
     run_memory_lifetime_boundary_return_classification_tests(interp, pass, fail);
     run_memory_lifetime_boundary_commit_escape_tests(interp, pass, fail);

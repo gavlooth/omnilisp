@@ -64,6 +64,33 @@ fn void run_compiler_group_serializer_roundtrip_tests(Interp* interp, usz* pass,
     {
         bool ok = compiler_serializes_to_roundtrip(
             interp,
+            "(match (Some 7) ((? (> x 0) (Some x)) x) (_ 0))",
+            "(match (Some 7) ((? (> x 0) (Some x)) x) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves guarded patterns with subpatterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves guarded patterns with subpatterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match 7 ((? (> x 0)) 1) (_ 0))",
+            "(match 7 ((? (> x 0)) 1) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves guard-only patterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves guard-only patterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
+            "(match (Some 7) ((? (> x 0) (? (> x 0) (Some x))) x) (_ 0))",
+            "(match (Some 7) ((? (> x 0) (? (> x 0) (Some x))) x) (_ 0))"
+        );
+        if (ok) { (*pass)++; compiler_print_pass("Compiler: match serializer preserves nested guarded patterns"); }
+        else    { (*fail)++; io::printn("[FAIL] Compiler: match serializer preserves nested guarded patterns"); }
+    }
+    {
+        bool ok = compiler_serializes_to_roundtrip(
+            interp,
             "(signal ui.open 1)",
             "(perform ui.open 1)"
         );

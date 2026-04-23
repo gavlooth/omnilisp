@@ -34,7 +34,7 @@ Runtime-specific residuals explicitly split out of this lane:
 - Non-C runtime adapters (Python, Julia, CUDA/cuBLAS, polyglot/plugin).
 - Optional C++ tooling via C++ shim/API mode only.
 - Tensor backend buffer hooks (`FOREIGN_CAP_TENSOR_BUFFER` path).
-- Exact concrete follow-ups still open:
+- Exact concrete follow-up closed by regression coverage:
   - scheduler-bound TLS lifecycle regression (`tls-close` while `tls-read` or
     `tls-write` is active)
 
@@ -202,8 +202,8 @@ user-facing runtime paths yet.
    - Optional C++/CppInterOp toolchain lane (shim/API-only).
    - Polyglot/plugin support lane.
 2. Keep tensor backend buffer hooks as their own optional lane.
-3. Finish the TLS offload/in-flight lifecycle validation follow-up in the
-   residual section above.
+3. Keep the TLS offload/in-flight lifecycle regression as a closed validation
+   checkpoint; no live implementation follow-up remains for that lane.
 
 ## Validation
 

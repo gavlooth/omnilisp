@@ -40,6 +40,28 @@ fn void run_compiler_group_mutable_capture_codegen_tests(Interp* interp, usz* pa
             fail
         );
     }
+    {
+        char[] code = compile_to_c3("(let (x 0) (let (make (lambda () (handle (+ 1 (signal ask 0)) (ask v (lambda () (set! x (+ x 1))))))) (make) x))", interp);
+        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: mutable capture through handle body uses boxing",
+            "[FAIL] Compiler: mutable capture through handle body uses boxing",
+            pass,
+            fail
+        );
+    }
+    {
+        char[] code = compile_to_c3("(let (x 0) (let (make (lambda () (handle (+ 1 (signal ask 0)) (ask v (resolve (lambda () (set! x (+ x 1)))))))) (make) x))", interp);
+        bool ok = str_contains(code, "aot::define_var") && str_contains(code, "aot::set_var");
+        compiler_test_finish_bool(
+            ok,
+            "Compiler: mutable capture through resolve value uses boxing",
+            "[FAIL] Compiler: mutable capture through resolve value uses boxing",
+            pass,
+            fail
+        );
+    }
 
     // 62. Non-mutable let uses C3 local variable (Value* x =...)
     {

@@ -49,6 +49,11 @@
 #define OMNI_VULKAN_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO 42u
 #define OMNI_VULKAN_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER 44u
 #define OMNI_VULKAN_STRUCTURE_TYPE_MEMORY_BARRIER 46u
+#define OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_OTHER 0u
+#define OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU 1u
+#define OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU 2u
+#define OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU 3u
+#define OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_CPU 4u
 #define OMNI_VULKAN_SHARING_MODE_EXCLUSIVE 0u
 #define OMNI_VULKAN_DESCRIPTOR_TYPE_STORAGE_BUFFER 7u
 #define OMNI_VULKAN_SHADER_STAGE_COMPUTE_BIT 0x00000020u
@@ -198,6 +203,17 @@ typedef struct OmniVulkanPhysicalDeviceFeatures {
     OmniVulkanBool32 variableMultisampleRate;
     OmniVulkanBool32 inheritedQueries;
 } OmniVulkanPhysicalDeviceFeatures;
+
+typedef struct OmniVulkanPhysicalDeviceProperties {
+    uint32_t apiVersion;
+    uint32_t driverVersion;
+    uint32_t vendorID;
+    uint32_t deviceID;
+    uint32_t deviceType;
+    char deviceName[256];
+    uint8_t pipelineCacheUUID[16];
+    uint8_t _reserved[768];
+} OmniVulkanPhysicalDeviceProperties;
 
 typedef struct OmniVulkanDeviceQueueCreateInfo {
     uint32_t sType;

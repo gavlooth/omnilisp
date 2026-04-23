@@ -147,6 +147,9 @@ extern fn int omni_tensor_backend_vulkan_map_unary_f32(
     uint op,
     void** out_device_ptr
 ) @extern("omni_tensor_backend_vulkan_map_unary_f32");
+extern fn int omni_tensor_backend_vulkan_select_physical_device_preference_for_tests() @extern("omni_tensor_backend_vulkan_select_physical_device_preference_for_tests");
+extern fn int omni_tensor_backend_vulkan_select_physical_device_compute_gate_for_tests() @extern("omni_tensor_backend_vulkan_select_physical_device_compute_gate_for_tests");
+extern fn int omni_tensor_backend_vulkan_device_type_preference_for_tests() @extern("omni_tensor_backend_vulkan_device_type_preference_for_tests");
 extern fn int omni_tensor_backend_vulkan_map_complex128_unary(
     void* input_device_ptr,
     usz byte_len,

@@ -105,6 +105,53 @@ The historical content was split mechanically to keep individual files below the
     hand-splitting blobs.
 - Signature: Codex GPT-5.4
 
+## 2026-04-23 - JIT/Effects/UI Re-Audit Owner Pass
+
+- Objective attempted:
+  - Re-verify the JIT/effects/runtime and UI leak findings from the
+    2026-04-23 audit, then implement any remaining owned defect.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/prim_io_fs_stream.c3`
+  - `src/lisp/jit_reset_shift.c3`
+  - `src/lisp/jit_handle_signal.c3`
+  - `src/lisp/jit_runtime_effects_handle.c3`
+  - `src/lisp/prim_ui_ftxui.c3`
+  - `src/lisp/value_interp_init_helpers.c3`
+- Code or configuration changes made:
+  - Tightened `make_fs_handle()` in `src/lisp/prim_io_fs_stream.c3` so the
+    raw-handle cleanup path is expressed with a deferred cleanup block and an
+    explicit ownership handoff after `make_ffi_handle_ex(...)`.
+  - No changes were required in the JIT files or interpreter-init helpers; the
+    reported issues in those files were already fixed in the live tree.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+  - `git diff --check`
+- Key results:
+  - `memory-lifetime-smoke` passed with `238 passed, 0 failed`.
+  - `advanced-ffi-system-surface` passed with `123 passed, 0 failed`.
+  - The UI partial-failure leak report was invalidated by the live ownership
+    model: `ui_ftxui_lower_node()` tracks created components in
+    `UiFtxuiRunState`, and `ui_ftxui_destroy_state()` releases them on error
+    paths.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The earlier UI leak claim did not reproduce as a live bug;
+    the owned component state is already tracked and reclaimed by the run
+    state finalizer.
+- Current best recommendation or checkpoint:
+  - No remaining owned defect is open from this audit pass. Future UI work
+    should preserve the existing `UiFtxuiRunState` ownership tracking rather
+    than adding ad hoc cleanup in `ui_ftxui_collect_children()`.
+- Unresolved issues:
+  - None in the owned surfaces for this audit pass.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding the binary for the
+    `prim_io_fs_stream.c3` refactor to take effect.
+- Signature: GPT-5 Codex
+
 ## 2026-04-19 21:52 CEST - Split Hygiene Follow-Up Audit
 
 - Objective attempted:
@@ -4986,6 +5033,193 @@ The historical content was split mechanically to keep individual files below the
     that should load the new primitive table.
 - Signature: GPT-5 Codex
 
+## 2026-04-23 23:xx CEST - Dispatch Tie-List Allocation Hardening
+
+- Objective:
+  - Re-audit the compiler/boundary/dispatch surfaces from the 2026-04-23
+    deep audit, verify which findings were still live, and patch the remaining
+    dispatch allocation edge if needed.
+- Workspace:
+  - `src/lisp/eval_boundary_provenance.c3`
+  - `src/lisp/eval_dispatch_match.c3`
+  - `src/lisp/compiler_expr_serialize_patterns.c3`
+  - `src/lisp/tests_compiler_core_groups_serializer_metadata.c3`
+  - `src/lisp/tests_advanced_core_semantics_groups.c3`
+  - `src/lisp/tests_advanced_type_dispatch_groups.c3`
+- Changes made:
+  - Verified the serializer and boundary provenance findings were already
+    closed in the live tree.
+  - Hardened `find_best_method` in `src/lisp/eval_dispatch_match.c3` to use
+    `make_cons_or_error(...)` for ambiguous candidate-index list construction.
+  - Added a regression in
+    `src/lisp/tests_advanced_type_dispatch_groups.c3` that forces the checked
+    cons-allocation failure hook and verifies the dispatch path returns the
+    expected OOM message.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0
+    OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=advanced
+    OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain
+    LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- Key results:
+  - Build linked `build/main` successfully.
+  - Advanced dispatch slice passed with `241 passed, 0 failed`.
+  - The new dispatch regression passed: `Compiler: ambiguous dispatch candidate list allocation failure`.
+- Invalidated assumptions:
+  - `[INVALIDATED]` The live dispatch path still needed a raw-cons hardening
+    fix. The current tree already had explicit checks for the older tie-list
+    path; the remaining useful change was to move to the repo's checked
+    constructor helper so the failure is explicit and testable.
+- Current checkpoint:
+  - Dispatch ambiguity list construction now fails closed with an explicit OOM
+    message and a regression covers the path.
+- Dependencies / blockers:
+  - No new dependencies.
+  - No live process restart required beyond rebuilding `build/main`.
+- Signature: GPT-5 Codex
+
+## 2026-04-23  - Process Spawn Fs-Handle Double-Free Repair
+- Objective attempted:
+  - Eliminate the remaining memory-lifetime smoke abort in the process-spawn
+    cleanup path and re-audit the affected slice.
+- Relevant workspace or target:
+  - `src/lisp/async_process_spawn.c3`
+  - `src/lisp/prim_io_fs_stream.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups.c3`
+  - `src/lisp/tests_memory_lifetime_runtime_alloc_groups_core.c3`
+  - `src/lisp/tests_tests.c3`
+- Code or configuration changes made:
+  - Removed the temporary tracing scaffolding after using it to localize the
+    failure.
+  - Fixed `make_fs_handle` so the `make_ffi_handle_ex(...) == null` branch no
+    longer frees the `FsHandle` a second time after the FFI finalizer has
+    already released it.
+  - Kept the constructor failure trace flag behavior intact for the runtime
+    alloc smoke assertions.
+  - Recorded the fix in `memory/changelog_parts/changelog_part_37.md`.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `scripts/run_validation_container.sh env OMNI_TEST_VERBOSE=0 OMNI_TEST_SUMMARY=1 OMNI_LISP_TEST_SLICE=memory-lifetime-smoke LD_LIBRARY_PATH=/usr/local/lib ./build/main --test-suite lisp`
+- Key results:
+  - The targeted memory-lifetime smoke slice now passes with `238 passed, 0 failed`.
+  - The earlier `free(): double free detected in tcache 2` abort is gone on the rebuilt binary.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The initial suspicion that the process-spawn result-dictionary cleanup was the crash site was incomplete; the real fault was the `fs-handle` constructor failure path in `prim_io_fs_stream.c3`.
+- Current best recommendation or checkpoint:
+  - Reaudit the codebase from the now-clean smoke slice and keep the process-spawn path as the known fixed baseline.
+- Unresolved issues:
+  - No live crash remains in the targeted memory-lifetime smoke slice.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies.
+  - The fix is on disk and active after rebuild; no further process restart is needed for subsequent container runs.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 17:09 CEST - Deep Audit Report
+
+- Objective attempted:
+  - Run a broad regression and edge-case audit after the latest compiler
+    pattern work and write the results down as a new report.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/compiler_expr_serialize_patterns.c3`
+  - `src/lisp/tests_advanced_core_semantics_groups.c3`
+  - `src/lisp/tests_compiler_codegen_groups.c3`
+  - `src/lisp/tests_compiler_core_groups.c3`
+- Code or configuration changes made:
+  - Added `.agents/DEEP_AUDIT_FINDINGS_2026-04-23.md`.
+  - Added `AUDIT-REAUDIT-PATTERN-SERIALIZER-001` to the live TODO queue.
+- Key results:
+  - Found one concrete serializer bug: guarded match patterns serialize as `_`
+    because `serialize_pattern_to_buf` has no `PAT_GUARD` branch.
+  - Found one coverage gap: the current tests do not cover nested guarded
+    patterns or guarded-pattern round trips, so the exact edge is still
+    unpinned by regression tests.
+- Commands run:
+  - `c3c build --obj-out obj`
+- Key results:
+  - Build passed and linked `build/main`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` It is not safe to assume the existing serializer is
+    semantically faithful for guarded match clauses.
+- Current best recommendation or checkpoint:
+  - Patch guarded-pattern serialization first, then add the round-trip and
+    nested-guard regressions before treating the pattern-matching surface as
+    stable.
+- Unresolved issues:
+  - Guarded-pattern serialization still loses semantics on disk/text output.
+  - The nested guard-sub scope rule remains untested.
+- Next actions:
+  - Implement the serializer branch and add the missing regressions.
+- Dependencies, blockers, or restart requirements:
+  - No live process restart is required for the report itself; code changes
+    will require rebuild/retest.
+- Signature: GPT-5 Codex
+
+## 2026-04-23 17:55 CEST - Audit Re-audit Closure
+
+- Objective attempted:
+  - Continue the audit-implementation loop, close the remaining re-audit TODOs,
+    and rerun the affected compiler/runtime slices until the queue was empty.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - `src/lisp/compiler_expr_serialize_patterns.c3`
+  - `src/lisp/compiler_mutable_capture_detection_walk.c3`
+  - `src/lisp/tests_compiler_core_groups_serializer_metadata.c3`
+  - `src/lisp/tests_advanced_core_semantics_groups.c3`
+  - `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part5.c3`
+  - `docs/todo_parts/todo_part_15.md`
+- Code or configuration changes made:
+  - Added explicit `PAT_GUARD` serialization in the pattern serializer.
+  - Added guarded-pattern round-trip coverage, including a nested guarded
+    pattern serializer case.
+  - Removed a bad core-semantics assertion that assumed the wrong guarded
+    predicate scope contract.
+  - Fixed a fall-through in `compiler_mutable_capture_detection_walk.c3`
+    so leaf expression tags no longer run through the `E_INDEX` path and crash
+    the compiler walker.
+  - Updated the empty-solve Vulkan runtime regression to match the shipped
+    empty-result contract.
+  - Closed the remaining audit TODO items in `docs/todo_parts/todo_part_15.md`.
+  - Updated `TODO.md` part counts to match the current part file size.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-core-semantics ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric ./build/main --test-suite lisp`
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
+  - `gdb -q -batch -ex run -ex bt --args env OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+- Key results:
+  - The compiler slice initially crashed in `Compiler.has_set_on` due to an
+    `E_LIT`/`E_VAR`/`E_QUOTE` fall-through into `E_INDEX`; the fix removes that
+    fall-through and the compiler slice now passes.
+  - The serializer round-trip cases now pass for guarded patterns, including a
+    nested guarded pattern.
+  - The advanced core semantics slice passes again after removing the incorrect
+    guard-scope assertion.
+  - The advanced stdlib numeric slice passes and the empty-solve regression now
+    checks the empty-result contract rather than a singular error.
+  - `scripts/check_status_consistency.sh` reports `TODO actionable count: 0`.
+- Invalidated assumptions or failed approaches:
+  - `[INVALIDATED]` The capture walker was still safe after the earlier audit
+    closure. The compiler crash showed a leaf-case fall-through remained in the
+    `has_set_on` / nested-lambda walker.
+  - `[INVALIDATED]` The nested guard-scope assertion I initially added assumed
+    the wrong predicate contract and had to be removed.
+- Current best recommendation or checkpoint:
+  - The re-audit loop is back to a clean queue. If a new audit is requested,
+    start from the current closed TODO state and re-run the compiler slice plus
+    the relevant advanced slices.
+- Unresolved issues:
+  - No open TODO items remain.
+  - The audit report and closure notes should be treated as the current handoff
+    state until a new technical change lands.
+- Dependencies, blockers, or restart requirements:
+  - No new dependencies were added.
+  - No live process restart is required beyond rebuilding/re-running the binary
+    when source changes land.
+- Signature: GPT-5 Codex
+
 ## 2026-04-23 06:20:00 CEST - ML Typed Plot Families Implemented
 
 - Objective attempted:
@@ -5266,3 +5500,188 @@ The historical content was split mechanically to keep individual files below the
   - No live process restart is required beyond rebuilding/rerunning a process
     that should load the new primitive table.
 - Signature: GPT-5 Codex
+### 2026-04-23 re-audit / runtime guard tightening
+
+Objective: continue the audit-repair loop against the 2026-04-23 audit report, then re-audit the touched runtime surfaces.
+
+What changed:
+- Hardened `csrc/tensor_vulkan_helpers.c` so the Vulkan unary host wrappers reject non-empty null `input_device_ptr` calls consistently for `f32`, `f64`, `complex64`, `complex128`, and the complex-to-real variants.
+- Tightened `src/lisp/prim_tensor_graph_run.c3` so `tensor_graph_run_vulkan_readable_float32()` requires a device handle for Vulkan view tensors even when `byte_len == 0`.
+- Hardened `src/lisp/eval_dispatch_match.c3` so `find_best_method()` propagates allocation failures when building ambiguous candidate index lists instead of producing malformed diagnostics.
+- Added regressions in `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3` for the zero-byte Vulkan view validator and the null-input Vulkan unary host guard.
+
+What I verified:
+- `c3c build --obj-out obj`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-stdlib-numeric ./build/main --test-suite lisp` -> `411 passed, 0 failed`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-type-dispatch-mutation-chain ./build/main --test-suite lisp` -> `240 passed, 0 failed`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system-surface ./build/main --test-suite lisp` -> `123 passed, 0 failed`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Re-audit notes:
+- The JIT/reset-shift and continuation leak claims from the audit report were already fixed in the live tree.
+- The UI partial-failure leak claim did not reproduce against the live ownership model; `ui_ftxui_lower_node()` tracks components and `ui_ftxui_destroy_state()` reclaims them on error paths.
+- The remaining ML/Vulkan coverage item in `prim_ml_autograd.c3` is a broader API-contract question, not a narrow local bug, so I left it for a separate design pass rather than force a partial fix.
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 audit-repair loop continuation
+
+Objective: implement the remaining actionable Vulkan device-selection hardening, then re-audit the touched surfaces.
+
+What changed:
+- Added a Vulkan physical-device-properties probe in `csrc/tensor_vulkan_helpers_core.c` and loaded `vkGetPhysicalDeviceProperties` alongside the existing Vulkan entry points.
+- Scored discrete GPUs ahead of integrated, virtual, and CPU devices so the selector no longer prefers a weaker class merely because it happens to expose a compute queue.
+- Added a host-side regression in `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3` that checks the new discrete-vs-integrated preference helper.
+- Exposed the helper through `src/lisp/tensor_vulkan_backend.c3` so the test surface can call it directly.
+
+What I verified:
+- `c3c build --obj-out obj`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `2070 passed, 0 failed`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Re-audit result:
+- The Vulkan selector no longer has the “first compute queue wins” behavior called out in the audit report.
+- The remaining audit lines are still the same non-actionable contract notes already recorded earlier.
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 re-audit follow-up
+
+Objective: continue the audit/repair loop after the prior closure note and verify whether any of the remaining reported items were still live.
+
+Result:
+- Re-read the remaining audit entries against the current tree.
+- Confirmed that the previously flagged runtime and memory/lifetime items were already closed in code or were non-live contract boundaries.
+- No additional code changes were required in this pass.
+
+Verification:
+- `jj status`
+- `jj diff --name-only`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 audit-repair loop continuation
+
+Objective: continue the audit-repair loop until the current items were exhausted, then re-audit the touched surfaces.
+
+What changed:
+- Restored recursive traversal in `src/lisp/compiler_mutable_capture_detection_walk.c3` for effect-form subtrees so mutable-capture detection now sees nested lambdas under `E_PERFORM`, `E_HANDLE`, and `E_RESOLVE`.
+- Hardened `csrc/tensor_vulkan_helpers_core.c` so Vulkan physical-device selection only considers compute-capable queue families.
+- Restored the zero-byte Vulkan readable-tensor contract in `src/lisp/prim_tensor_graph_run.c3` so null device handles remain accepted when `byte_len == 0`.
+- Added regressions in `src/lisp/tests_compiler_codegen_groups_tail.c3`, `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part1.c3`, and `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part9.c3`, plus the Vulkan test extern in `src/lisp/tensor_vulkan_backend.c3`.
+
+What I verified:
+- `c3c build --obj-out obj`
+- `OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp` -> `306 passed, 0 failed`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp` -> `2069 passed, 0 failed`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Re-audit result:
+- The previously flagged effect-form capture gap is closed by the recursive walk update and the new boxing regressions.
+- The Vulkan queue-family selector now fails closed for non-compute queues.
+- The zero-byte Vulkan readable helper contract is back in line with the storage helpers.
+- `TODO actionable count` remains `0`; the remaining `ffi foreign runtime status: yellow` is still a broad area classification, not a live unimplemented defect in the surfaces changed here.
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 final re-audit closure
+
+Objective: re-check the remaining audit report items after the latest Vulkan selector hardening and confirm whether any live defects still remained.
+
+Result:
+- Re-read the remaining `AUDIT_REPORT_2026-04-23.md` entries against the live tree.
+- Confirmed that the only still-visible items were the already-recorded non-actionable contract and refactor notes:
+  - `M3` is a deliberate boundary in the generic ML grad path, with Vulkan-specific backward paths already split out where applicable.
+  - `M5` matches the shared CPU `sqrt`/NaN behavior and is not a backend divergence.
+  - `L4` is a refactor opportunity, not a correctness bug.
+- No code changes were required in this pass.
+
+Verification:
+- `jj status`
+- `jj diff --name-only`
+- `git diff --check`
+- `scripts/check_status_consistency.sh`
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 foreign-runtime doc sync
+
+Objective: remove stale TLS lifecycle residual wording from the foreign-runtime area and plan notes after the runtime async I/O regression coverage was already landed.
+
+Changes made:
+- Updated `docs/areas/ffi-foreign-runtime.md` to mark the TLS offload/in-flight lifecycle follow-up as a closed validation checkpoint instead of an open residual.
+- Updated `docs/plans/foreign-runtime-core-plan-2026-04-11.md` to state that no live scheduler-bound TLS lifecycle follow-up remains.
+
+Verification:
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 audit report bookkeeping closeout
+
+Objective: remove the last stale open-bookkeeping wording from the audit report so it no longer contradicts the synced live docs.
+
+Changes made:
+- Updated the bookkeeping finding in `AUDIT_REPORT_2026-04-23.md` from open to closed, with the note that the plan/TODO/session-report artifacts are already synchronized.
+
+Verification:
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 stable-escape proposal note
+
+Objective: document the stable-handle / prepared-graph boundary idea as a proposal-only note, not as a live rollout.
+
+Changes made:
+- Added `docs/plans/stable-escape-graph-plan-2026-04-23.md` as a proposal note.
+- Indexed it in `docs/plans/README.md` as a proposal-only memory-boundary design note.
+
+Scope decision:
+- No TODO lane was opened yet. The note is intentionally speculative until the next shape audit or measurement pass proves it worth turning into backlog work.
+
+Verification:
+- `git diff --check`
+
+Signature: GPT-5 Codex
+### 2026-04-23 TLS lifecycle residual closed
+
+Objective: finish the remaining foreign-runtime residual around the scheduler-bound TLS lifecycle gate, then re-audit the lane.
+
+What changed:
+- Added a direct regression in `src/lisp/tests_runtime_async_io_tls_groups.c3` that proves `tls_try_mark_in_flight()` rejects concurrent acquisition and therefore blocks the `tls-read` / `tls-write` / `tls-close` lifecycle gate while a TLS operation is active.
+- Updated `docs/plans/foreign-runtime-core-plan-2026-04-11.md` and `docs/areas/ffi-foreign-runtime.md` so the TLS lifecycle follow-up is recorded as covered by regression coverage rather than still-open.
+
+What I verified:
+- `c3c build --obj-out obj`
+- `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-ffi-system ./build/main --test-suite lisp` -> `141 passed, 0 failed`
+- `OMNI_LISP_TEST_SLICE=async ./build/main --test-suite lisp` -> `70 passed, 0 failed`
+- `scripts/check_status_consistency.sh`
+- `git diff --check`
+
+Re-audit result:
+- The previous foreign-runtime residual is now covered by the regression gate and no longer presents as an open implementation item.
+- The remaining `ffi foreign runtime status: yellow` is a broader area classification, not a live unimplemented TLS lifecycle defect.
+
+Signature: GPT-5 Codex
+
+## 2026-04-23 stable-escape proposal finalized
+
+Objective: close out the stable-escape-graph discussion as a proposal-only design note.
+
+Decision:
+- The boundary model is now finalized at proposal scope as a prepared-graph design with stable handles and generation checks.
+- The boundary remains a proposal until an implementation plan is explicitly authorized.
+- No TODO lane was opened for this note.
+
+Checkpoint:
+- This is a design note only, not a live rollout or committed runtime contract.
+
+Signature: GPT-5 Codex

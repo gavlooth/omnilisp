@@ -94,9 +94,21 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
         case E_QUOTE:
         case E_RESET:
         case E_SHIFT:
+            return false;
         case E_PERFORM:
-        case E_HANDLE:
+            if (expr.perform.has_tag_expr && self.has_set_on(name, expr.perform.tag_expr)) return true;
+            return self.has_set_on(name, expr.perform.arg);
         case E_RESOLVE:
+            return self.has_set_on(name, expr.resolve.value);
+        case E_HANDLE:
+            if (self.has_set_on(name, expr.handle.body)) return true;
+            for (usz i = 0; i < expr.handle.clause_count; i++) {
+                EffectClause* clause = &expr.handle.clauses[i];
+                if (clause.has_effect_tag_expr && self.has_set_on(name, clause.effect_tag_expr)) return true;
+                if ((uint)clause.k_name == (uint)name || (uint)clause.arg_name == (uint)name) continue;
+                if (self.has_set_on(name, clause.handler_body)) return true;
+            }
+            return false;
         case E_INDEX:
             return self.has_set_on(name, expr.index.collection) || self.has_set_on(name, expr.index.index);
         case E_PATH:
@@ -221,9 +233,21 @@ fn bool Compiler.is_captured_by_nested_lambda(Compiler* self, SymbolId name, Exp
         case E_QUOTE:
         case E_RESET:
         case E_SHIFT:
+            return false;
         case E_PERFORM:
-        case E_HANDLE:
+            if (expr.perform.has_tag_expr && self.is_captured_by_nested_lambda(name, expr.perform.tag_expr)) return true;
+            return self.is_captured_by_nested_lambda(name, expr.perform.arg);
         case E_RESOLVE:
+            return self.is_captured_by_nested_lambda(name, expr.resolve.value);
+        case E_HANDLE:
+            if (self.is_captured_by_nested_lambda(name, expr.handle.body)) return true;
+            for (usz i = 0; i < expr.handle.clause_count; i++) {
+                EffectClause* clause = &expr.handle.clauses[i];
+                if (clause.has_effect_tag_expr && self.is_captured_by_nested_lambda(name, clause.effect_tag_expr)) return true;
+                if ((uint)clause.k_name == (uint)name || (uint)clause.arg_name == (uint)name) continue;
+                if (self.is_captured_by_nested_lambda(name, clause.handler_body)) return true;
+            }
+            return false;
         case E_INDEX:
             return self.is_captured_by_nested_lambda(name, expr.index.collection) ||
                    self.is_captured_by_nested_lambda(name, expr.index.index);

@@ -528,3 +528,53 @@ fn void run_memory_lifetime_boundary_instance_payload_alias_test(Interp* interp,
         (*fail)++;
     }
 }
+
+fn void run_memory_lifetime_boundary_list_child_scope_alias_test(Interp* interp, int* pass, int* fail) {
+    // Invariant: releasing-scope list children must be rejected even when the
+    // child itself is not a CONS shell.
+    main::ScopeRegion* saved = interp.current_scope;
+    main::ScopeRegion* target = main::scope_create(saved);
+    main::ScopeRegion* releasing = target != null ? main::scope_create(target) : null;
+    if (target == null || releasing == null) {
+        if (releasing != null) main::scope_release(releasing);
+        if (target != null) main::scope_release(target);
+        io::printn("[FAIL] lifetime: boundary list child scope alias rejected");
+        (*fail)++;
+        return;
+    }
+
+    Value* root = null;
+    Value* stale_payload = null;
+    bool setup_ok = false;
+
+    interp.current_scope = target;
+    root = make_cons(interp, make_nil(interp), make_nil(interp));
+    interp.current_scope = releasing;
+    stale_payload = make_array_checked(interp, 1, "boundary list child scope alias: stale payload allocation failed");
+    if (root != null && root.tag == CONS &&
+        stale_payload != null && stale_payload.tag == ARRAY && stale_payload.array_val != null) {
+        stale_payload.array_val.items[0] = make_int(interp, 7);
+        stale_payload.array_val.length++;
+        interp.current_scope = target;
+        root.cons_val.car = stale_payload;
+        setup_ok = true;
+    }
+    interp.current_scope = saved;
+
+    interp.current_scope = target;
+    interp.releasing_scope = releasing;
+    bool unsafe = setup_ok && boundary_graph_alias_unsafe_for_reuse(root, interp);
+    interp.releasing_scope = null;
+    interp.current_scope = saved;
+
+    main::scope_release(releasing);
+    main::scope_release(target);
+
+    if (unsafe) {
+        emit_pass_literal("[PASS] lifetime: boundary list child scope alias rejected");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] lifetime: boundary list child scope alias rejected");
+        (*fail)++;
+    }
+}

@@ -25,6 +25,10 @@ typedef void (*omni_vulkan_get_physical_device_memory_properties_fn)(
     OmniVulkanPhysicalDevice physical_device,
     OmniVulkanPhysicalDeviceMemoryProperties* memory_properties
 );
+typedef void (*omni_vulkan_get_physical_device_properties_fn)(
+    OmniVulkanPhysicalDevice physical_device,
+    OmniVulkanPhysicalDeviceProperties* properties
+);
 typedef OmniVulkanResult (*omni_vulkan_create_device_fn)(
     OmniVulkanPhysicalDevice physical_device,
     const OmniVulkanDeviceCreateInfo* create_info,
@@ -217,6 +221,7 @@ extern omni_vulkan_enumerate_physical_devices_fn omni_vulkan_enumerate_physical_
 extern omni_vulkan_get_queue_family_properties_fn omni_vulkan_get_queue_family_properties;
 extern omni_vulkan_get_physical_device_features_fn omni_vulkan_get_physical_device_features;
 extern omni_vulkan_get_physical_device_memory_properties_fn omni_vulkan_get_physical_device_memory_properties;
+extern omni_vulkan_get_physical_device_properties_fn omni_vulkan_get_physical_device_properties;
 extern omni_vulkan_create_device_fn omni_vulkan_create_device;
 extern omni_vulkan_destroy_device_fn omni_vulkan_destroy_device;
 extern omni_vulkan_create_buffer_fn omni_vulkan_create_buffer;

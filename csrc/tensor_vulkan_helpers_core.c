@@ -7,6 +7,7 @@ omni_vulkan_enumerate_physical_devices_fn omni_vulkan_enumerate_physical_devices
 omni_vulkan_get_queue_family_properties_fn omni_vulkan_get_queue_family_properties = NULL;
 omni_vulkan_get_physical_device_features_fn omni_vulkan_get_physical_device_features = NULL;
 omni_vulkan_get_physical_device_memory_properties_fn omni_vulkan_get_physical_device_memory_properties = NULL;
+omni_vulkan_get_physical_device_properties_fn omni_vulkan_get_physical_device_properties = NULL;
 omni_vulkan_create_device_fn omni_vulkan_create_device = NULL;
 omni_vulkan_destroy_device_fn omni_vulkan_destroy_device = NULL;
 omni_vulkan_create_buffer_fn omni_vulkan_create_buffer = NULL;
@@ -115,6 +116,69 @@ int omni_tensor_vulkan_create_instance_silent(OmniVulkanInstance* out_instance) 
     return result == OMNI_VULKAN_SUCCESS && *out_instance != NULL;
 }
 
+static uint32_t omni_tensor_vulkan_memory_score(const OmniVulkanPhysicalDeviceMemoryProperties* props) {
+    if (props == NULL) return 0u;
+
+    uint32_t score = 0u;
+    uint32_t required = OMNI_VULKAN_MEMORY_PROPERTY_HOST_VISIBLE_BIT | OMNI_VULKAN_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    int has_host_visible = 0;
+    for (uint32_t i = 0; i < props->memoryTypeCount && i < 32u; i++) {
+        if ((props->memoryTypes[i].propertyFlags & required) == required) {
+            has_host_visible = 1;
+            break;
+        }
+    }
+    if (has_host_visible) score += 8u;
+
+    uint64_t largest_heap = 0u;
+    for (uint32_t i = 0; i < props->memoryHeapCount && i < 16u; i++) {
+        if (props->memoryHeaps[i].size > largest_heap) largest_heap = props->memoryHeaps[i].size;
+    }
+    if (largest_heap >= (uint64_t)1 << 30) score += 1u;
+    if (largest_heap >= (uint64_t)4 << 30) score += 1u;
+    if (largest_heap >= (uint64_t)8 << 30) score += 1u;
+    return score;
+}
+
+static uint32_t omni_tensor_vulkan_device_type_score(const OmniVulkanPhysicalDeviceProperties* props) {
+    if (props == NULL) return 0u;
+    switch (props->deviceType) {
+        case OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+            return 64u;
+        case OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+            return 32u;
+        case OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+            return 16u;
+        case OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_CPU:
+            return 8u;
+        default:
+            return 0u;
+    }
+}
+
+static uint32_t omni_tensor_vulkan_device_score(
+    const OmniVulkanPhysicalDeviceProperties* properties,
+    const OmniVulkanPhysicalDeviceFeatures* features,
+    const OmniVulkanPhysicalDeviceMemoryProperties* props,
+    const OmniVulkanQueueFamilyProperties* queue
+) {
+    if (features == NULL || queue == NULL || queue->queueCount == 0u) return 0u;
+
+    uint32_t score = 0u;
+    if ((queue->queueFlags & OMNI_VULKAN_QUEUE_COMPUTE_BIT) == 0u) return 0u;
+    score += omni_tensor_vulkan_device_type_score(properties);
+    if (features->shaderFloat64 != 0) score += 16u;
+    if (features->shaderInt64 != 0) score += 8u;
+    if (queue->queueCount > 1u) score += 1u;
+    score += omni_tensor_vulkan_memory_score(props);
+    return score;
+}
+
+static int omni_tensor_vulkan_queue_is_selectable(const OmniVulkanQueueFamilyProperties* queue) {
+    if (queue == NULL || queue->queueCount == 0u) return 0;
+    return (queue->queueFlags & OMNI_VULKAN_QUEUE_COMPUTE_BIT) != 0u;
+}
+
 int omni_tensor_vulkan_select_physical_device(
     OmniVulkanInstance instance,
     OmniVulkanPhysicalDevice* out_physical_device,
@@ -134,8 +198,9 @@ int omni_tensor_vulkan_select_physical_device(
         return 0;
     }
 
+    uint32_t best_score = 0u;
     int found = 0;
-    for (uint32_t i = 0; i < device_count && !found; i++) {
+    for (uint32_t i = 0; i < device_count; i++) {
         uint32_t queue_count = 0;
         omni_vulkan_get_queue_family_properties(devices[i], &queue_count, NULL);
         if (queue_count == 0) continue;
@@ -145,11 +210,21 @@ int omni_tensor_vulkan_select_physical_device(
         omni_vulkan_get_queue_family_properties(devices[i], &queue_count, queues);
 
         for (uint32_t q = 0; q < queue_count; q++) {
-            if ((queues[q].queueFlags & OMNI_VULKAN_QUEUE_COMPUTE_BIT) != 0 && queues[q].queueCount > 0) {
+            if (!omni_tensor_vulkan_queue_is_selectable(&queues[q])) continue;
+            OmniVulkanPhysicalDeviceProperties properties = {0};
+            OmniVulkanPhysicalDeviceFeatures features = {0};
+            OmniVulkanPhysicalDeviceMemoryProperties memory_props = {0};
+            if (omni_vulkan_get_physical_device_properties != NULL) {
+                omni_vulkan_get_physical_device_properties(devices[i], &properties);
+            }
+            omni_vulkan_get_physical_device_features(devices[i], &features);
+            omni_vulkan_get_physical_device_memory_properties(devices[i], &memory_props);
+            uint32_t score = omni_tensor_vulkan_device_score(&properties, &features, &memory_props, &queues[q]);
+            if (!found || score > best_score) {
                 *out_physical_device = devices[i];
                 *out_queue_family_index = q;
+                best_score = score;
                 found = 1;
-                break;
             }
         }
         free(queues);
@@ -157,6 +232,78 @@ int omni_tensor_vulkan_select_physical_device(
 
     free(devices);
     return found;
+}
+
+int omni_tensor_backend_vulkan_select_physical_device_preference_for_tests(void) {
+    OmniVulkanPhysicalDeviceFeatures rich_features = {0};
+    rich_features.shaderFloat64 = 1;
+    rich_features.shaderInt64 = 1;
+    OmniVulkanPhysicalDeviceMemoryProperties rich_memory = {0};
+    rich_memory.memoryTypeCount = 1;
+    rich_memory.memoryTypes[0].propertyFlags = OMNI_VULKAN_MEMORY_PROPERTY_HOST_VISIBLE_BIT | OMNI_VULKAN_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    rich_memory.memoryTypes[0].heapIndex = 0;
+    rich_memory.memoryHeapCount = 1;
+    rich_memory.memoryHeaps[0].size = (uint64_t)8 << 30;
+    rich_memory.memoryHeaps[0].flags = 0u;
+    OmniVulkanQueueFamilyProperties rich_queue = {
+        OMNI_VULKAN_QUEUE_COMPUTE_BIT,
+        2u,
+        0u,
+        { 0u, 0u, 0u }
+    };
+
+    OmniVulkanPhysicalDeviceFeatures poor_features = {0};
+    OmniVulkanPhysicalDeviceMemoryProperties poor_memory = {0};
+    poor_memory.memoryTypeCount = 1;
+    poor_memory.memoryTypes[0].propertyFlags = 0u;
+    poor_memory.memoryTypes[0].heapIndex = 0;
+    poor_memory.memoryHeapCount = 1;
+    poor_memory.memoryHeaps[0].size = (uint64_t)512 << 20;
+    poor_memory.memoryHeaps[0].flags = 0u;
+    OmniVulkanQueueFamilyProperties poor_queue = {
+        OMNI_VULKAN_QUEUE_COMPUTE_BIT,
+        1u,
+        0u,
+        { 0u, 0u, 0u }
+    };
+
+    OmniVulkanPhysicalDeviceProperties rich_properties = {0};
+    rich_properties.deviceType = OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+    OmniVulkanPhysicalDeviceProperties poor_properties = {0};
+    poor_properties.deviceType = OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    uint32_t rich_score = omni_tensor_vulkan_device_score(&rich_properties, &rich_features, &rich_memory, &rich_queue);
+    uint32_t poor_score = omni_tensor_vulkan_device_score(&poor_properties, &poor_features, &poor_memory, &poor_queue);
+    return rich_score > poor_score ? OMNI_TENSOR_VULKAN_SUCCESS : OMNI_TENSOR_VULKAN_INVALID;
+}
+
+int omni_tensor_backend_vulkan_device_type_preference_for_tests(void) {
+    OmniVulkanPhysicalDeviceProperties discrete = {0};
+    discrete.deviceType = OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+    OmniVulkanPhysicalDeviceProperties integrated = {0};
+    integrated.deviceType = OMNI_VULKAN_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    return omni_tensor_vulkan_device_type_score(&discrete) > omni_tensor_vulkan_device_type_score(&integrated)
+        ? OMNI_TENSOR_VULKAN_SUCCESS
+        : OMNI_TENSOR_VULKAN_INVALID;
+}
+
+int omni_tensor_backend_vulkan_select_physical_device_compute_gate_for_tests(void) {
+    OmniVulkanQueueFamilyProperties compute_queue = {
+        OMNI_VULKAN_QUEUE_COMPUTE_BIT,
+        1u,
+        0u,
+        { 0u, 0u, 0u }
+    };
+    OmniVulkanQueueFamilyProperties non_compute_queue = {
+        0u,
+        4u,
+        0u,
+        { 0u, 0u, 0u }
+    };
+
+    return omni_tensor_vulkan_queue_is_selectable(&compute_queue) &&
+           !omni_tensor_vulkan_queue_is_selectable(&non_compute_queue)
+        ? OMNI_TENSOR_VULKAN_SUCCESS
+        : OMNI_TENSOR_VULKAN_INVALID;
 }
 
 int omni_tensor_vulkan_find_host_visible_memory_type(
@@ -190,6 +337,7 @@ static int omni_tensor_vulkan_resolve(void) {
         omni_vulkan_get_queue_family_properties != NULL &&
         omni_vulkan_get_physical_device_features != NULL &&
         omni_vulkan_get_physical_device_memory_properties != NULL &&
+        omni_vulkan_get_physical_device_properties != NULL &&
         omni_vulkan_create_device != NULL &&
         omni_vulkan_destroy_device != NULL &&
         omni_vulkan_create_buffer != NULL &&
@@ -246,6 +394,7 @@ static int omni_tensor_vulkan_resolve(void) {
         void* get_queue_family_properties_symbol = dlsym(handle, "vkGetPhysicalDeviceQueueFamilyProperties");
         void* get_physical_device_features_symbol = dlsym(handle, "vkGetPhysicalDeviceFeatures");
         void* get_physical_device_memory_properties_symbol = dlsym(handle, "vkGetPhysicalDeviceMemoryProperties");
+        void* get_physical_device_properties_symbol = dlsym(handle, "vkGetPhysicalDeviceProperties");
         void* create_device_symbol = dlsym(handle, "vkCreateDevice");
         void* destroy_device_symbol = dlsym(handle, "vkDestroyDevice");
         void* create_buffer_symbol = dlsym(handle, "vkCreateBuffer");
@@ -287,6 +436,7 @@ static int omni_tensor_vulkan_resolve(void) {
             get_queue_family_properties_symbol != NULL &&
             get_physical_device_features_symbol != NULL &&
             get_physical_device_memory_properties_symbol != NULL &&
+            get_physical_device_properties_symbol != NULL &&
             create_device_symbol != NULL &&
             destroy_device_symbol != NULL &&
             create_buffer_symbol != NULL &&
@@ -329,6 +479,7 @@ static int omni_tensor_vulkan_resolve(void) {
             omni_vulkan_get_queue_family_properties = (omni_vulkan_get_queue_family_properties_fn)get_queue_family_properties_symbol;
             omni_vulkan_get_physical_device_features = (omni_vulkan_get_physical_device_features_fn)get_physical_device_features_symbol;
             omni_vulkan_get_physical_device_memory_properties = (omni_vulkan_get_physical_device_memory_properties_fn)get_physical_device_memory_properties_symbol;
+            omni_vulkan_get_physical_device_properties = (omni_vulkan_get_physical_device_properties_fn)get_physical_device_properties_symbol;
             omni_vulkan_create_device = (omni_vulkan_create_device_fn)create_device_symbol;
             omni_vulkan_destroy_device = (omni_vulkan_destroy_device_fn)destroy_device_symbol;
             omni_vulkan_create_buffer = (omni_vulkan_create_buffer_fn)create_buffer_symbol;

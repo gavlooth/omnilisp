@@ -89,10 +89,26 @@ fn Value* find_best_method(MethodTable* mt, Value*[] args, Interp* interp) {
             best_score = score;
             best_method = entry.implementation;
             best_count = 1;
-            best_match_indices_rev = make_cons(interp, make_int(interp, (long)i), make_nil(interp));
+            Value* idx = make_int(interp, (long)i);
+            if (idx == null || idx.tag == ERROR) return idx;
+            best_match_indices_rev = make_cons_or_error(
+                interp,
+                idx,
+                make_nil(interp),
+                "method dispatch: out of memory"
+            );
+            if (best_match_indices_rev == null || best_match_indices_rev.tag == ERROR) return best_match_indices_rev;
         } else if (score == best_score) {
             best_count++;
-            best_match_indices_rev = make_cons(interp, make_int(interp, (long)i), best_match_indices_rev);
+            Value* idx = make_int(interp, (long)i);
+            if (idx == null || idx.tag == ERROR) return idx;
+            best_match_indices_rev = make_cons_or_error(
+                interp,
+                idx,
+                best_match_indices_rev,
+                "method dispatch: out of memory"
+            );
+            if (best_match_indices_rev == null || best_match_indices_rev.tag == ERROR) return best_match_indices_rev;
         }
     }
 

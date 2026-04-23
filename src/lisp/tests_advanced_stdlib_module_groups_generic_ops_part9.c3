@@ -204,6 +204,61 @@ fn void run_advanced_collections_generic_ops_part9(Interp* interp, int* pass, in
     test_truthy(interp, "tensor/run rejects binary map nodes with both scalar sides",
         "(let (vulkan-backend (ref (tensor-backends) 3)) (if (ref vulkan-backend 'float32) (let (x (Tensor Float32 [2] [1 2]) y (to-device (map + x (Float32 3.0)) 'vulkan) g (tensor/capture y) node (ref (ref g 'nodes) 1) changed-left (set! node 'left-scalar (Float32 1.0)) changed-right (set! node 'right-scalar (Float32 2.0))) (= (handle (tensor/run g) (raise msg (ref msg 'code))) 'tensor/invalid-argument)) true))", pass, fail);
     {
+        TensorVal view = {};
+        view.kind = TENSOR_PAYLOAD_VIEW;
+        view.device = TENSOR_DEVICE_VULKAN;
+        view.dtype = TENSOR_DTYPE_FLOAT32;
+        view.rank = 0;
+        view.element_count = 0;
+        view.byte_len = 0;
+        view.storage_offset = 0;
+        view.storage_element_count = 0;
+        view.storage_byte_len = 0;
+        view.is_view = true;
+        bool accept_null_handle = tensor_graph_run_vulkan_readable_float32(&view);
+        view.device_handle = (void*)1;
+        bool accept_non_null_handle = tensor_graph_run_vulkan_readable_float32(&view);
+        if (accept_null_handle && accept_non_null_handle) {
+            emit_pass_literal("[PASS] tensor/run Vulkan readable helper accepts zero-byte views without a device handle");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor/run Vulkan readable helper accepts zero-byte views without a device handle");
+            (*fail)++;
+        }
+    }
+    {
+        bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        void* out_device = null;
+        int status = omni_tensor_backend_vulkan_map_unary_f32(null, float.sizeof, 1, 0, &out_device);
+        bool ok = !vulkan_available || (status == OMNI_TENSOR_VULKAN_INVALID && out_device == null);
+        if (ok) {
+            emit_pass_literal(vulkan_available
+                ? "[PASS] tensor Vulkan unary helper rejects null input device pointers"
+                : "[PASS] tensor Vulkan unary helper null-input guard unavailable; not exercised");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor Vulkan unary helper rejects null input device pointers");
+            (*fail)++;
+        }
+    }
+    {
+        bool float32_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
+        bool float64_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float64_available() != 0;
+        void* out_device = null;
+        int status_f32 = omni_tensor_backend_vulkan_map_unary_f32(null, 0, 0, 0, &out_device);
+        bool f32_ok = !float32_available || (status_f32 == OMNI_TENSOR_VULKAN_INVALID && out_device == null);
+        out_device = null;
+        int status_f64 = omni_tensor_backend_vulkan_map_unary_f64(null, 0, 0, 0, &out_device);
+        bool f64_ok = !float64_available || (status_f64 == OMNI_TENSOR_VULKAN_INVALID && out_device == null);
+        if (f32_ok && f64_ok) {
+            emit_pass_literal("[PASS] tensor Vulkan unary helper rejects null zero-length input pointers");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tensor Vulkan unary helper rejects null zero-length input pointers");
+            (*fail)++;
+        }
+    }
+    {
         bool vulkan_available = omni_tensor_backend_vulkan_available() != 0 && omni_tensor_backend_vulkan_float32_available() != 0;
         long chain_calls_before = omni_tensor_backend_vulkan_map_scalar_chain_dispatch_call_count();
         test_truthy(interp, "tensor/run executes captured Vulkan Float32 two-scalar-map graph through native reuse path",

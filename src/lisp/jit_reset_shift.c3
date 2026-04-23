@@ -74,6 +74,7 @@ fn EvalResult jit_reset_impl(Expr* expr, Env* env, Interp* interp) {
     if (state.shifted) {
         // Shift occurred — evaluate shift body in parent context
         Value* shift_result = jit_eval(state.shift_body, state.shift_env, interp);
+        main::stack_ctx_destroy(ctx, &interp.stack_ctx_pool);
         if (shift_result != null && shift_result.tag == ERROR) {
             return eval_error(shift_result.str_chars[:shift_result.str_len]);
         }

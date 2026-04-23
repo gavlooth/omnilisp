@@ -175,15 +175,15 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
 
                     Value* car = current.cons_val.car;
                     if (car != null) {
-                        if (car.tag == CONS && boundary_value_in_releasing_scope(car, interp)) return true;
-                        if (boundary_alias_push_visit(
+                        if (boundary_alias_push_child(
                             &scan.stack[0],
                             &stack_len,
                             &scan.seen[0],
                             &seen_len,
                             &scan.fast_set,
                             car,
-                            list_depth + 1
+                            interp,
+                            list_depth
                         )) {
                             return true;
                         }
@@ -192,14 +192,15 @@ fn bool boundary_graph_alias_unsafe_for_reuse_walk(Value* v, Interp* interp, usz
                     Value* cdr = current.cons_val.cdr;
                     if (cdr == null) break;
                     if (cdr.tag != CONS) {
-                        if (boundary_alias_push_visit(
+                        if (boundary_alias_push_child(
                             &scan.stack[0],
                             &stack_len,
                             &scan.seen[0],
                             &seen_len,
                             &scan.fast_set,
                             cdr,
-                            list_depth + 1
+                            interp,
+                            list_depth
                         )) {
                             return true;
                         }

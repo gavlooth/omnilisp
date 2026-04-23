@@ -61,6 +61,8 @@ typedef int (*omni_cu_ctx_synchronize_fn)(void);
 typedef int (*omni_cublas_create_fn)(void** handle);
 typedef int (*omni_cublas_destroy_fn)(void* handle);
 
+#include "tensor_cuda_status_priority.inc"
+
 static int omni_tensor_cuda_grid_dim_1d(size_t element_count, unsigned int block_dim, unsigned int* out_grid_dim) {
     if (out_grid_dim == NULL || block_dim == 0u) return OMNI_TENSOR_CUDA_INVALID;
     *out_grid_dim = 0u;
@@ -78,6 +80,12 @@ int omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests(void) {
     unsigned int grid_dim = 0u;
     size_t oversized_count = (size_t)UINT_MAX * 256u + 1u;
     return omni_tensor_cuda_grid_dim_1d(oversized_count, 256u, &grid_dim);
+}
+
+int omni_tensor_backend_cuda_complex_map_status_priority_for_tests(void) {
+    unsigned int status = 1u;
+    omni_cuda_status_set(&status, 2u);
+    return (int)status;
 }
 typedef int (*omni_cublas_dgemm_fn)(
     void* handle,

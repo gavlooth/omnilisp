@@ -26,3 +26,13 @@ fn Continuation* Interp.alloc_lisp_continuation(Interp* self) {
     self.continuation_head = k;
     return k;
 }
+
+fn void interp_discard_lisp_continuation(Interp* self, Continuation* k) {
+    if (self == null || k == null) return;
+    // Keep the intrusive ownership list intact. The continuation node is still
+    // root-owned; this helper only scrubs live runtime state so later teardown
+    // paths see a dead continuation rather than a detached node.
+    k.ctx = null;
+    k.handle_state = null;
+    k.handle_retained = false;
+}

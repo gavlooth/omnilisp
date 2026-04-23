@@ -312,3 +312,42 @@ fn void run_jit_policy_capture_boundary_reset_test(Interp* interp, int* pass, in
         (*fail)++;
     }
 }
+
+fn void run_jit_policy_capture_discard_recycles_stack_ctx_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    usz before = 0;
+    usz after = 0;
+    EvalResult r = {};
+    if (ok) {
+        before = other.stack_ctx_pool.pool_size;
+        r = run("(checkpoint (+ 100 (capture k 42)))", other);
+        after = other.stack_ctx_pool.pool_size;
+        ok = !r.error.has_error &&
+             r.value != null &&
+             r.value.tag == INT &&
+             r.value.int_val == 42 &&
+             (main::stack_pool_cache_limit() > 0 ? after == before + 1 : after == before);
+    }
+
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: checkpoint capture discard recycles stack ctx");
+        (*pass)++;
+    } else {
+        io::printfn(
+            "[FAIL] jit policy: checkpoint capture discard recycles stack ctx (before=%d after=%d result_tag=%d)",
+            (int)before,
+            (int)after,
+            r.value != null ? (int)r.value.tag : -1
+        );
+        (*fail)++;
+    }
+}

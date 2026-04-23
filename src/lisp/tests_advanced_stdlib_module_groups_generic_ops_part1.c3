@@ -215,6 +215,27 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
         io::printn("[FAIL] tensor Vulkan map chain byte length overflow guard");
         (*fail)++;
     }
+    if (omni_tensor_backend_vulkan_select_physical_device_preference_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
+        emit_pass_literal("[PASS] tensor Vulkan device selection prefers richer compute candidates");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan device selection prefers richer compute candidates");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_vulkan_device_type_preference_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
+        emit_pass_literal("[PASS] tensor Vulkan device selection prefers discrete GPUs over integrated GPUs");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan device selection prefers discrete GPUs over integrated GPUs");
+        (*fail)++;
+    }
+    if (omni_tensor_backend_vulkan_select_physical_device_compute_gate_for_tests() == OMNI_TENSOR_VULKAN_SUCCESS) {
+        emit_pass_literal("[PASS] tensor Vulkan device selection rejects non-compute queue families");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] tensor Vulkan device selection rejects non-compute queue families");
+        (*fail)++;
+    }
     test_truthy(interp, "tensor-backends cublas Float32 capability entry",
         "(let (cublas-backend (ref (tensor-backends) 2)) (and (= (ref cublas-backend 'name) 'cublas) (or (= (ref cublas-backend 'float64) true) (= (ref cublas-backend 'float64) false)) (or (= (ref cublas-backend 'float32) true) (= (ref cublas-backend 'float32) false)) (= (ref cublas-backend 'matrix-hermitian-eigen-complex128) false) (= (ref cublas-backend 'matrix-hermitian-eigen-complex64) false) (= (ref cublas-backend 'matrix-eigenpairs-complex128) false) (= (ref cublas-backend 'matrix-eigenpairs-complex64) false)))", pass, fail);
     test_truthy(interp, "tensor-backends vulkan capability entry",
@@ -586,6 +607,22 @@ fn void run_advanced_collections_generic_ops_part1(Interp* interp, int* pass, in
             test_error_contains(interp, name,
                 "(stats.normal-quantile (to-device (Tensor Float64 [2] [0.0 (ref (json-parse \"[NaN]\" '(allow-nan-inf)) 0)]) 'cuda))",
                 "stats.normal-quantile: expected finite numeric input", pass, fail);
+        } else {
+            emit_pass(name);
+            (*pass)++;
+        }
+    }
+    {
+        char[] name = "cuda complex map status priority prefers invalid argument";
+        if (omni_tensor_backend_cuda_complex_map_available() != OMNI_TENSOR_CUDA_UNAVAILABLE) {
+            bool ok = omni_tensor_backend_cuda_complex_map_status_priority_for_tests() == 2;
+            if (ok) {
+                emit_pass(name);
+                (*pass)++;
+            } else {
+                io::printn("[FAIL] cuda complex map status priority prefers invalid argument");
+                (*fail)++;
+            }
         } else {
             emit_pass(name);
             (*pass)++;

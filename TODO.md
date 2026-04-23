@@ -22,7 +22,7 @@ split gate applies to code files only.
 - Part 12: [docs/todo_parts/todo_part_12.md](docs/todo_parts/todo_part_12.md) (337 lines)
 - Part 13: [docs/todo_parts/todo_part_13.md](docs/todo_parts/todo_part_13.md) (325 lines)
 - Part 14: [docs/todo_parts/todo_part_14.md](docs/todo_parts/todo_part_14.md) (1915 lines)
-- Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (935 lines)
+- Part 15: [docs/todo_parts/todo_part_15.md](docs/todo_parts/todo_part_15.md) (951 lines)
 
 ## Live Queue
 

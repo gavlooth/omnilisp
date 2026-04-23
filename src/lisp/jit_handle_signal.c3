@@ -120,6 +120,7 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
     // Bind k and arg in clause environment
     Env* clause_env = jit_env_extend(interp, env, clause.k_name, k_val);
     if (clause_env == null) {
+        interp_discard_lisp_continuation(interp, k);
         return runtime_effect_raise(
             interp,
             "runtime/handle-clause-bind-failed",
@@ -128,6 +129,7 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
     }
     clause_env = jit_env_extend(interp, clause_env, clause.arg_name, hstate.signal_arg);
     if (clause_env == null) {
+        interp_discard_lisp_continuation(interp, k);
         return runtime_effect_raise(
             interp,
             "runtime/handle-clause-bind-failed",
@@ -137,6 +139,7 @@ fn Value* jit_handle_dispatch_signal(HandleEffectState* hstate, Expr* expr, Env*
     // Also bind __k for resolve
     clause_env = jit_env_extend(interp, clause_env, interp.sym__k, k_val);
     if (clause_env == null) {
+        interp_discard_lisp_continuation(interp, k);
         return runtime_effect_raise(
             interp,
             "runtime/handle-clause-bind-failed",

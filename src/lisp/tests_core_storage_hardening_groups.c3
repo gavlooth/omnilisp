@@ -78,6 +78,28 @@ fn void run_basic_interp_storage_hardening_tests(Interp* interp, int* pass, int*
     {
         Interp local = {};
         local.init();
+
+        bool ok = !local.flags.raise_pending &&
+            !local.flags.jit_enabled &&
+            !local.flags.console_to_stderr &&
+            !local.flags.jit_tco_bounce &&
+            local.handler_count == 0 &&
+            local.raise_msg_len == 0 &&
+            local.raise_msg[0] == 0;
+
+        if (ok) {
+            emit_pass_literal("[PASS] interp runtime flags initialize cleanly");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] interp runtime flags initialize cleanly");
+            (*fail)++;
+        }
+        local.destroy();
+    }
+
+    {
+        Interp local = {};
+        local.init();
         MacroDef* before_table = local.macro_table;
         usz* before_hash = local.macro_hash_index;
         usz before_cap = local.macro_capacity;

@@ -12,11 +12,7 @@ struct OmniCudaComplex64 {
     float imag;
 };
 
-static __device__ void omni_cuda_status_set(unsigned int* status, unsigned int code) {
-    if (status != 0 && code != 0u) {
-        atomicCAS(status, 0u, code);
-    }
-}
+#include "tensor_cuda_status_priority.inc"
 
 static __device__ unsigned long long omni_cuda_operand_index(
     unsigned long long index,

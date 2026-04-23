@@ -74,9 +74,10 @@ Residuals split out from this lane:
   - Polyglot/plugin runtime support remains separate from `ForeignRuntimeAdapter`
     core contract.
   - Tensor backend hooks for non-C call paths remain behind optional lanes.
-- Generalized runtime validation follow-ups that are still concrete and exact:
-  - scheduler-bound TLS lifecycle regression for `tls-close` races against
-    concurrent `tls-read`/`tls-write`.
+  - Generalized runtime validation follow-ups that are still concrete and exact:
+    none remain for the scheduler-bound TLS lifecycle gate; the
+    `tls-close`/`tls-read`/`tls-write` race is covered by regression in the
+    runtime async I/O TLS test surface.
 
 ## Design sketch (minimal core)
 
@@ -288,7 +289,7 @@ Define adapter responsibilities and split-by-runtime behavior.
 - `FOREIGN-CORE-002` common-core work is closed; non-C behavior is now handled
   through runtime-track follow-ons under `FOREIGN-CORE-004`.
 - Validation follow-ups from the general audit:
-  - add a scheduler-bound TLS lifecycle regression for `tls-close` attempted
+  - closed: scheduler-bound TLS lifecycle regression for `tls-close` attempted
     while `tls-read` or `tls-write` is in flight,
 
 ### `FOREIGN-CORE-003` Reflection-first tooling flow

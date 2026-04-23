@@ -71,6 +71,16 @@ fn void Compiler.serialize_pattern_to_buf(Compiler* self, Pattern* pat, List{cha
             }
             buf.push('}');
 
+        case PAT_GUARD:
+            buf.push('(');
+            self.buf_append(buf, "? ");
+            self.serialize_expr_to_buf(pat.guard_pred, buf);
+            if (pat.guard_sub != null) {
+                buf.push(' ');
+                self.serialize_pattern_to_buf(pat.guard_sub, buf);
+            }
+            buf.push(')');
+
         default:
             buf.push('_');
     }

@@ -36,6 +36,11 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   work should start with measurement: collection length/capacity telemetry,
   chunk-class fragmentation telemetry, and scope global-lock contention
   telemetry.
+- `stable-escape-graph-plan-2026-04-23.md`: finalized proposal note for a
+  stable handle / prepared-graph boundary model. It recommends publishing
+  prepared escape graphs through stable handles instead of moving raw
+  pointers, keeps the document proposal-only, and does not open a TODO-backed
+  rollout.
 - `vulkan-backend-decision-2026-04-16.md`: completed `TENSOR-100E` baseline note for
   portable explicit GPU execution behind the existing `Tensor` surface. Vulkan
   is runtime-optional, capability-gated, and owned through an Omni C ABI

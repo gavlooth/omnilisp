@@ -571,6 +571,7 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
     Value* handler_closure = null;
     Value* signal_result = null;
     Value* raise_result = null;
+    Continuation* saved_head = null;
     if (ok) {
         EvalResult closure_r = run("(lambda (k x) x)", other);
         ok = !closure_r.error.has_error && closure_r.value != null && closure_r.value.tag == CLOSURE;
@@ -592,6 +593,7 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
         ok = ctx != null;
     }
     if (ok) {
+        saved_head = other.continuation_head;
         int saved_force = g_value_force_make_list2_alloc_fail_nth;
 
         state.signal_tag = other.symbols.intern("ask");
@@ -620,6 +622,7 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
         raise_result != null &&
         raise_result.tag == ERROR &&
         jit_policy_str_contains(raise_result.str_chars[:raise_result.str_len], "handle: failed to construct raise handler args");
+    ok = ok && other.continuation_head == saved_head;
 
     if (ctx != null) main::stack_ctx_destroy(ctx, &other.stack_ctx_pool);
     if (state != null) handle_effect_state_release(state);
@@ -637,6 +640,40 @@ fn void run_jit_policy_handler_arg_list_alloc_failure_test(Interp* interp, int* 
             signal_result != null ? (int)signal_result.tag : -1,
             raise_result != null ? (int)raise_result.tag : -1
         );
+        (*fail)++;
+    }
+}
+
+fn void run_jit_policy_handle_clause_bind_failure_releases_continuation_test(Interp* interp, int* pass, int* fail) {
+    (void)interp;
+    Interp* other = (Interp*)mem::malloc(Interp.sizeof);
+    bool ok = other != null;
+    if (ok) other.init();
+
+    Continuation* saved_head = null;
+    if (ok) {
+        saved_head = other.continuation_head;
+        g_env_force_bindings_alloc_oom = true;
+        EvalResult r = run("(handle (+ 1 (signal ask 0)) (ask x x))", other);
+        g_env_force_bindings_alloc_oom = false;
+        char[] msg = r.error.message[:256];
+        ok = r.error.has_error &&
+             jit_policy_str_contains(msg, "handle: out of memory while binding clause") &&
+             other.continuation_head == saved_head;
+    } else {
+        g_env_force_bindings_alloc_oom = false;
+    }
+
+    if (other != null) {
+        other.destroy();
+        mem::free(other);
+    }
+
+    if (ok) {
+        emit_pass_literal("[PASS] jit policy: handle clause bind failure releases continuation");
+        (*pass)++;
+    } else {
+        io::printn("[FAIL] jit policy: handle clause bind failure releases continuation");
         (*fail)++;
     }
 }

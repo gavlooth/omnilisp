@@ -36,14 +36,18 @@ fn Value* make_fs_handle(Interp* interp, int fd, bool* trace_fd_closed = null) {
     }
     fh.fd = fd;
     fh.open = true;
+    defer if (fh != null) {
+        (void)fs_uv_close(fh.fd);
+        mem::free(fh);
+    }
 
     Value* v = make_ffi_handle_ex(interp, (void*)fh, "fs-handle", &fs_handle_finalizer, true, false);
     if (v == null) {
         if (trace_fd_closed != null) *trace_fd_closed = true;
-        (void)fs_uv_close(fd);
-        mem::free(fh);
+        fh = null;
         return io_fs_raise(interp, "io/fs-open-out-of-memory", "fs-open: out of memory");
     }
+    fh = null;
     return v;
 }
 

@@ -3,6 +3,26 @@ module lisp;
 
 import std::io;
 
+fn bool dispatch_error_contains(char[] msg, char[] needle) {
+    if (needle.len == 0) return true;
+
+    usz msg_len = 0;
+    while (msg_len < msg.len && msg[msg_len] != 0) msg_len++;
+    if (needle.len > msg_len) return false;
+
+    for (usz i = 0; i + needle.len <= msg_len; i++) {
+        bool match = true;
+        for (usz j = 0; j < needle.len; j++) {
+            if (msg[i + j] != needle[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
 fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass, int* fail) {
     // === MULTIPLE DISPATCH TESTS (Phase 2) ===
 
@@ -97,6 +117,26 @@ fn void run_advanced_dispatch_constructor_basic_tests(Interp* interp, int* pass,
         "             (and (= (ref idx 0) 0) "
         "                  (= (ref idx 1) 1)))))))",
         pass, fail);
+    {
+        int saved_force = g_value_force_make_cons_or_error_alloc_fail_nth;
+        g_value_force_make_cons_or_error_alloc_fail_nth = 1;
+        EvalResult ri = run("(ambi-int 1 1)", interp);
+        g_value_force_make_cons_or_error_alloc_fail_nth = saved_force;
+
+        bool ok = ri.error.has_error &&
+            dispatch_error_contains(ri.error.message[:256], "method dispatch: out of memory");
+        if (ok) {
+            compiler_print_pass("Compiler: ambiguous dispatch candidate list allocation failure");
+            (*pass)++;
+        } else {
+            io::printfn(
+                "[FAIL] Compiler: ambiguous dispatch candidate list allocation failure (has_error=%s msg=%s)",
+                ri.error.has_error ? "yes" : "no",
+                (ZString)ri.error.message[:256]
+            );
+            (*fail)++;
+        }
+    }
 
     // Unified command-style facade over canonical io/udp-* operations.
     setup(interp, "(define (io/udp-open) 'opened)");

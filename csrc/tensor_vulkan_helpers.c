@@ -79,6 +79,7 @@ int omni_tensor_backend_vulkan_map_unary_f64(
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
     if (element_count > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     if (element_count == 0 || byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
 
     OmniTensorVulkanMapUnaryPushConstants push = {
@@ -116,6 +117,7 @@ int omni_tensor_backend_vulkan_map_unary_f32(
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
     if (element_count > UINT32_MAX) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     if (element_count == 0 || byte_len == 0) return OMNI_TENSOR_VULKAN_SUCCESS;
 
     OmniTensorVulkanMapUnaryPushConstants push = {
@@ -149,6 +151,7 @@ int omni_tensor_backend_vulkan_map_complex128_unary(
     if (element_count > SIZE_MAX / (sizeof(double) * 2u) || byte_len != element_count * sizeof(double) * 2u) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
+    if (element_count != 0 && input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     OmniTensorVulkanMapUnaryPushConstants push = {
         (uint32_t)element_count,
         op,
@@ -180,6 +183,7 @@ int omni_tensor_backend_vulkan_map_complex64_unary(
     if (element_count > SIZE_MAX / (sizeof(float) * 2u) || byte_len != element_count * sizeof(float) * 2u) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
+    if (element_count != 0 && input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     OmniTensorVulkanMapUnaryPushConstants push = {
         (uint32_t)element_count,
         op,
@@ -212,6 +216,7 @@ int omni_tensor_backend_vulkan_map_complex128_to_real(
         input_byte_len != element_count * sizeof(double) * 2u) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
+    if (element_count != 0 && input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     OmniTensorVulkanMapUnaryPushConstants push = {
         (uint32_t)element_count,
         op,
@@ -244,6 +249,7 @@ int omni_tensor_backend_vulkan_map_complex64_to_real(
         input_byte_len != element_count * sizeof(float) * 2u) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }
+    if (element_count != 0 && input_device_ptr == NULL) return OMNI_TENSOR_VULKAN_INVALID;
     OmniTensorVulkanMapUnaryPushConstants push = {
         (uint32_t)element_count,
         op,

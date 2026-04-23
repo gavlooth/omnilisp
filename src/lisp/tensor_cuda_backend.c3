@@ -24,6 +24,7 @@ extern fn int omni_tensor_backend_cuda_grid_dim_oversized_guard_for_tests() @ext
 extern fn int omni_tensor_backend_cuda_map_available() @extern("omni_tensor_backend_cuda_map_available");
 extern fn int omni_tensor_backend_cuda_scientific_map_available() @extern("omni_tensor_backend_cuda_scientific_map_available");
 extern fn int omni_tensor_backend_cuda_complex_map_available() @extern("omni_tensor_backend_cuda_complex_map_available");
+extern fn int omni_tensor_backend_cuda_complex_map_status_priority_for_tests() @extern("omni_tensor_backend_cuda_complex_map_status_priority_for_tests");
 extern fn int omni_tensor_backend_cuda_complex_matrix_available() @extern("omni_tensor_backend_cuda_complex_matrix_available");
 extern fn int omni_tensor_backend_cuda_rounding_i64_available() @extern("omni_tensor_backend_cuda_rounding_i64_available");
 extern fn int omni_tensor_backend_cuda_ml_optimizer_available() @extern("omni_tensor_backend_cuda_ml_optimizer_available");

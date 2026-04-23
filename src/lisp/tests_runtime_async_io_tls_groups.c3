@@ -203,6 +203,24 @@ fn void run_async_tests_io_tls(Interp* interp, int* pass, int* fail) {
         "(tls-close nil)",
         "requires running fiber context", pass, fail);
 
+    {
+        TlsHandle th = {};
+        bool first = tls_try_mark_in_flight(&th);
+        bool second = tls_try_mark_in_flight(&th);
+        tls_unmark_in_flight(&th);
+        bool third = tls_try_mark_in_flight(&th);
+        tls_unmark_in_flight(&th);
+
+        bool ok = first && !second && third;
+        if (ok) {
+            emit_pass_literal("[PASS] tls in-flight gate rejects concurrent read/write/close entry");
+            (*pass)++;
+        } else {
+            io::printn("[FAIL] tls in-flight gate rejects concurrent read/write/close entry");
+            (*fail)++;
+        }
+    }
+
     test_error_contains(interp, "tcp-connect rejects out-of-range port",
         "(tcp-connect \"127.0.0.1\" 65536)",
         "port must be between 0 and 65535", pass, fail);

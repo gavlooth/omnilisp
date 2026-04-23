@@ -106,6 +106,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("multishot-capture-scope-guard-clone", &run_jit_policy_multishot_capture_scope_guard_clone_test, interp, pass, fail);
         run_jit_policy_case("shadowed-primitive-call", &run_jit_policy_shadowed_primitive_call_test, interp, pass, fail);
         run_jit_policy_case("capture-boundary-reset", &run_jit_policy_capture_boundary_reset_test, interp, pass, fail);
+        run_jit_policy_case("capture-discard-recycles-stack-ctx", &run_jit_policy_capture_discard_recycles_stack_ctx_test, interp, pass, fail);
         run_jit_policy_case("tco-stale-generation-moved-binding-copy", &run_jit_policy_tco_stale_generation_moved_binding_copy_test, interp, pass, fail);
         run_jit_policy_case("tco-persistent-parent-root-rewrite", &run_jit_policy_tco_persistent_parent_root_rewrite_test, interp, pass, fail);
         run_jit_policy_case("tco-persistent-parent-stale-generation-rewrite", &run_jit_policy_tco_persistent_parent_stale_generation_rewrite_test, interp, pass, fail);
@@ -118,6 +119,7 @@ fn void run_jit_policy_tests(Interp* interp, int* pass, int* fail) {
         run_jit_policy_case("dispatch-payload-alloc-failure-does-not-preseed-raise", &run_jit_policy_dispatch_payload_alloc_failure_does_not_preseed_raise_test, interp, pass, fail);
         run_jit_policy_case("handle-continuation-alloc-failure", &run_jit_policy_handle_continuation_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("handler-arg-list-alloc-failure", &run_jit_policy_handler_arg_list_alloc_failure_test, interp, pass, fail);
+        run_jit_policy_case("handle-clause-bind-failure-releases-continuation", &run_jit_policy_handle_clause_bind_failure_releases_continuation_test, interp, pass, fail);
         run_jit_policy_case("multi-arg-malformed-list-fails-closed", &run_jit_policy_multi_arg_malformed_list_fails_closed_test, interp, pass, fail);
         run_jit_policy_case("quasiquote-cons-alloc-failure", &run_jit_policy_quasiquote_cons_alloc_failure_test, interp, pass, fail);
         run_jit_policy_case("variadic-rest-list-alloc-failure", &run_jit_policy_variadic_rest_list_alloc_failure_test, interp, pass, fail);

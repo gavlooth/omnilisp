@@ -112,9 +112,16 @@ fn Value* jit_handle_run_signals(Interp* interp, main::StackCtx* ctx, HandleEffe
         k.handle_state = state;
         Value* k_val = make_continuation(interp, k);
         Value* pair = make_list2_or_error(interp, k_val, state.signal_arg, "handle: failed to construct handler args");
-        if (pair.tag == ERROR) return pair;
+        if (pair.tag == ERROR) {
+            interp_discard_lisp_continuation(interp, k);
+            return pair;
+        }
 
         last_handler_v = jit_apply_value(handler_closure, pair, interp);
+        if (last_handler_v != null && last_handler_v.tag == ERROR) {
+            interp_discard_lisp_continuation(interp, k);
+            return last_handler_v;
+        }
         // Retain before frame cleanup when the continuation escapes in the handler result graph.
         continuation_retain_if_referenced_by_result(last_handler_v, k);
         if (ctx.status == main::StackCtxStatus.CTX_COMPLETED) break;
