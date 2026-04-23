@@ -66,7 +66,10 @@ int omni_tensor_backend_vulkan_solve_f32(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float32_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (n == 0 || rhs_cols == 0) return OMNI_TENSOR_VULKAN_SINGULAR;
+    if (n == 0 || rhs_cols == 0) {
+        *out_device_ptr = NULL;
+        return OMNI_TENSOR_VULKAN_SUCCESS;
+    }
     if (n > SIZE_MAX / n) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     size_t coefficient_count = n * n;
     if (coefficient_count > SIZE_MAX / sizeof(float) || coefficients_byte_len != coefficient_count * sizeof(float)) {
@@ -396,7 +399,10 @@ int omni_tensor_backend_vulkan_solve_complex128(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float64_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (n == 0 || rhs_cols == 0) return OMNI_TENSOR_VULKAN_SINGULAR;
+    if (n == 0 || rhs_cols == 0) {
+        *out_device_ptr = NULL;
+        return OMNI_TENSOR_VULKAN_SUCCESS;
+    }
     const size_t element_size = sizeof(double) * 2u;
     if (n > SIZE_MAX / n) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     size_t coefficient_count = n * n;
@@ -467,7 +473,10 @@ int omni_tensor_backend_vulkan_solve_complex64(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float32_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (n == 0 || rhs_cols == 0) return OMNI_TENSOR_VULKAN_SINGULAR;
+    if (n == 0 || rhs_cols == 0) {
+        *out_device_ptr = NULL;
+        return OMNI_TENSOR_VULKAN_SUCCESS;
+    }
     const size_t element_size = sizeof(float) * 2u;
     if (n > SIZE_MAX / n) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     size_t coefficient_count = n * n;

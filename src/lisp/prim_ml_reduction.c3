@@ -200,7 +200,11 @@ fn bool ml_reduction_read(TensorVal* source, usz logical_index, double* out_valu
         case TENSOR_DTYPE_FLOAT32:
             *out_value = (double)((float*)source.data)[storage_index];
             return true;
-        default:
+        case TENSOR_DTYPE_COMPLEX128:
+        case TENSOR_DTYPE_COMPLEX64:
+        case TENSOR_DTYPE_BIG_INTEGER:
+        case TENSOR_DTYPE_BIG_FLOAT:
+        case TENSOR_DTYPE_BIG_COMPLEX:
             return false;
     }
 }
@@ -226,7 +230,11 @@ fn Value* ml_reduction_write_result(TensorVal* out, double* values, Interp* inte
             }
             return null;
         }
-        default:
+        case TENSOR_DTYPE_COMPLEX128:
+        case TENSOR_DTYPE_COMPLEX64:
+        case TENSOR_DTYPE_BIG_INTEGER:
+        case TENSOR_DTYPE_BIG_FLOAT:
+        case TENSOR_DTYPE_BIG_COMPLEX:
             return tensor_runtime_raise(interp, "ml reduction: result tensor dtype is unsupported");
     }
 }

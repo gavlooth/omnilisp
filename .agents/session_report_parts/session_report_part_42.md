@@ -38,6 +38,46 @@ Unresolved issues:
 
 Signature: GPT-5 Codex
 
+## 2026-04-23 10:05 CEST - Vulkan Float64 Unary Bound Fix
+
+Objective attempted:
+- Fix the mismatched Vulkan `Float64` unary op bound that was blocking
+  `stats.normal-quantile` while the public surface already mapped it to op
+  `20`.
+
+Relevant workspace or target:
+- `/home/christos/Omni`
+- `csrc/tensor_vulkan_helpers.c`
+- `src/lisp/prim_tensor_map_callable_ops.c3`
+- `src/lisp/tests_advanced_stdlib_module_groups_generic_ops_part2.c3`
+
+Code or configuration changes made:
+- Widened `omni_tensor_backend_vulkan_map_unary_f64` to accept op `20` in
+  addition to op `19`, keeping `math.erf` / `math.erfc` fail-closed while
+  allowing the already-shipped `stats.normal-quantile` path.
+
+Commands run:
+- `c3c build --obj-out obj`
+- direct Vulkan smoke for `stats.normal-quantile` on `Float64`
+- focused `advanced-collections-module` slice with the existing group filter
+
+Key results:
+- Build passed.
+- Direct Vulkan smoke returned a `Float64` numeric result for
+  `stats.normal-quantile`.
+- Focused advanced collections-module slice passed with `pass=2062 fail=0`.
+
+Invalidated assumptions or failed approaches:
+- The old `op > 4 && op != 19u` gate was too narrow for the shipped
+  `stats.normal-quantile` path. The public mapping already used op `20`; the
+  helper whitelist was the mismatch.
+
+Unresolved issues:
+- Vulkan `Float64` `math.erf` / `math.erfc` still remain fail-closed by
+  policy; only `stats.normal-quantile` needed the helper bound correction.
+
+Signature: GPT-5 Codex
+
 ## 2026-04-23 09:45 CEST - Math/Stats Backend Capability Granularity
 
 Objective attempted:
@@ -66,8 +106,8 @@ Code or configuration changes made:
   and error-function support, Float64/Float32 stats distribution support, and
   no Float64 elementary/error-function claim.
 - Added focused capability tests, documented the new keys, closed
-  `MATHSTATS-VK-002`, and opened `MATHSTATS-VK-003` for the remaining
-  Float64/error-gamma policy boundary.
+  `MATHSTATS-VK-002`, and documented the remaining Float64/error-gamma
+  policy boundary as a fail-closed policy decision.
 
 Commands run:
 - `c3c build --obj-out obj`
@@ -90,9 +130,9 @@ Invalidated assumptions or failed approaches:
   `math.erf` / `math.erfc`.
 
 Unresolved issues:
-- `MATHSTATS-VK-003` remains open: document and validate the numerical policy
-  before implementing Vulkan `Float64` `math.erf` / `math.erfc` or Vulkan
-  `math.lgamma`. Current unsupported combinations remain fail-closed.
+- Vulkan `Float64` `math.erf` / `math.erfc` and `math.lgamma` remain
+  intentionally fail-closed until a validated approximation contract is
+  introduced.
 
 Signature: GPT-5 Codex
 
@@ -620,3 +660,51 @@ Unresolved issues:
   but does not affect compilation (the symbol is declared in `spv_decls.h`).
 
 Signature: GPT-5 Codex
+
+## 2026-04-23 19:14 CEST - Switch Exhaustiveness Audit Closed
+
+- Objective attempted:
+  - Remove the hidden `default:` arms captured in the pane audit and close the
+    switch exhaustiveness remediation sweep.
+- Relevant workspace or target:
+  - `/home/christos/Omni`
+  - compiler/parser/macro walkers, tensor capture/reduction/matrix/map
+    dispatch, audit plan, TODO queue, and session bookkeeping.
+- Code or configuration changes made:
+  - Rewrote the compiler mutable-capture walkers to enumerate all current
+    `ExprTag` variants explicitly.
+  - Removed the hidden `default:` arm from macro pattern collection and made
+    the helper handle `PAT_WILDCARD`, `PAT_LIT`, `PAT_QUOTE`, `PAT_GUARD`,
+    and `PAT_DICT` explicitly.
+  - Removed the parser `expect` fallback arm, the tensor capture-plan
+    fallbacks, the tensor reduction dtype fallbacks, the tensor map complex
+    readers' hidden defaults, and the LAPACK status fallbacks in matrix solve,
+    LU, QR, and Cholesky.
+  - Marked `AUDIT-SWITCH-EXHAUST-001/002/003` complete in the TODO queue.
+- Commands run:
+  - `c3c build --obj-out obj`
+  - `OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`
+  - `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`
+  - `scripts/check_status_consistency.sh`
+  - `git diff --check`
+  - `rg -n "default:"` over the audited files
+- Key results:
+  - Build passed.
+  - Compiler slice passed with `pass=301 fail=0`.
+  - Advanced collections module-group slice passed with `pass=2062 fail=0`.
+  - Status consistency remained green and the audited files no longer report
+    hidden `default:` arms.
+- Invalidated assumptions or failed approaches worth preserving:
+  - `collect_pattern_vars` was not exhaustive over `PatternTag`; it must now
+    track `PAT_WILDCARD`, `PAT_LIT`, `PAT_QUOTE`, `PAT_GUARD`, and
+    `PAT_DICT` explicitly.
+  - The matrix/reduction audit did not need a new helper abstraction; the
+    correct fix was to enumerate the current status/dtype cases and keep
+    fail-closed branches visible.
+- Current best recommendation/checkpoint:
+  - Treat the switch exhaustiveness remediation as closed for the captured
+    surface. Any future enum expansion should add explicit cases at the same
+    time as the enum change, not via hidden defaults.
+- Unresolved issues:
+  - None on this audit slice.
+- Signature: Codex GPT-5.4

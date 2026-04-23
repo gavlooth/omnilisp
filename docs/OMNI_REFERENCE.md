@@ -35,6 +35,12 @@ Authority and coverage map:
 | 9 | [Concurrency, FFI & Schema Validation](reference/09-concurrency-ffi.md) | 29-31 |
 | 10 | [System, Reader Syntax & CLI Tooling](reference/10-system-tooling.md) | 32-34 |
 
+## Reference Notes
+
+| | Note | |
+|---|---------|---|
+| N1 | [Memory, Ownership & Lifetime Notes](reference/14-memory-ownership-lifetime.md) | runtime design notes and proposals |
+
 ## Appendices
 
 | | Appendix | |

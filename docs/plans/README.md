@@ -20,9 +20,15 @@ The live backlog has been consolidated into `TODO.md` at the repo root.
   scientific module migration. The core `math` and `stats` module facades,
   docs/tests migration, old slash special/stat callable removal, and Vulkan
   `Float32` `math.erf` / `math.erfc` extension have shipped. Granular
-  `tensor-backends` scientific capability reporting has also shipped. Remaining
-  work is the Vulkan `Float64`/harder special-function policy captured by
-  `MATHSTATS-VK-003`.
+  `tensor-backends` scientific capability reporting has also shipped. The
+  remaining Vulkan `Float64`/harder special-function policy has been
+  documented and intentionally stays fail-closed until a validated contract is
+  added.
+- `tagged-switch-exhaustiveness-remediation-plan-2026-04-23.md`: completed audit
+  plan for fully eliminating hidden `default:` switch arms in the captured
+  compiler/parser/tensor audit surface. The remediation shipped 2026-04-23;
+  every listed switch was rewritten to explicit cases or moved behind a named
+  fail-closed helper with tests.
 - `memory-tier3-evaluation-2026-04-21.md`: closed evaluation note for the
   remaining Tier 3 memory proposal items. It rejects immediate `Value` inline
   collection rewrites, unmeasured TEMP lane paging, and cross-thread scope pool

@@ -196,7 +196,7 @@ fn bool tensor_read_complex128_at(TensorVal* tensor, usz offset, Complex128Val* 
             value.big_float_val = ((void**)tensor.data)[offset];
             return fixed_complex_value_to_complex128(&value, out);
         }
-        default:
+        case TENSOR_DTYPE_BIG_COMPLEX:
             return false;
     }
 }
@@ -207,7 +207,12 @@ fn bool tensor_read_complex64_at(TensorVal* tensor, usz offset, Complex64Val* ou
         case TENSOR_DTYPE_COMPLEX64:
             *out = ((Complex64Val*)tensor.data)[offset];
             return true;
-        default: {
+        case TENSOR_DTYPE_COMPLEX128:
+        case TENSOR_DTYPE_DOUBLE:
+        case TENSOR_DTYPE_FLOAT32:
+        case TENSOR_DTYPE_BIG_INTEGER:
+        case TENSOR_DTYPE_BIG_FLOAT:
+        case TENSOR_DTYPE_BIG_COMPLEX: {
             Complex128Val wide;
             if (!tensor_read_complex128_at(tensor, offset, &wide)) return false;
             if (!conversion_try_double_to_float32(wide.real, &out.real)) return false;

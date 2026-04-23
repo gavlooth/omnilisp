@@ -320,7 +320,8 @@ fn Value* prim_matrix_qr(Value*[] args, Env* env, Interp* interp) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/singular-matrix", "matrix/qr: input matrix is rank deficient", null);
             case OMNI_TENSOR_LAPACK_OUT_OF_MEMORY:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/qr: LAPACK workspace allocation failed", null);
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/qr: LAPACK backend rejected factorization input");
         }
     }
@@ -535,7 +536,8 @@ fn Value* prim_matrix_cholesky(Value*[] args, Env* env, Interp* interp) {
                     "matrix/cholesky: input matrix is not symmetric positive definite",
                     null
                 );
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/cholesky: LAPACK backend rejected factorization input");
         }
     }

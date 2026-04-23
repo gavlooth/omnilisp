@@ -150,7 +150,8 @@ fn Value* prim_matrix_solve(Value*[] args, Env* env, Interp* interp) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/singular-matrix", "matrix/solve: coefficient matrix is singular", null);
             case OMNI_TENSOR_LAPACK_OUT_OF_MEMORY:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/solve: LAPACK pivot workspace allocation failed", null);
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/solve: LAPACK backend rejected solver input");
         }
     }

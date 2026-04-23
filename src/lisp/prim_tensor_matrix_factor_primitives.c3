@@ -162,7 +162,8 @@ fn Value* prim_matrix_lu(Value*[] args, Env* env, Interp* interp) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/singular-matrix", "matrix/lu: coefficient matrix is singular", null);
             case OMNI_TENSOR_LAPACK_OUT_OF_MEMORY:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/lu: LAPACK pivot workspace allocation failed", null);
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/lu: LAPACK backend rejected factorization input");
         }
     }
@@ -332,7 +333,8 @@ fn Value* prim_matrix_determinant(Value*[] args, Env* env, Interp* interp) {
                 return make_double(interp, 0.0);
             case OMNI_TENSOR_LAPACK_OUT_OF_MEMORY:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/determinant: LAPACK pivot workspace allocation failed", null);
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/determinant: LAPACK backend rejected factorization input");
         }
     }
@@ -463,7 +465,8 @@ fn Value* prim_matrix_inverse(Value*[] args, Env* env, Interp* interp) {
                 return raise_error_with_payload_names(interp, "tensor", "tensor/singular-matrix", "matrix/inverse: input matrix is singular", null);
             case OMNI_TENSOR_LAPACK_OUT_OF_MEMORY:
                 return raise_error_with_payload_names(interp, "tensor", "tensor/out-of-memory", "matrix/inverse: LAPACK pivot workspace allocation failed", null);
-            default:
+            case OMNI_TENSOR_LAPACK_INVALID:
+            case OMNI_TENSOR_LAPACK_NO_CONVERGENCE:
                 return tensor_runtime_raise(interp, "matrix/inverse: LAPACK backend rejected inverse input");
         }
     }

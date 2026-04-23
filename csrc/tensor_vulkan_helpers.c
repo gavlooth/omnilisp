@@ -74,7 +74,7 @@ int omni_tensor_backend_vulkan_map_unary_f64(
     *out_device_ptr = NULL;
     if (!omni_tensor_backend_vulkan_available()) return OMNI_TENSOR_VULKAN_UNAVAILABLE;
     if (!omni_tensor_backend_vulkan_float64_available()) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
-    if (op > 4 && op != 19u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
+    if (op > 4 && op != 19u && op != 20u) return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     if (element_count > SIZE_MAX / sizeof(double) || byte_len != element_count * sizeof(double)) {
         return OMNI_TENSOR_VULKAN_UNSUPPORTED;
     }

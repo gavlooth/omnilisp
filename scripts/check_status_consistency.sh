@@ -131,6 +131,54 @@ validation_status="$(extract_status "$validation_status_doc")"
 [[ "$ffi_status" == "yellow" ]] || fail "$ffi_foreign_runtime_doc must remain yellow until the non-C adapter/backend lanes are implemented (got $ffi_status)"
 [[ "$validation_status" == "green" ]] || fail "$validation_status_doc must be green while no validation residual lane is open (got $validation_status)"
 
+validate_index_line_counts() {
+  local index_file="$1"
+  local index_dir="$(dirname "$index_file")"
+  while IFS= read -r line; do
+    local filepath count
+    filepath="$(echo "$line" | sed -n 's/.*(\([^)]*\)).*/\1/p')"
+    count="$(echo "$line" | sed -n 's/.*(\([0-9][0-9]*\) lines).*/\1/p')"
+    if [[ -n "$filepath" && -n "$count" ]]; then
+      if [[ ! "$filepath" = /* ]]; then
+        filepath="$index_dir/$filepath"
+      fi
+      if [[ -f "$filepath" ]]; then
+        local actual
+        actual="$(wc -l < "$filepath")"
+        actual="$(echo "$actual" | sed 's/^[[:space:]]*//')"
+        [[ "$actual" == "$count" ]] || fail "$index_file lists $count lines for $filepath but actual is $actual"
+      fi
+    fi
+  done < <(grep -E '^- Part [0-9]+:.*\([0-9]+ lines\)' "$index_file" || true)
+}
+
+validate_index_line_counts "$todo_file"
+validate_index_line_counts ".agents/SESSION_REPORT.md"
+
+validate_plan_status_consistency() {
+  local plans_readme="docs/plans/README.md"
+  [[ -f "$plans_readme" ]] || return 0
+  while IFS= read -r line; do
+    local plan_file status
+    plan_file="$(echo "$line" | sed -n 's/.*`\([^`]*\.md\)`.*/\1/p')"
+    status="$(echo "$line" | sed -n 's/.*`[^`]*\.md`:[[:space:]]*\([^[:space:]]*\).*/\1/p')"
+    if [[ -n "$plan_file" && -n "$status" ]]; then
+      local plan_path="docs/plans/$plan_file"
+      if [[ -f "$plan_path" ]]; then
+        local plan_internal_status
+        plan_internal_status="$(grep -i '^[[:space:]]*- status:' "$plan_path" | head -n 1 | sed 's/.*status:[[:space:]]*//i' || true)"
+        if [[ -n "$plan_internal_status" ]]; then
+          if [[ "$status" == "completed" && ! "$plan_internal_status" =~ completed|closed|done ]]; then
+            fail "$plans_readme lists $plan_file as completed but its internal status is '$plan_internal_status'"
+          fi
+        fi
+      fi
+    fi
+  done < <(grep -E '^- `' "$plans_readme" || true)
+}
+
+validate_plan_status_consistency
+
 echo "OK: status consistency checks passed."
 echo "  latest changelog date: $latest_changelog_date"
 echo "  TODO actionable count: $todo_count"

@@ -36,9 +36,11 @@ fn bool macro_def_copy_captured_bindings(MacroDef* out, List{CapturedBinding}* b
 fn void collect_pattern_vars(Pattern* pat, List{SymbolId}* vars) {
     if (pat == null) return;
     switch (pat.tag) {
+        case PAT_WILDCARD: {}
         case PAT_VAR: {
             vars.push(pat.var_name);
         }
+        case PAT_LIT: {}
         case PAT_CONS: {
             collect_pattern_vars(pat.car_pat, vars);
             collect_pattern_vars(pat.cdr_pat, vars);
@@ -55,12 +57,22 @@ fn void collect_pattern_vars(Pattern* pat, List{SymbolId}* vars) {
             collect_pattern_vars(pat.as_sub, vars);
             vars.push(pat.as_name);
         }
+        case PAT_QUOTE: {}
         case PAT_CONSTRUCTOR: {
             for (usz i = 0; i < pat.ctor_sub_count; i++) {
                 collect_pattern_vars(pat.ctor_sub_patterns[i], vars);
             }
         }
-        default: {}
+        case PAT_GUARD: {
+            if (pat.guard_sub != null) {
+                collect_pattern_vars(pat.guard_sub, vars);
+            }
+        }
+        case PAT_DICT: {
+            for (usz i = 0; i < pat.dict_key_count; i++) {
+                vars.push(pat.dict_keys[i]);
+            }
+        }
     }
 }
 

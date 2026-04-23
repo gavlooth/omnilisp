@@ -72,7 +72,6 @@ fn void Parser.expect(Parser* self, TokenType t, char[] msg) {
                 case ']': self.set_error("expected ']'"); return;
                 case '{': self.set_error("expected '{'"); return;
                 case '}': self.set_error("expected '}'"); return;
-                default: break;
             }
         }
         self.set_error(msg);

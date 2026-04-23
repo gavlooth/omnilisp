@@ -4079,9 +4079,21 @@
     negative-test diagnostics are printed by that slice.
   - `scripts/check_primitive_docs_parity.sh` passes.
   - `scripts/check_file_size_gate.sh` passes.
-  - `scripts/check_status_consistency.sh` passes.
-  - `scripts/check_e2e_baseline_policy.sh` passes.
-  - `git diff --check` passes.
+- `scripts/check_status_consistency.sh` passes.
+- `scripts/check_e2e_baseline_policy.sh` passes.
+- `git diff --check` passes.
+
+## 2026-04-23 - Vulkan Float64 Unary Bound Fix
+
+- Fixed the mismatch between the public `stats.normal-quantile` mapping and
+  the Vulkan `Float64` helper whitelist.
+- `omni_tensor_backend_vulkan_map_unary_f64` now accepts op `20` as well as
+  op `19`, while still failing closed for Vulkan `Float64` `math.erf` and
+  `math.erfc`.
+- Direct `stats.normal-quantile` Vulkan `Float64` smoke returns a numeric
+  result again.
+- Focused `advanced-collections-module` passed with `pass=2062 fail=0` after
+  the fix.
   - Direct eval of `ml/linear-batched-reduce` returns `167.0`.
   - Direct eval of the removed old spelling returns
     `runtime/evaluation-error`.
@@ -4235,9 +4247,10 @@
   - `math-error-function-float32` follows Vulkan Float32 availability;
   - `stats-distribution-float64` follows Vulkan Float64 availability;
   - `stats-distribution-float32` follows Vulkan Float32 availability.
-- Open follow-up: `MATHSTATS-VK-003` tracks the required approximation,
-  tolerance, domain/status, and diagnostic policy before adding Vulkan
-  `Float64` `math.erf` / `math.erfc` or Vulkan `math.lgamma`.
+- Policy documented: Vulkan `Float64` `math.erf` / `math.erfc` stay
+  fail-closed until a validated approximation contract is introduced, and
+  Vulkan `math.lgamma` remains a separate hardening item with its own
+  approximation/domain/status policy.
 - Validation:
   - `c3c build --obj-out obj` passes.
   - Focused advanced collections-module slice passes with `pass=2062 fail=0`.

@@ -2203,12 +2203,37 @@ Date: 2026-04-21 - Adds non-executing schedule metadata to captured Tensor graph
   Float64 elementary/error-function claim.
 - Validation path: build, focused advanced collections-module capability
   tests, docs/status/file-size/static gates, and diff whitespace.
-- Latest checkpoint: `MATHSTATS-VK-002` is closed. `MATHSTATS-VK-003` is the
-  remaining explicit policy item for Vulkan `Float64` `math.erf` /
-  `math.erfc` and Vulkan `math.lgamma`; current unsupported combinations
-  remain fail-closed.
-- Negative-memory constraints: do not name the field `math-special-*` because
-  that implies `math.lgamma`; use `math-error-function-*` for `math.erf` /
-  `math.erfc` coverage. Do not treat `scientific-map-*` as complete coverage.
+- Latest checkpoint: `MATHSTATS-VK-003` is closed as a policy decision.
+  Vulkan `Float64` `math.erf` / `math.erfc` remain fail-closed until a
+  validated double approximation contract exists, and Vulkan `math.lgamma`
+  remains a separate hardening item with its own policy.
+- Negative-memory constraints: do not name the field `math-special-*`
+  because that implies `math.lgamma`; use `math-error-function-*` for
+  `math.erf` / `math.erfc` coverage. Do not treat `scientific-map-*` as
+  complete coverage. Do not infer Vulkan `Float64` error-function support from
+  the `Float32` shader path.
+- Runtime note: `stats.normal-quantile` Vulkan `Float64` was initially
+  blocked by a helper whitelist mismatch. The public mapping uses op `20`, so
+  `omni_tensor_backend_vulkan_map_unary_f64` now permits op `20` while
+  keeping `math.erf` / `math.erfc` fail-closed on `Float64`.
 - Agent assignments: direct integration owner was this session. No sub-agent
   was spawned for this tightly coupled continuation.
+
+## 2026-04-23 10:15 CEST - Tagged Switch Exhaustiveness Remediation
+
+- Active hypothesis: the pane-captured defaults are the remaining audit-class
+  exhaustiveness gaps, not independent one-off bugs. The fix should close the
+  whole switch/default class across the captured compiler/parser/tensor files.
+- Current approach: treat the queue as all-or-nothing. Remove every hidden
+  `default:` in the listed audit files or move the unknown branch behind a
+  named fail-closed helper with tests; do not preserve silent catch-alls.
+- Validation path: `c3c build --obj-out obj`, targeted compiler/parsing/tensor
+  regression slices, `rg -n "default:"` over the audited files, and
+  `git diff --check`.
+- Latest checkpoint: the remediation plan and TODO queue are now recorded in
+  `docs/plans/tagged-switch-exhaustiveness-remediation-plan-2026-04-23.md`
+  and `docs/todo_parts/todo_part_15.md`.
+- Negative-memory constraints: do not treat a visible `default:` as
+  acceptable unless it has been converted into a named, tested fail-closed
+  helper. Do not leave any of the audited files in a partially cleaned state.
+- Agent assignments: direct integration owner was this session.

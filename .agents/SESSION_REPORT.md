@@ -41,13 +41,13 @@ The historical content was split mechanically to keep individual files below the
 - Part 33: [.agents/session_report_parts/session_report_part_33.md](session_report_parts/session_report_part_33.md) (40 lines)
 - Part 34: [.agents/session_report_parts/session_report_part_34.md](session_report_parts/session_report_part_34.md) (60 lines)
 - Part 35: [.agents/session_report_parts/session_report_part_35.md](session_report_parts/session_report_part_35.md) (673 lines)
-- Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (62 lines)
+- Part 36: [.agents/session_report_parts/session_report_part_36.md](session_report_parts/session_report_part_36.md) (63 lines)
 - Part 37: [.agents/session_report_parts/session_report_part_37.md](session_report_parts/session_report_part_37.md) (64 lines)
 - Part 38: [.agents/session_report_parts/session_report_part_38.md](session_report_parts/session_report_part_38.md) (57 lines)
 - Part 39: [.agents/session_report_parts/session_report_part_39.md](session_report_parts/session_report_part_39.md) (899 lines)
 - Part 40: [.agents/session_report_parts/session_report_part_40.md](session_report_parts/session_report_part_40.md) (4392 lines)
 - Part 41: [.agents/session_report_parts/session_report_part_41.md](session_report_parts/session_report_part_41.md) (43 lines)
-- Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (622 lines)
+- Part 42: [.agents/session_report_parts/session_report_part_42.md](session_report_parts/session_report_part_42.md) (710 lines)
 
 ## 2026-04-19 21:42 CEST - All Eligible Over-700 Files Split
 

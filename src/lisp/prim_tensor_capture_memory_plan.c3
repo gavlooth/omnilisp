@@ -10,8 +10,6 @@ fn SymbolId tensor_capture_memory_allocation_symbol(TensorVal* tensor, Interp* i
             return interp.symbols.intern("transient");
         case TENSOR_PAYLOAD_VIEW:
             return interp.symbols.intern("alias");
-        default:
-            return interp.symbols.intern("unknown");
     }
 }
 
@@ -25,8 +23,6 @@ fn SymbolId tensor_capture_memory_owner_symbol(TensorVal* tensor, Interp* interp
             return interp.symbols.intern("planned-transient");
         case TENSOR_PAYLOAD_VIEW:
             return interp.symbols.intern("view-source");
-        default:
-            return interp.symbols.intern("invalid");
     }
 }
 
@@ -40,8 +36,6 @@ fn SymbolId tensor_capture_memory_write_policy_symbol(TensorVal* tensor, Interp*
             return interp.symbols.intern("planned-write-once");
         case TENSOR_PAYLOAD_VIEW:
             return interp.symbols.intern("read-only-view");
-        default:
-            return interp.symbols.intern("invalid");
     }
 }
 

@@ -218,7 +218,7 @@ Implementation note:
   Removing them is a separate language-prelude decision, not part of the
   special/stat slash cleanup.
 
-### Phase 4: Vulkan extension - active
+### Phase 4: Vulkan extension - closed
 
 Closed 2026-04-23:
 
@@ -238,12 +238,14 @@ Closed 2026-04-23:
   compatibility fields; they no longer need to carry the full partial-support
   meaning by themselves.
 
-Remaining:
+Closed 2026-04-23:
 
-- `MATHSTATS-VK-003` records the remaining numerical policy boundary: decide
-  whether and how to support Vulkan `Float64` `math.erf` / `math.erfc` and
-  Vulkan `math.lgamma`, with approximation, domain, tolerance, and
-  status-diagnostic contracts documented before implementation.
+- `MATHSTATS-VK-003` documents the current Vulkan numerical policy boundary:
+  Vulkan `Float64` `math.erf` / `math.erfc` stay fail-closed until a
+  validated double approximation contract exists, and Vulkan `math.lgamma`
+  remains a separate hardening item with its own approximation/domain/status
+  policy. The shipped contract is that the current unsupported combinations
+  fail closed and do not silently downcast or route through CPU.
 
 ## Validation Path
 
@@ -251,6 +253,7 @@ For the planning slice:
 
 - `git diff --check`
 - `scripts/check_status_consistency.sh`
+- `scripts/check_file_size_gate.sh`
 
 For module facade implementation:
 

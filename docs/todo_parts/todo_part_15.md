@@ -873,10 +873,63 @@ This part backfills actionable items from:
     primitive docs parity; file-size gate; status consistency; E2E baseline
     policy; `git diff --check`.
 
-- [ ] `MATHSTATS-VK-003` define Vulkan Float64/error-gamma scientific policy.
+- [x] `MATHSTATS-VK-003` define Vulkan Float64/error-gamma scientific policy.
   - classification: runtime behavior, targeted Vulkan extension policy.
   - source: `docs/plans/math-stats-scientific-module-plan-2026-04-23.md`.
-  - next: document the approximation, tolerance, domain/status, and diagnostic
-    contracts required before adding Vulkan `Float64` `math.erf` /
-    `math.erfc` or Vulkan `math.lgamma`; keep current fail-closed behavior
-    until that policy is validated.
+  - status: closed 2026-04-23. Vulkan `Float64` `math.erf` / `math.erfc`
+    remain fail-closed until a validated double approximation contract exists;
+    Vulkan `math.lgamma` remains a separate hardening item with its own
+    approximation/domain/status policy.
+  - validation: planning note and policy docs updated; `git diff --check` and
+    `scripts/check_status_consistency.sh` remain the relevant gates.
+
+- [x] `AUDIT-SWITCH-EXHAUST-001` remove hidden default arms from compiler,
+  parser, and macro switch walkers.
+  - classification: runtime behavior, targeted audit remediation.
+  - source: `docs/plans/tagged-switch-exhaustiveness-remediation-plan-2026-04-23.md`.
+  - status: completed 2026-04-23. The compiler, parser, and macro walkers now
+    spell out their closed-enum handling explicitly with no hidden
+    `default:` arms.
+  - validation: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=compiler ./build/main --test-suite lisp`, `git diff --check`.
+
+- [x] `AUDIT-SWITCH-EXHAUST-002` remove hidden default arms from tensor
+  capture, reduction, matrix, and map evaluation switch walkers.
+  - classification: runtime behavior, targeted audit remediation.
+  - source: `docs/plans/tagged-switch-exhaustiveness-remediation-plan-2026-04-23.md`.
+  - status: completed 2026-04-23. The tensor capture, reduction, matrix, and
+    map evaluation walkers now enumerate current dtype/payload/status cases
+    explicitly with fail-closed branches where needed.
+  - validation: `c3c build --obj-out obj`, `OMNI_LISP_TEST_SLICE=advanced OMNI_ADVANCED_GROUP_FILTER=advanced-collections-module ./build/main --test-suite lisp`, `git diff --check`.
+
+- [x] `AUDIT-SWITCH-EXHAUST-003` validate and close the switch exhaustiveness
+  audit sweep.
+  - classification: validation, targeted audit remediation.
+  - source: `docs/plans/tagged-switch-exhaustiveness-remediation-plan-2026-04-23.md`.
+  - status: completed 2026-04-23. The audited files no longer contain
+    unapproved hidden `default:` arms.
+  - validation: `rg -n "default:"` over the audited files, `c3c build --obj-out obj`, targeted compiler and advanced module-group slices, `git diff --check`.
+
+- [ ] `AUDIT-REAUDIT-COMPILER-MUTABLE-CAPTURE-001` fix mutable-capture
+  detection for multi-parameter lambdas and local definition/guard subtrees.
+  - classification: runtime behavior, targeted compiler audit follow-up.
+  - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
+  - next: update `compiler_mutable_capture_detection_walk.c3` to seed all
+    lambda params/rest params and to recurse through `E_DEFINE` initializers
+    plus match guard predicates, then add regressions for shadowed params and
+    nested capture cases.
+
+- [ ] `AUDIT-REAUDIT-TENSOR-EMPTY-SOLVE-001` align empty-system `matrix/solve`
+  behavior across CPU and Vulkan backends.
+  - classification: runtime behavior, targeted tensor/math audit follow-up.
+  - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
+  - next: update the Vulkan solve path so zero-size systems and zero-column RHS
+    match the CPU empty-result semantics, then add a regression for the empty
+    solve case.
+
+- [ ] `AUDIT-REAUDIT-META-SYNC-001` repair stale plan/TODO/session-report
+  indexes and validation coverage.
+  - classification: validation, targeted bookkeeping follow-up.
+  - source: `.agents/REAUDIT_FINDINGS_2026-04-23.md`.
+  - next: resync `docs/plans/README.md`, `TODO.md`, and `.agents/SESSION_REPORT.md`
+    line counts/status references, then extend `scripts/check_status_consistency.sh`
+    so it catches index/line-count drift.
