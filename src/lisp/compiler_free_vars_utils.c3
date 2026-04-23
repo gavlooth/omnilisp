@@ -49,6 +49,40 @@ fn void Compiler.collect_pattern_bindings(Compiler* self, Pattern* pat, List{Sym
     }
 }
 
+fn bool pattern_binds_name(Pattern* pat, SymbolId name) {
+    if (pat == null) return false;
+    switch (pat.tag) {
+        case PAT_VAR:
+            return (uint)pat.var_name == (uint)name;
+        case PAT_AS:
+            return (uint)pat.as_name == (uint)name || pattern_binds_name(pat.as_sub, name);
+        case PAT_GUARD:
+            return pattern_binds_name(pat.guard_sub, name);
+        case PAT_CONS:
+            return pattern_binds_name(pat.car_pat, name) || pattern_binds_name(pat.cdr_pat, name);
+        case PAT_CONSTRUCTOR:
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                if (pattern_binds_name(pat.ctor_sub_patterns[i], name)) return true;
+            }
+            return false;
+        case PAT_SEQ:
+            for (usz i = 0; i < pat.elem_count; i++) {
+                if (pattern_binds_name(pat.elements[i], name)) return true;
+            }
+            if (pat.rest_pos == REST_MIDDLE && (uint)pat.rest_binding == (uint)name) return true;
+            return false;
+        case PAT_DICT:
+            for (usz i = 0; i < pat.dict_key_count; i++) {
+                if ((uint)pat.dict_keys[i] == (uint)name) return true;
+            }
+            return false;
+        case PAT_LIT:
+        case PAT_QUOTE:
+        case PAT_WILDCARD:
+            return false;
+    }
+}
+
 fn bool Compiler.is_compiler_builtin_symbol(Compiler* self, SymbolId sym) {
     if (prim_hash_lookup(sym).len > 0) return true;
 

@@ -113,8 +113,16 @@ fn void Compiler.find_free_vars_in_pattern_guard(Compiler* self, Pattern* pat, L
         case PAT_AS:
             self.find_free_vars_in_pattern_guard(pat.as_sub, bound_vars, free_vars, enclosing_scope);
         case PAT_GUARD:
-            self.find_free_vars(pat.guard_pred, bound_vars, free_vars, enclosing_scope);
             self.find_free_vars_in_pattern_guard(pat.guard_sub, bound_vars, free_vars, enclosing_scope);
+            List{SymbolId} guard_bound;
+            foreach (b : *bound_vars) {
+                guard_bound.push(b);
+            }
+            if (pat.guard_sub != null) {
+                self.collect_pattern_bindings(pat.guard_sub, &guard_bound);
+            }
+            self.find_free_vars(pat.guard_pred, &guard_bound, free_vars, enclosing_scope);
+            guard_bound.free();
         case PAT_VAR:
         case PAT_LIT:
         case PAT_QUOTE:

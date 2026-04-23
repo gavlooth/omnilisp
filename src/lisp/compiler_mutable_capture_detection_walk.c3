@@ -23,6 +23,9 @@ fn bool Compiler.has_set_on_pattern(Compiler* self, SymbolId name, Pattern* pat)
         case PAT_AS:
             return self.has_set_on_pattern(name, pat.as_sub);
         case PAT_GUARD:
+            if (pattern_binds_name(pat.guard_sub, name)) {
+                return self.has_set_on_pattern(name, pat.guard_sub);
+            }
             if (self.has_set_on(name, pat.guard_pred)) return true;
             return self.has_set_on_pattern(name, pat.guard_sub);
         case PAT_VAR:
@@ -134,6 +137,9 @@ fn bool Compiler.is_captured_by_nested_lambda_pattern(Compiler* self, SymbolId n
         case PAT_AS:
             return self.is_captured_by_nested_lambda_pattern(name, pat.as_sub);
         case PAT_GUARD:
+            if (pattern_binds_name(pat.guard_sub, name)) {
+                return self.is_captured_by_nested_lambda_pattern(name, pat.guard_sub);
+            }
             if (self.is_captured_by_nested_lambda(name, pat.guard_pred)) return true;
             return self.is_captured_by_nested_lambda_pattern(name, pat.guard_sub);
         case PAT_VAR:
