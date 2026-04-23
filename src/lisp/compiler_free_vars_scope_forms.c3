@@ -90,7 +90,37 @@ fn void Compiler.find_free_vars_match(Compiler* self, Expr* expr, List{SymbolId}
         }
         self.collect_pattern_bindings(expr.match.clauses[i].pattern, &clause_bound);
         self.find_free_vars(expr.match.clauses[i].result, &clause_bound, free_vars, enclosing_scope);
+        // Guard predicates can reference bound variables from the enclosing scope
+        self.find_free_vars_in_pattern_guard(expr.match.clauses[i].pattern, bound_vars, free_vars, enclosing_scope);
         clause_bound.free();
+    }
+}
+
+fn void Compiler.find_free_vars_in_pattern_guard(Compiler* self, Pattern* pat, List{SymbolId}* bound_vars, List{SymbolId}* free_vars, List{SymbolId}* enclosing_scope) {
+    if (pat == null) return;
+    switch (pat.tag) {
+        case PAT_CONS:
+            self.find_free_vars_in_pattern_guard(pat.car_pat, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars_in_pattern_guard(pat.cdr_pat, bound_vars, free_vars, enclosing_scope);
+        case PAT_CONSTRUCTOR:
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                self.find_free_vars_in_pattern_guard(pat.ctor_sub_patterns[i], bound_vars, free_vars, enclosing_scope);
+            }
+        case PAT_SEQ:
+            for (usz i = 0; i < pat.elem_count; i++) {
+                self.find_free_vars_in_pattern_guard(pat.elements[i], bound_vars, free_vars, enclosing_scope);
+            }
+        case PAT_AS:
+            self.find_free_vars_in_pattern_guard(pat.as_sub, bound_vars, free_vars, enclosing_scope);
+        case PAT_GUARD:
+            self.find_free_vars(pat.guard_pred, bound_vars, free_vars, enclosing_scope);
+            self.find_free_vars_in_pattern_guard(pat.guard_sub, bound_vars, free_vars, enclosing_scope);
+        case PAT_VAR:
+        case PAT_LIT:
+        case PAT_QUOTE:
+        case PAT_DICT:
+        case PAT_WILDCARD:
+            return;
     }
 }
 

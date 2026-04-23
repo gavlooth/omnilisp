@@ -39,10 +39,39 @@ fn void Compiler.prescan_expr_list(Compiler* self, Expr** exprs, usz count) {
     }
 }
 
+fn void Compiler.prescan_match_pattern(Compiler* self, Pattern* pat) {
+    if (pat == null) return;
+    switch (pat.tag) {
+        case PAT_CONS:
+            self.prescan_match_pattern(pat.car_pat);
+            self.prescan_match_pattern(pat.cdr_pat);
+        case PAT_CONSTRUCTOR:
+            for (usz i = 0; i < pat.ctor_sub_count; i++) {
+                self.prescan_match_pattern(pat.ctor_sub_patterns[i]);
+            }
+        case PAT_SEQ:
+            for (usz i = 0; i < pat.elem_count; i++) {
+                self.prescan_match_pattern(pat.elements[i]);
+            }
+        case PAT_AS:
+            self.prescan_match_pattern(pat.as_sub);
+        case PAT_GUARD:
+            self.prescan_mutable_captures(pat.guard_pred);
+            self.prescan_match_pattern(pat.guard_sub);
+        case PAT_VAR:
+        case PAT_LIT:
+        case PAT_QUOTE:
+        case PAT_DICT:
+        case PAT_WILDCARD:
+            return;
+    }
+}
+
 fn void Compiler.prescan_match_clause_results(Compiler* self, Expr* expr) {
     self.prescan_mutable_captures(expr.match.scrutinee);
     for (usz i = 0; i < expr.match.clause_count; i++) {
         self.prescan_mutable_captures(expr.match.clauses[i].result);
+        self.prescan_match_pattern(expr.match.clauses[i].pattern);
     }
 }
 

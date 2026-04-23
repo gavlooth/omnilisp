@@ -49,6 +49,18 @@ fn bool Compiler.has_set_on(Compiler* self, SymbolId name, Expr* expr) {
         case E_LET:
             return self.has_set_on(name, expr.let_expr.init) || self.has_set_on(name, expr.let_expr.body);
         case E_LAMBDA:
+            // If the lambda shadows the name, any set! inside refers to the parameter,
+            // not the outer variable we're checking for.
+            if (expr.lambda.param_count > 1) {
+                for (usz pi = 0; pi < expr.lambda.param_count; pi++) {
+                    if ((uint)expr.lambda.params[pi] == (uint)name) return false;
+                }
+            } else if ((uint)expr.lambda.param == (uint)name) {
+                return false;
+            }
+            if (expr.lambda.has_rest && (uint)expr.lambda.rest_param == (uint)name) {
+                return false;
+            }
             return self.has_set_on(name, expr.lambda.body);
         case E_DEFINE:
             return self.has_set_on(name, expr.define.value);
